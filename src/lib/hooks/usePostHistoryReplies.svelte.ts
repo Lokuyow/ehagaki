@@ -17,6 +17,7 @@ import {
     type ProfilesRepository,
 } from "../storage/profilesRepository";
 import { cloneNostrEvent, isSignedNostrEvent } from "../postHistoryEventUtils";
+import { parseKind1ThreadReferences } from "../postHistoryNip10Utils";
 
 export type PostHistoryRepliesStatus =
     | "unloaded"
@@ -42,6 +43,7 @@ interface UsePostHistoryRepliesParams {
     getShow: () => boolean;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
+    getPubkeyHex?: () => string | null | undefined;
     replyEventsRepositoryImpl?: Pick<
         PostHistoryReplyEventsRepository,
         "getDirectReplies" | "upsertDirectReplies"
@@ -97,6 +99,7 @@ export function usePostHistoryReplies({
     getShow,
     getRxNostr,
     getRelayConfig,
+    getPubkeyHex = () => null,
     replyEventsRepositoryImpl = postHistoryReplyEventsRepository,
     profilesRepositoryImpl = profilesRepository,
     replyFetchService = postHistoryReplyFetchService,
@@ -300,6 +303,53 @@ export function usePostHistoryReplies({
         void loadReplies(post, { force: true });
     }
 
+    async function recordPostedReply(
+        event: NostrEvent | null | undefined,
+        posts: PostHistoryRecord[] = [],
+    ): Promise<boolean> {
+        if (!event?.id || event.kind !== 1) {
+            return true;
+        }
+
+        const references = parseKind1ThreadReferences(event);
+        const parentEventId = references.parentId;
+        if (!parentEventId) {
+            return true;
+        }
+
+        const parentPost = posts.find((post) => post.eventId === parentEventId) ?? null;
+        const currentState = stateByPostId[parentEventId] ?? null;
+        if (!parentPost && !currentState) {
+            return false;
+        }
+
+        await replyEventsRepositoryImpl.upsertDirectReplies({
+            parentEventId,
+            events: [
+                {
+                    event,
+                    relayUrls: references.relayHints,
+                },
+            ],
+        });
+
+        const nextRecords = await replyEventsRepositoryImpl.getDirectReplies(parentEventId);
+        if (!getShow()) {
+            return false;
+        }
+
+        const latestState = stateByPostId[parentEventId] ?? currentState ?? buildInitialState();
+        const currentPubkey = getPubkeyHex() ?? parentPost?.pubkeyHex ?? event.pubkey;
+        updateRepliesState(parentEventId, {
+            status: "loaded",
+            visible: latestState.visible,
+            replies: await toDisplayItems(nextRecords, currentPubkey),
+            error: null,
+        });
+
+        return true;
+    }
+
     $effect(() => {
         if (!getShow()) {
             resetState();
@@ -320,6 +370,7 @@ export function usePostHistoryReplies({
         getRepliesState,
         toggleReplies,
         retryReplies,
+        recordPostedReply,
         cancelCurrentReplyFetches,
         resetState,
     };

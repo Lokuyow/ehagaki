@@ -224,13 +224,20 @@ export class PostManager {
     const result = await this.eventSender!.sendEvent(eventToSend, {
       additionalWriteRelays: params.additionalWriteRelays,
     });
+    const resultWithEvent: PostResult = result.success
+      ? {
+        ...result,
+        eventId: result.eventId ?? eventToSend.id,
+        event: eventToSend,
+      }
+      : result;
     await this.saveSubmittedPostHistory({
       event: eventToSend,
-      result,
+      result: resultWithEvent,
       additionalWriteRelays: params.additionalWriteRelays,
     });
     return this.finalizeSubmittedPost(
-      result,
+      resultWithEvent,
       params.hashtags,
       params.rqNotifyOptions,
     );
@@ -649,7 +656,7 @@ export class PostManager {
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
     onStart?: () => void,
-    onSuccess?: () => void,
+    onSuccess?: (result?: PostResult) => void,
     onError?: (error: string) => void
   ): Promise<void> {
     const postPayload = this.preparePostPayload(editor);
@@ -660,7 +667,7 @@ export class PostManager {
     try {
       const result = await this.submitPost(postPayload.content, imageBlurhashMap, postPayload.emojiTags);
       if (result.success) {
-        onSuccess?.();
+        onSuccess?.(result);
       } else {
         onError?.(result.error || "post_error");
       }

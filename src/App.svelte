@@ -72,7 +72,7 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
+  import type { AuthResult, Draft, MediaGalleryItem, NostrEvent, PostResult } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -307,6 +307,7 @@
   let postHistoryWarmupPubkey: string | null = null;
   let postHistoryWarmupResult: PostHistoryWarmupResult | null = null;
   let postHistoryWarmupPromise: Promise<PostHistoryWarmupResult> | null = null;
+  let latestPostedEvent: NostrEvent | null = $state(null);
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
@@ -1367,11 +1368,12 @@
     }
   });
 
-  function handlePostSuccess() {
+  function handlePostSuccess(result?: PostResult) {
     // 投稿成功時にfooter情報を全て削除
     resetUploadDisplayState();
     // 共有メディアフラグをクリア
     clearSharedMediaProcessed();
+    latestPostedEvent = result?.event ?? null;
   }
 
   function handleResetPostContent() {
@@ -1820,6 +1822,7 @@
           pubkeyHex={authState.value?.pubkey ?? null}
           {rxNostr}
           relayConfig={relayConfigStore.value}
+          {latestPostedEvent}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

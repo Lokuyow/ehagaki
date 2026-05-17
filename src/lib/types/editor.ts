@@ -27,6 +27,7 @@ export interface PostResult {
     error?: string;
     eventId?: string;
     acceptedRelays?: string[];
+    event?: import("./nostr").NostrEvent;
 }
 
 // Editor and Utils types

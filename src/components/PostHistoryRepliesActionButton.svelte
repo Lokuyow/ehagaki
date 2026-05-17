@@ -18,7 +18,7 @@
     title={ariaLabel}
     contentLayout="icon"
     shape="circle"
-    selected={state.visible && state.status !== "loading"}
+    selected={state.visible}
     disabled={state.status === "loading"}
     {onClick}
 >

@@ -11,7 +11,7 @@ import { parseDimString } from './utils/mediaNodeUtils';
 interface PostStatusHandlersParams {
     updatePostStatus: (postStatus: PostStatus) => void;
     clearContentAfterSuccess: () => void;
-    onPostSuccess?: () => void;
+    onPostSuccess?: (result?: PostResult) => void;
 }
 
 interface SecretKeyPostManager {
@@ -66,10 +66,10 @@ export function createPostStatusHandlers({
         markSending: () => {
             updatePostStatus(createSendingStatus());
         },
-        markSuccess: () => {
+        markSuccess: (result?: PostResult) => {
             updatePostStatus(createSuccessStatus());
             clearContentAfterSuccess();
-            onPostSuccess?.();
+            onPostSuccess?.(result);
         },
         markFailure: (message?: string) => {
             updatePostStatus(createErrorStatus(message));
@@ -85,7 +85,7 @@ export async function submitPendingPostWithSecretKey(params: {
     pendingPost: string;
     pendingEmojiTags?: string[][];
     onStart: () => void;
-    onSuccess: () => void;
+    onSuccess: (result?: PostResult) => void;
     onFailure: (message?: string) => void;
 }): Promise<void> {
     const imageBlurhashMap = params.postManager.prepareImageBlurhashMap(
@@ -109,7 +109,7 @@ export async function submitPendingPostWithSecretKey(params: {
             );
 
         if (result.success) {
-            params.onSuccess();
+            params.onSuccess(result);
             return;
         }
 

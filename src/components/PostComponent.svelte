@@ -6,7 +6,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import { Selection } from "@tiptap/pm/state";
   import type { RxNostr } from "rx-nostr";
-  import type { FullscreenMediaItem } from "../lib/types";
+  import type { FullscreenMediaItem, PostResult } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
@@ -77,7 +77,7 @@
   interface Props {
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
-    onPostSuccess?: () => void;
+    onPostSuccess?: (result?: PostResult) => void;
     availableComposerHeight?: number;
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
@@ -214,7 +214,7 @@
   const postStatusHandlers = createPostStatusHandlers({
     updatePostStatus,
     clearContentAfterSuccess,
-    onPostSuccess: () => onPostSuccess?.(),
+    onPostSuccess: (result) => onPostSuccess?.(result),
   });
 
   $effect(() => {

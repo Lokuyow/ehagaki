@@ -10,7 +10,7 @@
     let { state }: Props = $props();
 </script>
 
-{#if state.visible && state.status === "loaded" && state.replies.length > 0}
+{#if state.visible && state.status !== "failed" && state.replies.length > 0}
     <div class="post-history-replies-panel">
         <div class="post-history-replies-list">
             {#each state.replies as reply (reply.event.id)}

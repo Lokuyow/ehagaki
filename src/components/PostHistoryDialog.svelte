@@ -47,7 +47,7 @@
         CustomEmojiImageMetaRecord,
         PostHistoryRecord,
     } from "../lib/storage/ehagakiDb";
-    import type { FullscreenMediaItem, RelayConfig } from "../lib/types";
+    import type { FullscreenMediaItem, NostrEvent, RelayConfig } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
 
@@ -69,6 +69,7 @@
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
+        latestPostedEvent?: NostrEvent | null;
     }
 
     let {
@@ -79,6 +80,7 @@
         pubkeyHex = null,
         rxNostr = undefined,
         relayConfig = null,
+        latestPostedEvent = null,
     }: Props = $props();
 
     const history = usePostHistoryListing({
@@ -111,6 +113,7 @@
         getShow: () => show,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+        getPubkeyHex: () => pubkeyHex,
     });
 
     let copyState = $state<Record<string, "failed" | undefined>>({});
@@ -128,6 +131,7 @@
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let jumpDateInput = $state("");
+    let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
     let postMenuOpenState = $state<Record<string, boolean>>({});
     let deleteRequestState = $state<
@@ -328,6 +332,27 @@
         }
 
         resetDialogState();
+    });
+
+    $effect(() => {
+        if (!show || !latestPostedEvent?.id) {
+            return;
+        }
+
+        const eventId = latestPostedEvent.id;
+        if (appliedLatestPostedReplyEventId === eventId) {
+            return;
+        }
+
+        history.posts;
+        void postHistoryReplies
+            .recordPostedReply(latestPostedEvent, history.posts)
+            .then((applied) => {
+                if (applied) {
+                    appliedLatestPostedReplyEventId = eventId;
+                }
+            })
+            .catch(() => undefined);
     });
 
     $effect(() => {
@@ -1128,7 +1153,10 @@
         const state = postHistoryReplies.getRepliesState(post);
         if (
             state.status === "failed" ||
-            (state.status === "loaded" && state.replies.length === 0)
+            (state.status === "loaded" && (
+                state.replies.length === 0 ||
+                !state.visible
+            ))
         ) {
             postHistoryReplies.retryReplies(post);
             return;
