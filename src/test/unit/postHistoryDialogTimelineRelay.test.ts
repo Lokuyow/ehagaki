@@ -394,6 +394,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         repositoryMock.countVisibleForPubkey.mockImplementation(async (_pubkeyHex: string, rangeUntil?: number | null) =>
             rangeUntil === 180 ? 1 : 2,
         );
+        repositoryMock.getByEventId.mockResolvedValue(null);
         repositoryMock.getLatestVisibleChunk.mockImplementation(async (options: {
             visibleUntil?: number | null;
         }) => options.visibleUntil === 180 ? [latest] : []);

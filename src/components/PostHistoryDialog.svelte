@@ -9,10 +9,12 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryContextPanel from "./PostHistoryContextPanel.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { usePostHistoryContext } from "../lib/hooks/usePostHistoryContext.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import {
@@ -96,6 +98,11 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
+    });
+    const postHistoryContext = usePostHistoryContext({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
     });
 
     let copyState = $state<Record<string, "failed" | undefined>>({});
@@ -278,6 +285,7 @@
         history.cancelCurrentSync();
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
+        postHistoryContext.cancelCurrentContextFetches();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
@@ -1742,6 +1750,16 @@
                                         </div>
                                     {/if}
                                 </div>
+                                <PostHistoryContextPanel
+                                    context={postHistoryContext.getContextState(
+                                        post,
+                                    )}
+                                    onLoad={(kind) =>
+                                        void postHistoryContext.loadTarget(
+                                            post,
+                                            kind,
+                                        )}
+                                />
                                 {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-footer">
                                         <div class="post-preview-footer-left">

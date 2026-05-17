@@ -52,6 +52,7 @@ const hoisted = vi.hoisted(() => {
     return {
         mockTranslate,
         repositoryMock: {
+            getByEventId: vi.fn(),
             getLatestVisibleChunk: vi.fn(),
             getOlderVisibleChunk: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
@@ -344,6 +345,7 @@ export function resetPostHistoryDialogHarness(): void {
     vi.resetAllMocks();
 
     repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
+    repositoryMock.getByEventId.mockResolvedValue(null);
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
     repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([]);

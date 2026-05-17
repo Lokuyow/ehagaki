@@ -74,6 +74,13 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.channel': 'チャンネル',
         'postHistory.channelLoading': '読み込み中...',
         'postHistory.channelUnknown': '不明',
+        'postHistory.showReplyTarget': '返信先を見る',
+        'postHistory.showConversationRoot': '会話の最初を見る',
+        'postHistory.replyTarget': '返信先',
+        'postHistory.conversationRoot': '会話の最初',
+        'postHistory.contextLoading': '関連投稿を読み込み中...',
+        'postHistory.contextNotFound': '関連投稿が見つかりませんでした',
+        'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
         'replyQuote.reply_label': 'リプライ',
         'replyQuote.quote_label': '引用',
         'common.cancel': 'キャンセル',
@@ -87,6 +94,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
     return translations[key] || key;
 });
 const repositoryMock = vi.hoisted(() => ({
+    getByEventId: vi.fn(),
     getPage: vi.fn(),
     getVisiblePage: vi.fn(),
     getLatestVisibleChunk: vi.fn(),
@@ -392,6 +400,7 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getVisiblePage.mockImplementation(async ({ pubkeyHex, page, pageSize }: Record<string, any>) =>
             repositoryMock.getPage({ pubkeyHex, page, pageSize }),
         );
+        repositoryMock.getByEventId.mockResolvedValue(null);
         repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, any>) => {
             if (typeof visibleUntil === 'number') {
                 return repositoryMock.getVisiblePage({
@@ -570,6 +579,86 @@ describe('PostHistoryDialog', () => {
         expect(heading).toBeTruthy();
         expect(headingActions?.textContent).not.toContain('表示中の投稿付近を再取得');
         expect(repairButton).toBeTruthy();
+    });
+
+    it('[reply-context] 履歴内の返信投稿から返信先と会話の最初を表示する', async () => {
+        const replyId = '2'.repeat(64);
+        const rootId = '3'.repeat(64);
+        const parentRecord = createRecord({
+            eventId: replyId,
+            pubkeyHex: 'd'.repeat(64),
+            content: '返信先の投稿',
+            rawEvent: {
+                id: replyId,
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '返信先の投稿',
+                tags: [],
+                created_at: 1_699_999_000,
+                sig: 'e'.repeat(128),
+            },
+        });
+        const rootRecord = createRecord({
+            eventId: rootId,
+            pubkeyHex: 'e'.repeat(64),
+            content: '会話の最初の投稿',
+            rawEvent: {
+                id: rootId,
+                pubkey: 'e'.repeat(64),
+                kind: 1,
+                content: '会話の最初の投稿',
+                tags: [],
+                created_at: 1_699_998_000,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信',
+                tags: [
+                    ['e', rootId, 'wss://root.example.com/', 'root'],
+                    ['e', replyId, 'wss://reply.example.com/', 'reply'],
+                ],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の返信',
+            tags: [
+                ['e', rootId, 'wss://root.example.com/', 'root'],
+                ['e', replyId, 'wss://reply.example.com/', 'reply'],
+            ],
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId
+                ? parentRecord
+                : eventId === rootId
+                    ? rootRecord
+                    : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '会話の最初を見る' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+            expect(screen.getByText('会話の最初の投稿')).toBeTruthy();
+            expect(screen.queryByRole('button', { name: '親投稿を見る' })).toBeNull();
+        });
     });
 
     it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {

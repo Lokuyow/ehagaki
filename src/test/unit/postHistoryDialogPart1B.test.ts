@@ -87,6 +87,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
     return translations[key] || key;
 });
 const repositoryMock = vi.hoisted(() => ({
+    getByEventId: vi.fn(),
     getPage: vi.fn(),
     getVisiblePage: vi.fn(),
     getLatestVisibleChunk: vi.fn(),
@@ -403,6 +404,7 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getVisiblePage.mockImplementation(async ({ pubkeyHex, page, pageSize }: Record<string, any>) =>
             repositoryMock.getPage({ pubkeyHex, page, pageSize }),
         );
+        repositoryMock.getByEventId.mockResolvedValue(null);
         repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, any>) => {
             if (typeof visibleUntil === 'number') {
                 return repositoryMock.getVisiblePage({

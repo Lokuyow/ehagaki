@@ -135,6 +135,24 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("eventId で投稿履歴 record を取得できる", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const eventId = "1".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: eventId }),
+        });
+
+        await expect(repository.getByEventId(eventId)).resolves.toMatchObject({
+            eventId,
+            rawEvent: { id: eventId },
+        });
+        await expect(repository.getByEventId("2".repeat(64))).resolves.toBeNull();
+
+        db.close();
+    });
+
     it("deleteForPubkey は指定 pubkey の投稿履歴だけを削除する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);

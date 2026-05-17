@@ -79,6 +79,7 @@ export type PostHistoryRepositoryOptions = {
 };
 
 export interface PostHistoryRepository {
+    getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
     getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
@@ -366,6 +367,12 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             ? globalThis.console
             : { log: () => undefined, warn: () => undefined, error: () => undefined } as Console,
     ) { }
+
+    async getByEventId(eventId: string): Promise<PostHistoryRecord | null> {
+        if (!eventId) return null;
+
+        return await this.db.postHistory.get(eventId) ?? null;
+    }
 
     async getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]> {
         if (!options.pubkeyHex) return [];
