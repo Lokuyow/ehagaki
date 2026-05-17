@@ -81,10 +81,14 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.contextNotFound': '関連投稿が見つかりませんでした',
         'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
         'postHistory.contextRetry': '再試行',
+        'postHistory.checkReplies': '返信を確認',
+        'postHistory.checkingReplies': '返信を確認中',
+        'postHistory.recheckReplies': '返信を再確認',
         'postHistory.showReplies': '返信を表示',
+        'postHistory.showRepliesWithCount': `返信 ${options?.values?.count}件を表示`,
         'postHistory.hideReplies': '返信を隠す',
         'postHistory.repliesLoading': '返信を取得中...',
-        'postHistory.repliesNotFound': '返信はまだ見つかっていません',
+        'postHistory.repliesNotFound': 'この範囲では返信が見つかりませんでした',
         'postHistory.repliesFetchFailed': '返信を取得できませんでした',
         'postHistory.directReply': '返信',
         'postHistory.ownReply': '自分の返信',
@@ -956,12 +960,19 @@ describe('PostHistoryDialog', () => {
             props: {
                 show: true,
                 onClose: vi.fn(),
+                onReplyPost: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
                 rxNostr: {} as any,
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を表示' }));
+        expect(screen.queryByRole('button', { name: '返信を表示' })).toBeNull();
+        const checkRepliesButton = await screen.findByRole('button', { name: '返信を確認' });
+        expect(checkRepliesButton.querySelector('.speaker-notes-icon')).toBeTruthy();
+        expect(document.body.querySelector('.forum-icon')).toBeNull();
+        expect(document.body.querySelector('.question-answer-icon')).toBeNull();
+
+        await fireEvent.click(checkRepliesButton);
 
         await waitFor(() => {
             expect(screen.getByText('他人からの返信')).toBeTruthy();
@@ -986,6 +997,64 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '返信を隠す' }));
         await waitFor(() => {
             expect(screen.queryByText('他人からの返信')).toBeNull();
+        });
+        expect(screen.getByRole('button', { name: '返信 2件を表示' })).toBeTruthy();
+    });
+
+    it('[direct-replies] 返信確認loading中はアイコンボタン内にテキストなしのローダーだけを表示する', async () => {
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の投稿',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の投稿',
+            tags: [],
+            media: [],
+        });
+        const deferredFetch = createDeferred<any>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: deferredFetch.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            const loadingButton = screen.getByRole('button', { name: '返信を確認中' });
+            expect(loadingButton.querySelector('.post-preview-replies-spinner')).toBeTruthy();
+            expect(loadingButton.querySelector('.speaker-notes-icon')).toBeNull();
+            expect(loadingButton.textContent?.trim()).toBe('');
+        });
+        expect(screen.queryByText('返信を取得中...')).toBeNull();
+
+        deferredFetch.resolve({
+            events: [],
+            fetchedAt: 1_700_000_030,
+            relayUrls: ['wss://relay.example.com/'],
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('この範囲では返信が見つかりませんでした')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を再確認' })).toBeTruthy();
         });
     });
 

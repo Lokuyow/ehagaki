@@ -11,6 +11,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryContextPanel from "./PostHistoryContextPanel.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryRepliesPanel from "./PostHistoryRepliesPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
@@ -1095,6 +1096,47 @@
         return deleteRequestState[post.eventId] === "failed";
     }
 
+    function getRepliesActionLabel(post: PostHistoryRecord): string {
+        const state = postHistoryReplies.getRepliesState(post);
+        if (state.status === "loading") {
+            return $_("postHistory.checkingReplies");
+        }
+
+        if (state.status === "failed") {
+            return $_("postHistory.recheckReplies");
+        }
+
+        if (state.status === "loaded") {
+            const count = state.replies.length;
+            if (count === 0) {
+                return $_("postHistory.recheckReplies");
+            }
+
+            if (state.visible) {
+                return $_("postHistory.hideReplies");
+            }
+
+            return $_("postHistory.showRepliesWithCount", {
+                values: { count },
+            });
+        }
+
+        return $_("postHistory.checkReplies");
+    }
+
+    function handleRepliesAction(post: PostHistoryRecord): void {
+        const state = postHistoryReplies.getRepliesState(post);
+        if (
+            state.status === "failed" ||
+            (state.status === "loaded" && state.replies.length === 0)
+        ) {
+            postHistoryReplies.retryReplies(post);
+            return;
+        }
+
+        postHistoryReplies.toggleReplies(post);
+    }
+
     function canDeletePost(post: PostHistoryRecord): boolean {
         return canRequestPostDeletion(post, pubkeyHex);
     }
@@ -1801,6 +1843,16 @@
                                                     ></div>
                                                 </Button>
                                             {/if}
+                                            <PostHistoryRepliesActionButton
+                                                state={postHistoryReplies.getRepliesState(
+                                                    post,
+                                                )}
+                                                ariaLabel={getRepliesActionLabel(
+                                                    post,
+                                                )}
+                                                onClick={() =>
+                                                    handleRepliesAction(post)}
+                                            />
                                             {#if onQuotePost}
                                                 <Button
                                                     type="button"
@@ -1929,8 +1981,6 @@
                                     state={postHistoryReplies.getRepliesState(
                                         post,
                                     )}
-                                    onToggle={() =>
-                                        postHistoryReplies.toggleReplies(post)}
                                     onRetry={() =>
                                         postHistoryReplies.retryReplies(post)}
                                 />
@@ -2802,9 +2852,19 @@
         :global(.post-preview-action-button) {
             min-height: auto;
             background: transparent;
+            position: relative;
 
             :global(.svg-icon) {
                 --svg: var(--btn-post-preview-action);
+            }
+        }
+
+        :global(.post-preview-action-button.selected) {
+            background: color-mix(in srgb, var(--theme) 12%, transparent);
+            color: var(--theme);
+
+            :global(.svg-icon) {
+                --svg: var(--theme);
             }
         }
 
@@ -2816,6 +2876,11 @@
                     --svg: var(--theme);
                 }
             }
+        }
+
+        :global(.post-preview-replies-action-button:disabled) {
+            opacity: 1;
+            color: var(--btn-post-preview-action);
         }
     }
 

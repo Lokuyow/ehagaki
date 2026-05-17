@@ -1,41 +1,20 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import type { PostHistoryRepliesState } from "../lib/hooks/usePostHistoryReplies.svelte";
 
     interface Props {
         state: PostHistoryRepliesState;
-        onToggle: () => void;
         onRetry: () => void;
     }
 
-    let { state, onToggle, onRetry }: Props = $props();
+    let { state, onRetry }: Props = $props();
 </script>
 
-<div class="post-history-replies-panel">
-    <div class="post-history-replies-actions">
-        <Button
-            type="button"
-            className="post-history-replies-button"
-            disabled={state.status === "loading"}
-            onClick={onToggle}
-        >
-            {state.visible
-                ? $_("postHistory.hideReplies")
-                : $_("postHistory.showReplies")}
-        </Button>
-    </div>
-
-    {#if state.visible}
-        {#if state.status === "loading"}
-            <LoadingPlaceholder
-                showLoader={true}
-                text={$_("postHistory.repliesLoading")}
-                customClass="post-history-replies-loading"
-            />
-        {:else if state.status === "failed"}
+{#if state.visible}
+    <div class="post-history-replies-panel">
+        {#if state.status === "failed"}
             <p class="post-history-replies-message post-history-replies-error">
                 {$_("postHistory.repliesFetchFailed")}
             </p>
@@ -70,20 +49,14 @@
                 {/each}
             </div>
         {/if}
-    {/if}
-</div>
+    </div>
+{/if}
 
 <style>
     .post-history-replies-panel {
         display: grid;
         gap: 6px;
         padding-left: 1rem;
-    }
-
-    .post-history-replies-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
     }
 
     :global(.post-history-replies-button) {
@@ -99,14 +72,6 @@
             color: var(--theme);
             background: color-mix(in srgb, var(--theme) 10%, transparent);
         }
-    }
-
-    :global(.post-history-replies-loading) {
-        justify-content: flex-start;
-        width: auto;
-        padding: 0;
-        color: var(--text-muted);
-        font-size: 0.82rem;
     }
 
     .post-history-replies-message {
