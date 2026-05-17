@@ -137,6 +137,8 @@ interface OlderBackfillUiResult {
     loadedPostsBeforeLength: number;
     loadedPostsAfterLength: number;
     maxVisiblePosts: number;
+    autoRetryCount: number;
+    autoRetryReason: string | null;
 }
 
 interface FetchOlderFromRelaysOptions {
@@ -223,6 +225,7 @@ export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
 // Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
 const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS = 60 * 60;
+const POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT = 2;
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -1768,217 +1771,300 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const resolvedFetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
-
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
-        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-        if (
-            !isCurrentFetchRequest(requestId) ||
-            !getShow() ||
-            getPubkeyHex() !== pubkeyHex
-        ) {
-            return false;
-        }
+        let autoRetryCount = 0;
+        let autoRetryReason: string | null = null;
 
-        const effectiveFetchUntil = (() => {
-            if (typeof resolvedFetchUntil === "number") {
-                return typeof previousVisibleUntil === "number"
-                    ? Math.min(resolvedFetchUntil, previousVisibleUntil)
-                    : resolvedFetchUntil;
+        while (true) {
+            const resolvedFetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
+            const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+            if (
+                !isCurrentFetchRequest(requestId) ||
+                !getShow() ||
+                getPubkeyHex() !== pubkeyHex
+            ) {
+                return false;
             }
 
-            return previousVisibleUntil;
-        })();
+            const effectiveFetchUntil = (() => {
+                if (typeof resolvedFetchUntil === "number") {
+                    return typeof previousVisibleUntil === "number"
+                        ? Math.min(resolvedFetchUntil, previousVisibleUntil)
+                        : resolvedFetchUntil;
+                }
 
-        if (typeof effectiveFetchUntil !== "number") {
-            state.syncStatus = "idle";
-            return false;
-        }
+                return previousVisibleUntil;
+            })();
 
-        const fetchRange = buildOlderBackfillSearchRange(effectiveFetchUntil);
-        if (!fetchRange) {
-            setOlderBackfillNextCursor(null, null);
-            state.syncStatus = "idle";
-            return false;
-        }
+            if (typeof effectiveFetchUntil !== "number") {
+                state.syncStatus = "idle";
+                return false;
+            }
 
-        const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
-        if (
-            !isCurrentFetchRequest(requestId) ||
-            !getShow() ||
-            getPubkeyHex() !== pubkeyHex
-        ) {
-            return false;
-        }
+            const fetchRange = buildOlderBackfillSearchRange(effectiveFetchUntil);
+            if (!fetchRange) {
+                setOlderBackfillNextCursor(null, null);
+                state.syncStatus = "idle";
+                return false;
+            }
 
-        const previousStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
-        if (
-            !isCurrentFetchRequest(requestId) ||
-            !getShow() ||
-            getPubkeyHex() !== pubkeyHex
-        ) {
-            return false;
-        }
+            const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
+            if (
+                !isCurrentFetchRequest(requestId) ||
+                !getShow() ||
+                getPubkeyHex() !== pubkeyHex
+            ) {
+                return false;
+            }
 
-        let didMateriallyChange = false;
-        let upsertSummary = {
-            insertedCount: 0,
-            updatedCount: 0,
-            unchangedCount: 0,
-        };
+            const previousStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+            if (
+                !isCurrentFetchRequest(requestId) ||
+                !getShow() ||
+                getPubkeyHex() !== pubkeyHex
+            ) {
+                return false;
+            }
 
-        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-            pubkeyHex,
-            relayConfig: getRelayConfig(),
-            reason: "older-backfill",
-            limit: POST_HISTORY_OLDER_FETCH_LIMIT,
-            timeoutMs: POST_HISTORY_OLDER_FETCH_TIMEOUT_MS,
-            since: fetchRange.since,
-            until: fetchRange.until,
-        });
-        currentFetchTask = task;
+            let didMateriallyChange = false;
+            let upsertSummary = {
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
 
-        const result = await task.promise;
-        if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
-            return false;
-        }
-
-        currentFetchTask = null;
-        if (!getShow() || result.status === "cancelled") {
-            return false;
-        }
-
-        if (result.events.length > 0) {
-            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
-                events: result.events,
-                fetchedAt: result.fetchedAt,
+            const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+                pubkeyHex,
+                relayConfig: getRelayConfig(),
+                reason: "older-backfill",
+                limit: POST_HISTORY_OLDER_FETCH_LIMIT,
+                timeoutMs: POST_HISTORY_OLDER_FETCH_TIMEOUT_MS,
+                since: fetchRange.since,
+                until: fetchRange.until,
             });
-            didMateriallyChange =
-                upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
-        }
-        if (!isCurrentFetchRequest(requestId) || !getShow()) {
-            return false;
-        }
+            currentFetchTask = task;
 
-        const nextVisibleUntil = await updateVisibleUntilFromOlderBackfillFetch(
-            pubkeyHex,
-            result,
-        );
-        if (!isCurrentFetchRequest(requestId) || !getShow()) {
-            return false;
-        }
-
-        const nextCount = await countVisiblePosts(pubkeyHex, nextVisibleUntil);
-        if (!isCurrentFetchRequest(requestId) || !getShow()) {
-            return false;
-        }
-
-        const nextStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
-        if (!isCurrentFetchRequest(requestId) || !getShow()) {
-            return false;
-        }
-
-        const didVisibleCountIncrease = nextCount > previousCount;
-        updateOlderBackfillSearchState(
-            result,
-            fetchRange,
-            POST_HISTORY_OLDER_FETCH_LIMIT,
-        );
-        logOlderBackfillResult(
-            fetchRange,
-            result,
-            POST_HISTORY_OLDER_FETCH_LIMIT,
-        );
-
-        let didLoadFetchedOlderPosts = false;
-        const olderLoadMetrics: LoadOlderVisiblePostsMetrics = {
-            loadedPostsBeforeLength: state.loadedPosts.length,
-            loadedPostsAfterLength: state.loadedPosts.length,
-            olderPostsLength: 0,
-            visibleOldestBefore:
-                state.loadedPosts.length > 0
-                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
-                    : null,
-            visibleOldestAfter:
-                state.loadedPosts.length > 0
-                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
-                    : null,
-            didTrimForOlderAppend: false,
-            didDeferOlderPosts: false,
-            maxVisiblePosts,
-        };
-
-        if (state.searchQuery) {
-            await loadSearchPage(state.searchPage, state.searchQuery);
-        } else {
-            state.totalCount = nextCount;
-            if (didVisibleCountIncrease || didMateriallyChange) {
-                didLoadFetchedOlderPosts = await loadOlderVisiblePosts(
-                    {
-                        anchorEventId: options.anchorEventId,
-                        metrics: olderLoadMetrics,
-                    },
-                );
-            } else {
-                await refreshTimelineAvailability(pubkeyHex);
+            const result = await task.promise;
+            if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
+                return false;
             }
-        }
 
-        state.latestOlderBackfillUiResult = {
-            changed:
+            currentFetchTask = null;
+            if (!getShow() || result.status === "cancelled") {
+                return false;
+            }
+
+            if (result.events.length > 0) {
+                upsertSummary = await postHistoryRepository.upsertFetchedEvents({
+                    events: result.events,
+                    fetchedAt: result.fetchedAt,
+                });
+                didMateriallyChange =
+                    upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
+            }
+            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+                return false;
+            }
+
+            const nextVisibleUntil = await updateVisibleUntilFromOlderBackfillFetch(
+                pubkeyHex,
+                result,
+            );
+            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+                return false;
+            }
+
+            const nextCount = await countVisiblePosts(pubkeyHex, nextVisibleUntil);
+            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+                return false;
+            }
+
+            const nextStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+                return false;
+            }
+
+            const didVisibleCountIncrease = nextCount > previousCount;
+            updateOlderBackfillSearchState(
+                result,
+                fetchRange,
+                POST_HISTORY_OLDER_FETCH_LIMIT,
+            );
+            logOlderBackfillResult(
+                fetchRange,
+                result,
+                POST_HISTORY_OLDER_FETCH_LIMIT,
+            );
+
+            let didLoadFetchedOlderPosts = false;
+            const olderLoadMetrics: LoadOlderVisiblePostsMetrics = {
+                loadedPostsBeforeLength: state.loadedPosts.length,
+                loadedPostsAfterLength: state.loadedPosts.length,
+                olderPostsLength: 0,
+                visibleOldestBefore:
+                    state.loadedPosts.length > 0
+                        ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                        : null,
+                visibleOldestAfter:
+                    state.loadedPosts.length > 0
+                        ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                        : null,
+                didTrimForOlderAppend: false,
+                didDeferOlderPosts: false,
+                maxVisiblePosts,
+            };
+
+            if (state.searchQuery) {
+                await loadSearchPage(state.searchPage, state.searchQuery);
+            } else {
+                state.totalCount = nextCount;
+                if (didVisibleCountIncrease || didMateriallyChange) {
+                    didLoadFetchedOlderPosts = await loadOlderVisiblePosts(
+                        {
+                            anchorEventId: options.anchorEventId,
+                            metrics: olderLoadMetrics,
+                        },
+                    );
+                } else {
+                    await refreshTimelineAvailability(pubkeyHex);
+                }
+            }
+
+            const changed =
                 didLoadFetchedOlderPosts ||
                 didVisibleCountIncrease ||
+                didMateriallyChange;
+            const didCursorAdvanceOlder =
+                typeof olderBackfillSearch.nextUntil === "number" &&
+                olderBackfillSearch.nextUntil < effectiveFetchUntil;
+            const shouldAutoRetry =
+                result.status === "success" &&
+                !changed &&
+                didCursorAdvanceOlder &&
+                autoRetryCount < POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT;
+            const debugAutoRetryCount = shouldAutoRetry
+                ? autoRetryCount + 1
+                : autoRetryCount;
+            const debugAutoRetryReason = shouldAutoRetry
+                ? "changed-false-success-cursor-advanced"
+                : autoRetryReason;
+
+            if (shouldAutoRetry) {
+                state.latestOlderBackfillUiResult = {
+                    changed,
+                    didTrimForOlderAppend: olderLoadMetrics.didTrimForOlderAppend,
+                    didDeferOlderPosts: olderLoadMetrics.didDeferOlderPosts,
+                    loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
+                    loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
+                    maxVisiblePosts: olderLoadMetrics.maxVisiblePosts,
+                    autoRetryCount: debugAutoRetryCount,
+                    autoRetryReason: debugAutoRetryReason,
+                };
+
+                globalThis.console?.debug?.("post_history_older_backfill_display", {
+                    resolvedFetchUntil,
+                    effectiveFetchUntil,
+                    previousVisibleUntil,
+                    nextVisibleUntil,
+                    previousCount,
+                    nextCount,
+                    previousStoredCount,
+                    nextStoredCount,
+                    resultEventsLength: result.events.length,
+                    resultStatus: result.status,
+                    resultOldestCreatedAt: result.oldestCreatedAt,
+                    resultNewestCreatedAt: result.newestCreatedAt,
+                    resultNextUntil: result.nextUntil,
+                    resultHasMore: result.hasMore,
+                    upsertSummary,
+                    didVisibleCountIncrease,
+                    didMateriallyChange,
+                    didLoadFetchedOlderPosts,
+                    loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
+                    loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
+                    olderPostsLength: olderLoadMetrics.olderPostsLength,
+                    visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
+                    visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
+                    hasOlderLocal: state.hasOlderLocal,
+                    hasNewerLocal: state.hasNewerLocal,
+                    autoRetryCount: debugAutoRetryCount,
+                    autoRetryReason: debugAutoRetryReason,
+                });
+
+                autoRetryCount += 1;
+                autoRetryReason = "changed-false-success-cursor-advanced";
+                continue;
+            }
+
+            if (!changed) {
+                if (
+                    autoRetryCount >= POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT &&
+                    didCursorAdvanceOlder
+                ) {
+                    autoRetryReason = "max-auto-retry-reached";
+                } else if (!didCursorAdvanceOlder) {
+                    autoRetryReason = "cursor-not-advanced";
+                }
+            } else if (autoRetryCount > 0) {
+                autoRetryReason = "changed-true";
+            }
+
+            state.latestOlderBackfillUiResult = {
+                changed,
+                didTrimForOlderAppend: olderLoadMetrics.didTrimForOlderAppend,
+                didDeferOlderPosts: olderLoadMetrics.didDeferOlderPosts,
+                loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
+                loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
+                maxVisiblePosts: olderLoadMetrics.maxVisiblePosts,
+                autoRetryCount,
+                autoRetryReason,
+            };
+
+            globalThis.console?.debug?.("post_history_older_backfill_display", {
+                resolvedFetchUntil,
+                effectiveFetchUntil,
+                previousVisibleUntil,
+                nextVisibleUntil,
+                previousCount,
+                nextCount,
+                previousStoredCount,
+                nextStoredCount,
+                resultEventsLength: result.events.length,
+                resultStatus: result.status,
+                resultOldestCreatedAt: result.oldestCreatedAt,
+                resultNewestCreatedAt: result.newestCreatedAt,
+                resultNextUntil: result.nextUntil,
+                resultHasMore: result.hasMore,
+                upsertSummary,
+                didVisibleCountIncrease,
                 didMateriallyChange,
-            didTrimForOlderAppend: olderLoadMetrics.didTrimForOlderAppend,
-            didDeferOlderPosts: olderLoadMetrics.didDeferOlderPosts,
-            loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
-            loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
-            maxVisiblePosts: olderLoadMetrics.maxVisiblePosts,
-        };
+                didLoadFetchedOlderPosts,
+                loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
+                loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
+                olderPostsLength: olderLoadMetrics.olderPostsLength,
+                visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
+                visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
+                hasOlderLocal: state.hasOlderLocal,
+                hasNewerLocal: state.hasNewerLocal,
+                autoRetryCount,
+                autoRetryReason,
+            });
 
-        globalThis.console?.debug?.("post_history_older_backfill_display", {
-            resolvedFetchUntil,
-            effectiveFetchUntil,
-            previousVisibleUntil,
-            nextVisibleUntil,
-            previousCount,
-            nextCount,
-            previousStoredCount,
-            nextStoredCount,
-            resultEventsLength: result.events.length,
-            resultOldestCreatedAt: result.oldestCreatedAt,
-            resultNewestCreatedAt: result.newestCreatedAt,
-            resultNextUntil: result.nextUntil,
-            resultHasMore: result.hasMore,
-            upsertSummary,
-            didVisibleCountIncrease,
-            didMateriallyChange,
-            didLoadFetchedOlderPosts,
-            loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
-            loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
-            olderPostsLength: olderLoadMetrics.olderPostsLength,
-            visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
-            visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
-            hasOlderLocal: state.hasOlderLocal,
-            hasNewerLocal: state.hasNewerLocal,
-        });
+            if (result.status !== "success") {
+                state.syncStatus = "failed";
+                scheduleSyncStatusMessageClearIfNeeded();
+                return false;
+            }
 
-        if (result.status !== "success") {
-            state.syncStatus = "failed";
+            state.syncStatus = changed
+                ? resolveSyncStatusAfterFetch(result, true)
+                : "idle";
             scheduleSyncStatusMessageClearIfNeeded();
-            return false;
+
+            return changed;
         }
-
-        state.syncStatus = didVisibleCountIncrease || didMateriallyChange
-            ? resolveSyncStatusAfterFetch(result, true)
-            : "idle";
-        scheduleSyncStatusMessageClearIfNeeded();
-
-        return didLoadFetchedOlderPosts ||
-            didVisibleCountIncrease ||
-            didMateriallyChange;
     }
 
     async function refetchAroundCurrentView(): Promise<void> {
