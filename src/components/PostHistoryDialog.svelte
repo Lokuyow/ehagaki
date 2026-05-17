@@ -1981,8 +1981,6 @@
                                     state={postHistoryReplies.getRepliesState(
                                         post,
                                     )}
-                                    onRetry={() =>
-                                        postHistoryReplies.retryReplies(post)}
                                 />
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}

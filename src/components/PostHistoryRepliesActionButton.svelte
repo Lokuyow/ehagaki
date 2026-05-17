@@ -25,7 +25,7 @@
     {#if state.status === "loading"}
         <span class="post-preview-replies-spinner" aria-hidden="true"></span>
     {:else}
-        <span class="speaker-notes-icon svg-icon" aria-hidden="true"></span>
+        <span class="pageview-icon svg-icon" aria-hidden="true"></span>
         {#if state.status === "loaded" && state.replies.length > 0}
             <span class="post-preview-replies-count" aria-hidden="true">
                 {state.replies.length}
@@ -35,7 +35,7 @@
 </Button>
 
 <style>
-    .speaker-notes-icon.svg-icon {
+    .pageview-icon.svg-icon {
         width: 22px;
         height: 22px;
         mask-image: url("/icons/pageview_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");

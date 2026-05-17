@@ -189,7 +189,7 @@ export function usePostHistoryReplies({
         if (!options.force && currentState.status === "loaded") {
             updateRepliesState(post.eventId, {
                 ...currentState,
-                visible: true,
+                visible: currentState.replies.length > 0,
             });
             return;
         }
@@ -220,10 +220,11 @@ export function usePostHistoryReplies({
 
             const rxNostr = getRxNostr();
             if (!rxNostr) {
+                const replies = await toDisplayItems(cachedRecords, post.pubkeyHex);
                 updateRepliesState(post.eventId, {
-                    status: cachedRecords.length > 0 ? "loaded" : "failed",
-                    visible: true,
-                    replies: await toDisplayItems(cachedRecords, post.pubkeyHex),
+                    status: replies.length > 0 ? "loaded" : "failed",
+                    visible: replies.length > 0,
+                    replies,
                     error: cachedRecords.length > 0 ? null : "nostr_not_ready",
                 });
                 return;
@@ -255,10 +256,11 @@ export function usePostHistoryReplies({
             }
 
             const latestState = stateByPostId[post.eventId] ?? currentState;
+            const replies = await toDisplayItems(nextRecords, post.pubkeyHex);
             updateRepliesState(post.eventId, {
                 status: "loaded",
-                visible: latestState.visible,
-                replies: await toDisplayItems(nextRecords, post.pubkeyHex),
+                visible: replies.length > 0 && latestState.visible,
+                replies,
                 error: null,
             });
         } catch {
@@ -270,7 +272,7 @@ export function usePostHistoryReplies({
             updateRepliesState(post.eventId, {
                 ...latestState,
                 status: "failed",
-                visible: true,
+                visible: false,
                 error: "fetch_failed",
             });
         }

@@ -968,7 +968,7 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByRole('button', { name: '返信を表示' })).toBeNull();
         const checkRepliesButton = await screen.findByRole('button', { name: '返信を確認' });
-        expect(checkRepliesButton.querySelector('.speaker-notes-icon')).toBeTruthy();
+        expect(checkRepliesButton.querySelector('.pageview-icon')).toBeTruthy();
         expect(document.body.querySelector('.forum-icon')).toBeNull();
         expect(document.body.querySelector('.question-answer-icon')).toBeNull();
 
@@ -1041,7 +1041,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             const loadingButton = screen.getByRole('button', { name: '返信を確認中' });
             expect(loadingButton.querySelector('.post-preview-replies-spinner')).toBeTruthy();
-            expect(loadingButton.querySelector('.speaker-notes-icon')).toBeNull();
+            expect(loadingButton.querySelector('.pageview-icon')).toBeNull();
             expect(loadingButton.textContent?.trim()).toBe('');
         });
         expect(screen.queryByText('返信を取得中...')).toBeNull();
@@ -1053,9 +1053,11 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('この範囲では返信が見つかりませんでした')).toBeTruthy();
             expect(screen.getByRole('button', { name: '返信を再確認' })).toBeTruthy();
         });
+        expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
+        expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
+        expect(screen.getByRole('button', { name: '返信を再確認' }).querySelector('.post-preview-replies-count')).toBeNull();
     });
 
     it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
