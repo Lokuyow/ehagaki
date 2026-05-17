@@ -154,6 +154,8 @@ interface FetchOlderFromRelaysOptions {
     anchorEventId?: string | null;
 }
 
+const SHOULD_DEBUG_POST_HISTORY_BACKFILL = import.meta.env.DEV;
+
 export function mergeOlderVisiblePosts({
     currentPosts,
     olderPosts,
@@ -929,6 +931,10 @@ export function usePostHistoryListing({
         const nextRange = typeof olderBackfillSearch.nextUntil === "number"
             ? buildOlderBackfillSearchRange(olderBackfillSearch.nextUntil)
             : null;
+
+        if (!SHOULD_DEBUG_POST_HISTORY_BACKFILL) {
+            return;
+        }
 
         globalThis.console?.debug?.("post_history_older_backfill", {
             reason: "older-backfill",
@@ -2178,58 +2184,6 @@ export function usePostHistoryListing({
                     maxExploreSeconds,
                 };
 
-                globalThis.console?.debug?.("post_history_older_backfill_display", {
-                    attemptIndex,
-                    batchAttemptCount: attemptIndex,
-                    maxAttempts,
-                    windowSeconds,
-                    windowLabel,
-                    since: fetchRange.since,
-                    until: fetchRange.until,
-                    exploredSeconds,
-                    maxExploreSeconds,
-                    resolvedFetchUntil,
-                    effectiveFetchUntil,
-                    previousVisibleUntil,
-                    nextVisibleUntil,
-                    clickStartVisibleCount:
-                        clickStartVisibleCount ?? currentVisibleCount,
-                    currentVisibleCount,
-                    visibleAddedThisAttempt,
-                    totalVisibleAdded,
-                    targetVisibleAdded,
-                    postsPerDay,
-                    batchChanged: nextBatchChanged,
-                    attemptChanged,
-                    shouldContinueForSmallBatch,
-                    autoRetryReason: retryDecision.reason,
-                    batchStoppedReason: null,
-                    hitLimitReasons,
-                    continuedWithinWindow: canContinueWithinWindow,
-                    previousCount,
-                    nextCount,
-                    previousStoredCount,
-                    nextStoredCount,
-                    resultEventsLength: result.events.length,
-                    resultStatus: result.status,
-                    resultOldestCreatedAt: result.oldestCreatedAt,
-                    resultNewestCreatedAt: result.newestCreatedAt,
-                    resultNextUntil: result.nextUntil,
-                    resultHasMore: result.hasMore,
-                    upsertSummary,
-                    didVisibleCountIncrease,
-                    didMateriallyChange,
-                    didLoadFetchedOlderPosts,
-                    loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
-                    loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
-                    olderPostsLength: olderLoadMetrics.olderPostsLength,
-                    visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
-                    visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
-                    hasOlderLocal: state.hasOlderLocal,
-                    hasNewerLocal: state.hasNewerLocal,
-                    autoRetryCount: nextAutoRetryCount,
-                });
-
                 autoRetryCount = nextAutoRetryCount;
                 autoRetryReason = retryDecision.reason;
                 batchChanged = nextBatchChanged;
@@ -2269,58 +2223,6 @@ export function usePostHistoryListing({
                 exploredSeconds,
                 maxExploreSeconds,
             };
-
-            globalThis.console?.debug?.("post_history_older_backfill_display", {
-                attemptIndex,
-                batchAttemptCount: attemptIndex,
-                maxAttempts,
-                windowSeconds,
-                windowLabel,
-                since: fetchRange.since,
-                until: fetchRange.until,
-                exploredSeconds,
-                maxExploreSeconds,
-                resolvedFetchUntil,
-                effectiveFetchUntil,
-                previousVisibleUntil,
-                nextVisibleUntil,
-                clickStartVisibleCount:
-                    clickStartVisibleCount ?? currentVisibleCount,
-                currentVisibleCount,
-                visibleAddedThisAttempt,
-                totalVisibleAdded,
-                targetVisibleAdded,
-                postsPerDay,
-                batchChanged,
-                attemptChanged,
-                shouldContinueForSmallBatch,
-                autoRetryReason,
-                batchStoppedReason,
-                hitLimitReasons,
-                continuedWithinWindow: canContinueWithinWindow,
-                previousCount,
-                nextCount,
-                previousStoredCount,
-                nextStoredCount,
-                resultEventsLength: result.events.length,
-                resultStatus: result.status,
-                resultOldestCreatedAt: result.oldestCreatedAt,
-                resultNewestCreatedAt: result.newestCreatedAt,
-                resultNextUntil: result.nextUntil,
-                resultHasMore: result.hasMore,
-                upsertSummary,
-                didVisibleCountIncrease,
-                didMateriallyChange,
-                didLoadFetchedOlderPosts,
-                loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
-                loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
-                olderPostsLength: olderLoadMetrics.olderPostsLength,
-                visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
-                visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
-                hasOlderLocal: state.hasOlderLocal,
-                hasNewerLocal: state.hasNewerLocal,
-                autoRetryCount,
-            });
 
             if (result.status !== "success") {
                 state.syncStatus = "failed";

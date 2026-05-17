@@ -2374,6 +2374,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             }) as DOMRect);
         }
         historyContainer.scrollTop = 300;
+        const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
 
         repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
             cursor?: { eventId: string };
@@ -2395,8 +2396,19 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await waitFor(() => {
             expect(screen.getByText('追加された古い投稿')).toBeTruthy();
+            expect(screen.getByText('アンカー対象の投稿')).toBeTruthy();
             expect(historyContainer.scrollTop).toBe(340);
         });
+        const scrollSummaryCall = debugSpy.mock.calls.find(
+            ([label]) => label === 'post_history_older_backfill_scroll',
+        );
+        expect(scrollSummaryCall?.[1]).toEqual(expect.objectContaining({
+            anchorEventId: 'anchor-restore-latest',
+            didFollowBottom: false,
+            didRestoreAnchor: true,
+            didPreserveScrollTop: false,
+        }));
+        debugSpy.mockRestore();
 
         view.unmount();
     });

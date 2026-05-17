@@ -696,28 +696,30 @@
         const olderBackfillUiResult = history.latestOlderBackfillUiResult;
         const scrollTopAfter = historyContainer?.scrollTop ?? null;
         const scrollHeightAfter = historyContainer?.scrollHeight ?? null;
-        globalThis.console?.debug?.("post_history_older_backfill_scroll", {
-            changed,
-            previousScrollTop,
-            scrollTopAfter,
-            scrollHeightBefore,
-            scrollHeightAfter,
-            didRestoreAnchor,
-            didPreserveScrollTop,
-            didFollowBottom,
-            didTrimForOlderAppend:
-                olderBackfillUiResult?.didTrimForOlderAppend ?? false,
-            didDeferOlderPosts:
-                olderBackfillUiResult?.didDeferOlderPosts ?? false,
-            clientHeight,
-            hadScrollAnchor: !!scrollAnchor,
-            anchorEventId: scrollAnchor?.eventId,
-            loadedPostsBeforeLength,
-            loadedPostsAfterLength:
-                olderBackfillUiResult?.loadedPostsAfterLength ??
-                history.state.loadedPosts.length,
-            maxVisiblePosts: olderBackfillUiResult?.maxVisiblePosts ?? null,
-        });
+        if (import.meta.env.DEV) {
+            globalThis.console?.debug?.("post_history_older_backfill_scroll", {
+                changed,
+                previousScrollTop,
+                scrollTopAfter,
+                scrollHeightBefore,
+                scrollHeightAfter,
+                didRestoreAnchor,
+                didPreserveScrollTop,
+                didFollowBottom,
+                didTrimForOlderAppend:
+                    olderBackfillUiResult?.didTrimForOlderAppend ?? false,
+                didDeferOlderPosts:
+                    olderBackfillUiResult?.didDeferOlderPosts ?? false,
+                clientHeight,
+                hadScrollAnchor: !!scrollAnchor,
+                anchorEventId: scrollAnchor?.eventId,
+                loadedPostsBeforeLength,
+                loadedPostsAfterLength:
+                    olderBackfillUiResult?.loadedPostsAfterLength ??
+                    history.state.loadedPosts.length,
+                maxVisiblePosts: olderBackfillUiResult?.maxVisiblePosts ?? null,
+            });
+        }
     }
 
     async function handleLoadNewer(): Promise<void> {

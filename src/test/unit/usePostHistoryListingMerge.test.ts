@@ -70,18 +70,47 @@ describe('mergeOlderVisiblePosts', () => {
     it('maxVisiblePosts を超える場合だけ anchor 保護 trim を行う', () => {
         const currentPosts = Array.from({ length: 150 }, (_, index) => createPost(index));
         const olderPosts = Array.from({ length: 20 }, (_, index) => createPost(300 + index));
+        const anchor = currentPosts[120];
 
         const result = mergeOlderVisiblePosts({
             currentPosts,
             olderPosts,
-            anchorEventId: currentPosts[120].eventId,
+            anchorEventId: anchor.eventId,
+            maxVisiblePosts: 150,
+            keepAbove: 50,
+        });
+        const anchorIndexAfterTrim = result.posts.findIndex(
+            (post) => post.eventId === anchor.eventId,
+        );
+
+        expect(result.posts).toHaveLength(150);
+        expect(anchorIndexAfterTrim).toBeGreaterThan(0);
+        expect(anchorIndexAfterTrim).toBeLessThan(result.posts.length - 1);
+        expect(result.posts[anchorIndexAfterTrim - 1]?.eventId).toBe(currentPosts[119].eventId);
+        expect(result.posts[anchorIndexAfterTrim + 1]?.eventId).toBe(currentPosts[121].eventId);
+        expect(result.posts.some((post) => post.eventId === olderPosts[0].eventId)).toBe(true);
+        expect(result.didTrimForOlderAppend).toBe(true);
+    });
+
+    it('currentPosts が maxVisiblePosts 未満の場合は合計が上限を超えても既存投稿を trim しない', () => {
+        const currentPosts = Array.from({ length: 149 }, (_, index) => createPost(index));
+        const olderPosts = Array.from({ length: 5 }, (_, index) => createPost(400 + index));
+
+        const result = mergeOlderVisiblePosts({
+            currentPosts,
+            olderPosts,
+            anchorEventId: currentPosts[100].eventId,
             maxVisiblePosts: 150,
             keepAbove: 50,
         });
 
         expect(result.posts).toHaveLength(150);
-        expect(result.posts.some((post) => post.eventId === currentPosts[120].eventId)).toBe(true);
-        expect(result.didTrimForOlderAppend).toBe(true);
+        expect(result.posts.slice(0, 149).map((post) => post.eventId)).toEqual(
+            currentPosts.map((post) => post.eventId),
+        );
+        expect(result.posts[149]?.eventId).toBe(olderPosts[0].eventId);
+        expect(result.didTrimForOlderAppend).toBe(false);
+        expect(result.didDeferOlderPosts).toBe(true);
     });
 
     it('anchor 保護 trim でも末尾の olderPosts を落とした場合は defer 扱いにする', () => {
