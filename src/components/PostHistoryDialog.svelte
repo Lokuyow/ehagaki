@@ -1856,34 +1856,42 @@
                                         <div
                                             class="post-preview-footer-actions"
                                         >
-                                            {#if onReplyPost}
-                                                <Button
-                                                    type="button"
-                                                    class="post-preview-action-button"
-                                                    ariaLabel={$_(
-                                                        "replyQuote.reply_label",
+                                            <div
+                                                class="post-preview-action-buttons-group"
+                                            >
+                                                {#if onReplyPost}
+                                                    <Button
+                                                        type="button"
+                                                        class="post-preview-action-button"
+                                                        ariaLabel={$_(
+                                                            "replyQuote.reply_label",
+                                                        )}
+                                                        contentLayout="icon"
+                                                        shape="circle"
+                                                        onClick={() =>
+                                                            handleReplyPost(
+                                                                post,
+                                                            )}
+                                                    >
+                                                        <div
+                                                            class="reply-icon svg-icon"
+                                                            aria-hidden="true"
+                                                        ></div>
+                                                    </Button>
+                                                {/if}
+                                                <PostHistoryRepliesActionButton
+                                                    state={postHistoryReplies.getRepliesState(
+                                                        post,
                                                     )}
-                                                    contentLayout="icon"
-                                                    shape="circle"
+                                                    ariaLabel={getRepliesActionLabel(
+                                                        post,
+                                                    )}
                                                     onClick={() =>
-                                                        handleReplyPost(post)}
-                                                >
-                                                    <div
-                                                        class="reply-icon svg-icon"
-                                                        aria-hidden="true"
-                                                    ></div>
-                                                </Button>
-                                            {/if}
-                                            <PostHistoryRepliesActionButton
-                                                state={postHistoryReplies.getRepliesState(
-                                                    post,
-                                                )}
-                                                ariaLabel={getRepliesActionLabel(
-                                                    post,
-                                                )}
-                                                onClick={() =>
-                                                    handleRepliesAction(post)}
-                                            />
+                                                        handleRepliesAction(
+                                                            post,
+                                                        )}
+                                                />
+                                            </div>
                                             {#if onQuotePost}
                                                 <Button
                                                     type="button"
@@ -2866,7 +2874,7 @@
 
         .post-preview-footer-actions {
             display: flex;
-            align-items: center;
+            align-items: stretch;
             justify-content: space-around;
             flex: 1 0 auto;
         }
@@ -2876,6 +2884,12 @@
             align-items: center;
             justify-content: flex-end;
             min-width: 85px;
+        }
+
+        .post-preview-action-buttons-group {
+            display: flex;
+            align-items: stretch;
+            gap: 4px;
         }
 
         :global(.post-preview-action-button) {
@@ -2987,6 +3001,7 @@
         width: 20px;
         height: 20px;
         mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        margin-top: 2px;
     }
 
     .quote-icon.svg-icon {
