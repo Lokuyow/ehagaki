@@ -58,7 +58,7 @@
         height: 14px;
         padding: 0 3px;
         border-radius: 999px;
-        background: var(--theme);
+        background: var(--btn-post-preview-action);
         color: var(--dialog-bg);
         font-size: 0.68rem;
         font-weight: 700;
