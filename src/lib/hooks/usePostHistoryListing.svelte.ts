@@ -122,6 +122,14 @@ interface OlderVisiblePostsMergeResult {
     didDeferOlderPosts: boolean;
 }
 
+interface MergeOlderVisiblePostsParams {
+    currentPosts: PostHistoryRecord[];
+    olderPosts: PostHistoryRecord[];
+    anchorEventId?: string | null;
+    maxVisiblePosts: number;
+    keepAbove: number;
+}
+
 interface OlderBackfillUiResult {
     changed: boolean;
     didTrimForOlderAppend: boolean;
@@ -133,6 +141,64 @@ interface OlderBackfillUiResult {
 
 interface FetchOlderFromRelaysOptions {
     anchorEventId?: string | null;
+}
+
+export function mergeOlderVisiblePosts({
+    currentPosts,
+    olderPosts,
+    anchorEventId = null,
+    maxVisiblePosts,
+    keepAbove,
+}: MergeOlderVisiblePostsParams): OlderVisiblePostsMergeResult {
+    const mergedPosts = [...currentPosts, ...olderPosts];
+    if (mergedPosts.length <= maxVisiblePosts) {
+        return {
+            posts: mergedPosts,
+            didTrimForOlderAppend: false,
+            didDeferOlderPosts: false,
+        };
+    }
+
+    if (currentPosts.length < maxVisiblePosts) {
+        const availableSlots = Math.max(0, maxVisiblePosts - currentPosts.length);
+        const appendedOlderPosts = olderPosts.slice(0, availableSlots);
+
+        return {
+            posts: [...currentPosts, ...appendedOlderPosts],
+            didTrimForOlderAppend: false,
+            didDeferOlderPosts: appendedOlderPosts.length < olderPosts.length,
+        };
+    }
+
+    const anchorIndex = typeof anchorEventId === "string"
+        ? mergedPosts.findIndex((post) => post.eventId === anchorEventId)
+        : -1;
+
+    const buildTrimmedResult = (startIndex: number): OlderVisiblePostsMergeResult => {
+        const trimmed = mergedPosts.slice(startIndex, startIndex + maxVisiblePosts);
+        const includedOlderCount = Math.max(
+            0,
+            trimmed.length - Math.max(0, currentPosts.length - startIndex),
+        );
+
+        return {
+            posts: trimmed,
+            didTrimForOlderAppend: true,
+            didDeferOlderPosts: includedOlderCount < olderPosts.length,
+        };
+    };
+
+    if (anchorIndex < 0) {
+        return buildTrimmedResult(mergedPosts.length - maxVisiblePosts);
+    }
+
+    const maxStartIndex = Math.max(0, mergedPosts.length - maxVisiblePosts);
+    const startIndex = Math.min(
+        maxStartIndex,
+        Math.max(0, anchorIndex - keepAbove),
+    );
+
+    return buildTrimmedResult(startIndex);
 }
 
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
@@ -993,46 +1059,18 @@ export function usePostHistoryListing({
             : nextPosts.slice(0, maxVisiblePosts);
     }
 
-    function mergeOlderVisiblePosts(
+    function mergeOlderVisiblePostsForState(
         currentPosts: PostHistoryRecord[],
         olderPosts: PostHistoryRecord[],
         anchorEventId?: string | null,
     ): OlderVisiblePostsMergeResult {
-        const mergedPosts = [...currentPosts, ...olderPosts];
-        if (mergedPosts.length <= maxVisiblePosts) {
-            return {
-                posts: mergedPosts,
-                didTrimForOlderAppend: false,
-                didDeferOlderPosts: false,
-            };
-        }
-
-        const anchorIndex = typeof anchorEventId === "string"
-            ? mergedPosts.findIndex((post) => post.eventId === anchorEventId)
-            : -1;
-
-        if (anchorIndex < 0) {
-            const trimmed = trimVisiblePosts(mergedPosts, "older");
-            return {
-                posts: trimmed,
-                didTrimForOlderAppend: true,
-                didDeferOlderPosts:
-                    trimmed[trimmed.length - 1]?.eventId !==
-                    mergedPosts[mergedPosts.length - 1]?.eventId,
-            };
-        }
-
-        const keepAbove = pageSize;
-        const startIndex = Math.max(0, anchorIndex - keepAbove);
-        const trimmed = mergedPosts.slice(startIndex, startIndex + maxVisiblePosts);
-
-        return {
-            posts: trimmed,
-            didTrimForOlderAppend: true,
-            didDeferOlderPosts:
-                trimmed[trimmed.length - 1]?.eventId !==
-                mergedPosts[mergedPosts.length - 1]?.eventId,
-        };
+        return mergeOlderVisiblePosts({
+            currentPosts,
+            olderPosts,
+            anchorEventId,
+            maxVisiblePosts,
+            keepAbove: pageSize,
+        });
     }
 
     async function refreshTimelineAvailability(
@@ -1307,12 +1345,15 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const mergedResult = mergeOlderVisiblePosts(
+        const mergedResult = mergeOlderVisiblePostsForState(
             state.loadedPosts,
             olderPosts,
             options.anchorEventId,
         );
         state.loadedPosts = mergedResult.posts;
+        if (mergedResult.didDeferOlderPosts) {
+            state.hasOlderLocal = true;
+        }
         if (metrics) {
             metrics.loadedPostsAfterLength = mergedResult.posts.length;
             metrics.visibleOldestAfter =

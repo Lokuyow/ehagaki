@@ -2143,6 +2143,105 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('older-backfill で即時表示しきれない古い投稿がある場合は直後に さらに古い投稿を表示 ボタンへ切り替わる', async () => {
+        const initialPosts = Array.from({ length: 128 }, (_, index) => createRecord({
+            eventId: `initial-${index}`,
+            content: `初期投稿 ${index + 1}`,
+            createdAt: 2_000 - index,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0) - index,
+        }));
+        const relayOlderPosts = Array.from({ length: 30 }, (_, index) => createRecord({
+            eventId: `relay-older-${index}`,
+            content: `取得済み古い投稿 ${index + 1}`,
+            createdAt: 1_800 - index,
+            postedAt: Date.UTC(2024, 0, 1, 0, 0, 0) - index,
+        }));
+        let allowBackfillOlderChunk = false;
+
+        repositoryMock.countForPubkey.mockResolvedValue(158);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(initialPosts);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowBackfillOlderChunk &&
+                options.limit === 50 &&
+                options.cursor?.eventId === initialPosts[127].eventId
+            ) {
+                return relayOlderPosts;
+            }
+
+            if (allowBackfillOlderChunk && options.limit === 1) {
+                return [relayOlderPosts[22]];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            allowBackfillOlderChunk = true;
+            return {
+                insertedCount: relayOlderPosts.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
+        });
+
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    events: relayOlderPosts.map((post, index) => ({
+                        event: {
+                            id: `relay-older-event-${index}`.padEnd(64, 'r'),
+                            pubkey: PUBKEY_HEX,
+                            kind: 1,
+                            content: post.content,
+                            tags: [],
+                            created_at: post.createdAt,
+                            sig: 'd'.repeat(128),
+                        },
+                        relayUrls: ['wss://relay.example.com/'],
+                    })),
+                    oldestCreatedAt: relayOlderPosts[relayOlderPosts.length - 1].createdAt,
+                    newestCreatedAt: relayOlderPosts[0].createdAt,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+            expect(document.querySelectorAll('.post-history-item')).toHaveLength(150);
+            expect(screen.getByText('取得済み古い投稿 22')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
+
     it('limit 到達で進展が無いときは oldestCreatedAt - 1 に逃がして再取得できる', async () => {
         const initialWindowSeconds = 12 * 60 * 60;
         const latestCreatedAt = 1_700_000_000;
