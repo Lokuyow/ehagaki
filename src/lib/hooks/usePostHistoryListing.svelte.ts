@@ -29,6 +29,10 @@ import {
 import type { PostHistoryDialogScrollState } from "../postHistoryDialogScrollState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import {
+    consumePostHistoryShouldReturnToLatestAfterLocalPost,
+    type PendingPostHistoryLatestRequest,
+} from "../postHistoryLatestRequest";
+import {
     postHistoryCurrentViewRefetchService,
     type PostHistoryCurrentViewRefetchTask,
 } from "../postHistoryCurrentViewRefetchService";
@@ -1329,7 +1333,18 @@ export function usePostHistoryListing({
         state.totalCount = count;
     }
 
-    async function refreshPreservedVisibleWindow(): Promise<void> {
+    function shouldApplyPendingLatestRequest(
+        pendingRequest: PendingPostHistoryLatestRequest | null,
+        scrollState: PostHistoryDialogScrollState | null,
+    ): pendingRequest is PendingPostHistoryLatestRequest {
+        return !!pendingRequest
+            && (!scrollState || pendingRequest.requestedAt > scrollState.savedAt);
+    }
+
+    async function refreshPreservedVisibleWindow(
+        scrollState: PostHistoryDialogScrollState | null,
+        pendingLatestRequest: PendingPostHistoryLatestRequest | null,
+    ): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         const currentPosts = state.loadedPosts;
         const newestCursor = toTimelineCursor(currentPosts[0]);
@@ -1362,6 +1377,12 @@ export function usePostHistoryListing({
                 : Promise.resolve([]),
         ]);
         if (!getShow() || requestId !== loadRequestId) {
+            return;
+        }
+
+        if (shouldApplyPendingLatestRequest(pendingLatestRequest, scrollState)) {
+            onSessionScrollStateInvalidated();
+            await loadLatestVisiblePosts();
             return;
         }
 
@@ -2525,8 +2546,19 @@ export function usePostHistoryListing({
         initialLocalLoadKey = nextInitialLoadKey;
 
         const sessionScrollState = getNormalSessionScrollStateForCurrentPubkey();
+        const pendingLatestRequest =
+            consumePostHistoryShouldReturnToLatestAfterLocalPost(getPubkeyHex());
+        if (shouldApplyPendingLatestRequest(pendingLatestRequest, sessionScrollState)) {
+            onSessionScrollStateInvalidated();
+            void loadLatestVisiblePosts();
+            return;
+        }
+
         if (canPreserveSessionVisibleWindow(sessionScrollState)) {
-            void refreshPreservedVisibleWindow();
+            void refreshPreservedVisibleWindow(
+                sessionScrollState,
+                pendingLatestRequest,
+            );
             return;
         }
 

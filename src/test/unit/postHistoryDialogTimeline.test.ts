@@ -15,6 +15,7 @@ import {
     relayFetchServiceMock,
 } from './postHistoryDialogTestHarness';
 import { writePostHistoryDialogScrollState } from '../../lib/postHistoryDialogScrollState';
+import { markPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 
 function createMockRect(top: number, height: number) {
     return {
@@ -965,6 +966,154 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
         expect(screen.queryByText('ローカル保存済みの新規投稿')).toBeNull();
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+
+        secondView.unmount();
+    });
+
+    it('閉じた後のローカル投稿 marker があれば reopen で最新チャンクを即時表示する', async () => {
+        const previousLatest = createRecord({
+            eventId: 'marker-previous-latest',
+            content: '投稿前の最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const localNewPost = createRecord({
+            eventId: 'marker-local-new-post',
+            content: '投稿直後に表示するローカル投稿',
+            createdAt: 1_704_412_800,
+            postedAt: Date.UTC(2024, 0, 4, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([previousLatest])
+            .mockResolvedValueOnce([localNewPost, previousLatest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿前の最新投稿')).toBeTruthy();
+        });
+        firstView.unmount();
+
+        markPostHistoryShouldReturnToLatestAfterLocalPost({
+            pubkeyHex: PUBKEY_HEX,
+            eventId: 'marker-local-new-post',
+            requestedAt: 10_000,
+        });
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿直後に表示するローカル投稿')).toBeTruthy();
+            expect(screen.getByText('投稿前の最新投稿')).toBeTruthy();
+        });
+        expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+
+        secondView.unmount();
+    });
+
+    it('古い投稿位置を閉じた後にローカル投稿 marker があれば最新表示を優先する', async () => {
+        const previousLatest = createRecord({
+            eventId: 'marker-old-window-previous-latest',
+            content: '投稿前の5/16投稿',
+            createdAt: 1_747_417_200,
+            postedAt: Date.UTC(2026, 4, 16, 12, 0, 0),
+        });
+        const oldAnchor = createRecord({
+            eventId: 'marker-old-window-anchor',
+            content: '保存していた5/12投稿',
+            createdAt: 1_747_072_800,
+            postedAt: Date.UTC(2026, 4, 12, 12, 0, 0),
+        });
+        const localNewPost = createRecord({
+            eventId: 'marker-old-window-local-new-post',
+            content: '投稿後に優先表示するローカル投稿',
+            createdAt: 1_747_503_600,
+            postedAt: Date.UTC(2026, 4, 17, 12, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([previousLatest])
+            .mockResolvedValueOnce([localNewPost, previousLatest]);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([oldAnchor]);
+        repositoryMock.getNewerVisibleChunk
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([previousLatest])
+            .mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿前の5/16投稿')).toBeTruthy();
+        });
+
+        await clickMenuAction('日付へ移動');
+        await fireEvent.input(screen.getByLabelText('日付'), {
+            target: { value: '2026-05-12' },
+        });
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('保存していた5/12投稿')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'marker-old-window-anchor',
+                offsetTop: 64,
+            },
+            savedAt: 10_000,
+        });
+        firstView.unmount();
+
+        markPostHistoryShouldReturnToLatestAfterLocalPost({
+            pubkeyHex: PUBKEY_HEX,
+            eventId: 'marker-old-window-local-new-post',
+            requestedAt: 10_001,
+        });
+        repositoryMock.getLatestVisibleChunk.mockClear();
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿後に優先表示するローカル投稿')).toBeTruthy();
+            expect(screen.getByText('投稿前の5/16投稿')).toBeTruthy();
+        });
+        expect(screen.queryByText('保存していた5/12投稿')).toBeNull();
+        expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
 
         secondView.unmount();
     });

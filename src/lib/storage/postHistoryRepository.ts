@@ -4,6 +4,7 @@ import {
     extractPostHistoryChannelReference,
     isSameSignedNostrEvent,
 } from "../postHistoryEventUtils";
+import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
 import type { PostHistoryRecord, PostHistoryMediaRecord, EHagakiDB } from "./ehagakiDb";
@@ -522,6 +523,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
         await this.db.postHistory.put(toRecord(input, this.now));
+        markPostHistoryShouldReturnToLatestAfterLocalPost({
+            pubkeyHex: input.event.pubkey,
+            eventId: input.event.id,
+        });
     }
 
     async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult> {

@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
+import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 
 const hoisted = vi.hoisted(() => {
     const mockTranslate = (key: string, options?: { values?: Record<string, unknown> }) => {
@@ -339,6 +340,7 @@ export function resetPostHistoryDialogHarness(): void {
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
     clearPostHistoryDialogScrollStates();
+    clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.resetAllMocks();
 
     repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
@@ -402,6 +404,7 @@ export function cleanupPostHistoryDialogHarness(): void {
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
     clearPostHistoryDialogScrollStates();
+    clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.useRealTimers();
 }
 

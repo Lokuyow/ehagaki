@@ -1,6 +1,10 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+    clearPostHistoryShouldReturnToLatestAfterLocalPost,
+    consumePostHistoryShouldReturnToLatestAfterLocalPost,
+} from "../../lib/postHistoryLatestRequest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 
@@ -37,6 +41,7 @@ function createSignedEvent(overrides: Record<string, any> = {}) {
 }
 
 afterEach(async () => {
+    clearPostHistoryShouldReturnToLatestAfterLocalPost();
     for (const name of testDbNames) {
         await Dexie.delete(name);
     }
@@ -103,6 +108,29 @@ describe("DexiePostHistoryRepository", () => {
             },
         ]);
         expect(records[1].schemaVersion).toBe(2);
+
+        db.close();
+    });
+
+    it("putPostedEvent 成功後に次回投稿履歴を latest に戻す one-shot marker を立てる", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const eventId = "1".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: eventId, pubkey }),
+        });
+
+        expect(
+            consumePostHistoryShouldReturnToLatestAfterLocalPost(pubkey),
+        ).toMatchObject({
+            pubkeyHex: pubkey,
+            eventId,
+        });
+        expect(
+            consumePostHistoryShouldReturnToLatestAfterLocalPost(pubkey),
+        ).toBeNull();
 
         db.close();
     });
