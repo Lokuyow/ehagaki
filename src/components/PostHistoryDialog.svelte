@@ -141,6 +141,7 @@
     };
     const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
     const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
+    const HISTORY_SCROLL_OLDER_BACKFILL_BOTTOM_TOLERANCE_PX = 24;
     const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
@@ -674,13 +675,47 @@
     async function handleFetchOlderFromRelays(): Promise<void> {
         const scrollAnchor = captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
+        const scrollHeightBefore = historyContainer?.scrollHeight ?? null;
+        const clientHeight = historyContainer?.clientHeight ?? null;
+        const hadMeasurableScrollArea =
+            typeof scrollHeightBefore === "number" &&
+            typeof clientHeight === "number" &&
+            scrollHeightBefore > clientHeight;
+        const wasNearBottom =
+            hadMeasurableScrollArea &&
+            previousScrollTop !== null &&
+            scrollHeightBefore - clientHeight - previousScrollTop <=
+                HISTORY_SCROLL_OLDER_BACKFILL_BOTTOM_TOLERANCE_PX;
+
         const changed = await history.fetchOlderFromRelays();
-        if (changed && previousScrollTop !== null) {
-            restoreHistoryScrollAnchor(scrollAnchor);
-            if (scrollAnchor === null && show && historyContainer) {
-                historyContainer.scrollTop = previousScrollTop;
+        if (changed && previousScrollTop !== null && show && historyContainer) {
+            if (wasNearBottom) {
+                historyContainer.scrollTop = Math.max(
+                    0,
+                    historyContainer.scrollHeight -
+                        historyContainer.clientHeight,
+                );
+                scheduleCurrentMonthLabelUpdate();
+            } else {
+                restoreHistoryScrollAnchor(scrollAnchor);
+                if (scrollAnchor === null) {
+                    historyContainer.scrollTop = previousScrollTop;
+                }
             }
         }
+
+        const scrollTopAfter = historyContainer?.scrollTop ?? null;
+        const scrollHeightAfter = historyContainer?.scrollHeight ?? null;
+        globalThis.console?.debug?.("post_history_older_backfill_scroll", {
+            changed,
+            previousScrollTop,
+            scrollTopAfter,
+            scrollHeightBefore,
+            scrollHeightAfter,
+            clientHeight,
+            hadScrollAnchor: !!scrollAnchor,
+            anchorEventId: scrollAnchor?.eventId,
+        });
     }
 
     async function handleLoadNewer(): Promise<void> {

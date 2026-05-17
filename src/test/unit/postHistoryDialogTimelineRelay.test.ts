@@ -1086,6 +1086,96 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('nextUntil が visibleUntil より新しい場合は visibleUntil を上限に older-backfill を開始する', async () => {
+        let visibleUntil: number | null = 100;
+        const latest = createRecord({
+            eventId: 'clamp-latest',
+            content: '現在の投稿',
+            createdAt: 150,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+
+        visibleRangeRepositoryMock.get.mockImplementation(async () =>
+            visibleUntil === null
+                ? null
+                : {
+                    pubkeyHex: PUBKEY_HEX,
+                    kindsKey: '1,42',
+                    visibleUntil,
+                    updatedAt: 1000,
+                },
+        );
+        visibleRangeRepositoryMock.save.mockImplementation(async (range: {
+            pubkeyHex: string;
+            kindsKey: string;
+            visibleUntil: number | null;
+        }) => {
+            visibleUntil = range.visibleUntil;
+            return {
+                ...range,
+                updatedAt: 1000,
+            };
+        });
+
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    hasMore: true,
+                    nextUntil: 500,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    reason: 'older-backfill',
+                    since: 0,
+                    until: 99,
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
     it('0件 success は古い時間窓へ進め、取得後は window を初期値へ戻す', async () => {
         const initialWindowSeconds = 12 * 60 * 60;
         const latest = createRecord({
@@ -1415,6 +1505,19 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 kindsKey: '1,42',
                 visibleUntil: 100,
             });
+            expect(repositoryMock.countVisibleForPubkey).toHaveBeenCalledWith(
+                PUBKEY_HEX,
+                100,
+            );
+            expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    visibleUntil: 100,
+                    cursor: expect.objectContaining({
+                        eventId: 'visible-latest',
+                    }),
+                }),
+            );
             expect(screen.getByText('limit 継続範囲で取得した古い投稿')).toBeTruthy();
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
@@ -1535,6 +1638,134 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('スクロール後に見える投稿')).toBeTruthy();
             expect(historyContainer.scrollTop).toBe(120);
+        });
+
+        view.unmount();
+    });
+
+    it('リレー取得前に下端付近なら、古い投稿追加後も下端付近を維持して追加分を見える位置にする', async () => {
+        let allowOlderChunk = false;
+        const latest = createRecord({
+            eventId: 'scroll-bottom-latest',
+            content: '現在の投稿',
+            createdAt: 150,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const fetchedOlder = createRecord({
+            eventId: 'scroll-bottom-older',
+            content: '下端追従で見える古い投稿',
+            createdAt: 140,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.countVisibleForPubkey
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(2)
+            .mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk &&
+                options.cursor?.eventId === 'scroll-bottom-latest' &&
+                options.limit === 50
+            ) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            allowOlderChunk = true;
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
+        });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    nextUntil: 150,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    events: [
+                        {
+                            event: {
+                                id: 'scroll-bottom-older-event'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '下端追従で見える古い投稿',
+                                tags: [],
+                                created_at: 140,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        let dynamicScrollHeight = 1000;
+        Object.defineProperty(historyContainer, 'clientHeight', {
+            configurable: true,
+            get: () => 300,
+        });
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            get: () => dynamicScrollHeight,
+        });
+        historyContainer.scrollTop = 700;
+
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk &&
+                options.cursor?.eventId === 'scroll-bottom-latest' &&
+                options.limit === 50
+            ) {
+                dynamicScrollHeight = 1300;
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(screen.getByText('下端追従で見える古い投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(1000);
         });
 
         view.unmount();

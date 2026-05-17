@@ -100,6 +100,14 @@ interface OlderBackfillSearchState {
     exhausted: boolean;
 }
 
+interface LoadOlderVisiblePostsMetrics {
+    loadedPostsBeforeLength: number;
+    loadedPostsAfterLength: number;
+    olderPostsLength: number;
+    visibleOldestBefore: number | null;
+    visibleOldestAfter: number | null;
+}
+
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
     loadedPosts: [],
     searchPosts: [],
@@ -237,7 +245,7 @@ export function usePostHistoryListing({
     getRxNostr,
     getRelayConfig,
     getSessionScrollState = () => null,
-    onSessionScrollStateInvalidated = () => {},
+    onSessionScrollStateInvalidated = () => { },
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -1131,13 +1139,37 @@ export function usePostHistoryListing({
         );
     }
 
-    async function loadOlderVisiblePosts(): Promise<boolean> {
+    async function loadOlderVisiblePosts(
+        metrics?: LoadOlderVisiblePostsMetrics,
+    ): Promise<boolean> {
+        if (metrics) {
+            metrics.loadedPostsBeforeLength = state.loadedPosts.length;
+            metrics.loadedPostsAfterLength = state.loadedPosts.length;
+            metrics.olderPostsLength = 0;
+            metrics.visibleOldestBefore =
+                state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null;
+            metrics.visibleOldestAfter =
+                state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null;
+        }
+
         const pubkeyHex = getPubkeyHex();
         const oldestCursor = toTimelineCursor(
             state.loadedPosts[state.loadedPosts.length - 1],
         );
         if (!pubkeyHex || !oldestCursor) {
             await loadLatestVisiblePosts();
+            if (metrics) {
+                metrics.loadedPostsAfterLength = state.loadedPosts.length;
+                metrics.olderPostsLength = state.loadedPosts.length;
+                metrics.visibleOldestAfter =
+                    state.loadedPosts.length > 0
+                        ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                        : null;
+            }
             return state.loadedPosts.length > 0;
         }
 
@@ -1149,6 +1181,9 @@ export function usePostHistoryListing({
             cursor: oldestCursor,
             limit: pageSize,
         });
+        if (metrics) {
+            metrics.olderPostsLength = olderPosts.length;
+        }
 
         if (!getShow() || requestId !== loadRequestId) {
             return false;
@@ -1156,6 +1191,13 @@ export function usePostHistoryListing({
 
         if (olderPosts.length === 0) {
             state.hasOlderLocal = false;
+            if (metrics) {
+                metrics.loadedPostsAfterLength = state.loadedPosts.length;
+                metrics.visibleOldestAfter =
+                    state.loadedPosts.length > 0
+                        ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                        : null;
+            }
             return false;
         }
 
@@ -1164,6 +1206,13 @@ export function usePostHistoryListing({
             "older",
         );
         state.loadedPosts = nextPosts;
+        if (metrics) {
+            metrics.loadedPostsAfterLength = nextPosts.length;
+            metrics.visibleOldestAfter =
+                nextPosts.length > 0
+                    ? nextPosts[nextPosts.length - 1]?.createdAt ?? null
+                    : null;
+        }
         void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         return true;
@@ -1567,18 +1616,7 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const fetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
-        if (typeof fetchUntil !== "number") {
-            state.syncStatus = "idle";
-            return false;
-        }
-
-        const fetchRange = buildOlderBackfillSearchRange(fetchUntil);
-        if (!fetchRange) {
-            setOlderBackfillNextCursor(null, null);
-            state.syncStatus = "idle";
-            return false;
-        }
+        const resolvedFetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
 
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
@@ -1592,6 +1630,28 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const effectiveFetchUntil = (() => {
+            if (typeof resolvedFetchUntil === "number") {
+                return typeof previousVisibleUntil === "number"
+                    ? Math.min(resolvedFetchUntil, previousVisibleUntil)
+                    : resolvedFetchUntil;
+            }
+
+            return previousVisibleUntil;
+        })();
+
+        if (typeof effectiveFetchUntil !== "number") {
+            state.syncStatus = "idle";
+            return false;
+        }
+
+        const fetchRange = buildOlderBackfillSearchRange(effectiveFetchUntil);
+        if (!fetchRange) {
+            setOlderBackfillNextCursor(null, null);
+            state.syncStatus = "idle";
+            return false;
+        }
+
         const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
         if (
             !isCurrentFetchRequest(requestId) ||
@@ -1601,7 +1661,21 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const previousStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+        if (
+            !isCurrentFetchRequest(requestId) ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex
+        ) {
+            return false;
+        }
+
         let didMateriallyChange = false;
+        let upsertSummary = {
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        };
 
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
@@ -1625,7 +1699,7 @@ export function usePostHistoryListing({
         }
 
         if (result.events.length > 0) {
-            const upsertSummary = await postHistoryRepository.upsertFetchedEvents({
+            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
                 events: result.events,
                 fetchedAt: result.fetchedAt,
             });
@@ -1649,6 +1723,11 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const nextStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return false;
+        }
+
         const didVisibleCountIncrease = nextCount > previousCount;
         updateOlderBackfillSearchState(
             result,
@@ -1662,17 +1741,59 @@ export function usePostHistoryListing({
         );
 
         let didLoadFetchedOlderPosts = false;
+        const olderLoadMetrics: LoadOlderVisiblePostsMetrics = {
+            loadedPostsBeforeLength: state.loadedPosts.length,
+            loadedPostsAfterLength: state.loadedPosts.length,
+            olderPostsLength: 0,
+            visibleOldestBefore:
+                state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null,
+            visibleOldestAfter:
+                state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null,
+        };
 
         if (state.searchQuery) {
             await loadSearchPage(state.searchPage, state.searchQuery);
         } else {
             state.totalCount = nextCount;
             if (didVisibleCountIncrease || didMateriallyChange) {
-                didLoadFetchedOlderPosts = await loadOlderVisiblePosts();
+                didLoadFetchedOlderPosts = await loadOlderVisiblePosts(
+                    olderLoadMetrics,
+                );
             } else {
                 await refreshTimelineAvailability(pubkeyHex);
             }
         }
+
+        globalThis.console?.debug?.("post_history_older_backfill_display", {
+            resolvedFetchUntil,
+            effectiveFetchUntil,
+            previousVisibleUntil,
+            nextVisibleUntil,
+            previousCount,
+            nextCount,
+            previousStoredCount,
+            nextStoredCount,
+            resultEventsLength: result.events.length,
+            resultOldestCreatedAt: result.oldestCreatedAt,
+            resultNewestCreatedAt: result.newestCreatedAt,
+            resultNextUntil: result.nextUntil,
+            resultHasMore: result.hasMore,
+            upsertSummary,
+            didVisibleCountIncrease,
+            didMateriallyChange,
+            didLoadFetchedOlderPosts,
+            loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
+            loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
+            olderPostsLength: olderLoadMetrics.olderPostsLength,
+            visibleOldestBefore: olderLoadMetrics.visibleOldestBefore,
+            visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
+            hasOlderLocal: state.hasOlderLocal,
+            hasNewerLocal: state.hasNewerLocal,
+        });
 
         if (result.status !== "success") {
             state.syncStatus = "failed";
