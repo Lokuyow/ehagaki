@@ -1695,6 +1695,21 @@
                                         </div>
                                     </div>
                                 {/if}
+                                <PostHistoryContextPanel
+                                    context={postHistoryContext.getContextState(
+                                        post,
+                                    )}
+                                    onToggle={(kind) =>
+                                        postHistoryContext.toggleTarget(
+                                            post,
+                                            kind,
+                                        )}
+                                    onRetry={(kind) =>
+                                        postHistoryContext.retryTarget(
+                                            post,
+                                            kind,
+                                        )}
+                                />
                                 <div class="post-preview-body">
                                     {#if hasRenderablePostPreviewContent(post)}
                                         <div class="post-preview-content">
@@ -1750,16 +1765,6 @@
                                         </div>
                                     {/if}
                                 </div>
-                                <PostHistoryContextPanel
-                                    context={postHistoryContext.getContextState(
-                                        post,
-                                    )}
-                                    onLoad={(kind) =>
-                                        void postHistoryContext.loadTarget(
-                                            post,
-                                            kind,
-                                        )}
-                                />
                                 {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-footer">
                                         <div class="post-preview-footer-left">

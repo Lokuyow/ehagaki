@@ -11,84 +11,58 @@
 
     interface Props {
         context: PostHistoryContextItemState;
-        onLoad: (kind: PostHistoryContextTargetKind) => void;
+        onToggle: (kind: PostHistoryContextTargetKind) => void;
+        onRetry: (kind: PostHistoryContextTargetKind) => void;
     }
 
-    let { context, onLoad }: Props = $props();
+    let { context, onToggle, onRetry }: Props = $props();
 
-    function shouldShowTarget(target: PostHistoryContextTargetState | null): boolean {
-        return !!target;
-    }
+    let reply = $derived(context.reply);
 </script>
 
-{#if shouldShowTarget(context.reply) || shouldShowTarget(context.root)}
+{#if reply}
     <div class="post-history-context-panel">
-        <div class="post-history-context-actions">
-            {#if context.reply}
-                <Button
-                    type="button"
-                    className="post-history-context-button"
-                    disabled={context.reply.status === "loading"}
-                    onClick={() => onLoad("reply")}
-                >
-                    {$_("postHistory.showReplyTarget")}
-                </Button>
-            {/if}
-            {#if context.root}
-                <Button
-                    type="button"
-                    className="post-history-context-button"
-                    disabled={context.root.status === "loading"}
-                    onClick={() => onLoad("root")}
-                >
-                    {$_("postHistory.showConversationRoot")}
-                </Button>
-            {/if}
-        </div>
-
-        {#if context.reply?.status === "loading"}
+        {#if reply.visible && reply.status === "loading"}
             <LoadingPlaceholder
                 showLoader={true}
                 text={$_("postHistory.contextLoading")}
                 customClass="post-history-context-loading"
             />
-        {:else if context.reply?.status === "loaded" && context.reply.event}
+        {:else if reply.visible && reply.status === "loaded" && reply.event}
             <PostHistoryRelatedEventCard
-                event={context.reply.event}
-                profile={context.reply.profile}
+                event={reply.event}
+                profile={reply.profile}
                 label={$_("postHistory.replyTarget")}
             />
-        {:else if context.reply?.status === "missing"}
+        {:else if reply.visible && reply.status === "missing"}
             <p class="post-history-context-message">
                 {$_("postHistory.contextNotFound")}
             </p>
-        {:else if context.reply?.status === "failed"}
+        {:else if reply.visible && reply.status === "failed"}
             <p class="post-history-context-message post-history-context-error">
                 {$_("postHistory.contextFetchFailed")}
             </p>
+            <Button
+                type="button"
+                className="post-history-context-button post-history-context-retry-button"
+                onClick={() => onRetry("reply")}
+            >
+                {$_("postHistory.contextRetry")}
+            </Button>
         {/if}
 
-        {#if context.root?.status === "loading"}
-            <LoadingPlaceholder
-                showLoader={true}
-                text={$_("postHistory.contextLoading")}
-                customClass="post-history-context-loading"
-            />
-        {:else if context.root?.status === "loaded" && context.root.event}
-            <PostHistoryRelatedEventCard
-                event={context.root.event}
-                profile={context.root.profile}
-                label={$_("postHistory.conversationRoot")}
-            />
-        {:else if context.root?.status === "missing"}
-            <p class="post-history-context-message">
-                {$_("postHistory.contextNotFound")}
-            </p>
-        {:else if context.root?.status === "failed"}
-            <p class="post-history-context-message post-history-context-error">
-                {$_("postHistory.contextFetchFailed")}
-            </p>
-        {/if}
+        <div class="post-history-context-actions">
+            <Button
+                type="button"
+                className="post-history-context-button"
+                disabled={reply.status === "loading"}
+                onClick={() => onToggle("reply")}
+            >
+                {reply.visible
+                    ? $_("postHistory.hideReplyTarget")
+                    : $_("postHistory.showReplyTarget")}
+            </Button>
+        </div>
     </div>
 {/if}
 

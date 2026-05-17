@@ -36,6 +36,7 @@ export type PostHistoryContextTargetStatus =
 export interface PostHistoryContextTargetState {
     eventId: string;
     status: PostHistoryContextTargetStatus;
+    visible: boolean;
     event: NostrEvent | null;
     profile: ProfileData | null;
     relayUrl: string | null;
@@ -46,6 +47,10 @@ export interface PostHistoryContextItemState {
     references: PostHistoryThreadReferences;
     reply: PostHistoryContextTargetState | null;
     root: PostHistoryContextTargetState | null;
+}
+
+interface LoadPostHistoryContextTargetOptions {
+    force?: boolean;
 }
 
 interface UsePostHistoryContextParams {
@@ -77,6 +82,7 @@ function buildInitialTargetState(eventId: string): PostHistoryContextTargetState
     return {
         eventId,
         status: "unloaded",
+        visible: false,
         event: null,
         profile: null,
         relayUrl: null,
@@ -191,6 +197,7 @@ export function usePostHistoryContext({
     async function loadTarget(
         post: PostHistoryRecord,
         kind: PostHistoryContextTargetKind,
+        options: LoadPostHistoryContextTargetOptions = {},
     ): Promise<void> {
         const context = getContextState(post);
         const target = kind === "reply" ? context.reply : context.root;
@@ -205,10 +212,19 @@ export function usePostHistoryContext({
             };
         }
 
+        if (!options.force && target.status !== "unloaded") {
+            updateTargetState(post.eventId, kind, {
+                ...target,
+                visible: true,
+            });
+            return;
+        }
+
         const activeRequestId = ++requestId;
         const loadingState: PostHistoryContextTargetState = {
             ...target,
             status: "loading",
+            visible: true,
             error: null,
         };
         updateTargetState(post.eventId, kind, loadingState);
@@ -224,6 +240,7 @@ export function usePostHistoryContext({
             updateTargetState(post.eventId, kind, {
                 ...target,
                 status: "loaded",
+                visible: true,
                 event,
                 profile: await resolveProfile(event, relayHints),
                 relayUrl: null,
@@ -237,6 +254,7 @@ export function usePostHistoryContext({
             updateTargetState(post.eventId, kind, {
                 ...target,
                 status: "failed",
+                visible: true,
                 event: null,
                 profile: null,
                 relayUrl: null,
@@ -264,6 +282,7 @@ export function usePostHistoryContext({
             updateTargetState(post.eventId, kind, {
                 ...target,
                 status: "missing",
+                visible: true,
                 event: null,
                 profile: null,
                 relayUrl: null,
@@ -275,6 +294,7 @@ export function usePostHistoryContext({
         updateTargetState(post.eventId, kind, {
             ...target,
             status: "loaded",
+            visible: true,
             event: result.event,
             profile: await resolveProfile(
                 result.event,
@@ -283,6 +303,54 @@ export function usePostHistoryContext({
             relayUrl: result.relayUrl,
             error: null,
         });
+    }
+
+    function hideTarget(
+        post: PostHistoryRecord,
+        kind: PostHistoryContextTargetKind,
+    ): void {
+        const context = getContextState(post);
+        const target = kind === "reply" ? context.reply : context.root;
+        if (!target) {
+            return;
+        }
+
+        if (!stateByPostId[post.eventId]) {
+            stateByPostId = {
+                ...stateByPostId,
+                [post.eventId]: context,
+            };
+        }
+
+        updateTargetState(post.eventId, kind, {
+            ...target,
+            visible: false,
+        });
+    }
+
+    function toggleTarget(
+        post: PostHistoryRecord,
+        kind: PostHistoryContextTargetKind,
+    ): void {
+        const context = getContextState(post);
+        const target = kind === "reply" ? context.reply : context.root;
+        if (!target) {
+            return;
+        }
+
+        if (target.visible) {
+            hideTarget(post, kind);
+            return;
+        }
+
+        void loadTarget(post, kind);
+    }
+
+    function retryTarget(
+        post: PostHistoryRecord,
+        kind: PostHistoryContextTargetKind,
+    ): void {
+        void loadTarget(post, kind, { force: true });
     }
 
     $effect(() => {
@@ -304,6 +372,8 @@ export function usePostHistoryContext({
     return {
         getContextState,
         loadTarget,
+        toggleTarget,
+        retryTarget,
         cancelCurrentContextFetches,
         resetState,
     };
