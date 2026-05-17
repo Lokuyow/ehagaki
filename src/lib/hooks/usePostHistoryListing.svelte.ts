@@ -139,6 +139,15 @@ interface OlderBackfillUiResult {
     maxVisiblePosts: number;
     autoRetryCount: number;
     autoRetryReason: string | null;
+    attemptIndex: number;
+    maxAttempts: number;
+    clickStartVisibleCount: number;
+    currentVisibleCount: number;
+    totalVisibleAdded: number;
+    targetVisibleAdded: number;
+    shouldContinueForSmallBatch: boolean;
+    exploredSeconds: number;
+    maxExploreSeconds: number;
 }
 
 interface FetchOlderFromRelaysOptions {
@@ -225,7 +234,80 @@ export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
 // Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
 const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS = 60 * 60;
-const POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT = 2;
+const POST_HISTORY_OLDER_BACKFILL_MAX_ATTEMPTS_PER_CLICK = 4;
+const POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_EXPLORE_SECONDS =
+    7 * 24 * 60 * 60;
+
+interface ResolveOlderBackfillAutoRetryDecisionParams {
+    status: PostHistoryRelayFetchResult["status"];
+    changed: boolean;
+    didCursorAdvanceOlder: boolean;
+    attemptIndex: number;
+    maxAttempts: number;
+    totalVisibleAdded: number;
+    targetVisibleAdded: number;
+    exploredSeconds: number;
+    maxExploreSeconds: number;
+}
+
+interface ResolveOlderBackfillAutoRetryDecisionResult {
+    shouldContinue: boolean;
+    reason: string;
+}
+
+export function resolveOlderBackfillAutoRetryDecision({
+    status,
+    changed,
+    didCursorAdvanceOlder,
+    attemptIndex,
+    maxAttempts,
+    totalVisibleAdded,
+    targetVisibleAdded,
+    exploredSeconds,
+    maxExploreSeconds,
+}: ResolveOlderBackfillAutoRetryDecisionParams): ResolveOlderBackfillAutoRetryDecisionResult {
+    if (status !== "success") {
+        return {
+            shouldContinue: false,
+            reason: `status-${status}`,
+        };
+    }
+
+    if (!didCursorAdvanceOlder) {
+        return {
+            shouldContinue: false,
+            reason: "cursor-not-advanced",
+        };
+    }
+
+    if (totalVisibleAdded >= targetVisibleAdded) {
+        return {
+            shouldContinue: false,
+            reason: "target-visible-added-reached",
+        };
+    }
+
+    if (exploredSeconds >= maxExploreSeconds) {
+        return {
+            shouldContinue: false,
+            reason: "max-explore-seconds-reached",
+        };
+    }
+
+    if (attemptIndex >= maxAttempts) {
+        return {
+            shouldContinue: false,
+            reason: "max-attempts-reached",
+        };
+    }
+
+    return {
+        shouldContinue: true,
+        reason: changed
+            ? "small-batch-continue"
+            : "empty-window-continue",
+    };
+}
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -1774,10 +1856,17 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
+        const maxAttempts = POST_HISTORY_OLDER_BACKFILL_MAX_ATTEMPTS_PER_CLICK;
+        const maxExploreSeconds = POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_EXPLORE_SECONDS;
+        const targetVisibleAdded = Math.max(1, pageSize);
+        let clickStartVisibleCount: number | null = null;
+        let attemptIndex = 0;
+        let exploredSeconds = 0;
         let autoRetryCount = 0;
         let autoRetryReason: string | null = null;
 
         while (true) {
+            attemptIndex += 1;
             const resolvedFetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
             const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
             if (
@@ -1817,6 +1906,10 @@ export function usePostHistoryListing({
                 getPubkeyHex() !== pubkeyHex
             ) {
                 return false;
+            }
+
+            if (clickStartVisibleCount === null) {
+                clickStartVisibleCount = previousCount;
             }
 
             const previousStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
@@ -1939,19 +2032,37 @@ export function usePostHistoryListing({
             const didCursorAdvanceOlder =
                 typeof olderBackfillSearch.nextUntil === "number" &&
                 olderBackfillSearch.nextUntil < effectiveFetchUntil;
-            const shouldAutoRetry =
-                result.status === "success" &&
-                !changed &&
-                didCursorAdvanceOlder &&
-                autoRetryCount < POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT;
-            const debugAutoRetryCount = shouldAutoRetry
+            const currentVisibleCount = nextCount;
+            const totalVisibleAdded = Math.max(
+                0,
+                currentVisibleCount - (clickStartVisibleCount ?? currentVisibleCount),
+            );
+            const cursorAdvancedSeconds = didCursorAdvanceOlder
+                ? Math.max(
+                    0,
+                    effectiveFetchUntil - (olderBackfillSearch.nextUntil ?? effectiveFetchUntil),
+                )
+                : 0;
+            const nextExploredSeconds = exploredSeconds + cursorAdvancedSeconds;
+            const retryDecision = resolveOlderBackfillAutoRetryDecision({
+                status: result.status,
+                changed,
+                didCursorAdvanceOlder,
+                attemptIndex,
+                maxAttempts,
+                totalVisibleAdded,
+                targetVisibleAdded,
+                exploredSeconds: nextExploredSeconds,
+                maxExploreSeconds,
+            });
+            const shouldContinueForSmallBatch = retryDecision.shouldContinue;
+            const nextAutoRetryCount = shouldContinueForSmallBatch
                 ? autoRetryCount + 1
                 : autoRetryCount;
-            const debugAutoRetryReason = shouldAutoRetry
-                ? "changed-false-success-cursor-advanced"
-                : autoRetryReason;
 
-            if (shouldAutoRetry) {
+            exploredSeconds = nextExploredSeconds;
+
+            if (shouldContinueForSmallBatch) {
                 state.latestOlderBackfillUiResult = {
                     changed,
                     didTrimForOlderAppend: olderLoadMetrics.didTrimForOlderAppend,
@@ -1959,8 +2070,18 @@ export function usePostHistoryListing({
                     loadedPostsBeforeLength: olderLoadMetrics.loadedPostsBeforeLength,
                     loadedPostsAfterLength: olderLoadMetrics.loadedPostsAfterLength,
                     maxVisiblePosts: olderLoadMetrics.maxVisiblePosts,
-                    autoRetryCount: debugAutoRetryCount,
-                    autoRetryReason: debugAutoRetryReason,
+                    autoRetryCount: nextAutoRetryCount,
+                    autoRetryReason: retryDecision.reason,
+                    attemptIndex,
+                    maxAttempts,
+                    clickStartVisibleCount:
+                        clickStartVisibleCount ?? currentVisibleCount,
+                    currentVisibleCount,
+                    totalVisibleAdded,
+                    targetVisibleAdded,
+                    shouldContinueForSmallBatch,
+                    exploredSeconds,
+                    maxExploreSeconds,
                 };
 
                 globalThis.console?.debug?.("post_history_older_backfill_display", {
@@ -1989,27 +2110,26 @@ export function usePostHistoryListing({
                     visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
                     hasOlderLocal: state.hasOlderLocal,
                     hasNewerLocal: state.hasNewerLocal,
-                    autoRetryCount: debugAutoRetryCount,
-                    autoRetryReason: debugAutoRetryReason,
+                    attemptIndex,
+                    maxAttempts,
+                    clickStartVisibleCount:
+                        clickStartVisibleCount ?? currentVisibleCount,
+                    currentVisibleCount,
+                    totalVisibleAdded,
+                    targetVisibleAdded,
+                    shouldContinueForSmallBatch,
+                    exploredSeconds,
+                    maxExploreSeconds,
+                    autoRetryCount: nextAutoRetryCount,
+                    autoRetryReason: retryDecision.reason,
                 });
 
-                autoRetryCount += 1;
-                autoRetryReason = "changed-false-success-cursor-advanced";
+                autoRetryCount = nextAutoRetryCount;
+                autoRetryReason = retryDecision.reason;
                 continue;
             }
 
-            if (!changed) {
-                if (
-                    autoRetryCount >= POST_HISTORY_OLDER_BACKFILL_MAX_AUTO_RETRY_COUNT &&
-                    didCursorAdvanceOlder
-                ) {
-                    autoRetryReason = "max-auto-retry-reached";
-                } else if (!didCursorAdvanceOlder) {
-                    autoRetryReason = "cursor-not-advanced";
-                }
-            } else if (autoRetryCount > 0) {
-                autoRetryReason = "changed-true";
-            }
+            autoRetryReason = retryDecision.reason;
 
             state.latestOlderBackfillUiResult = {
                 changed,
@@ -2020,6 +2140,16 @@ export function usePostHistoryListing({
                 maxVisiblePosts: olderLoadMetrics.maxVisiblePosts,
                 autoRetryCount,
                 autoRetryReason,
+                attemptIndex,
+                maxAttempts,
+                clickStartVisibleCount:
+                    clickStartVisibleCount ?? currentVisibleCount,
+                currentVisibleCount,
+                totalVisibleAdded,
+                targetVisibleAdded,
+                shouldContinueForSmallBatch,
+                exploredSeconds,
+                maxExploreSeconds,
             };
 
             globalThis.console?.debug?.("post_history_older_backfill_display", {
@@ -2048,6 +2178,16 @@ export function usePostHistoryListing({
                 visibleOldestAfter: olderLoadMetrics.visibleOldestAfter,
                 hasOlderLocal: state.hasOlderLocal,
                 hasNewerLocal: state.hasNewerLocal,
+                attemptIndex,
+                maxAttempts,
+                clickStartVisibleCount:
+                    clickStartVisibleCount ?? currentVisibleCount,
+                currentVisibleCount,
+                totalVisibleAdded,
+                targetVisibleAdded,
+                shouldContinueForSmallBatch,
+                exploredSeconds,
+                maxExploreSeconds,
                 autoRetryCount,
                 autoRetryReason,
             });
