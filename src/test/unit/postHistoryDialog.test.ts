@@ -81,6 +81,13 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.contextNotFound': '関連投稿が見つかりませんでした',
         'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
         'postHistory.contextRetry': '再試行',
+        'postHistory.showReplies': '返信を表示',
+        'postHistory.hideReplies': '返信を隠す',
+        'postHistory.repliesLoading': '返信を取得中...',
+        'postHistory.repliesNotFound': '返信はまだ見つかっていません',
+        'postHistory.repliesFetchFailed': '返信を取得できませんでした',
+        'postHistory.directReply': '返信',
+        'postHistory.ownReply': '自分の返信',
         'replyQuote.reply_label': 'リプライ',
         'replyQuote.quote_label': '引用',
         'common.cancel': 'キャンセル',
@@ -106,6 +113,15 @@ const repositoryMock = vi.hoisted(() => ({
     getOldestCreatedAt: vi.fn(),
     upsertFetchedEvents: vi.fn(),
     deleteForPubkey: vi.fn(),
+}));
+
+const replyEventsRepositoryMock = vi.hoisted(() => ({
+    getDirectReplies: vi.fn(),
+    upsertDirectReplies: vi.fn(),
+}));
+
+const replyFetchServiceMock = vi.hoisted(() => ({
+    fetchDirectReplies: vi.fn(),
 }));
 
 const visibleRangeRepositoryMock = vi.hoisted(() => ({
@@ -247,6 +263,16 @@ vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
 
 vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
+    postHistoryReplyEventsRepository: replyEventsRepositoryMock,
+}));
+
+vi.mock('../../lib/postHistoryReplyFetchService', () => ({
+    POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT: 100,
+    POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS: 86_400,
+    postHistoryReplyFetchService: replyFetchServiceMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
@@ -404,6 +430,39 @@ function createReplyContextRecords() {
     return { parentRecord, post, replyId };
 }
 
+function createDirectReplyEventRecord(overrides: Record<string, any> = {}) {
+    const parentEventId = '1'.repeat(64);
+    const eventId = overrides.eventId ?? '4'.repeat(64);
+    const authorPubkey = overrides.authorPubkey ?? 'd'.repeat(64);
+    const rawEvent = overrides.rawEvent ?? {
+        id: eventId,
+        pubkey: authorPubkey,
+        kind: 1,
+        content: overrides.content ?? '他人からの返信',
+        tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+        created_at: overrides.createdAt ?? 1_700_000_010,
+        sig: 'f'.repeat(128),
+    };
+
+    return {
+        id: eventId,
+        eventId,
+        parentEventId,
+        authorPubkey,
+        kind: 1,
+        content: rawEvent.content,
+        tags: rawEvent.tags,
+        createdAt: rawEvent.created_at,
+        relayUrls: ['wss://relay.example.com/'],
+        discoveredAs: ['direct-reply'],
+        rawEvent,
+        fetchedAt: 1_700_000_020,
+        updatedAt: 1_700_000_020,
+        schemaVersion: 1,
+        ...overrides,
+    };
+}
+
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
     expect(screen.getByTitle('image.jpg')).toBeTruthy();
@@ -477,6 +536,21 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
         });
         repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+        replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [],
+                fetchedAt: 0,
+                relayUrls: [],
+            }),
+            cancel: vi.fn(),
+        });
         visibleRangeRepositoryMock.get.mockResolvedValue(null);
         visibleRangeRepositoryMock.save.mockResolvedValue(null);
         visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
@@ -807,6 +881,112 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
         expect(screen.queryByText('返信先の投稿')).toBeNull();
+    });
+
+    it('[direct-replies] 投稿に付いた直接リプライを本文とアクション行の下に表示し、履歴本体には混ぜない', async () => {
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の投稿',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の投稿',
+            tags: [],
+            media: [],
+        });
+        const otherReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            content: '他人からの返信',
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '他人からの返信',
+                tags: [['e', '1'.repeat(64), 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const ownReply = createDirectReplyEventRecord({
+            eventId: '5'.repeat(64),
+            authorPubkey: 'a'.repeat(64),
+            content: '自分の返信本文',
+            rawEvent: {
+                id: '5'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信本文',
+                tags: [['e', '1'.repeat(64), 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'e'.repeat(128),
+            },
+        });
+        let storedReplies: any[] = [];
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => storedReplies);
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async () => {
+            storedReplies = [otherReply, ownReply];
+            return {
+                insertedCount: 2,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [
+                    { event: otherReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                    { event: ownReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                ],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('他人からの返信')).toBeTruthy();
+            expect(screen.getByText('自分の返信本文')).toBeTruthy();
+        });
+
+        expect(screen.getByText('返信')).toBeTruthy();
+        expect(screen.getByText('自分の返信')).toBeTruthy();
+        expect(screen.getByText('1件')).toBeTruthy();
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+        expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
+            parentEventId: '1'.repeat(64),
+        }));
+
+        const currentContent = screen.getByText('自分の投稿');
+        const firstReply = screen.getByText('他人からの返信');
+        expect(
+            currentContent.compareDocumentPosition(firstReply) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を隠す' }));
+        await waitFor(() => {
+            expect(screen.queryByText('他人からの返信')).toBeNull();
+        });
     });
 
     it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {

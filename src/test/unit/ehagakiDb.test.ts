@@ -39,6 +39,7 @@ describe("EHagakiDB", () => {
             "hashtagHistory",
             "meta",
             "postHistory",
+            "postHistoryReplyEvents",
             "postMediaCache",
             "profiles",
             "relayConfigs",

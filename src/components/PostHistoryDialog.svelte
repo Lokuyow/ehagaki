@@ -12,11 +12,13 @@
     import PostHistoryContextPanel from "./PostHistoryContextPanel.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
+    import PostHistoryRepliesPanel from "./PostHistoryRepliesPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { usePostHistoryContext } from "../lib/hooks/usePostHistoryContext.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
+    import { usePostHistoryReplies } from "../lib/hooks/usePostHistoryReplies.svelte";
     import {
         preloadCustomEmojiImageWithMeta,
         type PreloadedCustomEmojiImageResult,
@@ -100,6 +102,11 @@
         getIsSearchMode: () => history.isSearchMode,
     });
     const postHistoryContext = usePostHistoryContext({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+    });
+    const postHistoryReplies = usePostHistoryReplies({
         getShow: () => show,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
@@ -286,6 +293,7 @@
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
         postHistoryContext.cancelCurrentContextFetches();
+        postHistoryReplies.cancelCurrentReplyFetches();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
@@ -1917,6 +1925,15 @@
                                         </div>
                                     </div>
                                 {/if}
+                                <PostHistoryRepliesPanel
+                                    state={postHistoryReplies.getRepliesState(
+                                        post,
+                                    )}
+                                    onToggle={() =>
+                                        postHistoryReplies.toggleReplies(post)}
+                                    onRetry={() =>
+                                        postHistoryReplies.retryReplies(post)}
+                                />
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
                                 <div class="post-meta">
