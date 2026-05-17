@@ -890,7 +890,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         secondView.unmount();
     });
 
-    it('保存アンカーがあってもローカルに新しい投稿があれば reopen 時に最新表示へ更新する', async () => {
+    it('保存アンカーがある reopen ではローカルに新しい投稿があっても前回 window を維持する', async () => {
         const localNewPost = createRecord({
             eventId: 'local-new-post',
             content: 'ローカル保存済みの新規投稿',
@@ -912,12 +912,11 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         repositoryMock.countForPubkey.mockResolvedValue(3);
         repositoryMock.getLatestVisibleChunk
-            .mockResolvedValueOnce([newest, older])
-            .mockResolvedValueOnce([localNewPost, newest, older]);
+            .mockResolvedValueOnce([newest, older]);
         repositoryMock.getNewerVisibleChunk
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([localNewPost])
-            .mockResolvedValueOnce([]);
+            .mockResolvedValueOnce([localNewPost]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
 
         const firstView = render(PostHistoryDialog, {
@@ -946,6 +945,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             savedAt: 9012,
         });
         firstView.unmount();
+        repositoryMock.getLatestVisibleChunk.mockClear();
 
         const secondView = render(PostHistoryDialog, {
             props: {
@@ -958,12 +958,225 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => {
             expect(
                 document.querySelector(
-                    '[data-post-history-event-id="local-new-post"]',
+                    '[data-post-history-event-id="local-restore-older"]',
                 ),
             ).toBeTruthy();
+            expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
         });
-        expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+        expect(screen.queryByText('ローカル保存済みの新規投稿')).toBeNull();
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
 
         secondView.unmount();
+    });
+
+    it.each([
+        {
+            label: '5/12',
+            dateInput: '2026-05-12',
+            anchorEventId: 'restore-2026-05-12-anchor',
+            anchorContent: '2026/5/12 の保存アンカー投稿',
+            olderContent: '2026/5/12 の次の投稿',
+            anchorCreatedAt: 1_747_072_800,
+            anchorPostedAt: Date.UTC(2026, 4, 12, 12, 0, 0),
+        },
+        {
+            label: '3/27',
+            dateInput: '2026-03-27',
+            anchorEventId: 'restore-2026-03-27-anchor',
+            anchorContent: '2026/3/27 の保存アンカー投稿',
+            olderContent: '2026/3/27 の次の投稿',
+            anchorCreatedAt: 1_743_078_600,
+            anchorPostedAt: Date.UTC(2026, 2, 27, 12, 0, 0),
+        },
+    ])(
+        '$label 表示後の reopen は新しいローカル投稿があっても保存アンカーへ復元する',
+        async ({
+            dateInput,
+            anchorEventId,
+            anchorContent,
+            olderContent,
+            anchorCreatedAt,
+            anchorPostedAt,
+        }) => {
+            const latest = createRecord({
+                eventId: 'restore-2026-05-16-latest',
+                content: '2026/5/16 の最新寄り投稿',
+                createdAt: 1_747_417_200,
+                postedAt: Date.UTC(2026, 4, 16, 12, 0, 0),
+            });
+            const anchor = createRecord({
+                eventId: anchorEventId,
+                content: anchorContent,
+                createdAt: anchorCreatedAt,
+                postedAt: anchorPostedAt,
+            });
+            const older = createRecord({
+                eventId: `${anchorEventId}-older`,
+                content: olderContent,
+                createdAt: anchorCreatedAt - 60,
+                postedAt: anchorPostedAt - 60_000,
+            });
+
+            repositoryMock.countForPubkey.mockResolvedValue(2617);
+            repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([latest]);
+            repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([anchor, older]);
+            repositoryMock.getNewerVisibleChunk
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([latest])
+                .mockResolvedValueOnce([latest]);
+            repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+            const firstView = render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: PUBKEY_HEX,
+                },
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText('2026/5/16 の最新寄り投稿')).toBeTruthy();
+            });
+
+            await clickMenuAction('日付へ移動');
+            await fireEvent.input(screen.getByLabelText('日付'), {
+                target: { value: dateInput },
+            });
+            await fireEvent.click(getJumpDateSubmitButton());
+
+            await waitFor(() => {
+                expect(screen.getByText(anchorContent)).toBeTruthy();
+                expect(screen.getByText(olderContent)).toBeTruthy();
+            });
+
+            writePostHistoryDialogScrollState({
+                pubkeyHex: PUBKEY_HEX,
+                mode: 'normal',
+                anchor: {
+                    eventId: anchorEventId,
+                    offsetTop: 64,
+                },
+                savedAt: anchorCreatedAt,
+            });
+            firstView.unmount();
+            repositoryMock.getLatestVisibleChunk.mockClear();
+
+            const secondView = render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: PUBKEY_HEX,
+                },
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText(anchorContent)).toBeTruthy();
+                expect(screen.getByText(olderContent)).toBeTruthy();
+                expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
+            });
+            expect(screen.queryByText('2026/5/16 の最新寄り投稿')).toBeNull();
+            expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+
+            secondView.unmount();
+        },
+    );
+
+    it('保存アンカーが snapshot にない場合は DB からアンカー周辺 window を読み直す', async () => {
+        const anchor = createRecord({
+            eventId: 'db-anchor-post',
+            content: 'DBから復元したアンカー投稿',
+            createdAt: 1_704_153_600,
+            postedAt: Date.UTC(2024, 0, 1, 0, 0, 0),
+        });
+        const older = createRecord({
+            eventId: 'db-anchor-older-post',
+            content: 'DBから復元した周辺投稿',
+            createdAt: 1_704_153_540,
+            postedAt: Date.UTC(2023, 11, 31, 23, 59, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(200);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValueOnce([anchor, older]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([createRecord({
+            eventId: 'db-anchor-newer-post',
+            content: 'DB上の新しい投稿',
+            createdAt: 1_704_240_000,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        })]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'db-anchor-post',
+                offsetTop: 40,
+            },
+            savedAt: 1111,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('DBから復元したアンカー投稿')).toBeTruthy();
+            expect(screen.getByText('DBから復元した周辺投稿')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
+        });
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledWith({
+            pubkeyHex: PUBKEY_HEX,
+            visibleUntil: null,
+            eventId: 'db-anchor-post',
+            limit: 150,
+            keepAbove: 50,
+        });
+
+        view.unmount();
+    });
+
+    it('保存アンカーが DB から復元不能な場合だけ最新表示へ fallback する', async () => {
+        const latest = createRecord({
+            eventId: 'missing-anchor-latest-post',
+            content: '復元不能時だけ表示する最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValueOnce([]);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'deleted-anchor-post',
+                offsetTop: 80,
+            },
+            savedAt: 2222,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('復元不能時だけ表示する最新投稿')).toBeTruthy();
+        });
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+
+        view.unmount();
     });
 });

@@ -1365,36 +1365,79 @@ export function usePostHistoryListing({
             return;
         }
 
-        if (newerPosts.length > 0) {
-            onSessionScrollStateInvalidated();
-            await loadLatestVisiblePosts();
-            return;
-        }
-
         state.totalCount = count;
-        state.hasNewerLocal = false;
+        state.hasNewerLocal = newerPosts.length > 0;
         state.hasOlderLocal = olderPosts.length > 0;
         void prefetchCurrentPageMedia(currentPosts);
         startOpenRelayFetchAfterLocalLoad(pubkeyHex, state.loadedPosts);
     }
 
-    function canPreserveSessionVisibleWindow(): boolean {
-        if (isSearchMode || state.loadedPosts.length === 0) {
-            return false;
-        }
-
+    function getNormalSessionScrollStateForCurrentPubkey(): PostHistoryDialogScrollState | null {
         const scrollState = getSessionScrollState();
         if (
             !scrollState ||
             scrollState.mode !== "normal" ||
             scrollState.pubkeyHex !== getPubkeyHex()
         ) {
+            return null;
+        }
+
+        return scrollState;
+    }
+
+    function canPreserveSessionVisibleWindow(
+        scrollState: PostHistoryDialogScrollState | null,
+    ): scrollState is PostHistoryDialogScrollState {
+        if (isSearchMode || state.loadedPosts.length === 0) {
+            return false;
+        }
+
+        if (!scrollState) {
             return false;
         }
 
         return state.loadedPosts.some(
             (post) => post.eventId === scrollState.anchor.eventId,
         );
+    }
+
+    async function loadVisibleWindowAroundSessionAnchor(
+        scrollState: PostHistoryDialogScrollState,
+    ): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !getShow()) {
+            return false;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const [count, restoredPosts] = await Promise.all([
+            countVisiblePosts(pubkeyHex, visibleUntil),
+            postHistoryRepository.getVisibleChunkAroundEventId({
+                pubkeyHex,
+                visibleUntil,
+                eventId: scrollState.anchor.eventId,
+                limit: maxVisiblePosts,
+                keepAbove: pageSize,
+            }),
+        ]);
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (restoredPosts.length === 0) {
+            onSessionScrollStateInvalidated();
+            await loadLatestVisiblePosts();
+            return false;
+        }
+
+        state.totalCount = count;
+        state.loadedPosts = restoredPosts;
+        void prefetchCurrentPageMedia(restoredPosts);
+        await refreshTimelineAvailability(pubkeyHex, restoredPosts, requestId);
+        void startOpenRelayFetchAfterLocalLoad(pubkeyHex, restoredPosts);
+        return true;
     }
 
     async function loadOlderVisiblePosts(
@@ -2481,8 +2524,14 @@ export function usePostHistoryListing({
         hasAttemptedInitialLocalLoad = true;
         initialLocalLoadKey = nextInitialLoadKey;
 
-        if (canPreserveSessionVisibleWindow()) {
+        const sessionScrollState = getNormalSessionScrollStateForCurrentPubkey();
+        if (canPreserveSessionVisibleWindow(sessionScrollState)) {
             void refreshPreservedVisibleWindow();
+            return;
+        }
+
+        if (sessionScrollState) {
+            void loadVisibleWindowAroundSessionAnchor(sessionScrollState);
             return;
         }
 

@@ -51,6 +51,12 @@ export type PostHistoryVisibleChunkFromCreatedAtOptions =
         createdAt: number;
     };
 
+export type PostHistoryVisibleChunkAroundEventIdOptions =
+    PostHistoryVisibleChunkOptions & {
+        eventId: string;
+        keepAbove?: number;
+    };
+
 export type PostHistoryFetchedEventItem = {
     event: NostrEvent;
     relayUrls?: string[];
@@ -80,6 +86,7 @@ export interface PostHistoryRepository {
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkFromCreatedAt(options: PostHistoryVisibleChunkFromCreatedAtOptions): Promise<PostHistoryRecord[]>;
+    getVisibleChunkAroundEventId(options: PostHistoryVisibleChunkAroundEventIdOptions): Promise<PostHistoryRecord[]>;
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
@@ -463,6 +470,31 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         }
 
         return records.slice(anchorIndex, anchorIndex + limit);
+    }
+
+    async getVisibleChunkAroundEventId(
+        options: PostHistoryVisibleChunkAroundEventIdOptions,
+    ): Promise<PostHistoryRecord[]> {
+        const limit = normalizeChunkLimit(options.limit);
+        const keepAbove = Number.isFinite(options.keepAbove)
+            ? Math.max(0, Math.trunc(options.keepAbove ?? 0))
+            : 0;
+        const records = await this.getVisibleAll(options);
+        const anchorIndex = records.findIndex(
+            (record) => record.eventId === options.eventId,
+        );
+
+        if (anchorIndex < 0) {
+            return [];
+        }
+
+        const maxStartIndex = Math.max(0, records.length - limit);
+        const startIndex = Math.min(
+            maxStartIndex,
+            Math.max(0, anchorIndex - keepAbove),
+        );
+
+        return records.slice(startIndex, startIndex + limit);
     }
 
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {

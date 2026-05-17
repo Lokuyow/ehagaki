@@ -307,6 +307,17 @@ describe("DexiePostHistoryRepository", () => {
             { eventId: "6".repeat(64), postedAt: 2000, createdAt: 700 },
         ]);
 
+        await expect(repository.getVisibleChunkAroundEventId({
+            pubkeyHex: pubkey,
+            eventId: "5".repeat(64),
+            limit: 3,
+            keepAbove: 1,
+        })).resolves.toMatchObject([
+            { eventId: "4".repeat(64), postedAt: 4000, createdAt: 900 },
+            { eventId: "5".repeat(64), postedAt: 3000, createdAt: 800 },
+            { eventId: "6".repeat(64), postedAt: 2000, createdAt: 700 },
+        ]);
+
         db.close();
     });
 

@@ -55,6 +55,7 @@ const hoisted = vi.hoisted(() => {
             getOlderVisibleChunk: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
             getVisibleChunkFromCreatedAt: vi.fn(),
+            getVisibleChunkAroundEventId: vi.fn(),
             countForPubkey: vi.fn(),
             countVisibleForPubkey: vi.fn(),
             getOldestCreatedAt: vi.fn(),
@@ -344,6 +345,7 @@ export function resetPostHistoryDialogHarness(): void {
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
     repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([]);
+    repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
     repositoryMock.countForPubkey.mockResolvedValue(0);
     repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
         repositoryMock.countForPubkey(pubkeyHex),
