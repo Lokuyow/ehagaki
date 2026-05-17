@@ -128,6 +128,7 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let isHistoryScrolledToTop = $state(true);
     let isHistoryScrolledToBottom = $state(true);
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let historyMonthLabelFrameId: number | null = null;
@@ -172,6 +173,9 @@
                 "postHistory.repairPartialFailure" ||
             history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairFetchFailed",
+    );
+    let canUseReturnToLatest = $derived(
+        history.canReturnToLatest || !isHistoryScrolledToTop,
     );
     let canUseJumpToOldest = $derived(
         history.canJumpToOldest || !isHistoryScrolledToBottom,
@@ -364,6 +368,7 @@
             }
 
             updateCurrentMonthLabel();
+            updateHistoryScrolledToTop();
             updateHistoryScrolledToBottom();
         });
 
@@ -414,6 +419,7 @@
     function resetHistoryScrollPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = 0;
+            updateHistoryScrolledToTop();
             updateHistoryScrolledToBottom();
             scheduleCurrentMonthLabelUpdate();
         }
@@ -422,9 +428,20 @@
     function resetHistoryScrollToBottomPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = historyContainer.scrollHeight;
+            updateHistoryScrolledToTop();
             updateHistoryScrolledToBottom();
             scheduleCurrentMonthLabelUpdate();
         }
+    }
+
+    function updateHistoryScrolledToTop(): void {
+        if (!historyContainer) {
+            isHistoryScrolledToTop = true;
+            return;
+        }
+
+        isHistoryScrolledToTop =
+            historyContainer.scrollTop <= HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
     }
 
     function updateHistoryScrolledToBottom(): void {
@@ -546,6 +563,7 @@
     }
 
     function handleHistoryScroll(): void {
+        updateHistoryScrolledToTop();
         updateHistoryScrolledToBottom();
         scheduleCurrentMonthLabelUpdate();
     }
@@ -738,8 +756,10 @@
 
     async function handleReturnToLatest(): Promise<void> {
         clearAllSessionScrollAnchorsForCurrentPubkey();
-        const changed = await history.returnToLatest();
-        if (changed) {
+        const changed = history.canReturnToLatest
+            ? await history.returnToLatest()
+            : false;
+        if (changed || !isHistoryScrolledToTop) {
             resetHistoryScrollSoon();
         }
     }
@@ -1337,7 +1357,7 @@
                             />
                             <DropdownMenu.Item
                                 class="menu-action-button"
-                                disabled={!history.canReturnToLatest}
+                                disabled={!canUseReturnToLatest}
                                 onSelect={handleReturnToLatestFromMenu}
                             >
                                 <div
@@ -1950,7 +1970,7 @@
         {/if}
     </div>
 
-    {#if history.canReturnToLatest}
+    {#if canUseReturnToLatest}
         <div class="post-history-latest-row">
             <Button
                 type="button"

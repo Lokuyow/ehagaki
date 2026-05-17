@@ -291,6 +291,55 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('最新ページでも最上部でなければ最新へ戻るで最上部へスクロールする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'latest-page-newest', content: '最新ページの新しい投稿' }),
+            createRecord({
+                eventId: 'latest-page-older',
+                content: '最新ページの古い投稿',
+                createdAt: 1_704_240_000,
+                postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+            }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('最新ページの古い投稿')).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        Object.defineProperty(historyContainer, 'clientHeight', {
+            configurable: true,
+            value: 320,
+        });
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            value: 720,
+        });
+        historyContainer.scrollTop = 120;
+        await fireEvent.scroll(historyContainer);
+
+        const returnToLatestButton = await screen.findByRole('button', { name: '最新へ戻る' });
+        await fireEvent.click(returnToLatestButton);
+
+        await waitFor(() => {
+            expect(historyContainer.scrollTop).toBe(0);
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        });
+
+        view.unmount();
+    });
+
     it('メニューの最古へ移動はリレー同期せずローカル最古ページへ移動する', async () => {
         const newest = createRecord({
             eventId: 'oldest-menu-newest',
