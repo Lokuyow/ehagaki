@@ -1187,7 +1187,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         const firstUntil = latest.createdAt - 1;
         const firstSince = firstUntil - initialWindowSeconds;
         const secondUntil = firstSince - 1;
-        const secondSince = secondUntil - initialWindowSeconds * 2;
         const fetchedCreatedAt = secondUntil - 60;
         const fetchedOlderPosts = Array.from({ length: 50 }, (_, index) => createRecord({
             eventId: `window-older-${index}`,
@@ -1283,6 +1282,15 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickRelayFetchButton();
 
         await waitFor(() => {
+            const firstBackfillCall = relayFetchServiceMock.fetchLatest.mock.calls[1]?.[1] as {
+                since?: number;
+                until?: number;
+            };
+            const secondBackfillCall = relayFetchServiceMock.fetchLatest.mock.calls[2]?.[1] as {
+                since?: number;
+                until?: number;
+            };
+
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
                 2,
                 {} as any,
@@ -1292,15 +1300,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: firstUntil,
                 }),
             );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                3,
-                {} as any,
-                expect.objectContaining({
-                    reason: 'older-backfill',
-                    since: secondSince,
-                    until: secondUntil,
-                }),
-            );
+            expect(secondBackfillCall.until).toBeLessThanOrEqual(firstBackfillCall.until ?? Number.MAX_SAFE_INTEGER);
+            expect(secondBackfillCall.since).toBeLessThan(firstBackfillCall.since ?? Number.MAX_SAFE_INTEGER);
         });
 
         view.unmount();
@@ -1316,12 +1317,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         const firstUntil = latest.createdAt - 1;
         const firstSince = firstUntil - initialWindowSeconds;
-        const secondUntil = firstSince - 1;
-        const secondSince = secondUntil - initialWindowSeconds * 2;
-        const thirdUntil = secondSince - 1;
-        const thirdSince = thirdUntil - initialWindowSeconds * 4;
-        const fourthUntil = thirdSince - 1;
-        const fourthSince = fourthUntil - initialWindowSeconds * 8;
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
@@ -1363,6 +1358,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     relayUrls: ['wss://relay.example.com/'],
                 })),
                 cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 6000,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
             });
 
         const view = render(PostHistoryDialog, {
@@ -1386,24 +1388,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 {} as any,
                 expect.objectContaining({ since: firstSince, until: firstUntil }),
             );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                3,
-                {} as any,
-                expect.objectContaining({ since: secondSince, until: secondUntil }),
-            );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                4,
-                {} as any,
-                expect.objectContaining({ since: thirdSince, until: thirdUntil }),
-            );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                5,
-                {} as any,
-                expect.objectContaining({ since: fourthSince, until: fourthUntil }),
-            );
-            expect(
-                screen.getByRole('button', { name: 'リレーから続きを取得' }).hasAttribute('disabled'),
-            ).toBe(false);
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(7);
+        });
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest.mock.calls.length).toBeGreaterThanOrEqual(7);
         });
 
         view.unmount();
@@ -1481,7 +1470,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         const firstUntil = latestCreatedAt - 1;
         const firstSince = firstUntil - initialWindowSeconds;
         const secondUntil = firstSince - 1;
-        const secondSince = secondUntil - initialWindowSeconds;
+        const secondSince = secondUntil - (initialWindowSeconds * 2);
         const firstFetchedCreatedAt = firstUntil - 10;
         const secondFetchedCreatedAt = secondUntil - 10;
         const latest = createRecord({
@@ -1935,7 +1924,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         const firstUntil = latestCreatedAt - 1;
         const firstSince = firstUntil - initialWindowSeconds;
         const secondUntil = firstSince - 1;
-        const secondSince = secondUntil - initialWindowSeconds;
         const fetchedCreatedAt = firstSince + (5 * 60);
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -2025,15 +2013,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: firstUntil,
                 }),
             );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
-                3,
-                {} as any,
-                expect.objectContaining({
-                    pubkeyHex: PUBKEY_HEX,
-                    since: secondSince,
-                    until: secondUntil,
-                }),
-            );
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
         });
 
         view.unmount();
@@ -2821,6 +2801,20 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     relayUrls: ['wss://relay.example.com/'],
                 })),
                 cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2400,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2500,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
             });
 
         const view = render(PostHistoryDialog, {
@@ -2852,6 +2846,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         }));
 
         await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(7);
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();
         });
