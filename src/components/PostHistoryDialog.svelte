@@ -2926,7 +2926,6 @@
         .post-preview-action-buttons-group {
             display: flex;
             align-items: stretch;
-            gap: 4px;
         }
 
         :global(.post-preview-action-button) {

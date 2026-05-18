@@ -172,14 +172,21 @@
     .post-history-thread-node-actions {
         display: flex;
         align-items: center;
-        gap: 6px;
         min-height: 28px;
     }
 
     :global(.post-history-thread-node-actions > .post-history-related-date) {
-        margin-right: auto;
         color: var(--text-muted);
-        font-size: 0.78rem;
+        font-size: 0.875rem;
+    }
+
+    :global(
+            .post-history-thread-node-actions
+                > .post-preview-replies-action-button
+        ) {
+        margin: auto;
+        --svg: var(--btn-post-preview-action);
+        background: transparent;
     }
 
     :global(.post-history-context-button) {
