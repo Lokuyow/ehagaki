@@ -10,6 +10,7 @@
         event: NostrEvent;
         profile?: ProfileData | null;
         showHeaderDate?: boolean;
+        parentOffsetRem?: number;
         topActions?: Snippet;
         children?: Snippet;
     }
@@ -18,6 +19,7 @@
         event,
         profile = null,
         showHeaderDate = true,
+        parentOffsetRem = 0,
         topActions = undefined,
         children = undefined,
     }: Props = $props();
@@ -35,7 +37,10 @@
     let postedAt = $derived(formatPostedAt(event.created_at * 1000));
 </script>
 
-<article class="post-history-related-card">
+<article
+    class="post-history-related-card"
+    style={`--parent-offset: ${parentOffsetRem}rem`}
+>
     {@render topActions?.()}
     {#if showHeaderDate}
         <header class="post-history-related-card-header">
@@ -67,6 +72,9 @@
     .post-history-related-card {
         display: grid;
         gap: 4px;
+        box-sizing: border-box;
+        width: calc(100% - var(--parent-offset, 0rem));
+        margin-left: var(--parent-offset, 0rem);
         padding: 2px 10px 0;
         border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);

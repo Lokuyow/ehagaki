@@ -40,13 +40,14 @@
         {:else if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
+                ancestorIndex={0}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
             />
         {:else if state.parentExpansion.visibleParent && state.parentNode}
-            <PostHistoryThreadNode node={state.parentNode} />
+            <PostHistoryThreadNode node={state.parentNode} parentOffsetRem={3} />
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
             <span class="post-history-context-deleted-label">
                 {$_("postHistory.replyTargetDeleted")}
