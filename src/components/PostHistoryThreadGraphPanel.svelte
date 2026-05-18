@@ -106,7 +106,7 @@
 
     :global(.post-history-context-button) {
         min-height: 28px;
-        padding: 2px 8px;
+        padding: 2px 6px;
         color: var(--text-muted);
         background: transparent;
         font-size: 0.82rem;
@@ -136,15 +136,16 @@
     .post-history-context-deleted-label {
         width: fit-content;
         min-height: 28px;
-        padding: 2px 8px;
-        border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
-        border-radius: 6px;
+        padding: 2px 6px;
         color: var(--text-muted);
-        background: color-mix(in srgb, var(--input-bg) 65%, transparent);
+        background-color: transparent;
+        border: 1px solid var(--btn-border);
         font-size: 0.82rem;
-        line-height: 22px;
+        font-weight: normal;
         cursor: default;
         user-select: none;
+        display: flex;
+        align-items: center;
     }
 
     .post-history-context-error {
