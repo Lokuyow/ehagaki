@@ -1542,6 +1542,7 @@ describe('PostHistoryDialog', () => {
         const parentEventId = '1'.repeat(64);
         const replyBEventId = '4'.repeat(64);
         const replyCEventId = '6'.repeat(64);
+        const replyDEventId = '8'.repeat(64);
         const post = createRecord({
             eventId: parentEventId,
             rawEvent: {
@@ -1586,6 +1587,21 @@ describe('PostHistoryDialog', () => {
                 sig: 'b'.repeat(128),
             },
         });
+        const replyD = createDirectReplyEventRecord({
+            eventId: replyDEventId,
+            parentEventId,
+            authorPubkey: 'f'.repeat(64),
+            content: '子返信なしD',
+            rawEvent: {
+                id: replyDEventId,
+                pubkey: 'f'.repeat(64),
+                kind: 1,
+                content: '子返信なしD',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_015,
+                sig: 'd'.repeat(128),
+            },
+        });
         const storedRepliesByParent = new Map<string, any[]>();
 
         repositoryMock.getPage.mockResolvedValue([post]);
@@ -1595,7 +1611,11 @@ describe('PostHistoryDialog', () => {
         );
         replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ parentEventId, events }: any) => {
             storedRepliesByParent.set(parentEventId, events.map((item: any) =>
-                item.event.id === replyBEventId ? replyB : replyC,
+                item.event.id === replyBEventId
+                    ? replyB
+                    : item.event.id === replyDEventId
+                        ? replyD
+                        : replyC,
             ));
             return {
                 insertedCount: events.length,
@@ -1607,8 +1627,13 @@ describe('PostHistoryDialog', () => {
         replyFetchServiceMock.fetchDirectReplies.mockImplementation((_rxNostr: any, params: any) => ({
             promise: Promise.resolve({
                 events: params.eventId === parentEventId
-                    ? [{ event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
-                    : [{ event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] }],
+                    ? [
+                        { event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { event: replyD.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                    ]
+                    : params.eventId === replyBEventId
+                        ? [{ event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
+                        : [],
                 fetchedAt: 1_700_000_030,
                 relayUrls: ['wss://relay.example.com/'],
             }),
@@ -1628,15 +1653,152 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
         await waitFor(() => {
             expect(screen.getByText('他人からの返信B')).toBeTruthy();
+            expect(screen.getByText('子返信なしD')).toBeTruthy();
         });
         expect(screen.queryByRole('button', { name: '返信先を見る' })).toBeNull();
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        expect(screen.queryByText('返信Bへの返信C')).toBeNull();
+        expect(
+            Array.from(document.querySelectorAll('.post-preview-replies-count'))
+                .map((element) => element.textContent),
+        ).not.toContain('0');
 
-        await fireEvent.click(screen.getByRole('button', { name: '返信を確認' }));
+        await fireEvent.click(screen.getByRole('button', { name: '返信 1件を表示' }));
         await waitFor(() => {
             expect(screen.getByText('返信Bへの返信C')).toBeTruthy();
         });
-        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(2);
+        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(3);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[thread-graph-children-prefetch] 表示済み子nodeの返信有無確認はconcurrency上限内で実行する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const childIds = ['4', '5', '6', '7'].map((value) => value.repeat(64));
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const childRecords = childIds.map((eventId, index) =>
+            createDirectReplyEventRecord({
+                eventId,
+                parentEventId,
+                authorPubkey: `${index + 2}`.repeat(64).slice(0, 64),
+                content: `返信${index + 1}`,
+                rawEvent: {
+                    id: eventId,
+                    pubkey: `${index + 2}`.repeat(64).slice(0, 64),
+                    kind: 1,
+                    content: `返信${index + 1}`,
+                    tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                    created_at: 1_700_000_010 + index,
+                    sig: 'f'.repeat(128),
+                },
+            }));
+        const storedRepliesByParent = new Map<string, any[]>();
+        const deferredByChildId = new Map<string, ReturnType<typeof createDeferred<any>>>();
+        let activePrefetchCount = 0;
+        let maxActivePrefetchCount = 0;
+        const startedPrefetchIds: string[] = [];
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            storedRepliesByParent.get(parentId) ?? [],
+        );
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ parentEventId, events }: any) => {
+            storedRepliesByParent.set(parentEventId, events.map((item: any) =>
+                childRecords.find((record) => record.eventId === item.event.id) ?? item,
+            ));
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockImplementation((_rxNostr: any, params: any) => {
+            if (params.eventId === parentEventId) {
+                return {
+                    promise: Promise.resolve({
+                        events: childRecords.map((record) => ({
+                            event: record.rawEvent,
+                            relayUrls: ['wss://relay.example.com/'],
+                        })),
+                        fetchedAt: 1_700_000_030,
+                        relayUrls: ['wss://relay.example.com/'],
+                    }),
+                    cancel: vi.fn(),
+                };
+            }
+
+            activePrefetchCount += 1;
+            maxActivePrefetchCount = Math.max(maxActivePrefetchCount, activePrefetchCount);
+            startedPrefetchIds.push(params.eventId);
+            const deferred = createDeferred<any>();
+            deferredByChildId.set(params.eventId, deferred);
+            return {
+                promise: deferred.promise.then(() => {
+                    activePrefetchCount -= 1;
+                    return {
+                        events: [],
+                        fetchedAt: 1_700_000_040,
+                        relayUrls: ['wss://relay.example.com/'],
+                    };
+                }),
+                cancel: vi.fn(),
+            };
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('返信1')).toBeTruthy();
+            expect(startedPrefetchIds).toHaveLength(2);
+        });
+        expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
+
+        deferredByChildId.get(startedPrefetchIds[0])?.resolve(null);
+        await waitFor(() => {
+            expect(startedPrefetchIds).toHaveLength(3);
+        });
+        expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
+
+        for (const deferred of deferredByChildId.values()) {
+            deferred.resolve(null);
+        }
+        await waitFor(() => {
+            expect(startedPrefetchIds).toHaveLength(4);
+        });
+        for (const deferred of deferredByChildId.values()) {
+            deferred.resolve(null);
+        }
+        await waitFor(() => {
+            expect(activePrefetchCount).toBe(0);
+        });
+        expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
+        expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
     });
 
     it('[direct-replies] 投稿に付いた直接リプライを本文とアクション行の下に表示し、履歴本体には混ぜない', async () => {

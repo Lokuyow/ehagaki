@@ -137,6 +137,8 @@ function uniqueEventIds(eventIds: string[]): string[] {
 
 const POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH = 20;
 const POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH = 20;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT = 12;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY = 2;
 
 export function usePostHistoryThreadGraph({
     getShow,
@@ -163,6 +165,8 @@ export function usePostHistoryThreadGraph({
     const deletionTasksByKey = new Map<string, PostHistoryDeletionFetchTask>();
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
     let requestId = 0;
+    let childRequestId = 0;
+    const childrenRequestIdsByKey = new Map<string, number>();
 
     function getExpansion(anchorEventId: string, nodeEventId: string): PostHistoryThreadGraphExpansionState {
         return expansionByAnchorNodeKey[buildAnchorNodeKey(anchorEventId, nodeEventId)]
@@ -1159,7 +1163,7 @@ export function usePostHistoryThreadGraph({
     async function loadChildrenForNode(
         post: PostHistoryRecord,
         nodeEventId: string,
-        options: { force?: boolean } = {},
+        options: { force?: boolean; prefetchOnly?: boolean } = {},
     ): Promise<void> {
         const currentNode = nodeEventId === post.eventId
             ? ensureAnchorNode(post)
@@ -1168,8 +1172,13 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
+        const key = buildAnchorNodeKey(post.eventId, nodeEventId);
         const currentExpansion = getExpansion(post.eventId, nodeEventId);
         if (currentExpansion.loadingChildren) {
+            if (options.prefetchOnly) {
+                return;
+            }
+
             updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleChildren: true,
@@ -1178,6 +1187,10 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!options.force && currentExpansion.loadedChildren) {
+            if (options.prefetchOnly) {
+                return;
+            }
+
             const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
             updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
@@ -1186,11 +1199,13 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeRequestId = ++requestId;
+        const activeGraphRequestId = requestId;
+        const activeChildRequestId = ++childRequestId;
+        childrenRequestIdsByKey.set(key, activeChildRequestId);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
             loadingChildren: true,
-            visibleChildren: true,
+            visibleChildren: options.prefetchOnly ? state.visibleChildren : true,
             childrenError: null,
         }));
 
@@ -1204,7 +1219,11 @@ export function usePostHistoryThreadGraph({
             const cachedRecords = await filterVisibleReplyRecords(
                 rawCachedRecords,
             );
-            if (activeRequestId !== requestId || !getShow()) {
+            if (
+                activeGraphRequestId !== requestId ||
+                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                !getShow()
+            ) {
                 return;
             }
 
@@ -1213,11 +1232,15 @@ export function usePostHistoryThreadGraph({
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...state,
                     loadedChildren: true,
-                    visibleChildren: true,
+                    visibleChildren: options.prefetchOnly ? state.visibleChildren : true,
                     loadingChildren: false,
                     childrenError: null,
                     lastFetchedChildrenAt: Date.now(),
                 }));
+                childrenRequestIdsByKey.delete(key);
+                if (!options.prefetchOnly) {
+                    void prefetchChildReplyCounts(post, nodeEventId);
+                }
                 return;
             }
 
@@ -1226,14 +1249,14 @@ export function usePostHistoryThreadGraph({
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...state,
                     loadedChildren: cachedRecords.length > 0,
-                    visibleChildren: cachedRecords.length > 0,
+                    visibleChildren: options.prefetchOnly ? state.visibleChildren : cachedRecords.length > 0,
                     loadingChildren: false,
-                    childrenError: cachedRecords.length > 0 ? null : "nostr_not_ready",
+                    childrenError: cachedRecords.length > 0 || options.prefetchOnly ? null : "nostr_not_ready",
                 }));
+                childrenRequestIdsByKey.delete(key);
                 return;
             }
 
-            const key = buildAnchorNodeKey(post.eventId, nodeEventId);
             childrenTasksByKey.get(key)?.cancel();
             const task = replyFetchService.fetchDirectReplies(rxNostr, {
                 eventId: nodeEventId,
@@ -1245,7 +1268,11 @@ export function usePostHistoryThreadGraph({
 
             const result = await task.promise;
             childrenTasksByKey.delete(key);
-            if (activeRequestId !== requestId || !getShow()) {
+            if (
+                activeGraphRequestId !== requestId ||
+                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                !getShow()
+            ) {
                 return;
             }
 
@@ -1266,7 +1293,11 @@ export function usePostHistoryThreadGraph({
             const nextRecords = await filterVisibleReplyRecords(
                 await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId),
             );
-            if (activeRequestId !== requestId || !getShow()) {
+            if (
+                activeGraphRequestId !== requestId ||
+                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                !getShow()
+            ) {
                 return;
             }
 
@@ -1276,13 +1307,21 @@ export function usePostHistoryThreadGraph({
             updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadedChildren: true,
-                visibleChildren: hasReplies && latestExpansion.visibleChildren,
+                visibleChildren: hasReplies && !options.prefetchOnly && latestExpansion.visibleChildren,
                 loadingChildren: false,
                 childrenError: null,
                 lastFetchedChildrenAt: Date.now(),
             }));
+            childrenRequestIdsByKey.delete(key);
+            if (!options.prefetchOnly) {
+                void prefetchChildReplyCounts(post, nodeEventId);
+            }
         } catch {
-            if (activeRequestId !== requestId || !getShow()) {
+            if (
+                activeGraphRequestId !== requestId ||
+                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                !getShow()
+            ) {
                 return;
             }
 
@@ -1290,13 +1329,49 @@ export function usePostHistoryThreadGraph({
                 ...state,
                 loadingChildren: false,
                 visibleChildren: false,
-                childrenError: "fetch_failed",
+                childrenError: options.prefetchOnly ? null : "fetch_failed",
             }));
+            childrenRequestIdsByKey.delete(key);
         }
     }
 
     async function loadChildren(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
         await loadChildrenForNode(post, post.eventId, options);
+    }
+
+    async function prefetchChildReplyCounts(
+        post: PostHistoryRecord,
+        parentNodeEventId: string,
+    ): Promise<void> {
+        const candidateEventIds = toVisibleChildEventIds(parentNodeEventId)
+            .filter((eventId) => {
+                const expansion = getExpansion(post.eventId, eventId);
+                return !expansion.loadedChildren && !expansion.loadingChildren;
+            })
+            .slice(0, POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT);
+        if (candidateEventIds.length === 0) {
+            return;
+        }
+
+        let nextIndex = 0;
+        const workerCount = Math.min(
+            POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY,
+            candidateEventIds.length,
+        );
+        const runWorker = async (): Promise<void> => {
+            while (getShow()) {
+                const index = nextIndex;
+                nextIndex += 1;
+                const eventId = candidateEventIds[index];
+                if (!eventId) {
+                    return;
+                }
+
+                await loadChildrenForNode(post, eventId, { prefetchOnly: true });
+            }
+        };
+
+        await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
     }
 
     async function upsertReplyRecords(
@@ -1471,6 +1546,7 @@ export function usePostHistoryThreadGraph({
         deletionTasksByKey.forEach((task) => task.cancel());
         parentTasksByKey.clear();
         childrenTasksByKey.clear();
+        childrenRequestIdsByKey.clear();
         deletionTasksByKey.clear();
         parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
         parentLoadingDelayTimersByKey.clear();
