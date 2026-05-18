@@ -15,7 +15,8 @@
     let { event, profile = null, children = undefined }: Props = $props();
 
     let authorName = $derived.by(() => {
-        const displayName = profile?.displayName?.trim() || profile?.name?.trim();
+        const displayName =
+            profile?.displayName?.trim() || profile?.name?.trim();
         if (displayName) {
             return displayName;
         }
@@ -38,7 +39,10 @@
                 alt={authorName}
             />
         {:else}
-            <span class="post-history-related-avatar-placeholder" aria-hidden="true"></span>
+            <span
+                class="post-history-related-avatar-placeholder"
+                aria-hidden="true"
+            ></span>
         {/if}
         <span class="post-history-related-author-name">{authorName}</span>
     </div>
@@ -51,8 +55,8 @@
 <style>
     .post-history-related-card {
         display: grid;
-        gap: 6px;
-        padding: 8px 10px;
+        gap: 4px;
+        padding: 2px 10px 0;
         border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         color: var(--text);

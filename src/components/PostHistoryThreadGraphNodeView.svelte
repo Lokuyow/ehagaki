@@ -66,7 +66,10 @@
     }
 </script>
 
-<div class="post-history-thread-node-view" style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}`}>
+<div
+    class="post-history-thread-node-view"
+    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}`}
+>
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
             {#if state.parentExpansion.visibleParent && state.parentExpansion.loadingParent && state.parentExpansion.showParentLoadingIndicator}
@@ -92,7 +95,9 @@
                     {$_("postHistory.contextNotFound")}
                 </p>
             {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentError}
-                <p class="post-history-context-message post-history-context-error">
+                <p
+                    class="post-history-context-message post-history-context-error"
+                >
                     {$_("postHistory.contextFetchFailed")}
                 </p>
                 <Button
@@ -145,7 +150,7 @@
 <style>
     .post-history-thread-node-view {
         display: grid;
-        gap: 6px;
+        gap: 2px;
     }
 
     .post-history-thread-node-parent,

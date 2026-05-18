@@ -47,9 +47,7 @@
                 onRetryChildren={onRetryNodeChildren}
             />
         {:else if state.parentExpansion.visibleParent && state.parentNode}
-            <PostHistoryThreadNode
-                node={state.parentNode}
-            />
+            <PostHistoryThreadNode node={state.parentNode} />
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
             <span class="post-history-context-deleted-label">
                 {$_("postHistory.replyTargetDeleted")}
@@ -118,7 +116,6 @@
 
     .post-history-thread-replies-list {
         display: grid;
-        gap: 6px;
     }
 
     .post-history-context-actions {
