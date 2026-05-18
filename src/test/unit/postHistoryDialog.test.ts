@@ -134,6 +134,10 @@ const replyFetchServiceMock = vi.hoisted(() => ({
     fetchDirectReplies: vi.fn(),
 }));
 
+const contextFetchServiceMock = vi.hoisted(() => ({
+    fetchEventById: vi.fn(),
+}));
+
 const deletionFetchServiceMock = vi.hoisted(() => ({
     fetchDeletionRequests: vi.fn(),
 }));
@@ -303,6 +307,10 @@ vi.mock('../../lib/postHistoryReplyFetchService', () => ({
     POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT: 100,
     POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS: 86_400,
     postHistoryReplyFetchService: replyFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryContextFetchService', () => ({
+    postHistoryContextFetchService: contextFetchServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryDeletionFetchService', () => ({
@@ -607,6 +615,13 @@ describe('PostHistoryDialog', () => {
             }),
             cancel: vi.fn(),
         });
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: null,
+                relayUrl: null,
+            }),
+            cancel: vi.fn(),
+        });
         deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
             promise: Promise.resolve({
                 events: [],
@@ -811,6 +826,152 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('返信先の投稿')).toBeTruthy();
         });
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] 既存tombstoneがある返信先は表示しない', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deletedTargets = new Map<string, Set<string>>([
+            [parentRecord.pubkeyHex, new Set([replyId])],
+        ]);
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? parentRecord : null,
+        );
+        deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(deletedTargets);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+        });
+        expect(deletionFetchServiceMock.fetchDeletionRequests).not.toHaveBeenCalled();
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] pubkey不一致のkind:5は返信先を削除済み扱いにしない', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? parentRecord : null,
+        );
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{
+                    event: createDeletionEvent({
+                        targetEventId: replyId,
+                        pubkey: '9'.repeat(64),
+                    }),
+                    relayUrls: ['wss://relay.example.com/'],
+                }],
+                fetchedAt: 1_700_000_050,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+        expect(deletionRequestsRepositoryMock.upsertValidDeletionRequests).toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] network取得した返信先にvalid kind:5があれば保存して表示しない', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deletedTargets = new Map<string, Set<string>>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockImplementation(async () => deletedTargets);
+        deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockImplementation(async ({ targetEvents, deletionEvents }: any) => {
+            for (const item of deletionEvents) {
+                for (const targetEvent of targetEvents) {
+                    const hasTargetTag = item.event.tags.some((tag: string[]) =>
+                        tag[0] === 'e' && tag[1] === targetEvent.id,
+                    );
+                    if (item.event.kind === 5 && item.event.pubkey === targetEvent.pubkey && hasTargetTag) {
+                        const eventIds = deletedTargets.get(targetEvent.pubkey) ?? new Set<string>();
+                        eventIds.add(targetEvent.id);
+                        deletedTargets.set(targetEvent.pubkey, eventIds);
+                    }
+                }
+            }
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: parentRecord.rawEvent,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        });
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{
+                    event: createDeletionEvent({
+                        targetEventId: replyId,
+                        pubkey: parentRecord.pubkeyHex,
+                    }),
+                    relayUrls: ['wss://relay.example.com/'],
+                }],
+                fetchedAt: 1_700_000_050,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+        });
+        expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalled();
+        expect(deletionRequestsRepositoryMock.upsertValidDeletionRequests).toHaveBeenCalledWith(expect.objectContaining({
+            targetEvents: [parentRecord.rawEvent],
+            deletionEvents: [expect.objectContaining({
+                event: expect.objectContaining({ kind: 5, pubkey: parentRecord.pubkeyHex }),
+            })],
+        }));
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 

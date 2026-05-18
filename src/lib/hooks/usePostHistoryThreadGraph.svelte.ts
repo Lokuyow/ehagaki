@@ -448,7 +448,10 @@ export function usePostHistoryThreadGraph({
         }
     }
 
-    async function isHiddenOrDeletedReplyEvent(event: NostrEvent): Promise<boolean> {
+    async function isHiddenOrDeletedEvent(
+        event: NostrEvent,
+        options: { checkPostHistoryRepository?: boolean } = {},
+    ): Promise<boolean> {
         if (!event?.id) {
             return true;
         }
@@ -457,12 +460,15 @@ export function usePostHistoryThreadGraph({
             return true;
         }
 
+        if (options.checkPostHistoryRepository === false) {
+            return false;
+        }
+
         try {
             const record = await postHistoryRepositoryImpl.getByEventId(event.id);
             if (typeof record?.deletedAt === "number") {
                 hideEvent(event.pubkey, event.id);
                 removeEventIdFromChildren(event.id);
-                await replyEventsRepositoryImpl.deleteByEventId(event.id);
                 return true;
             }
         } catch {
@@ -543,7 +549,7 @@ export function usePostHistoryThreadGraph({
         await loadDeletedTargetsFromRepository(events);
         const visibleEvents: NostrEvent[] = [];
         for (const event of events) {
-            if (await isHiddenOrDeletedReplyEvent(event)) {
+            if (await isHiddenOrDeletedEvent(event)) {
                 await replyEventsRepositoryImpl.deleteByEventId(event.id);
                 continue;
             }
@@ -587,6 +593,30 @@ export function usePostHistoryThreadGraph({
         }
 
         return visibleItems;
+    }
+
+    async function isVisibleParentEvent(input: {
+        anchorEventId: string;
+        event: NostrEvent;
+        relayHints: string[];
+        checkPostHistoryRepository?: boolean;
+    }): Promise<boolean> {
+        await loadDeletedTargetsFromRepository([input.event]);
+        if (await isHiddenOrDeletedEvent(input.event, {
+            checkPostHistoryRepository: input.checkPostHistoryRepository,
+        })) {
+            return false;
+        }
+
+        await fetchAndStoreDeletionRequests(
+            input.anchorEventId,
+            [input.event],
+            input.relayHints,
+        );
+        await loadDeletedTargetsFromRepository([input.event]);
+        return !(await isHiddenOrDeletedEvent(input.event, {
+            checkPostHistoryRepository: input.checkPostHistoryRepository,
+        }));
     }
 
     async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
@@ -636,13 +666,40 @@ export function usePostHistoryThreadGraph({
 
         if (existingRecord) {
             const event = toEventFromPostHistoryRecord(existingRecord);
+            const parentRelayHints = sanitizeRelayUrls([
+                ...existingRecord.relayHints,
+                ...existingRecord.acceptedRelays,
+                ...(existingRecord.fetchedRelays ?? []),
+                ...getParentRelayHints(post, anchorNode),
+            ]);
+            const isVisibleParent = await isVisibleParentEvent({
+                anchorEventId: post.eventId,
+                event,
+                relayHints: parentRelayHints,
+                checkPostHistoryRepository: false,
+            });
+            if (activeRequestId !== requestId || !getShow()) {
+                clearParentLoadingDelayTimer(key);
+                return;
+            }
+
+            if (!isVisibleParent) {
+                clearParentLoadingDelayTimer(key);
+                updateExpansion(post.eventId, post.eventId, (state) => ({
+                    ...state,
+                    loadedParent: true,
+                    visibleParent: true,
+                    loadingParent: false,
+                    parentMissing: true,
+                    showParentLoadingIndicator: false,
+                    lastFetchedParentAt: Date.now(),
+                }));
+                return;
+            }
+
             const node = await upsertNodeWithProfile({
                 event,
-                relayUrls: sanitizeRelayUrls([
-                    ...existingRecord.relayHints,
-                    ...existingRecord.acceptedRelays,
-                    ...(existingRecord.fetchedRelays ?? []),
-                ]),
+                relayUrls: parentRelayHints,
                 sources: ["history-record", "fetched-parent"],
             });
             upsertParentEdge(node.eventId, node.parentEventId);
@@ -700,9 +757,36 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
+        const fetchedParentRelayHints = sanitizeRelayUrls([
+            ...(result.relayUrl ? [result.relayUrl] : []),
+            ...getParentRelayHints(post, anchorNode),
+        ]);
+        const isVisibleParent = await isVisibleParentEvent({
+            anchorEventId: post.eventId,
+            event: result.event,
+            relayHints: fetchedParentRelayHints,
+        });
+        if (activeRequestId !== requestId || !getShow()) {
+            return;
+        }
+
+        if (!isVisibleParent) {
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadedParent: true,
+                visibleParent: true,
+                loadingParent: false,
+                parentMissing: true,
+                parentError: null,
+                showParentLoadingIndicator: false,
+                lastFetchedParentAt: Date.now(),
+            }));
+            return;
+        }
+
         const node = await upsertNodeWithProfile({
             event: result.event,
-            relayUrls: result.relayUrl ? [result.relayUrl] : [],
+            relayUrls: fetchedParentRelayHints,
             sources: ["fetched-parent"],
         });
         upsertParentEdge(node.eventId, node.parentEventId);
