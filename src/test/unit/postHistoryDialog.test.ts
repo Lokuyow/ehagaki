@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
@@ -122,6 +122,7 @@ const repositoryMock = vi.hoisted(() => ({
 const replyEventsRepositoryMock = vi.hoisted(() => ({
     getDirectReplies: vi.fn(),
     upsertDirectReplies: vi.fn(),
+    deleteByEventId: vi.fn(),
 }));
 
 const replyFetchServiceMock = vi.hoisted(() => ({
@@ -559,6 +560,7 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
             ignoredCount: 0,
         });
+        replyEventsRepositoryMock.deleteByEventId.mockResolvedValue(undefined);
         replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
             promise: Promise.resolve({
                 events: [],
@@ -1302,6 +1304,173 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByText('0')).toBeNull();
+    });
+
+    it('[direct-replies-delete] 削除済みdirect replyをgraph stateと再取得mergeから除外する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const replyBEventId = '4'.repeat(64);
+        const replyCEventId = '6'.repeat(64);
+        const parentPost = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const replyBRecord = createRecord({
+            eventId: replyBEventId,
+            id: replyBEventId,
+            rawEvent: {
+                id: replyBEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '削除対象返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'b'.repeat(128),
+            },
+            content: '削除対象返信B',
+            tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+            createdAt: 1_700_000_010,
+            postedAt: Date.UTC(2024, 0, 2, 3, 5, 0),
+            media: [],
+        });
+        const replyB = createDirectReplyEventRecord({
+            eventId: replyBEventId,
+            authorPubkey: 'a'.repeat(64),
+            content: '削除対象返信B',
+            rawEvent: replyBRecord.rawEvent,
+        });
+        const replyC = createDirectReplyEventRecord({
+            eventId: replyCEventId,
+            content: '残る返信C',
+            rawEvent: {
+                id: replyCEventId,
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '残る返信C',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'f'.repeat(128),
+            },
+        });
+        let storedReplies: any[] = [];
+        let deletedReplyB = false;
+        let fetchCount = 0;
+
+        repositoryMock.getPage.mockResolvedValue([parentPost, replyBRecord]);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) => {
+            if (eventId === replyBEventId && deletedReplyB) {
+                return { ...replyBRecord, deletedAt: 1_700_000_100 };
+            }
+
+            return eventId === replyBEventId ? replyBRecord : null;
+        });
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => storedReplies);
+        replyEventsRepositoryMock.deleteByEventId.mockImplementation(async (eventId: string) => {
+            storedReplies = storedReplies.filter((reply) => reply.eventId !== eventId);
+        });
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ events }: any) => {
+            for (const item of events) {
+                const event = item.event;
+                if (!storedReplies.some((reply) => reply.eventId === event.id)) {
+                    storedReplies = [
+                        ...storedReplies,
+                        event.id === replyBEventId ? replyB : replyC,
+                    ];
+                }
+            }
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockImplementation(() => {
+            fetchCount += 1;
+            return {
+                promise: Promise.resolve({
+                    events: [
+                        { event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                    ],
+                    fetchedAt: 1_700_000_030 + fetchCount,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            };
+        });
+        postDeletionServiceMock.requestDeletion.mockImplementation(async () => {
+            deletedReplyB = true;
+            return {
+                success: true,
+                eventId: 'delete-event-id',
+                deletionEventId: 'delete-event-id',
+                deletedAt: 1_700_000_100,
+            };
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await screen.findByText('親投稿A');
+        const parentHistoryItem = document.querySelector(`[data-post-history-event-id="${parentEventId}"]`);
+        expect(parentHistoryItem).toBeTruthy();
+        const parentQueries = within(parentHistoryItem as HTMLElement);
+
+        await fireEvent.click(await parentQueries.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getAllByText('削除対象返信B')).toHaveLength(2);
+            expect(screen.getByText('残る返信C')).toBeTruthy();
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+        });
+
+        const replyHistoryItem = document.querySelector(`[data-post-history-event-id="${replyBEventId}"]`);
+        expect(replyHistoryItem).toBeTruthy();
+        await fireEvent.click(within(replyHistoryItem as HTMLElement).getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
+
+        await waitFor(() => {
+            expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(replyBEventId);
+            expect(screen.getAllByText('削除対象返信B')).toHaveLength(1);
+            expect(screen.getByText('残る返信C')).toBeTruthy();
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+        });
+
+        await fireEvent.click(parentQueries.getByRole('button', { name: '返信を隠す' }));
+        await waitFor(() => {
+            expect(parentQueries.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(parentQueries.getByRole('button', { name: '返信 1件を表示' }));
+        await waitFor(() => {
+            expect(fetchCount).toBe(2);
+            expect(screen.getAllByText('削除対象返信B')).toHaveLength(1);
+            expect(screen.getByText('残る返信C')).toBeTruthy();
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+        });
+        expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
+        expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
+        expect(screen.queryByText('0')).toBeNull();
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
     it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {

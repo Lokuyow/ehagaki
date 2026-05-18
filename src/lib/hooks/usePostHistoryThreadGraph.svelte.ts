@@ -81,7 +81,7 @@ interface UsePostHistoryThreadGraphParams {
     replyEventsAdapterImpl?: PostHistoryReplyEventsAdapter;
     replyEventsRepositoryImpl?: Pick<
         PostHistoryReplyEventsRepository,
-        "getDirectReplies" | "upsertDirectReplies"
+        "getDirectReplies" | "upsertDirectReplies" | "deleteByEventId"
     >;
     profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
     contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
@@ -122,6 +122,7 @@ export function usePostHistoryThreadGraph({
     let childrenByParentId = $state.raw<Record<string, string[]>>({});
     let expansionByAnchorNodeKey =
         $state.raw<Record<string, PostHistoryThreadGraphExpansionState>>({});
+    let hiddenEventIds = $state.raw<Record<string, true>>({});
     const parentTasksByKey = new Map<string, PostHistoryContextFetchTask>();
     const childrenTasksByKey = new Map<string, PostHistoryReplyFetchTask>();
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
@@ -173,7 +174,9 @@ export function usePostHistoryThreadGraph({
     function upsertChildren(parentEventId: string, childEventIds: string[]): void {
         const current = childrenByParentId[parentEventId] ?? [];
         const merged = sortEventIdsByEvent(
-            uniqueEventIds([...current, ...childEventIds]).filter((eventId) => eventId !== parentEventId),
+            uniqueEventIds([...current, ...childEventIds]).filter((eventId) =>
+                eventId !== parentEventId && !hiddenEventIds[eventId],
+            ),
             nodesById,
         );
 
@@ -310,6 +313,7 @@ export function usePostHistoryThreadGraph({
     ): PostHistoryThreadGraphReplyItem[] {
         const eventIds = childrenByParentId[anchorEventId] ?? [];
         return eventIds
+            .filter((eventId) => !hiddenEventIds[eventId])
             .map((eventId) => nodesById[eventId])
             .filter((node): node is PostHistoryThreadGraphNode => !!node)
             .map((node) => ({
@@ -346,6 +350,92 @@ export function usePostHistoryThreadGraph({
             },
             replyItems,
         };
+    }
+
+    function hideEventId(eventId: string): void {
+        if (!eventId || hiddenEventIds[eventId]) {
+            return;
+        }
+
+        hiddenEventIds = {
+            ...hiddenEventIds,
+            [eventId]: true,
+        };
+    }
+
+    function removeEventIdFromChildren(eventId: string): void {
+        const nextChildrenByParentId: Record<string, string[]> = {};
+        let changedChildren = false;
+        for (const [parentEventId, childEventIds] of Object.entries(childrenByParentId)) {
+            const nextChildEventIds = childEventIds.filter((childEventId) => childEventId !== eventId);
+            nextChildrenByParentId[parentEventId] = nextChildEventIds;
+            if (nextChildEventIds.length !== childEventIds.length) {
+                changedChildren = true;
+            }
+        }
+
+        if (changedChildren) {
+            childrenByParentId = nextChildrenByParentId;
+        }
+
+        if (parentByChildId[eventId]) {
+            const { [eventId]: _removed, ...nextParentByChildId } = parentByChildId;
+            parentByChildId = nextParentByChildId;
+        }
+    }
+
+    async function isHiddenOrDeletedReplyEventId(eventId: string): Promise<boolean> {
+        if (!eventId) {
+            return true;
+        }
+
+        if (hiddenEventIds[eventId]) {
+            return true;
+        }
+
+        try {
+            const record = await postHistoryRepositoryImpl.getByEventId(eventId);
+            if (typeof record?.deletedAt === "number") {
+                hideEventId(eventId);
+                removeEventIdFromChildren(eventId);
+                await replyEventsRepositoryImpl.deleteByEventId(eventId);
+                return true;
+            }
+        } catch {
+            // If the history lookup fails, keep the event visible; network/cache errors are handled elsewhere.
+        }
+
+        return false;
+    }
+
+    async function filterVisibleReplyRecords(
+        records: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[],
+    ): Promise<import("../storage/ehagakiDb").PostHistoryReplyEventRecord[]> {
+        const visibleRecords: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[] = [];
+        for (const record of records) {
+            if (await isHiddenOrDeletedReplyEventId(record.eventId)) {
+                continue;
+            }
+
+            visibleRecords.push(record);
+        }
+
+        return visibleRecords;
+    }
+
+    async function filterVisibleReplyItems(
+        items: Array<{ event: NostrEvent; relayUrls?: string[] }>,
+    ): Promise<Array<{ event: NostrEvent; relayUrls?: string[] }>> {
+        const visibleItems: Array<{ event: NostrEvent; relayUrls?: string[] }> = [];
+        for (const item of items) {
+            if (await isHiddenOrDeletedReplyEventId(item.event.id)) {
+                continue;
+            }
+
+            visibleItems.push(item);
+        }
+
+        return visibleItems;
     }
 
     async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
@@ -529,7 +619,9 @@ export function usePostHistoryThreadGraph({
         }));
 
         try {
-            const cachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            const cachedRecords = await filterVisibleReplyRecords(
+                await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId),
+            );
             if (activeRequestId !== requestId || !getShow()) {
                 return;
             }
@@ -575,12 +667,15 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
+            const fetchedEvents = await filterVisibleReplyItems(result.events);
             await replyEventsRepositoryImpl.upsertDirectReplies({
                 parentEventId: post.eventId,
-                events: result.events,
+                events: fetchedEvents,
                 fetchedAt: result.fetchedAt,
             });
-            const nextRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            const nextRecords = await filterVisibleReplyRecords(
+                await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId),
+            );
             if (activeRequestId !== requestId || !getShow()) {
                 return;
             }
@@ -617,6 +712,10 @@ export function usePostHistoryThreadGraph({
     ): Promise<void> {
         const childIds: string[] = [];
         for (const record of records) {
+            if (hiddenEventIds[record.eventId]) {
+                continue;
+            }
+
             const event = toEventFromReplyRecord(record);
             const node = await upsertNodeWithProfile({
                 event,
@@ -674,6 +773,10 @@ export function usePostHistoryThreadGraph({
             return false;
         }
 
+        if (await isHiddenOrDeletedReplyEventId(event.id)) {
+            return false;
+        }
+
         await replyEventsRepositoryImpl.upsertDirectReplies({
             parentEventId,
             events: [
@@ -684,7 +787,9 @@ export function usePostHistoryThreadGraph({
             ],
         });
 
-        const nextRecords = await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId);
+        const nextRecords = await filterVisibleReplyRecords(
+            await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId),
+        );
         if (!getShow()) {
             return false;
         }
@@ -698,6 +803,16 @@ export function usePostHistoryThreadGraph({
         }));
 
         return true;
+    }
+
+    async function recordDeletedEvent(eventId: string): Promise<void> {
+        if (!eventId) {
+            return;
+        }
+
+        hideEventId(eventId);
+        removeEventIdFromChildren(eventId);
+        await replyEventsRepositoryImpl.deleteByEventId(eventId);
     }
 
     function cancelCurrentGraphFetches(): void {
@@ -716,6 +831,7 @@ export function usePostHistoryThreadGraph({
         parentByChildId = {};
         childrenByParentId = {};
         expansionByAnchorNodeKey = {};
+        hiddenEventIds = {};
     }
 
     $effect(() => {
@@ -741,6 +857,7 @@ export function usePostHistoryThreadGraph({
         toggleChildren,
         retryChildren,
         recordPostedReply,
+        recordDeletedEvent,
         cancelCurrentGraphFetches,
         resetState,
     };

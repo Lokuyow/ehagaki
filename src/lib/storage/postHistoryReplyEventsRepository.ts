@@ -32,6 +32,7 @@ export interface UpsertPostHistoryReplyEventsResult {
 export interface PostHistoryReplyEventsRepository {
     getDirectReplies(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
     upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult>;
+    deleteByEventId(eventId: string): Promise<void>;
     deleteForParent(parentEventId: string): Promise<void>;
 }
 
@@ -227,6 +228,14 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
             .where("parentEventId")
             .equals(parentEventId)
             .delete();
+    }
+
+    async deleteByEventId(eventId: string): Promise<void> {
+        if (!eventId) {
+            return;
+        }
+
+        await this.db.postHistoryReplyEvents.delete(eventId);
     }
 }
 

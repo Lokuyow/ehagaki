@@ -127,4 +127,38 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
         db.close();
     });
+
+    it("eventId指定でdirect reply cacheだけを削除し、PostHistoryRecordには影響しない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const parentEventId = "1".repeat(64);
+        const deletedReply = createSignedEvent({
+            id: "2".repeat(64),
+            content: "deleted reply",
+            tags: [["e", parentEventId, "", "reply"]],
+            created_at: 200,
+        });
+        const remainingReply = createSignedEvent({
+            id: "3".repeat(64),
+            content: "remaining reply",
+            tags: [["e", parentEventId, "", "reply"]],
+            created_at: 210,
+        });
+
+        await repository.upsertDirectReplies({
+            parentEventId,
+            events: [
+                { event: deletedReply },
+                { event: remainingReply },
+            ],
+        });
+        await repository.deleteByEventId(deletedReply.id);
+
+        await expect(repository.getDirectReplies(parentEventId)).resolves.toMatchObject([
+            { eventId: remainingReply.id },
+        ]);
+        await expect(db.postHistory.count()).resolves.toBe(0);
+
+        db.close();
+    });
 });
