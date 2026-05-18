@@ -78,6 +78,7 @@ export interface PostHistoryThreadGraphNodeState {
     parentTargetId: string | null;
     parentNodeState: PostHistoryThreadGraphNodeState | null;
     parentExpansion: PostHistoryThreadGraphExpansionState;
+    parentAlreadyInPath: boolean;
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
     replyNodeStates: PostHistoryThreadGraphNodeState[];
     isOwnReply: boolean;
@@ -405,8 +406,12 @@ export function usePostHistoryThreadGraph({
         const nextPath = [...pathEventIds, nodeEventId];
         const expansion = getExpansion(anchorEventId, nodeEventId);
         const parentTargetId = node.parentEventId;
+        const parentAlreadyInPath = parentTargetId
+            ? pathEventIds.includes(parentTargetId)
+            : false;
         const parentNodeState = expansion.visibleParent
             && parentTargetId
+            && !parentAlreadyInPath
             && depthFromAnchor > -POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH
             ? getNodeState(
                 anchorEventId,
@@ -441,6 +446,7 @@ export function usePostHistoryThreadGraph({
             parentTargetId,
             parentNodeState,
             parentExpansion: expansion,
+            parentAlreadyInPath,
             repliesActionState: {
                 status: expansion.loadingChildren
                     ? "loading"

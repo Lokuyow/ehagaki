@@ -1534,13 +1534,7 @@ describe('PostHistoryDialog', () => {
             expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalled();
         });
         expect(screen.getAllByText('循環する関連投稿B')).toHaveLength(1);
-
-        await fireEvent.click(screen.getByRole('button', { name: '返信先を見る' }));
-        await waitFor(() => {
-            expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(2);
-        });
         expect(screen.getAllByText('自分の返信')).toHaveLength(1);
-        expect(screen.getAllByText('循環する関連投稿B')).toHaveLength(1);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
@@ -1635,6 +1629,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('他人からの返信B')).toBeTruthy();
         });
+        expect(screen.queryByRole('button', { name: '返信先を見る' })).toBeNull();
 
         await fireEvent.click(screen.getByRole('button', { name: '返信を確認' }));
         await waitFor(() => {

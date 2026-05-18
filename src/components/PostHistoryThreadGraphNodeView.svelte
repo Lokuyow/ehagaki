@@ -113,7 +113,7 @@
 
     <PostHistoryThreadNode node={state.node}>
         <div class="post-history-thread-node-actions">
-            {#if state.parentTargetId && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
+            {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <Button
                     type="button"
                     className="post-history-context-button"
