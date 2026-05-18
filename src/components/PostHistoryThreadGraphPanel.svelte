@@ -114,6 +114,11 @@
         padding-left: 1rem;
     }
 
+    .post-history-thread-parent-panel {
+        padding-left: 0;
+        padding-bottom: 4px;
+    }
+
     .post-history-thread-replies-list {
         display: grid;
     }
