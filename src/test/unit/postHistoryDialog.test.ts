@@ -1659,6 +1659,10 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
         });
+        expect(
+            within(screen.getByRole('button', { name: '返信 1件を表示' }))
+                .getByText('1'),
+        ).toBeTruthy();
         expect(screen.queryByText('返信Bへの返信C')).toBeNull();
         expect(
             Array.from(document.querySelectorAll('.post-preview-replies-count'))

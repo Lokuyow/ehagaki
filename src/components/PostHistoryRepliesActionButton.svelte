@@ -5,6 +5,7 @@
         status: "unloaded" | "loading" | "loaded" | "failed";
         visible: boolean;
         replies: unknown[];
+        replyCount: number;
     }
 
     interface Props {
@@ -31,9 +32,9 @@
         <span class="post-preview-replies-spinner" aria-hidden="true"></span>
     {:else}
         <span class="pageview-icon svg-icon" aria-hidden="true"></span>
-        {#if state.status === "loaded" && state.replies.length > 0}
+        {#if state.status === "loaded" && state.replyCount > 0}
             <span class="post-preview-replies-count" aria-hidden="true">
-                {state.replies.length}
+                {state.replyCount}
             </span>
         {/if}
     {/if}

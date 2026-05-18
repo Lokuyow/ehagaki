@@ -34,7 +34,7 @@
         }
 
         if (actionState.status === "loaded") {
-            const count = actionState.replies.length;
+            const count = actionState.replyCount;
             if (count === 0) {
                 return $_("postHistory.recheckReplies");
             }
@@ -56,7 +56,7 @@
         if (
             actionState.status === "failed" ||
             (actionState.status === "loaded" &&
-                (actionState.replies.length === 0 || !actionState.visible))
+                (actionState.replyCount === 0 || !actionState.visible))
         ) {
             onRetryChildren?.(state.node.eventId);
             return;

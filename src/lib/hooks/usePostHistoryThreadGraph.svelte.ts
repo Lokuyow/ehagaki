@@ -69,6 +69,7 @@ export interface PostHistoryThreadGraphRepliesActionState {
     status: PostHistoryThreadGraphRepliesStatus;
     visible: boolean;
     replies: Array<PostHistoryThreadGraphReplyItem | string>;
+    replyCount: number;
     error: string | null;
 }
 
@@ -123,6 +124,7 @@ function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionSt
         status: "unloaded",
         visible: false,
         replies: [],
+        replyCount: 0,
         error: null,
     };
 }
@@ -427,6 +429,7 @@ export function usePostHistoryThreadGraph({
             )
             : null;
         const childEventIds = toVisibleChildEventIds(nodeEventId);
+        const childReplyCount = childEventIds.length;
         const replyNodeStates = expansion.visibleChildren
             && depthFromAnchor < POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH
             ? childEventIds
@@ -461,6 +464,7 @@ export function usePostHistoryThreadGraph({
                             : "unloaded",
                 visible: expansion.visibleChildren,
                 replies: childEventIds,
+                replyCount: childReplyCount,
                 error: expansion.childrenError,
             },
             replyNodeStates,
@@ -475,6 +479,7 @@ export function usePostHistoryThreadGraph({
         const expansion = getExpansion(post.eventId, post.eventId);
         const currentPubkey = getPubkeyHex() ?? post.pubkeyHex;
         const replyItems = toReplyItems(post.eventId, currentPubkey);
+        const replyCount = toVisibleChildEventIds(post.eventId).length;
         const renderedEventIds = new Set([post.eventId]);
         const parentTargetId = anchorNode.parentEventId;
         const parentNodeCandidate = parentTargetId ? nodesById[parentTargetId] ?? null : null;
@@ -510,6 +515,7 @@ export function usePostHistoryThreadGraph({
                             : "unloaded",
                 visible: expansion.visibleChildren,
                 replies: replyItems,
+                replyCount,
                 error: expansion.childrenError,
             },
             replyItems,

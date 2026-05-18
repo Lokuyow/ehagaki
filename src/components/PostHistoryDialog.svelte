@@ -1129,7 +1129,7 @@
         }
 
         if (state.status === "loaded") {
-            const count = state.replies.length;
+            const count = state.replyCount;
             if (count === 0) {
                 return $_("postHistory.recheckReplies");
             }
@@ -1151,7 +1151,7 @@
         if (
             state.status === "failed" ||
             (state.status === "loaded" &&
-                (state.replies.length === 0 || !state.visible))
+                (state.replyCount === 0 || !state.visible))
         ) {
             postHistoryThreadGraph.retryChildren(post);
             return;
