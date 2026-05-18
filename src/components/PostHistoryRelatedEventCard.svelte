@@ -1,5 +1,6 @@
 <script lang="ts">
     import { nip19 } from "nostr-tools";
+    import type { Snippet } from "svelte";
     import type { NostrEvent, ProfileData } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
@@ -8,9 +9,10 @@
     interface Props {
         event: NostrEvent;
         profile?: ProfileData | null;
+        children?: Snippet;
     }
 
-    let { event, profile = null }: Props = $props();
+    let { event, profile = null, children = undefined }: Props = $props();
 
     let authorName = $derived.by(() => {
         const displayName = profile?.displayName?.trim() || profile?.name?.trim();
@@ -43,6 +45,7 @@
     {#if content}
         <p class="post-history-related-content">{content}</p>
     {/if}
+    {@render children?.()}
 </article>
 
 <style>

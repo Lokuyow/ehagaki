@@ -106,26 +106,26 @@
         </div>
     {/if}
 
-    <PostHistoryThreadNode node={state.node} />
-
-    <div class="post-history-thread-node-actions">
-        {#if state.parentTargetId && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
-            <Button
-                type="button"
-                className="post-history-context-button"
-                onClick={() => onToggleParent?.(state.node.eventId)}
-            >
-                {state.parentExpansion.visibleParent
-                    ? $_("postHistory.hideReplyTarget")
-                    : $_("postHistory.showReplyTarget")}
-            </Button>
-        {/if}
-        <PostHistoryRepliesActionButton
-            state={state.repliesActionState}
-            ariaLabel={getRepliesActionLabel()}
-            onClick={handleRepliesAction}
-        />
-    </div>
+    <PostHistoryThreadNode node={state.node}>
+        <div class="post-history-thread-node-actions">
+            {#if state.parentTargetId && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
+                <Button
+                    type="button"
+                    className="post-history-context-button"
+                    onClick={() => onToggleParent?.(state.node.eventId)}
+                >
+                    {state.parentExpansion.visibleParent
+                        ? $_("postHistory.hideReplyTarget")
+                        : $_("postHistory.showReplyTarget")}
+                </Button>
+            {/if}
+            <PostHistoryRepliesActionButton
+                state={state.repliesActionState}
+                ariaLabel={getRepliesActionLabel()}
+                onClick={handleRepliesAction}
+            />
+        </div>
+    </PostHistoryThreadNode>
 
     {#if state.repliesActionState.visible && state.replyNodeStates.length > 0}
         <div class="post-history-thread-node-children">
