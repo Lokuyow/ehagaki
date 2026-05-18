@@ -5,6 +5,7 @@
     import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
+    import { formatPostedAt } from "../lib/postHistoryDialogUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
 
     interface Props {
@@ -22,6 +23,8 @@
         onToggleChildren = undefined,
         onRetryChildren = undefined,
     }: Props = $props();
+
+    let postedAt = $derived(formatPostedAt(state.node.event.created_at * 1000));
 
     function getRepliesActionLabel(): string {
         const actionState = state.repliesActionState;
@@ -111,7 +114,7 @@
         </div>
     {/if}
 
-    <PostHistoryThreadNode node={state.node}>
+    <PostHistoryThreadNode node={state.node} showHeaderDate={false}>
         {#snippet topActions()}
             {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <div class="post-history-thread-node-top-actions">
@@ -129,6 +132,7 @@
         {/snippet}
 
         <div class="post-history-thread-node-actions">
+            <span class="post-history-related-date">{postedAt}</span>
             <PostHistoryRepliesActionButton
                 state={state.repliesActionState}
                 ariaLabel={getRepliesActionLabel()}
@@ -170,6 +174,12 @@
         align-items: center;
         gap: 6px;
         min-height: 28px;
+    }
+
+    :global(.post-history-thread-node-actions > .post-history-related-date) {
+        margin-right: auto;
+        color: var(--text-muted);
+        font-size: 0.78rem;
     }
 
     :global(.post-history-context-button) {

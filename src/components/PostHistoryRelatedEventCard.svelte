@@ -9,6 +9,7 @@
     interface Props {
         event: NostrEvent;
         profile?: ProfileData | null;
+        showHeaderDate?: boolean;
         topActions?: Snippet;
         children?: Snippet;
     }
@@ -16,6 +17,7 @@
     let {
         event,
         profile = null,
+        showHeaderDate = true,
         topActions = undefined,
         children = undefined,
     }: Props = $props();
@@ -35,9 +37,11 @@
 
 <article class="post-history-related-card">
     {@render topActions?.()}
-    <header class="post-history-related-card-header">
-        <span class="post-history-related-date">{postedAt}</span>
-    </header>
+    {#if showHeaderDate}
+        <header class="post-history-related-card-header">
+            <span class="post-history-related-date">{postedAt}</span>
+        </header>
+    {/if}
     <div class="post-history-related-author">
         {#if profile?.picture}
             <img
