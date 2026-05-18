@@ -68,17 +68,32 @@ export interface PostHistoryThreadGraphReplyItem {
 export interface PostHistoryThreadGraphRepliesActionState {
     status: PostHistoryThreadGraphRepliesStatus;
     visible: boolean;
-    replies: PostHistoryThreadGraphReplyItem[];
+    replies: Array<PostHistoryThreadGraphReplyItem | string>;
     error: string | null;
+}
+
+export interface PostHistoryThreadGraphNodeState {
+    anchorEventId: string;
+    node: PostHistoryThreadGraphNode;
+    parentTargetId: string | null;
+    parentNodeState: PostHistoryThreadGraphNodeState | null;
+    parentExpansion: PostHistoryThreadGraphExpansionState;
+    repliesActionState: PostHistoryThreadGraphRepliesActionState;
+    replyNodeStates: PostHistoryThreadGraphNodeState[];
+    isOwnReply: boolean;
+    depthFromAnchor: number;
+    cycleDetected: boolean;
 }
 
 export interface PostHistoryThreadGraphAnchorState {
     anchorEventId: string;
     parentTargetId: string | null;
     parentNode: PostHistoryThreadGraphNode | null;
+    parentNodeState: PostHistoryThreadGraphNodeState | null;
     parentExpansion: PostHistoryThreadGraphExpansionState;
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
     replyItems: PostHistoryThreadGraphReplyItem[];
+    replyNodeStates: PostHistoryThreadGraphNodeState[];
 }
 
 interface UsePostHistoryThreadGraphParams {
@@ -118,6 +133,9 @@ function sanitizeRelayUrls(urls: string[]): string[] {
 function uniqueEventIds(eventIds: string[]): string[] {
     return Array.from(new Set(eventIds));
 }
+
+const POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH = 20;
+const POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH = 20;
 
 export function usePostHistoryThreadGraph({
     getShow,
@@ -358,21 +376,130 @@ export function usePostHistoryThreadGraph({
             }));
     }
 
+    function toVisibleChildEventIds(parentEventId: string): string[] {
+        return (childrenByParentId[parentEventId] ?? [])
+            .filter((eventId) => {
+                const node = nodesById[eventId];
+                return node && !isDeletedEvent(node.authorPubkey, node.eventId);
+            });
+    }
+
+    function getNodeState(
+        anchorEventId: string,
+        nodeEventId: string,
+        currentPubkey: string,
+        pathEventIds: string[] = [],
+        depthFromAnchor = 0,
+    ): PostHistoryThreadGraphNodeState | null {
+        const node = nodesById[nodeEventId];
+        if (!node || isDeletedEvent(node.authorPubkey, node.eventId)) {
+            return null;
+        }
+
+        if (pathEventIds.includes(nodeEventId)) {
+            return {
+                anchorEventId,
+                node,
+                parentTargetId: node.parentEventId,
+                parentNodeState: null,
+                parentExpansion: getExpansion(anchorEventId, nodeEventId),
+                repliesActionState: {
+                    status: "loaded",
+                    visible: false,
+                    replies: [],
+                    error: null,
+                },
+                replyNodeStates: [],
+                isOwnReply: node.authorPubkey === currentPubkey,
+                depthFromAnchor,
+                cycleDetected: true,
+            };
+        }
+
+        const nextPath = [...pathEventIds, nodeEventId];
+        const expansion = getExpansion(anchorEventId, nodeEventId);
+        const parentTargetId = node.parentEventId;
+        const parentNodeState = expansion.visibleParent
+            && parentTargetId
+            && depthFromAnchor > -POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH
+            ? getNodeState(
+                anchorEventId,
+                parentTargetId,
+                currentPubkey,
+                nextPath,
+                depthFromAnchor - 1,
+            )
+            : null;
+        const childEventIds = toVisibleChildEventIds(nodeEventId);
+        const replyNodeStates = expansion.visibleChildren
+            && depthFromAnchor < POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH
+            ? childEventIds
+                .map((childEventId) =>
+                    getNodeState(
+                        anchorEventId,
+                        childEventId,
+                        currentPubkey,
+                        nextPath,
+                        depthFromAnchor + 1,
+                    ))
+                .filter((childState): childState is PostHistoryThreadGraphNodeState =>
+                    childState !== null,
+                )
+            : [];
+
+        return {
+            anchorEventId,
+            node,
+            parentTargetId,
+            parentNodeState,
+            parentExpansion: expansion,
+            repliesActionState: {
+                status: expansion.loadingChildren
+                    ? "loading"
+                    : expansion.childrenError
+                        ? "failed"
+                        : expansion.loadedChildren
+                            ? "loaded"
+                            : "unloaded",
+                visible: expansion.visibleChildren,
+                replies: childEventIds,
+                error: expansion.childrenError,
+            },
+            replyNodeStates,
+            isOwnReply: node.authorPubkey === currentPubkey,
+            depthFromAnchor,
+            cycleDetected: false,
+        };
+    }
+
     function getAnchorState(post: PostHistoryRecord): PostHistoryThreadGraphAnchorState {
         const anchorNode = nodesById[post.eventId] ?? buildAnchorNodeFromPost(post);
         const expansion = getExpansion(post.eventId, post.eventId);
-        const replyItems = toReplyItems(post.eventId, getPubkeyHex() ?? post.pubkeyHex);
+        const currentPubkey = getPubkeyHex() ?? post.pubkeyHex;
+        const replyItems = toReplyItems(post.eventId, currentPubkey);
         const parentTargetId = anchorNode.parentEventId;
         const parentNodeCandidate = parentTargetId ? nodesById[parentTargetId] ?? null : null;
         const parentNode = parentNodeCandidate
             && !isDeletedEvent(parentNodeCandidate.authorPubkey, parentNodeCandidate.eventId)
             ? parentNodeCandidate
             : null;
+        const parentNodeState = parentNode && expansion.visibleParent
+            ? getNodeState(post.eventId, parentNode.eventId, currentPubkey, [post.eventId], -1)
+            : null;
+        const replyNodeStates = expansion.visibleChildren
+            ? toVisibleChildEventIds(post.eventId)
+                .map((eventId) =>
+                    getNodeState(post.eventId, eventId, currentPubkey, [post.eventId], 1))
+                .filter((nodeState): nodeState is PostHistoryThreadGraphNodeState =>
+                    nodeState !== null,
+                )
+            : [];
 
         return {
             anchorEventId: post.eventId,
             parentTargetId,
             parentNode,
+            parentNodeState,
             parentExpansion: expansion,
             repliesActionState: {
                 status: expansion.loadingChildren
@@ -387,6 +514,7 @@ export function usePostHistoryThreadGraph({
                 error: expansion.childrenError,
             },
             replyItems,
+            replyNodeStates,
         };
     }
 
@@ -422,6 +550,7 @@ export function usePostHistoryThreadGraph({
         authorPubkey: string | null | undefined,
         options: { revealKnownParent?: boolean } = {},
     ): void {
+        const affectedChildEventIds = new Set<string>();
         for (const [childEventId, parentEventId] of Object.entries(parentByChildId)) {
             if (parentEventId !== eventId) {
                 continue;
@@ -432,13 +561,30 @@ export function usePostHistoryThreadGraph({
                 continue;
             }
 
-            const key = buildAnchorNodeKey(childEventId, childEventId);
-            const current = expansionByAnchorNodeKey[key];
+            affectedChildEventIds.add(childEventId);
+        }
+
+        if (affectedChildEventIds.size === 0) {
+            return;
+        }
+
+        for (const [key, current] of Object.entries(expansionByAnchorNodeKey)) {
+            const separatorIndex = key.indexOf(":");
+            if (separatorIndex < 0) {
+                continue;
+            }
+
+            const anchorEventId = key.slice(0, separatorIndex);
+            const nodeEventId = key.slice(separatorIndex + 1);
+            if (!affectedChildEventIds.has(nodeEventId)) {
+                continue;
+            }
+
             if (!current?.loadedParent && !current?.visibleParent) {
                 continue;
             }
 
-            updateExpansion(childEventId, childEventId, (state) => ({
+            updateExpansion(anchorEventId, nodeEventId, (state) => ({
                 ...state,
                 loadedParent: true,
                 visibleParent: options.revealKnownParent ? true : state.visibleParent,
@@ -721,9 +867,9 @@ export function usePostHistoryThreadGraph({
         return isDeletedEvent(input.authorHint, input.parentEventId);
     }
 
-    function setParentDeleted(anchorEventId: string): void {
-        clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, anchorEventId));
-        updateExpansion(anchorEventId, anchorEventId, (state) => ({
+    function setParentDeleted(anchorEventId: string, nodeEventId: string = anchorEventId): void {
+        clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, nodeEventId));
+        updateExpansion(anchorEventId, nodeEventId, (state) => ({
             ...state,
             loadedParent: true,
             visibleParent: true,
@@ -736,34 +882,44 @@ export function usePostHistoryThreadGraph({
         }));
     }
 
-    async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
-        const anchorNode = ensureAnchorNode(post);
-        const parentEventId = anchorNode.parentEventId;
+    async function loadParentForNode(
+        post: PostHistoryRecord,
+        nodeEventId: string,
+        options: { force?: boolean } = {},
+    ): Promise<void> {
+        const currentNode = nodeEventId === post.eventId
+            ? ensureAnchorNode(post)
+            : nodesById[nodeEventId];
+        if (!currentNode) {
+            return;
+        }
+
+        const parentEventId = currentNode.parentEventId;
         if (!parentEventId) {
             return;
         }
 
-        const currentExpansion = getExpansion(post.eventId, post.eventId);
+        const currentExpansion = getExpansion(post.eventId, nodeEventId);
         if (currentExpansion.loadingParent) {
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleParent: true,
                 showParentLoadingIndicator: false,
             }));
-            scheduleParentLoadingIndicator(post.eventId, post.eventId);
+            scheduleParentLoadingIndicator(post.eventId, nodeEventId);
             return;
         }
 
         if (!options.force && currentExpansion.loadedParent) {
             const cachedParentNode = nodesById[parentEventId] ?? null;
             if (currentExpansion.parentDeleted) {
-                setParentDeleted(post.eventId);
+                setParentDeleted(post.eventId, nodeEventId);
                 return;
             }
 
             if (cachedParentNode) {
                 if (isDeletedEvent(cachedParentNode.authorPubkey, cachedParentNode.eventId)) {
-                    setParentDeleted(post.eventId);
+                    setParentDeleted(post.eventId, nodeEventId);
                     return;
                 }
 
@@ -772,7 +928,7 @@ export function usePostHistoryThreadGraph({
                     event: cachedParentNode.event,
                     relayHints: sanitizeRelayUrls([
                         ...cachedParentNode.relayUrls,
-                        ...getParentRelayHints(post, anchorNode),
+                        ...getParentRelayHints(post, currentNode),
                     ]),
                     checkPostHistoryRepository: cachedParentNode.authorPubkey === getPubkeyHex(),
                 });
@@ -781,12 +937,12 @@ export function usePostHistoryThreadGraph({
                 }
 
                 if (!isVisibleCachedParent) {
-                    setParentDeleted(post.eventId);
+                    setParentDeleted(post.eventId, nodeEventId);
                     return;
                 }
             }
 
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleParent: true,
                 showParentLoadingIndicator: false,
@@ -796,8 +952,8 @@ export function usePostHistoryThreadGraph({
         }
 
         const activeRequestId = ++requestId;
-        const key = buildAnchorNodeKey(post.eventId, post.eventId);
-        updateExpansion(post.eventId, post.eventId, (state) => ({
+        const key = buildAnchorNodeKey(post.eventId, nodeEventId);
+        updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
             visibleParent: true,
             loadingParent: true,
@@ -806,7 +962,7 @@ export function usePostHistoryThreadGraph({
             parentDeleted: false,
             showParentLoadingIndicator: false,
         }));
-        scheduleParentLoadingIndicator(post.eventId, post.eventId);
+        scheduleParentLoadingIndicator(post.eventId, nodeEventId);
 
         const existingRecord = await postHistoryRepositoryImpl.getByEventId(parentEventId);
         if (activeRequestId !== requestId || !getShow()) {
@@ -820,12 +976,12 @@ export function usePostHistoryThreadGraph({
                 ...existingRecord.relayHints,
                 ...existingRecord.acceptedRelays,
                 ...(existingRecord.fetchedRelays ?? []),
-                ...getParentRelayHints(post, anchorNode),
+                ...getParentRelayHints(post, currentNode),
             ]);
             if (typeof existingRecord.deletedAt === "number") {
                 hideEvent(event.pubkey, event.id);
                 markParentDeletedForEvent(event.id, event.pubkey, { revealKnownParent: true });
-                setParentDeleted(post.eventId);
+                setParentDeleted(post.eventId, nodeEventId);
                 return;
             }
 
@@ -841,7 +997,7 @@ export function usePostHistoryThreadGraph({
             }
 
             if (!isVisibleParent) {
-                setParentDeleted(post.eventId);
+                setParentDeleted(post.eventId, nodeEventId);
                 return;
             }
 
@@ -852,7 +1008,7 @@ export function usePostHistoryThreadGraph({
             });
             upsertParentEdge(node.eventId, node.parentEventId);
             clearParentLoadingDelayTimer(key);
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadedParent: true,
                 visibleParent: true,
@@ -869,7 +1025,7 @@ export function usePostHistoryThreadGraph({
         const rxNostr = getRxNostr();
         if (!rxNostr) {
             clearParentLoadingDelayTimer(key);
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadingParent: false,
                 parentError: "nostr_not_ready",
@@ -881,7 +1037,7 @@ export function usePostHistoryThreadGraph({
         parentTasksByKey.get(key)?.cancel();
         const task = contextFetchService.fetchEventById(rxNostr, {
             eventId: parentEventId,
-            relayHints: getParentRelayHints(post, anchorNode),
+            relayHints: getParentRelayHints(post, currentNode),
             relayConfig: getRelayConfig(),
         });
         parentTasksByKey.set(key, task);
@@ -895,23 +1051,23 @@ export function usePostHistoryThreadGraph({
 
         clearParentLoadingDelayTimer(key);
         if (!result.event) {
-            const parentAuthorHint = getParentAuthorHint(anchorNode);
+            const parentAuthorHint = getParentAuthorHint(currentNode);
             const isDeletedByAuthorHint = await isParentDeletedByAuthorHint({
                 anchorEventId: post.eventId,
                 parentEventId,
                 authorHint: parentAuthorHint,
-                relayHints: getParentRelayHints(post, anchorNode),
+                relayHints: getParentRelayHints(post, currentNode),
             });
             if (activeRequestId !== requestId || !getShow()) {
                 return;
             }
 
             if (isDeletedByAuthorHint) {
-                setParentDeleted(post.eventId);
+                setParentDeleted(post.eventId, nodeEventId);
                 return;
             }
 
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadedParent: true,
                 loadingParent: false,
@@ -925,7 +1081,7 @@ export function usePostHistoryThreadGraph({
 
         const fetchedParentRelayHints = sanitizeRelayUrls([
             ...(result.relayUrl ? [result.relayUrl] : []),
-            ...getParentRelayHints(post, anchorNode),
+            ...getParentRelayHints(post, currentNode),
         ]);
         const isVisibleParent = await isVisibleParentEvent({
             anchorEventId: post.eventId,
@@ -937,7 +1093,7 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!isVisibleParent) {
-            setParentDeleted(post.eventId);
+            setParentDeleted(post.eventId, nodeEventId);
             return;
         }
 
@@ -947,7 +1103,7 @@ export function usePostHistoryThreadGraph({
             sources: ["fetched-parent"],
         });
         upsertParentEdge(node.eventId, node.parentEventId);
-        updateExpansion(post.eventId, post.eventId, (state) => ({
+        updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
             loadedParent: true,
             visibleParent: true,
@@ -960,9 +1116,17 @@ export function usePostHistoryThreadGraph({
         }));
     }
 
+    async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
+        await loadParentForNode(post, post.eventId, options);
+    }
+
     function hideParent(post: PostHistoryRecord): void {
-        clearParentLoadingDelayTimer(buildAnchorNodeKey(post.eventId, post.eventId));
-        updateExpansion(post.eventId, post.eventId, (state) => ({
+        hideParentForNode(post.eventId, post.eventId);
+    }
+
+    function hideParentForNode(anchorEventId: string, nodeEventId: string): void {
+        clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, nodeEventId));
+        updateExpansion(anchorEventId, nodeEventId, (state) => ({
             ...state,
             visibleParent: false,
             showParentLoadingIndicator: false,
@@ -983,11 +1147,35 @@ export function usePostHistoryThreadGraph({
         void loadParent(post, { force: true });
     }
 
-    async function loadChildren(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
-        const anchorNode = ensureAnchorNode(post);
-        const currentExpansion = getExpansion(post.eventId, post.eventId);
+    function toggleNodeParent(post: PostHistoryRecord, nodeEventId: string): void {
+        const expansion = getExpansion(post.eventId, nodeEventId);
+        if (expansion.visibleParent) {
+            hideParentForNode(post.eventId, nodeEventId);
+            return;
+        }
+
+        void loadParentForNode(post, nodeEventId);
+    }
+
+    function retryNodeParent(post: PostHistoryRecord, nodeEventId: string): void {
+        void loadParentForNode(post, nodeEventId, { force: true });
+    }
+
+    async function loadChildrenForNode(
+        post: PostHistoryRecord,
+        nodeEventId: string,
+        options: { force?: boolean } = {},
+    ): Promise<void> {
+        const currentNode = nodeEventId === post.eventId
+            ? ensureAnchorNode(post)
+            : nodesById[nodeEventId];
+        if (!currentNode) {
+            return;
+        }
+
+        const currentExpansion = getExpansion(post.eventId, nodeEventId);
         if (currentExpansion.loadingChildren) {
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleChildren: true,
             }));
@@ -995,8 +1183,8 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!options.force && currentExpansion.loadedChildren) {
-            const hasReplies = (childrenByParentId[post.eventId] ?? []).length > 0;
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleChildren: hasReplies,
             }));
@@ -1004,7 +1192,7 @@ export function usePostHistoryThreadGraph({
         }
 
         const activeRequestId = ++requestId;
-        updateExpansion(post.eventId, post.eventId, (state) => ({
+        updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
             loadingChildren: true,
             visibleChildren: true,
@@ -1012,11 +1200,11 @@ export function usePostHistoryThreadGraph({
         }));
 
         try {
-            const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId);
             await fetchAndStoreDeletionRequests(
                 post.eventId,
                 rawCachedRecords.map((record) => toEventFromReplyRecord(record)),
-                getChildrenRelayHints(post, anchorNode),
+                getChildrenRelayHints(post, currentNode),
             );
             const cachedRecords = await filterVisibleReplyRecords(
                 rawCachedRecords,
@@ -1026,8 +1214,8 @@ export function usePostHistoryThreadGraph({
             }
 
             if (!options.force && cachedRecords.length > 0) {
-                await upsertReplyRecords(post.eventId, cachedRecords, ["reply-db"]);
-                updateExpansion(post.eventId, post.eventId, (state) => ({
+                await upsertReplyRecords(nodeEventId, cachedRecords, ["reply-db"]);
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...state,
                     loadedChildren: true,
                     visibleChildren: true,
@@ -1040,7 +1228,7 @@ export function usePostHistoryThreadGraph({
 
             const rxNostr = getRxNostr();
             if (!rxNostr) {
-                updateExpansion(post.eventId, post.eventId, (state) => ({
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...state,
                     loadedChildren: cachedRecords.length > 0,
                     visibleChildren: cachedRecords.length > 0,
@@ -1050,12 +1238,12 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
-            const key = buildAnchorNodeKey(post.eventId, post.eventId);
+            const key = buildAnchorNodeKey(post.eventId, nodeEventId);
             childrenTasksByKey.get(key)?.cancel();
             const task = replyFetchService.fetchDirectReplies(rxNostr, {
-                eventId: post.eventId,
-                createdAt: post.createdAt,
-                relayHints: getChildrenRelayHints(post, anchorNode),
+                eventId: nodeEventId,
+                createdAt: currentNode.event.created_at,
+                relayHints: getChildrenRelayHints(post, currentNode),
                 relayConfig: getRelayConfig(),
             });
             childrenTasksByKey.set(key, task);
@@ -1070,27 +1258,27 @@ export function usePostHistoryThreadGraph({
                 post.eventId,
                 result.events.map((item) => item.event),
                 [
-                    ...getChildrenRelayHints(post, anchorNode),
+                    ...getChildrenRelayHints(post, currentNode),
                     ...result.relayUrls,
                 ],
             );
             const fetchedEvents = await filterVisibleReplyItems(result.events);
             await replyEventsRepositoryImpl.upsertDirectReplies({
-                parentEventId: post.eventId,
+                parentEventId: nodeEventId,
                 events: fetchedEvents,
                 fetchedAt: result.fetchedAt,
             });
             const nextRecords = await filterVisibleReplyRecords(
-                await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId),
+                await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId),
             );
             if (activeRequestId !== requestId || !getShow()) {
                 return;
             }
 
-            await upsertReplyRecords(post.eventId, nextRecords, ["reply-db", "fetched-child"]);
-            const hasReplies = (childrenByParentId[post.eventId] ?? []).length > 0;
-            const latestExpansion = getExpansion(post.eventId, post.eventId);
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            await upsertReplyRecords(nodeEventId, nextRecords, ["reply-db", "fetched-child"]);
+            const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
+            const latestExpansion = getExpansion(post.eventId, nodeEventId);
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadedChildren: true,
                 visibleChildren: hasReplies && latestExpansion.visibleChildren,
@@ -1103,13 +1291,17 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
-            updateExpansion(post.eventId, post.eventId, (state) => ({
+            updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 loadingChildren: false,
                 visibleChildren: false,
                 childrenError: "fetch_failed",
             }));
         }
+    }
+
+    async function loadChildren(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
+        await loadChildrenForNode(post, post.eventId, options);
     }
 
     async function upsertReplyRecords(
@@ -1140,7 +1332,11 @@ export function usePostHistoryThreadGraph({
     }
 
     function hideChildren(post: PostHistoryRecord): void {
-        updateExpansion(post.eventId, post.eventId, (state) => ({
+        hideChildrenForNode(post.eventId, post.eventId);
+    }
+
+    function hideChildrenForNode(anchorEventId: string, nodeEventId: string): void {
+        updateExpansion(anchorEventId, nodeEventId, (state) => ({
             ...state,
             visibleChildren: false,
         }));
@@ -1160,6 +1356,20 @@ export function usePostHistoryThreadGraph({
         void loadChildren(post, { force: true });
     }
 
+    function toggleNodeChildren(post: PostHistoryRecord, nodeEventId: string): void {
+        const expansion = getExpansion(post.eventId, nodeEventId);
+        if (expansion.visibleChildren) {
+            hideChildrenForNode(post.eventId, nodeEventId);
+            return;
+        }
+
+        void loadChildrenForNode(post, nodeEventId);
+    }
+
+    function retryNodeChildren(post: PostHistoryRecord, nodeEventId: string): void {
+        void loadChildrenForNode(post, nodeEventId, { force: true });
+    }
+
     async function recordPostedReply(
         event: NostrEvent | null | undefined,
         posts: PostHistoryRecord[] = [],
@@ -1175,8 +1385,10 @@ export function usePostHistoryThreadGraph({
         }
 
         const parentPost = posts.find((post) => post.eventId === parentEventId) ?? null;
-        const parentExpansion = expansionByAnchorNodeKey[buildAnchorNodeKey(parentEventId, parentEventId)];
-        if (!parentPost && !parentExpansion) {
+        const parentExpansionKeys = Object.keys(expansionByAnchorNodeKey).filter((key) =>
+            key.endsWith(`:${parentEventId}`),
+        );
+        if (!parentPost && parentExpansionKeys.length === 0) {
             return false;
         }
 
@@ -1202,12 +1414,28 @@ export function usePostHistoryThreadGraph({
         }
 
         await upsertReplyRecords(parentEventId, nextRecords, ["reply-db", "posted-reply"]);
-        updateExpansion(parentEventId, parentEventId, (state) => ({
-            ...state,
-            loadedChildren: true,
-            loadingChildren: false,
-            childrenError: null,
-        }));
+        const updateParentChildrenState = (anchorEventId: string, nodeEventId: string) => {
+            updateExpansion(anchorEventId, nodeEventId, (state) => ({
+                ...state,
+                loadedChildren: true,
+                loadingChildren: false,
+                childrenError: null,
+            }));
+        };
+        if (parentPost) {
+            updateParentChildrenState(parentPost.eventId, parentPost.eventId);
+        }
+        for (const key of parentExpansionKeys) {
+            const separatorIndex = key.indexOf(":");
+            if (separatorIndex < 0) {
+                continue;
+            }
+
+            updateParentChildrenState(
+                key.slice(0, separatorIndex),
+                key.slice(separatorIndex + 1),
+            );
+        }
 
         return true;
     }
@@ -1283,8 +1511,12 @@ export function usePostHistoryThreadGraph({
         getAnchorState,
         toggleParent,
         retryParent,
+        toggleNodeParent,
+        retryNodeParent,
         toggleChildren,
         retryChildren,
+        toggleNodeChildren,
+        retryNodeChildren,
         recordPostedReply,
         recordDeletedEvent,
         cancelCurrentGraphFetches,

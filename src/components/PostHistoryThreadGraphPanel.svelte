@@ -3,6 +3,7 @@
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
+    import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
 
@@ -11,6 +12,10 @@
         section: "parent" | "children";
         onToggleParent?: () => void;
         onRetryParent?: () => void;
+        onToggleNodeParent?: (nodeEventId: string) => void;
+        onRetryNodeParent?: (nodeEventId: string) => void;
+        onToggleNodeChildren?: (nodeEventId: string) => void;
+        onRetryNodeChildren?: (nodeEventId: string) => void;
     }
 
     let {
@@ -18,6 +23,10 @@
         section,
         onToggleParent = undefined,
         onRetryParent = undefined,
+        onToggleNodeParent = undefined,
+        onRetryNodeParent = undefined,
+        onToggleNodeChildren = undefined,
+        onRetryNodeChildren = undefined,
     }: Props = $props();
 </script>
 
@@ -28,6 +37,15 @@
                 showLoader={true}
                 text={$_("postHistory.contextLoading")}
                 customClass="post-history-context-loading"
+            />
+        {:else if state.parentExpansion.visibleParent && state.parentNodeState}
+            <PostHistoryThreadGraphNodeView
+                state={state.parentNodeState}
+                label={$_("postHistory.replyTarget")}
+                onToggleParent={onToggleNodeParent}
+                onRetryParent={onRetryNodeParent}
+                onToggleChildren={onToggleNodeChildren}
+                onRetryChildren={onRetryNodeChildren}
             />
         {:else if state.parentExpansion.visibleParent && state.parentNode}
             <PostHistoryThreadNode
@@ -72,14 +90,27 @@
 {:else if section === "children" && state.repliesActionState.visible && state.replyItems.length > 0}
     <div class="post-history-thread-replies-panel">
         <div class="post-history-thread-replies-list">
-            {#each state.replyItems as reply (reply.event.id)}
-                <PostHistoryRelatedEventCard
-                    event={reply.event}
-                    profile={reply.profile}
-                    label={reply.isOwnReply
+            {#each state.replyNodeStates as replyState (replyState.node.eventId)}
+                <PostHistoryThreadGraphNodeView
+                    state={replyState}
+                    label={replyState.isOwnReply
                         ? $_("postHistory.ownReply")
                         : $_("postHistory.directReply")}
+                    onToggleParent={onToggleNodeParent}
+                    onRetryParent={onRetryNodeParent}
+                    onToggleChildren={onToggleNodeChildren}
+                    onRetryChildren={onRetryNodeChildren}
                 />
+            {:else}
+                {#each state.replyItems as reply (reply.event.id)}
+                    <PostHistoryRelatedEventCard
+                        event={reply.event}
+                        profile={reply.profile}
+                        label={reply.isOwnReply
+                            ? $_("postHistory.ownReply")
+                            : $_("postHistory.directReply")}
+                    />
+                {/each}
             {/each}
         </div>
     </div>

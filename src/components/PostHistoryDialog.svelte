@@ -1788,6 +1788,26 @@
                                         postHistoryThreadGraph.retryParent(
                                             post,
                                         )}
+                                    onToggleNodeParent={(nodeEventId) =>
+                                        postHistoryThreadGraph.toggleNodeParent(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onRetryNodeParent={(nodeEventId) =>
+                                        postHistoryThreadGraph.retryNodeParent(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onToggleNodeChildren={(nodeEventId) =>
+                                        postHistoryThreadGraph.toggleNodeChildren(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onRetryNodeChildren={(nodeEventId) =>
+                                        postHistoryThreadGraph.retryNodeChildren(
+                                            post,
+                                            nodeEventId,
+                                        )}
                                 />
                                 <div class="post-preview-body">
                                     {#if hasRenderablePostPreviewContent(post)}
@@ -2019,6 +2039,26 @@
                                         post,
                                     )}
                                     section="children"
+                                    onToggleNodeParent={(nodeEventId) =>
+                                        postHistoryThreadGraph.toggleNodeParent(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onRetryNodeParent={(nodeEventId) =>
+                                        postHistoryThreadGraph.retryNodeParent(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onToggleNodeChildren={(nodeEventId) =>
+                                        postHistoryThreadGraph.toggleNodeChildren(
+                                            post,
+                                            nodeEventId,
+                                        )}
+                                    onRetryNodeChildren={(nodeEventId) =>
+                                        postHistoryThreadGraph.retryNodeChildren(
+                                            post,
+                                            nodeEventId,
+                                        )}
                                 />
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
