@@ -1610,6 +1610,7 @@
             {/if}
             <ul class="post-history-list">
                 {#each history.posts as post (post.eventId)}
+                    {@const graphState = postHistoryThreadGraph.getAnchorState(post)}
                     <li
                         class="post-history-item"
                         data-post-history-event-id={post.eventId}
@@ -1776,9 +1777,7 @@
                                     </div>
                                 {/if}
                                 <PostHistoryThreadGraphPanel
-                                    state={postHistoryThreadGraph.getAnchorState(
-                                        post,
-                                    )}
+                                    state={graphState}
                                     section="parent"
                                     onToggleParent={() =>
                                         postHistoryThreadGraph.toggleParent(
@@ -1898,9 +1897,7 @@
                                                     </Button>
                                                 {/if}
                                                 <PostHistoryRepliesActionButton
-                                                    state={postHistoryThreadGraph.getAnchorState(
-                                                        post,
-                                                    ).repliesActionState}
+                                                    state={graphState.repliesActionState}
                                                     ariaLabel={getRepliesActionLabel(
                                                         post,
                                                     )}
@@ -2035,9 +2032,7 @@
                                     </div>
                                 {/if}
                                 <PostHistoryThreadGraphPanel
-                                    state={postHistoryThreadGraph.getAnchorState(
-                                        post,
-                                    )}
+                                    state={graphState}
                                     section="children"
                                     onToggleNodeParent={(nodeEventId) =>
                                         postHistoryThreadGraph.toggleNodeParent(

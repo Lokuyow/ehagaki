@@ -1445,6 +1445,105 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
+    it('[thread-graph-dedupe] 同じ関連eventに複数経路で到達しても一度だけ表示する', async () => {
+        const parentEventId = '2'.repeat(64);
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の返信',
+            tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+            media: [],
+        });
+        const parentEvent = {
+            id: parentEventId,
+            pubkey: 'd'.repeat(64),
+            kind: 1,
+            content: '循環する関連投稿B',
+            tags: [['e', post.eventId, 'wss://anchor.example.com/', 'reply']],
+            created_at: 1_699_999_000,
+            sig: 'e'.repeat(128),
+        };
+        const parentReplyRecord = createDirectReplyEventRecord({
+            eventId: parentEventId,
+            parentEventId: post.eventId,
+            content: '循環する関連投稿B',
+            rawEvent: parentEvent,
+        });
+        const storedRepliesByParent = new Map<string, any[]>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockImplementation((_rxNostr: any, params: any) => ({
+            promise: Promise.resolve({
+                event: params.eventId === parentEventId ? parentEvent : post.rawEvent,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        }));
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            storedRepliesByParent.get(parentId) ?? [],
+        );
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ parentEventId, events }: any) => {
+            storedRepliesByParent.set(parentEventId, events.map(() => parentReplyRecord));
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{ event: parentEvent, relayUrls: ['wss://relay.example.com/'] }],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('循環する関連投稿B')).toBeTruthy();
+        });
+
+        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
+        expect(historyItem).toBeTruthy();
+        const footer = (historyItem as HTMLElement).querySelector('.post-preview-footer');
+        expect(footer).toBeTruthy();
+        await fireEvent.click(within(footer as HTMLElement).getByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalled();
+        });
+        expect(screen.getAllByText('循環する関連投稿B')).toHaveLength(1);
+
+        await fireEvent.click(screen.getByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(2);
+        });
+        expect(screen.getAllByText('自分の返信')).toHaveLength(1);
+        expect(screen.getAllByText('循環する関連投稿B')).toHaveLength(1);
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
     it('[thread-graph-children] 関連返信イベントからさらにdirect repliesを確認できる', async () => {
         const parentEventId = '1'.repeat(64);
         const replyBEventId = '4'.repeat(64);

@@ -2,7 +2,6 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
@@ -83,7 +82,7 @@
             {/if}
         </div>
     </div>
-{:else if section === "children" && state.repliesActionState.visible && state.replyItems.length > 0}
+{:else if section === "children" && state.repliesActionState.visible && state.replyNodeStates.length > 0}
     <div class="post-history-thread-replies-panel">
         <div class="post-history-thread-replies-list">
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
@@ -94,13 +93,6 @@
                     onToggleChildren={onToggleNodeChildren}
                     onRetryChildren={onRetryNodeChildren}
                 />
-            {:else}
-                {#each state.replyItems as reply (reply.event.id)}
-                    <PostHistoryRelatedEventCard
-                        event={reply.event}
-                        profile={reply.profile}
-                    />
-                {/each}
             {/each}
         </div>
     </div>

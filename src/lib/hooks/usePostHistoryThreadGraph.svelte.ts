@@ -390,32 +390,18 @@ export function usePostHistoryThreadGraph({
         currentPubkey: string,
         pathEventIds: string[] = [],
         depthFromAnchor = 0,
+        renderedEventIds: Set<string> = new Set(),
     ): PostHistoryThreadGraphNodeState | null {
         const node = nodesById[nodeEventId];
         if (!node || isDeletedEvent(node.authorPubkey, node.eventId)) {
             return null;
         }
 
-        if (pathEventIds.includes(nodeEventId)) {
-            return {
-                anchorEventId,
-                node,
-                parentTargetId: node.parentEventId,
-                parentNodeState: null,
-                parentExpansion: getExpansion(anchorEventId, nodeEventId),
-                repliesActionState: {
-                    status: "loaded",
-                    visible: false,
-                    replies: [],
-                    error: null,
-                },
-                replyNodeStates: [],
-                isOwnReply: node.authorPubkey === currentPubkey,
-                depthFromAnchor,
-                cycleDetected: true,
-            };
+        if (pathEventIds.includes(nodeEventId) || renderedEventIds.has(nodeEventId)) {
+            return null;
         }
 
+        renderedEventIds.add(nodeEventId);
         const nextPath = [...pathEventIds, nodeEventId];
         const expansion = getExpansion(anchorEventId, nodeEventId);
         const parentTargetId = node.parentEventId;
@@ -428,6 +414,7 @@ export function usePostHistoryThreadGraph({
                 currentPubkey,
                 nextPath,
                 depthFromAnchor - 1,
+                renderedEventIds,
             )
             : null;
         const childEventIds = toVisibleChildEventIds(nodeEventId);
@@ -441,6 +428,7 @@ export function usePostHistoryThreadGraph({
                         currentPubkey,
                         nextPath,
                         depthFromAnchor + 1,
+                        renderedEventIds,
                     ))
                 .filter((childState): childState is PostHistoryThreadGraphNodeState =>
                     childState !== null,
@@ -477,6 +465,7 @@ export function usePostHistoryThreadGraph({
         const expansion = getExpansion(post.eventId, post.eventId);
         const currentPubkey = getPubkeyHex() ?? post.pubkeyHex;
         const replyItems = toReplyItems(post.eventId, currentPubkey);
+        const renderedEventIds = new Set([post.eventId]);
         const parentTargetId = anchorNode.parentEventId;
         const parentNodeCandidate = parentTargetId ? nodesById[parentTargetId] ?? null : null;
         const parentNode = parentNodeCandidate
@@ -484,12 +473,12 @@ export function usePostHistoryThreadGraph({
             ? parentNodeCandidate
             : null;
         const parentNodeState = parentNode && expansion.visibleParent
-            ? getNodeState(post.eventId, parentNode.eventId, currentPubkey, [post.eventId], -1)
+            ? getNodeState(post.eventId, parentNode.eventId, currentPubkey, [post.eventId], -1, renderedEventIds)
             : null;
         const replyNodeStates = expansion.visibleChildren
             ? toVisibleChildEventIds(post.eventId)
                 .map((eventId) =>
-                    getNodeState(post.eventId, eventId, currentPubkey, [post.eventId], 1))
+                    getNodeState(post.eventId, eventId, currentPubkey, [post.eventId], 1, renderedEventIds))
                 .filter((nodeState): nodeState is PostHistoryThreadGraphNodeState =>
                     nodeState !== null,
                 )
