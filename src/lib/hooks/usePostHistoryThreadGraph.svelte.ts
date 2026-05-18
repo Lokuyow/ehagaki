@@ -1,0 +1,747 @@
+import type { RxNostr } from "rx-nostr";
+import { ProfileManager } from "../profileManager";
+import {
+    postHistoryContextFetchService,
+    type PostHistoryContextFetchService,
+    type PostHistoryContextFetchTask,
+} from "../postHistoryContextFetchService";
+import {
+    postHistoryReplyFetchService,
+    type PostHistoryReplyFetchService,
+    type PostHistoryReplyFetchTask,
+} from "../postHistoryReplyFetchService";
+import {
+    postHistoryReplyEventsAdapter,
+    type PostHistoryReplyEventsAdapter,
+} from "../postHistoryReplyEventsAdapter";
+import { RelayConfigUtils } from "../relayConfigUtils";
+import type { NostrEvent, ProfileData, RelayConfig } from "../types";
+import type { PostHistoryRecord } from "../storage/ehagakiDb";
+import {
+    postHistoryRepository,
+    type PostHistoryRepository,
+} from "../storage/postHistoryRepository";
+import {
+    postHistoryReplyEventsRepository,
+    type PostHistoryReplyEventsRepository,
+} from "../storage/postHistoryReplyEventsRepository";
+import {
+    profilesRepository,
+    type ProfilesRepository,
+} from "../storage/profilesRepository";
+import { parseKind1ThreadReferences } from "../postHistoryNip10Utils";
+import {
+    buildAnchorNodeKey,
+    buildInitialExpansionState,
+    buildThreadGraphNode,
+    mergeThreadGraphNode,
+    sortEventIdsByEvent,
+    toEventFromPostHistoryRecord,
+    toEventFromReplyRecord,
+    type PostHistoryThreadGraphExpansionState,
+    type PostHistoryThreadGraphNode,
+    type PostHistoryThreadGraphSource,
+} from "../postHistoryThreadGraphUtils";
+
+export type PostHistoryThreadGraphRepliesStatus =
+    | "unloaded"
+    | "loading"
+    | "loaded"
+    | "failed";
+
+export interface PostHistoryThreadGraphReplyItem {
+    event: NostrEvent;
+    profile: ProfileData | null;
+    relayUrls: string[];
+    isOwnReply: boolean;
+}
+
+export interface PostHistoryThreadGraphRepliesActionState {
+    status: PostHistoryThreadGraphRepliesStatus;
+    visible: boolean;
+    replies: PostHistoryThreadGraphReplyItem[];
+    error: string | null;
+}
+
+export interface PostHistoryThreadGraphAnchorState {
+    anchorEventId: string;
+    parentTargetId: string | null;
+    parentNode: PostHistoryThreadGraphNode | null;
+    parentExpansion: PostHistoryThreadGraphExpansionState;
+    repliesActionState: PostHistoryThreadGraphRepliesActionState;
+    replyItems: PostHistoryThreadGraphReplyItem[];
+}
+
+interface UsePostHistoryThreadGraphParams {
+    getShow: () => boolean;
+    getPubkeyHex: () => string | null | undefined;
+    getRxNostr: () => RxNostr | undefined;
+    getRelayConfig: () => RelayConfig | null | undefined;
+    postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId">;
+    replyEventsAdapterImpl?: PostHistoryReplyEventsAdapter;
+    replyEventsRepositoryImpl?: Pick<
+        PostHistoryReplyEventsRepository,
+        "getDirectReplies" | "upsertDirectReplies"
+    >;
+    profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
+    contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
+    replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
+}
+
+function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionState {
+    return {
+        status: "unloaded",
+        visible: false,
+        replies: [],
+        error: null,
+    };
+}
+
+function sanitizeRelayUrls(urls: string[]): string[] {
+    return RelayConfigUtils.sanitizeExternalRelayUrls(urls, { limit: 8 });
+}
+
+function uniqueEventIds(eventIds: string[]): string[] {
+    return Array.from(new Set(eventIds));
+}
+
+export function usePostHistoryThreadGraph({
+    getShow,
+    getPubkeyHex,
+    getRxNostr,
+    getRelayConfig,
+    postHistoryRepositoryImpl = postHistoryRepository,
+    replyEventsAdapterImpl = postHistoryReplyEventsAdapter,
+    replyEventsRepositoryImpl = postHistoryReplyEventsRepository,
+    profilesRepositoryImpl = profilesRepository,
+    contextFetchService = postHistoryContextFetchService,
+    replyFetchService = postHistoryReplyFetchService,
+}: UsePostHistoryThreadGraphParams) {
+    let nodesById = $state.raw<Record<string, PostHistoryThreadGraphNode>>({});
+    let parentByChildId = $state.raw<Record<string, string>>({});
+    let childrenByParentId = $state.raw<Record<string, string[]>>({});
+    let expansionByAnchorNodeKey =
+        $state.raw<Record<string, PostHistoryThreadGraphExpansionState>>({});
+    const parentTasksByKey = new Map<string, PostHistoryContextFetchTask>();
+    const childrenTasksByKey = new Map<string, PostHistoryReplyFetchTask>();
+    const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
+    let requestId = 0;
+
+    function getExpansion(anchorEventId: string, nodeEventId: string): PostHistoryThreadGraphExpansionState {
+        return expansionByAnchorNodeKey[buildAnchorNodeKey(anchorEventId, nodeEventId)]
+            ?? buildInitialExpansionState();
+    }
+
+    function updateExpansion(
+        anchorEventId: string,
+        nodeEventId: string,
+        updater: (current: PostHistoryThreadGraphExpansionState) => PostHistoryThreadGraphExpansionState,
+    ): void {
+        const key = buildAnchorNodeKey(anchorEventId, nodeEventId);
+        expansionByAnchorNodeKey = {
+            ...expansionByAnchorNodeKey,
+            [key]: updater(expansionByAnchorNodeKey[key] ?? buildInitialExpansionState()),
+        };
+    }
+
+    function upsertNode(input: {
+        event: NostrEvent;
+        relayUrls?: string[];
+        sources: PostHistoryThreadGraphSource[];
+        profile?: ProfileData | null;
+    }): PostHistoryThreadGraphNode {
+        const next = buildThreadGraphNode(input);
+        const merged = mergeThreadGraphNode(nodesById[next.eventId], next);
+        nodesById = {
+            ...nodesById,
+            [merged.eventId]: merged,
+        };
+        return merged;
+    }
+
+    function upsertParentEdge(childEventId: string, parentEventId: string | null): void {
+        if (!parentEventId) {
+            return;
+        }
+
+        parentByChildId = {
+            ...parentByChildId,
+            [childEventId]: parentEventId,
+        };
+    }
+
+    function upsertChildren(parentEventId: string, childEventIds: string[]): void {
+        const current = childrenByParentId[parentEventId] ?? [];
+        const merged = sortEventIdsByEvent(
+            uniqueEventIds([...current, ...childEventIds]).filter((eventId) => eventId !== parentEventId),
+            nodesById,
+        );
+
+        childrenByParentId = {
+            ...childrenByParentId,
+            [parentEventId]: merged,
+        };
+    }
+
+    function buildAnchorNodeFromPost(post: PostHistoryRecord): PostHistoryThreadGraphNode {
+        const event = toEventFromPostHistoryRecord(post);
+        return buildThreadGraphNode({
+            event,
+            relayUrls: sanitizeRelayUrls([
+                ...post.relayHints,
+                ...post.acceptedRelays,
+                ...(post.fetchedRelays ?? []),
+            ]),
+            sources: ["anchor", "history-record"],
+        });
+    }
+
+    function ensureAnchorNode(post: PostHistoryRecord): PostHistoryThreadGraphNode {
+        const anchorNode = buildAnchorNodeFromPost(post);
+        const node = upsertNode({
+            event: anchorNode.event,
+            relayUrls: anchorNode.relayUrls,
+            sources: anchorNode.sources,
+        });
+        upsertParentEdge(node.eventId, node.parentEventId);
+        return node;
+    }
+
+    async function resolveProfile(
+        event: NostrEvent,
+        additionalRelays: string[] = [],
+    ): Promise<ProfileData | null> {
+        try {
+            const cachedProfile = await profilesRepositoryImpl.get(event.pubkey);
+            if (cachedProfile) {
+                return cachedProfile;
+            }
+        } catch {
+            // Use network path when available.
+        }
+
+        const rxNostr = getRxNostr();
+        if (!rxNostr) {
+            return null;
+        }
+
+        try {
+            const profileManager = new ProfileManager(rxNostr as never);
+            return await profileManager.fetchProfileData(event.pubkey, {
+                additionalRelays,
+                forceRemote: false,
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    async function upsertNodeWithProfile(input: {
+        event: NostrEvent;
+        relayUrls?: string[];
+        sources: PostHistoryThreadGraphSource[];
+    }): Promise<PostHistoryThreadGraphNode> {
+        const relayUrls = sanitizeRelayUrls(input.relayUrls ?? []);
+        const profile = await resolveProfile(input.event, relayUrls);
+        return upsertNode({
+            ...input,
+            relayUrls,
+            profile,
+        });
+    }
+
+    function getParentRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
+        const references = parseKind1ThreadReferences(node.event);
+        return sanitizeRelayUrls([
+            ...(references.replyRelayHint ? [references.replyRelayHint] : []),
+            ...(references.rootRelayHint ? [references.rootRelayHint] : []),
+            ...node.relayUrls,
+            ...references.relayHints,
+            ...post.relayHints,
+            ...post.acceptedRelays,
+            ...(post.fetchedRelays ?? []),
+        ]);
+    }
+
+    function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
+        const references = parseKind1ThreadReferences(node.event);
+        return sanitizeRelayUrls([
+            ...node.relayUrls,
+            ...references.relayHints,
+            ...post.relayHints,
+            ...post.acceptedRelays,
+            ...(post.fetchedRelays ?? []),
+        ]);
+    }
+
+    function clearParentLoadingDelayTimer(key: string): void {
+        const timer = parentLoadingDelayTimersByKey.get(key);
+        if (!timer) {
+            return;
+        }
+
+        clearTimeout(timer);
+        parentLoadingDelayTimersByKey.delete(key);
+    }
+
+    function scheduleParentLoadingIndicator(anchorEventId: string, nodeEventId: string): void {
+        const key = buildAnchorNodeKey(anchorEventId, nodeEventId);
+        clearParentLoadingDelayTimer(key);
+
+        const timer = setTimeout(() => {
+            parentLoadingDelayTimersByKey.delete(key);
+            const current = getExpansion(anchorEventId, nodeEventId);
+            if (!current.loadingParent || !current.visibleParent) {
+                return;
+            }
+
+            updateExpansion(anchorEventId, nodeEventId, (state) => ({
+                ...state,
+                showParentLoadingIndicator: true,
+            }));
+        }, 400);
+
+        parentLoadingDelayTimersByKey.set(key, timer);
+    }
+
+    function toReplyItems(
+        anchorEventId: string,
+        currentPubkey: string,
+    ): PostHistoryThreadGraphReplyItem[] {
+        const eventIds = childrenByParentId[anchorEventId] ?? [];
+        return eventIds
+            .map((eventId) => nodesById[eventId])
+            .filter((node): node is PostHistoryThreadGraphNode => !!node)
+            .map((node) => ({
+                event: node.event,
+                profile: node.profile,
+                relayUrls: [...node.relayUrls],
+                isOwnReply: node.authorPubkey === currentPubkey,
+            }));
+    }
+
+    function getAnchorState(post: PostHistoryRecord): PostHistoryThreadGraphAnchorState {
+        const anchorNode = nodesById[post.eventId] ?? buildAnchorNodeFromPost(post);
+        const expansion = getExpansion(post.eventId, post.eventId);
+        const replyItems = toReplyItems(post.eventId, getPubkeyHex() ?? post.pubkeyHex);
+        const parentTargetId = anchorNode.parentEventId;
+        const parentNode = parentTargetId ? nodesById[parentTargetId] ?? null : null;
+
+        return {
+            anchorEventId: post.eventId,
+            parentTargetId,
+            parentNode,
+            parentExpansion: expansion,
+            repliesActionState: {
+                status: expansion.loadingChildren
+                    ? "loading"
+                    : expansion.childrenError
+                        ? "failed"
+                        : expansion.loadedChildren
+                            ? "loaded"
+                            : "unloaded",
+                visible: expansion.visibleChildren,
+                replies: replyItems,
+                error: expansion.childrenError,
+            },
+            replyItems,
+        };
+    }
+
+    async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
+        const anchorNode = ensureAnchorNode(post);
+        const parentEventId = anchorNode.parentEventId;
+        if (!parentEventId) {
+            return;
+        }
+
+        const currentExpansion = getExpansion(post.eventId, post.eventId);
+        if (currentExpansion.loadingParent) {
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                visibleParent: true,
+                showParentLoadingIndicator: false,
+            }));
+            scheduleParentLoadingIndicator(post.eventId, post.eventId);
+            return;
+        }
+
+        if (!options.force && currentExpansion.loadedParent) {
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                visibleParent: true,
+                showParentLoadingIndicator: false,
+            }));
+            return;
+        }
+
+        const activeRequestId = ++requestId;
+        const key = buildAnchorNodeKey(post.eventId, post.eventId);
+        updateExpansion(post.eventId, post.eventId, (state) => ({
+            ...state,
+            visibleParent: true,
+            loadingParent: true,
+            parentError: null,
+            parentMissing: false,
+            showParentLoadingIndicator: false,
+        }));
+        scheduleParentLoadingIndicator(post.eventId, post.eventId);
+
+        const existingRecord = await postHistoryRepositoryImpl.getByEventId(parentEventId);
+        if (activeRequestId !== requestId || !getShow()) {
+            clearParentLoadingDelayTimer(key);
+            return;
+        }
+
+        if (existingRecord) {
+            const event = toEventFromPostHistoryRecord(existingRecord);
+            const node = await upsertNodeWithProfile({
+                event,
+                relayUrls: sanitizeRelayUrls([
+                    ...existingRecord.relayHints,
+                    ...existingRecord.acceptedRelays,
+                    ...(existingRecord.fetchedRelays ?? []),
+                ]),
+                sources: ["history-record", "fetched-parent"],
+            });
+            upsertParentEdge(node.eventId, node.parentEventId);
+            clearParentLoadingDelayTimer(key);
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadedParent: true,
+                visibleParent: true,
+                loadingParent: false,
+                parentError: null,
+                parentMissing: false,
+                showParentLoadingIndicator: false,
+                lastFetchedParentAt: Date.now(),
+            }));
+            return;
+        }
+
+        const rxNostr = getRxNostr();
+        if (!rxNostr) {
+            clearParentLoadingDelayTimer(key);
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadingParent: false,
+                parentError: "nostr_not_ready",
+                showParentLoadingIndicator: false,
+            }));
+            return;
+        }
+
+        parentTasksByKey.get(key)?.cancel();
+        const task = contextFetchService.fetchEventById(rxNostr, {
+            eventId: parentEventId,
+            relayHints: getParentRelayHints(post, anchorNode),
+            relayConfig: getRelayConfig(),
+        });
+        parentTasksByKey.set(key, task);
+
+        const result = await task.promise;
+        parentTasksByKey.delete(key);
+        if (activeRequestId !== requestId || !getShow()) {
+            clearParentLoadingDelayTimer(key);
+            return;
+        }
+
+        clearParentLoadingDelayTimer(key);
+        if (!result.event) {
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadedParent: true,
+                loadingParent: false,
+                parentMissing: true,
+                showParentLoadingIndicator: false,
+                lastFetchedParentAt: Date.now(),
+            }));
+            return;
+        }
+
+        const node = await upsertNodeWithProfile({
+            event: result.event,
+            relayUrls: result.relayUrl ? [result.relayUrl] : [],
+            sources: ["fetched-parent"],
+        });
+        upsertParentEdge(node.eventId, node.parentEventId);
+        updateExpansion(post.eventId, post.eventId, (state) => ({
+            ...state,
+            loadedParent: true,
+            visibleParent: true,
+            loadingParent: false,
+            parentError: null,
+            parentMissing: false,
+            showParentLoadingIndicator: false,
+            lastFetchedParentAt: Date.now(),
+        }));
+    }
+
+    function hideParent(post: PostHistoryRecord): void {
+        clearParentLoadingDelayTimer(buildAnchorNodeKey(post.eventId, post.eventId));
+        updateExpansion(post.eventId, post.eventId, (state) => ({
+            ...state,
+            visibleParent: false,
+            showParentLoadingIndicator: false,
+        }));
+    }
+
+    function toggleParent(post: PostHistoryRecord): void {
+        const expansion = getExpansion(post.eventId, post.eventId);
+        if (expansion.visibleParent) {
+            hideParent(post);
+            return;
+        }
+
+        void loadParent(post);
+    }
+
+    function retryParent(post: PostHistoryRecord): void {
+        void loadParent(post, { force: true });
+    }
+
+    async function loadChildren(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
+        const anchorNode = ensureAnchorNode(post);
+        const currentExpansion = getExpansion(post.eventId, post.eventId);
+        if (currentExpansion.loadingChildren) {
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                visibleChildren: true,
+            }));
+            return;
+        }
+
+        if (!options.force && currentExpansion.loadedChildren) {
+            const hasReplies = (childrenByParentId[post.eventId] ?? []).length > 0;
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                visibleChildren: hasReplies,
+            }));
+            return;
+        }
+
+        const activeRequestId = ++requestId;
+        updateExpansion(post.eventId, post.eventId, (state) => ({
+            ...state,
+            loadingChildren: true,
+            visibleChildren: true,
+            childrenError: null,
+        }));
+
+        try {
+            const cachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            if (activeRequestId !== requestId || !getShow()) {
+                return;
+            }
+
+            if (!options.force && cachedRecords.length > 0) {
+                await upsertReplyRecords(post.eventId, cachedRecords, ["reply-db"]);
+                updateExpansion(post.eventId, post.eventId, (state) => ({
+                    ...state,
+                    loadedChildren: true,
+                    visibleChildren: true,
+                    loadingChildren: false,
+                    childrenError: null,
+                    lastFetchedChildrenAt: Date.now(),
+                }));
+                return;
+            }
+
+            const rxNostr = getRxNostr();
+            if (!rxNostr) {
+                updateExpansion(post.eventId, post.eventId, (state) => ({
+                    ...state,
+                    loadedChildren: cachedRecords.length > 0,
+                    visibleChildren: cachedRecords.length > 0,
+                    loadingChildren: false,
+                    childrenError: cachedRecords.length > 0 ? null : "nostr_not_ready",
+                }));
+                return;
+            }
+
+            const key = buildAnchorNodeKey(post.eventId, post.eventId);
+            childrenTasksByKey.get(key)?.cancel();
+            const task = replyFetchService.fetchDirectReplies(rxNostr, {
+                eventId: post.eventId,
+                createdAt: post.createdAt,
+                relayHints: getChildrenRelayHints(post, anchorNode),
+                relayConfig: getRelayConfig(),
+            });
+            childrenTasksByKey.set(key, task);
+
+            const result = await task.promise;
+            childrenTasksByKey.delete(key);
+            if (activeRequestId !== requestId || !getShow()) {
+                return;
+            }
+
+            await replyEventsRepositoryImpl.upsertDirectReplies({
+                parentEventId: post.eventId,
+                events: result.events,
+                fetchedAt: result.fetchedAt,
+            });
+            const nextRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            if (activeRequestId !== requestId || !getShow()) {
+                return;
+            }
+
+            await upsertReplyRecords(post.eventId, nextRecords, ["reply-db", "fetched-child"]);
+            const hasReplies = (childrenByParentId[post.eventId] ?? []).length > 0;
+            const latestExpansion = getExpansion(post.eventId, post.eventId);
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadedChildren: true,
+                visibleChildren: hasReplies && latestExpansion.visibleChildren,
+                loadingChildren: false,
+                childrenError: null,
+                lastFetchedChildrenAt: Date.now(),
+            }));
+        } catch {
+            if (activeRequestId !== requestId || !getShow()) {
+                return;
+            }
+
+            updateExpansion(post.eventId, post.eventId, (state) => ({
+                ...state,
+                loadingChildren: false,
+                visibleChildren: false,
+                childrenError: "fetch_failed",
+            }));
+        }
+    }
+
+    async function upsertReplyRecords(
+        parentEventId: string,
+        records: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[],
+        sources: PostHistoryThreadGraphSource[],
+    ): Promise<void> {
+        const childIds: string[] = [];
+        for (const record of records) {
+            const event = toEventFromReplyRecord(record);
+            const node = await upsertNodeWithProfile({
+                event,
+                relayUrls: record.relayUrls,
+                sources,
+            });
+            if (node.eventId === parentEventId) {
+                continue;
+            }
+            upsertParentEdge(node.eventId, parentEventId);
+            childIds.push(node.eventId);
+        }
+
+        upsertChildren(parentEventId, childIds);
+    }
+
+    function hideChildren(post: PostHistoryRecord): void {
+        updateExpansion(post.eventId, post.eventId, (state) => ({
+            ...state,
+            visibleChildren: false,
+        }));
+    }
+
+    function toggleChildren(post: PostHistoryRecord): void {
+        const expansion = getExpansion(post.eventId, post.eventId);
+        if (expansion.visibleChildren) {
+            hideChildren(post);
+            return;
+        }
+
+        void loadChildren(post);
+    }
+
+    function retryChildren(post: PostHistoryRecord): void {
+        void loadChildren(post, { force: true });
+    }
+
+    async function recordPostedReply(
+        event: NostrEvent | null | undefined,
+        posts: PostHistoryRecord[] = [],
+    ): Promise<boolean> {
+        if (!event?.id || event.kind !== 1) {
+            return true;
+        }
+
+        const references = parseKind1ThreadReferences(event);
+        const parentEventId = references.parentId;
+        if (!parentEventId) {
+            return true;
+        }
+
+        const parentPost = posts.find((post) => post.eventId === parentEventId) ?? null;
+        const parentExpansion = expansionByAnchorNodeKey[buildAnchorNodeKey(parentEventId, parentEventId)];
+        if (!parentPost && !parentExpansion) {
+            return false;
+        }
+
+        await replyEventsRepositoryImpl.upsertDirectReplies({
+            parentEventId,
+            events: [
+                {
+                    event,
+                    relayUrls: references.relayHints,
+                },
+            ],
+        });
+
+        const nextRecords = await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId);
+        if (!getShow()) {
+            return false;
+        }
+
+        await upsertReplyRecords(parentEventId, nextRecords, ["reply-db", "posted-reply"]);
+        updateExpansion(parentEventId, parentEventId, (state) => ({
+            ...state,
+            loadedChildren: true,
+            loadingChildren: false,
+            childrenError: null,
+        }));
+
+        return true;
+    }
+
+    function cancelCurrentGraphFetches(): void {
+        parentTasksByKey.forEach((task) => task.cancel());
+        childrenTasksByKey.forEach((task) => task.cancel());
+        parentTasksByKey.clear();
+        childrenTasksByKey.clear();
+        parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
+        parentLoadingDelayTimersByKey.clear();
+    }
+
+    function resetState(): void {
+        cancelCurrentGraphFetches();
+        requestId += 1;
+        nodesById = {};
+        parentByChildId = {};
+        childrenByParentId = {};
+        expansionByAnchorNodeKey = {};
+    }
+
+    $effect(() => {
+        if (!getShow()) {
+            resetState();
+        }
+    });
+
+    $effect(() => {
+        if (!getShow()) {
+            return;
+        }
+
+        return () => {
+            cancelCurrentGraphFetches();
+        };
+    });
+
+    return {
+        getAnchorState,
+        toggleParent,
+        retryParent,
+        toggleChildren,
+        retryChildren,
+        recordPostedReply,
+        cancelCurrentGraphFetches,
+        resetState,
+    };
+}

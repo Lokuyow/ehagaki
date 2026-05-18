@@ -9,17 +9,15 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import PostHistoryContextPanel from "./PostHistoryContextPanel.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
-    import PostHistoryRepliesPanel from "./PostHistoryRepliesPanel.svelte";
+    import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
-    import { usePostHistoryContext } from "../lib/hooks/usePostHistoryContext.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
-    import { usePostHistoryReplies } from "../lib/hooks/usePostHistoryReplies.svelte";
+    import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import {
         preloadCustomEmojiImageWithMeta,
         type PreloadedCustomEmojiImageResult,
@@ -108,16 +106,11 @@
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
     });
-    const postHistoryContext = usePostHistoryContext({
+    const postHistoryThreadGraph = usePostHistoryThreadGraph({
         getShow: () => show,
-        getRxNostr: () => rxNostr,
-        getRelayConfig: () => relayConfig,
-    });
-    const postHistoryReplies = usePostHistoryReplies({
-        getShow: () => show,
-        getRxNostr: () => rxNostr,
-        getRelayConfig: () => relayConfig,
         getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
     });
 
     let copyState = $state<Record<string, "failed" | undefined>>({});
@@ -301,8 +294,7 @@
         history.cancelCurrentSync();
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
-        postHistoryContext.cancelCurrentContextFetches();
-        postHistoryReplies.cancelCurrentReplyFetches();
+        postHistoryThreadGraph.cancelCurrentGraphFetches();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
@@ -349,7 +341,7 @@
         }
 
         history.posts;
-        void postHistoryReplies
+        void postHistoryThreadGraph
             .recordPostedReply(latestPostedEvent, history.posts)
             .then((applied) => {
                 if (applied) {
@@ -1127,7 +1119,7 @@
     }
 
     function getRepliesActionLabel(post: PostHistoryRecord): string {
-        const state = postHistoryReplies.getRepliesState(post);
+        const state = postHistoryThreadGraph.getAnchorState(post).repliesActionState;
         if (state.status === "loading") {
             return $_("postHistory.checkingReplies");
         }
@@ -1155,17 +1147,17 @@
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
-        const state = postHistoryReplies.getRepliesState(post);
+        const state = postHistoryThreadGraph.getAnchorState(post).repliesActionState;
         if (
             state.status === "failed" ||
             (state.status === "loaded" &&
                 (state.replies.length === 0 || !state.visible))
         ) {
-            postHistoryReplies.retryReplies(post);
+            postHistoryThreadGraph.retryChildren(post);
             return;
         }
 
-        postHistoryReplies.toggleReplies(post);
+        postHistoryThreadGraph.toggleChildren(post);
     }
 
     function canDeletePost(post: PostHistoryRecord): boolean {
@@ -1776,19 +1768,18 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryContextPanel
-                                    context={postHistoryContext.getContextState(
+                                <PostHistoryThreadGraphPanel
+                                    state={postHistoryThreadGraph.getAnchorState(
                                         post,
                                     )}
-                                    onToggle={(kind) =>
-                                        postHistoryContext.toggleTarget(
+                                    section="parent"
+                                    onToggleParent={() =>
+                                        postHistoryThreadGraph.toggleParent(
                                             post,
-                                            kind,
                                         )}
-                                    onRetry={(kind) =>
-                                        postHistoryContext.retryTarget(
+                                    onRetryParent={() =>
+                                        postHistoryThreadGraph.retryParent(
                                             post,
-                                            kind,
                                         )}
                                 />
                                 <div class="post-preview-body">
@@ -1880,9 +1871,9 @@
                                                     </Button>
                                                 {/if}
                                                 <PostHistoryRepliesActionButton
-                                                    state={postHistoryReplies.getRepliesState(
+                                                    state={postHistoryThreadGraph.getAnchorState(
                                                         post,
-                                                    )}
+                                                    ).repliesActionState}
                                                     ariaLabel={getRepliesActionLabel(
                                                         post,
                                                     )}
@@ -2016,10 +2007,11 @@
                                         </div>
                                     </div>
                                 {/if}
-                                <PostHistoryRepliesPanel
-                                    state={postHistoryReplies.getRepliesState(
+                                <PostHistoryThreadGraphPanel
+                                    state={postHistoryThreadGraph.getAnchorState(
                                         post,
                                     )}
+                                    section="children"
                                 />
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}

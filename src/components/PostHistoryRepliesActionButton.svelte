@@ -1,9 +1,14 @@
 <script lang="ts">
     import Button from "./Button.svelte";
-    import type { PostHistoryRepliesState } from "../lib/hooks/usePostHistoryReplies.svelte";
+
+    interface RepliesActionState {
+        status: "unloaded" | "loading" | "loaded" | "failed";
+        visible: boolean;
+        replies: unknown[];
+    }
 
     interface Props {
-        state: PostHistoryRepliesState;
+        state: RepliesActionState;
         ariaLabel: string;
         onClick: () => void;
     }
