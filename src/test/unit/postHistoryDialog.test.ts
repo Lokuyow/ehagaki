@@ -76,6 +76,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.channelUnknown': '不明',
         'postHistory.showReplyTarget': '返信先を見る',
         'postHistory.hideReplyTarget': '返信先を隠す',
+        'postHistory.replyTargetDeleted': '返信先削除済み',
         'postHistory.replyTarget': '返信先',
         'postHistory.contextLoading': '関連投稿を読み込み中...',
         'postHistory.contextNotFound': '関連投稿が見つかりませんでした',
@@ -829,7 +830,7 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
-    it('[reply-context-nip09] 既存tombstoneがある返信先は表示しない', async () => {
+    it('[reply-context-nip09] 既存tombstoneがある返信先は削除済みラベルを表示しparent cardを表示しない', async () => {
         const { parentRecord, post, replyId } = createReplyContextRecords();
         const deletedTargets = new Map<string, Set<string>>([
             [parentRecord.pubkeyHex, new Set([replyId])],
@@ -854,8 +855,11 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.queryByText('返信先の投稿')).toBeNull();
-            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+            expect(screen.getByText('返信先削除済み')).toBeTruthy();
         });
+        expect(screen.queryByText('関連投稿が見つかりませんでした')).toBeNull();
+        expect(screen.queryByRole('button', { name: '返信先削除済み' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '返信先を隠す' })).toBeNull();
         expect(deletionFetchServiceMock.fetchDeletionRequests).not.toHaveBeenCalled();
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
@@ -897,6 +901,8 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('返信先の投稿')).toBeTruthy();
         });
+        expect(screen.queryByText('返信先削除済み')).toBeNull();
+        expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();
         expect(deletionRequestsRepositoryMock.upsertValidDeletionRequests).toHaveBeenCalled();
     });
 
@@ -963,8 +969,11 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.queryByText('返信先の投稿')).toBeNull();
-            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+            expect(screen.getByText('返信先削除済み')).toBeTruthy();
         });
+        expect(screen.queryByText('関連投稿が見つかりませんでした')).toBeNull();
+        expect(screen.queryByRole('button', { name: '返信先削除済み' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '返信先を隠す' })).toBeNull();
         expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalled();
         expect(deletionRequestsRepositoryMock.upsertValidDeletionRequests).toHaveBeenCalledWith(expect.objectContaining({
             targetEvents: [parentRecord.rawEvent],
@@ -973,6 +982,38 @@ describe('PostHistoryDialog', () => {
             })],
         }));
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] 取得失敗時は返信先削除済みと誤表示しない', async () => {
+        const { post } = createReplyContextRecords();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: null,
+                relayUrl: null,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+        });
+        expect(screen.queryByText('返信先削除済み')).toBeNull();
+        expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();
     });
 
     it('[reply-context-loading] 400ms以内に返信先を解決できた場合はローダーを表示しない', async () => {

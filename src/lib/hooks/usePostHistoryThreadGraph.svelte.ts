@@ -654,6 +654,7 @@ export function usePostHistoryThreadGraph({
             loadingParent: true,
             parentError: null,
             parentMissing: false,
+            parentDeleted: false,
             showParentLoadingIndicator: false,
         }));
         scheduleParentLoadingIndicator(post.eventId, post.eventId);
@@ -690,7 +691,9 @@ export function usePostHistoryThreadGraph({
                     loadedParent: true,
                     visibleParent: true,
                     loadingParent: false,
-                    parentMissing: true,
+                    parentMissing: false,
+                    parentDeleted: true,
+                    parentError: null,
                     showParentLoadingIndicator: false,
                     lastFetchedParentAt: Date.now(),
                 }));
@@ -711,6 +714,7 @@ export function usePostHistoryThreadGraph({
                 loadingParent: false,
                 parentError: null,
                 parentMissing: false,
+                parentDeleted: false,
                 showParentLoadingIndicator: false,
                 lastFetchedParentAt: Date.now(),
             }));
@@ -751,6 +755,7 @@ export function usePostHistoryThreadGraph({
                 loadedParent: true,
                 loadingParent: false,
                 parentMissing: true,
+                parentDeleted: false,
                 showParentLoadingIndicator: false,
                 lastFetchedParentAt: Date.now(),
             }));
@@ -776,7 +781,8 @@ export function usePostHistoryThreadGraph({
                 loadedParent: true,
                 visibleParent: true,
                 loadingParent: false,
-                parentMissing: true,
+                parentMissing: false,
+                parentDeleted: true,
                 parentError: null,
                 showParentLoadingIndicator: false,
                 lastFetchedParentAt: Date.now(),
@@ -797,6 +803,7 @@ export function usePostHistoryThreadGraph({
             loadingParent: false,
             parentError: null,
             parentMissing: false,
+            parentDeleted: false,
             showParentLoadingIndicator: false,
             lastFetchedParentAt: Date.now(),
         }));

@@ -34,6 +34,10 @@
                 node={state.parentNode}
                 label={$_("postHistory.replyTarget")}
             />
+        {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
+            <span class="post-history-context-deleted-label">
+                {$_("postHistory.replyTargetDeleted")}
+            </span>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentMissing}
             <p class="post-history-context-message">
                 {$_("postHistory.contextNotFound")}
@@ -52,15 +56,17 @@
         {/if}
 
         <div class="post-history-context-actions">
-            <Button
-                type="button"
-                className="post-history-context-button"
-                onClick={() => onToggleParent?.()}
-            >
-                {state.parentExpansion.visibleParent
-                    ? $_("postHistory.hideReplyTarget")
-                    : $_("postHistory.showReplyTarget")}
-            </Button>
+            {#if !state.parentExpansion.parentDeleted}
+                <Button
+                    type="button"
+                    className="post-history-context-button"
+                    onClick={() => onToggleParent?.()}
+                >
+                    {state.parentExpansion.visibleParent
+                        ? $_("postHistory.hideReplyTarget")
+                        : $_("postHistory.showReplyTarget")}
+                </Button>
+            {/if}
         </div>
     </div>
 {:else if section === "children" && state.repliesActionState.visible && state.replyItems.length > 0}
@@ -125,6 +131,20 @@
         margin: 0;
         color: var(--text-muted);
         font-size: 0.82rem;
+    }
+
+    .post-history-context-deleted-label {
+        width: fit-content;
+        min-height: 28px;
+        padding: 2px 8px;
+        border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+        border-radius: 6px;
+        color: var(--text-muted);
+        background: color-mix(in srgb, var(--input-bg) 65%, transparent);
+        font-size: 0.82rem;
+        line-height: 22px;
+        cursor: default;
+        user-select: none;
     }
 
     .post-history-context-error {
