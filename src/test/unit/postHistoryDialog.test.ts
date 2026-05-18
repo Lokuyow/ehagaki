@@ -1663,6 +1663,11 @@ describe('PostHistoryDialog', () => {
             within(screen.getByRole('button', { name: '返信 1件を表示' }))
                 .getByText('1'),
         ).toBeTruthy();
+        expect(
+            within(screen.getByRole('button', { name: '返信 1件を表示' }))
+                .getByText('1')
+                .closest('.post-preview-replies-icon-wrapper'),
+        ).toBeTruthy();
         expect(screen.queryByText('返信Bへの返信C')).toBeNull();
         expect(
             Array.from(document.querySelectorAll('.post-preview-replies-count'))

@@ -31,16 +31,28 @@
     {#if state.status === "loading"}
         <span class="post-preview-replies-spinner" aria-hidden="true"></span>
     {:else}
-        <span class="pageview-icon svg-icon" aria-hidden="true"></span>
-        {#if state.status === "loaded" && state.replyCount > 0}
-            <span class="post-preview-replies-count" aria-hidden="true">
-                {state.replyCount}
-            </span>
-        {/if}
+        <span class="post-preview-replies-icon-wrapper" aria-hidden="true">
+            <span class="pageview-icon svg-icon"></span>
+            {#if state.status === "loaded" && state.replyCount > 0}
+                <span class="post-preview-replies-count">
+                    {state.replyCount}
+                </span>
+            {/if}
+        </span>
     {/if}
 </Button>
 
 <style>
+    .post-preview-replies-icon-wrapper {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+    }
+
     .pageview-icon.svg-icon {
         width: 22px;
         height: 22px;
@@ -58,8 +70,8 @@
 
     .post-preview-replies-count {
         position: absolute;
-        top: 2px;
-        right: 2px;
+        top: -4px;
+        right: -5px;
         min-width: 14px;
         height: 14px;
         padding: 0 3px;
