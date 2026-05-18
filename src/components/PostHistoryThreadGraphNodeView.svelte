@@ -156,8 +156,8 @@
     .post-history-thread-node-parent,
     .post-history-thread-node-children {
         display: grid;
-        gap: 6px;
-        padding-left: min(calc((var(--thread-depth) + 1) * 0.35rem), 1.4rem);
+        gap: 2px;
+        padding-left: min(calc((var(--thread-depth) + 1) * 0.25rem), 1.3rem);
     }
 
     .post-history-thread-node-actions {
