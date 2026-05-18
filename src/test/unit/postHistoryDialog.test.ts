@@ -1891,7 +1891,7 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByRole('button', { name: '返信を表示' })).toBeNull();
         const checkRepliesButton = await screen.findByRole('button', { name: '返信を確認' });
-        expect(checkRepliesButton.querySelector('.pageview-icon')).toBeTruthy();
+        expect(checkRepliesButton.querySelector('.subdirectory-arrow-right-icon')).toBeTruthy();
         expect(document.body.querySelector('.forum-icon')).toBeNull();
         expect(document.body.querySelector('.question-answer-icon')).toBeNull();
 
@@ -1964,7 +1964,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             const loadingButton = screen.getByRole('button', { name: '返信を確認中' });
             expect(loadingButton.querySelector('.post-preview-replies-spinner')).toBeTruthy();
-            expect(loadingButton.querySelector('.pageview-icon')).toBeNull();
+            expect(loadingButton.querySelector('.subdirectory-arrow-right-icon')).toBeNull();
             expect(loadingButton.textContent?.trim()).toBe('');
         });
         expect(screen.queryByText('返信を取得中...')).toBeNull();

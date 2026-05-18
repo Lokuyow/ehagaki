@@ -32,7 +32,7 @@
         <span class="post-preview-replies-spinner" aria-hidden="true"></span>
     {:else}
         <span class="post-preview-replies-icon-wrapper" aria-hidden="true">
-            <span class="pageview-icon svg-icon"></span>
+            <span class="subdirectory-arrow-right-icon svg-icon"></span>
             {#if state.status === "loaded" && state.replyCount > 0}
                 <span class="post-preview-replies-count">
                     {state.replyCount}
@@ -53,10 +53,10 @@
         flex: 0 0 22px;
     }
 
-    .pageview-icon.svg-icon {
+    .subdirectory-arrow-right-icon.svg-icon {
         width: 22px;
         height: 22px;
-        mask-image: url("/icons/pageview_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/subdirectory_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .post-preview-replies-spinner {

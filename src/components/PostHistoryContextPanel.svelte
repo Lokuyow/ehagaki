@@ -52,12 +52,21 @@
         <div class="post-history-context-actions">
             <Button
                 type="button"
-                className="post-history-context-button"
-                onClick={() => onToggle("reply")}
-            >
-                {reply.visible
+                className="post-history-context-button post-history-parent-toggle-button"
+                ariaLabel={reply.visible
                     ? $_("postHistory.hideReplyTarget")
                     : $_("postHistory.showReplyTarget")}
+                title={reply.visible
+                    ? $_("postHistory.hideReplyTarget")
+                    : $_("postHistory.showReplyTarget")}
+                contentLayout="icon"
+                shape="circle"
+                onClick={() => onToggle("reply")}
+            >
+                <span
+                    class="arrow-top-left-icon svg-icon"
+                    aria-hidden="true"
+                ></span>
             </Button>
         </div>
     </div>
@@ -82,6 +91,19 @@
         color: var(--text-muted);
         background: transparent;
         font-size: 0.82rem;
+    }
+
+    :global(.post-history-parent-toggle-button) {
+        width: 28px;
+        height: 28px;
+        min-height: 28px;
+        color: var(--text-muted);
+    }
+
+    :global(.post-history-parent-toggle-button .arrow-top-left-icon) {
+        width: 20px;
+        height: 20px;
+        mask-image: url("/icons/arrow_top_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     @media (min-width: 601px) {

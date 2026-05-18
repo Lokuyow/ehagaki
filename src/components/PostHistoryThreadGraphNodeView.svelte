@@ -71,7 +71,7 @@
 
 <div
     class="post-history-thread-node-view"
-    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}`}
+    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}; --thread-parent-indent: ${Math.max(0, 1.3 - Math.max(0, -state.depthFromAnchor) * 0.25)}rem`}
 >
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
@@ -120,12 +120,21 @@
                 <div class="post-history-thread-node-top-actions">
                     <Button
                         type="button"
-                        className="post-history-context-button"
-                        onClick={() => onToggleParent?.(state.node.eventId)}
-                    >
-                        {state.parentExpansion.visibleParent
+                        className="post-history-context-button post-history-parent-toggle-button"
+                        ariaLabel={state.parentExpansion.visibleParent
                             ? $_("postHistory.hideReplyTarget")
                             : $_("postHistory.showReplyTarget")}
+                        title={state.parentExpansion.visibleParent
+                            ? $_("postHistory.hideReplyTarget")
+                            : $_("postHistory.showReplyTarget")}
+                        contentLayout="icon"
+                        shape="circle"
+                        onClick={() => onToggleParent?.(state.node.eventId)}
+                    >
+                        <span
+                            class="arrow-top-left-icon svg-icon"
+                            aria-hidden="true"
+                        ></span>
                     </Button>
                 </div>
             {/if}
@@ -166,6 +175,13 @@
     .post-history-thread-node-children {
         display: grid;
         gap: 2px;
+    }
+
+    .post-history-thread-node-parent {
+        padding-left: var(--thread-parent-indent);
+    }
+
+    .post-history-thread-node-children {
         padding-left: min(calc((var(--thread-depth) + 1) * 0.25rem), 1.3rem);
     }
 
@@ -192,6 +208,19 @@
         color: var(--text-muted);
         background: transparent;
         font-size: 0.82rem;
+    }
+
+    :global(.post-history-parent-toggle-button) {
+        width: 28px;
+        height: 28px;
+        min-height: 28px;
+        color: var(--text-muted);
+    }
+
+    :global(.post-history-parent-toggle-button .arrow-top-left-icon) {
+        width: 20px;
+        height: 20px;
+        mask-image: url("/icons/arrow_top_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-context-loading) {
