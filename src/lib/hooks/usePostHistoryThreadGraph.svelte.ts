@@ -283,6 +283,23 @@ export function usePostHistoryThreadGraph({
         ]);
     }
 
+    function getParentAuthorHint(node: PostHistoryThreadGraphNode): string | null {
+        const references = parseKind1ThreadReferences(node.event);
+        if (!references.parentId) {
+            return null;
+        }
+
+        if (references.parentId === references.replyId) {
+            return references.replyAuthorHint;
+        }
+
+        if (references.parentId === references.rootId) {
+            return references.rootAuthorHint;
+        }
+
+        return references.replyAuthorHint ?? references.rootAuthorHint;
+    }
+
     function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
         const references = parseKind1ThreadReferences(node.event);
         return sanitizeRelayUrls([
@@ -346,7 +363,11 @@ export function usePostHistoryThreadGraph({
         const expansion = getExpansion(post.eventId, post.eventId);
         const replyItems = toReplyItems(post.eventId, getPubkeyHex() ?? post.pubkeyHex);
         const parentTargetId = anchorNode.parentEventId;
-        const parentNode = parentTargetId ? nodesById[parentTargetId] ?? null : null;
+        const parentNodeCandidate = parentTargetId ? nodesById[parentTargetId] ?? null : null;
+        const parentNode = parentNodeCandidate
+            && !isDeletedEvent(parentNodeCandidate.authorPubkey, parentNodeCandidate.eventId)
+            ? parentNodeCandidate
+            : null;
 
         return {
             anchorEventId: post.eventId,
@@ -396,6 +417,52 @@ export function usePostHistoryThreadGraph({
         };
     }
 
+    function markParentDeletedForEvent(
+        eventId: string,
+        authorPubkey: string | null | undefined,
+        options: { revealKnownParent?: boolean } = {},
+    ): void {
+        for (const [childEventId, parentEventId] of Object.entries(parentByChildId)) {
+            if (parentEventId !== eventId) {
+                continue;
+            }
+
+            const node = nodesById[eventId];
+            if (authorPubkey && node && node.authorPubkey !== authorPubkey) {
+                continue;
+            }
+
+            const key = buildAnchorNodeKey(childEventId, childEventId);
+            const current = expansionByAnchorNodeKey[key];
+            if (!current?.loadedParent && !current?.visibleParent) {
+                continue;
+            }
+
+            updateExpansion(childEventId, childEventId, (state) => ({
+                ...state,
+                loadedParent: true,
+                visibleParent: options.revealKnownParent ? true : state.visibleParent,
+                loadingParent: false,
+                parentMissing: false,
+                parentDeleted: true,
+                parentError: null,
+                showParentLoadingIndicator: false,
+                lastFetchedParentAt: Date.now(),
+            }));
+        }
+    }
+
+    function markParentDeletedForTargets(
+        deletedTargets: Map<string, Set<string>>,
+        options: { revealKnownParent?: boolean } = {},
+    ): void {
+        for (const [authorPubkey, eventIds] of deletedTargets.entries()) {
+            for (const eventId of eventIds) {
+                markParentDeletedForEvent(eventId, authorPubkey, options);
+            }
+        }
+    }
+
     function hideDeletedTargets(deletedTargets: Map<string, Set<string>>): void {
         let nextDeletedEventIdsByPubkey = deletedEventIdsByPubkey;
         let changed = false;
@@ -424,6 +491,7 @@ export function usePostHistoryThreadGraph({
 
         if (changed) {
             deletedEventIdsByPubkey = nextDeletedEventIdsByPubkey;
+            markParentDeletedForTargets(deletedTargets);
         }
     }
 
@@ -619,6 +687,55 @@ export function usePostHistoryThreadGraph({
         }));
     }
 
+    async function isParentDeletedByAuthorHint(input: {
+        anchorEventId: string;
+        parentEventId: string;
+        authorHint: string | null;
+        relayHints: string[];
+    }): Promise<boolean> {
+        if (!input.authorHint) {
+            return false;
+        }
+
+        const targetEvent: NostrEvent = {
+            id: input.parentEventId,
+            pubkey: input.authorHint,
+            kind: 1,
+            content: "",
+            tags: [],
+            created_at: 0,
+            sig: "",
+        };
+
+        await loadDeletedTargetsFromRepository([targetEvent]);
+        if (isDeletedEvent(input.authorHint, input.parentEventId)) {
+            return true;
+        }
+
+        await fetchAndStoreDeletionRequests(
+            input.anchorEventId,
+            [targetEvent],
+            input.relayHints,
+        );
+        await loadDeletedTargetsFromRepository([targetEvent]);
+        return isDeletedEvent(input.authorHint, input.parentEventId);
+    }
+
+    function setParentDeleted(anchorEventId: string): void {
+        clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, anchorEventId));
+        updateExpansion(anchorEventId, anchorEventId, (state) => ({
+            ...state,
+            loadedParent: true,
+            visibleParent: true,
+            loadingParent: false,
+            parentMissing: false,
+            parentDeleted: true,
+            parentError: null,
+            showParentLoadingIndicator: false,
+            lastFetchedParentAt: Date.now(),
+        }));
+    }
+
     async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
         const anchorNode = ensureAnchorNode(post);
         const parentEventId = anchorNode.parentEventId;
@@ -638,10 +755,42 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!options.force && currentExpansion.loadedParent) {
+            const cachedParentNode = nodesById[parentEventId] ?? null;
+            if (currentExpansion.parentDeleted) {
+                setParentDeleted(post.eventId);
+                return;
+            }
+
+            if (cachedParentNode) {
+                if (isDeletedEvent(cachedParentNode.authorPubkey, cachedParentNode.eventId)) {
+                    setParentDeleted(post.eventId);
+                    return;
+                }
+
+                const isVisibleCachedParent = await isVisibleParentEvent({
+                    anchorEventId: post.eventId,
+                    event: cachedParentNode.event,
+                    relayHints: sanitizeRelayUrls([
+                        ...cachedParentNode.relayUrls,
+                        ...getParentRelayHints(post, anchorNode),
+                    ]),
+                    checkPostHistoryRepository: cachedParentNode.authorPubkey === getPubkeyHex(),
+                });
+                if (!getShow()) {
+                    return;
+                }
+
+                if (!isVisibleCachedParent) {
+                    setParentDeleted(post.eventId);
+                    return;
+                }
+            }
+
             updateExpansion(post.eventId, post.eventId, (state) => ({
                 ...state,
                 visibleParent: true,
                 showParentLoadingIndicator: false,
+                parentDeleted: false,
             }));
             return;
         }
@@ -673,6 +822,13 @@ export function usePostHistoryThreadGraph({
                 ...(existingRecord.fetchedRelays ?? []),
                 ...getParentRelayHints(post, anchorNode),
             ]);
+            if (typeof existingRecord.deletedAt === "number") {
+                hideEvent(event.pubkey, event.id);
+                markParentDeletedForEvent(event.id, event.pubkey, { revealKnownParent: true });
+                setParentDeleted(post.eventId);
+                return;
+            }
+
             const isVisibleParent = await isVisibleParentEvent({
                 anchorEventId: post.eventId,
                 event,
@@ -685,18 +841,7 @@ export function usePostHistoryThreadGraph({
             }
 
             if (!isVisibleParent) {
-                clearParentLoadingDelayTimer(key);
-                updateExpansion(post.eventId, post.eventId, (state) => ({
-                    ...state,
-                    loadedParent: true,
-                    visibleParent: true,
-                    loadingParent: false,
-                    parentMissing: false,
-                    parentDeleted: true,
-                    parentError: null,
-                    showParentLoadingIndicator: false,
-                    lastFetchedParentAt: Date.now(),
-                }));
+                setParentDeleted(post.eventId);
                 return;
             }
 
@@ -750,6 +895,22 @@ export function usePostHistoryThreadGraph({
 
         clearParentLoadingDelayTimer(key);
         if (!result.event) {
+            const parentAuthorHint = getParentAuthorHint(anchorNode);
+            const isDeletedByAuthorHint = await isParentDeletedByAuthorHint({
+                anchorEventId: post.eventId,
+                parentEventId,
+                authorHint: parentAuthorHint,
+                relayHints: getParentRelayHints(post, anchorNode),
+            });
+            if (activeRequestId !== requestId || !getShow()) {
+                return;
+            }
+
+            if (isDeletedByAuthorHint) {
+                setParentDeleted(post.eventId);
+                return;
+            }
+
             updateExpansion(post.eventId, post.eventId, (state) => ({
                 ...state,
                 loadedParent: true,
@@ -776,17 +937,7 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!isVisibleParent) {
-            updateExpansion(post.eventId, post.eventId, (state) => ({
-                ...state,
-                loadedParent: true,
-                visibleParent: true,
-                loadingParent: false,
-                parentMissing: false,
-                parentDeleted: true,
-                parentError: null,
-                showParentLoadingIndicator: false,
-                lastFetchedParentAt: Date.now(),
-            }));
+            setParentDeleted(post.eventId);
             return;
         }
 
@@ -1072,6 +1223,7 @@ export function usePostHistoryThreadGraph({
 
         hideEvent(input.authorPubkey, input.eventId);
         removeEventIdFromChildren(input.eventId);
+        markParentDeletedForEvent(input.eventId, input.authorPubkey, { revealKnownParent: true });
         if (input.deletionEvent) {
             await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
                 targetEvents: [{

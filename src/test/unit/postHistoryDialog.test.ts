@@ -79,7 +79,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.replyTargetDeleted': '返信先削除済み',
         'postHistory.replyTarget': '返信先',
         'postHistory.contextLoading': '関連投稿を読み込み中...',
-        'postHistory.contextNotFound': '関連投稿が見つかりませんでした',
+        'postHistory.contextNotFound': '返信先が見つかりませんでした',
         'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
         'postHistory.contextRetry': '再試行',
         'postHistory.checkReplies': '返信を確認',
@@ -857,10 +857,237 @@ describe('PostHistoryDialog', () => {
             expect(screen.queryByText('返信先の投稿')).toBeNull();
             expect(screen.getByText('返信先削除済み')).toBeTruthy();
         });
-        expect(screen.queryByText('関連投稿が見つかりませんでした')).toBeNull();
+        expect(screen.queryByText('返信先が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '返信先削除済み' })).toBeNull();
         expect(screen.queryByRole('button', { name: '返信先を隠す' })).toBeNull();
         expect(deletionFetchServiceMock.fetchDeletionRequests).not.toHaveBeenCalled();
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] postHistory側で削除済みの返信先は削除済みラベルを表示する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deletedParentRecord = {
+            ...parentRecord,
+            deletedAt: 1_700_000_100,
+            deletionEventId: 'delete-event-id',
+        };
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? deletedParentRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(screen.getByText('返信先削除済み')).toBeTruthy();
+        });
+        expect(deletionFetchServiceMock.fetchDeletionRequests).not.toHaveBeenCalled();
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-nip09] cached parentNodeが既存tombstoneに一致する場合は再表示せず削除済みにする', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deletedTargets = new Map<string, Set<string>>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockImplementation(async () => deletedTargets);
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: parentRecord.rawEvent,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を隠す' }));
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+        });
+
+        deletedTargets.set(parentRecord.pubkeyHex, new Set([replyId]));
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(screen.getByText('返信先削除済み')).toBeTruthy();
+        });
+        expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(1);
+    });
+
+    it('[reply-context-nip09] cached parentNodeにvalid kind:5が後から見つかる場合は削除済みにする', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deletedTargets = new Map<string, Set<string>>();
+        let deletionFetchReturnsDeletion = false;
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockImplementation(async () => deletedTargets);
+        deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockImplementation(async ({ targetEvents, deletionEvents }: any) => {
+            for (const item of deletionEvents) {
+                for (const targetEvent of targetEvents) {
+                    const hasTargetTag = item.event.tags.some((tag: string[]) =>
+                        tag[0] === 'e' && tag[1] === targetEvent.id,
+                    );
+                    if (item.event.kind === 5 && item.event.pubkey === targetEvent.pubkey && hasTargetTag) {
+                        const eventIds = deletedTargets.get(targetEvent.pubkey) ?? new Set<string>();
+                        eventIds.add(targetEvent.id);
+                        deletedTargets.set(targetEvent.pubkey, eventIds);
+                    }
+                }
+            }
+            return {
+                insertedCount: deletionEvents.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: parentRecord.rawEvent,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        });
+        deletionFetchServiceMock.fetchDeletionRequests.mockImplementation(() => ({
+            promise: Promise.resolve({
+                events: deletionFetchReturnsDeletion
+                    ? [{
+                        event: createDeletionEvent({
+                            targetEventId: replyId,
+                            pubkey: parentRecord.pubkeyHex,
+                        }),
+                        relayUrls: ['wss://relay.example.com/'],
+                    }]
+                    : [],
+                fetchedAt: 1_700_000_050,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        }));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を隠す' }));
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+        });
+
+        deletionFetchReturnsDeletion = true;
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(screen.getByText('返信先削除済み')).toBeTruthy();
+        });
+        expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(1);
+        expect(deletionRequestsRepositoryMock.upsertValidDeletionRequests).toHaveBeenCalledWith(expect.objectContaining({
+            targetEvents: [parentRecord.rawEvent],
+            deletionEvents: [expect.objectContaining({
+                event: expect.objectContaining({ kind: 5, pubkey: parentRecord.pubkeyHex }),
+            })],
+        }));
+    });
+
+    it('[reply-context-delete] 表示中の返信先が削除成功扱いになるとparent cardを消して削除済みラベルを表示する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const ownParentRecord = {
+            ...parentRecord,
+            pubkeyHex: 'a'.repeat(64),
+            content: '削除対象返信先',
+            rawEvent: {
+                ...parentRecord.rawEvent,
+                pubkey: 'a'.repeat(64),
+                content: '削除対象返信先',
+            },
+        };
+
+        repositoryMock.getPage.mockResolvedValue([ownParentRecord, post]);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? ownParentRecord : null,
+        );
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: true,
+            eventId: 'delete-event-id',
+            deletionEventId: 'delete-event-id',
+            deletedAt: 1_700_000_100,
+            deletionEvent: createDeletionEvent({
+                targetEventId: replyId,
+                pubkey: ownParentRecord.pubkeyHex,
+            }),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await screen.findByText('自分の返信');
+        const replyHistoryItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
+        expect(replyHistoryItem).toBeTruthy();
+        const replyQueries = within(replyHistoryItem as HTMLElement);
+
+        await fireEvent.click(await replyQueries.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(replyQueries.getByText('削除対象返信先')).toBeTruthy();
+        });
+
+        const parentHistoryItem = document.querySelector(`[data-post-history-event-id="${replyId}"]`);
+        expect(parentHistoryItem).toBeTruthy();
+        await fireEvent.click(within(parentHistoryItem as HTMLElement).getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
+
+        await waitFor(() => {
+            expect(replyQueries.queryByText('削除対象返信先')).toBeNull();
+            expect(replyQueries.getByText('返信先削除済み')).toBeTruthy();
+        });
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
@@ -971,7 +1198,7 @@ describe('PostHistoryDialog', () => {
             expect(screen.queryByText('返信先の投稿')).toBeNull();
             expect(screen.getByText('返信先削除済み')).toBeTruthy();
         });
-        expect(screen.queryByText('関連投稿が見つかりませんでした')).toBeNull();
+        expect(screen.queryByText('返信先が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '返信先削除済み' })).toBeNull();
         expect(screen.queryByRole('button', { name: '返信先を隠す' })).toBeNull();
         expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalled();
@@ -1010,7 +1237,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
 
         await waitFor(() => {
-            expect(screen.getByText('関連投稿が見つかりませんでした')).toBeTruthy();
+            expect(screen.getByText('返信先が見つかりませんでした')).toBeTruthy();
         });
         expect(screen.queryByText('返信先削除済み')).toBeNull();
         expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();

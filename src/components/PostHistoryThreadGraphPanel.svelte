@@ -56,7 +56,7 @@
         {/if}
 
         <div class="post-history-context-actions">
-            {#if !state.parentExpansion.parentDeleted}
+            {#if !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <Button
                     type="button"
                     className="post-history-context-button"
