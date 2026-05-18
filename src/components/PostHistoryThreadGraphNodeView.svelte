@@ -131,7 +131,7 @@
             {/if}
         {/snippet}
 
-        <div class="post-history-thread-node-actions">
+        <div class="post-preview-footer">
             <span class="post-history-related-date">{postedAt}</span>
             <PostHistoryRepliesActionButton
                 state={state.repliesActionState}
@@ -169,21 +169,18 @@
         padding-left: min(calc((var(--thread-depth) + 1) * 0.25rem), 1.3rem);
     }
 
-    .post-history-thread-node-actions {
+    .post-preview-footer {
         display: flex;
         align-items: center;
         min-height: 28px;
     }
 
-    :global(.post-history-thread-node-actions > .post-history-related-date) {
+    :global(.post-preview-footer > .post-history-related-date) {
         color: var(--text-muted);
         font-size: 0.875rem;
     }
 
-    :global(
-            .post-history-thread-node-actions
-                > .post-preview-replies-action-button
-        ) {
+    :global(.post-preview-footer > .post-preview-replies-action-button) {
         margin: auto;
         --svg: var(--btn-post-preview-action);
         background: transparent;

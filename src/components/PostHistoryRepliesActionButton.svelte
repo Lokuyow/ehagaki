@@ -89,4 +89,39 @@
             transform: rotate(360deg);
         }
     }
+
+    :global(.post-preview-footer) {
+        :global(
+                .post-preview-action-button.post-preview-replies-action-button.selected
+            ) {
+            background: color-mix(in srgb, var(--theme) 12%, transparent);
+            color: var(--theme);
+
+            :global(.svg-icon) {
+                --svg: var(--theme);
+            }
+
+            :global(.post-preview-replies-count) {
+                background-color: var(--theme);
+            }
+        }
+
+        @media (min-width: 601px) {
+            :global(
+                    .post-preview-action-button.post-preview-replies-action-button:hover:not(
+                            :disabled
+                        )
+                ) {
+                background: color-mix(in srgb, var(--theme) 10%, transparent);
+
+                :global(.svg-icon) {
+                    --svg: var(--theme);
+                }
+
+                :global(.post-preview-replies-count) {
+                    background-color: var(--theme);
+                }
+            }
+        }
+    }
 </style>
