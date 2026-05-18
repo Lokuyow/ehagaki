@@ -140,11 +140,12 @@ describe("PostDeletionService", () => {
             rxNostr: {} as any,
         });
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             success: true,
             eventId: "delete-event-id",
             acceptedRelays: ["wss://accepted.example.com/"],
             deletionEventId: "delete-event-id",
+            deletionEvent: expect.objectContaining({ id: "delete-event-id", kind: 5 }),
             deletedAt: 5000,
         });
         expect(signEvent).toHaveBeenCalledWith({

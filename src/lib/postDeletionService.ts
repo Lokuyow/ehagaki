@@ -12,13 +12,14 @@ import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
-import type { PostResult, AuthState, KeyManagerInterface } from "./types";
+import type { PostResult, AuthState, KeyManagerInterface, NostrEvent } from "./types";
 
 export const POST_DELETION_SUPPORTED_KINDS = [1, 42] as const;
 
 export interface DeletionRequestResult extends PostResult {
     deletedAt?: number;
     deletionEventId?: string;
+    deletionEvent?: NostrEvent;
 }
 
 export interface DeletionSigner {
@@ -229,6 +230,7 @@ export class PostDeletionService {
             ...result,
             eventId: deletionEventId,
             deletionEventId,
+            deletionEvent: signedEvent as NostrEvent,
             deletedAt,
         };
     }

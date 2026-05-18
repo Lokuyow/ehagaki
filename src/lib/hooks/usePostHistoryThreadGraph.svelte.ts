@@ -11,6 +11,11 @@ import {
     type PostHistoryReplyFetchTask,
 } from "../postHistoryReplyFetchService";
 import {
+    postHistoryDeletionFetchService,
+    type PostHistoryDeletionFetchService,
+    type PostHistoryDeletionFetchTask,
+} from "../postHistoryDeletionFetchService";
+import {
     postHistoryReplyEventsAdapter,
     type PostHistoryReplyEventsAdapter,
 } from "../postHistoryReplyEventsAdapter";
@@ -25,6 +30,10 @@ import {
     postHistoryReplyEventsRepository,
     type PostHistoryReplyEventsRepository,
 } from "../storage/postHistoryReplyEventsRepository";
+import {
+    postHistoryDeletionRequestsRepository,
+    type PostHistoryDeletionRequestsRepository,
+} from "../storage/postHistoryDeletionRequestsRepository";
 import {
     profilesRepository,
     type ProfilesRepository,
@@ -83,9 +92,14 @@ interface UsePostHistoryThreadGraphParams {
         PostHistoryReplyEventsRepository,
         "getDirectReplies" | "upsertDirectReplies" | "deleteByEventId"
     >;
+    deletionRequestsRepositoryImpl?: Pick<
+        PostHistoryDeletionRequestsRepository,
+        "getDeletedTargets" | "upsertValidDeletionRequests"
+    >;
     profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
     contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
+    deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
 }
 
 function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionState {
@@ -113,18 +127,21 @@ export function usePostHistoryThreadGraph({
     postHistoryRepositoryImpl = postHistoryRepository,
     replyEventsAdapterImpl = postHistoryReplyEventsAdapter,
     replyEventsRepositoryImpl = postHistoryReplyEventsRepository,
+    deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     profilesRepositoryImpl = profilesRepository,
     contextFetchService = postHistoryContextFetchService,
     replyFetchService = postHistoryReplyFetchService,
+    deletionFetchService = postHistoryDeletionFetchService,
 }: UsePostHistoryThreadGraphParams) {
     let nodesById = $state.raw<Record<string, PostHistoryThreadGraphNode>>({});
     let parentByChildId = $state.raw<Record<string, string>>({});
     let childrenByParentId = $state.raw<Record<string, string[]>>({});
     let expansionByAnchorNodeKey =
         $state.raw<Record<string, PostHistoryThreadGraphExpansionState>>({});
-    let hiddenEventIds = $state.raw<Record<string, true>>({});
+    let deletedEventIdsByPubkey = $state.raw<Record<string, Record<string, true>>>({});
     const parentTasksByKey = new Map<string, PostHistoryContextFetchTask>();
     const childrenTasksByKey = new Map<string, PostHistoryReplyFetchTask>();
+    const deletionTasksByKey = new Map<string, PostHistoryDeletionFetchTask>();
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
     let requestId = 0;
 
@@ -175,7 +192,7 @@ export function usePostHistoryThreadGraph({
         const current = childrenByParentId[parentEventId] ?? [];
         const merged = sortEventIdsByEvent(
             uniqueEventIds([...current, ...childEventIds]).filter((eventId) =>
-                eventId !== parentEventId && !hiddenEventIds[eventId],
+                eventId !== parentEventId && !isDeletedNodeEventId(eventId),
             ),
             nodesById,
         );
@@ -313,9 +330,9 @@ export function usePostHistoryThreadGraph({
     ): PostHistoryThreadGraphReplyItem[] {
         const eventIds = childrenByParentId[anchorEventId] ?? [];
         return eventIds
-            .filter((eventId) => !hiddenEventIds[eventId])
             .map((eventId) => nodesById[eventId])
             .filter((node): node is PostHistoryThreadGraphNode => !!node)
+            .filter((node) => !isDeletedEvent(node.authorPubkey, node.eventId))
             .map((node) => ({
                 event: node.event,
                 profile: node.profile,
@@ -352,15 +369,62 @@ export function usePostHistoryThreadGraph({
         };
     }
 
-    function hideEventId(eventId: string): void {
-        if (!eventId || hiddenEventIds[eventId]) {
+    function isDeletedEvent(authorPubkey: string | null | undefined, eventId: string | null | undefined): boolean {
+        if (!authorPubkey || !eventId) {
+            return false;
+        }
+
+        return !!deletedEventIdsByPubkey[authorPubkey]?.[eventId];
+    }
+
+    function isDeletedNodeEventId(eventId: string): boolean {
+        const node = nodesById[eventId];
+        return node ? isDeletedEvent(node.authorPubkey, eventId) : false;
+    }
+
+    function hideEvent(authorPubkey: string, eventId: string): void {
+        if (!authorPubkey || !eventId || isDeletedEvent(authorPubkey, eventId)) {
             return;
         }
 
-        hiddenEventIds = {
-            ...hiddenEventIds,
-            [eventId]: true,
+        deletedEventIdsByPubkey = {
+            ...deletedEventIdsByPubkey,
+            [authorPubkey]: {
+                ...(deletedEventIdsByPubkey[authorPubkey] ?? {}),
+                [eventId]: true,
+            },
         };
+    }
+
+    function hideDeletedTargets(deletedTargets: Map<string, Set<string>>): void {
+        let nextDeletedEventIdsByPubkey = deletedEventIdsByPubkey;
+        let changed = false;
+        for (const [authorPubkey, eventIds] of deletedTargets.entries()) {
+            const currentEventIds = nextDeletedEventIdsByPubkey[authorPubkey] ?? {};
+            let nextEventIds = currentEventIds;
+            for (const eventId of eventIds) {
+                if (nextEventIds[eventId]) {
+                    continue;
+                }
+
+                nextEventIds = {
+                    ...nextEventIds,
+                    [eventId]: true,
+                };
+                changed = true;
+            }
+
+            if (nextEventIds !== currentEventIds) {
+                nextDeletedEventIdsByPubkey = {
+                    ...nextDeletedEventIdsByPubkey,
+                    [authorPubkey]: nextEventIds,
+                };
+            }
+        }
+
+        if (changed) {
+            deletedEventIdsByPubkey = nextDeletedEventIdsByPubkey;
+        }
     }
 
     function removeEventIdFromChildren(eventId: string): void {
@@ -384,21 +448,21 @@ export function usePostHistoryThreadGraph({
         }
     }
 
-    async function isHiddenOrDeletedReplyEventId(eventId: string): Promise<boolean> {
-        if (!eventId) {
+    async function isHiddenOrDeletedReplyEvent(event: NostrEvent): Promise<boolean> {
+        if (!event?.id) {
             return true;
         }
 
-        if (hiddenEventIds[eventId]) {
+        if (isDeletedEvent(event.pubkey, event.id)) {
             return true;
         }
 
         try {
-            const record = await postHistoryRepositoryImpl.getByEventId(eventId);
+            const record = await postHistoryRepositoryImpl.getByEventId(event.id);
             if (typeof record?.deletedAt === "number") {
-                hideEventId(eventId);
-                removeEventIdFromChildren(eventId);
-                await replyEventsRepositoryImpl.deleteByEventId(eventId);
+                hideEvent(event.pubkey, event.id);
+                removeEventIdFromChildren(event.id);
+                await replyEventsRepositoryImpl.deleteByEventId(event.id);
                 return true;
             }
         } catch {
@@ -408,12 +472,97 @@ export function usePostHistoryThreadGraph({
         return false;
     }
 
+    async function loadDeletedTargetsFromRepository(events: NostrEvent[]): Promise<void> {
+        const deletedTargets = await deletionRequestsRepositoryImpl.getDeletedTargets(
+            events.map((event) => ({
+                targetAuthorPubkey: event.pubkey,
+                targetEventId: event.id,
+            })),
+        );
+        hideDeletedTargets(deletedTargets);
+    }
+
+    async function fetchAndStoreDeletionRequests(
+        anchorEventId: string,
+        events: NostrEvent[],
+        relayHints: string[],
+    ): Promise<void> {
+        if (events.length === 0) {
+            return;
+        }
+
+        const rxNostr = getRxNostr();
+        if (!rxNostr) {
+            return;
+        }
+
+        const visibleEvents = events.filter((event) => !isDeletedEvent(event.pubkey, event.id));
+        if (visibleEvents.length === 0) {
+            return;
+        }
+
+        const key = `${anchorEventId}:deletions`;
+        deletionTasksByKey.get(key)?.cancel();
+        const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
+            targets: visibleEvents.map((event) => ({
+                event,
+                relayUrls: nodesById[event.id]?.relayUrls ?? [],
+            })),
+            relayHints,
+            relayConfig: getRelayConfig(),
+        });
+        deletionTasksByKey.set(key, task);
+
+        try {
+            const result = await task.promise;
+            if (!getShow()) {
+                return;
+            }
+
+            await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
+                targetEvents: visibleEvents,
+                deletionEvents: result.events,
+                fetchedAt: result.fetchedAt,
+            });
+        } catch {
+            return;
+        } finally {
+            deletionTasksByKey.delete(key);
+        }
+
+        if (!getShow()) {
+            return;
+        }
+
+        await loadDeletedTargetsFromRepository(visibleEvents);
+    }
+
+    async function filterVisibleReplyEvents(
+        events: NostrEvent[],
+    ): Promise<NostrEvent[]> {
+        await loadDeletedTargetsFromRepository(events);
+        const visibleEvents: NostrEvent[] = [];
+        for (const event of events) {
+            if (await isHiddenOrDeletedReplyEvent(event)) {
+                await replyEventsRepositoryImpl.deleteByEventId(event.id);
+                continue;
+            }
+
+            visibleEvents.push(event);
+        }
+
+        return visibleEvents;
+    }
+
     async function filterVisibleReplyRecords(
         records: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[],
     ): Promise<import("../storage/ehagakiDb").PostHistoryReplyEventRecord[]> {
+        const events = records.map((record) => toEventFromReplyRecord(record));
+        const visibleEvents = await filterVisibleReplyEvents(events);
+        const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
         const visibleRecords: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[] = [];
         for (const record of records) {
-            if (await isHiddenOrDeletedReplyEventId(record.eventId)) {
+            if (!visibleEventIds.has(record.eventId)) {
                 continue;
             }
 
@@ -426,9 +575,11 @@ export function usePostHistoryThreadGraph({
     async function filterVisibleReplyItems(
         items: Array<{ event: NostrEvent; relayUrls?: string[] }>,
     ): Promise<Array<{ event: NostrEvent; relayUrls?: string[] }>> {
+        const visibleEvents = await filterVisibleReplyEvents(items.map((item) => item.event));
+        const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
         const visibleItems: Array<{ event: NostrEvent; relayUrls?: string[] }> = [];
         for (const item of items) {
-            if (await isHiddenOrDeletedReplyEventId(item.event.id)) {
+            if (!visibleEventIds.has(item.event.id)) {
                 continue;
             }
 
@@ -619,8 +770,14 @@ export function usePostHistoryThreadGraph({
         }));
 
         try {
+            const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId);
+            await fetchAndStoreDeletionRequests(
+                post.eventId,
+                rawCachedRecords.map((record) => toEventFromReplyRecord(record)),
+                getChildrenRelayHints(post, anchorNode),
+            );
             const cachedRecords = await filterVisibleReplyRecords(
-                await replyEventsAdapterImpl.getDirectReplyRecords(post.eventId),
+                rawCachedRecords,
             );
             if (activeRequestId !== requestId || !getShow()) {
                 return;
@@ -667,6 +824,14 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
+            await fetchAndStoreDeletionRequests(
+                post.eventId,
+                result.events.map((item) => item.event),
+                [
+                    ...getChildrenRelayHints(post, anchorNode),
+                    ...result.relayUrls,
+                ],
+            );
             const fetchedEvents = await filterVisibleReplyItems(result.events);
             await replyEventsRepositoryImpl.upsertDirectReplies({
                 parentEventId: post.eventId,
@@ -712,11 +877,11 @@ export function usePostHistoryThreadGraph({
     ): Promise<void> {
         const childIds: string[] = [];
         for (const record of records) {
-            if (hiddenEventIds[record.eventId]) {
+            const event = toEventFromReplyRecord(record);
+            if (isDeletedEvent(event.pubkey, event.id)) {
                 continue;
             }
 
-            const event = toEventFromReplyRecord(record);
             const node = await upsertNodeWithProfile({
                 event,
                 relayUrls: record.relayUrls,
@@ -773,7 +938,7 @@ export function usePostHistoryThreadGraph({
             return false;
         }
 
-        if (await isHiddenOrDeletedReplyEventId(event.id)) {
+        if ((await filterVisibleReplyEvents([event])).length === 0) {
             return false;
         }
 
@@ -805,21 +970,42 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
-    async function recordDeletedEvent(eventId: string): Promise<void> {
-        if (!eventId) {
+    async function recordDeletedEvent(input: {
+        eventId: string;
+        authorPubkey: string;
+        deletionEvent?: NostrEvent | null;
+    }): Promise<void> {
+        if (!input.eventId || !input.authorPubkey) {
             return;
         }
 
-        hideEventId(eventId);
-        removeEventIdFromChildren(eventId);
-        await replyEventsRepositoryImpl.deleteByEventId(eventId);
+        hideEvent(input.authorPubkey, input.eventId);
+        removeEventIdFromChildren(input.eventId);
+        if (input.deletionEvent) {
+            await deletionRequestsRepositoryImpl.upsertValidDeletionRequests({
+                targetEvents: [{
+                    id: input.eventId,
+                    pubkey: input.authorPubkey,
+                    kind: 1,
+                    content: "",
+                    tags: [],
+                    created_at: input.deletionEvent.created_at,
+                    sig: "",
+                }],
+                deletionEvents: [{ event: input.deletionEvent }],
+                fetchedAt: Date.now(),
+            });
+        }
+        await replyEventsRepositoryImpl.deleteByEventId(input.eventId);
     }
 
     function cancelCurrentGraphFetches(): void {
         parentTasksByKey.forEach((task) => task.cancel());
         childrenTasksByKey.forEach((task) => task.cancel());
+        deletionTasksByKey.forEach((task) => task.cancel());
         parentTasksByKey.clear();
         childrenTasksByKey.clear();
+        deletionTasksByKey.clear();
         parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
         parentLoadingDelayTimersByKey.clear();
     }
@@ -831,7 +1017,7 @@ export function usePostHistoryThreadGraph({
         parentByChildId = {};
         childrenByParentId = {};
         expansionByAnchorNodeKey = {};
-        hiddenEventIds = {};
+        deletedEventIdsByPubkey = {};
     }
 
     $effect(() => {

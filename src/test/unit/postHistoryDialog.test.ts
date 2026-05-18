@@ -125,8 +125,17 @@ const replyEventsRepositoryMock = vi.hoisted(() => ({
     deleteByEventId: vi.fn(),
 }));
 
+const deletionRequestsRepositoryMock = vi.hoisted(() => ({
+    getDeletedTargets: vi.fn(),
+    upsertValidDeletionRequests: vi.fn(),
+}));
+
 const replyFetchServiceMock = vi.hoisted(() => ({
     fetchDirectReplies: vi.fn(),
+}));
+
+const deletionFetchServiceMock = vi.hoisted(() => ({
+    fetchDeletionRequests: vi.fn(),
 }));
 
 const visibleRangeRepositoryMock = vi.hoisted(() => ({
@@ -286,10 +295,18 @@ vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
     postHistoryReplyEventsRepository: replyEventsRepositoryMock,
 }));
 
+vi.mock('../../lib/storage/postHistoryDeletionRequestsRepository', () => ({
+    postHistoryDeletionRequestsRepository: deletionRequestsRepositoryMock,
+}));
+
 vi.mock('../../lib/postHistoryReplyFetchService', () => ({
     POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT: 100,
     POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS: 86_400,
     postHistoryReplyFetchService: replyFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryDeletionFetchService', () => ({
+    postHistoryDeletionFetchService: deletionFetchServiceMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
@@ -480,6 +497,20 @@ function createDirectReplyEventRecord(overrides: Record<string, any> = {}) {
     };
 }
 
+function createDeletionEvent(overrides: Record<string, any> = {}) {
+    const targetEventId = overrides.targetEventId ?? '4'.repeat(64);
+    const pubkey = overrides.pubkey ?? 'd'.repeat(64);
+    return {
+        id: overrides.id ?? '7'.repeat(64),
+        pubkey,
+        kind: 5,
+        content: overrides.content ?? '',
+        tags: overrides.tags ?? [['e', targetEventId], ['k', '1']],
+        created_at: overrides.createdAt ?? 1_700_000_040,
+        sig: overrides.sig ?? 'a'.repeat(128),
+    };
+}
+
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
     expect(screen.getByTitle('image.jpg')).toBeTruthy();
@@ -561,7 +592,22 @@ describe('PostHistoryDialog', () => {
             ignoredCount: 0,
         });
         replyEventsRepositoryMock.deleteByEventId.mockResolvedValue(undefined);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(new Map());
+        deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        });
         replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [],
+                fetchedAt: 0,
+                relayUrls: [],
+            }),
+            cancel: vi.fn(),
+        });
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
             promise: Promise.resolve({
                 events: [],
                 fetchedAt: 0,
@@ -1304,6 +1350,289 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByText('0')).toBeNull();
+    });
+
+    it('[direct-replies-nip09] validなkind:5がある返信を表示と件数から除外する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const deletedReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            content: '削除済み返信B',
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '削除済み返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const remainingReply = createDirectReplyEventRecord({
+            eventId: '6'.repeat(64),
+            content: '残る返信C',
+            rawEvent: {
+                id: '6'.repeat(64),
+                pubkey: 'e'.repeat(64),
+                kind: 1,
+                content: '残る返信C',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'b'.repeat(128),
+            },
+        });
+        const deletedTargets = new Map<string, Set<string>>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockImplementation(async () => deletedTargets);
+        deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockImplementation(async ({ targetEvents, deletionEvents }: any) => {
+            for (const item of deletionEvents) {
+                for (const targetEvent of targetEvents) {
+                    const hasTargetTag = item.event.tags.some((tag: string[]) =>
+                        tag[0] === 'e' && tag[1] === targetEvent.id,
+                    );
+                    if (item.event.kind === 5 && item.event.pubkey === targetEvent.pubkey && hasTargetTag) {
+                        const eventIds = deletedTargets.get(targetEvent.pubkey) ?? new Set<string>();
+                        eventIds.add(targetEvent.id);
+                        deletedTargets.set(targetEvent.pubkey, eventIds);
+                    }
+                }
+            }
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        let storedReplies: any[] = [];
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => storedReplies);
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ events }: any) => {
+            storedReplies = events.map((item: any) =>
+                item.event.id === remainingReply.eventId ? remainingReply : deletedReply,
+            );
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [
+                    { event: deletedReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                    { event: remainingReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                ],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{
+                    event: createDeletionEvent({
+                        targetEventId: deletedReply.eventId,
+                        pubkey: deletedReply.authorPubkey,
+                    }),
+                    relayUrls: ['wss://relay.example.com/'],
+                }],
+                fetchedAt: 1_700_000_050,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('削除済み返信B')).toBeNull();
+            expect(screen.getByText('残る返信C')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+        });
+        expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(deletedReply.eventId);
+        expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
+            events: [expect.objectContaining({ event: remainingReply.rawEvent })],
+        }));
+    });
+
+    it('[direct-replies-nip09] pubkey不一致のkind:5は削除済み扱いにしない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const reply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            content: '表示される返信B',
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '表示される返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => [reply]);
+        replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{ event: reply.rawEvent, relayUrls: ['wss://relay.example.com/'] }],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{
+                    event: createDeletionEvent({
+                        targetEventId: reply.eventId,
+                        pubkey: '9'.repeat(64),
+                    }),
+                    relayUrls: ['wss://relay.example.com/'],
+                }],
+                fetchedAt: 1_700_000_050,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('表示される返信B')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+        });
+    });
+
+    it('[direct-replies-nip09] DB cache上のtombstoneでcached replyを非表示にし0バッジを出さない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const deletedReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            content: 'cached削除済み返信B',
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: 'cached削除済み返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const deletedTargets = new Map<string, Set<string>>([
+            [deletedReply.authorPubkey, new Set([deletedReply.eventId])],
+        ]);
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(deletedTargets);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => [deletedReply]);
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: Promise.resolve({
+                events: [{ event: deletedReply.rawEvent, relayUrls: ['wss://relay.example.com/'] }],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(screen.queryByText('cached削除済み返信B')).toBeNull();
+            expect(screen.getByRole('button', { name: '返信を再確認' })).toBeTruthy();
+        });
+        expect(screen.getByRole('button', { name: '返信を再確認' }).querySelector('.post-preview-replies-count')).toBeNull();
+        expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
+        expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
+        expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(deletedReply.eventId);
+        expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
+            events: [],
+        }));
     });
 
     it('[direct-replies-delete] 削除済みdirect replyをgraph stateと再取得mergeから除外する', async () => {

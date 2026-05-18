@@ -1318,7 +1318,11 @@
                 result.deletionEventId,
             );
             void postHistoryThreadGraph
-                .recordDeletedEvent(targetPost.eventId)
+                .recordDeletedEvent({
+                    eventId: targetPost.eventId,
+                    authorPubkey: targetPost.pubkeyHex,
+                    deletionEvent: result.deletionEvent ?? null,
+                })
                 .catch(() => undefined);
             deleteRequestState = {
                 ...deleteRequestState,
