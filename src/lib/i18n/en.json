@@ -156,7 +156,6 @@
     "showReplyTarget": "Show reply target",
     "hideReplyTarget": "Hide reply target",
     "replyTargetDeleted": "Reply target deleted",
-    "replyTarget": "Reply target",
     "contextLoading": "Loading related post...",
     "contextNotFound": "Reply target was not found",
     "contextFetchFailed": "Could not fetch related post",

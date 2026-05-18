@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { _ } from "svelte-i18n";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import type { PostHistoryRepliesState } from "../lib/hooks/usePostHistoryReplies.svelte";
 
@@ -17,9 +16,6 @@
                 <PostHistoryRelatedEventCard
                     event={reply.event}
                     profile={reply.profile}
-                    label={reply.isOwnReply
-                        ? $_("postHistory.ownReply")
-                        : $_("postHistory.directReply")}
                 />
             {/each}
         </div>

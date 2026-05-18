@@ -8,10 +8,9 @@
     interface Props {
         event: NostrEvent;
         profile?: ProfileData | null;
-        label: string;
     }
 
-    let { event, profile = null, label }: Props = $props();
+    let { event, profile = null }: Props = $props();
 
     let authorName = $derived.by(() => {
         const displayName = profile?.displayName?.trim() || profile?.name?.trim();
@@ -27,7 +26,6 @@
 
 <article class="post-history-related-card">
     <header class="post-history-related-card-header">
-        <span class="post-history-related-label">{label}</span>
         <span class="post-history-related-date">{postedAt}</span>
     </header>
     <div class="post-history-related-author">
@@ -72,7 +70,6 @@
         font-size: 0.78rem;
     }
 
-    .post-history-related-label,
     .post-history-related-date {
         min-width: 0;
         overflow: hidden;

@@ -4,14 +4,12 @@
 
     interface Props {
         node: PostHistoryThreadGraphNode;
-        label: string;
     }
 
-    let { node, label }: Props = $props();
+    let { node }: Props = $props();
 </script>
 
 <PostHistoryRelatedEventCard
     event={node.event}
     profile={node.profile}
-    {label}
 />

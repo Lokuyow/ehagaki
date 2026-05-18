@@ -9,7 +9,6 @@
 
     interface Props {
         state: PostHistoryThreadGraphNodeState;
-        label: string;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -18,7 +17,6 @@
 
     let {
         state,
-        label,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -80,7 +78,6 @@
             {:else if state.parentExpansion.visibleParent && state.parentNodeState}
                 <PostHistoryThreadGraphNodeView
                     state={state.parentNodeState}
-                    label={$_("postHistory.replyTarget")}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -109,7 +106,7 @@
         </div>
     {/if}
 
-    <PostHistoryThreadNode node={state.node} {label} />
+    <PostHistoryThreadNode node={state.node} />
 
     <div class="post-history-thread-node-actions">
         {#if state.parentTargetId && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
@@ -135,9 +132,6 @@
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
-                    label={replyState.isOwnReply
-                        ? $_("postHistory.ownReply")
-                        : $_("postHistory.directReply")}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}

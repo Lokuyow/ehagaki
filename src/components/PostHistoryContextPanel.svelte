@@ -31,7 +31,6 @@
             <PostHistoryRelatedEventCard
                 event={reply.event}
                 profile={reply.profile}
-                label={$_("postHistory.replyTarget")}
             />
         {:else if reply.visible && reply.status === "missing"}
             <p class="post-history-context-message">

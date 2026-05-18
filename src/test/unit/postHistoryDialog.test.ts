@@ -77,7 +77,6 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.showReplyTarget': '返信先を見る',
         'postHistory.hideReplyTarget': '返信先を隠す',
         'postHistory.replyTargetDeleted': '返信先削除済み',
-        'postHistory.replyTarget': '返信先',
         'postHistory.contextLoading': '関連投稿を読み込み中...',
         'postHistory.contextNotFound': '返信先が見つかりませんでした',
         'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
@@ -1638,8 +1637,8 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('自分の返信本文')).toBeTruthy();
         });
 
-        expect(screen.getByText('返信')).toBeTruthy();
-        expect(screen.getByText('自分の返信')).toBeTruthy();
+        expect(screen.queryByText('返信')).toBeNull();
+        expect(screen.queryByText('自分の返信')).toBeNull();
         expect(screen.getByText('1件')).toBeTruthy();
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
         expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({

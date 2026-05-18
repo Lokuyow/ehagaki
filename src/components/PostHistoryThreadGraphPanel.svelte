@@ -41,7 +41,6 @@
         {:else if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
-                label={$_("postHistory.replyTarget")}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -50,7 +49,6 @@
         {:else if state.parentExpansion.visibleParent && state.parentNode}
             <PostHistoryThreadNode
                 node={state.parentNode}
-                label={$_("postHistory.replyTarget")}
             />
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
             <span class="post-history-context-deleted-label">
@@ -93,9 +91,6 @@
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
-                    label={replyState.isOwnReply
-                        ? $_("postHistory.ownReply")
-                        : $_("postHistory.directReply")}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}
@@ -106,9 +101,6 @@
                     <PostHistoryRelatedEventCard
                         event={reply.event}
                         profile={reply.profile}
-                        label={reply.isOwnReply
-                            ? $_("postHistory.ownReply")
-                            : $_("postHistory.directReply")}
                     />
                 {/each}
             {/each}
