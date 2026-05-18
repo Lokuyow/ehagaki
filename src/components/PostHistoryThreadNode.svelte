@@ -5,15 +5,21 @@
 
     interface Props {
         node: PostHistoryThreadGraphNode;
+        topActions?: Snippet;
         children?: Snippet;
     }
 
-    let { node, children = undefined }: Props = $props();
+    let {
+        node,
+        topActions = undefined,
+        children = undefined,
+    }: Props = $props();
 </script>
 
 <PostHistoryRelatedEventCard
     event={node.event}
     profile={node.profile}
+    {topActions}
 >
     {@render children?.()}
 </PostHistoryRelatedEventCard>

@@ -112,18 +112,23 @@
     {/if}
 
     <PostHistoryThreadNode node={state.node}>
-        <div class="post-history-thread-node-actions">
+        {#snippet topActions()}
             {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
-                <Button
-                    type="button"
-                    className="post-history-context-button"
-                    onClick={() => onToggleParent?.(state.node.eventId)}
-                >
-                    {state.parentExpansion.visibleParent
-                        ? $_("postHistory.hideReplyTarget")
-                        : $_("postHistory.showReplyTarget")}
-                </Button>
+                <div class="post-history-thread-node-top-actions">
+                    <Button
+                        type="button"
+                        className="post-history-context-button"
+                        onClick={() => onToggleParent?.(state.node.eventId)}
+                    >
+                        {state.parentExpansion.visibleParent
+                            ? $_("postHistory.hideReplyTarget")
+                            : $_("postHistory.showReplyTarget")}
+                    </Button>
+                </div>
             {/if}
+        {/snippet}
+
+        <div class="post-history-thread-node-actions">
             <PostHistoryRepliesActionButton
                 state={state.repliesActionState}
                 ariaLabel={getRepliesActionLabel()}

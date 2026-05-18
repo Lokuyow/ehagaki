@@ -9,10 +9,16 @@
     interface Props {
         event: NostrEvent;
         profile?: ProfileData | null;
+        topActions?: Snippet;
         children?: Snippet;
     }
 
-    let { event, profile = null, children = undefined }: Props = $props();
+    let {
+        event,
+        profile = null,
+        topActions = undefined,
+        children = undefined,
+    }: Props = $props();
 
     let authorName = $derived.by(() => {
         const displayName =
@@ -28,6 +34,7 @@
 </script>
 
 <article class="post-history-related-card">
+    {@render topActions?.()}
     <header class="post-history-related-card-header">
         <span class="post-history-related-date">{postedAt}</span>
     </header>
