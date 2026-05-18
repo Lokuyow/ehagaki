@@ -1119,7 +1119,8 @@
     }
 
     function getRepliesActionLabel(post: PostHistoryRecord): string {
-        const state = postHistoryThreadGraph.getAnchorState(post).repliesActionState;
+        const state =
+            postHistoryThreadGraph.getAnchorState(post).repliesActionState;
         if (state.status === "loading") {
             return $_("postHistory.checkingReplies");
         }
@@ -1147,7 +1148,8 @@
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
-        const state = postHistoryThreadGraph.getAnchorState(post).repliesActionState;
+        const state =
+            postHistoryThreadGraph.getAnchorState(post).repliesActionState;
         if (
             state.status === "failed" ||
             (state.status === "loaded" &&
@@ -1610,7 +1612,8 @@
             {/if}
             <ul class="post-history-list">
                 {#each history.posts as post (post.eventId)}
-                    {@const graphState = postHistoryThreadGraph.getAnchorState(post)}
+                    {@const graphState =
+                        postHistoryThreadGraph.getAnchorState(post)}
                     <li
                         class="post-history-item"
                         data-post-history-event-id={post.eventId}
