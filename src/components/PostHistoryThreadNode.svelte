@@ -6,7 +6,6 @@
     interface Props {
         node: PostHistoryThreadGraphNode;
         showHeaderDate?: boolean;
-        parentOffsetRem?: number;
         topActions?: Snippet;
         children?: Snippet;
     }
@@ -14,7 +13,6 @@
     let {
         node,
         showHeaderDate = true,
-        parentOffsetRem = 0,
         topActions = undefined,
         children = undefined,
     }: Props = $props();
@@ -24,7 +22,6 @@
     event={node.event}
     profile={node.profile}
     {showHeaderDate}
-    {parentOffsetRem}
     {topActions}
 >
     {@render children?.()}

@@ -10,7 +10,6 @@
 
     interface Props {
         state: PostHistoryThreadGraphNodeState;
-        ancestorIndex?: number | null;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -19,28 +18,13 @@
 
     let {
         state,
-        ancestorIndex = null,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
         onRetryChildren = undefined,
     }: Props = $props();
 
-    const PARENT_OFFSETS_REM = [
-        5, 4, 3.5, 3.25, 3, 2.75, 2.5, 2.25, 2, 1.75, 0,
-    ] as const;
-
     let postedAt = $derived(formatPostedAt(state.node.event.created_at * 1000));
-    let parentOffsetRem = $derived(
-        ancestorIndex === null
-            ? 0
-            : PARENT_OFFSETS_REM[
-                  Math.min(ancestorIndex, PARENT_OFFSETS_REM.length - 1)
-              ],
-    );
-    let nextAncestorIndex = $derived(
-        ancestorIndex === null ? 0 : ancestorIndex + 1,
-    );
 
     function getRepliesActionLabel(): string {
         const actionState = state.repliesActionState;
@@ -87,7 +71,7 @@
 
 <div
     class="post-history-thread-node-view"
-    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}`}
+    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}; --thread-parent-indent: ${Math.max(0, 1.3 - Math.max(0, -state.depthFromAnchor) * 0.25)}rem`}
 >
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
@@ -100,7 +84,6 @@
             {:else if state.parentExpansion.visibleParent && state.parentNodeState}
                 <PostHistoryThreadGraphNodeView
                     state={state.parentNodeState}
-                    ancestorIndex={nextAncestorIndex}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -131,11 +114,7 @@
         </div>
     {/if}
 
-    <PostHistoryThreadNode
-        node={state.node}
-        showHeaderDate={false}
-        {parentOffsetRem}
-    >
+    <PostHistoryThreadNode node={state.node} showHeaderDate={false}>
         {#snippet topActions()}
             {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <div class="post-history-thread-node-top-actions">
@@ -196,6 +175,10 @@
     .post-history-thread-node-children {
         display: grid;
         gap: 2px;
+    }
+
+    .post-history-thread-node-parent {
+        padding-left: var(--thread-parent-indent);
     }
 
     .post-history-thread-node-children {
