@@ -391,6 +391,17 @@ export function usePostHistoryThreadGraph({
             });
     }
 
+    function toRenderableChildEventIds(
+        parentEventId: string,
+        pathEventIds: string[],
+        renderedEventIds: Set<string>,
+    ): string[] {
+        return toVisibleChildEventIds(parentEventId)
+            .filter((eventId) =>
+                !pathEventIds.includes(eventId) && !renderedEventIds.has(eventId),
+            );
+    }
+
     function getNodeState(
         anchorEventId: string,
         nodeEventId: string,
@@ -428,11 +439,13 @@ export function usePostHistoryThreadGraph({
                 renderedEventIds,
             )
             : null;
-        const childEventIds = toVisibleChildEventIds(nodeEventId);
-        const childReplyCount = childEventIds.length;
-        const replyNodeStates = expansion.visibleChildren
-            && depthFromAnchor < POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH
-            ? childEventIds
+        const renderableChildEventIds = depthFromAnchor < POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH
+            ? toRenderableChildEventIds(nodeEventId, nextPath, renderedEventIds)
+            : [];
+        const renderableChildReplyCount = renderableChildEventIds.length;
+        const visibleChildren = expansion.visibleChildren && renderableChildReplyCount > 0;
+        const replyNodeStates = visibleChildren
+            ? renderableChildEventIds
                 .map((childEventId) =>
                     getNodeState(
                         anchorEventId,
@@ -462,9 +475,9 @@ export function usePostHistoryThreadGraph({
                         : expansion.loadedChildren
                             ? "loaded"
                             : "unloaded",
-                visible: expansion.visibleChildren,
-                replies: childEventIds,
-                replyCount: childReplyCount,
+                visible: visibleChildren,
+                replies: renderableChildEventIds,
+                replyCount: renderableChildReplyCount,
                 error: expansion.childrenError,
             },
             replyNodeStates,
@@ -478,8 +491,6 @@ export function usePostHistoryThreadGraph({
         const anchorNode = nodesById[post.eventId] ?? buildAnchorNodeFromPost(post);
         const expansion = getExpansion(post.eventId, post.eventId);
         const currentPubkey = getPubkeyHex() ?? post.pubkeyHex;
-        const replyItems = toReplyItems(post.eventId, currentPubkey);
-        const replyCount = toVisibleChildEventIds(post.eventId).length;
         const renderedEventIds = new Set([post.eventId]);
         const parentTargetId = anchorNode.parentEventId;
         const parentNodeCandidate = parentTargetId ? nodesById[parentTargetId] ?? null : null;
@@ -490,8 +501,18 @@ export function usePostHistoryThreadGraph({
         const parentNodeState = parentNode && expansion.visibleParent
             ? getNodeState(post.eventId, parentNode.eventId, currentPubkey, [post.eventId], -1, renderedEventIds)
             : null;
-        const replyNodeStates = expansion.visibleChildren
-            ? toVisibleChildEventIds(post.eventId)
+        const renderableChildEventIds = toRenderableChildEventIds(
+            post.eventId,
+            [post.eventId],
+            renderedEventIds,
+        );
+        const renderableChildEventIdSet = new Set(renderableChildEventIds);
+        const replyItems = toReplyItems(post.eventId, currentPubkey)
+            .filter((item) => renderableChildEventIdSet.has(item.event.id));
+        const replyCount = renderableChildEventIds.length;
+        const visibleChildren = expansion.visibleChildren && replyCount > 0;
+        const replyNodeStates = visibleChildren
+            ? renderableChildEventIds
                 .map((eventId) =>
                     getNodeState(post.eventId, eventId, currentPubkey, [post.eventId], 1, renderedEventIds))
                 .filter((nodeState): nodeState is PostHistoryThreadGraphNodeState =>
@@ -513,7 +534,7 @@ export function usePostHistoryThreadGraph({
                         : expansion.loadedChildren
                             ? "loaded"
                             : "unloaded",
-                visible: expansion.visibleChildren,
+                visible: visibleChildren,
                 replies: replyItems,
                 replyCount,
                 error: expansion.childrenError,
