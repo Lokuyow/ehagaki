@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryThreadActionButton from "./PostHistoryThreadActionButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
@@ -70,24 +71,20 @@
 
         <div class="post-history-context-actions">
             {#if !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
-                <Button
-                    type="button"
-                    className="post-history-context-button post-history-parent-toggle-button"
+                <PostHistoryThreadActionButton
+                    icon="arrow-top-right"
+                    className="post-history-parent-toggle-button"
                     ariaLabel={state.parentExpansion.visibleParent
                         ? $_("postHistory.hideReplyTarget")
                         : $_("postHistory.showReplyTarget")}
                     title={state.parentExpansion.visibleParent
                         ? $_("postHistory.hideReplyTarget")
                         : $_("postHistory.showReplyTarget")}
-                    contentLayout="icon"
-                    shape="square"
+                    selected={state.parentExpansion.visibleParent}
+                    loading={state.parentExpansion.visibleParent &&
+                        state.parentExpansion.loadingParent}
                     onClick={() => onToggleParent?.()}
-                >
-                    <span
-                        class="arrow-top-right-icon svg-icon"
-                        aria-hidden="true"
-                    ></span>
-                </Button>
+                />
             {/if}
         </div>
     </div>
@@ -129,19 +126,6 @@
         flex-wrap: wrap;
         gap: 6px;
 
-        :global(.post-history-parent-toggle-button) {
-            width: 40px;
-            height: 28px;
-            min-height: 28px;
-            background-color: inherit;
-        }
-
-        :global(.post-history-parent-toggle-button .arrow-top-right-icon) {
-            --svg: var(--btn-post-preview-action);
-            width: 22px;
-            height: 22px;
-            mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        }
     }
 
     :global(.post-history-context-button) {

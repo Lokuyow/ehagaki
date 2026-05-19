@@ -3,6 +3,7 @@
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
+    import PostHistoryThreadActionButton from "./PostHistoryThreadActionButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import { formatPostedAt } from "../lib/postHistoryDialogUtils";
@@ -118,24 +119,20 @@
         {#snippet topActions()}
             {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <div class="post-history-thread-node-top-actions">
-                    <Button
-                        type="button"
-                        className="post-history-context-button post-history-parent-toggle-button"
+                    <PostHistoryThreadActionButton
+                        icon="arrow-top-right"
+                        className="post-history-parent-toggle-button"
                         ariaLabel={state.parentExpansion.visibleParent
                             ? $_("postHistory.hideReplyTarget")
                             : $_("postHistory.showReplyTarget")}
                         title={state.parentExpansion.visibleParent
                             ? $_("postHistory.hideReplyTarget")
                             : $_("postHistory.showReplyTarget")}
-                        contentLayout="icon"
-                        shape="circle"
+                        selected={state.parentExpansion.visibleParent}
+                        loading={state.parentExpansion.visibleParent &&
+                            state.parentExpansion.loadingParent}
                         onClick={() => onToggleParent?.(state.node.eventId)}
-                    >
-                        <span
-                            class="arrow-top-right-icon svg-icon"
-                            aria-hidden="true"
-                        ></span>
-                    </Button>
+                    />
                 </div>
             {/if}
         {/snippet}
@@ -208,19 +205,6 @@
         color: var(--text-muted);
         background: transparent;
         font-size: 0.82rem;
-    }
-
-    :global(.post-history-parent-toggle-button) {
-        width: 28px;
-        height: 28px;
-        min-height: 28px;
-        color: var(--text-muted);
-    }
-
-    :global(.post-history-parent-toggle-button .arrow-top-right-icon) {
-        width: 20px;
-        height: 20px;
-        mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-context-loading) {
