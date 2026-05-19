@@ -2,10 +2,7 @@
     import Button from "./Button.svelte";
 
     interface Props {
-        icon:
-            | "subdirectory-arrow-right"
-            | "arrow-top-right"
-            | "collapse-content";
+        icon: "find_in_page" | "arrow-top-right" | "collapse-content";
         ariaLabel: string;
         title?: string;
         selected?: boolean;
@@ -32,8 +29,8 @@
 
     let hasBadge = $derived(badgeCount > 0);
     let legacyIconClass = $derived(
-        icon === "subdirectory-arrow-right"
-            ? "subdirectory-arrow-right-icon"
+        icon === "find_in_page"
+            ? "find_in_page-icon"
             : icon === "arrow-top-right"
               ? "arrow-top-right-icon"
               : "collapse-content-icon",
@@ -145,8 +142,8 @@
         height: 22px;
     }
 
-    .post-history-thread-action-icon-subdirectory-arrow-right {
-        mask-image: url("/icons/subdirectory_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    .post-history-thread-action-icon-find_in_page {
+        mask-image: url("/icons/find_in_page_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .post-history-thread-action-icon-arrow-top-right {

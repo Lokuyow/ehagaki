@@ -39,7 +39,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairAdded': `${options?.values?.count}件追加`,
         'postHistory.repairNoChanges': '追加なし',
         'postHistory.repairPartialFailure': '一部未確認',
-            'postHistory.repairFetchFailed': '取得失敗',
+        'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -807,7 +807,7 @@ describe('PostHistoryDialog', () => {
         const currentContent = screen.getByText('自分の返信');
         expect(
             relatedContent.compareDocumentPosition(currentContent) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING,
         ).toBeTruthy();
         expect(screen.queryByRole('button', { name: '会話の最初を見る' })).toBeNull();
         expect(screen.queryByRole('button', { name: '親投稿を見る' })).toBeNull();
@@ -2229,7 +2229,7 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByRole('button', { name: '返信を表示' })).toBeNull();
         const checkRepliesButton = await screen.findByRole('button', { name: '返信を確認' });
-        expect(checkRepliesButton.querySelector('.subdirectory-arrow-right-icon')).toBeTruthy();
+        expect(checkRepliesButton.querySelector('.find_in_page-icon')).toBeTruthy();
         expect(document.body.querySelector('.forum-icon')).toBeNull();
         expect(document.body.querySelector('.question-answer-icon')).toBeNull();
 
@@ -2252,7 +2252,7 @@ describe('PostHistoryDialog', () => {
         const firstReply = screen.getByText('他人からの返信');
         expect(
             currentContent.compareDocumentPosition(firstReply) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING,
         ).toBeTruthy();
 
         await fireEvent.click(await screen.findByRole('button', { name: '返信を隠す' }));
@@ -2302,7 +2302,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             const loadingButton = screen.getByRole('button', { name: '返信を確認中' });
             expect(loadingButton.querySelector('.post-preview-replies-spinner')).toBeTruthy();
-            expect(loadingButton.querySelector('.subdirectory-arrow-right-icon')).toBeNull();
+            expect(loadingButton.querySelector('.find_in_page-icon')).toBeNull();
             expect(loadingButton.textContent?.trim()).toBe('');
         });
         expect(screen.queryByText('返信を取得中...')).toBeNull();
