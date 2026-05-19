@@ -2930,7 +2930,8 @@
 
         :global(:where(.post-preview-action-button)) {
             min-height: auto;
-            background-color: inherit;
+            --btn-bg: var(--dialog-bg);
+            background-color: var(--dialog-bg);
             position: relative;
 
             :global(.svg-icon) {

@@ -98,27 +98,34 @@
         width: 36px;
     }
 
-    :global(.post-history-thread-action-button.selected) {
-        background: color-mix(in srgb, var(--theme) 12%, transparent);
-        color: var(--theme);
+    :global(
+            .post-preview-action-button.post-history-thread-action-button.post-preview-replies-action-button.selected
+        ) {
+        background-color: transparent;
 
         :global(.svg-icon) {
-            background-color: var(--text);
+            background-color: var(--text-light);
         }
 
         :global(.post-history-thread-action-badge) {
-            background-color: var(--text);
+            background-color: var(--text-light);
         }
     }
 
-    :global(.post-history-thread-action-button:disabled) {
+    :global(
+            .post-preview-action-button.post-history-thread-action-button.post-preview-replies-action-button:disabled
+        ) {
         opacity: 1;
         color: var(--btn-post-preview-action);
         cursor: default;
     }
 
     @media (min-width: 601px) {
-        :global(.post-history-thread-action-button:hover:not(:disabled)) {
+        :global(
+                .post-preview-action-button.post-history-thread-action-button.post-preview-replies-action-button:hover:not(
+                        :disabled
+                    )
+            ) {
             :global(.svg-icon) {
                 --svg: color-mix(in srgb, var(--text), white 50%);
             }

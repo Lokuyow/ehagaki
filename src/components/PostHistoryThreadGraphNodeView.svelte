@@ -195,17 +195,18 @@
         font-size: 0.875rem;
     }
 
-    :global(.post-preview-footer > .post-preview-replies-action-button) {
+    :global(.post-preview-replies-action-button) {
         margin: auto;
+        --btn-bg: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         --svg: var(--btn-post-preview-action);
-        background: transparent;
+        background: var(--btn-bg);
     }
 
     :global(.post-history-context-button) {
         min-height: 28px;
         padding: 2px 6px;
         color: var(--text-muted);
-        background: transparent;
+        background: var(--btn-bg);
         font-size: 0.82rem;
     }
 
