@@ -14,11 +14,13 @@ const POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT = 8;
 
 export interface PostHistoryReplyFetchRequest {
     eventId: string;
+    eventIds?: string[];
     createdAt: number;
     relayHints?: string[];
     relayConfig?: RelayConfig | null;
     limit?: number;
     timeoutMs?: number;
+    relayLimit?: number;
 }
 
 export interface PostHistoryReplyFetchedEvent {
@@ -70,6 +72,14 @@ function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryR
         });
 }
 
+function resolveEventIds(params: PostHistoryReplyFetchRequest): string[] {
+    const eventIds = params.eventIds && params.eventIds.length > 0
+        ? params.eventIds
+        : [params.eventId];
+
+    return Array.from(new Set(eventIds.filter((eventId) => !!eventId)));
+}
+
 export class PostHistoryReplyFetchService {
     private console: Console;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -92,7 +102,8 @@ export class PostHistoryReplyFetchService {
         params: PostHistoryReplyFetchRequest,
     ): PostHistoryReplyFetchTask {
         const rxReq = createRxBackwardReq();
-        const relayUrls = this.resolveRelayUrls(params.relayHints, params.relayConfig);
+        const relayUrls = this.resolveRelayUrls(params.relayHints, params.relayConfig, params.relayLimit);
+        const eventIds = resolveEventIds(params);
         const limit = resolveLimit(params.limit);
         const since = Math.max(
             0,
@@ -136,6 +147,11 @@ export class PostHistoryReplyFetchService {
             resolveTask = safeResolve;
 
             try {
+                if (eventIds.length === 0) {
+                    safeResolve();
+                    return;
+                }
+
                 subscription = rxNostr.use(rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
@@ -153,14 +169,14 @@ export class PostHistoryReplyFetchService {
 
                 rxReq.emit({
                     kinds: [1],
-                    "#e": [params.eventId],
+                    "#e": eventIds,
                     since,
                     limit,
                 } as never);
                 rxReq.over();
 
                 timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_reply_fetch_timeout", params.eventId);
+                    this.console.warn("post_history_reply_fetch_timeout", eventIds.join(","));
                     safeResolve();
                 }, params.timeoutMs ?? POST_HISTORY_DIRECT_REPLY_FETCH_TIMEOUT_MS);
             } catch (error) {
@@ -213,7 +229,11 @@ export class PostHistoryReplyFetchService {
     private resolveRelayUrls(
         relayHints: string[] | undefined,
         relayConfig: RelayConfig | null | undefined,
+        relayLimit?: number,
     ): string[] {
+        const limit = Number.isFinite(relayLimit)
+            ? Math.max(1, Math.trunc(relayLimit ?? POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT))
+            : POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT;
         const configuredRelays = relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(relayConfig),
@@ -223,13 +243,13 @@ export class PostHistoryReplyFetchService {
         const relays = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...(relayHints ?? []),
             ...configuredRelays,
-        ], { limit: POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT });
+        ], { limit });
 
         return relays.length > 0
             ? relays
             : RelayConfigUtils.sanitizeExternalRelayUrls(
                 FALLBACK_RELAYS,
-                { limit: POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT },
+                { limit },
             );
     }
 }

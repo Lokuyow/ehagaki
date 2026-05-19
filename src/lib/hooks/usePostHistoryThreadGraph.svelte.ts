@@ -21,7 +21,7 @@ import {
 } from "../postHistoryReplyEventsAdapter";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
-import type { PostHistoryRecord } from "../storage/ehagakiDb";
+import type { PostHistoryRecord, PostHistoryReplyEventRecord } from "../storage/ehagakiDb";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
@@ -141,6 +141,10 @@ const POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH = 20;
 const POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH = 20;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT = 12;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY = 2;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE = 4;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_TIMEOUT_MS = 2_000;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT = 4;
+const POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS = 5 * 60 * 1_000;
 
 export function usePostHistoryThreadGraph({
     getShow,
@@ -334,6 +338,21 @@ export function usePostHistoryThreadGraph({
             ...post.acceptedRelays,
             ...(post.fetchedRelays ?? []),
         ]);
+    }
+
+    function getChildrenPrefetchRelayHints(post: PostHistoryRecord, nodes: PostHistoryThreadGraphNode[]): string[] {
+        return RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...nodes.flatMap((node) => {
+                const references = parseKind1ThreadReferences(node.event);
+                return [
+                    ...node.relayUrls,
+                    ...references.relayHints,
+                ];
+            }),
+            ...post.relayHints,
+            ...post.acceptedRelays,
+            ...(post.fetchedRelays ?? []),
+        ], { limit: POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT });
     }
 
     function clearParentLoadingDelayTimer(key: string): void {
@@ -732,6 +751,7 @@ export function usePostHistoryThreadGraph({
         anchorEventId: string,
         events: NostrEvent[],
         relayHints: string[],
+        taskKeySuffix = "default",
     ): Promise<void> {
         if (events.length === 0) {
             return;
@@ -747,7 +767,7 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const key = `${anchorEventId}:deletions`;
+        const key = `${anchorEventId}:deletions:${taskKeySuffix}`;
         deletionTasksByKey.get(key)?.cancel();
         const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
             targets: visibleEvents.map((event) => ({
@@ -1255,7 +1275,9 @@ export function usePostHistoryThreadGraph({
             }
 
             if (!options.force && cachedRecords.length > 0) {
-                await upsertReplyRecords(nodeEventId, cachedRecords, ["reply-db"]);
+                await upsertReplyRecords(nodeEventId, cachedRecords, ["reply-db"], {
+                    resolveProfiles: !options.prefetchOnly,
+                });
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...state,
                     loadedChildren: true,
@@ -1328,7 +1350,9 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
-            await upsertReplyRecords(nodeEventId, nextRecords, ["reply-db", "fetched-child"]);
+            await upsertReplyRecords(nodeEventId, nextRecords, ["reply-db", "fetched-child"], {
+                resolveProfiles: !options.prefetchOnly,
+            });
             const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
             const latestExpansion = getExpansion(post.eventId, nodeEventId);
             updateExpansion(post.eventId, nodeEventId, (state) => ({
@@ -1370,54 +1394,262 @@ export function usePostHistoryThreadGraph({
         post: PostHistoryRecord,
         parentNodeEventId: string,
     ): Promise<void> {
+        const now = Date.now();
         const candidateEventIds = toVisibleChildEventIds(parentNodeEventId)
             .filter((eventId) => {
                 const expansion = getExpansion(post.eventId, eventId);
-                return !expansion.loadedChildren && !expansion.loadingChildren;
+                const recentlyChecked = typeof expansion.lastFetchedChildrenAt === "number" &&
+                    now - expansion.lastFetchedChildrenAt < POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS;
+                return !expansion.loadedChildren && !expansion.loadingChildren && !recentlyChecked;
             })
             .slice(0, POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT);
         if (candidateEventIds.length === 0) {
             return;
         }
 
-        let nextIndex = 0;
-        const workerCount = Math.min(
-            POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY,
-            candidateEventIds.length,
-        );
+        const remainingEventIds: string[] = [];
+        await Promise.all(candidateEventIds.map(async (eventId) => {
+            if (!getShow()) {
+                return;
+            }
+
+            const hasCachedReplies = await prefetchChildrenFromCache(post, eventId);
+            if (!hasCachedReplies) {
+                remainingEventIds.push(eventId);
+            }
+        }));
+        if (!getShow() || remainingEventIds.length === 0) {
+            return;
+        }
+
+        const batches: string[][] = [];
+        for (let index = 0; index < remainingEventIds.length; index += POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE) {
+            batches.push(remainingEventIds.slice(index, index + POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE));
+        }
+
+        let nextBatchIndex = 0;
+        const workerCount = Math.min(POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY, batches.length);
         const runWorker = async (): Promise<void> => {
             while (getShow()) {
-                const index = nextIndex;
-                nextIndex += 1;
-                const eventId = candidateEventIds[index];
-                if (!eventId) {
+                const index = nextBatchIndex;
+                nextBatchIndex += 1;
+                const batchEventIds = batches[index];
+                if (!batchEventIds) {
                     return;
                 }
 
-                await loadChildrenForNode(post, eventId, { prefetchOnly: true });
+                await prefetchChildrenBatch(post, batchEventIds);
             }
         };
 
         await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
     }
 
+    async function prefetchChildrenFromCache(
+        post: PostHistoryRecord,
+        nodeEventId: string,
+    ): Promise<boolean> {
+        const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId);
+        if (!getShow()) {
+            return false;
+        }
+
+        const cachedRecords = await filterVisibleReplyRecords(rawCachedRecords);
+        if (!getShow() || cachedRecords.length === 0) {
+            return false;
+        }
+
+        await upsertReplyRecords(nodeEventId, cachedRecords, ["reply-db"], {
+            resolveProfiles: false,
+        });
+        if (!getShow()) {
+            return true;
+        }
+
+        updateExpansion(post.eventId, nodeEventId, (state) => ({
+            ...state,
+            loadedChildren: true,
+            visibleChildren: state.visibleChildren,
+            loadingChildren: false,
+            childrenError: null,
+            lastFetchedChildrenAt: Date.now(),
+        }));
+        return true;
+    }
+
+    async function prefetchChildrenBatch(
+        post: PostHistoryRecord,
+        batchEventIds: string[],
+    ): Promise<void> {
+        const batchNodes = batchEventIds
+            .map((eventId) => nodesById[eventId])
+            .filter((node): node is PostHistoryThreadGraphNode => !!node);
+        if (batchNodes.length === 0) {
+            return;
+        }
+
+        const activeGraphRequestId = requestId;
+        const requestTokens = new Map<string, number>();
+        for (const eventId of batchEventIds) {
+            const key = buildAnchorNodeKey(post.eventId, eventId);
+            const activeChildRequestId = ++childRequestId;
+            requestTokens.set(eventId, activeChildRequestId);
+            childrenRequestIdsByKey.set(key, activeChildRequestId);
+            updateExpansion(post.eventId, eventId, (state) => ({
+                ...state,
+                loadingChildren: true,
+                visibleChildren: state.visibleChildren,
+                childrenError: null,
+            }));
+        }
+
+        const rxNostr = getRxNostr();
+        if (!rxNostr) {
+            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, false);
+            return;
+        }
+
+        const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
+        const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
+        childrenTasksByKey.get(taskKey)?.cancel();
+        const task = replyFetchService.fetchDirectReplies(rxNostr, {
+            eventId: batchEventIds[0] ?? "",
+            eventIds: batchEventIds,
+            createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
+            relayHints,
+            relayConfig: null,
+            timeoutMs: POST_HISTORY_CHILD_REPLY_PREFETCH_TIMEOUT_MS,
+            relayLimit: POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT,
+        });
+        childrenTasksByKey.set(taskKey, task);
+
+        try {
+            const result = await task.promise;
+            childrenTasksByKey.delete(taskKey);
+            if (!isPrefetchBatchCurrent(post.eventId, batchEventIds, activeGraphRequestId, requestTokens)) {
+                return;
+            }
+
+            const batchEventIdSet = new Set(batchEventIds);
+            const directReplyItems = result.events.filter((item) => {
+                const parentId = parseKind1ThreadReferences(item.event).parentId;
+                return !!parentId && batchEventIdSet.has(parentId) && item.event.id !== parentId;
+            });
+            if (directReplyItems.length > 0) {
+                await fetchAndStoreDeletionRequests(
+                    post.eventId,
+                    directReplyItems.map((item) => item.event),
+                    [...relayHints, ...result.relayUrls],
+                    `children-prefetch:${batchEventIds.join(",")}`,
+                );
+            }
+            const visibleItems = await filterVisibleReplyItems(directReplyItems);
+            if (!isPrefetchBatchCurrent(post.eventId, batchEventIds, activeGraphRequestId, requestTokens)) {
+                return;
+            }
+
+            const itemsByParentId = new Map<string, typeof visibleItems>();
+            for (const item of visibleItems) {
+                const parentId = parseKind1ThreadReferences(item.event).parentId;
+                if (!parentId || !batchEventIdSet.has(parentId)) {
+                    continue;
+                }
+
+                const items = itemsByParentId.get(parentId) ?? [];
+                items.push(item);
+                itemsByParentId.set(parentId, items);
+            }
+
+            for (const eventId of batchEventIds) {
+                const items = itemsByParentId.get(eventId) ?? [];
+                if (items.length > 0) {
+                    await replyEventsRepositoryImpl.upsertDirectReplies({
+                        parentEventId: eventId,
+                        events: items,
+                        fetchedAt: result.fetchedAt,
+                    });
+                }
+
+                const nextRecords = await filterVisibleReplyRecords(
+                    await replyEventsAdapterImpl.getDirectReplyRecords(eventId),
+                );
+                await upsertReplyRecords(eventId, nextRecords, ["reply-db", "fetched-child"], {
+                    resolveProfiles: false,
+                });
+            }
+            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, true);
+        } catch {
+            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, false);
+        } finally {
+            childrenTasksByKey.delete(taskKey);
+        }
+    }
+
+    function isPrefetchBatchCurrent(
+        anchorEventId: string,
+        eventIds: string[],
+        activeGraphRequestId: number,
+        requestTokens: Map<string, number>,
+    ): boolean {
+        if (activeGraphRequestId !== requestId || !getShow()) {
+            return false;
+        }
+
+        return eventIds.every((eventId) =>
+            childrenRequestIdsByKey.get(buildAnchorNodeKey(anchorEventId, eventId)) === requestTokens.get(eventId),
+        );
+    }
+
+    function completePrefetchBatch(
+        anchorEventId: string,
+        eventIds: string[],
+        activeGraphRequestId: number,
+        requestTokens: Map<string, number>,
+        loadedChildren: boolean,
+    ): void {
+        if (!isPrefetchBatchCurrent(anchorEventId, eventIds, activeGraphRequestId, requestTokens)) {
+            return;
+        }
+
+        for (const eventId of eventIds) {
+            const key = buildAnchorNodeKey(anchorEventId, eventId);
+            updateExpansion(anchorEventId, eventId, (state) => ({
+                ...state,
+                loadedChildren,
+                visibleChildren: state.visibleChildren,
+                loadingChildren: false,
+                childrenError: null,
+                lastFetchedChildrenAt: Date.now(),
+            }));
+            childrenRequestIdsByKey.delete(key);
+        }
+    }
+
     async function upsertReplyRecords(
         parentEventId: string,
-        records: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[],
+        records: PostHistoryReplyEventRecord[],
         sources: PostHistoryThreadGraphSource[],
+        options: { resolveProfiles?: boolean } = {},
     ): Promise<void> {
         const childIds: string[] = [];
+        const shouldResolveProfiles = options.resolveProfiles !== false;
         for (const record of records) {
             const event = toEventFromReplyRecord(record);
             if (isDeletedEvent(event.pubkey, event.id)) {
                 continue;
             }
 
-            const node = await upsertNodeWithProfile({
-                event,
-                relayUrls: record.relayUrls,
-                sources,
-            });
+            const node = shouldResolveProfiles
+                ? await upsertNodeWithProfile({
+                    event,
+                    relayUrls: record.relayUrls,
+                    sources,
+                })
+                : upsertNode({
+                    event,
+                    relayUrls: sanitizeRelayUrls(record.relayUrls),
+                    sources,
+                });
             if (node.eventId === parentEventId) {
                 continue;
             }

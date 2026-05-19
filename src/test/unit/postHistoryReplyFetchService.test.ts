@@ -85,4 +85,64 @@ describe("PostHistoryReplyFetchService", () => {
         ]);
         expect(rxReqMock.over).toHaveBeenCalled();
     });
+
+    it("複数eventIdの#e batchとrelay上限を指定できる", async () => {
+        const service = new PostHistoryReplyFetchService({
+            now: () => 2000,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        const parentEventIds = ["2".repeat(64), "4".repeat(64)];
+        const reply = createEvent({
+            id: "5".repeat(64),
+            created_at: 1_700_000_010,
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next({ event: reply, from: "wss://relay-b.example.com" });
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+
+        const task = service.fetchDirectReplies(rxNostrMock as any, {
+            eventId: parentEventIds[0],
+            eventIds: parentEventIds,
+            createdAt: 1_700_000_000,
+            relayHints: [
+                "wss://relay-a.example.com",
+                "wss://relay-b.example.com",
+                "wss://relay-c.example.com",
+            ],
+            relayConfig: null,
+            timeoutMs: 2000,
+            relayLimit: 2,
+        });
+
+        await expect(task.promise).resolves.toMatchObject({
+            fetchedAt: 2000,
+            events: [
+                {
+                    event: reply,
+                    relayUrls: ["wss://relay-b.example.com/"],
+                },
+            ],
+        });
+        expect(rxNostrMock.use).toHaveBeenCalledWith(rxReqMock, {
+            on: {
+                relays: [
+                    "wss://relay-a.example.com/",
+                    "wss://relay-b.example.com/",
+                ],
+            },
+        });
+        expect(rxNostrMock.emittedFilters).toEqual([
+            {
+                kinds: [1],
+                "#e": parentEventIds,
+                since: 1_699_913_600,
+                limit: 100,
+            },
+        ]);
+    });
 });

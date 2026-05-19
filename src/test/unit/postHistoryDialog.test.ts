@@ -1678,13 +1678,111 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('返信Bへの返信C')).toBeTruthy();
         });
-        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(3);
+        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(2);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[thread-graph-children-prefetch] cache済み子返信countをnetworkより先にbadgeへ反映する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const replyBEventId = '4'.repeat(64);
+        const replyCEventId = '6'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const replyB = createDirectReplyEventRecord({
+            eventId: replyBEventId,
+            parentEventId,
+            content: '他人からの返信B',
+            rawEvent: {
+                id: replyBEventId,
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '他人からの返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const cachedReplyC = createDirectReplyEventRecord({
+            eventId: replyCEventId,
+            parentEventId: replyBEventId,
+            authorPubkey: 'e'.repeat(64),
+            content: 'cache済み孫返信C',
+            rawEvent: {
+                id: replyCEventId,
+                pubkey: 'e'.repeat(64),
+                kind: 1,
+                content: 'cache済み孫返信C',
+                tags: [['e', replyBEventId, 'wss://reply.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'b'.repeat(128),
+            },
+        });
+        const storedRepliesByParent = new Map<string, any[]>([
+            [replyBEventId, [cachedReplyC]],
+        ]);
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            storedRepliesByParent.get(parentId) ?? [],
+        );
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ parentEventId, events }: any) => {
+            storedRepliesByParent.set(parentEventId, events.map((item: any) =>
+                item.event.id === replyBEventId ? replyB : cachedReplyC,
+            ));
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockImplementation((_rxNostr: any, params: any) => ({
+            promise: Promise.resolve({
+                events: params.eventId === parentEventId
+                    ? [{ event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
+                    : [],
+                fetchedAt: 1_700_000_030,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        }));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('他人からの返信B')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        expect(screen.queryByText('cache済み孫返信C')).toBeNull();
+        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(1);
     });
 
     it('[thread-graph-children-prefetch] 表示済み子nodeの返信有無確認はconcurrency上限内で実行する', async () => {
         const parentEventId = '1'.repeat(64);
-        const childIds = ['4', '5', '6', '7'].map((value) => value.repeat(64));
+        const childIds = ['4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'].map((value) => value.repeat(64));
         const post = createRecord({
             eventId: parentEventId,
             rawEvent: {
@@ -1717,10 +1815,10 @@ describe('PostHistoryDialog', () => {
                 },
             }));
         const storedRepliesByParent = new Map<string, any[]>();
-        const deferredByChildId = new Map<string, ReturnType<typeof createDeferred<any>>>();
+        const deferredByBatchKey = new Map<string, ReturnType<typeof createDeferred<any>>>();
         let activePrefetchCount = 0;
         let maxActivePrefetchCount = 0;
-        const startedPrefetchIds: string[] = [];
+        const startedPrefetchBatches: string[][] = [];
 
         repositoryMock.getPage.mockResolvedValue([post]);
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -1753,11 +1851,12 @@ describe('PostHistoryDialog', () => {
                 };
             }
 
+            const eventIds = params.eventIds ?? [params.eventId];
             activePrefetchCount += 1;
             maxActivePrefetchCount = Math.max(maxActivePrefetchCount, activePrefetchCount);
-            startedPrefetchIds.push(params.eventId);
+            startedPrefetchBatches.push(eventIds);
             const deferred = createDeferred<any>();
-            deferredByChildId.set(params.eventId, deferred);
+            deferredByBatchKey.set(eventIds.join(','), deferred);
             return {
                 promise: deferred.promise.then(() => {
                     activePrefetchCount -= 1;
@@ -1784,23 +1883,26 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
         await waitFor(() => {
             expect(screen.getByText('返信1')).toBeTruthy();
-            expect(startedPrefetchIds).toHaveLength(2);
+            expect(startedPrefetchBatches).toHaveLength(2);
         });
+        expect(startedPrefetchBatches[0]).toHaveLength(4);
+        expect(startedPrefetchBatches[1]).toHaveLength(4);
         expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
 
-        deferredByChildId.get(startedPrefetchIds[0])?.resolve(null);
+        deferredByBatchKey.get(startedPrefetchBatches[0].join(','))?.resolve(null);
         await waitFor(() => {
-            expect(startedPrefetchIds).toHaveLength(3);
+            expect(startedPrefetchBatches).toHaveLength(3);
         });
+        expect(startedPrefetchBatches[2]).toHaveLength(2);
         expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
 
-        for (const deferred of deferredByChildId.values()) {
+        for (const deferred of deferredByBatchKey.values()) {
             deferred.resolve(null);
         }
         await waitFor(() => {
-            expect(startedPrefetchIds).toHaveLength(4);
+            expect(startedPrefetchBatches).toHaveLength(3);
         });
-        for (const deferred of deferredByChildId.values()) {
+        for (const deferred of deferredByBatchKey.values()) {
             deferred.resolve(null);
         }
         await waitFor(() => {
@@ -1904,6 +2006,10 @@ describe('PostHistoryDialog', () => {
 
         const replyBCard = screen.getByText('循環候補の返信B').closest('.post-history-related-card');
         expect(replyBCard).toBeTruthy();
+        await waitFor(() => {
+            expect(within(replyBCard as HTMLElement)
+                .getByRole('button', { name: '返信を再確認' })).toBeTruthy();
+        });
         const replyBRepliesButton = within(replyBCard as HTMLElement)
             .getByRole('button', { name: '返信を再確認' });
         expect(within(replyBRepliesButton).queryByText('0')).toBeNull();
