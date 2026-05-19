@@ -18,7 +18,7 @@
 </script>
 
 <PostHistoryThreadActionButton
-    icon="subdirectory-arrow-right"
+    icon={state.visible ? "collapse-content" : "subdirectory-arrow-right"}
     className="post-preview-replies-action-button"
     {ariaLabel}
     title={ariaLabel}

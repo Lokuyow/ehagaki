@@ -2,7 +2,10 @@
     import Button from "./Button.svelte";
 
     interface Props {
-        icon: "subdirectory-arrow-right" | "arrow-top-right";
+        icon:
+            | "subdirectory-arrow-right"
+            | "arrow-top-right"
+            | "collapse-content";
         ariaLabel: string;
         title?: string;
         selected?: boolean;
@@ -31,7 +34,9 @@
     let legacyIconClass = $derived(
         icon === "subdirectory-arrow-right"
             ? "subdirectory-arrow-right-icon"
-            : "arrow-top-right-icon",
+            : icon === "arrow-top-right"
+              ? "arrow-top-right-icon"
+              : "collapse-content-icon",
     );
 </script>
 
@@ -132,8 +137,6 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 22px;
-        height: 22px;
         flex: 0 0 22px;
     }
 
@@ -148,6 +151,12 @@
 
     .post-history-thread-action-icon-arrow-top-right {
         mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .post-history-thread-action-icon-collapse-content {
+        mask-image: url("/icons/collapse_content_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
     }
 
     .post-history-thread-action-spinner {

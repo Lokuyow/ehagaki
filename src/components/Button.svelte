@@ -252,7 +252,7 @@
         border-radius: 0;
         padding: 0;
 
-        :global(.svg-icon) {
+        :global(:where(.svg-icon)) {
             width: 30px;
             height: 30px;
         }
@@ -289,7 +289,7 @@
     .content-icon {
         padding: 0;
 
-        :global(.svg-icon) {
+        :global(:where(.svg-icon)) {
             width: 30px;
             height: 30px;
         }
