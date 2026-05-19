@@ -60,7 +60,7 @@
                     ? $_("postHistory.hideReplyTarget")
                     : $_("postHistory.showReplyTarget")}
                 contentLayout="icon"
-                shape="circle"
+                shape="square"
                 onClick={() => onToggle("reply")}
             >
                 <span class="arrow-top-right-icon svg-icon" aria-hidden="true"

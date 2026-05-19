@@ -2928,40 +2928,13 @@
             align-items: stretch;
         }
 
-        :global(.post-preview-action-button) {
+        :global(:where(.post-preview-action-button)) {
             min-height: auto;
-            background: transparent;
+            background-color: inherit;
             position: relative;
 
             :global(.svg-icon) {
                 --svg: var(--btn-post-preview-action);
-            }
-        }
-
-        :global(.post-preview-action-button.selected) {
-            background: color-mix(in srgb, var(--theme) 12%, transparent);
-            color: var(--theme);
-
-            :global(.svg-icon) {
-                --svg: var(--theme);
-            }
-
-            :global(.post-preview-replies-count) {
-                background-color: var(--theme);
-            }
-        }
-
-        @media (min-width: 601px) {
-            :global(.post-preview-action-button:hover:not(:disabled)) {
-                background: color-mix(in srgb, var(--theme) 10%, transparent);
-
-                :global(.svg-icon) {
-                    --svg: var(--theme);
-                }
-
-                :global(.post-preview-replies-count) {
-                    background-color: var(--theme);
-                }
             }
         }
 

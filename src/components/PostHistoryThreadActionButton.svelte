@@ -41,7 +41,7 @@
     {ariaLabel}
     {title}
     contentLayout="icon"
-    {shape}
+    shape="square"
     {selected}
     disabled={disabled || loading}
     {onClick}
@@ -71,17 +71,29 @@
 </Button>
 
 <style>
-    :global(.post-history-thread-action-button) {
+    :global(
+            .post-history-context-actions .post-history-thread-action-button,
+            .post-history-thread-node-top-actions
+                .post-history-thread-action-button
+        ) {
         position: relative;
-        width: 28px;
+        width: 40px;
         height: 28px;
         min-height: 28px;
         color: var(--btn-post-preview-action);
-        background: transparent;
+        background: inherit;
 
         :global(.svg-icon) {
             --svg: var(--btn-post-preview-action);
         }
+    }
+
+    :global(
+            .post-preview-footer > .post-history-thread-action-button,
+            .post-preview-action-buttons-group
+                .post-history-thread-action-button
+        ) {
+        width: 36px;
     }
 
     :global(.post-history-thread-action-button.selected) {
@@ -89,11 +101,11 @@
         color: var(--theme);
 
         :global(.svg-icon) {
-            --svg: var(--theme);
+            background-color: var(--text);
         }
 
         :global(.post-history-thread-action-badge) {
-            background-color: var(--theme);
+            background-color: var(--text);
         }
     }
 
@@ -105,14 +117,12 @@
 
     @media (min-width: 601px) {
         :global(.post-history-thread-action-button:hover:not(:disabled)) {
-            background: color-mix(in srgb, var(--theme) 10%, transparent);
-
             :global(.svg-icon) {
-                --svg: var(--theme);
+                --svg: color-mix(in srgb, var(--text), white 50%);
             }
 
             :global(.post-history-thread-action-badge) {
-                background-color: var(--theme);
+                background-color: var(--text);
             }
         }
     }
