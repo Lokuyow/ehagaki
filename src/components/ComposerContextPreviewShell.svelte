@@ -98,7 +98,7 @@
 
     .preview-header {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         gap: 12px;
     }
 

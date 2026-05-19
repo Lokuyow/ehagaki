@@ -100,6 +100,7 @@
 
     :global(.welcome-dialog .get-started-btn) {
         width: 100%;
+        height: 50px;
         font-size: 1.0625rem;
     }
 

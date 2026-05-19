@@ -251,7 +251,6 @@
     .square {
         border-radius: 0;
         padding: 0;
-        min-height: 50px;
 
         :global(.svg-icon) {
             width: 30px;

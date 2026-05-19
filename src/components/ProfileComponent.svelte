@@ -592,6 +592,7 @@
             align-items: center;
             gap: 4px;
             width: 100%;
+            height: 50px;
             margin-top: 4px;
         }
 

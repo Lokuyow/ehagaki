@@ -80,11 +80,11 @@
                         ? $_("postHistory.hideReplyTarget")
                         : $_("postHistory.showReplyTarget")}
                     contentLayout="icon"
-                    shape="circle"
+                    shape="square"
                     onClick={() => onToggleParent?.()}
                 >
                     <span
-                        class="arrow-top-left-icon svg-icon"
+                        class="arrow-top-right-icon svg-icon"
                         aria-hidden="true"
                     ></span>
                 </Button>
@@ -128,6 +128,20 @@
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+
+        :global(.post-history-parent-toggle-button) {
+            width: 40px;
+            height: 28px;
+            min-height: 28px;
+            background-color: inherit;
+        }
+
+        :global(.post-history-parent-toggle-button .arrow-top-right-icon) {
+            --svg: var(--btn-post-preview-action);
+            width: 22px;
+            height: 22px;
+            mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        }
     }
 
     :global(.post-history-context-button) {
@@ -136,19 +150,6 @@
         color: var(--text-muted);
         background: transparent;
         font-size: 0.82rem;
-    }
-
-    :global(.post-history-parent-toggle-button) {
-        width: 28px;
-        height: 28px;
-        min-height: 28px;
-        color: var(--text-muted);
-    }
-
-    :global(.post-history-parent-toggle-button .arrow-top-left-icon) {
-        width: 20px;
-        height: 20px;
-        mask-image: url("/icons/arrow_top_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     @media (min-width: 601px) {

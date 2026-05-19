@@ -79,7 +79,7 @@
     <div class="setting-info">
         <Button
             variant="default"
-            shape="square"
+            shape="rounded"
             className="relay-toggle-label"
             onClick={onToggleShowRelays}
             aria-pressed={showRelays}
@@ -156,7 +156,6 @@
             min-height: 40px;
             padding: 10px;
             --btn-bg: transparent;
-            border-radius: 6px;
         }
     }
     .rotate-right-icon {

@@ -132,7 +132,7 @@
                         onClick={() => onToggleParent?.(state.node.eventId)}
                     >
                         <span
-                            class="arrow-top-left-icon svg-icon"
+                            class="arrow-top-right-icon svg-icon"
                             aria-hidden="true"
                         ></span>
                     </Button>
@@ -217,10 +217,10 @@
         color: var(--text-muted);
     }
 
-    :global(.post-history-parent-toggle-button .arrow-top-left-icon) {
+    :global(.post-history-parent-toggle-button .arrow-top-right-icon) {
         width: 20px;
         height: 20px;
-        mask-image: url("/icons/arrow_top_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-context-loading) {
