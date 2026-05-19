@@ -99,6 +99,47 @@
     }
 
     :global(
+            .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:not(
+                    :hover
+                )
+        ) {
+        background-color: transparent;
+        :global(.svg-icon) {
+            background-color: var(--text-light);
+        }
+    }
+
+    @media (min-width: 601px) {
+        :global(
+                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:hover
+            ) {
+            --btn-bg: var(--dialog-bg);
+
+            :global(.svg-icon) {
+                background-color: var(--text);
+            }
+        }
+    }
+
+    :global(
+            .light
+                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
+                    :hover:not(:disabled)
+                )
+        ) {
+        background-color: color-mix(in srgb, var(--btn-bg), black 4%);
+    }
+
+    :global(
+            .dark
+                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
+                    :hover:not(:disabled)
+                )
+        ) {
+        background-color: color-mix(in srgb, var(--btn-bg), white 5%);
+    }
+
+    :global(
             .post-preview-action-button.post-history-thread-action-button.post-preview-replies-action-button.selected
         ) {
         background-color: transparent;
