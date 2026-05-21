@@ -2818,7 +2818,6 @@
         min-width: 0;
         color: var(--text);
         font-size: 1rem;
-        line-height: 1.5;
     }
 
     .post-history-channel-row {
