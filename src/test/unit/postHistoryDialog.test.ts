@@ -1357,7 +1357,10 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(deletionFetchServiceMock.fetchDeletionRequests).toHaveBeenCalled();
             expect(screen.getByText('返信先の投稿')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();
+            const toggleButton = screen.getByRole('button', { name: '返信先を隠す' });
+            expect(toggleButton).toBeTruthy();
+            expect((toggleButton as HTMLButtonElement).disabled).toBe(false);
+            expect(toggleButton.querySelector('.post-history-thread-action-spinner')).toBeNull();
         });
     });
 
@@ -1381,6 +1384,9 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
 
         expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+        const toggleButton = screen.getByRole('button', { name: '返信先を隠す' });
+        expect((toggleButton as HTMLButtonElement).disabled).toBe(false);
+        expect(toggleButton.querySelector('.post-history-thread-action-spinner')).toBeNull();
         await wait(350);
         expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
 

@@ -133,7 +133,7 @@
                                 : $_("postHistory.showReplyTarget")}
                             selected={state.parentExpansion.visibleParent}
                             loading={state.parentExpansion.visibleParent &&
-                                state.parentExpansion.loadingParent}
+                                state.parentExpansion.showParentLoadingIndicator}
                             onClick={() => onToggleParent?.(state.node.eventId)}
                         />
                     </div>
