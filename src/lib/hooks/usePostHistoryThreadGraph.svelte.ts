@@ -147,6 +147,18 @@ const POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS = 5 * 60 * 1_000;
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
 
+export function resolvePostHistoryReplyBadgePreloadParentIds(
+    posts: Pick<PostHistoryRecord, "eventId">[],
+    parentEventIds?: string[],
+): string[] {
+    const currentPostIds = new Set(posts.map((post) => post.eventId));
+
+    return (parentEventIds && parentEventIds.length > 0
+        ? Array.from(new Set(parentEventIds))
+        : Array.from(currentPostIds))
+        .filter((eventId) => currentPostIds.has(eventId));
+}
+
 export function usePostHistoryThreadGraph({
     getShow,
     getPubkeyHex,
@@ -1644,6 +1656,58 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
+    async function loadCachedReplyBadgesForPosts(
+        posts: PostHistoryRecord[],
+        parentEventIds?: string[],
+    ): Promise<void> {
+        if (!getShow() || posts.length === 0) {
+            return;
+        }
+
+        const targetParentIds = resolvePostHistoryReplyBadgePreloadParentIds(posts, parentEventIds);
+        if (targetParentIds.length === 0) {
+            return;
+        }
+
+        const activeRequestId = requestId;
+        const postByEventId = new Map(posts.map((post) => [post.eventId, post]));
+        for (const parentEventId of targetParentIds) {
+            const post = postByEventId.get(parentEventId);
+            if (!post || activeRequestId !== requestId || !getShow()) {
+                continue;
+            }
+
+            const anchorNode = ensureAnchorNode(post);
+            const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId);
+            if (activeRequestId !== requestId || !getShow() || rawCachedRecords.length === 0) {
+                continue;
+            }
+
+            const cachedRecords = await filterVisibleReplyRecords(rawCachedRecords);
+            if (activeRequestId !== requestId || !getShow() || cachedRecords.length === 0) {
+                continue;
+            }
+
+            await upsertReplyRecords(parentEventId, cachedRecords, ["reply-db", "inbound-sync"], {
+                resolveProfiles: false,
+            });
+            if (activeRequestId !== requestId || !getShow()) {
+                continue;
+            }
+
+            updateExpansion(post.eventId, parentEventId, (state) => ({
+                ...state,
+                loadedChildren: true,
+                visibleChildren: state.visibleChildren,
+                loadingChildren: false,
+                revalidatingChildren: state.revalidatingChildren,
+                childrenError: null,
+                lastFetchedChildrenAt: resolveCachedReplyFetchedAt(cachedRecords) ?? state.lastFetchedChildrenAt,
+            }));
+            refreshProfileForPubkeyInBackground(anchorNode.authorPubkey, anchorNode.relayUrls);
+        }
+    }
+
     async function prefetchChildrenBatch(
         post: PostHistoryRecord,
         batchEventIds: string[],
@@ -2024,6 +2088,7 @@ export function usePostHistoryThreadGraph({
         retryNodeChildren,
         recordPostedReply,
         recordDeletedEvent,
+        loadCachedReplyBadgesForPosts,
         cancelCurrentGraphFetches,
         resetState,
     };

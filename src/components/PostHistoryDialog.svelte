@@ -18,6 +18,7 @@
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
     import {
         preloadCustomEmojiImageWithMeta,
         type PreloadedCustomEmojiImageResult,
@@ -111,6 +112,18 @@
         getPubkeyHex: () => pubkeyHex,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+    });
+    usePostHistoryInboundInteractionsSync({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getPosts: () => history.posts,
+        onSavedDirectReplies: (parentEventIds) =>
+            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+                history.posts,
+                parentEventIds,
+            ),
     });
 
     let copyState = $state<Record<string, "failed" | undefined>>({});

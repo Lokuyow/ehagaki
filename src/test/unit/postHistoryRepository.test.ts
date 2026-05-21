@@ -153,6 +153,29 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("owner-scoped parent existence確認は指定pubkeyのeventIdだけを返す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const ownerPubkey = "b".repeat(64);
+        const otherPubkey = "d".repeat(64);
+        const ownerEventId = "1".repeat(64);
+        const otherEventId = "2".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: ownerEventId, pubkey: ownerPubkey }),
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: otherEventId, pubkey: otherPubkey }),
+        });
+
+        await expect(repository.getExistingEventIdsForPubkey({
+            pubkeyHex: ownerPubkey,
+            eventIds: [ownerEventId, otherEventId, "3".repeat(64)],
+        })).resolves.toEqual([ownerEventId]);
+
+        db.close();
+    });
+
     it("deleteForPubkey は指定 pubkey の投稿履歴だけを削除する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);

@@ -114,6 +114,7 @@ const repositoryMock = vi.hoisted(() => ({
     getVisibleChunkFromCreatedAt: vi.fn(),
     countForPubkey: vi.fn(),
     countVisibleForPubkey: vi.fn(),
+    getExistingEventIdsForPubkey: vi.fn(),
     getOldestCreatedAt: vi.fn(),
     upsertFetchedEvents: vi.fn(),
     deleteForPubkey: vi.fn(),
@@ -123,6 +124,7 @@ const replyEventsRepositoryMock = vi.hoisted(() => ({
     getDirectReplies: vi.fn(),
     upsertDirectReplies: vi.fn(),
     deleteByEventId: vi.fn(),
+    deleteForPostHistoryPubkey: vi.fn(),
 }));
 
 const deletionRequestsRepositoryMock = vi.hoisted(() => ({
@@ -152,6 +154,12 @@ const visibleRangeRepositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
     clear: vi.fn(),
+    clearForPubkey: vi.fn(),
+}));
+
+const inboundInteractionsSyncStateRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+    save: vi.fn(),
     clearForPubkey: vi.fn(),
 }));
 
@@ -291,6 +299,10 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
 
 vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
     postHistoryReplyEventsRepository: replyEventsRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryInboundInteractionsSyncStateRepository', () => ({
+    postHistoryInboundInteractionsSyncStateRepository: inboundInteractionsSyncStateRepositoryMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryDeletionRequestsRepository', () => ({
@@ -617,6 +629,7 @@ describe('PostHistoryDialog', () => {
         repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
             repositoryMock.countForPubkey(pubkeyHex),
         );
+        repositoryMock.getExistingEventIdsForPubkey.mockResolvedValue([]);
         repositoryMock.upsertFetchedEvents.mockResolvedValue({
             insertedCount: 0,
             updatedCount: 0,
@@ -631,6 +644,7 @@ describe('PostHistoryDialog', () => {
             ignoredCount: 0,
         });
         replyEventsRepositoryMock.deleteByEventId.mockResolvedValue(undefined);
+        replyEventsRepositoryMock.deleteForPostHistoryPubkey.mockResolvedValue(undefined);
         deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(new Map());
         deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockResolvedValue({
             insertedCount: 0,
@@ -667,6 +681,9 @@ describe('PostHistoryDialog', () => {
         visibleRangeRepositoryMock.save.mockResolvedValue(null);
         visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
         visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+        inboundInteractionsSyncStateRepositoryMock.get.mockResolvedValue(null);
+        inboundInteractionsSyncStateRepositoryMock.save.mockResolvedValue({});
+        inboundInteractionsSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
@@ -3747,11 +3764,12 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(screen.queryByText('削除対象')).toBeNull();
         });
     });
-
 
 });

@@ -12,7 +12,8 @@ export type PostHistoryThreadGraphSource =
     | "reply-db"
     | "fetched-parent"
     | "fetched-child"
-    | "posted-reply";
+    | "posted-reply"
+    | "inbound-sync";
 
 export interface PostHistoryThreadGraphNode {
     eventId: string;

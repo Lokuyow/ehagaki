@@ -128,6 +128,88 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
         db.close();
     });
 
+    it("self-parent eventはdirect replyとして保存しない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const parentEventId = "1".repeat(64);
+        const selfParent = createSignedEvent({
+            id: parentEventId,
+            tags: [["e", parentEventId, "", "reply"]],
+        });
+
+        const result = await repository.upsertDirectReplies({
+            parentEventId,
+            events: [{ event: selfParent }],
+        });
+
+        expect(result).toMatchObject({
+            insertedCount: 0,
+            ignoredCount: 1,
+        });
+        await expect(repository.getDirectReplies(parentEventId)).resolves.toEqual([]);
+
+        db.close();
+    });
+
+    it("指定pubkeyのpostHistory parentに紐づくreply cacheだけを削除する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const ownerPubkey = "a".repeat(64);
+        const otherPubkey = "b".repeat(64);
+        const ownerParentId = "1".repeat(64);
+        const otherParentId = "9".repeat(64);
+
+        await db.postHistory.bulkPut([
+            {
+                id: ownerParentId,
+                eventId: ownerParentId,
+                pubkeyHex: ownerPubkey,
+                kind: 1,
+                content: "owner post",
+                tags: [],
+                createdAt: 100,
+                postedAt: 100_000,
+                relayHints: [],
+                acceptedRelays: [],
+                media: [],
+                rawEvent: {},
+                updatedAt: 1000,
+                schemaVersion: 2,
+            },
+            {
+                id: otherParentId,
+                eventId: otherParentId,
+                pubkeyHex: otherPubkey,
+                kind: 1,
+                content: "other post",
+                tags: [],
+                createdAt: 100,
+                postedAt: 100_000,
+                relayHints: [],
+                acceptedRelays: [],
+                media: [],
+                rawEvent: {},
+                updatedAt: 1000,
+                schemaVersion: 2,
+            },
+        ]);
+        await repository.upsertDirectReplies({
+            parentEventId: ownerParentId,
+            events: [{ event: createSignedEvent({ id: "2".repeat(64), tags: [["e", ownerParentId, "", "reply"]] }) }],
+        });
+        await repository.upsertDirectReplies({
+            parentEventId: otherParentId,
+            events: [{ event: createSignedEvent({ id: "3".repeat(64), tags: [["e", otherParentId, "", "reply"]] }) }],
+        });
+
+        await repository.deleteForPostHistoryPubkey(ownerPubkey);
+
+        await expect(repository.getDirectReplies(ownerParentId)).resolves.toEqual([]);
+        await expect(repository.getDirectReplies(otherParentId)).resolves.toHaveLength(1);
+
+        db.close();
+    });
+
     it("eventId指定でdirect reply cacheだけを削除し、PostHistoryRecordには影響しない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);

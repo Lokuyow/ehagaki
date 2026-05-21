@@ -1,0 +1,227 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const rxNostrMock = vi.hoisted(() => ({
+    emittedFilters: [] as any[],
+    use: vi.fn(),
+}));
+
+const rxReqMock = vi.hoisted(() => ({
+    emit: vi.fn((filter: any) => {
+        rxNostrMock.emittedFilters.push(filter);
+    }),
+    over: vi.fn(),
+}));
+
+vi.mock("rx-nostr", () => ({
+    createRxBackwardReq: vi.fn(() => rxReqMock),
+}));
+
+import { PostHistoryInboundInteractionsSyncService } from "../../lib/postHistoryInboundInteractionsSyncService";
+import type { NostrEvent } from "../../lib/types";
+
+const OWNER_PUBKEY = "a".repeat(64);
+const PARENT_ID = "1".repeat(64);
+const OTHER_PARENT_ID = "2".repeat(64);
+
+function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
+    return {
+        id: "f".repeat(64),
+        pubkey: "b".repeat(64),
+        kind: 1,
+        content: "reply",
+        tags: [
+            ["p", OWNER_PUBKEY],
+            ["e", PARENT_ID, "", "reply"],
+        ],
+        created_at: 100,
+        sig: "c".repeat(128),
+        ...overrides,
+    };
+}
+
+function createService(overrides: Record<string, any> = {}) {
+    const postHistoryRepository = {
+        getExistingEventIdsForPubkey: vi.fn(async ({ eventIds }: { eventIds: string[] }) =>
+            eventIds.filter((eventId) => eventId === PARENT_ID)
+        ),
+    };
+    const postHistoryReplyEventsRepository = {
+        upsertDirectReplies: vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        })),
+    };
+    const syncStateRepository = {
+        get: vi.fn(async () => null),
+        save: vi.fn(async (ownerPubkeyHex: string, patch: Record<string, any>) => ({
+            ownerPubkeyHex,
+            lastSyncedAt: patch.lastSyncedAt ?? null,
+            lastSeenCreatedAt: patch.lastSeenCreatedAt ?? null,
+            lastDialogRefreshAt: patch.lastDialogRefreshAt ?? null,
+            saturated: patch.saturated ?? false,
+            maybeIncomplete: patch.maybeIncomplete ?? false,
+            updatedAt: 1_700_000_000_000,
+            schemaVersion: 1,
+        })),
+    };
+    const service = new PostHistoryInboundInteractionsSyncService({
+        postHistoryRepository,
+        postHistoryReplyEventsRepository,
+        syncStateRepository,
+        now: () => 1_700_000_000_000,
+        setTimeoutFn: (() => 1) as any,
+        clearTimeoutFn: vi.fn(),
+        console: { warn: vi.fn(), error: vi.fn() },
+        ...overrides,
+    });
+
+    return {
+        service,
+        postHistoryRepository,
+        postHistoryReplyEventsRepository,
+        syncStateRepository,
+    };
+}
+
+describe("PostHistoryInboundInteractionsSyncService", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        rxNostrMock.emittedFilters = [];
+    });
+
+    it("#pでkind:1を取得し、owner-scoped parentがあるdirect replyだけ保存する", async () => {
+        const directReply = createEvent({ id: "3".repeat(64), created_at: 1_700_000_100 });
+        const mentionLike = createEvent({
+            id: "4".repeat(64),
+            tags: [
+                ["p", OWNER_PUBKEY],
+                ["e", OTHER_PARENT_ID, "", "reply"],
+            ],
+            created_at: 1_700_000_110,
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next({ event: directReply, from: "wss://relay.example.com" });
+                next({ event: mentionLike, from: "wss://relay.example.com" });
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const { service, postHistoryReplyEventsRepository } = createService();
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "initial-dialog-bootstrap",
+            relayConfig: { "wss://read.example.com/": { read: true, write: false } },
+        }).promise;
+
+        expect(rxNostrMock.emittedFilters).toEqual([{
+            kinds: [1],
+            "#p": [OWNER_PUBKEY],
+            since: 1_699_395_200,
+            limit: 150,
+        }]);
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [{ event: directReply, relayUrls: ["wss://relay.example.com/"] }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(result.classifications).toMatchObject({
+            "direct-reply": 1,
+            "mention-like": 1,
+        });
+        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+    });
+
+    it("limit到達時はlastSeenCreatedAtを更新せずmaybeIncompleteを維持する", async () => {
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(createEvent({ id: "5".repeat(64), created_at: 1_700_000_100 })));
+                next(createPacket(createEvent({ id: "6".repeat(64), created_at: 1_700_000_101 })));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const syncStateRepository = {
+            get: vi.fn(async () => ({ lastSeenCreatedAt: 1_700_000_000 })),
+            save: vi.fn(async (ownerPubkeyHex: string, patch: Record<string, any>) => ({
+                ownerPubkeyHex,
+                lastSyncedAt: patch.lastSyncedAt ?? null,
+                lastSeenCreatedAt: patch.lastSeenCreatedAt ?? null,
+                lastDialogRefreshAt: patch.lastDialogRefreshAt ?? null,
+                saturated: patch.saturated ?? false,
+                maybeIncomplete: patch.maybeIncomplete ?? false,
+                updatedAt: 1_700_000_000_000,
+                schemaVersion: 1,
+            })),
+        };
+        const { service } = createService({ syncStateRepository });
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+            relayConfig: null,
+            limit: 2,
+        }).promise;
+
+        expect(result).toMatchObject({
+            saturated: true,
+            maybeIncomplete: true,
+        });
+        expect(syncStateRepository.save).toHaveBeenCalledWith(OWNER_PUBKEY, expect.objectContaining({
+            lastSeenCreatedAt: undefined,
+            saturated: true,
+            maybeIncomplete: true,
+        }));
+    });
+
+    it("mention-likeだけでlimit到達しても補完完了扱いにしない", async () => {
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(createEvent({
+                    id: "7".repeat(64),
+                    tags: [["p", OWNER_PUBKEY], ["e", OTHER_PARENT_ID, "", "reply"]],
+                })));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const syncStateRepository = {
+            get: vi.fn(async () => null),
+            save: vi.fn(async (ownerPubkeyHex: string, patch: Record<string, any>) => ({
+                ownerPubkeyHex,
+                lastSyncedAt: patch.lastSyncedAt ?? null,
+                lastSeenCreatedAt: patch.lastSeenCreatedAt ?? null,
+                lastDialogRefreshAt: patch.lastDialogRefreshAt ?? null,
+                saturated: patch.saturated ?? false,
+                maybeIncomplete: patch.maybeIncomplete ?? false,
+                updatedAt: 1_700_000_000_000,
+                schemaVersion: 1,
+            })),
+        };
+        const { service, postHistoryReplyEventsRepository } = createService({ syncStateRepository });
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+            relayConfig: null,
+            limit: 1,
+        }).promise;
+
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+            savedDirectReplyCount: 0,
+            saturated: true,
+            maybeIncomplete: true,
+        });
+    });
+});
+
+function createPacket(event: NostrEvent) {
+    return {
+        event,
+        from: "wss://relay.example.com",
+    };
+}

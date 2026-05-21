@@ -80,6 +80,10 @@ export type PostHistoryRepositoryOptions = {
 
 export interface PostHistoryRepository {
     getByEventId(eventId: string): Promise<PostHistoryRecord | null>;
+    getExistingEventIdsForPubkey(input: {
+        pubkeyHex: string | null | undefined;
+        eventIds: string[];
+    }): Promise<string[]>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
     getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
@@ -372,6 +376,24 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         if (!eventId) return null;
 
         return await this.db.postHistory.get(eventId) ?? null;
+    }
+
+    async getExistingEventIdsForPubkey(input: {
+        pubkeyHex: string | null | undefined;
+        eventIds: string[];
+    }): Promise<string[]> {
+        if (!input.pubkeyHex || input.eventIds.length === 0) {
+            return [];
+        }
+
+        const eventIds = Array.from(new Set(input.eventIds.filter((eventId) => !!eventId)));
+        const records = await this.db.postHistory.bulkGet(eventIds);
+
+        return records
+            .filter((record): record is PostHistoryRecord =>
+                !!record && record.pubkeyHex === input.pubkeyHex
+            )
+            .map((record) => record.eventId);
     }
 
     async getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]> {

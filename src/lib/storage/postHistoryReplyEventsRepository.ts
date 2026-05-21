@@ -34,6 +34,8 @@ export interface PostHistoryReplyEventsRepository {
     upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult>;
     deleteByEventId(eventId: string): Promise<void>;
     deleteForParent(parentEventId: string): Promise<void>;
+    deleteForParents(parentEventIds: string[]): Promise<void>;
+    deleteForPostHistoryPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 function normalizeRelayUrls(relayUrls: string[] | undefined): string[] {
@@ -127,7 +129,10 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
             }
 
             const references = parseKind1ThreadReferences(item.event);
-            if (references.parentId !== input.parentEventId) {
+            if (
+                references.parentId !== input.parentEventId
+                || item.event.id === input.parentEventId
+            ) {
                 ignoredCount += 1;
                 continue;
             }
@@ -228,6 +233,37 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
             .where("parentEventId")
             .equals(parentEventId)
             .delete();
+    }
+
+    async deleteForParents(parentEventIds: string[]): Promise<void> {
+        const uniqueParentEventIds = Array.from(new Set(parentEventIds.filter((eventId) => !!eventId)));
+        if (uniqueParentEventIds.length === 0) {
+            return;
+        }
+
+        await this.db.transaction("rw", this.db.postHistoryReplyEvents, async () => {
+            for (const parentEventId of uniqueParentEventIds) {
+                await this.db.postHistoryReplyEvents
+                    .where("parentEventId")
+                    .equals(parentEventId)
+                    .delete();
+            }
+        });
+    }
+
+    async deleteForPostHistoryPubkey(pubkeyHex: string | null | undefined): Promise<void> {
+        if (!pubkeyHex) {
+            return;
+        }
+
+        const parentEventIds = await this.db.postHistory
+            .where("pubkeyHex")
+            .equals(pubkeyHex)
+            .primaryKeys();
+
+        // TODO(PR5+): Consider adding ownerPubkeyHex to postHistoryReplyEvents via migration
+        // so owner-scoped cleanup does not have to infer scope from current postHistory parents.
+        await this.deleteForParents(parentEventIds.map(String));
     }
 
     async deleteByEventId(eventId: string): Promise<void> {
