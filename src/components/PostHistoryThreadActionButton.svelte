@@ -121,7 +121,7 @@
         }
     }
 
-    :global(
+    /* :global(
             .light
                 .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
                     :hover:not(:disabled)
@@ -137,10 +137,12 @@
                 )
         ) {
         background-color: color-mix(in srgb, var(--btn-bg), white 5%);
-    }
+    } */
 
     :global(
-            .post-preview-action-button.post-history-thread-action-button.post-preview-replies-action-button.selected
+            .post-history-thread-action-button.post-preview-replies-action-button.selected:not(
+                    :hover
+                )
         ) {
         background-color: transparent;
 
