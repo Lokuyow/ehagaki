@@ -68,8 +68,6 @@
 <style>
     .post-history-related-card {
         display: grid;
-        gap: 4px;
-        padding: 2px 10px 0;
         border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         color: var(--text);
@@ -78,7 +76,8 @@
 
     .post-history-related-card-body {
         display: grid;
-        gap: 4px;
+        gap: 2px;
+        padding: 2px 10px 0 10px;
     }
 
     .post-history-related-card-header,
