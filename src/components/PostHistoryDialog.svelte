@@ -1243,8 +1243,7 @@
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
         if (
             state.status === "failed" ||
-            (state.status === "loaded" &&
-                (state.replyCount === 0 || !state.visible))
+            (state.status === "loaded" && state.replyCount === 0)
         ) {
             postHistoryThreadGraph.retryChildren(post);
             return;

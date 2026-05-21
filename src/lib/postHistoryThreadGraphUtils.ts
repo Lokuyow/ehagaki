@@ -33,9 +33,11 @@ export interface PostHistoryThreadGraphExpansionState {
     parentMissing: boolean;
     parentDeleted: boolean;
     showParentLoadingIndicator: boolean;
+    revalidatingParent: boolean;
     loadedChildren: boolean;
     visibleChildren: boolean;
     loadingChildren: boolean;
+    revalidatingChildren: boolean;
     childrenError: string | null;
     lastFetchedParentAt: number | null;
     lastFetchedChildrenAt: number | null;
@@ -77,9 +79,11 @@ export function buildInitialExpansionState(): PostHistoryThreadGraphExpansionSta
         parentMissing: false,
         parentDeleted: false,
         showParentLoadingIndicator: false,
+        revalidatingParent: false,
         loadedChildren: false,
         visibleChildren: false,
         loadingChildren: false,
+        revalidatingChildren: false,
         childrenError: null,
         lastFetchedParentAt: null,
         lastFetchedChildrenAt: null,

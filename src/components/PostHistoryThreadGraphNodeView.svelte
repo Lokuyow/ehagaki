@@ -62,8 +62,7 @@
         const actionState = state.repliesActionState;
         if (
             actionState.status === "failed" ||
-            (actionState.status === "loaded" &&
-                (actionState.replyCount === 0 || !actionState.visible))
+            (actionState.status === "loaded" && actionState.replyCount === 0)
         ) {
             onRetryChildren?.(state.node.eventId);
             return;

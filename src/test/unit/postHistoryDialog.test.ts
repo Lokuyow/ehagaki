@@ -142,6 +142,12 @@ const deletionFetchServiceMock = vi.hoisted(() => ({
     fetchDeletionRequests: vi.fn(),
 }));
 
+const profilesRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+}));
+
+const profileFetchDataMock = vi.hoisted(() => vi.fn());
+
 const visibleRangeRepositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
@@ -289,6 +295,18 @@ vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
 
 vi.mock('../../lib/storage/postHistoryDeletionRequestsRepository', () => ({
     postHistoryDeletionRequestsRepository: deletionRequestsRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/profilesRepository', () => ({
+    profilesRepository: profilesRepositoryMock,
+}));
+
+vi.mock('../../lib/profileManager', () => ({
+    ProfileManager: vi.fn().mockImplementation(function () {
+        return {
+            fetchProfileData: profileFetchDataMock,
+        };
+    }),
 }));
 
 vi.mock('../../lib/postHistoryReplyFetchService', () => ({
@@ -507,6 +525,17 @@ function createDirectReplyEventRecord(overrides: Record<string, any> = {}) {
     };
 }
 
+function createProfile(overrides: Record<string, any> = {}) {
+    return {
+        name: overrides.name ?? '',
+        displayName: overrides.displayName ?? 'Thread User',
+        picture: overrides.picture ?? '',
+        npub: overrides.npub ?? 'npub1threaduser',
+        nprofile: overrides.nprofile ?? 'nprofile1threaduser',
+        ...overrides,
+    };
+}
+
 function createDeletionEvent(overrides: Record<string, any> = {}) {
     const targetEventId = overrides.targetEventId ?? '4'.repeat(64);
     const pubkey = overrides.pubkey ?? 'd'.repeat(64);
@@ -609,6 +638,8 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
             ignoredCount: 0,
         });
+        profilesRepositoryMock.get.mockResolvedValue(null);
+        profileFetchDataMock.mockResolvedValue(null);
         replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
             promise: Promise.resolve({
                 events: [],
@@ -1298,6 +1329,38 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();
     });
 
+    it('[reply-context-cache-first] cached parentはdeletion fetch完了前に表示する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deferredDeletion = createDeferred<any>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? parentRecord : null,
+        );
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: deferredDeletion.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await waitFor(() => {
+            expect(deletionFetchServiceMock.fetchDeletionRequests).toHaveBeenCalled();
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信先を隠す' })).toBeTruthy();
+        });
+    });
+
     it('[reply-context-loading] 400ms以内に返信先を解決できた場合はローダーを表示しない', async () => {
         const { parentRecord, post, replyId } = createReplyContextRecords();
         const deferredRecord = createDeferred<any>();
@@ -1931,6 +1994,15 @@ describe('PostHistoryDialog', () => {
         });
         expect(screen.queryByText('cache済み孫返信C')).toBeNull();
         expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(profileFetchDataMock).toHaveBeenCalledWith(
+                'e'.repeat(64),
+                expect.objectContaining({
+                    additionalRelays: ['wss://relay.example.com/'],
+                    forceRemote: false,
+                }),
+            );
+        });
     });
 
     it('[thread-graph-children-prefetch] 表示済み子nodeの返信有無確認はconcurrency上限内で実行する', async () => {
@@ -2704,6 +2776,427 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByText('0')).toBeNull();
+    });
+
+    it('[direct-replies-cache-first] cached repliesはdeletion fetch完了前に表示する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'cacheから即表示される返信',
+            fetchedAt: Date.now(),
+        });
+        const deferredDeletion = createDeferred<any>();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+        deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+            promise: deferredDeletion.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(deletionFetchServiceMock.fetchDeletionRequests).toHaveBeenCalled();
+            expect(screen.getByText('cacheから即表示される返信')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+        });
+        expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it('[direct-replies-cache-first] profile fetch未解決でもcached reply本文を表示する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const deferredProfile = createDeferred<any>();
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'profile待ちでも見える返信',
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+        profileFetchDataMock.mockReturnValue(deferredProfile.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(profileFetchDataMock).toHaveBeenCalled();
+            expect(screen.getByText('profile待ちでも見える返信')).toBeTruthy();
+        });
+        expect(screen.queryByText('Profile Loaded User')).toBeNull();
+
+        deferredProfile.resolve(createProfile({ displayName: 'Profile Loaded User' }));
+        await waitFor(() => {
+            expect(screen.getByText('Profile Loaded User')).toBeTruthy();
+        });
+        expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it('[direct-replies-cache-first] cached profile hitも追加操作なしで表示中cardへmergeする', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'cached profileの返信',
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+        profilesRepositoryMock.get.mockResolvedValue(createProfile({ displayName: 'Cached Profile User' }));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('cached profileの返信')).toBeTruthy();
+            expect(screen.getByText('Cached Profile User')).toBeTruthy();
+        });
+    });
+
+    it('[direct-replies-cache-first] 同じpubkeyの複数nodeへprofileをmergeする', async () => {
+        const parentEventId = '1'.repeat(64);
+        const sharedPubkey = 'd'.repeat(64);
+        const deferredProfile = createDeferred<any>();
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const firstReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            authorPubkey: sharedPubkey,
+            content: '同じ作者の返信1',
+            fetchedAt: Date.now(),
+        });
+        const secondReply = createDirectReplyEventRecord({
+            eventId: '6'.repeat(64),
+            authorPubkey: sharedPubkey,
+            content: '同じ作者の返信2',
+            rawEvent: {
+                id: '6'.repeat(64),
+                pubkey: sharedPubkey,
+                kind: 1,
+                content: '同じ作者の返信2',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'f'.repeat(128),
+            },
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([firstReply, secondReply]);
+        profileFetchDataMock.mockReturnValue(deferredProfile.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('同じ作者の返信1')).toBeTruthy();
+            expect(screen.getByText('同じ作者の返信2')).toBeTruthy();
+        });
+
+        deferredProfile.resolve(createProfile({ displayName: 'Shared Profile User' }));
+        await waitFor(() => {
+            expect(screen.getAllByText('Shared Profile User')).toHaveLength(2);
+        });
+        expect(profileFetchDataMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('[direct-replies-cache-first] dialog close後にprofile fetchが解決しても閉じたgraphへ反映しない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const deferredProfile = createDeferred<any>();
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'close前の返信',
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+        profileFetchDataMock.mockReturnValue(deferredProfile.promise);
+
+        const { rerender } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('close前の返信')).toBeTruthy();
+            expect(profileFetchDataMock).toHaveBeenCalled();
+        });
+
+        await rerender({
+            show: false,
+            onClose: vi.fn(),
+            onReplyPost: vi.fn(),
+            pubkeyHex: 'a'.repeat(64),
+            rxNostr: {} as any,
+        });
+        deferredProfile.resolve(createProfile({ displayName: 'Closed Profile User' }));
+        await wait(20);
+
+        expect(screen.queryByText('Closed Profile User')).toBeNull();
+    });
+
+    it('[direct-replies-revalidate] TTL内の再表示では再取得しない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'TTL内の返信',
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('TTL内の返信')).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '返信を隠す' }));
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '返信 1件を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('TTL内の返信')).toBeTruthy();
+        });
+        expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it('[direct-replies-revalidate] TTL切れでは即表示しつつbackground revalidateで新規replyをmergeする', async () => {
+        const parentEventId = '1'.repeat(64);
+        const newReplyEventId = '6'.repeat(64);
+        const deferredFetch = createDeferred<any>();
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'TTL切れcached返信',
+            fetchedAt: Date.now() - 6 * 60 * 1_000,
+        });
+        const newReply = createDirectReplyEventRecord({
+            eventId: newReplyEventId,
+            authorPubkey: 'e'.repeat(64),
+            content: 'backgroundで増えた返信',
+            rawEvent: {
+                id: newReplyEventId,
+                pubkey: 'e'.repeat(64),
+                kind: 1,
+                content: 'backgroundで増えた返信',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'f'.repeat(128),
+            },
+        });
+        let storedReplies = [cachedReply];
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async () => storedReplies);
+        replyEventsRepositoryMock.upsertDirectReplies.mockImplementation(async ({ events }: any) => {
+            for (const item of events) {
+                if (item.event.id === newReplyEventId && !storedReplies.some((reply) => reply.eventId === newReplyEventId)) {
+                    storedReplies = [...storedReplies, newReply];
+                }
+            }
+            return {
+                insertedCount: events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            };
+        });
+        replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+            promise: deferredFetch.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('TTL切れcached返信')).toBeTruthy();
+            expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalled();
+        });
+        expect(screen.queryByText('backgroundで増えた返信')).toBeNull();
+
+        deferredFetch.resolve({
+            events: [
+                { event: cachedReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                { event: newReply.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+            ],
+            fetchedAt: Date.now(),
+            relayUrls: ['wss://relay.example.com/'],
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('TTL切れcached返信')).toBeTruthy();
+            expect(screen.getByText('backgroundで増えた返信')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+        });
     });
 
     it('[direct-replies-nip09] validなkind:5がある返信を表示と件数から除外する', async () => {
