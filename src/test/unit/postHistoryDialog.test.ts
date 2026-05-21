@@ -1342,7 +1342,7 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
     });
 
-    it('[reply-context-loading] 400msを超えても取得中の場合だけローダーを表示する', async () => {
+    it('[reply-context-loading] 400msを超えても取得中の場合はカード側ローダーを表示しない', async () => {
         const { parentRecord, post, replyId } = createReplyContextRecords();
         const deferredRecord = createDeferred<any>();
         repositoryMock.getPage.mockResolvedValue([post]);
@@ -1365,7 +1365,12 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
 
         await wait(80);
-        expect(screen.getByText('関連投稿を読み込み中...')).toBeTruthy();
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+        expect(
+            screen
+                .getByRole('button', { name: '返信先を隠す' })
+                .querySelector('.post-history-thread-action-spinner'),
+        ).toBeTruthy();
 
         deferredRecord.resolve(parentRecord);
         await waitFor(() => {

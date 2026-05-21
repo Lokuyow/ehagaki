@@ -1,7 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryThreadActionButton from "./PostHistoryThreadActionButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
@@ -39,13 +38,7 @@
         class="post-history-thread-parent-panel"
         style={`--thread-direct-parent-indent: ${directParentIndent}`}
     >
-        {#if state.parentExpansion.visibleParent && state.parentExpansion.loadingParent && state.parentExpansion.showParentLoadingIndicator}
-            <LoadingPlaceholder
-                showLoader={true}
-                text={$_("postHistory.contextLoading")}
-                customClass="post-history-context-loading post-history-thread-direct-parent-context"
-            />
-        {:else if state.parentExpansion.visibleParent && state.parentNodeState}
+        {#if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
                 onToggleParent={onToggleNodeParent}
