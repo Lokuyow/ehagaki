@@ -169,6 +169,7 @@
     schedulePostHistoryWarmupOnIdle,
     type PostHistoryWarmupResult,
   } from "./lib/postHistoryPrefetch";
+  import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -307,6 +308,10 @@
   let postHistoryWarmupPubkey: string | null = null;
   let postHistoryWarmupResult: PostHistoryWarmupResult | null = null;
   let postHistoryWarmupPromise: Promise<PostHistoryWarmupResult> | null = null;
+  let latestInboundDirectReplySave = $state<{
+    revision: number;
+    parentEventIds: string[];
+  } | null>(null);
   let latestPostedEvent: NostrEvent | null = $state(null);
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
@@ -392,6 +397,19 @@
           pubkeyHex: authState.value?.pubkey ?? null,
         },
       );
+    },
+  });
+
+  usePostHistoryInboundInteractionsRealtime({
+    getIsAuthenticated: () => isAuthenticated,
+    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    onSavedDirectReplies: (parentEventIds) => {
+      latestInboundDirectReplySave = {
+        revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
+        parentEventIds,
+      };
     },
   });
 
@@ -1823,6 +1841,7 @@
           {rxNostr}
           relayConfig={relayConfigStore.value}
           {latestPostedEvent}
+          inboundDirectReplySave={latestInboundDirectReplySave}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

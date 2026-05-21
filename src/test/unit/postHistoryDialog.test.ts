@@ -2028,6 +2028,64 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[inbound-realtime] open dialog reloads the visible post badge after a saved direct reply signal', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const realtimeReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            parentEventId,
+            content: 'realtimeで保存された返信',
+        });
+        let storedReplies: any[] = [];
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            parentId === parentEventId ? storedReplies : [],
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        expect(await screen.findByRole('button', { name: '返信を確認' })).toBeTruthy();
+        storedReplies = [realtimeReply];
+
+        await view.rerender({
+            show: true,
+            onClose: vi.fn(),
+            onReplyPost: vi.fn(),
+            pubkeyHex: 'a'.repeat(64),
+            inboundDirectReplySave: {
+                revision: 1,
+                parentEventIds: [parentEventId],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+    });
+
     it('[thread-graph-children-prefetch] 表示済み子nodeの返信有無確認はconcurrency上限内で実行する', async () => {
         const parentEventId = '1'.repeat(64);
         const childIds = ['4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'].map((value) => value.repeat(64));

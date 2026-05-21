@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
-    import { flushSync, tick } from "svelte";
+    import { flushSync, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
@@ -73,6 +73,10 @@
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
         latestPostedEvent?: NostrEvent | null;
+        inboundDirectReplySave?: {
+            revision: number;
+            parentEventIds: string[];
+        } | null;
     }
 
     let {
@@ -84,6 +88,7 @@
         rxNostr = undefined,
         relayConfig = null,
         latestPostedEvent = null,
+        inboundDirectReplySave = null,
     }: Props = $props();
 
     const history = usePostHistoryListing({
@@ -406,6 +411,22 @@
             restoredSessionScrollKey = restoreKey;
             pendingSessionScrollRestore = null;
         });
+    });
+
+    $effect(() => {
+        const revision = inboundDirectReplySave?.revision ?? 0;
+        const parentEventIds = inboundDirectReplySave?.parentEventIds ?? [];
+        const posts = history.posts;
+        if (!show || revision <= 0 || parentEventIds.length === 0) {
+            return;
+        }
+
+        void untrack(() =>
+            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+                posts,
+                parentEventIds,
+            )
+        );
     });
 
     $effect(() => {
