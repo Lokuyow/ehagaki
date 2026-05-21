@@ -115,7 +115,6 @@
     }
 
     .post-history-thread-parent-panel {
-        padding-left: 0;
         padding-bottom: 4px;
     }
 
@@ -127,7 +126,6 @@
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-
     }
 
     :global(.post-history-context-button) {
