@@ -73,6 +73,10 @@
 </Button>
 
 <style>
+    :global(.post-history-thread-node-top-actions) {
+        width: 100%;
+        height: 28px;
+    }
     :global(
             .post-history-context-actions .post-history-thread-action-button,
             .post-history-thread-node-top-actions
@@ -98,6 +102,15 @@
         width: 36px;
     }
 
+    :global(.post-preview-action-button.post-history-thread-action-button) {
+        :global(
+                &.post-history-parent-toggle-button.selected,
+                &.post-preview-replies-action-button.selected
+            ) {
+            background-color: inherit;
+        }
+    }
+
     :global(
             .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:not(
                     :hover
@@ -120,24 +133,6 @@
             }
         }
     }
-
-    /* :global(
-            .light
-                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
-                    :hover:not(:disabled)
-                )
-        ) {
-        background-color: color-mix(in srgb, var(--btn-bg), black 4%);
-    }
-
-    :global(
-            .dark
-                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
-                    :hover:not(:disabled)
-                )
-        ) {
-        background-color: color-mix(in srgb, var(--btn-bg), white 5%);
-    } */
 
     :global(
             .post-history-thread-action-button.post-preview-replies-action-button.selected:not(
