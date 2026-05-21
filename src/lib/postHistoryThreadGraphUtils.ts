@@ -41,8 +41,31 @@ export interface PostHistoryThreadGraphExpansionState {
     lastFetchedChildrenAt: number | null;
 }
 
+const POST_HISTORY_THREAD_CONTEXT_PARENT_WINDOW_DEPTH = 3;
+const POST_HISTORY_THREAD_CONTEXT_INDENT_STEP_REM = 0.5;
+const POST_HISTORY_THREAD_CONTEXT_MAX_INDENT_REM = 1.5;
+
 export function buildAnchorNodeKey(anchorEventId: string, nodeEventId: string): string {
     return `${anchorEventId}:${nodeEventId}`;
+}
+
+export function resolvePostHistoryThreadContextDepth(depthFromAnchor: number): number {
+    if (depthFromAnchor < 0) {
+        return Math.max(
+            0,
+            POST_HISTORY_THREAD_CONTEXT_PARENT_WINDOW_DEPTH + depthFromAnchor,
+        );
+    }
+
+    return depthFromAnchor;
+}
+
+export function resolvePostHistoryThreadContextIndentRem(depthFromAnchor: number): number {
+    return Math.min(
+        resolvePostHistoryThreadContextDepth(depthFromAnchor)
+            * POST_HISTORY_THREAD_CONTEXT_INDENT_STEP_REM,
+        POST_HISTORY_THREAD_CONTEXT_MAX_INDENT_REM,
+    );
 }
 
 export function buildInitialExpansionState(): PostHistoryThreadGraphExpansionState {

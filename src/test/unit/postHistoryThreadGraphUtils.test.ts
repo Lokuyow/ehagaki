@@ -4,6 +4,8 @@ import {
     buildInitialExpansionState,
     buildThreadGraphNode,
     mergeThreadGraphNode,
+    resolvePostHistoryThreadContextDepth,
+    resolvePostHistoryThreadContextIndentRem,
     sortEventIdsByEvent,
 } from "../../lib/postHistoryThreadGraphUtils";
 import type { NostrEvent } from "../../lib/types";
@@ -68,5 +70,29 @@ describe("postHistoryThreadGraphUtils", () => {
             [newer.eventId]: newer,
             [older.eventId]: older,
         })).toEqual([older.eventId, newer.eventId]);
+    });
+
+    it("親方向はanchorから遠い親ほど浅く、direct parentほど深いcompact depthにする", () => {
+        expect(resolvePostHistoryThreadContextDepth(-4)).toBe(0);
+        expect(resolvePostHistoryThreadContextDepth(-3)).toBe(0);
+        expect(resolvePostHistoryThreadContextDepth(-2)).toBe(1);
+        expect(resolvePostHistoryThreadContextDepth(-1)).toBe(2);
+    });
+
+    it("子方向はanchorから遠い子ほど深いcompact depthにする", () => {
+        expect(resolvePostHistoryThreadContextDepth(0)).toBe(0);
+        expect(resolvePostHistoryThreadContextDepth(1)).toBe(1);
+        expect(resolvePostHistoryThreadContextDepth(2)).toBe(2);
+        expect(resolvePostHistoryThreadContextDepth(3)).toBe(3);
+    });
+
+    it("thread graph のcompact indentは深いスレッドでも上限で止める", () => {
+        expect(resolvePostHistoryThreadContextIndentRem(-3)).toBe(0);
+        expect(resolvePostHistoryThreadContextIndentRem(-2)).toBe(0.5);
+        expect(resolvePostHistoryThreadContextIndentRem(-1)).toBe(1);
+        expect(resolvePostHistoryThreadContextIndentRem(1)).toBe(0.5);
+        expect(resolvePostHistoryThreadContextIndentRem(2)).toBe(1);
+        expect(resolvePostHistoryThreadContextIndentRem(3)).toBe(1.5);
+        expect(resolvePostHistoryThreadContextIndentRem(20)).toBe(1.5);
     });
 });

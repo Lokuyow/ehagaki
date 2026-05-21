@@ -7,6 +7,7 @@
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import { formatPostedAt } from "../lib/postHistoryDialogUtils";
+    import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
 
     interface Props {
@@ -26,6 +27,9 @@
     }: Props = $props();
 
     let postedAt = $derived(formatPostedAt(state.node.event.created_at * 1000));
+    let contextIndent = $derived(
+        `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
+    );
 
     function getRepliesActionLabel(): string {
         const actionState = state.repliesActionState;
@@ -72,7 +76,7 @@
 
 <div
     class="post-history-thread-node-view"
-    style={`--thread-depth: ${Math.max(0, state.depthFromAnchor)}; --thread-parent-indent: ${Math.max(0, 1.3 - Math.max(0, -state.depthFromAnchor) * 0.25)}rem`}
+    style={`--thread-context-indent: ${contextIndent}`}
 >
     {#if state.parentTargetId}
         <div class="post-history-thread-node-parent">
@@ -183,15 +187,16 @@
     }
 
     .post-history-thread-node-parent {
-        padding-left: var(--thread-parent-indent);
+        padding-left: 0;
     }
 
     .post-history-thread-node-anchor {
         display: grid;
+        margin-left: var(--thread-context-indent);
     }
 
     .post-history-thread-node-children {
-        padding-left: min(calc((var(--thread-depth) + 1) * 0.25rem), 1.3rem);
+        padding-left: 0;
     }
 
     .post-preview-footer {

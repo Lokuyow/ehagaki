@@ -5,6 +5,7 @@
     import PostHistoryThreadActionButton from "./PostHistoryThreadActionButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
+    import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
 
     interface Props {
@@ -28,15 +29,21 @@
         onToggleNodeChildren = undefined,
         onRetryNodeChildren = undefined,
     }: Props = $props();
+
+    const directParentIndent =
+        `${resolvePostHistoryThreadContextIndentRem(-1)}rem`;
 </script>
 
 {#if section === "parent" && state.parentTargetId}
-    <div class="post-history-thread-parent-panel">
+    <div
+        class="post-history-thread-parent-panel"
+        style={`--thread-direct-parent-indent: ${directParentIndent}`}
+    >
         {#if state.parentExpansion.visibleParent && state.parentExpansion.loadingParent && state.parentExpansion.showParentLoadingIndicator}
             <LoadingPlaceholder
                 showLoader={true}
                 text={$_("postHistory.contextLoading")}
-                customClass="post-history-context-loading"
+                customClass="post-history-context-loading post-history-thread-direct-parent-context"
             />
         {:else if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
@@ -47,17 +54,19 @@
                 onRetryChildren={onRetryNodeChildren}
             />
         {:else if state.parentExpansion.visibleParent && state.parentNode}
-            <PostHistoryThreadNode node={state.parentNode} />
+            <div class="post-history-thread-direct-parent-context">
+                <PostHistoryThreadNode node={state.parentNode} />
+            </div>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
-            <span class="post-history-context-deleted-label">
+            <span class="post-history-context-deleted-label post-history-thread-direct-parent-context">
                 {$_("postHistory.replyTargetDeleted")}
             </span>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentMissing}
-            <p class="post-history-context-message">
+            <p class="post-history-context-message post-history-thread-direct-parent-context">
                 {$_("postHistory.contextNotFound")}
             </p>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentError}
-            <p class="post-history-context-message post-history-context-error">
+            <p class="post-history-context-message post-history-context-error post-history-thread-direct-parent-context">
                 {$_("postHistory.contextFetchFailed")}
             </p>
             <Button
@@ -111,7 +120,6 @@
     .post-history-thread-replies-panel {
         display: grid;
         gap: 6px;
-        padding-left: 1rem;
     }
 
     .post-history-thread-parent-panel {
@@ -126,6 +134,10 @@
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+    }
+
+    :global(.post-history-thread-direct-parent-context) {
+        margin-left: var(--thread-direct-parent-indent);
     }
 
     :global(.post-history-context-button) {
