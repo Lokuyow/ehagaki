@@ -431,6 +431,20 @@ function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createMockRect(top: number, height: number): DOMRect {
+    return {
+        x: 0,
+        y: top,
+        top,
+        left: 0,
+        right: 320,
+        bottom: top + height,
+        width: 320,
+        height,
+        toJSON: () => ({}),
+    } as DOMRect;
+}
+
 function createReplyContextRecords() {
     const replyId = '2'.repeat(64);
     const rootId = '3'.repeat(64);
@@ -827,6 +841,60 @@ describe('PostHistoryDialog', () => {
         });
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-scroll] 返信先の展開と折りたたみで起点投稿の表示位置を維持する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? parentRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('自分の返信');
+        const historyContainer = document.querySelector('.post-history-container') as HTMLDivElement;
+        historyContainer.scrollTop = 100;
+        const getBoundingClientRectSpy = vi
+            .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+            .mockImplementation(function (this: HTMLElement) {
+                if (this.classList.contains('post-history-container')) {
+                    return createMockRect(0, 600);
+                }
+
+                if (
+                    this.dataset.postHistoryThreadAnchorScopeId === post.eventId &&
+                    this.dataset.postHistoryThreadAnchorEventId === post.eventId
+                ) {
+                    const hasParent = screen.queryByText('返信先の投稿') !== null;
+                    const scrollOffset = historyContainer.scrollTop - 100;
+                    return createMockRect((hasParent ? 260 : 160) - scrollOffset, 80);
+                }
+
+                return createMockRect(0, 0);
+            });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(200);
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を隠す' }));
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+            expect(historyContainer.scrollTop).toBe(100);
+        });
+
+        getBoundingClientRectSpy.mockRestore();
     });
 
     it('[reply-context-nip09] 既存tombstoneがある返信先は削除済みラベルを表示しparent cardを表示しない', async () => {
@@ -1443,6 +1511,98 @@ describe('PostHistoryDialog', () => {
         });
         expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(2);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[thread-graph-parent-scroll] 関連node内の返信先展開で起点nodeの表示位置を維持する', async () => {
+        const parentEventId = '2'.repeat(64);
+        const grandParentEventId = '5'.repeat(64);
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の返信',
+            tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+            media: [],
+        });
+        const parentEvent = {
+            id: parentEventId,
+            pubkey: 'd'.repeat(64),
+            kind: 1,
+            content: '他人の返信先',
+            tags: [['e', grandParentEventId, 'wss://grand.example.com/', 'reply']],
+            created_at: 1_699_999_000,
+            sig: 'e'.repeat(128),
+        };
+        const grandParentEvent = {
+            id: grandParentEventId,
+            pubkey: 'e'.repeat(64),
+            kind: 1,
+            content: '返信先のさらに返信先',
+            tags: [],
+            created_at: 1_699_998_000,
+            sig: 'f'.repeat(128),
+        };
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockImplementation((_rxNostr: any, params: any) => ({
+            promise: Promise.resolve({
+                event: params.eventId === parentEventId ? parentEvent : grandParentEvent,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        }));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('他人の返信先')).toBeTruthy();
+        });
+
+        const historyContainer = document.querySelector('.post-history-container') as HTMLDivElement;
+        historyContainer.scrollTop = 100;
+        const getBoundingClientRectSpy = vi
+            .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+            .mockImplementation(function (this: HTMLElement) {
+                if (this.classList.contains('post-history-container')) {
+                    return createMockRect(0, 600);
+                }
+
+                if (
+                    this.dataset.postHistoryThreadAnchorScopeId === post.eventId &&
+                    this.dataset.postHistoryThreadAnchorEventId === parentEventId
+                ) {
+                    const hasGrandParent = screen.queryByText('返信先のさらに返信先') !== null;
+                    const scrollOffset = historyContainer.scrollTop - 100;
+                    return createMockRect((hasGrandParent ? 320 : 220) - scrollOffset, 80);
+                }
+
+                return createMockRect(0, 0);
+            });
+
+        await fireEvent.click(screen.getByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('返信先のさらに返信先')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(200);
+        });
+
+        getBoundingClientRectSpy.mockRestore();
     });
 
     it('[thread-graph-dedupe] 同じ関連eventに複数経路で到達しても一度だけ表示する', async () => {

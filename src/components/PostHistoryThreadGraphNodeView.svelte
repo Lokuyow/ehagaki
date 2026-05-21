@@ -115,39 +115,45 @@
         </div>
     {/if}
 
-    <PostHistoryThreadNode node={state.node} showHeaderDate={false}>
-        {#snippet topActions()}
-            {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
-                <div class="post-history-thread-node-top-actions">
-                    <PostHistoryThreadActionButton
-                        icon={state.parentExpansion.visibleParent
-                            ? "collapse-content"
-                            : "arrow-top-right"}
-                        className="post-history-parent-toggle-button"
-                        ariaLabel={state.parentExpansion.visibleParent
-                            ? $_("postHistory.hideReplyTarget")
-                            : $_("postHistory.showReplyTarget")}
-                        title={state.parentExpansion.visibleParent
-                            ? $_("postHistory.hideReplyTarget")
-                            : $_("postHistory.showReplyTarget")}
-                        selected={state.parentExpansion.visibleParent}
-                        loading={state.parentExpansion.visibleParent &&
-                            state.parentExpansion.loadingParent}
-                        onClick={() => onToggleParent?.(state.node.eventId)}
-                    />
-                </div>
-            {/if}
-        {/snippet}
+    <div
+        class="post-history-thread-node-anchor"
+        data-post-history-thread-anchor-scope-id={state.anchorEventId}
+        data-post-history-thread-anchor-event-id={state.node.eventId}
+    >
+        <PostHistoryThreadNode node={state.node} showHeaderDate={false}>
+            {#snippet topActions()}
+                {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
+                    <div class="post-history-thread-node-top-actions">
+                        <PostHistoryThreadActionButton
+                            icon={state.parentExpansion.visibleParent
+                                ? "collapse-content"
+                                : "arrow-top-right"}
+                            className="post-history-parent-toggle-button"
+                            ariaLabel={state.parentExpansion.visibleParent
+                                ? $_("postHistory.hideReplyTarget")
+                                : $_("postHistory.showReplyTarget")}
+                            title={state.parentExpansion.visibleParent
+                                ? $_("postHistory.hideReplyTarget")
+                                : $_("postHistory.showReplyTarget")}
+                            selected={state.parentExpansion.visibleParent}
+                            loading={state.parentExpansion.visibleParent &&
+                                state.parentExpansion.loadingParent}
+                            onClick={() => onToggleParent?.(state.node.eventId)}
+                        />
+                    </div>
+                {/if}
+            {/snippet}
 
-        <div class="post-preview-footer">
-            <span class="post-history-related-date">{postedAt}</span>
-            <PostHistoryRepliesActionButton
-                state={state.repliesActionState}
-                ariaLabel={getRepliesActionLabel()}
-                onClick={handleRepliesAction}
-            />
-        </div>
-    </PostHistoryThreadNode>
+            <div class="post-preview-footer">
+                <span class="post-history-related-date">{postedAt}</span>
+                <PostHistoryRepliesActionButton
+                    state={state.repliesActionState}
+                    ariaLabel={getRepliesActionLabel()}
+                    onClick={handleRepliesAction}
+                />
+            </div>
+        </PostHistoryThreadNode>
+    </div>
 
     {#if state.repliesActionState.visible && state.replyNodeStates.length > 0}
         <div class="post-history-thread-node-children">
@@ -178,6 +184,10 @@
 
     .post-history-thread-node-parent {
         padding-left: var(--thread-parent-indent);
+    }
+
+    .post-history-thread-node-anchor {
+        display: grid;
     }
 
     .post-history-thread-node-children {

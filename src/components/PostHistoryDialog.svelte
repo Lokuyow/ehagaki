@@ -156,6 +156,11 @@
         eventId: string;
         offsetTop: number;
     };
+    type ThreadScrollPositionAnchor = {
+        scopeEventId: string;
+        eventId: string;
+        top: number;
+    };
     const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
     const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
     const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
@@ -707,6 +712,92 @@
         historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
         scheduleCurrentMonthLabelUpdate();
         return true;
+    }
+
+    function findThreadScrollAnchorElement(
+        scopeEventId: string,
+        eventId: string,
+    ): HTMLElement | null {
+        if (!historyContainer) {
+            return null;
+        }
+
+        return (
+            Array.from(
+                historyContainer.querySelectorAll<HTMLElement>(
+                    "[data-post-history-thread-anchor-event-id]",
+                ),
+            ).find(
+                (item) =>
+                    item.dataset.postHistoryThreadAnchorScopeId ===
+                        scopeEventId &&
+                    item.dataset.postHistoryThreadAnchorEventId === eventId,
+            ) ?? null
+        );
+    }
+
+    function captureThreadScrollPositionAnchor(
+        scopeEventId: string,
+        eventId: string,
+    ): ThreadScrollPositionAnchor | null {
+        const anchoredItem = findThreadScrollAnchorElement(
+            scopeEventId,
+            eventId,
+        );
+        if (!anchoredItem) {
+            return null;
+        }
+
+        return {
+            scopeEventId,
+            eventId,
+            top: anchoredItem.getBoundingClientRect().top,
+        };
+    }
+
+    function restoreThreadScrollPositionAnchor(
+        anchor: ThreadScrollPositionAnchor | null,
+    ): boolean {
+        if (!anchor || !show || !historyContainer) {
+            return false;
+        }
+
+        flushSync();
+
+        const anchoredItem = findThreadScrollAnchorElement(
+            anchor.scopeEventId,
+            anchor.eventId,
+        );
+        if (!anchoredItem) {
+            return false;
+        }
+
+        const topDelta = anchoredItem.getBoundingClientRect().top - anchor.top;
+        if (Math.abs(topDelta) < 0.5) {
+            return true;
+        }
+
+        historyContainer.scrollTop += topDelta;
+        scheduleCurrentMonthLabelUpdate();
+        updateHistoryScrolledToTop();
+        updateHistoryScrolledToBottom();
+        return true;
+    }
+
+    async function preserveThreadParentToggleScroll(
+        scopeEventId: string,
+        eventId: string,
+        action: () => void | Promise<void>,
+    ): Promise<void> {
+        const anchor = captureThreadScrollPositionAnchor(scopeEventId, eventId);
+        const actionResult = action();
+
+        await tick();
+        restoreThreadScrollPositionAnchor(anchor);
+
+        await actionResult;
+        await tick();
+        restoreThreadScrollPositionAnchor(anchor);
     }
 
     function getLoadOlderLabel(): string {
@@ -1783,17 +1874,27 @@
                                     state={graphState}
                                     section="parent"
                                     onToggleParent={() =>
-                                        postHistoryThreadGraph.toggleParent(
-                                            post,
+                                        preserveThreadParentToggleScroll(
+                                            post.eventId,
+                                            post.eventId,
+                                            () =>
+                                                postHistoryThreadGraph.toggleParent(
+                                                    post,
+                                                ),
                                         )}
                                     onRetryParent={() =>
                                         postHistoryThreadGraph.retryParent(
                                             post,
                                         )}
                                     onToggleNodeParent={(nodeEventId) =>
-                                        postHistoryThreadGraph.toggleNodeParent(
-                                            post,
+                                        preserveThreadParentToggleScroll(
+                                            post.eventId,
                                             nodeEventId,
+                                            () =>
+                                                postHistoryThreadGraph.toggleNodeParent(
+                                                    post,
+                                                    nodeEventId,
+                                                ),
                                         )}
                                     onRetryNodeParent={(nodeEventId) =>
                                         postHistoryThreadGraph.retryNodeParent(
@@ -1811,7 +1912,12 @@
                                             nodeEventId,
                                         )}
                                 />
-                                <div class="post-preview-body">
+                                <div
+                                    class="post-history-thread-anchor-post"
+                                    data-post-history-thread-anchor-scope-id={post.eventId}
+                                    data-post-history-thread-anchor-event-id={post.eventId}
+                                >
+                                    <div class="post-preview-body">
                                     {#if hasRenderablePostPreviewContent(post)}
                                         <div class="post-preview-content">
                                             <PostHistoryPreviewContent
@@ -2038,9 +2144,14 @@
                                     state={graphState}
                                     section="children"
                                     onToggleNodeParent={(nodeEventId) =>
-                                        postHistoryThreadGraph.toggleNodeParent(
-                                            post,
+                                        preserveThreadParentToggleScroll(
+                                            post.eventId,
                                             nodeEventId,
+                                            () =>
+                                                postHistoryThreadGraph.toggleNodeParent(
+                                                    post,
+                                                    nodeEventId,
+                                                ),
                                         )}
                                     onRetryNodeParent={(nodeEventId) =>
                                         postHistoryThreadGraph.retryNodeParent(
@@ -2058,6 +2169,7 @@
                                             nodeEventId,
                                         )}
                                 />
+                                </div>
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
                                 <div class="post-meta">
@@ -2818,6 +2930,12 @@
         min-width: 0;
         color: var(--text);
         font-size: 1rem;
+    }
+
+    .post-history-thread-anchor-post {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
     }
 
     .post-history-channel-row {

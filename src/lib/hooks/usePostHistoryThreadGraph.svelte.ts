@@ -1179,28 +1179,28 @@ export function usePostHistoryThreadGraph({
         }));
     }
 
-    function toggleParent(post: PostHistoryRecord): void {
+    async function toggleParent(post: PostHistoryRecord): Promise<void> {
         const expansion = getExpansion(post.eventId, post.eventId);
         if (expansion.visibleParent) {
             hideParent(post);
             return;
         }
 
-        void loadParent(post);
+        await loadParent(post);
     }
 
     function retryParent(post: PostHistoryRecord): void {
         void loadParent(post, { force: true });
     }
 
-    function toggleNodeParent(post: PostHistoryRecord, nodeEventId: string): void {
+    async function toggleNodeParent(post: PostHistoryRecord, nodeEventId: string): Promise<void> {
         const expansion = getExpansion(post.eventId, nodeEventId);
         if (expansion.visibleParent) {
             hideParentForNode(post.eventId, nodeEventId);
             return;
         }
 
-        void loadParentForNode(post, nodeEventId);
+        await loadParentForNode(post, nodeEventId);
     }
 
     function retryNodeParent(post: PostHistoryRecord, nodeEventId: string): void {
