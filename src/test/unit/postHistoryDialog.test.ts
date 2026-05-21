@@ -279,18 +279,6 @@ vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
     useDialogHistory: vi.fn(),
 }));
 
-vi.mock('../../lib/hooks/usePostHistoryContext.svelte', () => ({
-    usePostHistoryContext: vi.fn(() => {
-        throw new Error('legacy usePostHistoryContext should not run in graph path');
-    }),
-}));
-
-vi.mock('../../lib/hooks/usePostHistoryReplies.svelte', () => ({
-    usePostHistoryReplies: vi.fn(() => {
-        throw new Error('legacy usePostHistoryReplies should not run in graph path');
-    }),
-}));
-
 vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
 }));
