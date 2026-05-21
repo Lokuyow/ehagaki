@@ -167,7 +167,7 @@
 <style>
     .post-history-thread-node-view {
         display: grid;
-        gap: 2px;
+        gap: 1px;
     }
 
     .post-history-thread-node-parent,

@@ -2561,7 +2561,7 @@
         display: flex;
         align-items: center;
         border-bottom: 1px solid var(--border-hr-light);
-        padding: 6px 6px 0;
+        padding: 6px;
     }
 
     .post-history-item:last-child {
