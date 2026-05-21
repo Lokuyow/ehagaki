@@ -108,6 +108,10 @@
                 &.post-preview-replies-action-button.selected
             ) {
             background-color: inherit;
+
+            :global(.svg-icon) {
+                background-color: var(--text-light);
+            }
         }
     }
 
@@ -124,9 +128,29 @@
 
     @media (min-width: 601px) {
         :global(
-                .post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:hover
+                .light
+                    button.post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
+                        :hover:not(:disabled)
+                    )
             ) {
             --btn-bg: var(--dialog-bg);
+            background-color: color-mix(in srgb, var(--btn-bg), black 20%);
+            color: color-mix(in srgb, var(--text), black 20%);
+
+            :global(.svg-icon) {
+                background-color: var(--text);
+            }
+        }
+
+        :global(
+                .dark
+                    button.post-preview-action-button.post-history-thread-action-button.post-history-parent-toggle-button.selected:where(
+                        :hover:not(:disabled)
+                    )
+            ) {
+            --btn-bg: var(--dialog-bg);
+            background-color: color-mix(in srgb, var(--btn-bg), white 30%);
+            color: color-mix(in srgb, var(--text), white 30%);
 
             :global(.svg-icon) {
                 background-color: var(--text);
