@@ -37,30 +37,32 @@
 
 <article class="post-history-related-card">
     {@render topActions?.()}
-    {#if showHeaderDate}
-        <header class="post-history-related-card-header">
-            <span class="post-history-related-date">{postedAt}</span>
-        </header>
-    {/if}
-    <div class="post-history-related-author">
-        {#if profile?.picture}
-            <img
-                class="post-history-related-avatar"
-                src={profile.picture}
-                alt={authorName}
-            />
-        {:else}
-            <span
-                class="post-history-related-avatar-placeholder"
-                aria-hidden="true"
-            ></span>
+    <div class="post-history-related-card-body">
+        {#if showHeaderDate}
+            <header class="post-history-related-card-header">
+                <span class="post-history-related-date">{postedAt}</span>
+            </header>
         {/if}
-        <span class="post-history-related-author-name">{authorName}</span>
+        <div class="post-history-related-author">
+            {#if profile?.picture}
+                <img
+                    class="post-history-related-avatar"
+                    src={profile.picture}
+                    alt={authorName}
+                />
+            {:else}
+                <span
+                    class="post-history-related-avatar-placeholder"
+                    aria-hidden="true"
+                ></span>
+            {/if}
+            <span class="post-history-related-author-name">{authorName}</span>
+        </div>
+        {#if content}
+            <p class="post-history-related-content">{content}</p>
+        {/if}
+        {@render children?.()}
     </div>
-    {#if content}
-        <p class="post-history-related-content">{content}</p>
-    {/if}
-    {@render children?.()}
 </article>
 
 <style>
@@ -72,6 +74,11 @@
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         color: var(--text);
         font-size: 0.9rem;
+    }
+
+    .post-history-related-card-body {
+        display: grid;
+        gap: 4px;
     }
 
     .post-history-related-card-header,
