@@ -3,6 +3,7 @@ import type { NostrEvent } from "./types";
 
 export type PostHistoryInboundInteractionType =
     | "direct-reply"
+    | "direct-reply-candidate"
     | "mention-like"
     | "reaction"
     | "unsupported";
@@ -93,17 +94,19 @@ export function classifyPostHistoryInboundInteraction(input: {
     if (
         references.parentId
         && references.parentId !== event.id
-        && ownerPostEventIds.has(references.parentId)
     ) {
+        const ownerPostParentConfirmed = ownerPostEventIds.has(references.parentId);
         return {
-            type: "direct-reply",
+            type: ownerPostParentConfirmed ? "direct-reply" : "direct-reply-candidate",
             event,
             references,
             parentEventId: references.parentId,
             rootEventId: references.rootId,
             targetEventId: references.parentId,
             targetAuthorPubkey: ownerPubkeyHex,
-            reason: "owner-post-parent",
+            reason: ownerPostParentConfirmed
+                ? "owner-post-parent"
+                : "owner-post-parent-unconfirmed",
         };
     }
 
@@ -115,9 +118,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         rootEventId: references.rootId,
         targetEventId: references.parentId ?? references.rootId,
         targetAuthorPubkey: ownerPubkeyHex,
-        reason: references.parentId
-            ? "parent-not-owner-post"
-            : references.rootId
+        reason: references.rootId
                 ? "root-only-or-parent-missing"
                 : "mention-without-thread-parent",
     };

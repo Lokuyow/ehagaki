@@ -1,50 +1,49 @@
 import { onMount } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
-    postHistoryInboundInteractionsRealtimeService,
-    type PostHistoryInboundInteractionsRealtimeSubscription,
-} from "../postHistoryInboundInteractionsRealtimeService";
-import type { RelayConfig } from "../types";
-import type {
-    PostHistoryInboundDirectReplyCandidate,
-    PostHistoryInboundReplyReconciliationResult,
+    postHistoryInboundReplyReconciliationService,
+    type PostHistoryInboundDirectReplyCandidate,
+    type PostHistoryInboundReplyReconciliationResult,
+    type PostHistoryInboundReplyReconciliationSession,
 } from "../postHistoryInboundReplyReconciliationService";
+import type { RelayConfig } from "../types";
 
-interface UsePostHistoryInboundInteractionsRealtimeParams {
+interface UsePostHistoryInboundReplyReconciliationParams {
     getIsAuthenticated: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
     onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
-    reconcileDirectReplyCandidates?: (
-        candidates: PostHistoryInboundDirectReplyCandidate[],
-    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+}
+
+function emptyResult(): PostHistoryInboundReplyReconciliationResult {
+    return {
+        savedParentEventIds: [],
+        savedDirectReplyCount: 0,
+        unresolvedParentEventIds: [],
+    };
 }
 
 function canUseRxNostr(rxNostr: RxNostr | undefined): rxNostr is RxNostr {
     return !!rxNostr && typeof (rxNostr as { use?: unknown }).use === "function";
 }
 
-export function usePostHistoryInboundInteractionsRealtime({
+export function usePostHistoryInboundReplyReconciliation({
     getIsAuthenticated,
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
     onSavedDirectReplies = () => undefined,
-    reconcileDirectReplyCandidates,
-}: UsePostHistoryInboundInteractionsRealtimeParams) {
+}: UsePostHistoryInboundReplyReconciliationParams) {
     const state = $state({
         visible: false,
-        status: "idle" as "idle" | "subscribed",
         activePubkeyHex: null as string | null,
     });
+    let currentSession: PostHistoryInboundReplyReconciliationSession | null = null;
 
-    let currentSubscription: PostHistoryInboundInteractionsRealtimeSubscription | null = null;
-
-    function stopCurrentSubscription(): void {
-        currentSubscription?.stop();
-        currentSubscription = null;
-        state.status = "idle";
+    function stopCurrentSession(): void {
+        currentSession?.stop();
+        currentSession = null;
         state.activePubkeyHex = null;
     }
 
@@ -58,7 +57,7 @@ export function usePostHistoryInboundInteractionsRealtime({
 
         return () => {
             document.removeEventListener("visibilitychange", syncVisibility);
-            stopCurrentSubscription();
+            stopCurrentSession();
         };
     });
 
@@ -70,32 +69,35 @@ export function usePostHistoryInboundInteractionsRealtime({
         const relayConfig = getRelayConfig();
 
         if (!visible || !isAuthenticated || !ownerPubkeyHex || !canUseRxNostr(rxNostr)) {
-            stopCurrentSubscription();
+            stopCurrentSession();
             return;
         }
 
-        const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
+        const session = postHistoryInboundReplyReconciliationService.createSession(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
             onSavedDirectReplies,
-            reconcileDirectReplyCandidates,
         });
-        currentSubscription = subscription;
-        state.status = "subscribed";
+        currentSession = session;
         state.activePubkeyHex = ownerPubkeyHex;
 
         return () => {
-            if (currentSubscription === subscription) {
-                stopCurrentSubscription();
+            if (currentSession === session) {
+                stopCurrentSession();
                 return;
             }
 
-            subscription.stop();
+            session.stop();
         };
     });
 
     return {
         state,
-        stopCurrentSubscription,
+        reconcileDirectReplyCandidates: (
+            candidates: PostHistoryInboundDirectReplyCandidate[],
+        ) => currentSession?.reconcile(candidates) ?? Promise.resolve(emptyResult()),
+        notifySelfPostsSaved: (eventIds: string[]) =>
+            currentSession?.notifySelfPostsSaved(eventIds) ?? Promise.resolve(emptyResult()),
+        stopCurrentSession,
     };
 }

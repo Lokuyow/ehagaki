@@ -19,6 +19,10 @@
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
+    import type {
+        PostHistoryInboundDirectReplyCandidate,
+        PostHistoryInboundReplyReconciliationResult,
+    } from "../lib/postHistoryInboundReplyReconciliationService";
     import {
         preloadCustomEmojiImageWithMeta,
         type PreloadedCustomEmojiImageResult,
@@ -77,6 +81,13 @@
             revision: number;
             parentEventIds: string[];
         } | null;
+        authoredSelfPostSave?: {
+            revision: number;
+            eventIds: string[];
+        } | null;
+        reconcileInboundDirectReplyCandidates?: (
+            candidates: PostHistoryInboundDirectReplyCandidate[],
+        ) => Promise<PostHistoryInboundReplyReconciliationResult>;
     }
 
     let {
@@ -89,6 +100,8 @@
         relayConfig = null,
         latestPostedEvent = null,
         inboundDirectReplySave = null,
+        authoredSelfPostSave = null,
+        reconcileInboundDirectReplyCandidates = undefined,
     }: Props = $props();
 
     const history = usePostHistoryListing({
@@ -129,6 +142,14 @@
                 history.posts,
                 parentEventIds,
             ),
+        reconcileDirectReplyCandidates: (candidates) =>
+            reconcileInboundDirectReplyCandidates?.(candidates) ?? Promise.resolve({
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                unresolvedParentEventIds: candidates
+                    .map((candidate) => candidate.classification.parentEventId)
+                    .filter((eventId): eventId is string => !!eventId),
+            }),
     });
 
     let copyState = $state<Record<string, "failed" | undefined>>({});
@@ -427,6 +448,15 @@
                 parentEventIds,
             )
         );
+    });
+
+    $effect(() => {
+        const revision = authoredSelfPostSave?.revision ?? 0;
+        if (!show || revision <= 0 || history.isSearchMode || history.canReturnToLatest) {
+            return;
+        }
+
+        void untrack(() => history.returnToLatest());
     });
 
     $effect(() => {

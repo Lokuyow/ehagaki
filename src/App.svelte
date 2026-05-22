@@ -170,6 +170,8 @@
     type PostHistoryWarmupResult,
   } from "./lib/postHistoryPrefetch";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
+  import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
+  import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -312,6 +314,10 @@
     revision: number;
     parentEventIds: string[];
   } | null>(null);
+  let latestAuthoredSelfPostSave = $state<{
+    revision: number;
+    eventIds: string[];
+  } | null>(null);
   let latestPostedEvent: NostrEvent | null = $state(null);
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
@@ -400,15 +406,39 @@
     },
   });
 
+  const postHistoryInboundReplyReconciliation =
+    usePostHistoryInboundReplyReconciliation({
+      getIsAuthenticated: () => isAuthenticated,
+      getPubkeyHex: () => authState.value?.pubkey ?? null,
+      getRxNostr: () => rxNostr,
+      getRelayConfig: () => relayConfigStore.value,
+      onSavedDirectReplies: (parentEventIds) => {
+        latestInboundDirectReplySave = {
+          revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
+          parentEventIds,
+        };
+      },
+    });
+
   usePostHistoryInboundInteractionsRealtime({
     getIsAuthenticated: () => isAuthenticated,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
-    onSavedDirectReplies: (parentEventIds) => {
-      latestInboundDirectReplySave = {
-        revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
-        parentEventIds,
+    reconcileDirectReplyCandidates:
+      postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
+  });
+
+  usePostHistoryAuthoredPostsRealtime({
+    getIsAuthenticated: () => isAuthenticated,
+    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    onSavedSelfPosts: async (eventIds) => {
+      await postHistoryInboundReplyReconciliation.notifySelfPostsSaved(eventIds);
+      latestAuthoredSelfPostSave = {
+        revision: (latestAuthoredSelfPostSave?.revision ?? 0) + 1,
+        eventIds,
       };
     },
   });
@@ -1842,6 +1872,8 @@
           relayConfig={relayConfigStore.value}
           {latestPostedEvent}
           inboundDirectReplySave={latestInboundDirectReplySave}
+          authoredSelfPostSave={latestAuthoredSelfPostSave}
+          reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

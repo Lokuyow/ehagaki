@@ -130,7 +130,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         });
         expect(result.classifications).toMatchObject({
             "direct-reply": 1,
-            "mention-like": 1,
+            "direct-reply-candidate": 1,
         });
         expect(result.savedParentEventIds).toEqual([PARENT_ID]);
     });
@@ -182,7 +182,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             subscribe: ({ next, complete }: Record<string, any>) => {
                 next(createPacket(createEvent({
                     id: "7".repeat(64),
-                    tags: [["p", OWNER_PUBKEY], ["e", OTHER_PARENT_ID, "", "reply"]],
+                    tags: [["p", OWNER_PUBKEY]],
                 })));
                 complete();
                 return { unsubscribe: vi.fn() };
@@ -216,6 +216,45 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             saturated: true,
             maybeIncomplete: true,
         });
+    });
+
+    it("dialog recent syncで取得したunknown parent reply候補をshared reconciliationへ渡す", async () => {
+        const unknownParentReply = createEvent({
+            id: "8".repeat(64),
+            tags: [["p", OWNER_PUBKEY], ["e", OTHER_PARENT_ID, "", "reply"]],
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(unknownParentReply));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const { service, postHistoryReplyEventsRepository } = createService();
+        const reconcileDirectReplyCandidates = vi.fn(async () => ({
+            savedParentEventIds: [OTHER_PARENT_ID],
+            savedDirectReplyCount: 1,
+            unresolvedParentEventIds: [],
+        }));
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+            relayConfig: null,
+            reconcileDirectReplyCandidates,
+        }).promise;
+
+        expect(reconcileDirectReplyCandidates).toHaveBeenCalledWith([
+            expect.objectContaining({
+                event: unknownParentReply,
+                classification: expect.objectContaining({
+                    type: "direct-reply-candidate",
+                    parentEventId: OTHER_PARENT_ID,
+                }),
+            }),
+        ]);
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(result.savedParentEventIds).toEqual([OTHER_PARENT_ID]);
     });
 });
 

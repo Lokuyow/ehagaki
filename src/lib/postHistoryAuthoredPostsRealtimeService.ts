@@ -1,42 +1,29 @@
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
-import { classifyPostHistoryInboundInteraction } from "./postHistoryInboundInteractionClassifier";
-import type {
-    PostHistoryInboundDirectReplyCandidate,
-    PostHistoryInboundReplyReconciliationResult,
-} from "./postHistoryInboundReplyReconciliationService";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
-import {
-    postHistoryReplyEventsRepository,
-    type PostHistoryReplyEventsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 
-export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
-export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
+export const POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT = 6;
+export const POST_HISTORY_AUTHORED_POSTS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
 
-export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
+export interface PostHistoryAuthoredPostsRealtimeSubscribeRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     relayLimit?: number;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
-    reconcileDirectReplyCandidates?: (
-        candidates: PostHistoryInboundDirectReplyCandidate[],
-    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+    onSavedSelfPosts?: (eventIds: string[]) => void | Promise<void>;
 }
 
-export interface PostHistoryInboundInteractionsRealtimeSubscription {
+export interface PostHistoryAuthoredPostsRealtimeSubscription {
     stop: () => void;
     waitForIdle: () => Promise<void>;
 }
 
-export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
-    postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+export interface PostHistoryAuthoredPostsRealtimeServiceDeps {
+    postHistoryRepository?: Pick<PostHistoryRepository, "upsertFetchedEvents">;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
 }
@@ -47,20 +34,17 @@ type SubscriptionLike = {
 
 function normalizeRelayLimit(relayLimit: number | undefined): number {
     return Number.isFinite(relayLimit)
-        ? Math.max(1, Math.trunc(relayLimit ?? POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT))
-        : POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT;
+        ? Math.max(1, Math.trunc(relayLimit ?? POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT))
+        : POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT;
 }
 
-export class PostHistoryInboundInteractionsRealtimeService {
-    private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    private postHistoryReplyEventsRepository: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+export class PostHistoryAuthoredPostsRealtimeService {
+    private postHistoryRepository: Pick<PostHistoryRepository, "upsertFetchedEvents">;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
 
-    constructor(deps: PostHistoryInboundInteractionsRealtimeServiceDeps = {}) {
+    constructor(deps: PostHistoryAuthoredPostsRealtimeServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
-        this.postHistoryReplyEventsRepository =
-            deps.postHistoryReplyEventsRepository ?? postHistoryReplyEventsRepository;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -69,8 +53,8 @@ export class PostHistoryInboundInteractionsRealtimeService {
 
     subscribe(
         rxNostr: RxNostr,
-        params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
-    ): PostHistoryInboundInteractionsRealtimeSubscription {
+        params: PostHistoryAuthoredPostsRealtimeSubscribeRequest,
+    ): PostHistoryAuthoredPostsRealtimeSubscription {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
@@ -80,7 +64,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         );
         const subscribedSince = Math.max(
             0,
-            Math.floor(this.now() / 1000) - POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS,
+            Math.floor(this.now() / 1000) - POST_HISTORY_AUTHORED_POSTS_REALTIME_SINCE_OVERLAP_SECONDS,
         );
 
         try {
@@ -102,24 +86,24 @@ export class PostHistoryInboundInteractionsRealtimeService {
                     workQueue = workQueue
                         .then(() => this.processPacket(packet, params, () => active))
                         .catch((error) => {
-                            this.console.error("post_history_inbound_interactions_realtime_packet_error", error);
+                            this.console.error("post_history_authored_posts_realtime_packet_error", error);
                         });
                 },
                 error: (error: unknown) => {
-                    this.console.error("post_history_inbound_interactions_realtime_subscription_error", error);
+                    this.console.error("post_history_authored_posts_realtime_subscription_error", error);
                 },
             });
 
             rxReq.emit({
-                kinds: [1],
-                "#p": [params.ownerPubkeyHex],
+                authors: [params.ownerPubkeyHex],
+                kinds: [1, 42],
                 since: subscribedSince,
             } as never);
         } catch (error) {
             active = false;
             subscription?.unsubscribe?.();
             subscription = undefined;
-            this.console.error("post_history_inbound_interactions_realtime_request_error", error);
+            this.console.error("post_history_authored_posts_realtime_request_error", error);
         }
 
         return {
@@ -134,48 +118,16 @@ export class PostHistoryInboundInteractionsRealtimeService {
 
     private async processPacket(
         packet: { event?: NostrEvent; from?: string },
-        params: PostHistoryInboundInteractionsRealtimeSubscribeRequest,
+        params: PostHistoryAuthoredPostsRealtimeSubscribeRequest,
         isActive: () => boolean,
     ): Promise<void> {
         const event = packet.event;
-        if (!isActive() || !event?.id) {
-            return;
-        }
-
-        const preliminary = classifyPostHistoryInboundInteraction({
-            event,
-            ownerPubkeyHex: params.ownerPubkeyHex,
-            ownerPostEventIds: new Set(),
-        });
-        if (preliminary.type !== "direct-reply-candidate" || !preliminary.parentEventId) {
-            return;
-        }
-
-        if (params.reconcileDirectReplyCandidates) {
-            await params.reconcileDirectReplyCandidates([{
-                classification: preliminary,
-                event,
-                ...(packet.from ? { relayUrls: [packet.from] } : {}),
-            }]);
-            return;
-        }
-
-        const ownerPostEventIds = new Set(
-            await this.postHistoryRepository.getExistingEventIdsForPubkey({
-                pubkeyHex: params.ownerPubkeyHex,
-                eventIds: [preliminary.parentEventId],
-            }),
-        );
-        if (!isActive()) {
-            return;
-        }
-
-        const classification = classifyPostHistoryInboundInteraction({
-            event,
-            ownerPubkeyHex: params.ownerPubkeyHex,
-            ownerPostEventIds,
-        });
-        if (classification.type !== "direct-reply" || !classification.parentEventId) {
+        if (
+            !isActive()
+            || !event?.id
+            || event.pubkey !== params.ownerPubkeyHex
+            || (event.kind !== 1 && event.kind !== 42)
+        ) {
             return;
         }
 
@@ -183,8 +135,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             typeof packet.from === "string" ? [packet.from] : [],
             { limit: 1 },
         )[0];
-        const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
-            parentEventId: classification.parentEventId,
+        const result = await this.postHistoryRepository.upsertFetchedEvents({
             events: [{
                 event,
                 ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
@@ -199,9 +150,9 @@ export class PostHistoryInboundInteractionsRealtimeService {
         }
 
         try {
-            await params.onSavedDirectReplies?.([classification.parentEventId]);
+            await params.onSavedSelfPosts?.([event.id]);
         } catch (error) {
-            this.console.warn("post_history_inbound_interactions_realtime_saved_callback_error", error);
+            this.console.warn("post_history_authored_posts_realtime_saved_callback_error", error);
         }
     }
 
@@ -222,5 +173,5 @@ export class PostHistoryInboundInteractionsRealtimeService {
     }
 }
 
-export const postHistoryInboundInteractionsRealtimeService =
-    new PostHistoryInboundInteractionsRealtimeService();
+export const postHistoryAuthoredPostsRealtimeService =
+    new PostHistoryAuthoredPostsRealtimeService();

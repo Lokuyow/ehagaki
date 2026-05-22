@@ -1,0 +1,184 @@
+import { describe, expect, it, vi } from "vitest";
+import { classifyPostHistoryInboundInteraction } from "../../lib/postHistoryInboundInteractionClassifier";
+import { PostHistoryInboundReplyReconciliationService } from "../../lib/postHistoryInboundReplyReconciliationService";
+import type { NostrEvent } from "../../lib/types";
+
+const OWNER_PUBKEY = "a".repeat(64);
+const PARENT_ID = "1".repeat(64);
+
+function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
+    return {
+        id: "f".repeat(64),
+        pubkey: "b".repeat(64),
+        kind: 1,
+        content: "reply",
+        tags: [
+            ["p", OWNER_PUBKEY],
+            ["e", PARENT_ID, "", "reply"],
+        ],
+        created_at: 100,
+        sig: "c".repeat(128),
+        ...overrides,
+    };
+}
+
+function createCandidate(event = createEvent()) {
+    return {
+        event,
+        classification: classifyPostHistoryInboundInteraction({
+            event,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set(),
+        }),
+        relayUrls: ["wss://relay.example.com"],
+    };
+}
+
+function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((nextResolve) => {
+        resolve = nextResolve;
+    });
+
+    return { promise, resolve };
+}
+
+describe("PostHistoryInboundReplyReconciliationService", () => {
+    it("keeps an unknown parent candidate pending until targeted self-parent resolve confirms it", async () => {
+        const parentFetch = createDeferred<{ event: NostrEvent | null; relayUrl: string | null }>();
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async () => []),
+            upsertFetchedEvents: vi.fn(async () => ({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            })),
+        };
+        const postHistoryReplyEventsRepository = {
+            upsertDirectReplies: vi.fn(async () => ({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            })),
+        };
+        const selfParentFetchService = {
+            fetchSelfParent: vi.fn(() => ({
+                promise: parentFetch.promise,
+                cancel: vi.fn(),
+            })),
+        };
+        const onSavedDirectReplies = vi.fn();
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository,
+            postHistoryReplyEventsRepository,
+            selfParentFetchService,
+            now: () => 1_700_000_000_000,
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            onSavedDirectReplies,
+        });
+        const candidate = createCandidate(createEvent({ id: "2".repeat(64) }));
+
+        const result = await session.reconcile([candidate]);
+        expect(result.unresolvedParentEventIds).toEqual([PARENT_ID]);
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+
+        parentFetch.resolve({
+            event: createEvent({
+                id: PARENT_ID,
+                pubkey: OWNER_PUBKEY,
+                content: "parent",
+                tags: [],
+            }),
+            relayUrl: "wss://parent.example.com",
+        });
+        await parentFetch.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledWith({
+            events: [{
+                event: expect.objectContaining({ id: PARENT_ID, pubkey: OWNER_PUBKEY }),
+                relayUrls: ["wss://parent.example.com"],
+            }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(onSavedDirectReplies).toHaveBeenCalledWith([PARENT_ID]);
+    });
+
+    it("leaves targeted parent fetch null results unresolved without storing the candidate", async () => {
+        const postHistoryReplyEventsRepository = {
+            upsertDirectReplies: vi.fn(),
+        };
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository: {
+                getExistingEventIdsForPubkey: vi.fn(async () => []),
+                upsertFetchedEvents: vi.fn(),
+            },
+            postHistoryReplyEventsRepository,
+            selfParentFetchService: {
+                fetchSelfParent: vi.fn(() => ({
+                    promise: Promise.resolve({ event: null, relayUrl: null }),
+                    cancel: vi.fn(),
+                })),
+            },
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+        });
+
+        const result = await session.reconcile([createCandidate()]);
+        await Promise.resolve();
+
+        expect(result.unresolvedParentEventIds).toEqual([PARENT_ID]);
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it("does not apply a stale targeted parent result after the owner session stops", async () => {
+        const parentFetch = createDeferred<{ event: NostrEvent | null; relayUrl: string | null }>();
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async () => []),
+            upsertFetchedEvents: vi.fn(),
+        };
+        const postHistoryReplyEventsRepository = {
+            upsertDirectReplies: vi.fn(),
+        };
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository,
+            postHistoryReplyEventsRepository,
+            selfParentFetchService: {
+                fetchSelfParent: vi.fn(() => ({
+                    promise: parentFetch.promise,
+                    cancel: vi.fn(),
+                })),
+            },
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+        });
+
+        await session.reconcile([createCandidate()]);
+        session.stop();
+        parentFetch.resolve({
+            event: createEvent({
+                id: PARENT_ID,
+                pubkey: OWNER_PUBKEY,
+                content: "parent",
+                tags: [],
+            }),
+            relayUrl: "wss://parent.example.com",
+        });
+        await parentFetch.promise;
+        await Promise.resolve();
+
+        expect(postHistoryRepository.upsertFetchedEvents).not.toHaveBeenCalled();
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+    });
+});

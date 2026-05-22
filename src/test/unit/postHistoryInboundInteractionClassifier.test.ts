@@ -42,7 +42,7 @@ describe("classifyPostHistoryInboundInteraction", () => {
         });
     });
 
-    it("owner #pはあるがparentがowner postHistoryにないkind:1はmention-likeに分類する", () => {
+    it("parentがあるがowner parent未確認のkind:1はdirect-reply-candidateに分類する", () => {
         const event = createEvent({
             tags: [
                 ["p", OWNER_PUBKEY],
@@ -55,13 +55,13 @@ describe("classifyPostHistoryInboundInteraction", () => {
             ownerPubkeyHex: OWNER_PUBKEY,
             ownerPostEventIds: new Set([PARENT_ID]),
         })).toMatchObject({
-            type: "mention-like",
+            type: "direct-reply-candidate",
             parentEventId: OTHER_PARENT_ID,
-            reason: "parent-not-owner-post",
+            reason: "owner-post-parent-unconfirmed",
         });
     });
 
-    it("rootだけがowner投稿に一致してもPR4-Aではmention-likeにする", () => {
+    it("parent候補はrootがowner投稿でもmention-likeへ落とさない", () => {
         const event = createEvent({
             tags: [
                 ["p", OWNER_PUBKEY],
@@ -75,8 +75,24 @@ describe("classifyPostHistoryInboundInteraction", () => {
             ownerPubkeyHex: OWNER_PUBKEY,
             ownerPostEventIds: new Set([PARENT_ID]),
         })).toMatchObject({
-            type: "mention-like",
+            type: "direct-reply-candidate",
             parentEventId: OTHER_PARENT_ID,
+        });
+    });
+
+    it("thread parentがないowner #p eventはmention-likeに分類する", () => {
+        const event = createEvent({
+            tags: [["p", OWNER_PUBKEY]],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([PARENT_ID]),
+        })).toMatchObject({
+            type: "mention-like",
+            parentEventId: null,
+            reason: "mention-without-thread-parent",
         });
     });
 

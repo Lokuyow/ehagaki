@@ -1,45 +1,36 @@
 import { onMount } from "svelte";
 import type { RxNostr } from "rx-nostr";
 import {
-    postHistoryInboundInteractionsRealtimeService,
-    type PostHistoryInboundInteractionsRealtimeSubscription,
-} from "../postHistoryInboundInteractionsRealtimeService";
+    postHistoryAuthoredPostsRealtimeService,
+    type PostHistoryAuthoredPostsRealtimeSubscription,
+} from "../postHistoryAuthoredPostsRealtimeService";
 import type { RelayConfig } from "../types";
-import type {
-    PostHistoryInboundDirectReplyCandidate,
-    PostHistoryInboundReplyReconciliationResult,
-} from "../postHistoryInboundReplyReconciliationService";
 
-interface UsePostHistoryInboundInteractionsRealtimeParams {
+interface UsePostHistoryAuthoredPostsRealtimeParams {
     getIsAuthenticated: () => boolean;
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
-    reconcileDirectReplyCandidates?: (
-        candidates: PostHistoryInboundDirectReplyCandidate[],
-    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+    onSavedSelfPosts?: (eventIds: string[]) => void | Promise<void>;
 }
 
 function canUseRxNostr(rxNostr: RxNostr | undefined): rxNostr is RxNostr {
     return !!rxNostr && typeof (rxNostr as { use?: unknown }).use === "function";
 }
 
-export function usePostHistoryInboundInteractionsRealtime({
+export function usePostHistoryAuthoredPostsRealtime({
     getIsAuthenticated,
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
-    onSavedDirectReplies = () => undefined,
-    reconcileDirectReplyCandidates,
-}: UsePostHistoryInboundInteractionsRealtimeParams) {
+    onSavedSelfPosts = () => undefined,
+}: UsePostHistoryAuthoredPostsRealtimeParams) {
     const state = $state({
         visible: false,
         status: "idle" as "idle" | "subscribed",
         activePubkeyHex: null as string | null,
     });
-
-    let currentSubscription: PostHistoryInboundInteractionsRealtimeSubscription | null = null;
+    let currentSubscription: PostHistoryAuthoredPostsRealtimeSubscription | null = null;
 
     function stopCurrentSubscription(): void {
         currentSubscription?.stop();
@@ -74,11 +65,10 @@ export function usePostHistoryInboundInteractionsRealtime({
             return;
         }
 
-        const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
+        const subscription = postHistoryAuthoredPostsRealtimeService.subscribe(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
-            onSavedDirectReplies,
-            reconcileDirectReplyCandidates,
+            onSavedSelfPosts,
         });
         currentSubscription = subscription;
         state.status = "subscribed";

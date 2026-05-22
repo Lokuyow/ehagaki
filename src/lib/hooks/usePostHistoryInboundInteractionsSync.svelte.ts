@@ -9,6 +9,10 @@ import {
 } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
+import type {
+    PostHistoryInboundDirectReplyCandidate,
+    PostHistoryInboundReplyReconciliationResult,
+} from "../postHistoryInboundReplyReconciliationService";
 
 interface UsePostHistoryInboundInteractionsSyncParams {
     getShow: () => boolean;
@@ -17,6 +21,9 @@ interface UsePostHistoryInboundInteractionsSyncParams {
     getRelayConfig: () => RelayConfig | null | undefined;
     getPosts: () => PostHistoryRecord[];
     onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    reconcileDirectReplyCandidates?: (
+        candidates: PostHistoryInboundDirectReplyCandidate[],
+    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
 }
 
 function canUseRxNostr(rxNostr: RxNostr | undefined): rxNostr is RxNostr {
@@ -30,6 +37,7 @@ export function usePostHistoryInboundInteractionsSync({
     getRelayConfig,
     getPosts,
     onSavedDirectReplies = () => undefined,
+    reconcileDirectReplyCandidates,
 }: UsePostHistoryInboundInteractionsSyncParams) {
     const state = $state({
         status: "idle" as "idle" | "syncing",
@@ -71,6 +79,7 @@ export function usePostHistoryInboundInteractionsSync({
             ownerPubkeyHex,
             relayConfig: getRelayConfig(),
             reason,
+            reconcileDirectReplyCandidates,
         });
         currentTask = task;
 

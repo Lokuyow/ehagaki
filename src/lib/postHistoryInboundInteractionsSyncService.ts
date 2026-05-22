@@ -4,6 +4,10 @@ import {
     classifyPostHistoryInboundInteraction,
     type PostHistoryInboundInteractionClassification,
 } from "./postHistoryInboundInteractionClassifier";
+import type {
+    PostHistoryInboundDirectReplyCandidate,
+    PostHistoryInboundReplyReconciliationResult,
+} from "./postHistoryInboundReplyReconciliationService";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
@@ -55,6 +59,9 @@ export interface PostHistoryInboundInteractionsSyncRequest {
     limit?: number;
     timeoutMs?: number;
     relayLimit?: number;
+    reconcileDirectReplyCandidates?: (
+        candidates: PostHistoryInboundDirectReplyCandidate[],
+    ) => Promise<PostHistoryInboundReplyReconciliationResult>;
 }
 
 export interface PostHistoryInboundInteractionsSyncResult {
@@ -276,6 +283,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 relayUrls,
                 rawCount,
                 events: toResultEvents(eventsById),
+                reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
             });
         })();
 
@@ -298,9 +306,13 @@ export class PostHistoryInboundInteractionsSyncService {
         relayUrls: string[];
         rawCount: number;
         events: Array<{ event: NostrEvent; relayUrls: string[] }>;
+        reconcileDirectReplyCandidates?: (
+            candidates: PostHistoryInboundDirectReplyCandidate[],
+        ) => Promise<PostHistoryInboundReplyReconciliationResult>;
     }): Promise<PostHistoryInboundInteractionsSyncResult> {
         const classifications: Record<PostHistoryInboundInteractionClassification["type"], number> = {
             "direct-reply": 0,
+            "direct-reply-candidate": 0,
             "mention-like": 0,
             reaction: 0,
             unsupported: 0,
@@ -331,6 +343,7 @@ export class PostHistoryInboundInteractionsSyncService {
             }),
         );
         const directRepliesByParentId = new Map<string, PostHistoryReplyEventItem[]>();
+        const directReplyCandidates: PostHistoryInboundDirectReplyCandidate[] = [];
 
         for (const item of input.events) {
             const classification = classifyPostHistoryInboundInteraction({
@@ -339,6 +352,20 @@ export class PostHistoryInboundInteractionsSyncService {
                 ownerPostEventIds,
             });
             classifications[classification.type] += 1;
+
+            if (
+                (
+                    classification.type === "direct-reply"
+                    || classification.type === "direct-reply-candidate"
+                )
+                && classification.parentEventId
+            ) {
+                directReplyCandidates.push({
+                    classification,
+                    event: item.event,
+                    relayUrls: item.relayUrls,
+                });
+            }
 
             if (classification.type !== "direct-reply" || !classification.parentEventId) {
                 continue;
@@ -353,17 +380,23 @@ export class PostHistoryInboundInteractionsSyncService {
         }
 
         let savedDirectReplyCount = 0;
-        const savedParentEventIds: string[] = [];
-        for (const [parentEventId, events] of directRepliesByParentId.entries()) {
-            const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
-                parentEventId,
-                events,
-                fetchedAt: input.fetchedAt,
-            });
-            if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
-                savedParentEventIds.push(parentEventId);
+        let savedParentEventIds: string[] = [];
+        if (input.reconcileDirectReplyCandidates) {
+            const reconciled = await input.reconcileDirectReplyCandidates(directReplyCandidates);
+            savedParentEventIds = reconciled.savedParentEventIds;
+            savedDirectReplyCount = reconciled.savedDirectReplyCount;
+        } else {
+            for (const [parentEventId, events] of directRepliesByParentId.entries()) {
+                const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+                    parentEventId,
+                    events,
+                    fetchedAt: input.fetchedAt,
+                });
+                if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
+                    savedParentEventIds.push(parentEventId);
+                }
+                savedDirectReplyCount += result.insertedCount + result.updatedCount + result.unchangedCount;
             }
-            savedDirectReplyCount += result.insertedCount + result.updatedCount + result.unchangedCount;
         }
 
         const saturated = input.events.length >= input.limit || input.rawCount >= input.limit;
@@ -419,6 +452,7 @@ export class PostHistoryInboundInteractionsSyncService {
             savedDirectReplyCount: 0,
             classifications: {
                 "direct-reply": 0,
+                "direct-reply-candidate": 0,
                 "mention-like": 0,
                 reaction: 0,
                 unsupported: 0,
