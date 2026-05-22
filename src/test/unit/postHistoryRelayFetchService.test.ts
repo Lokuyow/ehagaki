@@ -322,6 +322,35 @@ describe("PostHistoryRelayFetchService", () => {
         );
     });
 
+    it("visibility-resume は dialog recent refresh と同じ小さい backward fetch 設定を使う", async () => {
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            reason: "visibility-resume",
+            since: 123,
+        }).promise;
+
+        const rxReq = createRxBackwardReqMock.mock.results[0]?.value;
+        expect(rxReq.emit).toHaveBeenCalledWith({
+            authors: ["b".repeat(64)],
+            kinds: [1, 42],
+            limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+            since: 123,
+        });
+        expect(service["setTimeoutFn"]).toHaveBeenCalledWith(
+            expect.any(Function),
+            POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
+        );
+    });
+
     it("repair-visible-range は req 単位で relay 応答と失敗を集計する", async () => {
         let messageObserver: any;
         let errorObserver: any;

@@ -172,6 +172,7 @@
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
+  import { usePostHistoryVisibilityResumeSync } from "./lib/hooks/usePostHistoryVisibilityResumeSync.svelte";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -429,18 +430,32 @@
       postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
   });
 
+  async function handleSavedSelfPosts(eventIds: string[]): Promise<void> {
+    await postHistoryInboundReplyReconciliation.notifySelfPostsSaved(eventIds);
+    latestAuthoredSelfPostSave = {
+      revision: (latestAuthoredSelfPostSave?.revision ?? 0) + 1,
+      eventIds,
+    };
+  }
+
   usePostHistoryAuthoredPostsRealtime({
     getIsAuthenticated: () => isAuthenticated,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
-    onSavedSelfPosts: async (eventIds) => {
-      await postHistoryInboundReplyReconciliation.notifySelfPostsSaved(eventIds);
-      latestAuthoredSelfPostSave = {
-        revision: (latestAuthoredSelfPostSave?.revision ?? 0) + 1,
-        eventIds,
-      };
-    },
+    onSavedSelfPosts: handleSavedSelfPosts,
+  });
+
+  usePostHistoryVisibilityResumeSync({
+    getIsAuthenticated: () => isAuthenticated,
+    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    getReconciliationPubkeyHex: () =>
+      postHistoryInboundReplyReconciliation.state.activePubkeyHex,
+    reconcileDirectReplyCandidates:
+      postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
+    onSavedSelfPosts: handleSavedSelfPosts,
   });
 
   $effect(() => {

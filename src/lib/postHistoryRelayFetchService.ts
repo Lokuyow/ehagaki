@@ -29,6 +29,7 @@ export const POST_HISTORY_FETCH_TIMEOUT_MS = POST_HISTORY_BOOTSTRAP_FETCH_TIMEOU
 export type PostHistoryFetchReason =
     | "bootstrap"
     | "dialog-open-refresh"
+    | "visibility-resume"
     | "older-backfill"
     | "repair-visible-range";
 
@@ -126,6 +127,7 @@ function resolveFetchLimit(
     const fallback = (() => {
         switch (reason) {
             case "dialog-open-refresh":
+            case "visibility-resume":
                 return POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT;
             case "older-backfill":
                 return POST_HISTORY_OLDER_FETCH_LIMIT;
@@ -152,6 +154,7 @@ function resolveFetchTimeoutMs(
 
     switch (reason) {
         case "dialog-open-refresh":
+        case "visibility-resume":
             return POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS;
         case "older-backfill":
             return POST_HISTORY_OLDER_FETCH_TIMEOUT_MS;
@@ -427,7 +430,7 @@ export class PostHistoryRelayFetchService {
             ? historyRelays
             : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS);
 
-        return reason === "dialog-open-refresh"
+        return reason === "dialog-open-refresh" || reason === "visibility-resume"
             ? relayUrls.slice(0, POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT)
             : relayUrls;
     }
