@@ -123,6 +123,11 @@
         onSavedAuthoredPosts: async (eventIds) => {
             await notifySavedAuthoredPosts?.(eventIds);
         },
+        onSavedRepairedDirectReplies: (parentEventIds) =>
+            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+                history.posts,
+                parentEventIds,
+            ),
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({

@@ -41,6 +41,11 @@ import {
     type PostHistoryCurrentViewRefetchTask,
 } from "../postHistoryCurrentViewRefetchService";
 import {
+    postHistoryVisibleRangeReplyRepairService,
+    type PostHistoryVisibleRangeReplyRepairResult,
+    type PostHistoryVisibleRangeReplyRepairTask,
+} from "../postHistoryVisibleRangeReplyRepairService";
+import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
@@ -73,6 +78,7 @@ interface UsePostHistoryListingParams {
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     onSessionScrollStateInvalidated?: () => void;
     onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
+    onSavedRepairedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -473,6 +479,7 @@ export function usePostHistoryListing({
     getSessionScrollState = () => null,
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
+    onSavedRepairedDirectReplies = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -515,6 +522,7 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
+    let currentViewReplyRepairTask: PostHistoryVisibleRangeReplyRepairTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let appliedSearchQuery = "";
@@ -647,6 +655,8 @@ export function usePostHistoryListing({
     function cancelCurrentViewRefetch(): void {
         currentViewRefetchTask?.cancel();
         currentViewRefetchTask = null;
+        currentViewReplyRepairTask?.cancel();
+        currentViewReplyRepairTask = null;
         if (state.currentViewRefetchStatus === "refetching") {
             state.currentViewRefetchStatus = "idle";
         }
@@ -689,6 +699,7 @@ export function usePostHistoryListing({
         const autoHideMessageKeys = new Set([
             "postHistory.repairNoChanges",
             "postHistory.repairAdded",
+            "postHistory.repairRepliesAdded",
             "postHistory.repairPartialFailure",
             "postHistory.repairFetchFailed",
         ]);
@@ -2345,10 +2356,9 @@ export function usePostHistoryListing({
                 return;
             }
 
-            currentViewRefetchTask = null;
-            state.currentViewRefetchStatus = "idle";
-
             if (!getShow() || result.status === "cancelled") {
+                currentViewRefetchTask = null;
+                state.currentViewRefetchStatus = "idle";
                 return;
             }
 
@@ -2366,6 +2376,49 @@ export function usePostHistoryListing({
                 await reloadVisibleWindowFromCurrentNewest();
             }
 
+            let replyRepairResult: PostHistoryVisibleRangeReplyRepairResult | null = null;
+            if (
+                currentViewRefetchTask === task
+                && getShow()
+                && getPubkeyHex() === pubkeyHex
+                && getRxNostr() === rxNostr
+                && state.loadedPosts.length > 0
+            ) {
+                const replyRepairTask =
+                    postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+                        rxNostr,
+                        {
+                            ownerPubkeyHex: pubkeyHex,
+                            visiblePosts: state.loadedPosts,
+                            relayConfig: getRelayConfig(),
+                            isActive: () =>
+                                currentViewRefetchTask === task
+                                && getShow()
+                                && getPubkeyHex() === pubkeyHex
+                                && getRxNostr() === rxNostr,
+                        },
+                    );
+                currentViewReplyRepairTask = replyRepairTask;
+                replyRepairResult = await replyRepairTask.promise;
+                if (currentViewReplyRepairTask === replyRepairTask) {
+                    currentViewReplyRepairTask = null;
+                }
+                if (
+                    currentViewRefetchTask !== task
+                    || replyRepairResult.status === "cancelled"
+                    || !getShow()
+                ) {
+                    return;
+                }
+
+                if (replyRepairResult.savedParentEventIds.length > 0) {
+                    await onSavedRepairedDirectReplies(replyRepairResult.savedParentEventIds);
+                }
+            }
+
+            currentViewRefetchTask = null;
+            state.currentViewRefetchStatus = "idle";
+
             if (result.addedCount > 0) {
                 state.currentViewRefetchMessageKey = "postHistory.repairAdded";
                 state.currentViewRefetchMessageValues = {
@@ -2373,10 +2426,18 @@ export function usePostHistoryListing({
                     processedRangeCount: result.processedRangeCount,
                     updatedCount: result.updatedCount,
                 };
+            } else if ((replyRepairResult?.savedDirectReplyCount ?? 0) > 0) {
+                state.currentViewRefetchMessageKey = "postHistory.repairRepliesAdded";
+                state.currentViewRefetchMessageValues = {
+                    count: replyRepairResult?.savedDirectReplyCount ?? 0,
+                };
             } else if (result.fetchFailed) {
                 state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
                 state.currentViewRefetchMessageValues = null;
-            } else if (result.hadUnfinishedRanges) {
+            } else if (
+                result.hadUnfinishedRanges
+                || replyRepairResult?.status === "partial"
+            ) {
                 state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
                 state.currentViewRefetchMessageValues = null;
             } else {

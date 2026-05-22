@@ -12,6 +12,7 @@ import {
     openPostHistoryMenu,
     postMediaCacheServiceMock,
     relayFetchServiceMock,
+    replyRepairServiceMock,
     repairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
@@ -733,6 +734,222 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(document.querySelector('.post-history-nav-row-bottom')).toBeTruthy();
             expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' }).hasAttribute('disabled')).toBe(true);
         });
+
+        view.unmount();
+    });
+
+    it('self repairがpartialでも表示中の既知kind:1 self postsをreply repairする', async () => {
+        const visiblePost = createRecord({
+            eventId: 'repair-partial-visible',
+            content: '表示中の投稿',
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'partial',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                hadFailures: true,
+                fetchFailed: false,
+                hadTimeout: false,
+                hadUnfinishedRanges: true,
+            }),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.objectContaining({
+                    ownerPubkeyHex: PUBKEY_HEX,
+                    visiblePosts: [visiblePost],
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
+    it('self repairがtimeoutでもrequestが有効なら既存表示postsをreply repairする', async () => {
+        const visiblePost = createRecord({
+            eventId: 'repair-timeout-visible',
+            content: 'timeout後も表示中',
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'partial',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                hadFailures: false,
+                fetchFailed: false,
+                hadTimeout: true,
+                hadUnfinishedRanges: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledTimes(1);
+        });
+
+        view.unmount();
+    });
+
+    it('self repairがcancelledならreply repairを起動しない', async () => {
+        const visiblePost = createRecord({
+            eventId: 'repair-cancelled-visible',
+            content: 'cancelled',
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'cancelled',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 0,
+                processedRanges: [],
+                attemptedRangeCount: 0,
+                hadFailures: false,
+                fetchFailed: false,
+                hadTimeout: false,
+                hadUnfinishedRanges: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
+        });
+        expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
+    it('self repair完了前にDialogが閉じてstaleになった場合はreply repairを起動しない', async () => {
+        const visiblePost = createRecord({
+            eventId: 'repair-stale-visible',
+            content: 'stale',
+        });
+        const repairComplete = createDeferred<any>();
+        const cancel = vi.fn();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: repairComplete.promise,
+            cancel,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await view.rerender({ show: false });
+        repairComplete.resolve({
+            status: 'success',
+            addedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            processedRangeCount: 0,
+            processedRanges: [],
+            attemptedRangeCount: 0,
+            hadFailures: false,
+            fetchFailed: false,
+            hadTimeout: false,
+            hadUnfinishedRanges: false,
+        });
+
+        await waitFor(() => {
+            expect(cancel).toHaveBeenCalled();
+        });
+        expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).not.toHaveBeenCalled();
 
         view.unmount();
     });

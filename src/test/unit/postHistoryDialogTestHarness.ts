@@ -39,6 +39,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.syncFailed': 'リレーから取得できませんでした',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件追加`,
+            'postHistory.repairRepliesAdded': `返信を${options?.values?.count ?? 0}件補完`,
             'postHistory.repairNoChanges': '追加なし',
             'postHistory.repairPartialFailure': '一部未確認',
             'postHistory.repairFetchFailed': '取得失敗',
@@ -81,6 +82,9 @@ const hoisted = vi.hoisted(() => {
         },
         repairServiceMock: {
             refetchAroundCurrentView: vi.fn(),
+        },
+        replyRepairServiceMock: {
+            repairVisibleKind1DirectReplies: vi.fn(),
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
@@ -133,6 +137,7 @@ export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
 export const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
 export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
 export const repairServiceMock = hoisted.repairServiceMock;
+export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
 export const localSearchServiceMock = hoisted.localSearchServiceMock;
 export const postMediaCacheServiceMock = hoisted.postMediaCacheServiceMock;
 export const clipboardMock = hoisted.clipboardMock;
@@ -195,6 +200,10 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
 
 vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
     postHistoryCurrentViewRefetchService: hoisted.repairServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryVisibleRangeReplyRepairService', () => ({
+    postHistoryVisibleRangeReplyRepairService: hoisted.replyRepairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -385,6 +394,19 @@ export function resetPostHistoryDialogHarness(): void {
             hadTimeout: false,
             hadUnfinishedRanges: false,
             splitRetryCount: 0,
+        }),
+        cancel: vi.fn(),
+    });
+    replyRepairServiceMock.repairVisibleKind1DirectReplies.mockReturnValue({
+        promise: Promise.resolve({
+            status: 'success',
+            targetParentEventIds: [],
+            savedParentEventIds: [],
+            savedDirectReplyCount: 0,
+            attemptedChunkCount: 0,
+            saturatedChunkCount: 0,
+            incompleteParentEventIds: [],
+            deletionConfirmationIncomplete: false,
         }),
         cancel: vi.fn(),
     });

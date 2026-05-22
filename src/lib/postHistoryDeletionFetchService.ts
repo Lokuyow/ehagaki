@@ -28,6 +28,7 @@ export interface PostHistoryDeletionFetchedEvent {
 }
 
 export interface PostHistoryDeletionFetchResult {
+    status: "success" | "timeout" | "error" | "cancelled";
     events: PostHistoryDeletionFetchedEvent[];
     fetchedAt: number;
     relayUrls: string[];
@@ -110,7 +111,7 @@ export class PostHistoryDeletionFetchService {
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let resolveTask: ((result: PostHistoryDeletionFetchResult) => void) | undefined;
+        let resolveTask: ((status: PostHistoryDeletionFetchResult["status"]) => void) | undefined;
 
         const cleanup = () => {
             if (timeoutId !== undefined) {
@@ -121,7 +122,10 @@ export class PostHistoryDeletionFetchService {
             subscription = undefined;
         };
 
-        const buildResult = (): PostHistoryDeletionFetchResult => ({
+        const buildResult = (
+            status: PostHistoryDeletionFetchResult["status"],
+        ): PostHistoryDeletionFetchResult => ({
+            status,
             events: toResultEvents(eventsById),
             fetchedAt: this.now(),
             relayUrls,
@@ -129,22 +133,22 @@ export class PostHistoryDeletionFetchService {
 
         const safeResolveFactory = (
             resolve: (result: PostHistoryDeletionFetchResult) => void,
-        ) => () => {
+        ) => (status: PostHistoryDeletionFetchResult["status"]) => {
             if (resolved) {
                 return;
             }
 
             resolved = true;
             cleanup();
-            resolve(buildResult());
+            resolve(buildResult(status));
         };
 
         const promise = new Promise<PostHistoryDeletionFetchResult>((resolve) => {
-            const safeResolve = safeResolveFactory(resolve);
-            resolveTask = safeResolve;
+                const safeResolve = safeResolveFactory(resolve);
+                resolveTask = safeResolve;
 
             if (groupedTargetIds.size === 0) {
-                safeResolve();
+                safeResolve("success");
                 return;
             }
 
@@ -155,13 +159,13 @@ export class PostHistoryDeletionFetchService {
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },
                 }).subscribe({
-                    next: (packet: { event?: NostrEvent; from?: string }) => {
-                        this.handlePacket(eventsById, packet);
-                    },
-                    complete: safeResolve,
+                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                            this.handlePacket(eventsById, packet);
+                        },
+                    complete: () => safeResolve("success"),
                     error: (error: unknown) => {
                         this.console.error("post_history_deletion_fetch_error", error);
-                        safeResolve();
+                        safeResolve("error");
                     },
                 });
 
@@ -176,18 +180,18 @@ export class PostHistoryDeletionFetchService {
 
                 timeoutId = this.setTimeoutFn(() => {
                     this.console.warn("post_history_deletion_fetch_timeout");
-                    safeResolve();
+                    safeResolve("timeout");
                 }, params.timeoutMs ?? POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
             } catch (error) {
                 this.console.error("post_history_deletion_fetch_request_error", error);
-                safeResolve();
+                safeResolve("error");
             }
         });
 
         return {
             promise,
             cancel: () => {
-                resolveTask?.(buildResult());
+                resolveTask?.("cancelled");
             },
         };
     }
