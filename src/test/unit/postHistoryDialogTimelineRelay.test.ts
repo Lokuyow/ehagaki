@@ -738,6 +738,98 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('normal local older reveal は newly visible self kind:1 だけ reply repair し、表示は repair 完了を待たない', async () => {
+        const visiblePost = createRecord({
+            eventId: 'local-older-visible',
+            content: '表示中の投稿',
+            createdAt: 200,
+            postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        });
+        const olderSelfKind1 = createRecord({
+            eventId: 'local-older-self-kind1',
+            content: 'self kind1 older',
+            createdAt: 190,
+            postedAt: Date.UTC(2024, 0, 2, 3, 3, 0),
+        });
+        const olderSelfKind42 = createRecord({
+            eventId: 'local-older-self-kind42',
+            content: 'self kind42 older',
+            kind: 42,
+            createdAt: 180,
+            postedAt: Date.UTC(2024, 0, 2, 3, 2, 0),
+        });
+        const olderOtherKind1 = createRecord({
+            eventId: 'local-older-other-kind1',
+            content: 'other kind1 older',
+            pubkeyHex: 'b'.repeat(64),
+            createdAt: 170,
+            postedAt: Date.UTC(2024, 0, 2, 3, 1, 0),
+        });
+        const repairComplete = createDeferred<{
+            status: 'success';
+            targetParentEventIds: string[];
+            checkedParentEventIds: string[];
+            savedParentEventIds: string[];
+            savedDirectReplyCount: number;
+            attemptedChunkCount: number;
+            saturatedChunkCount: number;
+            incompleteParentEventIds: string[];
+            deletionConfirmationIncomplete: boolean;
+        }>();
+        const cancel = vi.fn();
+
+        repositoryMock.countForPubkey.mockResolvedValue(4);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([
+            olderSelfKind1,
+            olderSelfKind42,
+            olderOtherKind1,
+        ]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        replyRepairServiceMock.repairVisibleKind1DirectReplies.mockReturnValueOnce({
+            promise: repairComplete.promise,
+            cancel,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await fireEvent.click(
+            await screen.findByRole('button', { name: 'さらに古い投稿を表示' }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('self kind1 older')).toBeTruthy();
+            expect(screen.getByText('self kind42 older')).toBeTruthy();
+            expect(screen.getByText('other kind1 older')).toBeTruthy();
+            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.objectContaining({
+                    ownerPubkeyHex: PUBKEY_HEX,
+                    visiblePosts: [olderSelfKind1],
+                }),
+            );
+        });
+
+        view.unmount();
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
     it('self repairがpartialでも表示中の既知kind:1 self postsをreply repairする', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-partial-visible',
@@ -950,6 +1042,106 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(cancel).toHaveBeenCalled();
         });
         expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
+    it('relay older-backfill が timeout でも newly visible older self kind:1 が materialized したら reply repair を起動する', async () => {
+        const latest = createRecord({
+            eventId: 'relay-timeout-latest',
+            content: '現在の投稿',
+            createdAt: 200,
+            postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        });
+        const fetchedOlder = createRecord({
+            eventId: 'relay-timeout-older',
+            content: 'relay timeout older',
+            createdAt: 190,
+            postedAt: Date.UTC(2024, 0, 2, 3, 3, 0),
+        });
+        let allowOlderChunk = false;
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk
+                && options.cursor?.eventId === latest.eventId
+                && options.limit === 50
+            ) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            allowOlderChunk = true;
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
+        });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    status: 'success',
+                    fetchedAt: 1000,
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    status: 'timeout',
+                    fetchedAt: 2000,
+                    oldestCreatedAt: fetchedOlder.createdAt,
+                    newestCreatedAt: fetchedOlder.createdAt,
+                    events: [{
+                        event: {
+                            id: 'relay-timeout-older-event'.padEnd(64, 'r'),
+                            pubkey: PUBKEY_HEX,
+                            kind: 1,
+                            content: fetchedOlder.content,
+                            tags: [],
+                            created_at: fetchedOlder.createdAt,
+                            sig: 'd'.repeat(128),
+                        },
+                        relayUrls: ['wss://relay.example.com/'],
+                    }],
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(screen.getByText('relay timeout older')).toBeTruthy();
+            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.objectContaining({
+                    ownerPubkeyHex: PUBKEY_HEX,
+                    visiblePosts: [fetchedOlder],
+                }),
+            );
+        });
 
         view.unmount();
     });

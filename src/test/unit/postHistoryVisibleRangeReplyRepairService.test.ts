@@ -127,8 +127,49 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
         }));
         expect(result).toMatchObject({
             targetParentEventIds: [kind1Parent],
+            checkedParentEventIds: [kind1Parent],
             savedParentEventIds: [kind1Parent],
             savedDirectReplyCount: 1,
+            incompleteParentEventIds: [],
+        });
+    });
+
+    it("candidate fetch が error の parent は unchecked/incomplete として返す", async () => {
+        const kind1Parent = "1".repeat(64);
+        const saveRepairDirectReplies = vi.fn(() => ({
+            promise: Promise.resolve({
+                status: "saved",
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                deletedEventIds: [],
+                deletionConfirmationIncomplete: false,
+            }),
+            cancel: vi.fn(),
+        }));
+        const service = new PostHistoryVisibleRangeReplyRepairService({
+            directReplySaveService: { saveRepairDirectReplies } as any,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ error }: Record<string, any>) => {
+                error(new Error("fetch failed"));
+                return { unsubscribe: vi.fn() };
+            },
+        });
+
+        const result = await service.repairVisibleKind1DirectReplies(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost(kind1Parent)],
+            relayConfig: null,
+        }).promise;
+
+        expect(saveRepairDirectReplies).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+            status: "partial",
+            targetParentEventIds: [kind1Parent],
+            checkedParentEventIds: [],
+            incompleteParentEventIds: [kind1Parent],
         });
     });
 

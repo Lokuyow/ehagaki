@@ -78,7 +78,10 @@ interface UsePostHistoryListingParams {
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     onSessionScrollStateInvalidated?: () => void;
     onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
-    onSavedRepairedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onReplyBadgeRefreshRequested?: (
+        posts: PostHistoryRecord[],
+        parentEventIds: string[],
+    ) => void | Promise<void>;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -130,7 +133,10 @@ interface LoadOlderVisiblePostsMetrics {
 interface LoadOlderVisiblePostsOptions {
     anchorEventId?: string | null;
     metrics?: LoadOlderVisiblePostsMetrics;
+    reason?: LoadOlderVisiblePostsReason;
 }
+
+type LoadOlderVisiblePostsReason = "normal-older-reveal";
 
 interface OlderVisiblePostsMergeResult {
     posts: PostHistoryRecord[];
@@ -238,6 +244,41 @@ export function mergeOlderVisiblePosts({
     return buildTrimmedResult(startIndex);
 }
 
+export function resolveNewlyVisibleOlderPosts(
+    currentPosts: Array<Pick<PostHistoryRecord, "eventId">>,
+    nextPosts: PostHistoryRecord[],
+): PostHistoryRecord[] {
+    const currentPostIds = new Set(currentPosts.map((post) => post.eventId));
+
+    return nextPosts.filter((post) => !currentPostIds.has(post.eventId));
+}
+
+export function resolveVisibleOlderRevealReplyRepairParentPosts(
+    ownerPubkeyHex: string,
+    candidatePosts: PostHistoryRecord[],
+    currentVisiblePosts: Array<Pick<PostHistoryRecord, "eventId">>,
+): PostHistoryRecord[] {
+    const currentVisiblePostIds = new Set(
+        currentVisiblePosts.map((post) => post.eventId),
+    );
+    const parentPostsByEventId = new Map<string, PostHistoryRecord>();
+
+    for (const post of candidatePosts) {
+        if (
+            post.kind !== 1
+            || post.pubkeyHex !== ownerPubkeyHex
+            || !currentVisiblePostIds.has(post.eventId)
+            || parentPostsByEventId.has(post.eventId)
+        ) {
+            continue;
+        }
+
+        parentPostsByEventId.set(post.eventId, post);
+    }
+
+    return Array.from(parentPostsByEventId.values());
+}
+
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
     loadedPosts: [],
     searchPosts: [],
@@ -256,6 +297,26 @@ const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
     ...POST_HISTORY_FETCH_KINDS,
 ]);
 const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
+export const POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS =
+    5 * 60 * 1000;
+
+export function resolveOlderRevealReplyRepairNetworkParentIds(
+    parentEventIds: string[],
+    freshnessByParentId: ReadonlyMap<string, number>,
+    inFlightParentIds: ReadonlySet<string>,
+    nowMs: number,
+    freshnessTtlMs = POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS,
+): string[] {
+    return parentEventIds.filter((eventId) => {
+        if (inFlightParentIds.has(eventId)) {
+            return false;
+        }
+
+        const checkedAt = freshnessByParentId.get(eventId);
+        return typeof checkedAt !== "number"
+            || nowMs - checkedAt >= freshnessTtlMs;
+    });
+}
 export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
 // Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
 const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
@@ -479,7 +540,7 @@ export function usePostHistoryListing({
     getSessionScrollState = () => null,
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
-    onSavedRepairedDirectReplies = () => undefined,
+    onReplyBadgeRefreshRequested = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -525,7 +586,12 @@ export function usePostHistoryListing({
     let currentViewReplyRepairTask: PostHistoryVisibleRangeReplyRepairTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
+    let olderRevealReplyRepairScopeId = 0;
+    let activeOlderRevealReplyRepairRxNostr = getRxNostr();
     let appliedSearchQuery = "";
+    const olderRevealReplyRepairTasks = new Set<PostHistoryVisibleRangeReplyRepairTask>();
+    const olderRevealReplyRepairFreshnessByParentId = new Map<string, number>();
+    const olderRevealReplyRepairInFlightParentIds = new Set<string>();
     const olderBackfillSearch = $state<OlderBackfillSearchState>({
         windowSeconds: POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
         nextUntil: null,
@@ -677,6 +743,161 @@ export function usePostHistoryListing({
         }
     }
 
+    function clearOlderRevealReplyRepairState(): void {
+        olderRevealReplyRepairScopeId += 1;
+        olderRevealReplyRepairTasks.forEach((task) => task.cancel());
+        olderRevealReplyRepairTasks.clear();
+        olderRevealReplyRepairFreshnessByParentId.clear();
+        olderRevealReplyRepairInFlightParentIds.clear();
+    }
+
+    function isActiveOlderRevealReplyRepairScope(
+        scopeId: number,
+        pubkeyHex: string,
+        rxNostr: RxNostr,
+    ): boolean {
+        return (
+            scopeId === olderRevealReplyRepairScopeId
+            && getShow()
+            && getPubkeyHex() === pubkeyHex
+            && getRxNostr() === rxNostr
+        );
+    }
+
+    function requestReplyBadgeRefresh(
+        posts: PostHistoryRecord[],
+        parentEventIds: string[],
+    ): void {
+        if (posts.length === 0 || parentEventIds.length === 0) {
+            return;
+        }
+
+        void Promise.resolve(
+            onReplyBadgeRefreshRequested(posts, parentEventIds),
+        ).catch(() => undefined);
+    }
+
+    function resolveOlderRevealReplyRepairNetworkParentPosts(
+        parentPosts: PostHistoryRecord[],
+        nowMs: number,
+    ): PostHistoryRecord[] {
+        const networkParentIds = resolveOlderRevealReplyRepairNetworkParentIds(
+            parentPosts.map((post) => post.eventId),
+            olderRevealReplyRepairFreshnessByParentId,
+            olderRevealReplyRepairInFlightParentIds,
+            nowMs,
+        );
+        const networkParentIdSet = new Set(networkParentIds);
+
+        return parentPosts.filter((post) => networkParentIdSet.has(post.eventId));
+    }
+
+    function markOlderRevealReplyRepairParentsChecked(
+        parentEventIds: string[],
+        checkedAt: number,
+    ): void {
+        parentEventIds.forEach((eventId) => {
+            olderRevealReplyRepairFreshnessByParentId.set(eventId, checkedAt);
+        });
+    }
+
+    function scheduleOlderRevealReplyRepair(
+        candidatePosts: PostHistoryRecord[],
+    ): void {
+        const pubkeyHex = getPubkeyHex();
+        const rxNostr = getRxNostr();
+        if (!pubkeyHex || candidatePosts.length === 0) {
+            return;
+        }
+
+        const visibleParentPosts = resolveVisibleOlderRevealReplyRepairParentPosts(
+            pubkeyHex,
+            candidatePosts,
+            state.loadedPosts,
+        );
+        if (visibleParentPosts.length === 0) {
+            return;
+        }
+
+        requestReplyBadgeRefresh(
+            state.loadedPosts,
+            visibleParentPosts.map((post) => post.eventId),
+        );
+
+        if (!rxNostr) {
+            return;
+        }
+
+        const networkParentPosts = resolveOlderRevealReplyRepairNetworkParentPosts(
+            visibleParentPosts,
+            Date.now(),
+        );
+        if (networkParentPosts.length === 0) {
+            return;
+        }
+
+        networkParentPosts.forEach((post) => {
+            olderRevealReplyRepairInFlightParentIds.add(post.eventId);
+        });
+
+        const scopeId = olderRevealReplyRepairScopeId;
+        const task =
+            postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+                rxNostr,
+                {
+                    ownerPubkeyHex: pubkeyHex,
+                    visiblePosts: networkParentPosts,
+                    relayConfig: getRelayConfig(),
+                    isActive: () =>
+                        isActiveOlderRevealReplyRepairScope(
+                            scopeId,
+                            pubkeyHex,
+                            rxNostr,
+                        ),
+                },
+            );
+        olderRevealReplyRepairTasks.add(task);
+
+        void task.promise
+            .then((result) => {
+                olderRevealReplyRepairTasks.delete(task);
+                networkParentPosts.forEach((post) => {
+                    olderRevealReplyRepairInFlightParentIds.delete(post.eventId);
+                });
+
+                if (
+                    !isActiveOlderRevealReplyRepairScope(
+                        scopeId,
+                        pubkeyHex,
+                        rxNostr,
+                    )
+                    || result.status === "cancelled"
+                ) {
+                    return;
+                }
+
+                if (result.savedParentEventIds.length > 0) {
+                    requestReplyBadgeRefresh(
+                        state.loadedPosts,
+                        result.savedParentEventIds,
+                    );
+                }
+
+                if (result.checkedParentEventIds.length > 0) {
+                    markOlderRevealReplyRepairParentsChecked(
+                        result.checkedParentEventIds,
+                        Date.now(),
+                    );
+                }
+            })
+            .catch(() => {
+                olderRevealReplyRepairTasks.delete(task);
+                networkParentPosts.forEach((post) => {
+                    olderRevealReplyRepairInFlightParentIds.delete(post.eventId);
+                });
+            });
+    }
+
     function resetOlderBackfillSearchState(): void {
         olderBackfillSearch.windowSeconds =
             POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS;
@@ -743,6 +964,7 @@ export function usePostHistoryListing({
     }
 
     function resetListingStateAfterLocalDelete(): void {
+        clearOlderRevealReplyRepairState();
         state.loadedPosts = [];
         state.searchPosts = [];
         state.totalCount = 0;
@@ -767,6 +989,7 @@ export function usePostHistoryListing({
     function resetState(): void {
         cancelCurrentSync();
         cancelCurrentViewRefetch();
+        clearOlderRevealReplyRepairState();
         state.syncStatus = "idle";
         resetOlderBackfillSearchState();
         clearCurrentViewRefetchFeedback();
@@ -1490,18 +1713,19 @@ export function usePostHistoryListing({
     async function loadOlderVisiblePosts(
         options: LoadOlderVisiblePostsOptions = {},
     ): Promise<boolean> {
+        const currentLoadedPosts = state.loadedPosts;
         const metrics = options.metrics;
         if (metrics) {
-            metrics.loadedPostsBeforeLength = state.loadedPosts.length;
-            metrics.loadedPostsAfterLength = state.loadedPosts.length;
+            metrics.loadedPostsBeforeLength = currentLoadedPosts.length;
+            metrics.loadedPostsAfterLength = currentLoadedPosts.length;
             metrics.olderPostsLength = 0;
             metrics.visibleOldestBefore =
-                state.loadedPosts.length > 0
-                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                currentLoadedPosts.length > 0
+                    ? currentLoadedPosts[currentLoadedPosts.length - 1]?.createdAt ?? null
                     : null;
             metrics.visibleOldestAfter =
-                state.loadedPosts.length > 0
-                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                currentLoadedPosts.length > 0
+                    ? currentLoadedPosts[currentLoadedPosts.length - 1]?.createdAt ?? null
                     : null;
             metrics.didTrimForOlderAppend = false;
             metrics.didDeferOlderPosts = false;
@@ -1554,11 +1778,21 @@ export function usePostHistoryListing({
         }
 
         const mergedResult = mergeOlderVisiblePostsForState(
-            state.loadedPosts,
+            currentLoadedPosts,
             olderPosts,
             options.anchorEventId,
         );
+        const newlyVisibleOlderPosts =
+            options.reason === "normal-older-reveal"
+                ? resolveNewlyVisibleOlderPosts(
+                    currentLoadedPosts,
+                    mergedResult.posts,
+                )
+                : [];
         state.loadedPosts = mergedResult.posts;
+        if (newlyVisibleOlderPosts.length > 0) {
+            scheduleOlderRevealReplyRepair(newlyVisibleOlderPosts);
+        }
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
         }
@@ -1935,7 +2169,9 @@ export function usePostHistoryListing({
             return goToNextPage();
         }
 
-        return loadOlderVisiblePosts();
+        return loadOlderVisiblePosts({
+            reason: "normal-older-reveal",
+        });
     }
 
     async function loadNewer(): Promise<boolean> {
@@ -2199,6 +2435,7 @@ export function usePostHistoryListing({
                         {
                             anchorEventId: options.anchorEventId,
                             metrics: olderLoadMetrics,
+                            reason: "normal-older-reveal",
                         },
                     );
                 } else {
@@ -2412,7 +2649,10 @@ export function usePostHistoryListing({
                 }
 
                 if (replyRepairResult.savedParentEventIds.length > 0) {
-                    await onSavedRepairedDirectReplies(replyRepairResult.savedParentEventIds);
+                    await onReplyBadgeRefreshRequested(
+                        state.loadedPosts,
+                        replyRepairResult.savedParentEventIds,
+                    );
                 }
             }
 
@@ -2530,6 +2770,17 @@ export function usePostHistoryListing({
         activePubkeyKey = nextPubkeyKey;
         state.lastDialogOpenRefreshAt = null;
         resetOlderBackfillSearchState();
+        clearOlderRevealReplyRepairState();
+    });
+
+    $effect(() => {
+        const nextRxNostr = getRxNostr();
+        if (nextRxNostr === activeOlderRevealReplyRepairRxNostr) {
+            return;
+        }
+
+        activeOlderRevealReplyRepairRxNostr = nextRxNostr;
+        clearOlderRevealReplyRepairState();
     });
 
     $effect(() => {
@@ -2572,6 +2823,12 @@ export function usePostHistoryListing({
 
         return () => {
             cancelCurrentSync();
+        };
+    });
+
+    $effect(() => {
+        return () => {
+            clearOlderRevealReplyRepairState();
         };
     });
 

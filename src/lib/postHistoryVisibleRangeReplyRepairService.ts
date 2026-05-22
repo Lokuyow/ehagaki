@@ -33,6 +33,7 @@ export interface PostHistoryVisibleRangeReplyRepairRequest {
 export interface PostHistoryVisibleRangeReplyRepairResult {
     status: "success" | "partial" | "cancelled";
     targetParentEventIds: string[];
+    checkedParentEventIds: string[];
     savedParentEventIds: string[];
     savedDirectReplyCount: number;
     attemptedChunkCount: number;
@@ -83,6 +84,7 @@ type ParentChunk = {
 const EMPTY_RESULT: PostHistoryVisibleRangeReplyRepairResult = {
     status: "success",
     targetParentEventIds: [],
+    checkedParentEventIds: [],
     savedParentEventIds: [],
     savedDirectReplyCount: 0,
     attemptedChunkCount: 0,
@@ -176,7 +178,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
             }
 
             const savedParentEventIds = new Set<string>();
-            const incompleteParentEventIds = new Set<string>();
+            const checkedParentEventIds = new Set<string>();
             let savedDirectReplyCount = 0;
             let attemptedChunkCount = 0;
             let saturatedChunkCount = 0;
@@ -220,7 +222,6 @@ export class PostHistoryVisibleRangeReplyRepairService {
                                 );
                             } else {
                                 partial = true;
-                                chunk.posts.forEach((post) => incompleteParentEventIds.add(post.eventId));
                             }
                         }
 
@@ -228,7 +229,13 @@ export class PostHistoryVisibleRangeReplyRepairService {
                             chunk.posts,
                             candidateResult.items,
                         );
+                        const canMarkChunkChecked =
+                            candidateResult.status === "success"
+                            && !candidateResult.saturated;
                         if (repairItems.length === 0) {
+                            if (canMarkChunkChecked) {
+                                chunk.posts.forEach((post) => checkedParentEventIds.add(post.eventId));
+                            }
                             continue;
                         }
 
@@ -255,6 +262,9 @@ export class PostHistoryVisibleRangeReplyRepairService {
                         savedDirectReplyCount += saveResult.savedDirectReplyCount;
                         deletionConfirmationIncomplete =
                             deletionConfirmationIncomplete || saveResult.deletionConfirmationIncomplete;
+                        if (canMarkChunkChecked) {
+                            chunk.posts.forEach((post) => checkedParentEventIds.add(post.eventId));
+                        }
                     }
                 };
 
@@ -280,14 +290,19 @@ export class PostHistoryVisibleRangeReplyRepairService {
                 };
             }
 
+            const incompleteParentEventIds = targetParentEventIds.filter(
+                (eventId) => !checkedParentEventIds.has(eventId),
+            );
+
             return {
-                status: partial || incompleteParentEventIds.size > 0 ? "partial" : "success",
+                status: partial || incompleteParentEventIds.length > 0 ? "partial" : "success",
                 targetParentEventIds,
+                checkedParentEventIds: Array.from(checkedParentEventIds),
                 savedParentEventIds: Array.from(savedParentEventIds),
                 savedDirectReplyCount,
                 attemptedChunkCount,
                 saturatedChunkCount,
-                incompleteParentEventIds: Array.from(incompleteParentEventIds),
+                incompleteParentEventIds,
                 deletionConfirmationIncomplete,
             };
         })();

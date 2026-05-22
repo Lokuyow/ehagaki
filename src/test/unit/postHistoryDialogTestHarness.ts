@@ -401,6 +401,7 @@ export function resetPostHistoryDialogHarness(): void {
         promise: Promise.resolve({
             status: 'success',
             targetParentEventIds: [],
+            checkedParentEventIds: [],
             savedParentEventIds: [],
             savedDirectReplyCount: 0,
             attemptedChunkCount: 0,

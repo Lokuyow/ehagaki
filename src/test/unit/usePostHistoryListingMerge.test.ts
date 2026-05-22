@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { mergeOlderVisiblePosts } from '../../lib/hooks/usePostHistoryListing.svelte';
+import {
+    mergeOlderVisiblePosts,
+    POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS,
+    resolveNewlyVisibleOlderPosts,
+    resolveOlderRevealReplyRepairNetworkParentIds,
+    resolveVisibleOlderRevealReplyRepairParentPosts,
+} from '../../lib/hooks/usePostHistoryListing.svelte';
 
 function createPost(index: number) {
     return {
@@ -128,5 +134,60 @@ describe('mergeOlderVisiblePosts', () => {
         expect(result.posts.some((post) => post.eventId === currentPosts[20].eventId)).toBe(true);
         expect(result.didTrimForOlderAppend).toBe(true);
         expect(result.didDeferOlderPosts).toBe(true);
+    });
+
+    it('merge 前後の visible eventId 差分から newly visible older posts を取る', () => {
+        const currentPosts = [createPost(1), createPost(2), createPost(3)];
+        const olderPosts = [createPost(10), createPost(11)];
+
+        const result = mergeOlderVisiblePosts({
+            currentPosts,
+            olderPosts,
+            maxVisiblePosts: 5,
+            keepAbove: 2,
+        });
+
+        expect(resolveNewlyVisibleOlderPosts(currentPosts, result.posts).map((post) => post.eventId)).toEqual(
+            olderPosts.map((post) => post.eventId),
+        );
+    });
+
+    it('newly visible posts から current visible な owner self kind:1 parents だけ残す', () => {
+        const visibleSelf = createPost(10);
+        const hiddenSelf = createPost(11);
+        const visibleKind42 = {
+            ...createPost(12),
+            kind: 42,
+        };
+        const visibleOther = {
+            ...createPost(13),
+            pubkeyHex: 'b'.repeat(64),
+        };
+
+        const result = resolveVisibleOlderRevealReplyRepairParentPosts(
+            'a'.repeat(64),
+            [visibleSelf, hiddenSelf, visibleKind42, visibleOther],
+            [visibleSelf, visibleKind42, visibleOther],
+        );
+
+        expect(result).toEqual([visibleSelf]);
+    });
+
+    it('older reveal network candidates は in-flight と freshness TTL を除外する', () => {
+        const nowMs = 100_000;
+        const freshCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS - 1_000);
+        const staleCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS + 1_000);
+
+        const result = resolveOlderRevealReplyRepairNetworkParentIds(
+            ['fresh-parent', 'stale-parent', 'unchecked-parent', 'inflight-parent'],
+            new Map([
+                ['fresh-parent', freshCheckedAt],
+                ['stale-parent', staleCheckedAt],
+            ]),
+            new Set(['inflight-parent']),
+            nowMs,
+        );
+
+        expect(result).toEqual(['stale-parent', 'unchecked-parent']);
     });
 });

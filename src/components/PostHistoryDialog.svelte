@@ -123,9 +123,9 @@
         onSavedAuthoredPosts: async (eventIds) => {
             await notifySavedAuthoredPosts?.(eventIds);
         },
-        onSavedRepairedDirectReplies: (parentEventIds) =>
+        onReplyBadgeRefreshRequested: (posts, parentEventIds) =>
             postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
-                history.posts,
+                posts,
                 parentEventIds,
             ),
         pageSize: POST_HISTORY_PAGE_SIZE,
