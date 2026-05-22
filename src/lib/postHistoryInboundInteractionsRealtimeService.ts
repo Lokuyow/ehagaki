@@ -13,6 +13,7 @@ import {
 import type { NostrEvent, RelayConfig } from "./types";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
+export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
 
 export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
     ownerPubkeyHex: string;
@@ -70,7 +71,10 @@ export class PostHistoryInboundInteractionsRealtimeService {
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
         );
-        const subscribedSince = Math.max(0, Math.floor(this.now() / 1000));
+        const subscribedSince = Math.max(
+            0,
+            Math.floor(this.now() / 1000) - POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS,
+        );
 
         try {
             if (typeof (rxNostr as { use?: unknown }).use !== "function") {

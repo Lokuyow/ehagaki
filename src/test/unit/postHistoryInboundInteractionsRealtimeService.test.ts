@@ -110,7 +110,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         expect(rxNostrMock.emittedFilters).toEqual([{
             kinds: [1],
             "#p": [OWNER_PUBKEY],
-            since: 1_700_000_000,
+            since: 1_699_999_940,
         }]);
         expect(postHistoryRepository.getExistingEventIdsForPubkey).toHaveBeenCalledWith({
             pubkeyHex: OWNER_PUBKEY,
