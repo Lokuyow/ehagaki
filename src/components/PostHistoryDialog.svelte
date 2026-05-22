@@ -155,7 +155,8 @@
                 parentEventIds,
             ),
         reconcileDirectReplyCandidates: (candidates) =>
-            reconcileInboundDirectReplyCandidates?.(candidates) ?? Promise.resolve({
+            reconcileInboundDirectReplyCandidates?.(candidates) ??
+            Promise.resolve({
                 savedParentEventIds: [],
                 savedDirectReplyCount: 0,
                 unresolvedParentEventIds: candidates
@@ -458,13 +459,18 @@
             postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
                 posts,
                 parentEventIds,
-            )
+            ),
         );
     });
 
     $effect(() => {
         const revision = authoredSelfPostSave?.revision ?? 0;
-        if (!show || revision <= 0 || history.isSearchMode || history.canReturnToLatest) {
+        if (
+            !show ||
+            revision <= 0 ||
+            history.isSearchMode ||
+            history.canReturnToLatest
+        ) {
             return;
         }
 
@@ -1993,257 +1999,273 @@
                                     data-post-history-thread-anchor-event-id={post.eventId}
                                 >
                                     <div class="post-preview-body">
-                                    {#if hasRenderablePostPreviewContent(post)}
-                                        <div class="post-preview-content">
-                                            <PostHistoryPreviewContent
-                                                previewContent={getPreviewContent(
-                                                    post,
-                                                )}
-                                                {emojiLoadStateByUrl}
-                                                {emojiImageMetaByUrl}
-                                                previewCollapseAction={previewCollapse.previewRef}
-                                                previewCollapseEventId={post.eventId}
-                                                previewContentId={"post-preview-content-" +
-                                                    post.eventId}
-                                                isCollapsed={!previewCollapse.isPostExpanded(
-                                                    post,
-                                                ) &&
-                                                    previewCollapse.shouldCollapsePost(
+                                        {#if hasRenderablePostPreviewContent(post)}
+                                            <div class="post-preview-content">
+                                                <PostHistoryPreviewContent
+                                                    previewContent={getPreviewContent(
                                                         post,
                                                     )}
-                                            />
-                                        </div>
-                                    {/if}
-                                    {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
-                                        <div class="post-preview-toggle-row">
-                                            <Button
-                                                type="button"
-                                                class="post-preview-action-button post-preview-toggle-button"
-                                                aria-expanded={previewCollapse.isPostExpanded(
-                                                    post,
-                                                )}
-                                                aria-controls={"post-preview-content-" +
-                                                    post.eventId}
-                                                onClick={() =>
-                                                    previewCollapse.togglePostExpanded(
-                                                        post.eventId,
-                                                    )}
-                                            >
-                                                {previewCollapse.isPostExpanded(
-                                                    post,
-                                                )
-                                                    ? $_("postHistory.collapse")
-                                                    : $_("postHistory.expand")}
-                                            </Button>
-                                        </div>
-                                    {/if}
-                                    {#if post.media.length > 0}
-                                        <div class="post-preview-media">
-                                            <PostHistoryMediaList
-                                                media={post.media}
-                                                scrollRoot={historyContainer}
-                                                onImageOpen={handleImageOpen}
-                                            />
-                                        </div>
-                                    {/if}
-                                </div>
-                                {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
-                                    <div class="post-preview-footer">
-                                        <div class="post-preview-footer-left">
-                                            <span class="post-preview-date">
-                                                {formatPostedAt(post.postedAt)}
-                                            </span>
-                                        </div>
-                                        <div
-                                            class="post-preview-footer-actions"
-                                        >
-                                            <div
-                                                class="post-preview-action-buttons-group"
-                                            >
-                                                {#if onReplyPost}
-                                                    <Button
-                                                        type="button"
-                                                        class="post-preview-action-button"
-                                                        ariaLabel={$_(
-                                                            "replyQuote.reply_label",
-                                                        )}
-                                                        contentLayout="icon"
-                                                        shape="circle"
-                                                        onClick={() =>
-                                                            handleReplyPost(
-                                                                post,
-                                                            )}
-                                                    >
-                                                        <div
-                                                            class="reply-icon svg-icon"
-                                                            aria-hidden="true"
-                                                        ></div>
-                                                    </Button>
-                                                {/if}
-                                                <PostHistoryRepliesActionButton
-                                                    state={graphState.repliesActionState}
-                                                    ariaLabel={getRepliesActionLabel(
+                                                    {emojiLoadStateByUrl}
+                                                    {emojiImageMetaByUrl}
+                                                    previewCollapseAction={previewCollapse.previewRef}
+                                                    previewCollapseEventId={post.eventId}
+                                                    previewContentId={"post-preview-content-" +
+                                                        post.eventId}
+                                                    isCollapsed={!previewCollapse.isPostExpanded(
                                                         post,
-                                                    )}
-                                                    onClick={() =>
-                                                        handleRepliesAction(
+                                                    ) &&
+                                                        previewCollapse.shouldCollapsePost(
                                                             post,
                                                         )}
                                                 />
                                             </div>
-                                            {#if onQuotePost}
+                                        {/if}
+                                        {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
+                                            <div
+                                                class="post-preview-toggle-row"
+                                            >
                                                 <Button
                                                     type="button"
-                                                    class="post-preview-action-button"
-                                                    ariaLabel={$_(
-                                                        "replyQuote.quote_label",
+                                                    class="post-preview-action-button post-preview-toggle-button"
+                                                    aria-expanded={previewCollapse.isPostExpanded(
+                                                        post,
                                                     )}
-                                                    contentLayout="icon"
-                                                    shape="circle"
+                                                    aria-controls={"post-preview-content-" +
+                                                        post.eventId}
                                                     onClick={() =>
-                                                        handleQuotePost(post)}
+                                                        previewCollapse.togglePostExpanded(
+                                                            post.eventId,
+                                                        )}
                                                 >
-                                                    <div
-                                                        class="quote-icon svg-icon"
-                                                        aria-hidden="true"
-                                                    ></div>
+                                                    {previewCollapse.isPostExpanded(
+                                                        post,
+                                                    )
+                                                        ? $_(
+                                                              "postHistory.collapse",
+                                                          )
+                                                        : $_(
+                                                              "postHistory.expand",
+                                                          )}
                                                 </Button>
-                                            {/if}
-                                        </div>
-                                        <div class="post-preview-footer-right">
-                                            <DropdownMenu.Root
-                                                open={postMenuOpenState[
-                                                    post.eventId
-                                                ] ?? false}
-                                                onOpenChange={(open: boolean) =>
-                                                    setPostMenuOpen(
-                                                        post.eventId,
-                                                        open,
-                                                    )}
+                                            </div>
+                                        {/if}
+                                        {#if post.media.length > 0}
+                                            <div class="post-preview-media">
+                                                <PostHistoryMediaList
+                                                    media={post.media}
+                                                    scrollRoot={historyContainer}
+                                                    onImageOpen={handleImageOpen}
+                                                />
+                                            </div>
+                                        {/if}
+                                    </div>
+                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
+                                        <div class="post-preview-footer">
+                                            <div
+                                                class="post-preview-footer-left"
                                             >
-                                                <DropdownMenu.Trigger
-                                                    class="menu-trigger"
-                                                    aria-label="アクションを表示"
+                                                <span class="post-preview-date">
+                                                    {formatPostedAt(
+                                                        post.postedAt,
+                                                    )}
+                                                </span>
+                                            </div>
+                                            <div
+                                                class="post-preview-footer-actions"
+                                            >
+                                                <div
+                                                    class="post-preview-action-buttons-group"
                                                 >
-                                                    <div
-                                                        class="more-icon svg-icon"
-                                                    ></div>
-                                                </DropdownMenu.Trigger>
-                                                <DropdownMenu.Portal>
-                                                    <DropdownMenu.Content
-                                                        side="bottom"
-                                                        align="start"
-                                                        sideOffset={8}
-                                                        class="post-history-menu-content"
-                                                        trapFocus={false}
-                                                        preventScroll={false}
-                                                        onCloseAutoFocus={(
-                                                            event: Event,
-                                                        ) =>
-                                                            event.preventDefault()}
+                                                    {#if onReplyPost}
+                                                        <Button
+                                                            type="button"
+                                                            class="post-preview-action-button"
+                                                            ariaLabel={$_(
+                                                                "replyQuote.reply_label",
+                                                            )}
+                                                            contentLayout="icon"
+                                                            shape="circle"
+                                                            onClick={() =>
+                                                                handleReplyPost(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="reply-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                        </Button>
+                                                    {/if}
+                                                    <PostHistoryRepliesActionButton
+                                                        state={graphState.repliesActionState}
+                                                        ariaLabel={getRepliesActionLabel(
+                                                            post,
+                                                        )}
+                                                        onClick={() =>
+                                                            handleRepliesAction(
+                                                                post,
+                                                            )}
+                                                    />
+                                                </div>
+                                                {#if onQuotePost}
+                                                    <Button
+                                                        type="button"
+                                                        class="post-preview-action-button"
+                                                        ariaLabel={$_(
+                                                            "replyQuote.quote_label",
+                                                        )}
+                                                        contentLayout="icon"
+                                                        shape="circle"
+                                                        onClick={() =>
+                                                            handleQuotePost(
+                                                                post,
+                                                            )}
                                                     >
                                                         <div
-                                                            class="post-history-menu-body"
+                                                            class="quote-icon svg-icon"
+                                                            aria-hidden="true"
+                                                        ></div>
+                                                    </Button>
+                                                {/if}
+                                            </div>
+                                            <div
+                                                class="post-preview-footer-right"
+                                            >
+                                                <DropdownMenu.Root
+                                                    open={postMenuOpenState[
+                                                        post.eventId
+                                                    ] ?? false}
+                                                    onOpenChange={(
+                                                        open: boolean,
+                                                    ) =>
+                                                        setPostMenuOpen(
+                                                            post.eventId,
+                                                            open,
+                                                        )}
+                                                >
+                                                    <DropdownMenu.Trigger
+                                                        class="menu-trigger"
+                                                        aria-label="アクションを表示"
+                                                    >
+                                                        <div
+                                                            class="more-icon svg-icon"
+                                                        ></div>
+                                                    </DropdownMenu.Trigger>
+                                                    <DropdownMenu.Portal>
+                                                        <DropdownMenu.Content
+                                                            side="bottom"
+                                                            align="start"
+                                                            sideOffset={8}
+                                                            class="post-history-menu-content"
+                                                            trapFocus={false}
+                                                            preventScroll={false}
+                                                            onCloseAutoFocus={(
+                                                                event: Event,
+                                                            ) =>
+                                                                event.preventDefault()}
                                                         >
-                                                            <DropdownMenu.Item
-                                                                class="menu-action-button"
-                                                                onpointerdown={(
-                                                                    event,
-                                                                ) =>
-                                                                    captureCopyPointerPosition(
-                                                                        post,
-                                                                        event,
-                                                                    )}
-                                                                onSelect={(
-                                                                    event,
-                                                                ) =>
-                                                                    void handleCopyNevent(
-                                                                        post,
-                                                                        event,
-                                                                    )}
+                                                            <div
+                                                                class="post-history-menu-body"
                                                             >
-                                                                <div
-                                                                    class="copy-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {copyState[
-                                                                        post
-                                                                            .eventId
-                                                                    ] ===
-                                                                    "failed"
-                                                                        ? $_(
-                                                                              "postHistory.copyFailed",
-                                                                          )
-                                                                        : $_(
-                                                                              "postHistory.copyNevent",
-                                                                          )}
-                                                                </span>
-                                                            </DropdownMenu.Item>
-                                                            {#if canDeletePost(post)}
                                                                 <DropdownMenu.Item
-                                                                    class="menu-action-button menu-action-button-danger"
-                                                                    disabled={isDeletionSending(
-                                                                        post,
-                                                                    )}
-                                                                    onSelect={() =>
-                                                                        openDeleteConfirm(
+                                                                    class="menu-action-button"
+                                                                    onpointerdown={(
+                                                                        event,
+                                                                    ) =>
+                                                                        captureCopyPointerPosition(
                                                                             post,
+                                                                            event,
+                                                                        )}
+                                                                    onSelect={(
+                                                                        event,
+                                                                    ) =>
+                                                                        void handleCopyNevent(
+                                                                            post,
+                                                                            event,
                                                                         )}
                                                                 >
                                                                     <div
-                                                                        class="trash-icon svg-icon"
+                                                                        class="copy-icon svg-icon"
                                                                         aria-hidden="true"
                                                                     ></div>
                                                                     <span>
-                                                                        {isDeletionSending(
-                                                                            post,
-                                                                        )
+                                                                        {copyState[
+                                                                            post
+                                                                                .eventId
+                                                                        ] ===
+                                                                        "failed"
                                                                             ? $_(
-                                                                                  "postHistory.deleteSending",
+                                                                                  "postHistory.copyFailed",
                                                                               )
                                                                             : $_(
-                                                                                  "postHistory.delete",
+                                                                                  "postHistory.copyNevent",
                                                                               )}
                                                                     </span>
                                                                 </DropdownMenu.Item>
-                                                            {/if}
-                                                        </div>
-                                                    </DropdownMenu.Content>
-                                                </DropdownMenu.Portal>
-                                            </DropdownMenu.Root>
+                                                                {#if canDeletePost(post)}
+                                                                    <DropdownMenu.Item
+                                                                        class="menu-action-button menu-action-button-danger"
+                                                                        disabled={isDeletionSending(
+                                                                            post,
+                                                                        )}
+                                                                        onSelect={() =>
+                                                                            openDeleteConfirm(
+                                                                                post,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="trash-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {isDeletionSending(
+                                                                                post,
+                                                                            )
+                                                                                ? $_(
+                                                                                      "postHistory.deleteSending",
+                                                                                  )
+                                                                                : $_(
+                                                                                      "postHistory.delete",
+                                                                                  )}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                {/if}
+                                                            </div>
+                                                        </DropdownMenu.Content>
+                                                    </DropdownMenu.Portal>
+                                                </DropdownMenu.Root>
+                                            </div>
                                         </div>
-                                    </div>
-                                {/if}
-                                <PostHistoryThreadGraphPanel
-                                    state={graphState}
-                                    section="children"
-                                    onToggleNodeParent={(nodeEventId) =>
-                                        preserveThreadParentToggleScroll(
-                                            post.eventId,
-                                            nodeEventId,
-                                            () =>
-                                                postHistoryThreadGraph.toggleNodeParent(
-                                                    post,
-                                                    nodeEventId,
-                                                ),
-                                        )}
-                                    onRetryNodeParent={(nodeEventId) =>
-                                        postHistoryThreadGraph.retryNodeParent(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                    onToggleNodeChildren={(nodeEventId) =>
-                                        postHistoryThreadGraph.toggleNodeChildren(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                    onRetryNodeChildren={(nodeEventId) =>
-                                        postHistoryThreadGraph.retryNodeChildren(
-                                            post,
-                                            nodeEventId,
-                                        )}
-                                />
+                                    {/if}
+                                    <PostHistoryThreadGraphPanel
+                                        state={graphState}
+                                        section="children"
+                                        onToggleNodeParent={(nodeEventId) =>
+                                            preserveThreadParentToggleScroll(
+                                                post.eventId,
+                                                nodeEventId,
+                                                () =>
+                                                    postHistoryThreadGraph.toggleNodeParent(
+                                                        post,
+                                                        nodeEventId,
+                                                    ),
+                                            )}
+                                        onRetryNodeParent={(nodeEventId) =>
+                                            postHistoryThreadGraph.retryNodeParent(
+                                                post,
+                                                nodeEventId,
+                                            )}
+                                        onToggleNodeChildren={(nodeEventId) =>
+                                            postHistoryThreadGraph.toggleNodeChildren(
+                                                post,
+                                                nodeEventId,
+                                            )}
+                                        onRetryNodeChildren={(nodeEventId) =>
+                                            postHistoryThreadGraph.retryNodeChildren(
+                                                post,
+                                                nodeEventId,
+                                            )}
+                                    />
                                 </div>
                             </div>
                             {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
