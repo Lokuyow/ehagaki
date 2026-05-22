@@ -1874,6 +1874,7 @@
           inboundDirectReplySave={latestInboundDirectReplySave}
           authoredSelfPostSave={latestAuthoredSelfPostSave}
           reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
+          notifySavedAuthoredPosts={postHistoryInboundReplyReconciliation.notifySelfPostsSaved}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

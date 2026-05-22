@@ -17,6 +17,8 @@ import {
     resetPostHistoryDialogHarness,
     visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
+import { classifyPostHistoryInboundInteraction } from '../../lib/postHistoryInboundInteractionClassifier';
+import { PostHistoryInboundReplyReconciliationService } from '../../lib/postHistoryInboundReplyReconciliationService';
 
 async function clickEnabledMenuAction(name: string): Promise<void> {
     await openPostHistoryMenu();
@@ -48,6 +50,103 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
     afterEach(() => {
         cleanupPostHistoryDialogHarness();
+    });
+
+    it('inbound recent pending reply is saved when authored dialog-open-refresh stores its self parent later', async () => {
+        const parentEventId = '1'.repeat(64);
+        const replyEvent = {
+            id: '2'.repeat(64),
+            pubkey: 'b'.repeat(64),
+            kind: 1,
+            content: 'recent unknown parent reply',
+            tags: [
+                ['p', PUBKEY_HEX],
+                ['e', parentEventId, '', 'reply'],
+            ],
+            created_at: 1_700_000_010,
+            sig: 'c'.repeat(128),
+        };
+        const selfParent = {
+            id: parentEventId,
+            pubkey: PUBKEY_HEX,
+            kind: 1,
+            content: 'remote parent',
+            tags: [],
+            created_at: 1_700_000_000,
+            sig: 'd'.repeat(128),
+        };
+        const replyEventsRepository = {
+            upsertDirectReplies: vi.fn(async () => ({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            })),
+        };
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository: {
+                getExistingEventIdsForPubkey: vi.fn(async () => []),
+                upsertFetchedEvents: vi.fn(),
+            },
+            postHistoryReplyEventsRepository: replyEventsRepository,
+            selfParentFetchService: {
+                fetchSelfParent: vi.fn(() => ({
+                    promise: new Promise<{ event: typeof selfParent | null; relayUrl: string | null }>(
+                        () => undefined,
+                    ),
+                    cancel: vi.fn(),
+                })),
+            },
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: PUBKEY_HEX,
+        });
+        await session.reconcile([{
+            event: replyEvent,
+            classification: classifyPostHistoryInboundInteraction({
+                event: replyEvent,
+                ownerPubkeyHex: PUBKEY_HEX,
+                ownerPostEventIds: new Set(),
+            }),
+        }]);
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([
+            createRecord({ eventId: 'local-parent', content: 'local history' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({
+                events: [{ event: selfParent, relayUrls: ['wss://relay.example.com/'] }],
+                fetchedAt: 1_700_000_020_000,
+            })),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+                notifySavedAuthoredPosts: (eventIds: string[]) =>
+                    session.notifySelfPostsSaved(eventIds),
+            },
+        });
+
+        await waitFor(() => {
+            expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+                parentEventId,
+                events: [{ event: replyEvent }],
+                fetchedAt: expect.any(Number),
+            });
+        });
     });
 
     it('ローカル履歴を即表示しつつ自動同期を開始し、close で cancel する', async () => {

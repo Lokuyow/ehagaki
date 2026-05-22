@@ -69,6 +69,7 @@ interface UsePostHistoryListingParams {
     getRelayConfig: () => RelayConfig | null | undefined;
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     onSessionScrollStateInvalidated?: () => void;
+    onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -158,6 +159,14 @@ interface OlderBackfillUiResult {
 
 interface FetchOlderFromRelaysOptions {
     anchorEventId?: string | null;
+}
+
+function resolveFetchedAuthoredEventIds(
+    events: Array<{ event?: { id?: string } }>,
+): string[] {
+    return events
+        .map((item) => item.event?.id)
+        .filter((eventId): eventId is string => !!eventId);
 }
 
 const SHOULD_DEBUG_POST_HISTORY_BACKFILL = import.meta.env.DEV;
@@ -460,6 +469,7 @@ export function usePostHistoryListing({
     getRelayConfig,
     getSessionScrollState = () => null,
     onSessionScrollStateInvalidated = () => { },
+    onSavedAuthoredPosts = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -1721,6 +1731,10 @@ export function usePostHistoryListing({
                 events: result.events,
                 fetchedAt: result.fetchedAt,
             });
+            const savedEventIds = resolveFetchedAuthoredEventIds(result.events);
+            if (savedEventIds.length > 0) {
+                await onSavedAuthoredPosts(savedEventIds);
+            }
         }
         if (!isCurrentFetchRequest(requestId) || !getShow()) {
             return;
@@ -1805,6 +1819,10 @@ export function usePostHistoryListing({
                 events: result.events,
                 fetchedAt: result.fetchedAt,
             });
+            const savedEventIds = resolveFetchedAuthoredEventIds(result.events);
+            if (savedEventIds.length > 0) {
+                await onSavedAuthoredPosts(savedEventIds);
+            }
         }
         if (!isCurrentFetchRequest(requestId) || !getShow()) {
             return;

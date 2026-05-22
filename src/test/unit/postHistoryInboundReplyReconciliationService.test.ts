@@ -181,4 +181,43 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         expect(postHistoryRepository.upsertFetchedEvents).not.toHaveBeenCalled();
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
     });
+
+    it("keeps pending repository saves active across Dialog close while owner session stays active", async () => {
+        const postHistoryReplyEventsRepository = {
+            upsertDirectReplies: vi.fn(async () => ({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount: 0,
+            })),
+        };
+        const session = new PostHistoryInboundReplyReconciliationService({
+            postHistoryRepository: {
+                getExistingEventIdsForPubkey: vi.fn(async () => []),
+                upsertFetchedEvents: vi.fn(),
+            },
+            postHistoryReplyEventsRepository,
+            selfParentFetchService: {
+                fetchSelfParent: vi.fn(() => ({
+                    promise: new Promise<{ event: NostrEvent | null; relayUrl: string | null }>(
+                        () => undefined,
+                    ),
+                    cancel: vi.fn(),
+                })),
+            },
+            console: { warn: vi.fn(), error: vi.fn() },
+        }).createSession({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+        });
+        const candidate = createCandidate(createEvent({ id: "3".repeat(64) }));
+
+        await session.reconcile([candidate]);
+        await session.notifySelfPostsSaved([PARENT_ID]);
+
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
+            fetchedAt: expect.any(Number),
+        });
+    });
 });

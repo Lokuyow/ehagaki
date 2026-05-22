@@ -88,6 +88,9 @@
         reconcileInboundDirectReplyCandidates?: (
             candidates: PostHistoryInboundDirectReplyCandidate[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        notifySavedAuthoredPosts?: (
+            eventIds: string[],
+        ) => Promise<PostHistoryInboundReplyReconciliationResult>;
     }
 
     let {
@@ -102,6 +105,7 @@
         inboundDirectReplySave = null,
         authoredSelfPostSave = null,
         reconcileInboundDirectReplyCandidates = undefined,
+        notifySavedAuthoredPosts = undefined,
     }: Props = $props();
 
     const history = usePostHistoryListing({
@@ -116,6 +120,9 @@
             }),
         onSessionScrollStateInvalidated: () =>
             clearAllSessionScrollAnchorsForCurrentPubkey(),
+        onSavedAuthoredPosts: async (eventIds) => {
+            await notifySavedAuthoredPosts?.(eventIds);
+        },
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({

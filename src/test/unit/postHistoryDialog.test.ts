@@ -2086,6 +2086,59 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[inbound-realtime] closed dialog ignores saved reply and authored post UI signals', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        expect(await screen.findByRole('button', { name: '返信を確認' })).toBeTruthy();
+        const replyReadsBeforeCloseSignal = replyEventsRepositoryMock.getDirectReplies.mock.calls.length;
+        const pageReadsBeforeCloseSignal = repositoryMock.getPage.mock.calls.length;
+
+        await view.rerender({
+            show: false,
+            onClose: vi.fn(),
+            onReplyPost: vi.fn(),
+            pubkeyHex: 'a'.repeat(64),
+            inboundDirectReplySave: {
+                revision: 1,
+                parentEventIds: [parentEventId],
+            },
+            authoredSelfPostSave: {
+                revision: 1,
+                eventIds: [parentEventId],
+            },
+        });
+        await Promise.resolve();
+
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(replyReadsBeforeCloseSignal);
+        expect(repositoryMock.getPage).toHaveBeenCalledTimes(pageReadsBeforeCloseSignal);
+    });
+
     it('[thread-graph-children-prefetch] 表示済み子nodeの返信有無確認はconcurrency上限内で実行する', async () => {
         const parentEventId = '1'.repeat(64);
         const childIds = ['4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd'].map((value) => value.repeat(64));
