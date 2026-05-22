@@ -648,6 +648,7 @@
         height: 100%;
         padding: 0;
         color: var(--text);
+        background-color: var(--btn-bg);
         touch-action: manipulation;
     }
 

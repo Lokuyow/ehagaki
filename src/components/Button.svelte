@@ -194,7 +194,6 @@
 
     .footer {
         max-width: 100px;
-        min-width: 40px;
         flex: 1 1 0;
         --btn-bg: transparent;
     }

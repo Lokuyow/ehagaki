@@ -452,7 +452,6 @@
         width: 100%;
         max-width: 800px;
         height: var(--keyboard-button-bar-height);
-        padding: 0 8px;
         margin: auto;
         background: var(--bg-buttonbar);
         position: var(--app-overlay-position);
@@ -481,9 +480,8 @@
         /* postボタンは他より大きく見えるよう成長比と最小幅を優先 */
         :global(button.post-button) {
             flex: 2 1 0;
-            width: clamp(40px, 22vw, 100px);
+            width: clamp(40px, 24vw, 100px);
             height: var(--keyboard-button-bar-height);
-            padding: 0 6px;
 
             &:active {
                 transform: scale(0.9);
