@@ -44,8 +44,10 @@ export function usePostHistoryVisibilityResumeSync({
         activePubkeyHex: null as string | null,
     });
     let currentTask: PostHistoryVisibilityResumeSyncTask | null = null;
+    let requestGeneration = 0;
 
     function cancelCurrentSync(): void {
+        requestGeneration += 1;
         currentTask?.cancel();
         currentTask = null;
     }
@@ -119,12 +121,20 @@ export function usePostHistoryVisibilityResumeSync({
 
         state.pendingResumeSince = null;
         cancelCurrentSync();
+        const activeRequestGeneration = ++requestGeneration;
         const task = postHistoryVisibilityResumeSyncService.syncAfterVisibilityResume(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
             hiddenAtSeconds: pendingResumeSince,
             reconcileDirectReplyCandidates,
             onSavedSelfPosts,
+            isActive: () =>
+                activeRequestGeneration === requestGeneration
+                && state.visible
+                && getIsAuthenticated()
+                && getPubkeyHex() === ownerPubkeyHex
+                && getRxNostr() === rxNostr
+                && getReconciliationPubkeyHex() === ownerPubkeyHex,
         });
         currentTask = task;
 

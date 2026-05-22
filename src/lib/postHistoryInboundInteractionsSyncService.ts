@@ -62,6 +62,7 @@ export interface PostHistoryInboundInteractionsSyncRequest {
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+    isActive?: () => boolean;
 }
 
 export interface PostHistoryInboundInteractionsSyncResult {
@@ -263,7 +264,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 }
             });
 
-            if (cancelled || fetchResult === "cancelled") {
+            if (cancelled || fetchResult === "cancelled" || params.isActive?.() === false) {
                 return this.buildCancelledResult({
                     since,
                     limit,
@@ -284,6 +285,7 @@ export class PostHistoryInboundInteractionsSyncService {
                 rawCount,
                 events: toResultEvents(eventsById),
                 reconcileDirectReplyCandidates: params.reconcileDirectReplyCandidates,
+                isActive: () => !cancelled && params.isActive?.() !== false,
             });
         })();
 
@@ -309,7 +311,11 @@ export class PostHistoryInboundInteractionsSyncService {
         reconcileDirectReplyCandidates?: (
             candidates: PostHistoryInboundDirectReplyCandidate[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        isActive: () => boolean;
     }): Promise<PostHistoryInboundInteractionsSyncResult> {
+        if (!input.isActive()) {
+            return this.buildCancelledResultFromFetchedEvents(input);
+        }
         const classifications: Record<PostHistoryInboundInteractionClassification["type"], number> = {
             "direct-reply": 0,
             "direct-reply-candidate": 0,
@@ -342,6 +348,9 @@ export class PostHistoryInboundInteractionsSyncService {
                 eventIds: candidateParentIds,
             }),
         );
+        if (!input.isActive()) {
+            return this.buildCancelledResultFromFetchedEvents(input);
+        }
         const directRepliesByParentId = new Map<string, PostHistoryReplyEventItem[]>();
         const directReplyCandidates: PostHistoryInboundDirectReplyCandidate[] = [];
 
@@ -383,6 +392,9 @@ export class PostHistoryInboundInteractionsSyncService {
         let savedParentEventIds: string[] = [];
         if (input.reconcileDirectReplyCandidates) {
             const reconciled = await input.reconcileDirectReplyCandidates(directReplyCandidates);
+            if (!input.isActive()) {
+                return this.buildCancelledResultFromFetchedEvents(input);
+            }
             savedParentEventIds = reconciled.savedParentEventIds;
             savedDirectReplyCount = reconciled.savedDirectReplyCount;
         } else {
@@ -392,6 +404,9 @@ export class PostHistoryInboundInteractionsSyncService {
                     events,
                     fetchedAt: input.fetchedAt,
                 });
+                if (!input.isActive()) {
+                    return this.buildCancelledResultFromFetchedEvents(input);
+                }
                 if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
                     savedParentEventIds.push(parentEventId);
                 }
@@ -401,6 +416,10 @@ export class PostHistoryInboundInteractionsSyncService {
 
         const saturated = input.events.length >= input.limit || input.rawCount >= input.limit;
         const maybeIncomplete = saturated;
+        if (!input.isActive()) {
+            return this.buildCancelledResultFromFetchedEvents(input);
+        }
+
         await this.syncStateRepository.save(input.ownerPubkeyHex, {
             lastSyncedAt: input.fetchedAt,
             lastDialogRefreshAt: input.reason === "dialog-open-refresh"
@@ -412,6 +431,9 @@ export class PostHistoryInboundInteractionsSyncService {
             saturated,
             maybeIncomplete,
         });
+        if (!input.isActive()) {
+            return this.buildCancelledResultFromFetchedEvents(input);
+        }
 
         return {
             status: input.status,
@@ -458,6 +480,22 @@ export class PostHistoryInboundInteractionsSyncService {
                 unsupported: 0,
             },
         };
+    }
+
+    private buildCancelledResultFromFetchedEvents(input: {
+        since: number;
+        limit: number;
+        relayUrls: string[];
+        rawCount: number;
+        events: Array<{ event: NostrEvent; relayUrls: string[] }>;
+    }): PostHistoryInboundInteractionsSyncResult {
+        return this.buildCancelledResult({
+            since: input.since,
+            limit: input.limit,
+            relayUrls: input.relayUrls,
+            rawCount: input.rawCount,
+            uniqueCount: input.events.length,
+        });
     }
 
     private resolveSince(lastSeenCreatedAt: number | null): number {

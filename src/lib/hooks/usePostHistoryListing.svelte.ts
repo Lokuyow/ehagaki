@@ -15,6 +15,10 @@ import {
     type PostHistoryRelayFetchTask,
 } from "../postHistoryRelayFetchService";
 import {
+    postHistoryLightweightSyncCoordinator,
+    type PostHistoryLightweightAuthoredSyncTask,
+} from "../postHistoryLightweightSyncCoordinator";
+import {
     collectPostHistoryMediaUrls,
     resolveSafePage,
     canContinueRelayHistory,
@@ -509,7 +513,7 @@ export function usePostHistoryListing({
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
     let activePubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
-    let currentFetchTask: PostHistoryRelayFetchTask | null = null;
+    let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1789,21 +1793,19 @@ export function usePostHistoryListing({
             return;
         }
 
-        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-            pubkeyHex,
+        const task = postHistoryLightweightSyncCoordinator.runAuthored(rxNostr, {
+            ownerPubkeyHex: pubkeyHex,
             relayConfig: getRelayConfig(),
             reason: "dialog-open-refresh",
             limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
             timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
+            onSavedSelfPosts: onSavedAuthoredPosts,
         });
         currentFetchTask = task;
 
-        const result = await task.promise;
-        let upsertSummary = {
-            insertedCount: 0,
-            updatedCount: 0,
-            unchangedCount: 0,
-        };
+        const lightweightResult = await task.promise;
+        const result = lightweightResult.fetchResult;
+        const upsertSummary = lightweightResult.upsertSummary;
 
         if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
             return;
@@ -1814,16 +1816,6 @@ export function usePostHistoryListing({
             return;
         }
 
-        if (result.events.length > 0) {
-            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
-                events: result.events,
-                fetchedAt: result.fetchedAt,
-            });
-            const savedEventIds = resolveFetchedAuthoredEventIds(result.events);
-            if (savedEventIds.length > 0) {
-                await onSavedAuthoredPosts(savedEventIds);
-            }
-        }
         if (!isCurrentFetchRequest(requestId) || !getShow()) {
             return;
         }

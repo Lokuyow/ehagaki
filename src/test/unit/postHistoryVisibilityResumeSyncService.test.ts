@@ -72,26 +72,24 @@ function createInboundResult() {
 describe("PostHistoryVisibilityResumeSyncService", () => {
     it("runs authored and inbound backward resume syncs and notifies saved self posts", async () => {
         const selfPost = createEvent();
-        const fetchLatest = vi.fn(() => ({
-            promise: Promise.resolve(createAuthoredResult(selfPost)),
+        const runAuthored = vi.fn(() => ({
+            promise: Promise.resolve({
+                fetchResult: createAuthoredResult(selfPost),
+                upsertSummary: { insertedCount: 1, updatedCount: 0, unchangedCount: 0 },
+                savedSelfPostEventIds: [selfPost.id],
+            }),
             cancel: vi.fn(),
+            joinedExisting: false,
         }));
-        const syncRecent = vi.fn(() => ({
+        const runInbound = vi.fn(() => ({
             promise: Promise.resolve(createInboundResult()),
             cancel: vi.fn(),
-        }));
-        const upsertFetchedEvents = vi.fn(async () => ({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
+            joinedExisting: false,
         }));
         const reconcileDirectReplyCandidates = vi.fn();
         const onSavedSelfPosts = vi.fn();
         const service = new PostHistoryVisibilityResumeSyncService({
-            postHistoryRelayFetchService: { fetchLatest } as any,
-            postHistoryInboundInteractionsSyncService: { syncRecent } as any,
-            postHistoryRepository: { upsertFetchedEvents } as any,
-            console: { warn: vi.fn() },
+            lightweightSyncCoordinator: { runAuthored, runInbound } as any,
         });
 
         const result = await service.syncAfterVisibilityResume({} as any, {
@@ -102,48 +100,44 @@ describe("PostHistoryVisibilityResumeSyncService", () => {
             onSavedSelfPosts,
         }).promise;
 
-        expect(fetchLatest).toHaveBeenCalledWith({} as any, {
-            pubkeyHex: OWNER_PUBKEY,
+        expect(runAuthored).toHaveBeenCalledWith({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
             relayConfig: null,
             reason: "visibility-resume",
             since: 140,
+            onSavedSelfPosts,
+            isActive: expect.any(Function),
         });
-        expect(syncRecent).toHaveBeenCalledWith({} as any, {
+        expect(runInbound).toHaveBeenCalledWith({} as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
             relayConfig: null,
             reason: "visibility-resume",
             reconcileDirectReplyCandidates,
+            isActive: expect.any(Function),
         });
-        expect(upsertFetchedEvents).toHaveBeenCalledWith({
-            events: createAuthoredResult(selfPost).events,
-            fetchedAt: 1_700_000_000_000,
-        });
-        expect(onSavedSelfPosts).toHaveBeenCalledWith([selfPost.id]);
         expect(result.savedSelfPostEventIds).toEqual([selfPost.id]);
     });
 
     it("cancels both resume tasks and does not save authored results afterwards", async () => {
-        let resolveAuthored!: (value: ReturnType<typeof createAuthoredResult>) => void;
-        const authoredPromise = new Promise<ReturnType<typeof createAuthoredResult>>((resolve) => {
+        let resolveAuthored!: (value: any) => void;
+        const authoredPromise = new Promise<any>((resolve) => {
             resolveAuthored = resolve;
         });
         const cancelAuthored = vi.fn();
         const cancelInbound = vi.fn();
-        const upsertFetchedEvents = vi.fn();
         const service = new PostHistoryVisibilityResumeSyncService({
-            postHistoryRelayFetchService: {
-                fetchLatest: vi.fn(() => ({
+            lightweightSyncCoordinator: {
+                runAuthored: vi.fn(() => ({
                     promise: authoredPromise,
                     cancel: cancelAuthored,
+                    joinedExisting: false,
                 })),
-            } as any,
-            postHistoryInboundInteractionsSyncService: {
-                syncRecent: vi.fn(() => ({
+                runInbound: vi.fn(() => ({
                     promise: Promise.resolve(createInboundResult()),
                     cancel: cancelInbound,
+                    joinedExisting: false,
                 })),
             } as any,
-            postHistoryRepository: { upsertFetchedEvents } as any,
         });
 
         const task = service.syncAfterVisibilityResume({} as any, {
@@ -151,11 +145,14 @@ describe("PostHistoryVisibilityResumeSyncService", () => {
             hiddenAtSeconds: 200,
         });
         task.cancel();
-        resolveAuthored(createAuthoredResult());
+        resolveAuthored({
+            fetchResult: createAuthoredResult(),
+            upsertSummary: { insertedCount: 0, updatedCount: 0, unchangedCount: 0 },
+            savedSelfPostEventIds: [],
+        });
         await task.promise;
 
         expect(cancelAuthored).toHaveBeenCalledOnce();
         expect(cancelInbound).toHaveBeenCalledOnce();
-        expect(upsertFetchedEvents).not.toHaveBeenCalled();
     });
 });

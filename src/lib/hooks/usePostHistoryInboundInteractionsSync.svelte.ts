@@ -4,6 +4,7 @@ import {
     postHistoryInboundInteractionsSyncService,
     type PostHistoryInboundInteractionsSyncTask,
 } from "../postHistoryInboundInteractionsSyncService";
+import { postHistoryLightweightSyncCoordinator } from "../postHistoryLightweightSyncCoordinator";
 import {
     postHistoryInboundInteractionsSyncStateRepository,
 } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
@@ -75,12 +76,22 @@ export function usePostHistoryInboundInteractionsSync({
         cancelCurrentSync();
         const activeRequestId = ++requestId;
         state.status = "syncing";
-        const task = postHistoryInboundInteractionsSyncService.syncRecent(rxNostr, {
-            ownerPubkeyHex,
-            relayConfig: getRelayConfig(),
-            reason,
-            reconcileDirectReplyCandidates,
-        });
+        const task = reason === "dialog-open-refresh"
+            ? postHistoryLightweightSyncCoordinator.runInbound(rxNostr, {
+                ownerPubkeyHex,
+                relayConfig: getRelayConfig(),
+                reason,
+                reconcileDirectReplyCandidates,
+            })
+            : {
+                ...postHistoryInboundInteractionsSyncService.syncRecent(rxNostr, {
+                    ownerPubkeyHex,
+                    relayConfig: getRelayConfig(),
+                    reason,
+                    reconcileDirectReplyCandidates,
+                }),
+                joinedExisting: false,
+            };
         currentTask = task;
 
         const result = await task.promise;
@@ -95,7 +106,11 @@ export function usePostHistoryInboundInteractionsSync({
 
         currentTask = null;
         state.status = "idle";
-        if (result.status === "cancelled" || result.savedParentEventIds.length === 0) {
+        if (
+            task.joinedExisting
+            || result.status === "cancelled"
+            || result.savedParentEventIds.length === 0
+        ) {
             return;
         }
 

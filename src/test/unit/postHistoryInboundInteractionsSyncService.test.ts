@@ -256,6 +256,44 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(result.savedParentEventIds).toEqual([OTHER_PARENT_ID]);
     });
+
+    it("fetch後にlightweight sessionが失効した結果は保存、state更新、reconciliationへ流さない", async () => {
+        let active = true;
+        const getExistingStarted = createDeferred<void>();
+        const getExistingFinished = createDeferred<string[]>();
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(createEvent({ id: "9".repeat(64) })));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const reconcileDirectReplyCandidates = vi.fn();
+        const postHistoryRepository = {
+            getExistingEventIdsForPubkey: vi.fn(async () => {
+                getExistingStarted.resolve();
+                return getExistingFinished.promise;
+            }),
+        };
+        const { service, postHistoryReplyEventsRepository, syncStateRepository } =
+            createService({ postHistoryRepository });
+
+        const task = service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "visibility-resume",
+            reconcileDirectReplyCandidates,
+            isActive: () => active,
+        });
+        await getExistingStarted.promise;
+        active = false;
+        getExistingFinished.resolve([PARENT_ID]);
+
+        const result = await task.promise;
+        expect(result.status).toBe("cancelled");
+        expect(reconcileDirectReplyCandidates).not.toHaveBeenCalled();
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(syncStateRepository.save).not.toHaveBeenCalled();
+    });
 });
 
 function createPacket(event: NostrEvent) {
@@ -263,4 +301,13 @@ function createPacket(event: NostrEvent) {
         event,
         from: "wss://relay.example.com",
     };
+}
+
+function createDeferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((nextResolve) => {
+        resolve = nextResolve;
+    });
+
+    return { promise, resolve };
 }
