@@ -110,6 +110,8 @@ function resolveLimit(
     limit: number | undefined,
 ): number {
     const fallback = reason === "dialog-open-refresh"
+        || reason === "foreground-periodic"
+        || reason === "visibility-resume"
         ? POST_HISTORY_INBOUND_INTERACTIONS_DIALOG_REFRESH_LIMIT
         : POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_DIALOG_LIMIT;
 
@@ -127,6 +129,8 @@ function resolveTimeoutMs(
     }
 
     return reason === "dialog-open-refresh"
+        || reason === "foreground-periodic"
+        || reason === "visibility-resume"
         ? POST_HISTORY_INBOUND_INTERACTIONS_DIALOG_REFRESH_TIMEOUT_MS
         : POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_DIALOG_TIMEOUT_MS;
 }
@@ -136,6 +140,8 @@ function resolveRelayLimit(
     relayLimit: number | undefined,
 ): number {
     const fallback = reason === "dialog-open-refresh"
+        || reason === "foreground-periodic"
+        || reason === "visibility-resume"
         ? POST_HISTORY_INBOUND_INTERACTIONS_DIALOG_REFRESH_RELAY_LIMIT
         : POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_DIALOG_RELAY_LIMIT;
 

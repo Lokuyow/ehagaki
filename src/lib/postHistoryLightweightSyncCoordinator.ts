@@ -20,7 +20,13 @@ import {
     type PostHistoryRepository,
     type PostHistoryUpsertFetchedEventsResult,
 } from "./storage/postHistoryRepository";
+import {
+    postHistoryAuthoredSyncStateRepository,
+    type PostHistoryAuthoredSyncStateRepository,
+} from "./storage/postHistoryAuthoredSyncStateRepository";
 import type { RelayConfig } from "./types";
+
+export const POST_HISTORY_FOREGROUND_PERIODIC_SYNC_COOLDOWN_MS = 2 * 60 * 1000;
 
 export type PostHistoryLightweightSyncReason =
     | "dialog-open-refresh"
@@ -31,7 +37,9 @@ export interface PostHistoryLightweightAuthoredSyncRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     reason: PostHistoryLightweightSyncReason;
+    kinds?: number[];
     since?: number;
+    until?: number;
     limit?: number;
     timeoutMs?: number;
     onSavedSelfPosts?: (eventIds: string[]) => void | Promise<void>;
@@ -73,16 +81,25 @@ export interface PostHistoryLightweightSyncCoordinatorDeps {
         "syncRecent"
     >;
     postHistoryRepository?: Pick<PostHistoryRepository, "upsertFetchedEvents">;
+    authoredSyncStateRepository?: Pick<
+        PostHistoryAuthoredSyncStateRepository,
+        "saveLatestObservedCreatedAt"
+    >;
+    now?: () => number;
 }
 
 type InFlightAuthored = {
     sourceTask: PostHistoryRelayFetchTask;
     promise: Promise<PostHistoryLightweightAuthoredSyncResult>;
+    leases: Set<symbol>;
+    cancelSource: () => void;
 };
 
 type InFlightInbound = {
     sourceTask: PostHistoryInboundInteractionsSyncTask;
     promise: Promise<PostHistoryInboundInteractionsSyncResult>;
+    leases: Set<symbol>;
+    cancelSource: () => void;
 };
 
 const EMPTY_UPSERT_SUMMARY: PostHistoryUpsertFetchedEventsResult = {
@@ -102,6 +119,11 @@ export class PostHistoryLightweightSyncCoordinator {
         "syncRecent"
     >;
     private postHistoryRepository: Pick<PostHistoryRepository, "upsertFetchedEvents">;
+    private authoredSyncStateRepository: Pick<
+        PostHistoryAuthoredSyncStateRepository,
+        "saveLatestObservedCreatedAt"
+    >;
+    private now: () => number;
     private inFlightAuthoredByOwner = new Map<string, InFlightAuthored>();
     private inFlightInboundByOwner = new Map<string, InFlightInbound>();
     private latestSuccessfulAuthoredAtByOwner = new Map<string, number>();
@@ -113,6 +135,9 @@ export class PostHistoryLightweightSyncCoordinator {
         this.postHistoryInboundInteractionsSyncService =
             deps.postHistoryInboundInteractionsSyncService ?? postHistoryInboundInteractionsSyncService;
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
+        this.authoredSyncStateRepository =
+            deps.authoredSyncStateRepository ?? postHistoryAuthoredSyncStateRepository;
+        this.now = deps.now ?? Date.now;
     }
 
     runAuthored(
@@ -121,23 +146,22 @@ export class PostHistoryLightweightSyncCoordinator {
     ): PostHistoryLightweightAuthoredSyncTask {
         const inFlight = this.inFlightAuthoredByOwner.get(params.ownerPubkeyHex);
         if (inFlight) {
-            return {
-                promise: inFlight.promise,
-                cancel: () => undefined,
-                joinedExisting: true,
-            };
+            return this.joinAuthored(params.ownerPubkeyHex, inFlight);
         }
 
-        let active = true;
+        const lease = Symbol("post-history-authored-lightweight-lease");
+        let sourceActive = true;
         const sourceTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
             reason: params.reason,
+            ...(params.kinds ? { kinds: params.kinds } : {}),
             ...(typeof params.since === "number" ? { since: params.since } : {}),
+            ...(typeof params.until === "number" ? { until: params.until } : {}),
             ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
             ...(typeof params.timeoutMs === "number" ? { timeoutMs: params.timeoutMs } : {}),
         });
-        const isActive = () => active && params.isActive?.() !== false;
+        const isActive = () => sourceActive && params.isActive?.() !== false;
         const promise = this.saveAuthored(sourceTask, params, isActive)
             .finally(() => {
                 const current = this.inFlightAuthoredByOwner.get(params.ownerPubkeyHex);
@@ -145,18 +169,20 @@ export class PostHistoryLightweightSyncCoordinator {
                     this.inFlightAuthoredByOwner.delete(params.ownerPubkeyHex);
                 }
             });
-        this.inFlightAuthoredByOwner.set(params.ownerPubkeyHex, { sourceTask, promise });
+        const inFlightAuthored: InFlightAuthored = {
+            sourceTask,
+            promise,
+            leases: new Set([lease]),
+            cancelSource: () => {
+                sourceActive = false;
+                sourceTask.cancel();
+            },
+        };
+        this.inFlightAuthoredByOwner.set(params.ownerPubkeyHex, inFlightAuthored);
 
         return {
             promise,
-            cancel: () => {
-                active = false;
-                sourceTask.cancel();
-                const current = this.inFlightAuthoredByOwner.get(params.ownerPubkeyHex);
-                if (current?.sourceTask === sourceTask) {
-                    this.inFlightAuthoredByOwner.delete(params.ownerPubkeyHex);
-                }
-            },
+            cancel: () => this.releaseAuthored(params.ownerPubkeyHex, inFlightAuthored, lease),
             joinedExisting: false,
         };
     }
@@ -167,15 +193,12 @@ export class PostHistoryLightweightSyncCoordinator {
     ): PostHistoryLightweightInboundSyncTask {
         const inFlight = this.inFlightInboundByOwner.get(params.ownerPubkeyHex);
         if (inFlight) {
-            return {
-                promise: inFlight.promise,
-                cancel: () => undefined,
-                joinedExisting: true,
-            };
+            return this.joinInbound(params.ownerPubkeyHex, inFlight);
         }
 
-        let active = true;
-        const isActive = () => active && params.isActive?.() !== false;
+        const lease = Symbol("post-history-inbound-lightweight-lease");
+        let sourceActive = true;
+        const isActive = () => sourceActive && params.isActive?.() !== false;
         const sourceTask = this.postHistoryInboundInteractionsSyncService.syncRecent(rxNostr, {
             ownerPubkeyHex: params.ownerPubkeyHex,
             relayConfig: params.relayConfig,
@@ -185,7 +208,7 @@ export class PostHistoryLightweightSyncCoordinator {
         });
         const promise = sourceTask.promise
             .then((result) => {
-                if (result.status === "success" || result.status === "timeout") {
+                if (result.status === "success" && isActive()) {
                     this.latestSuccessfulInboundAtByOwner.set(params.ownerPubkeyHex, result.fetchedAt);
                 }
                 return result;
@@ -196,20 +219,48 @@ export class PostHistoryLightweightSyncCoordinator {
                     this.inFlightInboundByOwner.delete(params.ownerPubkeyHex);
                 }
             });
-        this.inFlightInboundByOwner.set(params.ownerPubkeyHex, { sourceTask, promise });
+        const inFlightInbound: InFlightInbound = {
+            sourceTask,
+            promise,
+            leases: new Set([lease]),
+            cancelSource: () => {
+                sourceActive = false;
+                sourceTask.cancel();
+            },
+        };
+        this.inFlightInboundByOwner.set(params.ownerPubkeyHex, inFlightInbound);
 
         return {
             promise,
-            cancel: () => {
-                active = false;
-                sourceTask.cancel();
-                const current = this.inFlightInboundByOwner.get(params.ownerPubkeyHex);
-                if (current?.sourceTask === sourceTask) {
-                    this.inFlightInboundByOwner.delete(params.ownerPubkeyHex);
-                }
-            },
+            cancel: () => this.releaseInbound(params.ownerPubkeyHex, inFlightInbound, lease),
             joinedExisting: false,
         };
+    }
+
+    isForegroundPeriodicCooldownActive(
+        ownerPubkeyHex: string,
+        lane: "authored" | "inbound",
+        now = this.now(),
+    ): boolean {
+        const latestSuccessfulAt = lane === "authored"
+            ? this.latestSuccessfulAuthoredAtByOwner.get(ownerPubkeyHex)
+            : this.latestSuccessfulInboundAtByOwner.get(ownerPubkeyHex);
+        return typeof latestSuccessfulAt === "number"
+            && now - latestSuccessfulAt < POST_HISTORY_FOREGROUND_PERIODIC_SYNC_COOLDOWN_MS;
+    }
+
+    cancelOwnerTasks(ownerPubkeyHex: string): void {
+        const authored = this.inFlightAuthoredByOwner.get(ownerPubkeyHex);
+        if (authored) {
+            authored.cancelSource();
+            this.inFlightAuthoredByOwner.delete(ownerPubkeyHex);
+        }
+
+        const inbound = this.inFlightInboundByOwner.get(ownerPubkeyHex);
+        if (inbound) {
+            inbound.cancelSource();
+            this.inFlightInboundByOwner.delete(ownerPubkeyHex);
+        }
     }
 
     private async saveAuthored(
@@ -218,14 +269,26 @@ export class PostHistoryLightweightSyncCoordinator {
         isActive: () => boolean,
     ): Promise<PostHistoryLightweightAuthoredSyncResult> {
         const fetchResult = await task.promise;
-        if (!isActive() || fetchResult.status === "cancelled" || fetchResult.events.length === 0) {
+        if (!isActive() || fetchResult.status === "cancelled") {
             return { fetchResult, upsertSummary: EMPTY_UPSERT_SUMMARY, savedSelfPostEventIds: [] };
         }
 
-        const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
-            events: fetchResult.events,
-            fetchedAt: fetchResult.fetchedAt,
-        });
+        const upsertSummary = fetchResult.events.length > 0
+            ? await this.postHistoryRepository.upsertFetchedEvents({
+                events: fetchResult.events,
+                fetchedAt: fetchResult.fetchedAt,
+            })
+            : EMPTY_UPSERT_SUMMARY;
+        if (!isActive()) {
+            return { fetchResult, upsertSummary, savedSelfPostEventIds: [] };
+        }
+
+        if (fetchResult.status === "success") {
+            await this.authoredSyncStateRepository.saveLatestObservedCreatedAt(
+                params.ownerPubkeyHex,
+                fetchResult.newestCreatedAt,
+            );
+        }
         if (!isActive()) {
             return { fetchResult, upsertSummary, savedSelfPostEventIds: [] };
         }
@@ -234,11 +297,69 @@ export class PostHistoryLightweightSyncCoordinator {
         if (savedSelfPostEventIds.length > 0) {
             await params.onSavedSelfPosts?.(savedSelfPostEventIds);
         }
-        if (fetchResult.status === "success" || fetchResult.status === "timeout") {
+        if (fetchResult.status === "success" && isActive()) {
             this.latestSuccessfulAuthoredAtByOwner.set(params.ownerPubkeyHex, fetchResult.fetchedAt);
         }
 
         return { fetchResult, upsertSummary, savedSelfPostEventIds };
+    }
+
+    private joinAuthored(
+        ownerPubkeyHex: string,
+        inFlight: InFlightAuthored,
+    ): PostHistoryLightweightAuthoredSyncTask {
+        const lease = Symbol("post-history-authored-lightweight-join");
+        inFlight.leases.add(lease);
+        return {
+            promise: inFlight.promise,
+            cancel: () => this.releaseAuthored(ownerPubkeyHex, inFlight, lease),
+            joinedExisting: true,
+        };
+    }
+
+    private joinInbound(
+        ownerPubkeyHex: string,
+        inFlight: InFlightInbound,
+    ): PostHistoryLightweightInboundSyncTask {
+        const lease = Symbol("post-history-inbound-lightweight-join");
+        inFlight.leases.add(lease);
+        return {
+            promise: inFlight.promise,
+            cancel: () => this.releaseInbound(ownerPubkeyHex, inFlight, lease),
+            joinedExisting: true,
+        };
+    }
+
+    private releaseAuthored(
+        ownerPubkeyHex: string,
+        inFlight: InFlightAuthored,
+        lease: symbol,
+    ): void {
+        inFlight.leases.delete(lease);
+        if (inFlight.leases.size > 0) {
+            return;
+        }
+
+        inFlight.cancelSource();
+        if (this.inFlightAuthoredByOwner.get(ownerPubkeyHex) === inFlight) {
+            this.inFlightAuthoredByOwner.delete(ownerPubkeyHex);
+        }
+    }
+
+    private releaseInbound(
+        ownerPubkeyHex: string,
+        inFlight: InFlightInbound,
+        lease: symbol,
+    ): void {
+        inFlight.leases.delete(lease);
+        if (inFlight.leases.size > 0) {
+            return;
+        }
+
+        inFlight.cancelSource();
+        if (this.inFlightInboundByOwner.get(ownerPubkeyHex) === inFlight) {
+            this.inFlightInboundByOwner.delete(ownerPubkeyHex);
+        }
     }
 }
 

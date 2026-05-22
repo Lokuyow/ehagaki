@@ -172,6 +172,7 @@
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
+  import { usePostHistoryForegroundPeriodicSync } from "./lib/hooks/usePostHistoryForegroundPeriodicSync.svelte";
   import { usePostHistoryVisibilityResumeSync } from "./lib/hooks/usePostHistoryVisibilityResumeSync.svelte";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
@@ -447,6 +448,18 @@
   });
 
   usePostHistoryVisibilityResumeSync({
+    getIsAuthenticated: () => isAuthenticated,
+    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    getRxNostr: () => rxNostr,
+    getRelayConfig: () => relayConfigStore.value,
+    getReconciliationPubkeyHex: () =>
+      postHistoryInboundReplyReconciliation.state.activePubkeyHex,
+    reconcileDirectReplyCandidates:
+      postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
+    onSavedSelfPosts: handleSavedSelfPosts,
+  });
+
+  usePostHistoryForegroundPeriodicSync({
     getIsAuthenticated: () => isAuthenticated,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,

@@ -78,6 +78,12 @@ function createInboundResult() {
     } as const;
 }
 
+function createAuthoredStateRepository() {
+    return {
+        saveLatestObservedCreatedAt: vi.fn(async () => null),
+    };
+}
+
 describe("PostHistoryLightweightSyncCoordinator", () => {
     it("dedupes same-owner authored lightweight sync across reasons and fires save side effects once", async () => {
         const deferred = createDeferred<ReturnType<typeof createAuthoredResult>>();
@@ -96,6 +102,7 @@ describe("PostHistoryLightweightSyncCoordinator", () => {
             postHistoryRelayFetchService: { fetchLatest } as any,
             postHistoryInboundInteractionsSyncService: { syncRecent: vi.fn() } as any,
             postHistoryRepository: { upsertFetchedEvents } as any,
+            authoredSyncStateRepository: createAuthoredStateRepository(),
         });
 
         const resume = coordinator.runAuthored({} as any, {
@@ -138,6 +145,7 @@ describe("PostHistoryLightweightSyncCoordinator", () => {
                     unchangedCount: 1,
                 })),
             } as any,
+            authoredSyncStateRepository: createAuthoredStateRepository(),
         });
 
         const dialog = coordinator.runInbound({} as any, {
@@ -179,6 +187,7 @@ describe("PostHistoryLightweightSyncCoordinator", () => {
             postHistoryRelayFetchService: { fetchLatest } as any,
             postHistoryInboundInteractionsSyncService: { syncRecent: vi.fn() } as any,
             postHistoryRepository: { upsertFetchedEvents: vi.fn() } as any,
+            authoredSyncStateRepository: createAuthoredStateRepository(),
         });
 
         const first = coordinator.runAuthored({} as any, {
@@ -193,5 +202,53 @@ describe("PostHistoryLightweightSyncCoordinator", () => {
 
         expect(next.joinedExisting).toBe(false);
         expect(fetchLatest).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps a shared authored task alive when one lease closes and tracks success cooldown only", async () => {
+        let now = 1_000;
+        const deferred = createDeferred<ReturnType<typeof createAuthoredResult>>();
+        const cancel = vi.fn();
+        const fetchLatest = vi.fn(() => ({
+            promise: deferred.promise,
+            cancel,
+        }));
+        const authoredSyncStateRepository = createAuthoredStateRepository();
+        const coordinator = new PostHistoryLightweightSyncCoordinator({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryInboundInteractionsSyncService: { syncRecent: vi.fn() } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn(async () => ({
+                    insertedCount: 1,
+                    updatedCount: 0,
+                    unchangedCount: 0,
+                })),
+            } as any,
+            authoredSyncStateRepository,
+            now: () => now,
+        });
+
+        const dialog = coordinator.runAuthored({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+        });
+        const periodic = coordinator.runAuthored({} as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "foreground-periodic",
+        });
+        dialog.cancel();
+        deferred.resolve(createAuthoredResult());
+        await periodic.promise;
+
+        expect(cancel).not.toHaveBeenCalled();
+        expect(authoredSyncStateRepository.saveLatestObservedCreatedAt).toHaveBeenCalledWith(
+            OWNER_PUBKEY,
+            100,
+        );
+        expect(coordinator.isForegroundPeriodicCooldownActive(OWNER_PUBKEY, "authored", 1_001))
+            .toBe(true);
+
+        now += 2 * 60 * 1000;
+        expect(coordinator.isForegroundPeriodicCooldownActive(OWNER_PUBKEY, "authored", now))
+            .toBe(false);
     });
 });
