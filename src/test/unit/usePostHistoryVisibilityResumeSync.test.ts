@@ -1,5 +1,6 @@
 import { cleanup, render, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import PostHistoryShortHiddenRealtimeRecoveryHarness from "./fixtures/PostHistoryShortHiddenRealtimeRecoveryHarness.svelte";
 import PostHistoryVisibilityResumeSyncHarness from "./fixtures/PostHistoryVisibilityResumeSyncHarness.svelte";
 
 const OWNER_PUBKEY = "a".repeat(64);
@@ -12,9 +13,26 @@ const syncAfterVisibilityResume = vi.hoisted(() => vi.fn(() => ({
     }),
     cancel: vi.fn(),
 })));
+const {
+    subscribeAuthoredRealtime,
+    subscribeInboundRealtime,
+} = vi.hoisted(() => ({
+    subscribeAuthoredRealtime: vi.fn(() => ({
+        stop: vi.fn(),
+    })),
+    subscribeInboundRealtime: vi.fn(() => ({
+        stop: vi.fn(),
+    })),
+}));
 
 vi.mock("../../lib/postHistoryVisibilityResumeSyncService", () => ({
     postHistoryVisibilityResumeSyncService: { syncAfterVisibilityResume },
+}));
+vi.mock("../../lib/postHistoryAuthoredPostsRealtimeService", () => ({
+    postHistoryAuthoredPostsRealtimeService: { subscribe: subscribeAuthoredRealtime },
+}));
+vi.mock("../../lib/postHistoryInboundInteractionsRealtimeService", () => ({
+    postHistoryInboundInteractionsRealtimeService: { subscribe: subscribeInboundRealtime },
 }));
 
 function createRxNostr() {
@@ -36,6 +54,8 @@ describe("usePostHistoryVisibilityResumeSync", () => {
 
     beforeEach(() => {
         syncAfterVisibilityResume.mockClear();
+        subscribeAuthoredRealtime.mockClear();
+        subscribeInboundRealtime.mockClear();
         nowMs = 1_000_000;
         setVisibilityState("visible");
     });
@@ -84,5 +104,32 @@ describe("usePostHistoryVisibilityResumeSync", () => {
             ownerPubkeyHex: OWNER_PUBKEY,
             hiddenAtSeconds: 1_000,
         }));
+    });
+
+    it("keeps realtime recovery for a reply and self post missed during a 29 second hidden gap", async () => {
+        const rxNostr = createRxNostr();
+        render(PostHistoryShortHiddenRealtimeRecoveryHarness, {
+            props: {
+                pubkeyHex: OWNER_PUBKEY,
+                rxNostr,
+                now: () => nowMs,
+            },
+        });
+
+        await waitFor(() => {
+            expect(subscribeAuthoredRealtime).toHaveBeenCalledOnce();
+            expect(subscribeInboundRealtime).toHaveBeenCalledOnce();
+        });
+
+        setVisibilityState("hidden");
+        // A self post and a reply may arrive while Forward subscriptions are stopped here.
+        nowMs += 29_000;
+        setVisibilityState("visible");
+
+        await waitFor(() => {
+            expect(subscribeAuthoredRealtime).toHaveBeenCalledTimes(2);
+            expect(subscribeInboundRealtime).toHaveBeenCalledTimes(2);
+        });
+        expect(syncAfterVisibilityResume).not.toHaveBeenCalled();
     });
 });
