@@ -45,7 +45,6 @@ import {
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
 import { postHistoryReplyEventsRepository } from "../storage/postHistoryReplyEventsRepository";
-import { postHistoryInboundInteractionsSyncStateRepository } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
 import {
     buildPostHistoryVisibleKindsKey,
     postHistoryVisibleRangeRepository,
@@ -2416,7 +2415,6 @@ export function usePostHistoryListing({
                 postHistoryReplyEventsRepository.deleteForPostHistoryPubkey(pubkeyHex),
                 postHistoryRepository.deleteForPubkey(pubkeyHex),
                 postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
-                postHistoryInboundInteractionsSyncStateRepository.clearForPubkey(pubkeyHex),
             ]);
         } catch {
             clearCurrentViewRefetchFeedback();

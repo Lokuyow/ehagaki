@@ -55,13 +55,13 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deleteCancel': 'キャンセル',
         'postHistory.deleteSending': '送信中',
         'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
-        'postHistory.deleteLocalHistory': 'ローカル投稿履歴を全削除',
-        'postHistory.deleteLocalHistoryTitle': 'ローカル投稿履歴を全削除',
-        'postHistory.deleteLocalHistoryDescription': 'このアカウントのローカル履歴だけを削除します',
-        'postHistory.deleteLocalHistoryConfirm': '全削除',
+        'postHistory.deleteLocalHistory': '保存済み投稿履歴をクリア',
+        'postHistory.deleteLocalHistoryTitle': '保存済み投稿履歴をクリア',
+        'postHistory.deleteLocalHistoryDescription': 'このアカウントについて、この端末に保存された投稿履歴、関連キャッシュ、表示位置の記録をクリアします。Nostrリレー上の投稿は削除されません。投稿履歴は、後で同期や再取得によって再び表示される場合があります。',
+        'postHistory.deleteLocalHistoryConfirm': 'クリアする',
         'postHistory.deleteLocalHistoryCancel': 'キャンセル',
-        'postHistory.deleteLocalHistorySuccess': 'ローカル投稿履歴を削除しました',
-        'postHistory.deleteLocalHistoryFailed': 'ローカル投稿履歴の削除に失敗しました',
+        'postHistory.deleteLocalHistorySuccess': '保存済み投稿履歴をクリアしました',
+        'postHistory.deleteLocalHistoryFailed': '保存済み投稿履歴のクリアに失敗しました',
         'postHistory.deletedBadge': '削除リクエスト済み',
         'postHistory.eventId': 'event id',
         'postHistory.media': 'メディア',
@@ -160,6 +160,13 @@ const visibleRangeRepositoryMock = vi.hoisted(() => ({
 const inboundInteractionsSyncStateRepositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
+    clearForPubkey: vi.fn(),
+}));
+
+const authoredSyncStateRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+    save: vi.fn(),
+    saveLatestObservedCreatedAt: vi.fn(),
     clearForPubkey: vi.fn(),
 }));
 
@@ -303,6 +310,10 @@ vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
 
 vi.mock('../../lib/storage/postHistoryInboundInteractionsSyncStateRepository', () => ({
     postHistoryInboundInteractionsSyncStateRepository: inboundInteractionsSyncStateRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryAuthoredSyncStateRepository', () => ({
+    postHistoryAuthoredSyncStateRepository: authoredSyncStateRepositoryMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryDeletionRequestsRepository', () => ({
@@ -684,6 +695,7 @@ describe('PostHistoryDialog', () => {
         inboundInteractionsSyncStateRepositoryMock.get.mockResolvedValue(null);
         inboundInteractionsSyncStateRepositoryMock.save.mockResolvedValue({});
         inboundInteractionsSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+        authoredSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
@@ -3844,7 +3856,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+    it('[delete-local-history] 保存済み投稿履歴クリアは ConfirmDialog を経由し、同期進捗を維持して空状態へ戻す', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'local-history-post', content: '削除対象' }),
@@ -3863,21 +3875,27 @@ describe('PostHistoryDialog', () => {
         });
 
         await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('menuitem', { name: 'ローカル投稿履歴を全削除' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
 
         expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('このアカウントのローカル履歴だけを削除します')).toHaveLength(2);
+        expect(await screen.findByText('保存済み投稿履歴をクリア')).toBeTruthy();
+        const descriptions = await screen.findAllByText(/Nostrリレー上の投稿は削除されません/);
+        expect(descriptions).toHaveLength(2);
+        expect(descriptions[0]?.textContent).toContain('後で同期や再取得によって再び表示される場合があります');
+        expect(screen.queryByText(/同期記録/)).toBeNull();
+        expect(screen.queryByText(/元に戻せません/)).toBeNull();
 
         repositoryMock.countForPubkey.mockResolvedValue(0);
         repositoryMock.getPage.mockResolvedValue([]);
 
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'クリアする' }));
 
         await waitFor(() => {
             expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(authoredSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
+            expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(screen.queryByText('削除対象')).toBeNull();
         });
