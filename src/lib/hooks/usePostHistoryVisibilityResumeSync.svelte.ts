@@ -10,6 +10,8 @@ import {
 } from "../postHistoryVisibilityResumeSyncService";
 import type { RelayConfig } from "../types";
 
+export const POST_HISTORY_VISIBILITY_RESUME_MIN_HIDDEN_SECONDS = 30;
+
 interface UsePostHistoryVisibilityResumeSyncParams {
     getIsAuthenticated: () => boolean;
     getPubkeyHex: () => string | null | undefined;
@@ -62,9 +64,13 @@ export function usePostHistoryVisibilityResumeSync({
 
     function recordVisibleResume(): void {
         const hiddenAtSeconds = state.hiddenAtSeconds;
+        const visibleAtSeconds = Math.max(0, Math.floor(now() / 1000));
         state.visible = true;
         state.hiddenAtSeconds = null;
-        if (typeof hiddenAtSeconds === "number") {
+        if (
+            typeof hiddenAtSeconds === "number"
+            && visibleAtSeconds - hiddenAtSeconds >= POST_HISTORY_VISIBILITY_RESUME_MIN_HIDDEN_SECONDS
+        ) {
             state.pendingResumeSince = hiddenAtSeconds;
         }
     }
