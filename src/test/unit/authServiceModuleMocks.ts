@@ -9,6 +9,7 @@ vi.mock('nip07-awaiter', () => ({
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
         connect: vi.fn(),
+        startNostrConnect: vi.fn(),
         reconnect: vi.fn(),
         bindSessionPersistence: vi.fn(),
         disconnect: vi.fn().mockResolvedValue(undefined),

@@ -15,3 +15,7 @@ export function getNip46SessionStorageKey(pubkeyHex?: string): string {
 export function getParentClientSessionStorageKey(pubkeyHex: string): string {
     return STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex;
 }
+
+export function getNip46ConnectRelaysStorageKey(): string {
+    return STORAGE_KEYS.NOSTR_NIP46_CONNECT_RELAYS;
+}

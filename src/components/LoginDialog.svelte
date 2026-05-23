@@ -2,7 +2,11 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
-    import { BUNKER_REGEX } from "../lib/nip46Service";
+    import {
+        BUNKER_REGEX,
+        sanitizeNip46NostrConnectRelays,
+    } from "../lib/nip46Service";
+    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -16,11 +20,18 @@
         onParentClientLogin?: () => Promise<string | undefined>;
         onNip07Login: () => Promise<string | undefined>;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
+        onNostrConnectStart?: (relays: string[]) => Promise<string | undefined>;
+        onNostrConnectCancel?: () => void;
         isParentClientAvailable?: boolean;
         isLoadingParentClient?: boolean;
         isNip07ExtensionAvailable?: boolean;
         isLoadingNip07?: boolean;
         isLoadingNip46?: boolean;
+        isWaitingNip46NostrConnect?: boolean;
+        nip46NostrConnectUri?: string | null;
+        nip46NostrConnectErrorMessage?: string;
+        nostrConnectRelaySuggestions?: string[];
+        initialNostrConnectRelayInput?: string;
         isAddAccountMode?: boolean;
     }
 
@@ -32,11 +43,18 @@
         onParentClientLogin,
         onNip07Login,
         onNip46Login,
+        onNostrConnectStart,
+        onNostrConnectCancel,
         isParentClientAvailable = false,
         isLoadingParentClient = false,
         isNip07ExtensionAvailable = false,
         isLoadingNip07 = false,
         isLoadingNip46 = false,
+        isWaitingNip46NostrConnect = false,
+        nip46NostrConnectUri = null,
+        nip46NostrConnectErrorMessage = "",
+        nostrConnectRelaySuggestions = [],
+        initialNostrConnectRelayInput = "",
         isAddAccountMode = false,
     }: Props = $props();
 
@@ -61,20 +79,31 @@
 
     // --- NIP-46 bunker URL ---
     let bunkerUrl = $state("");
+    let nostrConnectRelayInput = $state("");
     let bunkerInputEl: HTMLInputElement | null = $state(null);
     let parentClientErrorMessage = $state("");
     let nip07ErrorMessage = $state("");
     let nip46ErrorMessage = $state("");
+    let nostrConnectLocalErrorMessage = $state("");
+    let hasCopiedNostrConnectUri = $state(false);
 
     // --- ダイアログを開くたびに入力をクリア ---
     $effect(() => {
         if (show) {
             secretKey = "";
             bunkerUrl = "";
+            nostrConnectRelayInput = initialNostrConnectRelayInput;
             parentClientErrorMessage = "";
             nip07ErrorMessage = "";
             nip46ErrorMessage = "";
+            nostrConnectLocalErrorMessage = "";
+            hasCopiedNostrConnectUri = false;
         }
+    });
+
+    $effect(() => {
+        nip46NostrConnectUri;
+        hasCopiedNostrConnectUri = false;
     });
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
@@ -169,6 +198,39 @@
         }
     }
 
+    function resolveNostrConnectErrorMessage(errorMessage: string): string {
+        switch (errorMessage) {
+            case "At least one public wss relay is required for nostrconnect":
+                return $_("loginDialog.nostrconnect_relay_invalid");
+            case "Nostr Connect timed out before the remote signer connected":
+                return $_("loginDialog.nostrconnect_timeout");
+            case "Timed out waiting for final relay list":
+            case "Remote signer did not return final relay list":
+            case "Remote signer returned an invalid final relay list":
+            case "Remote signer returned an unsupported final relay":
+                return $_(
+                    "loginDialog.nostrconnect_relay_reconciliation_failed",
+                );
+            case "Nostr Connect connection was cancelled":
+                return "";
+            default:
+                return errorMessage;
+        }
+    }
+
+    function formatNostrConnectRelays(relays: string[]): string {
+        return relays.join("\n");
+    }
+
+    function parseNostrConnectRelays(input: string): string[] {
+        return sanitizeNip46NostrConnectRelays(
+            input
+                .split(/[\s,]+/)
+                .map((relay) => relay.trim())
+                .filter((relay) => relay.length > 0),
+        );
+    }
+
     async function handleNip07Login() {
         nip07ErrorMessage = "";
         const errorMessage = await onNip07Login?.();
@@ -245,6 +307,68 @@
         nip46ErrorMessage = "";
     }
 
+    async function handleNostrConnectStart() {
+        nostrConnectLocalErrorMessage = "";
+        const trimmed = nostrConnectRelayInput.trim();
+
+        if (!trimmed) {
+            nostrConnectLocalErrorMessage = $_(
+                "loginDialog.nostrconnect_relay_required",
+            );
+            return;
+        }
+
+        const relays = parseNostrConnectRelays(trimmed);
+        if (relays.length === 0) {
+            nostrConnectLocalErrorMessage = $_(
+                "loginDialog.nostrconnect_relay_invalid",
+            );
+            return;
+        }
+
+        nostrConnectRelayInput = formatNostrConnectRelays(relays);
+        const errorMessage = await onNostrConnectStart?.(relays);
+        if (errorMessage) {
+            nostrConnectLocalErrorMessage =
+                resolveNostrConnectErrorMessage(errorMessage);
+        }
+    }
+
+    function applyNostrConnectRelaySuggestion(relay: string) {
+        const relays = parseNostrConnectRelays(nostrConnectRelayInput);
+        relays.push(relay);
+        nostrConnectRelayInput = formatNostrConnectRelays(
+            sanitizeNip46NostrConnectRelays(relays),
+        );
+        nostrConnectLocalErrorMessage = "";
+    }
+
+    async function handleCopyNostrConnectUri() {
+        if (!nip46NostrConnectUri) {
+            return;
+        }
+
+        const copied = await tryCopyToClipboard(
+            nip46NostrConnectUri,
+            "nostrconnect",
+        );
+        hasCopiedNostrConnectUri = copied;
+    }
+
+    function handleNostrConnectCancel() {
+        nostrConnectLocalErrorMessage = "";
+        onNostrConnectCancel?.();
+    }
+
+    let resolvedRemoteNostrConnectErrorMessage = $derived(
+        nip46NostrConnectErrorMessage
+            ? resolveNostrConnectErrorMessage(nip46NostrConnectErrorMessage)
+            : "",
+    );
+    let displayedNostrConnectErrorMessage = $derived(
+        resolvedRemoteNostrConnectErrorMessage || nostrConnectLocalErrorMessage,
+    );
+
     // 新しいフォームsubmit用ハンドラ
     function handleFormSubmit(event: Event) {
         event.preventDefault();
@@ -289,7 +413,7 @@
                     ? 'loading'
                     : ''}"
                 onClick={handleParentClientLogin}
-                disabled={isLoadingParentClient}
+                disabled={isLoadingParentClient || isWaitingNip46NostrConnect}
             >
                 {#if isLoadingParentClient}
                     <LoadingPlaceholder
@@ -330,7 +454,9 @@
                 ? 'loading'
                 : ''}"
             onClick={handleNip07Login}
-            disabled={isLoadingNip07 || !isNip07Available}
+            disabled={isLoadingNip07 ||
+                !isNip07Available ||
+                isWaitingNip46NostrConnect}
         >
             {#if isLoadingNip07}
                 <LoadingPlaceholder
@@ -382,7 +508,7 @@
                     required
                     autocomplete="off"
                     bind:this={bunkerInputEl}
-                    disabled={isLoadingNip46}
+                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
                     oninput={() => {
                         nip46ErrorMessage = "";
                         if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
@@ -392,7 +518,7 @@
                     variant="primary"
                     shape="square"
                     type="submit"
-                    disabled={isLoadingNip46}
+                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
                     className="bunker-connect-btn u-control {isLoadingNip46
                         ? 'loading'
                         : ''}"
@@ -416,6 +542,116 @@
                     role="alert"
                 >
                     {nip46ErrorMessage}
+                </div>
+            {/if}
+        </form>
+    </div>
+
+    <div class="divider">
+        <span>or</span>
+    </div>
+
+    <div class="nostrconnect-section">
+        <div class="nostrconnect-heading-row">
+            <h3>{$_("loginDialog.nostrconnect_input_title")}</h3>
+        </div>
+
+        <div class="section-feedback info">
+            {$_("loginDialog.nostrconnect_relay_hint")}
+        </div>
+
+        <form
+            novalidate
+            onsubmit={(event) => {
+                event.preventDefault();
+                handleNostrConnectStart();
+            }}
+        >
+            <textarea
+                bind:value={nostrConnectRelayInput}
+                placeholder={$_("loginDialog.nostrconnect_relay_placeholder")}
+                class="nostrconnect-relay-input"
+                rows="3"
+                disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
+                oninput={() => {
+                    nostrConnectLocalErrorMessage = "";
+                }}
+            ></textarea>
+
+            {#if nostrConnectRelaySuggestions.length > 0}
+                <div class="relay-suggestion-list">
+                    {#each nostrConnectRelaySuggestions as relay}
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            shape="pill"
+                            className="relay-suggestion-btn"
+                            onClick={() =>
+                                applyNostrConnectRelaySuggestion(relay)}
+                            disabled={isLoadingNip46 ||
+                                isWaitingNip46NostrConnect}
+                        >
+                            {relay}
+                        </Button>
+                    {/each}
+                </div>
+            {/if}
+
+            <div class="nostrconnect-action-row">
+                <Button
+                    variant="primary"
+                    type="submit"
+                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
+                    className="nostrconnect-generate-btn u-control {isLoadingNip46
+                        ? 'loading'
+                        : ''}"
+                >
+                    {#if isLoadingNip46}
+                        <LoadingPlaceholder
+                            text={true}
+                            showLoader={true}
+                            customClass="bunker-connect-placeholder"
+                        />
+                    {:else}
+                        {$_("loginDialog.nostrconnect_generate")}
+                    {/if}
+                </Button>
+            </div>
+
+            {#if isWaitingNip46NostrConnect && nip46NostrConnectUri}
+                <div class="nostrconnect-code-card">
+                    <div class="section-feedback info">
+                        {$_("loginDialog.nostrconnect_waiting")}
+                    </div>
+                    <div class="nostrconnect-uri">{nip46NostrConnectUri}</div>
+                    <div class="nostrconnect-code-actions">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={handleCopyNostrConnectUri}
+                        >
+                            {hasCopiedNostrConnectUri
+                                ? $_("loginDialog.nostrconnect_copied")
+                                : $_("loginDialog.nostrconnect_copy")}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={handleNostrConnectCancel}
+                        >
+                            {$_("loginDialog.nostrconnect_cancel_waiting")}
+                        </Button>
+                    </div>
+                </div>
+            {/if}
+
+            {#if displayedNostrConnectErrorMessage}
+                <div
+                    class="section-feedback error"
+                    aria-live="polite"
+                    role="alert"
+                >
+                    {displayedNostrConnectErrorMessage}
                 </div>
             {/if}
         </form>
@@ -453,6 +689,7 @@
                     maxlength="63"
                     bind:this={inputEl}
                     title={$_("loginDialog.hint_input_secret")}
+                    disabled={isWaitingNip46NostrConnect}
                     onkeydown={(e) => {
                         if (e.key === "Enter") handleSave();
                     }}
@@ -466,6 +703,7 @@
                     variant="primary"
                     shape="square"
                     type="submit"
+                    disabled={isWaitingNip46NostrConnect}
                     className="save-btn u-control"
                 >
                     {$_("loginDialog.save")}
@@ -608,8 +846,16 @@
         height: 100px;
     }
 
+    .nostrconnect-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
     .secret-heading-row,
-    .bunker-heading-row {
+    .bunker-heading-row,
+    .nostrconnect-heading-row {
         display: flex;
         gap: 6px;
         justify-content: center;
@@ -637,8 +883,58 @@
     }
 
     .secret-heading-row h3,
-    .bunker-heading-row h3 {
+    .bunker-heading-row h3,
+    .nostrconnect-heading-row h3 {
         margin: 0;
+    }
+
+    .nostrconnect-relay-input {
+        width: 100%;
+        min-height: 92px;
+        resize: vertical;
+        font-family: monospace;
+        font-size: 0.95rem;
+        padding: 0.75rem;
+        background-color: var(--btn-bg);
+        border: 1px solid var(--border-hr);
+        box-sizing: border-box;
+    }
+
+    .relay-suggestion-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    :global(.relay-suggestion-btn) {
+        max-width: 100%;
+        word-break: break-all;
+    }
+
+    .nostrconnect-action-row,
+    .nostrconnect-code-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+    }
+
+    .nostrconnect-code-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .nostrconnect-uri {
+        padding: 10px;
+        background: var(--btn-bg);
+        border: 1px solid var(--border-hr);
+        font-family: monospace;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        word-break: break-all;
     }
 
     .secret-icon {

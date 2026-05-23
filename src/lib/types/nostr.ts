@@ -23,12 +23,18 @@ export interface HashtagData {
 }
 
 // NIP-46 session data
+export type Nip46RelayResolution =
+    | 'signer-negotiated'
+    | 'signer-confirmed-unchanged'
+    | 'client-initial-fallback';
+
 export interface Nip46SessionData {
     clientSecretKeyHex: string;
     remoteSignerPubkey: string;
     relays: string[];
     userPubkey: string;
     pingVerified?: boolean;
+    relayResolution?: Nip46RelayResolution;
 }
 
 export type ParentClientCapability =

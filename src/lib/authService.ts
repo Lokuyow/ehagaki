@@ -12,8 +12,15 @@ import {
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
 import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
 import { resetManagedAccountData } from './accountDataReset';
+import type { Nip46PendingNostrConnectSession } from './nip46Service';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
+
+export interface PendingNip46AuthSession {
+    connectionUri: string;
+    completion: Promise<AuthResult>;
+    cancel: () => Promise<void>;
+}
 
 // --- メインのAuthServiceクラス ---
 export class AuthService {
@@ -85,19 +92,28 @@ export class AuthService {
     async authenticateWithNip46(bunkerUrl: string): Promise<AuthResult> {
         try {
             const pubkeyHex = await this.runtime.nip46Svc.connect(bunkerUrl);
-            applyPublicKeyAuth('nip46', pubkeyHex, {
-                setNip07AuthFn: this.runtime.setNip07AuthFn,
-                setNip46AuthFn: this.runtime.setNip46AuthFn,
-                setParentClientAuthFn: this.runtime.setParentClientAuthFn,
-            });
-            this.runtime.nip46Svc.saveSession(this.runtime.localStorage, pubkeyHex);
-            this.accountManager?.addAccount(pubkeyHex, 'nip46');
-            return { success: true, pubkeyHex };
+            return this.finalizeNip46Authentication(pubkeyHex);
         } catch (error) {
             this.runtime.console.error('NIP-46認証エラー:', error);
             const msg = error instanceof Error ? error.message : 'nip46_connection_failed';
             return { success: false, error: msg };
         }
+    }
+
+    async startNip46NostrConnect(
+        relays: string[],
+        timeoutMs?: number,
+    ): Promise<PendingNip46AuthSession> {
+        const pending = await this.runtime.nip46Svc.startNostrConnect(
+            relays,
+            timeoutMs,
+        );
+
+        return {
+            connectionUri: pending.connectionUri,
+            completion: this.wrapPendingNip46Authentication(pending),
+            cancel: pending.cancel,
+        };
     }
 
     // --- 親クライアント連携認証 ---
@@ -213,6 +229,36 @@ export class AuthService {
         } catch (error) {
             this.runtime.console.error('認証初期化失敗:', error);
             return { hasAuth: false };
+        }
+    }
+
+    private async finalizeNip46Authentication(
+        pubkeyHex: string,
+    ): Promise<AuthResult> {
+        applyPublicKeyAuth('nip46', pubkeyHex, {
+            setNip07AuthFn: this.runtime.setNip07AuthFn,
+            setNip46AuthFn: this.runtime.setNip46AuthFn,
+            setParentClientAuthFn: this.runtime.setParentClientAuthFn,
+        });
+        this.runtime.nip46Svc.saveSession(this.runtime.localStorage, pubkeyHex);
+        this.accountManager?.addAccount(pubkeyHex, 'nip46');
+        return { success: true, pubkeyHex };
+    }
+
+    private async wrapPendingNip46Authentication(
+        pending: Nip46PendingNostrConnectSession,
+    ): Promise<AuthResult> {
+        try {
+            const pubkeyHex = await pending.completion;
+            return await this.finalizeNip46Authentication(pubkeyHex);
+        } catch (error) {
+            this.runtime.console.error('NIP-46 nostrconnect認証エラー:', error);
+            return {
+                success: false,
+                error: error instanceof Error
+                    ? error.message
+                    : 'nip46_connection_failed',
+            };
         }
     }
 

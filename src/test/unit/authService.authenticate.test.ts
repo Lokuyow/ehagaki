@@ -240,6 +240,59 @@ describe('AuthService.authenticateWithNip46', () => {
         expect(result.success).toBe(false);
         expect(result.error).toBe('Connection timeout');
     });
+
+    it('nostrconnect 待機成功で setNip46Auth + session保存 + addAccount を行う', async () => {
+        const validPubkey = 'cd'.repeat(32);
+        const { nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
+            connectionUri: 'nostrconnect://client-pubkey?relay=wss://relay',
+            completion: Promise.resolve(validPubkey),
+            cancel: vi.fn().mockResolvedValue(undefined),
+        } as any);
+        vi.mocked(nip46Service.saveSession).mockImplementation(() => { });
+
+        const service = new AuthService(mockDependencies);
+        const mockAccountManager = createMockAccountManager();
+        service.setAccountManager(mockAccountManager as any);
+
+        const pending = await service.startNip46NostrConnect(['wss://relay']);
+        const result = await pending.completion;
+
+        expect(pending.connectionUri).toContain('nostrconnect://');
+        expect(result).toEqual({ success: true, pubkeyHex: validPubkey });
+        expect(nip46Service.startNostrConnect).toHaveBeenCalledWith(
+            ['wss://relay'],
+            undefined,
+        );
+        expect(mockDependencies.setNip46Auth).toHaveBeenCalled();
+        expect(nip46Service.saveSession).toHaveBeenCalledWith(
+            mockDependencies.localStorage,
+            validPubkey,
+        );
+        expect(mockAccountManager.addAccount).toHaveBeenCalledWith(validPubkey, 'nip46');
+    });
+
+    it('nostrconnect 待機失敗で error を返す', async () => {
+        const { nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
+            connectionUri: 'nostrconnect://client-pubkey?relay=wss://relay',
+            completion: Promise.reject(
+                new Error('Remote signer did not return final relay list'),
+            ),
+            cancel: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+        const service = new AuthService(mockDependencies);
+
+        const pending = await service.startNip46NostrConnect(['wss://relay']);
+        const result = await pending.completion;
+
+        expect(result).toEqual({
+            success: false,
+            error: 'Remote signer did not return final relay list',
+        });
+        expect(mockDependencies.setNip46Auth).not.toHaveBeenCalled();
+    });
 });
 
 describe('AuthService.authenticateWithParentClient', () => {
