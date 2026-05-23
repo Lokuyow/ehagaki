@@ -34,6 +34,7 @@
         isNip07ExtensionAvailable?: boolean;
         isLoadingNip07?: boolean;
         isLoadingNip46?: boolean;
+        isPreparingNip46NostrConnect?: boolean;
         isWaitingNip46NostrConnect?: boolean;
         nip46NostrConnectUri?: string | null;
         nip46NostrConnectErrorMessage?: string;
@@ -56,6 +57,7 @@
         isNip07ExtensionAvailable = false,
         isLoadingNip07 = false,
         isLoadingNip46 = false,
+        isPreparingNip46NostrConnect = false,
         isWaitingNip46NostrConnect = false,
         nip46NostrConnectUri = null,
         nip46NostrConnectErrorMessage = "",
@@ -154,8 +156,9 @@
             ? $_(nostrConnectRelayValidation.errorKey)
             : "",
     );
+    let isNostrConnectPreparing = $derived(isPreparingNip46NostrConnect);
     let isNostrConnectPending = $derived(
-        isLoadingNip46 || isWaitingNip46NostrConnect,
+        isNostrConnectPreparing || isWaitingNip46NostrConnect,
     );
 
     $effect(() => {
@@ -626,7 +629,7 @@
                             label={$_("loginDialog.nostrconnect_qr_alt")}
                         />
                     </div>
-                {:else if isNostrConnectPending}
+                {:else if isNostrConnectPreparing}
                     <div class="nostrconnect-qr-loading">
                         <LoadingPlaceholder text={true} showLoader={true} />
                     </div>
@@ -648,7 +651,9 @@
                     class="section-feedback info nostrconnect-status"
                     role="status"
                 >
-                    {isNostrConnectPending
+                    {isNostrConnectPreparing
+                        ? $_("loginDialog.nostrconnect_preparing")
+                        : isWaitingNip46NostrConnect
                         ? $_("loginDialog.nostrconnect_waiting")
                         : $_("loginDialog.nostrconnect_idle")}
                 </div>
@@ -658,7 +663,7 @@
                         type="button"
                         variant="secondary"
                         onClick={handleCopyNostrConnectUri}
-                        disabled={!nip46NostrConnectUri}
+                        disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
                         className="nostrconnect-copy-btn"
                         data-testid="nostrconnect-copy-button"
                     >
@@ -670,7 +675,7 @@
                         type="button"
                         variant="secondary"
                         onClick={handleOpenNostrConnectUri}
-                        disabled={!nip46NostrConnectUri}
+                        disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
                         className="nostrconnect-open-btn"
                         data-testid="nostrconnect-open-button"
                     >
@@ -680,7 +685,8 @@
                         type="button"
                         variant="secondary"
                         onClick={handleNostrConnectCancel}
-                        disabled={!isNostrConnectPending &&
+                        disabled={!isNostrConnectPreparing &&
+                            !isWaitingNip46NostrConnect &&
                             !nip46NostrConnectUri}
                         className="nostrconnect-cancel-btn"
                     >

@@ -133,6 +133,21 @@ describe('Nip46Service', () => {
     let service: Nip46Service;
     let mockStorage: MockStorage;
 
+    function createDeferred<T>() {
+        let resolve: ((value: T | PromiseLike<T>) => void) | undefined;
+        let reject: ((reason?: unknown) => void) | undefined;
+        const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+            resolve = resolvePromise;
+            reject = rejectPromise;
+        });
+
+        return {
+            promise,
+            resolve: resolve!,
+            reject: reject!,
+        };
+    }
+
     afterEach(() => {
         vi.useRealTimers();
         vi.unstubAllGlobals();
@@ -451,6 +466,54 @@ describe('Nip46Service', () => {
     });
 
     describe('startNostrConnect', () => {
+        it('ready は relay subscription 設定後に解決する', async () => {
+            const relayConnection = createDeferred<{}>();
+            mockPool.ensureRelay.mockReset().mockImplementation(() => relayConnection.promise);
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.example.com',
+            ]);
+            let readyResolved = false;
+            void pending.ready.then(() => {
+                readyResolved = true;
+            });
+
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(readyResolved).toBe(false);
+            expect(mockPool.subscribe).not.toHaveBeenCalled();
+
+            relayConnection.resolve({});
+
+            await pending.ready;
+
+            expect(readyResolved).toBe(true);
+            expect(mockPool.subscribe).toHaveBeenCalledTimes(1);
+        });
+
+        it('ready 前に cancel すると cleanup され、古い operation は ready に到達しない', async () => {
+            const relayConnection = createDeferred<{}>();
+            mockPool.ensureRelay.mockReset().mockImplementation(() => relayConnection.promise);
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.example.com',
+            ]);
+
+            await pending.cancel();
+            relayConnection.resolve({});
+
+            await expect(pending.ready).rejects.toThrow(
+                'Nostr Connect connection was cancelled',
+            );
+            await expect(pending.completion).rejects.toThrow(
+                'Nostr Connect connection was cancelled',
+            );
+            expect(mockPool.subscribe).not.toHaveBeenCalled();
+            expect(mockPool.destroy).toHaveBeenCalled();
+            expect(service.getSigner()).toBeNull();
+        });
+
         it('switch_relays が relay 一覧を返した場合は返された relay を signer-negotiated として保存する', async () => {
             const remoteSignerPubkey = 'd'.repeat(64);
             const initialRelays = ['wss://relay.initial.example.com'];
@@ -492,6 +555,7 @@ describe('Nip46Service', () => {
                 .mockReturnValueOnce(finalSigner);
 
             const pending = await service.startNostrConnect(initialRelays);
+            await pending.ready;
 
             expect(pending.connectionUri).toContain('nostrconnect://');
             expect(createNostrConnectURI).toHaveBeenCalledWith(
@@ -610,6 +674,65 @@ describe('Nip46Service', () => {
             expect(pendingFlow.closeSubscription).toHaveBeenCalled();
             expect(pendingFlow.mockSigner.close).toHaveBeenCalled();
             expect(service.isConnected()).toBe(false);
+        });
+
+        it('ready 完了直後の signer response でも取りこぼさず接続完了する', async () => {
+            const pendingFlow = await createPendingFallbackNostrConnect();
+
+            await pendingFlow.pending.ready;
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).resolves.toBe(
+                'user-pubkey-hex',
+            );
+        });
+
+        it('relay 接続失敗時は ready / completion の両方が失敗し cleanup される', async () => {
+            mockPool.ensureRelay.mockRejectedValue(new Error('connection timed out'));
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.example.com',
+            ]);
+
+            await expect(pending.ready).rejects.toThrow('Relay connection failed');
+            await expect(pending.completion).rejects.toThrow('Relay connection failed');
+            expect(mockPool.destroy).toHaveBeenCalled();
+            expect(service.getSigner()).toBeNull();
+        });
+
+        it('completion failure でも unhandled rejection を発生させない', async () => {
+            vi.useFakeTimers();
+
+            const onUnhandledRejection = vi.fn();
+            process.on('unhandledRejection', onUnhandledRejection);
+
+            try {
+                const pendingFlow = await createPendingFallbackNostrConnect({
+                    sendRequestPromise: new Promise<string>(() => {
+                        // never resolves
+                    }),
+                });
+
+                const oneventPromise = pendingFlow.handlers.onevent({
+                    content: 'encrypted-content',
+                    pubkey: pendingFlow.remoteSignerPubkey,
+                });
+
+                await vi.advanceTimersByTimeAsync(5000);
+                await oneventPromise;
+                await Promise.resolve();
+                await Promise.resolve();
+
+                expect(onUnhandledRejection).not.toHaveBeenCalled();
+                await expect(pendingFlow.pending.completion).rejects.toThrow(
+                    'Timed out waiting for switch_relays response',
+                );
+            } finally {
+                process.off('unhandledRejection', onUnhandledRejection);
+            }
         });
 
         it('client-initial fallback で保存した session は reconnect / rebuild / ping に initial relay を使える', async () => {

@@ -453,13 +453,44 @@
     void cancelPendingNip46Auth();
   }
 
-  async function waitForPendingNip46Auth(
+  function isCurrentPendingNip46Session(
     session: PendingNip46AuthSession,
+    requestGeneration: number,
+  ): boolean {
+    return (
+      pendingNip46StartGeneration === requestGeneration &&
+      pendingNip46AuthSession === session
+    );
+  }
+
+  async function waitForPendingNip46Ready(
+    session: PendingNip46AuthSession,
+    requestGeneration: number,
   ): Promise<void> {
-    const result = await session.completion;
-    if (pendingNip46AuthSession !== session) {
+    try {
+      await session.ready;
+    } catch {
       return;
     }
+
+    if (!isCurrentPendingNip46Session(session, requestGeneration)) {
+      return;
+    }
+
+    pendingNip46ConnectionUri = session.connectionUri;
+    isLoadingNip46 = false;
+  }
+
+  async function waitForPendingNip46Auth(
+    session: PendingNip46AuthSession,
+    requestGeneration: number,
+  ): Promise<void> {
+    const result = await session.completion;
+    if (!isCurrentPendingNip46Session(session, requestGeneration)) {
+      return;
+    }
+
+    isLoadingNip46 = false;
 
     if (!result.success) {
       pendingNip46AuthSession = null;
@@ -1317,12 +1348,12 @@
       }
 
       pendingNip46AuthSession = pending;
-      pendingNip46ConnectionUri = pending.connectionUri;
       saveLastUsedNip46ConnectionRelays(
         typeof localStorage === "undefined" ? undefined : localStorage,
         relays,
       );
-      void waitForPendingNip46Auth(pending);
+      void waitForPendingNip46Ready(pending, requestGeneration);
+      void waitForPendingNip46Auth(pending, requestGeneration);
       return undefined;
     } catch (error) {
       if (requestGeneration !== pendingNip46StartGeneration) {
@@ -1335,7 +1366,10 @@
         error instanceof Error ? error.message : "NIP-46 login failed";
       return nip46NostrConnectErrorMessage;
     } finally {
-      if (requestGeneration === pendingNip46StartGeneration) {
+      if (
+        requestGeneration === pendingNip46StartGeneration &&
+        pendingNip46AuthSession === null
+      ) {
         isLoadingNip46 = false;
       }
     }
@@ -2012,7 +2046,11 @@
           isNip07ExtensionAvailable={nip07ExtensionAvailable}
           {isLoadingNip07}
           {isLoadingNip46}
-          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null}
+          isPreparingNip46NostrConnect={isLoadingNip46 &&
+            pendingNip46AuthSession !== null &&
+            pendingNip46ConnectionUri === null}
+          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null &&
+            pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelays={getInitialNip46ConnectRelays()}
@@ -2037,7 +2075,11 @@
           isNip07ExtensionAvailable={nip07ExtensionAvailable}
           {isLoadingNip07}
           {isLoadingNip46}
-          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null}
+          isPreparingNip46NostrConnect={isLoadingNip46 &&
+            pendingNip46AuthSession !== null &&
+            pendingNip46ConnectionUri === null}
+          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null &&
+            pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelays={getInitialNip46ConnectRelays()}

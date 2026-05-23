@@ -48,6 +48,7 @@ export interface Nip46ManualConnectionCheckResult {
 
 export interface Nip46PendingNostrConnectSession {
     connectionUri: string;
+    ready: Promise<void>;
     completion: Promise<string>;
     cancel: () => Promise<void>;
 }
@@ -824,11 +825,42 @@ export class Nip46Service {
             | ((value: string | PromiseLike<string>) => void)
             | null = null;
         let rejectCompletion: ((reason?: unknown) => void) | null = null;
+        let resolveReady: (() => void) | null = null;
+        let rejectReady: ((reason?: unknown) => void) | null = null;
+        let readySettled = false;
 
         const completion = new Promise<string>((resolve, reject) => {
             resolveCompletion = resolve;
             rejectCompletion = reject;
         });
+        const ready = new Promise<void>((resolve, reject) => {
+            resolveReady = resolve;
+            rejectReady = reject;
+        });
+
+        const settleReadySuccess = (): void => {
+            if (readySettled) {
+                return;
+            }
+
+            readySettled = true;
+            resolveReady?.();
+            resolveReady = null;
+            rejectReady = null;
+        };
+
+        const settleReadyFailure = (reason: unknown): void => {
+            if (readySettled) {
+                return;
+            }
+
+            readySettled = true;
+            rejectReady?.(reason);
+            resolveReady = null;
+            rejectReady = null;
+        };
+
+        void ready.catch(() => undefined);
         void completion.catch(() => undefined);
 
         void (async () => {
@@ -841,6 +873,21 @@ export class Nip46Service {
 
                 pendingPool = initialConnection.pool;
                 connectedRelays = initialConnection.connectedRelays;
+
+                if (settled) {
+                    const cancellationError = new Error(
+                        'Nostr Connect connection was cancelled',
+                    );
+                    await closeHandshakeResources();
+                    settleReadyFailure(cancellationError);
+                    const rejectCurrentCompletion = rejectCompletion as
+                        | ((reason?: unknown) => void)
+                        | null;
+                    if (rejectCurrentCompletion) {
+                        rejectCurrentCompletion(cancellationError);
+                    }
+                    return;
+                }
 
                 handshakeSubscription = pendingPool.subscribe(
                     connectedRelays,
@@ -979,6 +1026,7 @@ export class Nip46Service {
                         maxWait: timeoutMs,
                     },
                 );
+                settleReadySuccess();
             } catch (error) {
                 if (settled) {
                     return;
@@ -986,6 +1034,7 @@ export class Nip46Service {
 
                 settled = true;
                 await closeHandshakeResources();
+                settleReadyFailure(error);
                 const rejectCurrentCompletion = rejectCompletion as
                     | ((reason?: unknown) => void)
                     | null;
@@ -997,6 +1046,7 @@ export class Nip46Service {
 
         return {
             connectionUri,
+            ready,
             completion,
             cancel: async () => {
                 if (settled) {
@@ -1005,9 +1055,11 @@ export class Nip46Service {
 
                 settled = true;
                 await closeHandshakeResources();
-                rejectCompletion?.(
-                    new Error('Nostr Connect connection was cancelled'),
+                const cancellationError = new Error(
+                    'Nostr Connect connection was cancelled',
                 );
+                settleReadyFailure(cancellationError);
+                rejectCompletion?.(cancellationError);
             },
         };
     }

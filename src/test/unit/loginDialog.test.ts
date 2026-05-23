@@ -36,6 +36,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_relay_required': 'NIP-46 接続には1件以上の relay が必要です。',
         'loginDialog.nostrconnect_relay_invalid': 'relay の形式が正しくありません。',
         'loginDialog.nostrconnect_generate': '接続コードを表示',
+        'loginDialog.nostrconnect_preparing': '接続コードを準備しています...',
         'loginDialog.nostrconnect_waiting': '接続を待っています...',
         'loginDialog.nostrconnect_idle': '接続待機は停止しています。',
         'loginDialog.nostrconnect_copy': '接続 URI をコピー',
@@ -120,6 +121,7 @@ describe('LoginDialog', () => {
         isNip07ExtensionAvailable: true,
         isLoadingNip07: false,
         isLoadingNip46: false,
+        isPreparingNip46NostrConnect: false,
         isWaitingNip46NostrConnect: false,
         nip46NostrConnectUri: null,
         nip46NostrConnectErrorMessage: '',
@@ -311,6 +313,7 @@ describe('LoginDialog', () => {
         await rerender({
             ...defaultProps,
             onNostrConnectStart,
+            isPreparingNip46NostrConnect: false,
             isWaitingNip46NostrConnect: true,
             nip46NostrConnectUri: uri,
         });
@@ -331,6 +334,52 @@ describe('LoginDialog', () => {
         expect(
             uri.indexOf('relay=wss%3A%2F%2Ftheforest.nostr1.com%2F'),
         ).toBeLessThan(uri.indexOf('relay=wss%3A%2F%2Frelay.primal.net%2F'));
+        expect(
+            (screen.getByTestId('nostrconnect-copy-button') as HTMLButtonElement)
+                .disabled,
+        ).toBe(false);
+        expect(
+            (screen.getByTestId('nostrconnect-open-button') as HTMLButtonElement)
+                .disabled,
+        ).toBe(false);
+    });
+
+    it('待受準備中は QR / copy / direct-open を利用可能にしない', async () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isPreparingNip46NostrConnect: true,
+            },
+        });
+
+        expect(
+            screen.getByText('接続コードを準備しています...'),
+        ).toBeTruthy();
+        expect(screen.queryByTestId('nostrconnect-qr-code')).toBeNull();
+        expect(
+            (screen.getByTestId('nostrconnect-copy-button') as HTMLButtonElement)
+                .disabled,
+        ).toBe(true);
+        expect(
+            (screen.getByTestId('nostrconnect-open-button') as HTMLButtonElement)
+                .disabled,
+        ).toBe(true);
+    });
+
+    it('待受準備中でも bunker タブ切替は cancel cleanup を要求する', async () => {
+        const onNostrConnectCancel = vi.fn();
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNostrConnectCancel,
+                isPreparingNip46NostrConnect: true,
+            },
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+
+        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
     });
 
     it('QR / 表示 URI / コピー / direct-open が同じ URI を使う', async () => {
@@ -348,6 +397,7 @@ describe('LoginDialog', () => {
                 ...defaultProps,
                 onNostrConnectStart,
                 onNostrConnectCancel,
+                isPreparingNip46NostrConnect: false,
                 isWaitingNip46NostrConnect: true,
                 nip46NostrConnectUri: uri,
             },

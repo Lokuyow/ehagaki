@@ -68,6 +68,7 @@
     "nostrconnect_relay_required": "NIP-46 接続には1件以上の relay が必要です。",
     "nostrconnect_relay_invalid": "relay の形式が正しくありません。",
     "nostrconnect_generate": "接続コードを表示",
+    "nostrconnect_preparing": "接続コードを準備しています...",
     "nostrconnect_waiting": "接続を待っています...",
     "nostrconnect_idle": "接続待機は停止しています。",
     "nostrconnect_copy": "接続 URI をコピー",
