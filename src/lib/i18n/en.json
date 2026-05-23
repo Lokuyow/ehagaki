@@ -70,7 +70,7 @@
     "nostrconnect_relay_invalid": "The relay format is invalid.",
     "nostrconnect_generate": "Show Connect Code",
     "nostrconnect_preparing": "Preparing the connection code...",
-    "nostrconnect_waiting": "Waiting for a connection...",
+    "nostrconnect_waiting": "Preparing the connection with the remote signer. Initial connection may take some time.",
     "nostrconnect_idle": "Connection waiting is stopped.",
     "nostrconnect_copy": "Copy Connection URI",
     "nostrconnect_copied": "Connection URI copied",

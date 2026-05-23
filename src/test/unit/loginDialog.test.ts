@@ -38,7 +38,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_relay_invalid': 'relay の形式が正しくありません。',
         'loginDialog.nostrconnect_generate': '接続コードを表示',
         'loginDialog.nostrconnect_preparing': '接続コードを準備しています...',
-        'loginDialog.nostrconnect_waiting': '接続を待っています...',
+        'loginDialog.nostrconnect_waiting': 'リモートサイナーとの接続を準備しています。初回接続には時間がかかる場合があります。',
         'loginDialog.nostrconnect_idle': '接続待機は停止しています。',
         'loginDialog.nostrconnect_copy': '接続 URI をコピー',
         'loginDialog.nostrconnect_copied': '接続 URI をコピーしました',

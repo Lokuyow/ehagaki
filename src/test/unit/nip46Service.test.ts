@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     Nip46SignerAdapter,
     Nip46Service,
+    NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+    NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
+    NIP46_INITIAL_READINESS_RETRY_WINDOW_MS,
     NIP46_REQUESTED_PERMISSIONS,
     NIP46_REQUESTED_PERMS,
 } from '../../lib/nip46Service';
@@ -241,6 +244,46 @@ describe('Nip46Service', () => {
         return { sessionData, mockSigner, pubkey, BunkerSigner };
     }
 
+    function createMockNostrConnectSigner(options: {
+        remoteSignerPubkey?: string;
+        relays?: string[];
+        sharedSecret?: string;
+        sendRequestResult?: string;
+        sendRequestError?: unknown;
+        sendRequestPromise?: Promise<string>;
+        getPublicKeyResult?: string;
+        getPublicKeyError?: unknown;
+        getPublicKeyPromise?: Promise<string>;
+    } = {}) {
+        const sendRequest = options.sendRequestPromise
+            ? vi.fn().mockReturnValue(options.sendRequestPromise)
+            : options.sendRequestError !== undefined
+                ? vi.fn().mockRejectedValue(options.sendRequestError)
+                : vi.fn().mockResolvedValue(
+                    options.sendRequestResult
+                    ?? JSON.stringify(options.relays ?? ['wss://relay.example.com']),
+                );
+
+        const getPublicKey = options.getPublicKeyPromise
+            ? vi.fn().mockReturnValue(options.getPublicKeyPromise)
+            : options.getPublicKeyError !== undefined
+                ? vi.fn().mockRejectedValue(options.getPublicKeyError)
+                : vi.fn().mockResolvedValue(
+                    options.getPublicKeyResult ?? 'user-pubkey-hex',
+                );
+
+        return {
+            sendRequest,
+            getPublicKey,
+            bp: {
+                pubkey: options.remoteSignerPubkey ?? 'd'.repeat(64),
+                relays: options.relays ?? ['wss://relay.example.com'],
+                secret: options.sharedSecret ?? 'ab'.repeat(32),
+            },
+            close: vi.fn().mockResolvedValue(undefined),
+        };
+    }
+
     async function createPendingFallbackNostrConnect(options: {
         initialRelays?: string[];
         remoteSignerPubkey?: string;
@@ -298,26 +341,32 @@ describe('Nip46Service', () => {
                     ?? 'user-pubkey-hex',
                 );
 
-        const interimSigner = {
-            sendRequest,
-            getPublicKey: interimGetPublicKey,
-            bp: {
-                pubkey: remoteSignerPubkey,
-                relays: initialRelays,
-                secret: sharedSecret,
-            },
-            close: vi.fn().mockResolvedValue(undefined),
-        };
-        const fallbackSigner = {
-            sendRequest: vi.fn(),
-            getPublicKey: fallbackGetPublicKey,
-            bp: {
-                pubkey: remoteSignerPubkey,
-                relays: initialRelays,
-                secret: sharedSecret,
-            },
-            close: vi.fn().mockResolvedValue(undefined),
-        };
+        const interimSigner = createMockNostrConnectSigner({
+            remoteSignerPubkey,
+            relays: initialRelays,
+            sharedSecret,
+            sendRequestPromise: options.sendRequestPromise,
+            sendRequestError: options.sendRequestError,
+            sendRequestResult: options.sendRequestResult,
+            getPublicKeyPromise: options.interimGetPublicKeyPromise,
+            getPublicKeyError: options.interimGetPublicKeyError,
+            getPublicKeyResult:
+                options.interimGetPublicKeyResult
+                ?? options.userPubkey
+                ?? 'user-pubkey-hex',
+        });
+        const fallbackSigner = createMockNostrConnectSigner({
+            remoteSignerPubkey,
+            relays: initialRelays,
+            sharedSecret,
+            sendRequestResult: JSON.stringify(initialRelays),
+            getPublicKeyPromise: options.fallbackGetPublicKeyPromise,
+            getPublicKeyError: options.fallbackGetPublicKeyError,
+            getPublicKeyResult:
+                options.fallbackGetPublicKeyResult
+                ?? options.userPubkey
+                ?? 'user-pubkey-hex',
+        });
         (BunkerSigner.fromBunker as any)
             .mockReturnValueOnce(interimSigner)
             .mockReturnValue(fallbackSigner);
@@ -692,7 +741,12 @@ describe('Nip46Service', () => {
             const pubkey = await pending.completion;
 
             expect(pubkey).toBe('user-pubkey-hex');
+            expect(interimSigner.getPublicKey).toHaveBeenCalledTimes(1);
             expect(interimSigner.sendRequest).toHaveBeenCalledWith('switch_relays', []);
+            expect(
+                interimSigner.getPublicKey.mock.invocationCallOrder[0],
+            ).toBeLessThan(interimSigner.sendRequest.mock.invocationCallOrder[0]);
+            expect(finalSigner.getPublicKey).toHaveBeenCalledTimes(1);
             expect(closeSubscription).toHaveBeenCalled();
             expect(interimSigner.close).toHaveBeenCalled();
 
@@ -719,6 +773,7 @@ describe('Nip46Service', () => {
             const {
                 pending,
                 handlers,
+                interimSigner,
                 remoteSignerPubkey,
             } = await createPendingFallbackNostrConnect({
                 initialRelays: [
@@ -736,6 +791,9 @@ describe('Nip46Service', () => {
             const pubkey = await pending.completion;
 
             expect(pubkey).toBe('user-pubkey-hex');
+            expect(
+                interimSigner.getPublicKey.mock.invocationCallOrder[0],
+            ).toBeLessThan(interimSigner.sendRequest.mock.invocationCallOrder[0]);
             service.saveSession(mockStorage, pubkey);
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
@@ -759,6 +817,7 @@ describe('Nip46Service', () => {
             const {
                 pending,
                 handlers,
+                interimSigner,
                 remoteSignerPubkey,
             } = await createPendingFallbackNostrConnect({
                 initialRelays: [
@@ -776,6 +835,9 @@ describe('Nip46Service', () => {
             const pubkey = await pending.completion;
 
             expect(pubkey).toBe('user-pubkey-hex');
+            expect(
+                interimSigner.getPublicKey.mock.invocationCallOrder[0],
+            ).toBeLessThan(interimSigner.sendRequest.mock.invocationCallOrder[0]);
             service.saveSession(mockStorage, pubkey);
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
@@ -785,6 +847,307 @@ describe('Nip46Service', () => {
                 pingVerified: false,
                 relayResolution: 'client-initial-fallback',
             });
+        });
+
+        it('connect response 受信後は get_public_key を retry 成功させてから switch_relays を送る', async () => {
+            vi.useFakeTimers();
+
+            const remoteSignerPubkey = 'd'.repeat(64);
+            const initialRelays = ['wss://relay.ready.example.com'];
+            const sharedSecret = 'ab'.repeat(32);
+            const { nip44 } = await import('nostr-tools');
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+
+            vi.mocked(nip44.decrypt).mockReturnValue(
+                JSON.stringify({ result: sharedSecret }),
+            );
+
+            mockPool.subscribe.mockReturnValue({
+                close: vi.fn(),
+            });
+
+            const firstSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyPromise: new Promise<string>(() => {
+                    // never resolves
+                }),
+            });
+            const secondSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyPromise: new Promise<string>(() => {
+                    // never resolves
+                }),
+            });
+            const thirdSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyResult: 'user-pubkey-hex',
+            });
+            (BunkerSigner.fromBunker as any)
+                .mockReturnValueOnce(firstSigner)
+                .mockReturnValueOnce(secondSigner)
+                .mockReturnValueOnce(thirdSigner);
+
+            const pending = await service.startNostrConnect(initialRelays);
+            const handlers = await getPendingNostrConnectHandlers();
+            const oneventPromise = handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: remoteSignerPubkey,
+            });
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+            );
+            expect(firstSigner.sendRequest).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
+            );
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+            );
+            expect(secondSigner.sendRequest).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
+            );
+            await oneventPromise;
+
+            await expect(pending.completion).resolves.toBe('user-pubkey-hex');
+            expect(thirdSigner.sendRequest).toHaveBeenCalledWith('switch_relays', []);
+            expect(
+                thirdSigner.getPublicKey.mock.invocationCallOrder[0],
+            ).toBeLessThan(thirdSigner.sendRequest.mock.invocationCallOrder[0]);
+            expect(firstSigner.close).toHaveBeenCalledTimes(1);
+            expect(secondSigner.close).toHaveBeenCalledTimes(1);
+        });
+
+        it('initial get_public_key readiness retry window を超えても成功しない場合は session を保存せず接続失敗する', async () => {
+            vi.useFakeTimers();
+
+            const remoteSignerPubkey = 'd'.repeat(64);
+            const initialRelays = ['wss://relay.ready.example.com'];
+            const sharedSecret = 'ab'.repeat(32);
+            const { nip44 } = await import('nostr-tools');
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+
+            vi.mocked(nip44.decrypt).mockReturnValue(
+                JSON.stringify({ result: sharedSecret }),
+            );
+
+            mockPool.subscribe.mockReturnValue({
+                close: vi.fn(),
+            });
+
+            const attemptCount = Math.floor(
+                (NIP46_INITIAL_READINESS_RETRY_WINDOW_MS
+                    + NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS)
+                / (NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS
+                    + NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS),
+            );
+            const readinessSigners = Array.from({ length: attemptCount }, () =>
+                createMockNostrConnectSigner({
+                    remoteSignerPubkey,
+                    relays: initialRelays,
+                    sharedSecret,
+                    sendRequestResult: 'null',
+                    getPublicKeyPromise: new Promise<string>(() => {
+                        // never resolves
+                    }),
+                }),
+            );
+            const fromBunkerMock = (BunkerSigner.fromBunker as any).mockReset();
+            for (const signer of readinessSigners) {
+                fromBunkerMock.mockReturnValueOnce(signer);
+            }
+            fromBunkerMock.mockReturnValue(readinessSigners.at(-1));
+
+            const pending = await service.startNostrConnect(initialRelays);
+            const handlers = await getPendingNostrConnectHandlers();
+            const oneventPromise = handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: remoteSignerPubkey,
+            });
+
+            for (let index = 0; index < attemptCount; index += 1) {
+                await vi.advanceTimersByTimeAsync(
+                    NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+                );
+                if (index < attemptCount - 1) {
+                    await vi.advanceTimersByTimeAsync(
+                        NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
+                    );
+                }
+            }
+            await oneventPromise;
+
+            await expect(pending.completion).rejects.toThrow(
+                'Timed out waiting for get_public_key response',
+            );
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(
+                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+            ).toBeNull();
+            expect(service.isConnected()).toBe(false);
+            readinessSigners.forEach((signer) => {
+                expect(signer.sendRequest).not.toHaveBeenCalled();
+                expect(signer.close).toHaveBeenCalled();
+            });
+        });
+
+        it('initial get_public_key の明示 error は retry せず接続失敗する', async () => {
+            const remoteSignerPubkey = 'd'.repeat(64);
+            const initialRelays = ['wss://relay.ready.example.com'];
+            const sharedSecret = 'ab'.repeat(32);
+            const explicitError = new Error('permission denied');
+            const { nip44 } = await import('nostr-tools');
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+
+            vi.mocked(nip44.decrypt).mockReturnValue(
+                JSON.stringify({ result: sharedSecret }),
+            );
+
+            mockPool.subscribe.mockReturnValue({
+                close: vi.fn(),
+            });
+
+            const readinessSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyError: explicitError,
+            });
+            (BunkerSigner.fromBunker as any).mockReturnValue(readinessSigner);
+
+            const pending = await service.startNostrConnect(initialRelays);
+            const handlers = await getPendingNostrConnectHandlers();
+            await handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: remoteSignerPubkey,
+            });
+
+            await expect(pending.completion).rejects.toThrow('permission denied');
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledTimes(1);
+            expect(readinessSigner.sendRequest).not.toHaveBeenCalled();
+            expect(service.isConnected()).toBe(false);
+        });
+
+        it('cancel 時は readiness retry timer と temporary signer を cleanup する', async () => {
+            vi.useFakeTimers();
+
+            const remoteSignerPubkey = 'd'.repeat(64);
+            const initialRelays = ['wss://relay.ready.example.com'];
+            const sharedSecret = 'ab'.repeat(32);
+            const { nip44 } = await import('nostr-tools');
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+
+            vi.mocked(nip44.decrypt).mockReturnValue(
+                JSON.stringify({ result: sharedSecret }),
+            );
+
+            mockPool.subscribe.mockReturnValue({
+                close: vi.fn(),
+            });
+
+            const firstSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyPromise: new Promise<string>(() => {
+                    // never resolves
+                }),
+            });
+            const secondSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyResult: 'user-pubkey-hex',
+            });
+            (BunkerSigner.fromBunker as any)
+                .mockReturnValueOnce(firstSigner)
+                .mockReturnValue(secondSigner);
+
+            const pending = await service.startNostrConnect(initialRelays);
+            const handlers = await getPendingNostrConnectHandlers();
+            const oneventPromise = handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: remoteSignerPubkey,
+            });
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+            );
+            await pending.cancel();
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS * 2,
+            );
+            await oneventPromise;
+
+            await expect(pending.completion).rejects.toThrow(
+                'Nostr Connect connection was cancelled',
+            );
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledTimes(1);
+            expect(firstSigner.close).toHaveBeenCalledTimes(1);
+            expect(secondSigner.getPublicKey).not.toHaveBeenCalled();
+            expect(service.isConnected()).toBe(false);
+        });
+
+        it('cancel 後の遅延 get_public_key success は runtime session を上書きしない', async () => {
+            const remoteSignerPubkey = 'd'.repeat(64);
+            const initialRelays = ['wss://relay.ready.example.com'];
+            const sharedSecret = 'ab'.repeat(32);
+            const delayedPublicKey = createDeferred<string>();
+            const { nip44 } = await import('nostr-tools');
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+
+            vi.mocked(nip44.decrypt).mockReturnValue(
+                JSON.stringify({ result: sharedSecret }),
+            );
+
+            mockPool.subscribe.mockReturnValue({
+                close: vi.fn(),
+            });
+
+            const delayedSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey,
+                relays: initialRelays,
+                sharedSecret,
+                sendRequestResult: 'null',
+                getPublicKeyPromise: delayedPublicKey.promise,
+            });
+            (BunkerSigner.fromBunker as any).mockReturnValue(delayedSigner);
+
+            const pending = await service.startNostrConnect(initialRelays);
+            const handlers = await getPendingNostrConnectHandlers();
+            const oneventPromise = handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: remoteSignerPubkey,
+            });
+
+            await pending.cancel();
+            delayedPublicKey.resolve('user-pubkey-hex');
+            await oneventPromise;
+
+            await expect(pending.completion).rejects.toThrow(
+                'Nostr Connect connection was cancelled',
+            );
+            expect(delayedSigner.sendRequest).not.toHaveBeenCalled();
+            expect(service.isConnected()).toBe(false);
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(
+                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+            ).toBeNull();
         });
 
         it('switch_relays timeout 後に fallback signer の get_public_key 検証が成功した場合は client-initial-unconfirmed として接続成功する', async () => {
@@ -964,87 +1327,6 @@ describe('Nip46Service', () => {
                 success: true,
             });
             expect(pendingFlow.fallbackSigner.sendRequest).toHaveBeenCalledWith('ping', []);
-        });
-
-        it('relay array 応答でも get_public_key timeout 時は session を保存せず接続失敗になる', async () => {
-            vi.useFakeTimers();
-
-            const pendingFlow = await createPendingFallbackNostrConnect({
-                sendRequestResult: JSON.stringify(['wss://relay.example.com']),
-                interimGetPublicKeyPromise: new Promise<string>(() => {
-                    // never resolves
-                }),
-            });
-
-            const oneventPromise = pendingFlow.handlers.onevent({
-                content: 'encrypted-content',
-                pubkey: pendingFlow.remoteSignerPubkey,
-            });
-
-            await vi.advanceTimersByTimeAsync(5000);
-            await oneventPromise;
-
-            await expect(pendingFlow.pending.completion).rejects.toThrow(
-                'Timed out waiting for get_public_key response',
-            );
-            service.saveSession(mockStorage, 'user-pubkey-hex');
-            expect(
-                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
-            ).toBeNull();
-        });
-
-        it('null 応答でも get_public_key timeout 時は session を保存せず接続失敗になる', async () => {
-            vi.useFakeTimers();
-
-            const pendingFlow = await createPendingFallbackNostrConnect({
-                sendRequestResult: 'null',
-                interimGetPublicKeyPromise: new Promise<string>(() => {
-                    // never resolves
-                }),
-            });
-
-            const oneventPromise = pendingFlow.handlers.onevent({
-                content: 'encrypted-content',
-                pubkey: pendingFlow.remoteSignerPubkey,
-            });
-
-            await vi.advanceTimersByTimeAsync(5000);
-            await oneventPromise;
-
-            await expect(pendingFlow.pending.completion).rejects.toThrow(
-                'Timed out waiting for get_public_key response',
-            );
-            service.saveSession(mockStorage, 'user-pubkey-hex');
-            expect(
-                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
-            ).toBeNull();
-        });
-
-        it('unsupported fallback でも get_public_key timeout 時は session を保存せず接続失敗になる', async () => {
-            vi.useFakeTimers();
-
-            const pendingFlow = await createPendingFallbackNostrConnect({
-                sendRequestError: 'unsupported method: switch_relays',
-                interimGetPublicKeyPromise: new Promise<string>(() => {
-                    // never resolves
-                }),
-            });
-
-            const oneventPromise = pendingFlow.handlers.onevent({
-                content: 'encrypted-content',
-                pubkey: pendingFlow.remoteSignerPubkey,
-            });
-
-            await vi.advanceTimersByTimeAsync(5000);
-            await oneventPromise;
-
-            await expect(pendingFlow.pending.completion).rejects.toThrow(
-                'Timed out waiting for get_public_key response',
-            );
-            service.saveSession(mockStorage, 'user-pubkey-hex');
-            expect(
-                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
-            ).toBeNull();
         });
 
         it('client-initial fallback で保存した session は reconnect / rebuild / ping に initial relay を使える', async () => {
