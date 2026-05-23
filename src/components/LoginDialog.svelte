@@ -654,8 +654,8 @@
                     {isNostrConnectPreparing
                         ? $_("loginDialog.nostrconnect_preparing")
                         : isWaitingNip46NostrConnect
-                        ? $_("loginDialog.nostrconnect_waiting")
-                        : $_("loginDialog.nostrconnect_idle")}
+                          ? $_("loginDialog.nostrconnect_waiting")
+                          : $_("loginDialog.nostrconnect_idle")}
                 </div>
 
                 <div class="nostrconnect-code-actions">
@@ -663,7 +663,8 @@
                         type="button"
                         variant="secondary"
                         onClick={handleCopyNostrConnectUri}
-                        disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
+                        disabled={isNostrConnectPreparing ||
+                            !nip46NostrConnectUri}
                         className="nostrconnect-copy-btn"
                         data-testid="nostrconnect-copy-button"
                     >
@@ -675,7 +676,8 @@
                         type="button"
                         variant="secondary"
                         onClick={handleOpenNostrConnectUri}
-                        disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
+                        disabled={isNostrConnectPreparing ||
+                            !nip46NostrConnectUri}
                         className="nostrconnect-open-btn"
                         data-testid="nostrconnect-open-button"
                     >
