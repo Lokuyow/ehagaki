@@ -111,7 +111,9 @@ export class AuthService {
         );
 
         return {
-            connectionUri: pending.connectionUri,
+            get connectionUri() {
+                return pending.connectionUri;
+            },
             ready: pending.ready,
             completion: this.wrapPendingNip46Authentication(pending),
             cancel: pending.cancel,

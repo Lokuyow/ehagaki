@@ -108,8 +108,8 @@
   } from "./stores/channelContextStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
   import {
-    resolveInitialNip46ConnectionRelays,
-    saveLastUsedNip46ConnectionRelays,
+    resolveInitialNip46ConnectionRelayCandidates,
+    saveLastUsedNip46ConnectionRelayCandidates,
   } from "./lib/nip46ConnectUiUtils";
   import {
     initializeNostrSession,
@@ -411,8 +411,8 @@
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
   );
-  function getInitialNip46ConnectRelays(): string[] {
-    return resolveInitialNip46ConnectionRelays(
+  function getInitialNip46ConnectRelayCandidates(): string[] {
+    return resolveInitialNip46ConnectionRelayCandidates(
       typeof localStorage === "undefined" ? undefined : localStorage,
     );
   }
@@ -1326,7 +1326,7 @@
   }
 
   async function handleNostrConnectStart(
-    relays: string[],
+    relayCandidates: string[],
   ): Promise<string | undefined> {
     const requestGeneration = ++pendingNip46StartGeneration;
     const previousSession = pendingNip46AuthSession;
@@ -1340,7 +1340,7 @@
     }
 
     try {
-      const pending = await authService.startNip46NostrConnect(relays);
+      const pending = await authService.startNip46NostrConnect(relayCandidates);
 
       if (requestGeneration !== pendingNip46StartGeneration) {
         await pending.cancel();
@@ -1348,9 +1348,9 @@
       }
 
       pendingNip46AuthSession = pending;
-      saveLastUsedNip46ConnectionRelays(
+      saveLastUsedNip46ConnectionRelayCandidates(
         typeof localStorage === "undefined" ? undefined : localStorage,
-        relays,
+        relayCandidates,
       );
       void waitForPendingNip46Ready(pending, requestGeneration);
       void waitForPendingNip46Auth(pending, requestGeneration);
@@ -2053,7 +2053,7 @@
             pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
-          initialNostrConnectRelays={getInitialNip46ConnectRelays()}
+          initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
         />
       {/if}
       {#if showTransitionOverlay}
@@ -2082,7 +2082,7 @@
             pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
-          initialNostrConnectRelays={getInitialNip46ConnectRelays()}
+          initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           isAddAccountMode={true}
         />
       {/if}

@@ -492,6 +492,49 @@ describe('Nip46Service', () => {
             expect(mockPool.subscribe).toHaveBeenCalledTimes(1);
         });
 
+        it('複数 initial relay のうち 1 件が到達可能なら、他の遅延 relay を待たずに ready になる', async () => {
+            const slowRelayConnection = createDeferred<{}>();
+            let slowRelaySettled = false;
+
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.ready.example.com') {
+                    return Promise.resolve({});
+                }
+
+                if (relay === 'wss://relay.failed.example.com') {
+                    return Promise.reject(new Error('connection timed out'));
+                }
+
+                return slowRelayConnection.promise.finally(() => {
+                    slowRelaySettled = true;
+                });
+            });
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.slow.example.com',
+                'wss://relay.ready.example.com',
+                'wss://relay.failed.example.com',
+            ]);
+
+            await pending.ready;
+
+            expect(slowRelaySettled).toBe(false);
+            expect(mockPool.subscribe).toHaveBeenCalledWith(
+                ['wss://relay.ready.example.com'],
+                expect.any(Object),
+                expect.any(Object),
+            );
+            expect(pending.connectionUri).toContain(
+                encodeURIComponent('wss://relay.ready.example.com'),
+            );
+            expect(pending.connectionUri).not.toContain(
+                encodeURIComponent('wss://relay.slow.example.com'),
+            );
+            expect(pending.connectionUri).not.toContain(
+                encodeURIComponent('wss://relay.failed.example.com'),
+            );
+        });
+
         it('ready 前に cancel すると cleanup され、古い operation は ready に到達しない', async () => {
             const relayConnection = createDeferred<{}>();
             mockPool.ensureRelay.mockReset().mockImplementation(() => relayConnection.promise);
@@ -512,6 +555,42 @@ describe('Nip46Service', () => {
             expect(mockPool.subscribe).not.toHaveBeenCalled();
             expect(mockPool.destroy).toHaveBeenCalled();
             expect(service.getSigner()).toBeNull();
+        });
+
+        it('relay 再生成で古い遅延 ready が後から完了しても、新しい pending state を汚染しない', async () => {
+            const firstRelayConnection = createDeferred<{}>();
+
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.first.example.com') {
+                    return firstRelayConnection.promise;
+                }
+
+                return Promise.resolve({});
+            });
+
+            const firstPending = await service.startNostrConnect([
+                'wss://relay.first.example.com',
+            ]);
+            await firstPending.cancel();
+
+            const secondPending = await service.startNostrConnect([
+                'wss://relay.second.example.com',
+            ]);
+            await secondPending.ready;
+
+            firstRelayConnection.resolve({});
+            await Promise.resolve();
+            await Promise.resolve();
+
+            await expect(firstPending.ready).rejects.toThrow(
+                'Nostr Connect connection was cancelled',
+            );
+            expect(mockPool.subscribe).toHaveBeenCalledTimes(1);
+            expect(mockPool.subscribe).toHaveBeenCalledWith(
+                ['wss://relay.second.example.com'],
+                expect.any(Object),
+                expect.any(Object),
+            );
         });
 
         it('switch_relays が relay 一覧を返した場合は返された relay を signer-negotiated として保存する', async () => {
@@ -589,13 +668,24 @@ describe('Nip46Service', () => {
             });
         });
 
-        it('switch_relays が null を返した場合は initial relay を signer-confirmed-unchanged として保存する', async () => {
+        it('switch_relays が null を返した場合は接続済み initial relay subset を signer-confirmed-unchanged として保存する', async () => {
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.ready.example.com') {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection timed out'));
+            });
+
             const {
                 pending,
                 handlers,
-                initialRelays,
                 remoteSignerPubkey,
             } = await createPendingFallbackNostrConnect({
+                initialRelays: [
+                    'wss://relay.ready.example.com',
+                    'wss://relay.dead.example.com',
+                ],
                 sendRequestResult: 'null',
             });
 
@@ -611,20 +701,31 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey,
-                relays: initialRelays,
+                relays: ['wss://relay.ready.example.com'],
                 userPubkey: 'user-pubkey-hex',
                 pingVerified: false,
                 relayResolution: 'signer-confirmed-unchanged',
             });
         });
 
-        it('switch_relays が unsupported method error を返した場合は initial relay fallback で接続成功する', async () => {
+        it('switch_relays が unsupported method error を返した場合は接続済み initial relay subset で fallback 接続する', async () => {
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.ready.example.com') {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection timed out'));
+            });
+
             const {
                 pending,
                 handlers,
-                initialRelays,
                 remoteSignerPubkey,
             } = await createPendingFallbackNostrConnect({
+                initialRelays: [
+                    'wss://relay.ready.example.com',
+                    'wss://relay.dead.example.com',
+                ],
                 sendRequestError: 'unsupported method: switch_relays',
             });
 
@@ -640,7 +741,7 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey,
-                relays: initialRelays,
+                relays: ['wss://relay.ready.example.com'],
                 userPubkey: 'user-pubkey-hex',
                 pingVerified: false,
                 relayResolution: 'client-initial-fallback',
@@ -690,15 +791,19 @@ describe('Nip46Service', () => {
             );
         });
 
-        it('relay 接続失敗時は ready / completion の両方が失敗し cleanup される', async () => {
-            mockPool.ensureRelay.mockRejectedValue(new Error('connection timed out'));
+        it('全 relay 接続失敗時は ready / completion の両方が失敗し cleanup される', async () => {
+            mockPool.ensureRelay.mockReset().mockRejectedValue(
+                new Error('connection timed out'),
+            );
 
             const pending = await service.startNostrConnect([
                 'wss://relay.example.com',
+                'wss://relay.backup.example.com',
             ]);
 
             await expect(pending.ready).rejects.toThrow('Relay connection failed');
             await expect(pending.completion).rejects.toThrow('Relay connection failed');
+            expect(mockPool.subscribe).not.toHaveBeenCalled();
             expect(mockPool.destroy).toHaveBeenCalled();
             expect(service.getSigner()).toBeNull();
         });
@@ -939,7 +1044,7 @@ describe('Nip46Service', () => {
             expect(mockStorage.getItem('nostr-nip46-session')).toBeNull();
         });
 
-        it('saveSession は last-used NIP-46 connection relay を上書きしない', async () => {
+        it('saveSession は last-used NIP-46 relay candidates を上書きしない', async () => {
             mockStorage.setItem(
                 'nostr-nip46-connect-relays',
                 JSON.stringify(['wss://ui-relay.example.com/']),

@@ -311,6 +311,28 @@ describe('AuthService.authenticateWithNip46', () => {
 
         await expect(pending.ready).resolves.toBeUndefined();
     });
+
+    it('nostrconnect connectionUri は ready 後の最新値を参照する', async () => {
+        let connectionUri = 'nostrconnect://client-pubkey?relay=wss%3A%2F%2Finitial';
+        const ready = Promise.resolve();
+        const { nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
+            get connectionUri() {
+                return connectionUri;
+            },
+            ready,
+            completion: Promise.resolve('cd'.repeat(32)),
+            cancel: vi.fn().mockResolvedValue(undefined),
+        } as any);
+
+        const service = new AuthService(mockDependencies);
+        const pending = await service.startNip46NostrConnect(['wss://relay']);
+
+        connectionUri = 'nostrconnect://client-pubkey?relay=wss%3A%2F%2Fready';
+        await pending.ready;
+
+        expect(pending.connectionUri).toContain('relay=wss%3A%2F%2Fready');
+    });
 });
 
 describe('AuthService.authenticateWithParentClient', () => {

@@ -2,7 +2,10 @@ import QRCode from 'qrcode';
 import { getNip46ConnectRelaysStorageKey } from './authStorageKeys';
 import { sanitizeNip46NostrConnectRelays } from './nip46Service';
 
-export const DEFAULT_NIP46_CONNECTION_RELAYS = [
+// Default relay candidates for the initial NIP-46 connection attempt.
+// The published nostrconnect URI is rebuilt from the ready relay subset,
+// not from this full candidate list.
+export const DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES = [
     'wss://nostr.oxtr.dev/',
     'wss://theforest.nostr1.com/',
     'wss://relay.primal.net/',
@@ -35,12 +38,12 @@ export function ensureNip46ConnectionRelayDraftRows(
     return relays.length > 0 ? [...relays] : [''];
 }
 
-export function getDefaultNip46ConnectionRelays(): string[] {
+export function getDefaultNip46ConnectionRelayCandidates(): string[] {
     const sanitized = sanitizeNip46NostrConnectRelays([
-        ...DEFAULT_NIP46_CONNECTION_RELAYS,
+        ...DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES,
     ]);
 
-    return sanitized.length === DEFAULT_NIP46_CONNECTION_RELAYS.length
+    return sanitized.length === DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES.length
         ? sanitized
         : [];
 }
@@ -77,7 +80,7 @@ export function validateNip46ConnectionRelayDrafts(
     };
 }
 
-export function loadLastUsedNip46ConnectionRelays(
+export function loadLastUsedNip46ConnectionRelayCandidates(
     storage: Storage | null | undefined,
 ): string[] {
     if (!storage) {
@@ -105,18 +108,18 @@ export function loadLastUsedNip46ConnectionRelays(
     }
 }
 
-export function resolveInitialNip46ConnectionRelays(
+export function resolveInitialNip46ConnectionRelayCandidates(
     storage: Storage | null | undefined,
 ): string[] {
-    const savedRelays = loadLastUsedNip46ConnectionRelays(storage);
+    const savedRelays = loadLastUsedNip46ConnectionRelayCandidates(storage);
     if (savedRelays.length > 0) {
         return savedRelays;
     }
 
-    return getDefaultNip46ConnectionRelays();
+    return getDefaultNip46ConnectionRelayCandidates();
 }
 
-export function saveLastUsedNip46ConnectionRelays(
+export function saveLastUsedNip46ConnectionRelayCandidates(
     storage: Storage | null | undefined,
     relays: string[],
 ): void {
@@ -137,6 +140,23 @@ export function saveLastUsedNip46ConnectionRelays(
     } catch {
         // noop
     }
+}
+
+export function extractNip46ConnectionUriRelays(
+    value: string | null | undefined,
+): string[] {
+    if (!value || !value.startsWith('nostrconnect://')) {
+        return [];
+    }
+
+    const queryStartIndex = value.indexOf('?');
+    if (queryStartIndex < 0) {
+        return [];
+    }
+
+    const query = value.slice(queryStartIndex + 1).split('#', 1)[0] ?? '';
+    const searchParams = new URLSearchParams(query);
+    return sanitizeNip46NostrConnectRelays(searchParams.getAll('relay'));
 }
 
 export async function generateNip46ConnectionQrSvg(

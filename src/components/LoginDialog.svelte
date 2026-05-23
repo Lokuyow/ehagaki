@@ -6,7 +6,8 @@
     import {
         createNip46ConnectionRelayDrafts,
         ensureNip46ConnectionRelayDraftRows,
-        getDefaultNip46ConnectionRelays,
+        extractNip46ConnectionUriRelays,
+        getDefaultNip46ConnectionRelayCandidates,
         openNip46ConnectionUri,
         validateNip46ConnectionRelayDrafts,
     } from "../lib/nip46ConnectUiUtils";
@@ -38,7 +39,7 @@
         isWaitingNip46NostrConnect?: boolean;
         nip46NostrConnectUri?: string | null;
         nip46NostrConnectErrorMessage?: string;
-        initialNostrConnectRelays?: string[];
+        initialNostrConnectRelayCandidates?: string[];
         isAddAccountMode?: boolean;
     }
 
@@ -61,7 +62,7 @@
         isWaitingNip46NostrConnect = false,
         nip46NostrConnectUri = null,
         nip46NostrConnectErrorMessage = "",
-        initialNostrConnectRelays = [],
+        initialNostrConnectRelayCandidates = [],
         isAddAccountMode = false,
     }: Props = $props();
 
@@ -97,15 +98,15 @@
     let nip46ErrorMessage = $state("");
     let hasCopiedNostrConnectUri = $state(false);
 
-    function getResolvedInitialNostrConnectRelays(): string[] {
-        return initialNostrConnectRelays.length > 0
-            ? [...initialNostrConnectRelays]
-            : getDefaultNip46ConnectionRelays();
+    function getResolvedInitialNostrConnectRelayCandidates(): string[] {
+        return initialNostrConnectRelayCandidates.length > 0
+            ? [...initialNostrConnectRelayCandidates]
+            : getDefaultNip46ConnectionRelayCandidates();
     }
 
     function resetNostrConnectDraftState(): void {
         nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
-            getResolvedInitialNostrConnectRelays(),
+            getResolvedInitialNostrConnectRelayCandidates(),
         );
         activeRemoteSignerTab = "qr";
         isNostrConnectRelaySettingsExpanded = false;
@@ -144,12 +145,15 @@
             ? nostrConnectRelayValidation.relays.join("\n")
             : null,
     );
-    let displayedNostrConnectRelays = $derived(
+    let displayedNostrConnectRelayCandidates = $derived(
         nostrConnectRelayValidation.relays.length > 0
             ? nostrConnectRelayValidation.relays
             : nostrConnectRelayDrafts
                   .map((relay) => relay.trim())
                   .filter((relay) => relay.length > 0),
+    );
+    let activeNostrConnectRelays = $derived(
+        extractNip46ConnectionUriRelays(nip46NostrConnectUri),
     );
     let localNostrConnectErrorMessage = $derived(
         activeRemoteSignerTab === "qr" && nostrConnectRelayValidation.errorKey
@@ -423,7 +427,7 @@
 
     function resetNostrConnectRelaysToDefault() {
         nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
-            getDefaultNip46ConnectionRelays(),
+            getDefaultNip46ConnectionRelayCandidates(),
         );
         lastRequestedNostrConnectSignature = null;
     }
@@ -647,6 +651,24 @@
                     </div>
                 </div>
 
+                {#if activeNostrConnectRelays.length > 0}
+                    <div
+                        class="nostrconnect-relay-summary"
+                        data-testid="nostrconnect-active-relays"
+                    >
+                        <div class="nostrconnect-relay-summary-label">
+                            {$_("loginDialog.nostrconnect_active_relay_label")}
+                        </div>
+                        <div class="nostrconnect-current-relays">
+                            {#each activeNostrConnectRelays as relay}
+                                <div class="nostrconnect-current-relay">
+                                    {relay}
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
                 <div
                     class="section-feedback info nostrconnect-status"
                     role="status"
@@ -696,12 +718,15 @@
                     </Button>
                 </div>
 
-                <div class="nostrconnect-relay-summary">
+                <div
+                    class="nostrconnect-relay-summary"
+                    data-testid="nostrconnect-relay-candidates"
+                >
                     <div class="nostrconnect-relay-summary-label">
                         {$_("loginDialog.nostrconnect_relay_label")}
                     </div>
                     <div class="nostrconnect-current-relays">
-                        {#each displayedNostrConnectRelays as relay}
+                        {#each displayedNostrConnectRelayCandidates as relay}
                             <div class="nostrconnect-current-relay">
                                 {relay}
                             </div>
@@ -721,10 +746,10 @@
                         {$_("loginDialog.nostrconnect_relay_hint")}
                     </div>
                     <div class="section-feedback info">
-                        {$_("loginDialog.nostrconnect_relay_switch_hint")}
+                        {$_("loginDialog.nostrconnect_relay_update_hint")}
                     </div>
                     <div class="section-feedback info">
-                        {$_("loginDialog.nostrconnect_relay_update_hint")}
+                        {$_("loginDialog.nostrconnect_relay_switch_hint")}
                     </div>
 
                     <div class="nostrconnect-relay-editor-list">

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
@@ -27,11 +27,12 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_qr_alt': 'Nostr Connect QR コード',
         'loginDialog.nostrconnect_scan_hint': '対応するリモートサイナーで QR コードを読み取るか、接続 URI を開いてください。',
         'loginDialog.nostrconnect_uri_label': '接続 URI',
-        'loginDialog.nostrconnect_relay_label': 'NIP-46 接続 relay',
+        'loginDialog.nostrconnect_active_relay_label': '今回の接続に使用する relay',
+        'loginDialog.nostrconnect_relay_label': 'NIP-46 接続候補 relay',
         'loginDialog.nostrconnect_input_title': 'Nostr Connect コードを作成',
-        'loginDialog.nostrconnect_relay_hint': 'この relay は、eHagaki とリモートサイナーが接続するために使用します。',
+        'loginDialog.nostrconnect_relay_hint': '接続に使用する relay の候補を設定します。',
         'loginDialog.nostrconnect_relay_switch_hint': 'リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。',
-        'loginDialog.nostrconnect_relay_update_hint': 'relay を変更すると、QR コードと接続 URI が更新されます。',
+        'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',
         'loginDialog.nostrconnect_relay_placeholder': 'wss://relay.example.com',
         'loginDialog.nostrconnect_relay_required': 'NIP-46 接続には1件以上の relay が必要です。',
         'loginDialog.nostrconnect_relay_invalid': 'relay の形式が正しくありません。',
@@ -42,7 +43,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_copy': '接続 URI をコピー',
         'loginDialog.nostrconnect_copied': '接続 URI をコピーしました',
         'loginDialog.nostrconnect_open': 'リモートサイナーで開く',
-        'loginDialog.nostrconnect_edit_relays': '接続 relay を変更',
+        'loginDialog.nostrconnect_edit_relays': '接続候補 relay を変更',
         'loginDialog.nostrconnect_add_relay': 'relay を追加',
         'loginDialog.nostrconnect_remove_relay': 'relay を削除',
         'loginDialog.nostrconnect_reset_relays': '初期値に戻す',
@@ -103,7 +104,7 @@ vi.mock('../../lib/keyManager.svelte', () => ({
 }));
 
 import LoginDialog from '../../components/LoginDialog.svelte';
-import { DEFAULT_NIP46_CONNECTION_RELAYS } from '../../lib/nip46ConnectUiUtils';
+import { DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES } from '../../lib/nip46ConnectUiUtils';
 
 describe('LoginDialog', () => {
     const defaultProps = {
@@ -125,7 +126,7 @@ describe('LoginDialog', () => {
         isWaitingNip46NostrConnect: false,
         nip46NostrConnectUri: null,
         nip46NostrConnectErrorMessage: '',
-        initialNostrConnectRelays: [...DEFAULT_NIP46_CONNECTION_RELAYS],
+        initialNostrConnectRelayCandidates: [...DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES],
         isAddAccountMode: false,
     };
 
@@ -287,12 +288,12 @@ describe('LoginDialog', () => {
         expect(await screen.findByText('接続に失敗しました')).toBeTruthy();
     });
 
-    it('QR タブ初期表示で default relay を使った nostrconnect 開始を呼び URI と QR を表示する', async () => {
+    it('QR タブ初期表示では default relay candidates で開始し、first reachable relay だけを URI と QR に使う', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
         const uri =
-            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F&relay=wss%3A%2F%2Ftheforest.nostr1.com%2F&relay=wss%3A%2F%2Frelay.primal.net%2F&relay=wss%3A%2F%2Fephemeral.snowflare.cc%2F';
+            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F';
 
         const { rerender } = render(LoginDialog, {
             props: {
@@ -328,12 +329,19 @@ describe('LoginDialog', () => {
                     ?.getAttribute('data-qr-value'),
             ).toBe(uri);
         });
-        expect(uri.indexOf('relay=wss%3A%2F%2Fnostr.oxtr.dev%2F')).toBeLessThan(
-            uri.indexOf('relay=wss%3A%2F%2Ftheforest.nostr1.com%2F'),
-        );
+        expect(uri).not.toContain('theforest.nostr1.com');
+        expect(uri).not.toContain('relay.primal.net');
+        expect(uri).not.toContain('ephemeral.snowflare.cc');
         expect(
-            uri.indexOf('relay=wss%3A%2F%2Ftheforest.nostr1.com%2F'),
-        ).toBeLessThan(uri.indexOf('relay=wss%3A%2F%2Frelay.primal.net%2F'));
+            within(screen.getByTestId('nostrconnect-active-relays')).getByText(
+                'wss://nostr.oxtr.dev/',
+            ),
+        ).toBeTruthy();
+        expect(
+            within(screen.getByTestId('nostrconnect-relay-candidates')).getByText(
+                'wss://theforest.nostr1.com/',
+            ),
+        ).toBeTruthy();
         expect(
             (screen.getByTestId('nostrconnect-copy-button') as HTMLButtonElement)
                 .disabled,
@@ -434,7 +442,15 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
+        await fireEvent.click(screen.getByText('接続候補 relay を変更'));
+        expect(
+            screen.getByText('接続に使用する relay の候補を設定します。'),
+        ).toBeTruthy();
+        expect(
+            screen.getByText(
+                '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',
+            ),
+        ).toBeTruthy();
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
         await fireEvent.input(relayInputs[0], {
             target: { value: 'wss://relay.changed.example.com/' },
@@ -450,12 +466,11 @@ describe('LoginDialog', () => {
         });
     });
 
-    it('初期値に戻すで default relay 一覧に戻して再開始する', async () => {
+    it('初期値に戻すで default relay candidates に戻して再開始し、新しい ready relay を表示する', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
-
-        render(LoginDialog, {
+        const { rerender } = render(LoginDialog, {
             props: {
                 ...defaultProps,
                 onNostrConnectStart,
@@ -466,7 +481,7 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
+        await fireEvent.click(screen.getByText('接続候補 relay を変更'));
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
         await fireEvent.input(relayInputs[0], {
             target: { value: 'wss://relay.changed.example.com/' },
@@ -486,6 +501,25 @@ describe('LoginDialog', () => {
                 'wss://ephemeral.snowflare.cc/',
             ]);
         });
+
+        await rerender({
+            ...defaultProps,
+            onNostrConnectStart,
+            isWaitingNip46NostrConnect: true,
+            nip46NostrConnectUri:
+                'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F',
+        });
+
+        expect(
+            within(screen.getByTestId('nostrconnect-active-relays')).getByText(
+                'wss://nostr.oxtr.dev/',
+            ),
+        ).toBeTruthy();
+        expect(
+            within(screen.getByTestId('nostrconnect-relay-candidates')).getByText(
+                'wss://ephemeral.snowflare.cc/',
+            ),
+        ).toBeTruthy();
     });
 
     it('invalid relay では validation error を表示して待機を cancel する', async () => {
@@ -506,7 +540,7 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
+        await fireEvent.click(screen.getByText('接続候補 relay を変更'));
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
         await fireEvent.input(relayInputs[0], {
             target: { value: 'https://invalid.example.com' },
@@ -537,7 +571,7 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
+        await fireEvent.click(screen.getByText('接続候補 relay を変更'));
         for (const relayInput of screen.getAllByPlaceholderText('wss://relay.example.com')) {
             await fireEvent.input(relayInput, {
                 target: { value: '' },

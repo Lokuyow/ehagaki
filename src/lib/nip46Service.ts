@@ -319,6 +319,101 @@ async function createConnectedPool(
     return { pool, connectedRelays };
 }
 
+async function createConnectedPoolReadyOnFirstReachable(
+    relays: string[],
+): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
+    const origWs = globalThis.WebSocket;
+    useWebSocketImplementation(Nip46WebSocket);
+    const pool = new SimplePool();
+    useWebSocketImplementation(origWs);
+
+    const uniqueRelays = [...new Set(relays)];
+    const connectedRelays: string[] = [];
+    const connectionErrors: string[] = [];
+
+    let resolveFirstReachable: (() => void) | null = null;
+    let rejectAllFailed: ((reason?: unknown) => void) | null = null;
+    let firstReachableSettled = false;
+    let remainingAttempts = uniqueRelays.length;
+
+    const firstReachable = new Promise<void>((resolve, reject) => {
+        resolveFirstReachable = resolve;
+        rejectAllFailed = reject;
+    });
+
+    const settleFirstReachable = (): void => {
+        if (firstReachableSettled) {
+            return;
+        }
+
+        firstReachableSettled = true;
+        resolveFirstReachable?.();
+        resolveFirstReachable = null;
+        rejectAllFailed = null;
+    };
+
+    const settleAllFailed = (): void => {
+        if (firstReachableSettled || remainingAttempts > 0 || connectedRelays.length > 0) {
+            return;
+        }
+
+        firstReachableSettled = true;
+        const hint = getRelayConnectionFailureHint(relays);
+        const message = connectionErrors.length > 0
+            ? connectionErrors.join('; ')
+            : 'no reachable relays';
+        rejectAllFailed?.(
+            new Error(
+                hint
+                    ? `Relay connection failed: ${message}. ${hint}`
+                    : `Relay connection failed: ${message}`,
+            ),
+        );
+        resolveFirstReachable = null;
+        rejectAllFailed = null;
+    };
+
+    const connectionAttempts = uniqueRelays.map(async (relay) => {
+        try {
+            console.debug('[NIP-46] connecting to relay:', relay);
+            await pool.ensureRelay(relay, {
+                connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
+            });
+            console.debug('[NIP-46] relay connected:', relay);
+            connectedRelays.push(relay);
+            settleFirstReachable();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn('[NIP-46] relay connection failed:', relay, msg);
+            connectionErrors.push(`${relay}: ${msg}`);
+        } finally {
+            remainingAttempts -= 1;
+            settleAllFailed();
+        }
+    });
+
+    void Promise.allSettled(connectionAttempts);
+
+    try {
+        await firstReachable;
+    } catch (error) {
+        pool.destroy();
+        throw error;
+    }
+
+    if (connectionErrors.length > 0) {
+        console.warn(
+            '[NIP-46] continuing with first reachable relays only:',
+            connectedRelays,
+        );
+    }
+
+    return {
+        pool,
+        connectedRelays: [...connectedRelays],
+    };
+}
+
 function normalizePublicWssRelay(relay: string): string | null {
     const normalized = RelayConfigUtils.normalizeExternalRelayUrl(relay);
     if (!normalized) {
@@ -419,7 +514,7 @@ function isUnsupportedSwitchRelaysError(error: unknown): boolean {
 
 async function resolveNostrConnectRelayResolution(
     signer: BunkerSigner,
-    initialRelays: string[],
+    fallbackRelays: string[],
 ): Promise<Nip46RelayResolutionResult> {
     const reconciliationResult = await Promise.race([
         signer.sendRequest('switch_relays', []).then((value) => ({
@@ -444,7 +539,7 @@ async function resolveNostrConnectRelayResolution(
         if (isUnsupportedSwitchRelaysError(reconciliationResult.error)) {
             return {
                 kind: 'method-unsupported',
-                finalRelays: [...initialRelays],
+                finalRelays: [...fallbackRelays],
                 sessionRelayResolution: 'client-initial-fallback',
             };
         }
@@ -456,7 +551,7 @@ async function resolveNostrConnectRelayResolution(
     if (parsed === null) {
         return {
             kind: 'signer-confirmed-unchanged',
-            finalRelays: [...initialRelays],
+            finalRelays: [...fallbackRelays],
             sessionRelayResolution: 'signer-confirmed-unchanged',
         };
     }
@@ -784,7 +879,7 @@ export class Nip46Service {
         const clientSecretKeyHex = bytesToHex(clientSecretKey);
         const clientPubkey = getPublicKey(clientSecretKey);
         const sharedSecret = bytesToHex(generateSecretKey());
-        const connectionUri = createNostrConnectURI({
+        let connectionUri = createNostrConnectURI({
             clientPubkey,
             relays: sanitizedRelays,
             secret: sharedSecret,
@@ -860,19 +955,48 @@ export class Nip46Service {
             rejectReady = null;
         };
 
+        const pendingSession: Nip46PendingNostrConnectSession = {
+            get connectionUri() {
+                return connectionUri;
+            },
+            ready,
+            completion,
+            cancel: async () => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                await closeHandshakeResources();
+                const cancellationError = new Error(
+                    'Nostr Connect connection was cancelled',
+                );
+                settleReadyFailure(cancellationError);
+                rejectCompletion?.(cancellationError);
+            },
+        };
+
         void ready.catch(() => undefined);
         void completion.catch(() => undefined);
 
         void (async () => {
             try {
-                const initialConnection = await createConnectedPool(sanitizedRelays);
+                const initialConnection = await createConnectedPoolReadyOnFirstReachable(
+                    sanitizedRelays,
+                );
                 if (settled) {
                     initialConnection.pool.destroy();
                     return;
                 }
 
                 pendingPool = initialConnection.pool;
-                connectedRelays = initialConnection.connectedRelays;
+                connectedRelays = [...initialConnection.connectedRelays];
+                connectionUri = createNostrConnectURI({
+                    clientPubkey,
+                    relays: connectedRelays,
+                    secret: sharedSecret,
+                    perms: [...NIP46_REQUESTED_PERMISSIONS],
+                });
 
                 if (settled) {
                     const cancellationError = new Error(
@@ -945,7 +1069,7 @@ export class Nip46Service {
 
                                 const relayResolution = await resolveNostrConnectRelayResolution(
                                     interimSigner,
-                                    sanitizedRelays,
+                                    connectedRelays,
                                 );
                                 const finalRelays = relayResolution.finalRelays;
 
@@ -1044,24 +1168,7 @@ export class Nip46Service {
             }
         })();
 
-        return {
-            connectionUri,
-            ready,
-            completion,
-            cancel: async () => {
-                if (settled) {
-                    return;
-                }
-
-                settled = true;
-                await closeHandshakeResources();
-                const cancellationError = new Error(
-                    'Nostr Connect connection was cancelled',
-                );
-                settleReadyFailure(cancellationError);
-                rejectCompletion?.(cancellationError);
-            },
-        };
+        return pendingSession;
     }
 
     async reconnect(session: Nip46SessionData): Promise<string> {
