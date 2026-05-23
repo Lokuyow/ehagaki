@@ -7,6 +7,7 @@ import {
     NIP46_INITIAL_READINESS_RETRY_WINDOW_MS,
     NIP46_REQUESTED_PERMISSIONS,
     NIP46_REQUESTED_PERMS,
+    normalizeSupportedNip46FinalRelay,
 } from '../../lib/nip46Service';
 import { MockStorage } from '../helpers';
 
@@ -128,6 +129,38 @@ describe('Nip46SignerAdapter', () => {
 
         expect(pubkey).toBe('user-pubkey');
         expect(mockBunkerSigner.getPublicKey).toHaveBeenCalled();
+    });
+});
+
+describe('normalizeSupportedNip46FinalRelay', () => {
+    it.each([
+        ['wss://relay.example.com/', 'wss://relay.example.com/'],
+        ['ws://127.0.0.1:4869/', 'ws://127.0.0.1:4869/'],
+        ['ws://localhost:4869/', 'ws://localhost:4869/'],
+        ['ws://subdomain.localhost:4869/', 'ws://subdomain.localhost:4869/'],
+        ['ws://[::1]:4869/', 'ws://[::1]:4869/'],
+    ])('supports %s as a final relay candidate', (relay, expected) => {
+        expect(normalizeSupportedNip46FinalRelay(relay)).toBe(expected);
+    });
+
+    it('supports IPv4-mapped IPv6 loopback as a final relay candidate', () => {
+        expect(
+            normalizeSupportedNip46FinalRelay(
+                'ws://[::ffff:127.0.0.1]:4869/',
+            ),
+        ).not.toBeNull();
+    });
+
+    it.each([
+        'ws://127.0.0.256:4869/',
+        'ws://192.168.1.10:4869/',
+        'ws://10.0.0.2:4869/',
+        'ws://relay.example.com/',
+        'https://relay.example.com/',
+        'ws://user:pass@127.0.0.1:4869/',
+        'not a relay',
+    ])('rejects %s as an unsupported final relay candidate', (relay) => {
+        expect(normalizeSupportedNip46FinalRelay(relay)).toBeNull();
     });
 });
 
@@ -382,6 +415,69 @@ describe('Nip46Service', () => {
             closeSubscription,
             initialRelays,
             remoteSignerPubkey,
+        };
+    }
+
+    async function createPendingNegotiatedFinalRelayNostrConnect(options: {
+        initialRelays?: string[];
+        finalRelayResponse?: unknown[];
+        remoteSignerPubkey?: string;
+        userPubkey?: string;
+        finalSignerRelays?: string[];
+        finalGetPublicKeyResult?: string;
+        finalGetPublicKeyError?: unknown;
+        finalGetPublicKeyPromise?: Promise<string>;
+    } = {}) {
+        const initialRelays = options.initialRelays ?? ['wss://relay.initial.example.com'];
+        const finalRelayResponse = options.finalRelayResponse ?? [
+            'wss://relay.final.example.com',
+        ];
+        const remoteSignerPubkey = options.remoteSignerPubkey ?? 'd'.repeat(64);
+        const sharedSecret = 'ab'.repeat(32);
+        const userPubkey = options.userPubkey ?? 'user-pubkey-hex';
+        const { nip44 } = await import('nostr-tools');
+        const { BunkerSigner } = await import('nostr-tools/nip46');
+
+        vi.mocked(nip44.decrypt).mockReturnValue(
+            JSON.stringify({ result: sharedSecret }),
+        );
+
+        const closeSubscription = vi.fn();
+        mockPool.subscribe.mockReturnValue({
+            close: closeSubscription,
+        });
+
+        const interimSigner = createMockNostrConnectSigner({
+            remoteSignerPubkey,
+            relays: initialRelays,
+            sharedSecret,
+            sendRequestResult: JSON.stringify(finalRelayResponse),
+            getPublicKeyResult: userPubkey,
+        });
+        const finalSigner = createMockNostrConnectSigner({
+            remoteSignerPubkey,
+            relays: options.finalSignerRelays ?? ['wss://relay.final.example.com'],
+            sharedSecret,
+            getPublicKeyPromise: options.finalGetPublicKeyPromise,
+            getPublicKeyError: options.finalGetPublicKeyError,
+            getPublicKeyResult: options.finalGetPublicKeyResult ?? userPubkey,
+        });
+        (BunkerSigner.fromBunker as any)
+            .mockReturnValueOnce(interimSigner)
+            .mockReturnValue(finalSigner);
+
+        const pending = await service.startNostrConnect(initialRelays);
+        const handlers = await getPendingNostrConnectHandlers();
+
+        return {
+            pending,
+            handlers,
+            interimSigner,
+            finalSigner,
+            closeSubscription,
+            initialRelays,
+            remoteSignerPubkey,
+            userPubkey,
         };
     }
 
@@ -699,7 +795,7 @@ describe('Nip46Service', () => {
 
             const interimSigner = {
                 sendRequest: vi.fn().mockResolvedValue(JSON.stringify(finalRelays)),
-                getPublicKey: vi.fn().mockResolvedValue('interim-user-pubkey-hex'),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: {
                     pubkey: remoteSignerPubkey,
                     relays: initialRelays,
@@ -747,6 +843,11 @@ describe('Nip46Service', () => {
                 interimSigner.getPublicKey.mock.invocationCallOrder[0],
             ).toBeLessThan(interimSigner.sendRequest.mock.invocationCallOrder[0]);
             expect(finalSigner.getPublicKey).toHaveBeenCalledTimes(1);
+            expect((BunkerSigner.fromBunker as any).mock.calls[1][1]).toEqual({
+                pubkey: remoteSignerPubkey,
+                relays: ['wss://relay.final.example.com'],
+                secret: 'ab'.repeat(32),
+            });
             expect(closeSubscription).toHaveBeenCalled();
             expect(interimSigner.close).toHaveBeenCalled();
 
@@ -759,6 +860,284 @@ describe('Nip46Service', () => {
                 pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
+        });
+
+        it('switch_relays が loopback ws と public wss を混在して返しても supported candidate のみで接続を継続する', async () => {
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (
+                    relay === 'wss://relay.initial.example.com'
+                    || relay === 'wss://relay.final.example.com'
+                ) {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection refused'));
+            });
+
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: [
+                    'ws://127.0.0.1:4869/',
+                    'wss://relay.final.example.com',
+                    'ws://relay.example.com/',
+                    'wss://relay.final.example.com',
+                ],
+                finalSignerRelays: ['wss://relay.final.example.com'],
+            });
+
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).resolves.toBe(
+                'user-pubkey-hex',
+            );
+            expect(
+                mockPool.ensureRelay.mock.calls.filter(
+                    ([relay]) => relay === 'wss://relay.final.example.com',
+                ),
+            ).toHaveLength(1);
+            expect(
+                mockPool.ensureRelay.mock.calls.filter(
+                    ([relay]) => relay === 'ws://relay.example.com/',
+                ),
+            ).toHaveLength(0);
+
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(Nip46Service.loadSession(mockStorage, 'user-pubkey-hex')).toEqual({
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
+                relays: ['wss://relay.final.example.com'],
+                userPubkey: 'user-pubkey-hex',
+                pingVerified: false,
+                relayResolution: 'signer-negotiated',
+            });
+        });
+
+        it('switch_relays が reachable な local loopback final relay を返した場合は signer-negotiated として保存する', async () => {
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (
+                    relay === 'wss://relay.initial.example.com'
+                    || relay === 'ws://127.0.0.1:4869/'
+                ) {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection refused'));
+            });
+
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: ['ws://127.0.0.1:4869/'],
+                finalSignerRelays: ['ws://127.0.0.1:4869/'],
+            });
+
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).resolves.toBe(
+                'user-pubkey-hex',
+            );
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(Nip46Service.loadSession(mockStorage, 'user-pubkey-hex')).toEqual({
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
+                relays: ['ws://127.0.0.1:4869/'],
+                userPubkey: 'user-pubkey-hex',
+                pingVerified: false,
+                relayResolution: 'signer-negotiated',
+            });
+        });
+
+        it('switch_relays が unsupported relay のみを返した場合は initial ready relay へ fallback せず失敗する', async () => {
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: [
+                    'ws://192.168.1.10:4869/',
+                    'ws://relay.example.com/',
+                    'https://relay.example.com/',
+                ],
+            });
+
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).rejects.toThrow(
+                'Remote signer did not return any usable connection relay',
+            );
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(
+                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+            ).toBeNull();
+            expect(service.isConnected()).toBe(false);
+            expect(
+                mockPool.ensureRelay.mock.calls.filter(
+                    ([relay]) => relay === 'ws://192.168.1.10:4869/' || relay === 'ws://relay.example.com/',
+                ),
+            ).toHaveLength(0);
+        });
+
+        it('switch_relays の relay array に非 string 値が含まれる場合は malformed response として失敗する', async () => {
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: ['wss://relay.final.example.com', 42],
+            });
+
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).rejects.toThrow(
+                'Remote signer returned an invalid final relay list',
+            );
+            expect(service.isConnected()).toBe(false);
+        });
+
+        it('loopback final relay のみが到達不能な場合は local relay 到達不能 error を返す', async () => {
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.initial.example.com') {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection refused'));
+            });
+
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: ['ws://127.0.0.1:4869/'],
+                finalSignerRelays: ['ws://127.0.0.1:4869/'],
+            });
+
+            await pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await expect(pendingFlow.pending.completion).rejects.toThrow(
+                'Could not connect to the local relay specified by the remote signer',
+            );
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(
+                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+            ).toBeNull();
+            expect(service.isConnected()).toBe(false);
+        });
+
+        it.each([
+            {
+                title: 'timeout',
+                finalGetPublicKeyPromise: new Promise<string>(() => {
+                    // never resolves
+                }),
+            },
+            {
+                title: 'error',
+                finalGetPublicKeyError: new Error('permission denied'),
+            },
+            {
+                title: 'pubkey mismatch',
+                finalGetPublicKeyResult: 'different-user-pubkey',
+            },
+        ])(
+            'supported final relay 上の get_public_key 再確認が $title の場合は session を保存せず失敗する',
+            async ({ finalGetPublicKeyPromise, finalGetPublicKeyError, finalGetPublicKeyResult }) => {
+                vi.useFakeTimers();
+
+                const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                    finalRelayResponse: ['wss://relay.final.example.com'],
+                    finalSignerRelays: ['wss://relay.final.example.com'],
+                    finalGetPublicKeyPromise,
+                    finalGetPublicKeyError,
+                    finalGetPublicKeyResult,
+                });
+
+                const oneventPromise = pendingFlow.handlers.onevent({
+                    content: 'encrypted-content',
+                    pubkey: pendingFlow.remoteSignerPubkey,
+                });
+
+                if (finalGetPublicKeyPromise) {
+                    await vi.advanceTimersByTimeAsync(5000);
+                }
+                await oneventPromise;
+
+                await expect(pendingFlow.pending.completion).rejects.toThrow(
+                    'Communication could not be verified on the relay selected by the remote signer',
+                );
+                service.saveSession(mockStorage, 'user-pubkey-hex');
+                expect(
+                    mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+                ).toBeNull();
+                expect(service.isConnected()).toBe(false);
+                expect(pendingFlow.finalSigner.close).toHaveBeenCalledTimes(1);
+            },
+        );
+
+        it('switch_relays relay array の分類と final relay 接続診断ログを出し、secret や private key を含めない', async () => {
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => { });
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+
+            try {
+                mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                    if (
+                        relay === 'wss://relay.initial.example.com'
+                        || relay === 'wss://relay.final.example.com'
+                    ) {
+                        return Promise.resolve({});
+                    }
+
+                    return Promise.reject(new Error('connection refused'));
+                });
+
+                const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                    finalRelayResponse: [
+                        'ws://127.0.0.1:4869/',
+                        'wss://relay.final.example.com',
+                        'ws://relay.example.com/',
+                    ],
+                    finalSignerRelays: ['wss://relay.final.example.com'],
+                });
+
+                await pendingFlow.handlers.onevent({
+                    content: 'encrypted-content',
+                    pubkey: pendingFlow.remoteSignerPubkey,
+                });
+                await pendingFlow.pending.completion;
+
+                expect(debugSpy).toHaveBeenCalledWith(
+                    '[NIP-46] switch_relays returned relays:',
+                    [
+                        'ws://127.0.0.1:4869/',
+                        'wss://relay.final.example.com/',
+                        'ws://relay.example.com/',
+                    ],
+                );
+                expect(debugSpy).toHaveBeenCalledWith(
+                    '[NIP-46] supported final relay candidates:',
+                    ['ws://127.0.0.1:4869/', 'wss://relay.final.example.com'],
+                );
+                expect(debugSpy).toHaveBeenCalledWith(
+                    '[NIP-46] unsupported final relays:',
+                    ['ws://relay.example.com/'],
+                );
+                expect(warnSpy).toHaveBeenCalledWith(
+                    '[NIP-46] negotiated final relay connection failed:',
+                    'ws://127.0.0.1:4869/',
+                    'connection refused',
+                );
+
+                const loggedText = [...debugSpy.mock.calls, ...warnSpy.mock.calls]
+                    .flat()
+                    .map((value) =>
+                        typeof value === 'string' ? value : JSON.stringify(value),
+                    )
+                    .join(' ');
+                expect(loggedText).not.toContain('ab'.repeat(32));
+            } finally {
+                debugSpy.mockRestore();
+                warnSpy.mockRestore();
+            }
         });
 
         it('switch_relays が null を返した場合は接続済み initial relay subset を signer-confirmed-unchanged として保存する', async () => {

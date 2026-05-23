@@ -303,6 +303,16 @@
                 return $_(
                     "loginDialog.nostrconnect_relay_reconciliation_failed",
                 );
+            case "Remote signer did not return any usable connection relay":
+                return $_("loginDialog.nostrconnect_no_usable_final_relay");
+            case "Could not connect to the local relay specified by the remote signer":
+                return $_(
+                    "loginDialog.nostrconnect_local_final_relay_unreachable",
+                );
+            case "Communication could not be verified on the relay selected by the remote signer":
+                return $_(
+                    "loginDialog.nostrconnect_final_relay_verification_failed",
+                );
             case "Nostr Connect connection was cancelled":
                 return "";
             default:

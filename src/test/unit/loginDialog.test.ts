@@ -50,6 +50,9 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_cancel_waiting': '接続をキャンセル',
         'loginDialog.nostrconnect_timeout': 'リモートサイナーからの接続が時間内に完了しませんでした',
         'loginDialog.nostrconnect_relay_reconciliation_failed': '接続後の final relay を確定できませんでした',
+        'loginDialog.nostrconnect_no_usable_final_relay': 'リモートサイナーが利用可能な接続 relay を返しませんでした。ブラウザから接続するには、リモートサイナー側の NIP-46 relay 設定に wss:// relay、または同じ端末内で利用できる local relay が必要です。',
+        'loginDialog.nostrconnect_local_final_relay_unreachable': 'リモートサイナーが指定した local relay に接続できませんでした。同じ端末内の local relay を使用する場合は、Citrine などの relay アプリが起動していることを確認してください。iframe 内で開いている場合は、親フレームで local/loopback network access の許可が必要になることがあります。別端末のリモートサイナーを使用する場合は、共有可能な wss:// relay を設定してください。',
+        'loginDialog.nostrconnect_final_relay_verification_failed': 'リモートサイナーが指定した接続 relay では通信を確認できませんでした。relay の状態とリモートサイナーの設定を確認してください。',
         'loginDialog.nostrconnect_connection_failed': 'リモートサイナーとの接続に失敗しました。接続 relay またはリモートサイナーの状態を確認してください。',
         'loginDialog.save': '保存',
         'loadingPlaceholder.loading': '読み込み中...',
@@ -639,5 +642,29 @@ describe('LoginDialog', () => {
                 'リモートサイナーとの接続に失敗しました。接続 relay またはリモートサイナーの状態を確認してください。',
             ),
         ).toBeTruthy();
+    });
+
+    it.each([
+        [
+            'Remote signer did not return any usable connection relay',
+            'リモートサイナーが利用可能な接続 relay を返しませんでした。ブラウザから接続するには、リモートサイナー側の NIP-46 relay 設定に wss:// relay、または同じ端末内で利用できる local relay が必要です。',
+        ],
+        [
+            'Could not connect to the local relay specified by the remote signer',
+            'リモートサイナーが指定した local relay に接続できませんでした。同じ端末内の local relay を使用する場合は、Citrine などの relay アプリが起動していることを確認してください。iframe 内で開いている場合は、親フレームで local/loopback network access の許可が必要になることがあります。別端末のリモートサイナーを使用する場合は、共有可能な wss:// relay を設定してください。',
+        ],
+        [
+            'Communication could not be verified on the relay selected by the remote signer',
+            'リモートサイナーが指定した接続 relay では通信を確認できませんでした。relay の状態とリモートサイナーの設定を確認してください。',
+        ],
+    ])('final relay failure reason %s を専用メッセージへ変換する', async (errorMessage, expectedText) => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                nip46NostrConnectErrorMessage: errorMessage,
+            },
+        });
+
+        expect(screen.getByText(expectedText)).toBeTruthy();
     });
 });

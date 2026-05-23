@@ -82,6 +82,9 @@
     "nostrconnect_cancel_waiting": "Cancel Connection",
     "nostrconnect_timeout": "The remote signer did not connect in time",
     "nostrconnect_relay_reconciliation_failed": "Could not confirm the final relay list after connecting",
+    "nostrconnect_no_usable_final_relay": "The remote signer did not return any usable connection relay. Browser connections require a wss:// relay or a local relay available on this device.",
+    "nostrconnect_local_final_relay_unreachable": "Could not connect to the local relay specified by the remote signer. When using a local relay on this device, confirm that a relay app such as Citrine is running. If this page is embedded, the parent frame may also need local/loopback network access permission. When using a remote signer on another device, configure a shared wss:// relay instead.",
+    "nostrconnect_final_relay_verification_failed": "Communication could not be verified on the relay selected by the remote signer. Check the relay status and the remote signer's configuration.",
     "nostrconnect_connection_failed": "Failed to connect to the remote signer. Check the connection relays or the remote signer state.",
     "add_account_title": "Add Account",
     "add_account_hint": "Login with the account you want to add"
