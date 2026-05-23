@@ -81,6 +81,13 @@
     "switch_account": "Switch",
     "active": "Active",
     "logout_account": "Logout",
+    "amber_connection_title": "Amber connection check",
+    "amber_connection_description": "Allow the confirmation in Amber if it appears. Automatic recovery after spending more than 30 seconds in the background is enabled only after this check succeeds once.",
+    "amber_connection_check": "Check connection",
+    "amber_connection_checking": "Checking...",
+    "amber_connection_auto_recovering": "Background recovery is running. Try again after it finishes.",
+    "amber_connection_success": "Amber connection confirmed. Automatic checks can now run after long background resumes.",
+    "amber_connection_failed": "Amber connection check failed. Allow it in Amber and try again.",
     "copy_success": "Copied"
   },
   "postHistory": {

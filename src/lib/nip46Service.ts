@@ -8,12 +8,31 @@ import { getNip46SessionStorageKey } from './authStorageKeys';
 export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
+export const NIP46_AUTO_PING_TIMEOUT_MS = 4000;
+export const NIP46_MANUAL_PING_TIMEOUT_MS = 30000;
 const LOCAL_NETWORK_IFRAME_ALLOW_VALUE = 'local-network-access; local-network; loopback-network';
 const LOCAL_NETWORK_PERMISSION_FEATURES = [
     'loopback-network',
     'local-network',
     'local-network-access',
 ] as const;
+
+type SessionPersistenceBinding = {
+    storage: Storage;
+    pubkeyHex?: string;
+};
+
+type Nip46OperationKind = 'manual-check' | 'auto-recovery';
+
+export interface Nip46ConnectionOperationState {
+    kind: Nip46OperationKind | 'idle';
+    inProgress: boolean;
+}
+
+export interface Nip46ManualConnectionCheckResult {
+    success: boolean;
+    skipped?: boolean;
+}
 
 type PermissionsPolicyLike = {
     allowedFeatures?: () => string[];
@@ -111,6 +130,7 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
 /**
  * NIP-46 connect時にリモートサイナーへ要求するパーミッション。
  * Amberなどのリモートサイナーで「アプリが要求するkindのみ許可」を選択した場合に使われる。
+ * - ping — 接続状態確認。手動の「Amber 接続確認」と、許可済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
@@ -118,7 +138,7 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - sign_event:27235 — NIP-98 HTTP認証（ファイルアップロード）
  * - sign_event:24242 — Blossom / BUD-11 HTTP認証（ファイルアップロード）
  */
-const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:5,sign_event:42,sign_event:10063,sign_event:27235,sign_event:24242';
+const NIP46_REQUESTED_PERMS = 'ping,sign_event:1,sign_event:5,sign_event:42,sign_event:10063,sign_event:27235,sign_event:24242';
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {
@@ -258,6 +278,234 @@ export class Nip46Service {
     private userPubkey: string | null = null;
     private clientSecretKeyHex: string | null = null;
     private pool: SimplePool | null = null;
+    private currentSession: Nip46SessionData | null = null;
+    private persistenceBinding: SessionPersistenceBinding | null = null;
+    private operationKind: Nip46OperationKind | null = null;
+    private operationPromise: Promise<boolean> | null = null;
+    private operationListeners = new Set<
+        (state: Nip46ConnectionOperationState) => void
+    >();
+
+    private getOperationStateSnapshot(): Nip46ConnectionOperationState {
+        if (!this.operationKind || !this.operationPromise) {
+            return { kind: 'idle', inProgress: false };
+        }
+
+        return {
+            kind: this.operationKind,
+            inProgress: true,
+        };
+    }
+
+    private emitOperationState(): void {
+        const snapshot = this.getOperationStateSnapshot();
+        for (const listener of this.operationListeners) {
+            listener(snapshot);
+        }
+    }
+
+    private setCurrentSession(session: Nip46SessionData | null): void {
+        this.currentSession = session
+            ? {
+                ...session,
+                pingVerified: session.pingVerified === true,
+            }
+            : null;
+    }
+
+    private updateCurrentSessionFromRuntime(pingVerified?: boolean): void {
+        if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) {
+            return;
+        }
+
+        this.setCurrentSession({
+            clientSecretKeyHex: this.clientSecretKeyHex,
+            remoteSignerPubkey: this.bunkerSigner.bp.pubkey,
+            relays: [...this.bunkerSigner.bp.relays],
+            userPubkey: this.userPubkey,
+            pingVerified: pingVerified ?? this.currentSession?.pingVerified === true,
+        });
+    }
+
+    private setPingVerified(value: boolean): void {
+        if (this.bunkerSigner && this.userPubkey && this.clientSecretKeyHex) {
+            this.updateCurrentSessionFromRuntime(value);
+            return;
+        }
+
+        if (!this.currentSession) {
+            return;
+        }
+
+        this.setCurrentSession({
+            ...this.currentSession,
+            pingVerified: value,
+        });
+    }
+
+    private writeSession(storage: Storage, pubkeyHex?: string): void {
+        if (!this.currentSession) {
+            return;
+        }
+
+        storage.setItem(
+            getNip46SessionStorageKey(pubkeyHex),
+            JSON.stringify(this.currentSession),
+        );
+    }
+
+    private persistBoundSession(): void {
+        if (!this.persistenceBinding || !this.currentSession) {
+            return;
+        }
+
+        this.writeSession(
+            this.persistenceBinding.storage,
+            this.persistenceBinding.pubkeyHex,
+        );
+    }
+
+    private async closeRuntimeResources(): Promise<void> {
+        const signer = this.bunkerSigner;
+        const pool = this.pool;
+
+        this.bunkerSigner = null;
+        this.signerAdapter = null;
+        this.userPubkey = null;
+        this.clientSecretKeyHex = null;
+        this.pool = null;
+
+        if (signer) {
+            try {
+                await signer.close();
+            } catch {
+                // noop
+            }
+        }
+
+        if (pool) {
+            pool.destroy();
+        }
+    }
+
+    private async pingWithTimeout(timeoutMs: number): Promise<boolean> {
+        if (!this.bunkerSigner) {
+            return false;
+        }
+
+        try {
+            const result = await Promise.race([
+                this.bunkerSigner.sendRequest('ping', []),
+                new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error('NIP-46 ping timeout')), timeoutMs);
+                }),
+            ]);
+
+            return result === 'pong';
+        } catch {
+            return false;
+        }
+    }
+
+    private async rebuildConnection(): Promise<boolean> {
+        if (!this.currentSession) {
+            return false;
+        }
+
+        const session = { ...this.currentSession };
+
+        try {
+            await this.closeRuntimeResources();
+
+            const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
+            const { pool, connectedRelays } = await createConnectedPool(session.relays);
+
+            this.pool = pool;
+            this.clientSecretKeyHex = session.clientSecretKeyHex;
+            this.userPubkey = session.userPubkey;
+            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
+                pubkey: session.remoteSignerPubkey,
+                relays: connectedRelays,
+                secret: null,
+            }, {
+                pool,
+                onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+            });
+            this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+            this.setCurrentSession({
+                ...session,
+                relays: connectedRelays,
+            });
+            this.persistBoundSession();
+            console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
+            return true;
+        } catch {
+            await this.closeRuntimeResources();
+            return false;
+        }
+    }
+
+    private async runOperation(
+        kind: Nip46OperationKind,
+        task: () => Promise<boolean>,
+    ): Promise<boolean> {
+        const promise = (async () => await task())();
+        this.operationKind = kind;
+        this.operationPromise = promise;
+        this.emitOperationState();
+
+        try {
+            return await promise;
+        } finally {
+            if (this.operationPromise === promise) {
+                this.operationKind = null;
+                this.operationPromise = null;
+                this.emitOperationState();
+            }
+        }
+    }
+
+    bindSessionPersistence(storage: Storage, pubkeyHex?: string): void {
+        this.persistenceBinding = {
+            storage,
+            pubkeyHex,
+        };
+    }
+
+    getOperationState(): Nip46ConnectionOperationState {
+        return this.getOperationStateSnapshot();
+    }
+
+    subscribeOperationState(
+        listener: (state: Nip46ConnectionOperationState) => void,
+    ): () => void {
+        this.operationListeners.add(listener);
+        listener(this.getOperationStateSnapshot());
+
+        return () => {
+            this.operationListeners.delete(listener);
+        };
+    }
+
+    isManualCheckInProgress(): boolean {
+        return this.operationKind === 'manual-check' && this.operationPromise !== null;
+    }
+
+    isAutoRecoveryInProgress(): boolean {
+        return this.operationKind === 'auto-recovery' && this.operationPromise !== null;
+    }
+
+    hasRecoverableSession(): boolean {
+        return this.currentSession !== null;
+    }
+
+    async waitForPendingOperation(): Promise<boolean> {
+        if (!this.operationPromise) {
+            return true;
+        }
+
+        return await this.operationPromise;
+    }
 
     async connect(bunkerUrl: string, timeoutMs: number = 30000): Promise<string> {
         console.debug('[NIP-46] connect: parsing bunker URL...');
@@ -301,11 +549,17 @@ export class Nip46Service {
 
         this.userPubkey = await this.bunkerSigner.getPublicKey();
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+        this.updateCurrentSessionFromRuntime(false);
 
         return this.userPubkey;
     }
 
     async reconnect(session: Nip46SessionData): Promise<string> {
+        this.setCurrentSession({
+            ...session,
+            pingVerified: session.pingVerified === true,
+        });
+
         const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
         const bp = {
             pubkey: session.remoteSignerPubkey,
@@ -337,22 +591,18 @@ export class Nip46Service {
 
         this.userPubkey = session.userPubkey;
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+        this.updateCurrentSessionFromRuntime(session.pingVerified === true);
 
         return this.userPubkey;
     }
 
     async disconnect(): Promise<void> {
-        if (this.bunkerSigner) {
-            await this.bunkerSigner.close();
-            this.bunkerSigner = null;
-            this.signerAdapter = null;
-            this.userPubkey = null;
-            this.clientSecretKeyHex = null;
-        }
-        if (this.pool) {
-            this.pool.destroy();
-            this.pool = null;
-        }
+        this.operationKind = null;
+        this.operationPromise = null;
+        this.emitOperationState();
+        await this.closeRuntimeResources();
+        this.setCurrentSession(null);
+        this.persistenceBinding = null;
     }
 
     isConnected(): boolean {
@@ -371,43 +621,70 @@ export class Nip46Service {
      * 可能性があるため、常にpool + BunkerSignerを完全に再構築する。
      */
     async ensureConnection(): Promise<boolean> {
-        if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) return false;
+        if (this.operationPromise) {
+            return await this.operationPromise;
+        }
 
-        // 再構築に必要なデータを事前に保存（close()後もアクセスできるように）
-        const relays = [...this.bunkerSigner.bp.relays];
-        const remotePubkey = this.bunkerSigner.bp.pubkey;
-        const clientSecretKeyHex = this.clientSecretKeyHex;
-
-        try {
-            // 古い signer と pool を閉じる
-            try { await this.bunkerSigner.close(); } catch { /* ignore */ }
-            if (this.pool) {
-                this.pool.destroy();
-                this.pool = null;
+        return await this.runOperation('auto-recovery', async () => {
+            if (!this.currentSession) {
+                return false;
             }
 
-            // 新しい pool + BunkerSigner を作成
-            const clientSecretKey = hexToBytes(clientSecretKeyHex);
-            const bp = {
-                pubkey: remotePubkey,
-                relays,
-                secret: null,
+            const hasLiveSigner =
+                this.bunkerSigner !== null
+                && this.userPubkey !== null
+                && this.clientSecretKeyHex !== null;
+
+            if (hasLiveSigner && this.currentSession.pingVerified === true) {
+                const pingSucceeded = await this.pingWithTimeout(
+                    NIP46_AUTO_PING_TIMEOUT_MS,
+                );
+                if (pingSucceeded) {
+                    this.setPingVerified(true);
+                    this.persistBoundSession();
+                    return true;
+                }
+
+                this.setPingVerified(false);
+                this.persistBoundSession();
+                return await this.rebuildConnection();
+            }
+
+            return await this.rebuildConnection();
+        });
+    }
+
+    async runManualConnectionCheck(): Promise<Nip46ManualConnectionCheckResult> {
+        if (this.operationKind === 'manual-check' && this.operationPromise) {
+            return {
+                success: await this.operationPromise,
             };
-            const { pool, connectedRelays } = await createConnectedPool(relays);
-            this.pool = pool;
-            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
-                ...bp,
-                relays: connectedRelays,
-            }, {
-                pool,
-                onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
-            });
-            this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
-            console.debug('[NIP-46] ensureConnection: pool + BunkerSigner rebuilt');
-            return true;
-        } catch {
-            return false;
         }
+
+        if (this.operationPromise) {
+            return {
+                success: false,
+                skipped: true,
+            };
+        }
+
+        const success = await this.runOperation('manual-check', async () => {
+            if (!this.currentSession || !this.bunkerSigner) {
+                this.setPingVerified(false);
+                this.persistBoundSession();
+                return false;
+            }
+
+            const pingSucceeded = await this.pingWithTimeout(
+                NIP46_MANUAL_PING_TIMEOUT_MS,
+            );
+
+            this.setPingVerified(pingSucceeded);
+            this.persistBoundSession();
+            return pingSucceeded;
+        });
+
+        return { success };
     }
 
     getSigner(): Nip46SignerAdapter | null {
@@ -419,22 +696,37 @@ export class Nip46Service {
     }
 
     saveSession(storage: Storage, pubkeyHex?: string): void {
-        if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) return;
+        this.bindSessionPersistence(storage, pubkeyHex);
 
-        const session: Nip46SessionData = {
-            clientSecretKeyHex: this.clientSecretKeyHex,
-            remoteSignerPubkey: this.bunkerSigner.bp.pubkey,
-            relays: this.bunkerSigner.bp.relays,
-            userPubkey: this.userPubkey,
-        };
-        storage.setItem(getNip46SessionStorageKey(pubkeyHex), JSON.stringify(session));
+        if (!this.currentSession) {
+            this.updateCurrentSessionFromRuntime();
+        }
+
+        this.writeSession(storage, this.persistenceBinding?.pubkeyHex);
     }
 
     static loadSession(storage: Storage, pubkeyHex?: string): Nip46SessionData | null {
         const data = storage.getItem(getNip46SessionStorageKey(pubkeyHex));
         if (!data) return null;
         try {
-            return JSON.parse(data) as Nip46SessionData;
+            const session = JSON.parse(data) as Partial<Nip46SessionData> | null;
+            if (
+                !session
+                || typeof session.clientSecretKeyHex !== 'string'
+                || typeof session.remoteSignerPubkey !== 'string'
+                || !Array.isArray(session.relays)
+                || typeof session.userPubkey !== 'string'
+            ) {
+                return null;
+            }
+
+            return {
+                clientSecretKeyHex: session.clientSecretKeyHex,
+                remoteSignerPubkey: session.remoteSignerPubkey,
+                relays: session.relays.filter((relay): relay is string => typeof relay === 'string'),
+                userPubkey: session.userPubkey,
+                pingVerified: session.pingVerified === true,
+            };
         } catch {
             return null;
         }

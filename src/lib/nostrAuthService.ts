@@ -6,11 +6,6 @@ import { parentClientAuthService } from "./parentClientAuthService";
 import { authState } from "../stores/authStore.svelte";
 import type { AuthService } from "./types";
 
-/** NIP-46再接続の完了を待つ最大時間(ms) */
-const NIP46_RECONNECT_WAIT_MS = 10000;
-/** NIP-46再接続のポーリング間隔(ms) */
-const NIP46_RECONNECT_POLL_MS = 200;
-
 function base64Encode(value: string): string {
     const binary = encodeURIComponent(value).replace(
         /%([0-9A-F]{2})/g,
@@ -36,23 +31,13 @@ export class NostrAuthService implements AuthService {
             };
         }
 
-        if (nip46Service.isConnected()) {
-            const signer = nip46Service.getSigner();
-            if (signer) {
-                return signer;
-            }
-        }
-
-        if (parentClientAuthService.isConnected()) {
-            const signer = parentClientAuthService.getSigner();
-            if (signer) {
-                return signer;
-            }
-        }
-
         if (authState.value.type === 'nip46') {
-            // NIP-46認証だが接続が未完了（再接続中など）→ 接続完了を待つ
-            const connected = await this.waitForNip46Connection();
+            const initialSigner = nip46Service.getSigner();
+            if (initialSigner) {
+                return initialSigner;
+            }
+
+            const connected = await nip46Service.waitForPendingOperation();
             if (connected) {
                 const signer = nip46Service.getSigner();
                 if (signer) {
@@ -132,18 +117,5 @@ export class NostrAuthService implements AuthService {
         });
 
         return `Nostr ${base64Encode(JSON.stringify(event))}`;
-    }
-
-    /**
-     * NIP-46の接続が確立されるまでポーリングで待機する。
-     * visibilitychange後の再接続やアプリ起動時の初期化完了待ちに使用。
-     */
-    private async waitForNip46Connection(): Promise<boolean> {
-        const start = Date.now();
-        while (Date.now() - start < NIP46_RECONNECT_WAIT_MS) {
-            if (nip46Service.isConnected()) return true;
-            await new Promise(r => setTimeout(r, NIP46_RECONNECT_POLL_MS));
-        }
-        return false;
     }
 }

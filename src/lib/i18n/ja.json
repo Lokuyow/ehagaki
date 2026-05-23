@@ -81,6 +81,13 @@
     "switch_account": "切替",
     "active": "使用中",
     "logout_account": "ログアウト",
+    "amber_connection_title": "Amber 接続確認",
+    "amber_connection_description": "Amber が確認ダイアログを表示したら許可してください。30秒以上バックグラウンドにいた後の自動復帰は、この確認が一度成功してから有効になります。",
+    "amber_connection_check": "接続を確認",
+    "amber_connection_checking": "確認中...",
+    "amber_connection_auto_recovering": "バックグラウンド復帰の再接続中です。完了後に再試行してください。",
+    "amber_connection_success": "Amber との接続を確認しました。以後は長時間バックグラウンド復帰時に自動確認が使われます。",
+    "amber_connection_failed": "Amber との接続確認に失敗しました。Amber 側で許可してから再試行してください。",
     "copy_success": "コピーしました"
   },
   "postHistory": {

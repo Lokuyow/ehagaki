@@ -42,8 +42,8 @@ vi.mock('../../lib/keyManager.svelte', async () => {
 // nip46Service をモック
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
-        isConnected: vi.fn().mockReturnValue(false),
         getSigner: vi.fn().mockReturnValue(null),
+        waitForPendingOperation: vi.fn().mockResolvedValue(true),
     },
 }));
 
@@ -169,8 +169,9 @@ describe('NostrAuthService', () => {
         });
 
         it('NIP-46接続時にnip46Signer使用→トークン生成', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
-            vi.mocked(nip46Service.isConnected).mockReturnValue(true);
+            (authState as any).value = { ...authState.value, type: 'nip46' };
             vi.mocked(nip46Service.getSigner).mockReturnValue({
                 signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
             } as any);
@@ -191,25 +192,21 @@ describe('NostrAuthService', () => {
             );
 
             // クリーンアップ
-            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
+            (authState as any).value = { ...authState.value, type: 'nsec' };
             vi.mocked(nip46Service.getSigner).mockReturnValue(null);
         });
 
-        it('NIP-46認証状態で接続未完了時、接続完了を待ってからトークン生成', async () => {
+        it('NIP-46認証状態でpending recovery完了を待ってからトークン生成', async () => {
             const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
 
-            // authState.value.type = 'nip46' だが isConnected は最初 false
             (authState as any).value = { ...authState.value, type: 'nip46' };
-            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
-
-            // 200ms後に接続完了をシミュレート
-            setTimeout(() => {
-                vi.mocked(nip46Service.isConnected).mockReturnValue(true);
-                vi.mocked(nip46Service.getSigner).mockReturnValue({
+            vi.mocked(nip46Service.getSigner)
+                .mockReturnValueOnce(null)
+                .mockReturnValue({
                     signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
                 } as any);
-            }, 200);
+            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
 
             const result = await service.buildAuthHeader(
                 'https://example.com/upload',
@@ -217,16 +214,36 @@ describe('NostrAuthService', () => {
             );
 
             expect(result).toBe('Nostr mock-nip98-token');
+            expect(nip46Service.waitForPendingOperation).toHaveBeenCalledOnce();
 
             // クリーンアップ
             (authState as any).value = { ...authState.value, type: 'nsec' };
-            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
+            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
+            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
+        });
+
+        it('NIP-46以外の認証ではstaleなnip46 signerを使わない', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+
+            (authState as any).value = { ...authState.value, type: 'parentClient' };
+            vi.mocked(nip46Service.getSigner).mockReturnValue({
+                signEvent: vi.fn(),
+            } as any);
+
+            await expect(
+                service.buildAuthHeader('https://example.com/upload', 'POST')
+            ).rejects.toThrow('Authentication required');
+
+            expect(nip46Service.waitForPendingOperation).not.toHaveBeenCalled();
+            (authState as any).value = { ...authState.value, type: 'nsec' };
             vi.mocked(nip46Service.getSigner).mockReturnValue(null);
         });
 
         it('親クライアント連携接続時にparent signer使用→トークン生成', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
             const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
-            vi.mocked(parentClientAuthService.isConnected).mockReturnValue(true);
+            (authState as any).value = { ...authState.value, type: 'parentClient' };
             vi.mocked(parentClientAuthService.getSigner).mockReturnValue({
                 signEvent: vi.fn().mockResolvedValue({ id: 'parent-signed', sig: 'sig' }),
             } as any);
@@ -238,7 +255,7 @@ describe('NostrAuthService', () => {
 
             expect(result).toBe('Nostr mock-nip98-token');
 
-            vi.mocked(parentClientAuthService.isConnected).mockReturnValue(false);
+            (authState as any).value = { ...authState.value, type: 'nsec' };
             vi.mocked(parentClientAuthService.getSigner).mockReturnValue(null);
         });
     });

@@ -1752,6 +1752,75 @@ describe('PostManager統合テスト', () => {
             expect(sendOptions).toEqual(expect.objectContaining({ completeOn: 'all-ok' }));
             expect(sendOptions).not.toHaveProperty('signer');
         });
+
+        it('NIP-46投稿前にpending recovery完了を待つ', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+            const waitForNip46ReadyFn = vi.fn().mockResolvedValue(true);
+            const mockNip46Signer = {
+                signEvent: vi.fn().mockResolvedValue({
+                    id: 'nip46-signed-event-id',
+                    kind: 1,
+                    content: 'Test post content',
+                    pubkey: 'a'.repeat(64),
+                    sig: 'nip46-signature'
+                })
+            };
+
+            mockAuthState.type = 'nip46';
+            mockAuthState.pubkey = 'a'.repeat(64);
+            mockDeps.waitForNip46ReadyFn = waitForNip46ReadyFn;
+            mockDeps.getNip46SignerFn = () => mockNip46Signer;
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result.success).toBe(true);
+            expect(waitForNip46ReadyFn).toHaveBeenCalledOnce();
+            expect(mockNip46Signer.signEvent).toHaveBeenCalledOnce();
+        });
+
+        it('NIP-46 recovery失敗時は投稿せずsigner取得前に止める', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+            const getNip46SignerFn = vi.fn();
+
+            mockAuthState.type = 'nip46';
+            mockAuthState.pubkey = 'a'.repeat(64);
+            mockDeps.waitForNip46ReadyFn = vi.fn().mockResolvedValue(false);
+            mockDeps.getNip46SignerFn = getNip46SignerFn;
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result).toEqual({ success: false, error: 'nip46_signer_not_available' });
+            expect(getNip46SignerFn).not.toHaveBeenCalled();
+            expect(mockRxNostr.send).not.toHaveBeenCalled();
+        });
     });
 
     describe('インラインnostr: URI引用タグ', () => {

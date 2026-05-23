@@ -6,6 +6,7 @@ vi.mock('../../lib/bootstrap/externalInputBootstrap', () => ({
 
 import { runExternalInputBootstrap } from '../../lib/bootstrap/externalInputBootstrap';
 import {
+    NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS,
     registerNip46VisibilityHandler,
     runAppInitializationBootstrap,
 } from '../../lib/bootstrap/appInitializationBootstrap';
@@ -57,16 +58,20 @@ function createBootstrapParams(overrides: Record<string, unknown> = {}) {
 
 function createDocumentMock() {
     let handler: (() => void) | undefined;
+    const document = {
+        visibilityState: 'visible' as Document['visibilityState'],
+        addEventListener: vi.fn((event: string, listener: () => void) => {
+            if (event === 'visibilitychange') {
+                handler = listener;
+            }
+        }),
+        removeEventListener: vi.fn(),
+    };
 
     return {
-        document: {
-            visibilityState: 'visible' as Document['visibilityState'],
-            addEventListener: vi.fn((event: string, listener: () => void) => {
-                if (event === 'visibilitychange') {
-                    handler = listener;
-                }
-            }),
-            removeEventListener: vi.fn(),
+        document,
+        setVisibilityState: (visibilityState: Document['visibilityState']) => {
+            document.visibilityState = visibilityState;
         },
         triggerVisibilityChange: () => handler?.(),
     };
@@ -163,10 +168,12 @@ describe('registerNip46VisibilityHandler', () => {
         vi.clearAllMocks();
     });
 
-    it('visible + nip46 + connected のとき再接続を試行する', async () => {
-        const { document, triggerVisibilityChange } = createDocumentMock();
+    it('hidden後に30秒以上経ってvisibleへ戻ると再接続を試行する', async () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
         const nip46Service = {
-            isConnected: vi.fn(() => true),
+            hasRecoverableSession: vi.fn(() => true),
+            isManualCheckInProgress: vi.fn(() => false),
             ensureConnection: vi.fn().mockResolvedValue(undefined),
         };
 
@@ -175,8 +182,13 @@ describe('registerNip46VisibilityHandler', () => {
             authState: { value: { type: 'nip46' } },
             nip46Service,
             console: { error: vi.fn() },
+            now: () => nowMs,
         });
 
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+        setVisibilityState('visible');
         triggerVisibilityChange();
         await Promise.resolve();
 
@@ -185,10 +197,84 @@ describe('registerNip46VisibilityHandler', () => {
         expect(document.removeEventListener).toHaveBeenCalledOnce();
     });
 
-    it('条件を満たさないとき再接続しない', () => {
+    it('hidden経由でないvisibleでは再接続しない', () => {
         const { document, triggerVisibilityChange } = createDocumentMock();
         const nip46Service = {
-            isConnected: vi.fn(() => false),
+            hasRecoverableSession: vi.fn(() => true),
+            isManualCheckInProgress: vi.fn(() => false),
+            ensureConnection: vi.fn().mockResolvedValue(undefined),
+        };
+
+        registerNip46VisibilityHandler({
+            document: document as never,
+            authState: { value: { type: 'nip46' } },
+            nip46Service,
+            console: { error: vi.fn() },
+        });
+
+        triggerVisibilityChange();
+
+        expect(nip46Service.ensureConnection).not.toHaveBeenCalled();
+    });
+
+    it('30秒未満の復帰では再接続しない', () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
+        const nip46Service = {
+            hasRecoverableSession: vi.fn(() => true),
+            isManualCheckInProgress: vi.fn(() => false),
+            ensureConnection: vi.fn().mockResolvedValue(undefined),
+        };
+
+        registerNip46VisibilityHandler({
+            document: document as never,
+            authState: { value: { type: 'nip46' } },
+            nip46Service,
+            console: { error: vi.fn() },
+            now: () => nowMs,
+        });
+
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS - 1;
+        setVisibilityState('visible');
+        triggerVisibilityChange();
+
+        expect(nip46Service.ensureConnection).not.toHaveBeenCalled();
+    });
+
+    it('manual check中にvisibleへ戻ってもauto recoveryを開始しない', () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
+        const nip46Service = {
+            hasRecoverableSession: vi.fn(() => true),
+            isManualCheckInProgress: vi.fn(() => true),
+            ensureConnection: vi.fn().mockResolvedValue(undefined),
+        };
+
+        registerNip46VisibilityHandler({
+            document: document as never,
+            authState: { value: { type: 'nip46' } },
+            nip46Service,
+            console: { error: vi.fn() },
+            now: () => nowMs,
+        });
+
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+        setVisibilityState('visible');
+        triggerVisibilityChange();
+
+        expect(nip46Service.ensureConnection).not.toHaveBeenCalled();
+    });
+
+    it('NIP-46以外またはrecoverable sessionなしでは再接続しない', () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
+        const nip46Service = {
+            hasRecoverableSession: vi.fn(() => false),
+            isManualCheckInProgress: vi.fn(() => false),
             ensureConnection: vi.fn().mockResolvedValue(undefined),
         };
 
@@ -197,8 +283,13 @@ describe('registerNip46VisibilityHandler', () => {
             authState: { value: { type: 'nsec' } },
             nip46Service,
             console: { error: vi.fn() },
+            now: () => nowMs,
         });
 
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+        setVisibilityState('visible');
         triggerVisibilityChange();
 
         expect(nip46Service.ensureConnection).not.toHaveBeenCalled();

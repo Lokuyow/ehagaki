@@ -441,17 +441,24 @@ export class PostManager {
 
       // NIP-46リモートサイナーの場合
       if (auth.type === 'nip46') {
-        const nip46Signer = this.deps.getNip46SignerFn?.();
-        if (!nip46Signer) {
-          return this.notifyPostFailure('nip46_signer_not_available');
-        }
-
-        const pubkey = auth.pubkey;
-        if (!pubkey) {
-          return this.notifyPostFailure('pubkey_not_found');
-        }
-
         try {
+          const nip46Ready = this.deps.waitForNip46ReadyFn
+            ? await this.deps.waitForNip46ReadyFn()
+            : true;
+          if (!nip46Ready) {
+            return this.notifyPostFailure('nip46_signer_not_available');
+          }
+
+          const nip46Signer = this.deps.getNip46SignerFn?.();
+          if (!nip46Signer) {
+            return this.notifyPostFailure('nip46_signer_not_available');
+          }
+
+          const pubkey = auth.pubkey;
+          if (!pubkey) {
+            return this.notifyPostFailure('pubkey_not_found');
+          }
+
           const event = await this.buildSubmissionEvent({
             processedContent,
             hashtags,

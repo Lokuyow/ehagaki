@@ -12,6 +12,10 @@ interface ManagedAccountController {
     getAccountType: (pubkeyHex: string) => ManagedAccountType | null;
 }
 
+interface Nip46RuntimeController {
+    disconnect: () => Promise<void>;
+}
+
 export function disposeNostrSession<T extends DisposableSession | undefined>(
     session: T,
 ): undefined {
@@ -29,6 +33,28 @@ export async function handleSuccessfulAuthResult(
 
     await onAuthenticated(result.pubkeyHex);
     return true;
+}
+
+export async function clearNip46RuntimeForAuthChange(params: {
+    currentAuthType?: string;
+    currentPubkeyHex?: string | null;
+    nextAuthType: ManagedAccountType;
+    nextPubkeyHex?: string | null;
+    nip46Service: Nip46RuntimeController;
+}): Promise<void> {
+    if (params.currentAuthType !== 'nip46') {
+        return;
+    }
+
+    if (
+        params.nextAuthType === 'nip46'
+        && params.currentPubkeyHex
+        && params.currentPubkeyHex === params.nextPubkeyHex
+    ) {
+        return;
+    }
+
+    await params.nip46Service.disconnect();
 }
 
 export function resolveLogoutAccountAction(nextPubkey: string | null | undefined):

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+    clearNip46RuntimeForAuthChange,
     disposeNostrSession,
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
@@ -37,6 +38,50 @@ describe('handleSuccessfulAuthResult', () => {
         await expect(handleSuccessfulAuthResult({ success: false }, onAuthenticated)).resolves.toBe(false);
         await expect(handleSuccessfulAuthResult({ success: true }, onAuthenticated)).resolves.toBe(false);
         expect(onAuthenticated).not.toHaveBeenCalled();
+    });
+});
+
+describe('clearNip46RuntimeForAuthChange', () => {
+    it('現在がnip46で別の認証方式へ切り替わるとruntimeをclearする', async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+
+        await clearNip46RuntimeForAuthChange({
+            currentAuthType: 'nip46',
+            currentPubkeyHex: 'pubkey-1',
+            nextAuthType: 'nip07',
+            nextPubkeyHex: 'pubkey-2',
+            nip46Service: { disconnect },
+        });
+
+        expect(disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('同じnip46アカウント継続ならruntimeをclearしない', async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+
+        await clearNip46RuntimeForAuthChange({
+            currentAuthType: 'nip46',
+            currentPubkeyHex: 'pubkey-1',
+            nextAuthType: 'nip46',
+            nextPubkeyHex: 'pubkey-1',
+            nip46Service: { disconnect },
+        });
+
+        expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('現在がnip46でなければ何もしない', async () => {
+        const disconnect = vi.fn().mockResolvedValue(undefined);
+
+        await clearNip46RuntimeForAuthChange({
+            currentAuthType: 'nsec',
+            currentPubkeyHex: 'pubkey-1',
+            nextAuthType: 'parentClient',
+            nextPubkeyHex: 'pubkey-2',
+            nip46Service: { disconnect },
+        });
+
+        expect(disconnect).not.toHaveBeenCalled();
     });
 });
 

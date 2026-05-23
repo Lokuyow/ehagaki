@@ -43,7 +43,7 @@ interface LegacyNsecDependencies extends NsecRestoreDependencies {
 export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies, PublicKeyAuthDependencies {
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension'>;
-    nip46Svc: Pick<Nip46Service, 'reconnect'>;
+    nip46Svc: Pick<Nip46Service, 'reconnect' | 'bindSessionPersistence'>;
     parentClientSvc: Pick<ParentClientAuthService, 'reconnect'>;
     accountManager?: AccountMigrationTarget | null;
     console: Console;
@@ -168,7 +168,14 @@ export async function restoreManagedNip46Account(
         pubkeyHex,
         loadSession: (targetPubkeyHex) =>
             Nip46Storage.loadSession(dependencies.localStorage, targetPubkeyHex),
-        reconnect: (session) => dependencies.nip46Svc.reconnect(session),
+        reconnect: async (session) => {
+            const restoredPubkey = await dependencies.nip46Svc.reconnect(session);
+            dependencies.nip46Svc.bindSessionPersistence(
+                dependencies.localStorage,
+                pubkeyHex,
+            );
+            return restoredPubkey;
+        },
         applyAuth: (targetPubkeyHex) =>
             applyPublicKeyAuth('nip46', targetPubkeyHex, dependencies),
         onError: (error) => dependencies.console.error('NIP-46アカウント復元エラー:', error),

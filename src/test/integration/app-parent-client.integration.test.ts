@@ -291,7 +291,17 @@ vi.mock('../../lib/bootstrap/authBootstrap', () => ({
 }));
 
 vi.mock('../../lib/nip46Service', () => ({
-    nip46Service: {},
+    nip46Service: {
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        getSigner: vi.fn().mockReturnValue(null),
+        waitForPendingOperation: vi.fn().mockResolvedValue(true),
+        runManualConnectionCheck: vi.fn().mockResolvedValue({ success: false }),
+        getOperationState: vi.fn().mockReturnValue({ kind: 'idle', inProgress: false }),
+        subscribeOperationState: vi.fn(() => () => undefined),
+        hasRecoverableSession: vi.fn().mockReturnValue(false),
+        isManualCheckInProgress: vi.fn().mockReturnValue(false),
+        ensureConnection: vi.fn().mockResolvedValue(true),
+    },
     BUNKER_REGEX: /^bunker:\/\/.+$/,
 }));
 

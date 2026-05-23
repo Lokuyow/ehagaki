@@ -1,5 +1,7 @@
 import { runExternalInputBootstrap, type RunExternalInputBootstrapParams } from "./externalInputBootstrap";
 
+export const NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS = 30000;
+
 interface AuthInitializationResult {
     hasAuth: boolean;
     pubkeyHex?: string;
@@ -18,7 +20,8 @@ interface AuthStateLike {
 }
 
 interface Nip46VisibilityServiceLike {
-    isConnected(): boolean;
+    hasRecoverableSession(): boolean;
+    isManualCheckInProgress(): boolean;
     ensureConnection(): Promise<unknown>;
 }
 
@@ -46,6 +49,7 @@ interface RegisterNip46VisibilityHandlerParams {
     authState: AuthStateLike;
     nip46Service: Nip46VisibilityServiceLike;
     console: Pick<Console, "error">;
+    now?: () => number;
 }
 
 function getSharedErrorFromLocationSearch(locationSearch: string): string | null {
@@ -113,12 +117,29 @@ export function registerNip46VisibilityHandler({
     authState,
     nip46Service,
     console,
+    now = () => Date.now(),
 }: RegisterNip46VisibilityHandlerParams): () => void {
+    let hiddenAt: number | null = null;
+
     function handleVisibilityChange() {
+        if (document.visibilityState === "hidden") {
+            hiddenAt = now();
+            return;
+        }
+
+        if (document.visibilityState !== "visible") {
+            return;
+        }
+
+        const hiddenDuration = hiddenAt === null ? null : now() - hiddenAt;
+        hiddenAt = null;
+
         if (
-            document.visibilityState === "visible" &&
-            authState.value.type === "nip46" &&
-            nip46Service.isConnected()
+            hiddenDuration !== null
+            && hiddenDuration >= NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS
+            && authState.value.type === "nip46"
+            && nip46Service.hasRecoverableSession()
+            && !nip46Service.isManualCheckInProgress()
         ) {
             nip46Service.ensureConnection().catch((error) => {
                 console.error("NIP-46 reconnection failed:", error);

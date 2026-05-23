@@ -9,7 +9,10 @@
   import { iframeMessageService } from "./lib/iframeMessageService";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
-  import { nip46Service } from "./lib/nip46Service";
+  import {
+    nip46Service,
+    type Nip46ConnectionOperationState,
+  } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
   import { embedIndexedDbService } from "./lib/embedIndexedDbService";
@@ -155,6 +158,7 @@
     createDraftLimitConfirmHandlers,
   } from "./lib/appDialogUtils";
   import {
+    clearNip46RuntimeForAuthChange,
     disposeNostrSession,
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
@@ -304,6 +308,12 @@
   let postComponentRef: any = $state();
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
+  let nip46OperationState = $state<Nip46ConnectionOperationState>(
+    nip46Service.getOperationState(),
+  );
+  let nip46ConnectionCheckStatus = $state<"idle" | "success" | "failure">(
+    "idle",
+  );
   let showLastAccountLogoutConfirm = $state(false);
   let pendingLastLogoutPubkey: string | null = $state(null);
   let lastAccountLogoutError = $state("");
@@ -710,6 +720,13 @@
       return result.error ?? "parent_client_auth_error";
     }
 
+    await clearNip46RuntimeForAuthChange({
+      currentAuthType: authState.value?.type,
+      currentPubkeyHex: authState.value?.pubkey,
+      nextAuthType: "parentClient",
+      nextPubkeyHex: result.pubkeyHex,
+      nip46Service,
+    });
     rxNostr = disposeNostrSession(rxNostr);
     await handlePostAuth(result.pubkeyHex);
     return undefined;
@@ -978,6 +995,13 @@
     errorMessage = "";
 
     try {
+      await clearNip46RuntimeForAuthChange({
+        currentAuthType: authState.value?.type,
+        currentPubkeyHex: authState.value?.pubkey,
+        nextAuthType: "nsec",
+        nextPubkeyHex: result.pubkeyHex,
+        nip46Service,
+      });
       await handleSuccessfulAuthResult(result, handlePostAuth);
     } catch (e) {
       isLoadingProfileStore.set(false);
@@ -1085,6 +1109,17 @@
     if (isSwitchingAccount) return false;
     isSwitchingAccount = true;
     try {
+      const nextAccountType = accountManager.getAccountType(pubkeyHex);
+      if (nextAccountType) {
+        await clearNip46RuntimeForAuthChange({
+          currentAuthType: authState.value?.type,
+          currentPubkeyHex: authState.value?.pubkey,
+          nextAuthType: nextAccountType,
+          nextPubkeyHex: pubkeyHex,
+          nip46Service,
+        });
+      }
+
       rxNostr = disposeNostrSession(rxNostr);
 
       return await restoreManagedAccountSession({
@@ -1134,6 +1169,13 @@
         return result.error ?? "nip07_auth_error";
       }
 
+      await clearNip46RuntimeForAuthChange({
+        currentAuthType: authState.value?.type,
+        currentPubkeyHex: authState.value?.pubkey,
+        nextAuthType: "nip07",
+        nextPubkeyHex: result.pubkeyHex,
+        nip46Service,
+      });
       await handleSuccessfulAuthResult(result, handlePostAuth);
       return undefined;
     } catch (error) {
@@ -1176,6 +1218,20 @@
     }
   }
 
+  async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
+    if (authState.value?.type !== "nip46" || authState.value?.pubkey !== pubkeyHex) {
+      return;
+    }
+
+    nip46ConnectionCheckStatus = "idle";
+    const result = await nip46Service.runManualConnectionCheck();
+    if (result.skipped) {
+      return;
+    }
+
+    nip46ConnectionCheckStatus = result.success ? "success" : "failure";
+  }
+
   $effect(() => {
     const pubkey = authState.value?.pubkey;
     if (!pubkey || !authState.value?.isAuthenticated) {
@@ -1184,6 +1240,12 @@
 
     void customEmojiStore.prefetchCache({ pubkey });
     void customEmojiUsageStore.load({ pubkey });
+  });
+
+  $effect(() => {
+    authState.value?.pubkey;
+    authState.value?.type;
+    nip46ConnectionCheckStatus = "idle";
   });
 
   $effect(() => {
@@ -1305,6 +1367,11 @@
       parentClientAuthService.onRemoteLogout((pubkeyHex) => {
         void handleRemoteParentClientLogout(pubkeyHex);
       });
+    const cleanupNip46OperationHandler = nip46Service.subscribeOperationState(
+      (state) => {
+        nip46OperationState = state;
+      },
+    );
 
     const cleanupRemoteComposerSetContextHandler =
       embedComposerContextService.onRemoteSetContext((payload, requestId) => {
@@ -1405,6 +1472,7 @@
 
     return () => {
       cleanupVisibilityHandler();
+      cleanupNip46OperationHandler();
       cleanupParentClientLoginHandler();
       cleanupParentClientLogoutHandler();
       cleanupRemoteComposerSetContextHandler();
@@ -1841,8 +1909,11 @@
           onLogout={requestLogoutAccount}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
+          onCheckNip46Connection={handleNip46ConnectionCheck}
           accounts={accountListStore.value}
           accountProfiles={accountProfileCacheStore.value}
+          nip46ConnectionOperationState={nip46OperationState.kind}
+          nip46ConnectionStatus={nip46ConnectionCheckStatus}
           {isLoggingOut}
           {isSwitchingAccount}
         />

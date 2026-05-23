@@ -28,6 +28,7 @@ export interface Nip46SessionData {
     remoteSignerPubkey: string;
     relays: string[];
     userPubkey: string;
+    pingVerified?: boolean;
 }
 
 export type ParentClientCapability =
@@ -178,6 +179,7 @@ export interface PostManagerDeps {
     getClientTagFn?: () => string[] | null;
     seckeySignerFn?: (key: string) => any;
     getNip46SignerFn?: () => any;
+    waitForNip46ReadyFn?: () => Promise<boolean>;
     getParentClientSignerFn?: () => any;
     savePostHistoryFn?: (input: {
         event: NostrEvent;

@@ -30,6 +30,7 @@
         onLogout: (pubkeyHex: string) => void;
         onSwitchAccount?: (pubkeyHex: string) => void;
         onAddAccount?: () => void;
+        onCheckNip46Connection?: (pubkeyHex: string) => void | Promise<void>;
         accounts?: StoredAccount[];
         accountProfiles?: Map<
             string,
@@ -37,6 +38,8 @@
         >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
+        nip46ConnectionOperationState?: "idle" | "manual-check" | "auto-recovery";
+        nip46ConnectionStatus?: "idle" | "success" | "failure";
     }
 
     let {
@@ -45,10 +48,13 @@
         onLogout,
         onSwitchAccount,
         onAddAccount,
+        onCheckNip46Connection,
         accounts = [],
         accountProfiles = new Map(),
         isLoggingOut = false,
         isSwitchingAccount = false,
+        nip46ConnectionOperationState = "idle",
+        nip46ConnectionStatus = "idle",
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -97,6 +103,10 @@
     function handleSwitchAccount(pubkeyHex: string) {
         onSwitchAccount?.(pubkeyHex);
         handleClose();
+    }
+
+    function handleCheckNip46Connection(pubkeyHex: string) {
+        void onCheckNip46Connection?.(pubkeyHex);
     }
 
     async function handleCopy(text: string, type: string, event: MouseEvent) {
@@ -225,74 +235,136 @@
                 <div class="account-list">
                     {#each accounts as account (account.pubkeyHex)}
                         {@const isActive = account.pubkeyHex === auth?.pubkey}
+                        {@const showNip46ConnectionPanel =
+                            isActive && account.type === "nip46"}
                         {@const cachedProfile = accountProfiles.get(
                             account.pubkeyHex,
                         )}
                         <div class="account-item" class:active={isActive}>
-                            <button
-                                class="account-info-button"
-                                onclick={() => {
-                                    if (!isActive && !isSwitchingAccount) {
-                                        handleSwitchAccount(account.pubkeyHex);
-                                    }
-                                }}
-                                disabled={isActive || isSwitchingAccount}
-                            >
-                                <ProfileAvatar
-                                    src={cachedProfile?.picture}
-                                    alt={cachedProfile?.displayName ||
-                                        cachedProfile?.name ||
-                                        ""}
-                                    rootClassName="account-avatar"
-                                    imageClassName="account-avatar-img"
-                                    fallbackClassName="account-avatar-placeholder"
-                                    fallbackAriaLabel="Profile image placeholder"
-                                />
-                                <div class="account-details">
-                                    <div class="account-name-row">
-                                        <span class="account-name">
-                                            {cachedProfile?.displayName ||
-                                                cachedProfile?.name ||
-                                                $_("profileDialog.anonymous")}
-                                        </span>
-                                        <span class="account-npub-short">
-                                            {formatNpubShort(account.pubkeyHex)}
+                            <div class="account-row">
+                                <button
+                                    class="account-info-button"
+                                    onclick={() => {
+                                        if (!isActive && !isSwitchingAccount) {
+                                            handleSwitchAccount(account.pubkeyHex);
+                                        }
+                                    }}
+                                    disabled={isActive || isSwitchingAccount}
+                                >
+                                    <ProfileAvatar
+                                        src={cachedProfile?.picture}
+                                        alt={cachedProfile?.displayName ||
+                                            cachedProfile?.name ||
+                                            ""}
+                                        rootClassName="account-avatar"
+                                        imageClassName="account-avatar-img"
+                                        fallbackClassName="account-avatar-placeholder"
+                                        fallbackAriaLabel="Profile image placeholder"
+                                    />
+                                    <div class="account-details">
+                                        <div class="account-name-row">
+                                            <span class="account-name">
+                                                {cachedProfile?.displayName ||
+                                                    cachedProfile?.name ||
+                                                    $_("profileDialog.anonymous")}
+                                            </span>
+                                            <span class="account-npub-short">
+                                                {formatNpubShort(account.pubkeyHex)}
+                                            </span>
+                                        </div>
+                                        <span class="account-type-badge">
+                                            {#if account.type === "nsec"}
+                                                {$_(
+                                                    "profileDialog.login_method_nsec",
+                                                )}
+                                            {:else if account.type === "nip07"}
+                                                {$_(
+                                                    "profileDialog.login_method_nip07",
+                                                )}
+                                            {:else if account.type === "nip46"}
+                                                {$_(
+                                                    "profileDialog.login_method_nip46",
+                                                )}
+                                            {:else if account.type === "parentClient"}
+                                                {$_(
+                                                    "profileDialog.login_method_parent_client",
+                                                )}
+                                            {/if}
                                         </span>
                                     </div>
-                                    <span class="account-type-badge">
-                                        {#if account.type === "nsec"}
+                                    {#if isActive}
+                                        <span class="active-badge"
+                                            >{$_("profileDialog.active")}</span
+                                        >
+                                    {/if}
+                                </button>
+                                <button
+                                    class="account-logout-button"
+                                    onclick={() => handleLogout(account.pubkeyHex)}
+                                    disabled={isLoggingOut || isSwitchingAccount}
+                                    aria-label={$_("profileDialog.logout_account")}
+                                >
+                                    <div class="xmark-small-icon svg-icon"></div>
+                                </button>
+                            </div>
+                            {#if showNip46ConnectionPanel}
+                                <div class="nip46-connection-panel">
+                                    <div class="nip46-connection-title">
+                                        {$_("profileDialog.amber_connection_title")}
+                                    </div>
+                                    <p class="nip46-connection-description">
+                                        {$_(
+                                            "profileDialog.amber_connection_description",
+                                        )}
+                                    </p>
+                                    {#if nip46ConnectionOperationState === "auto-recovery"}
+                                        <div class="nip46-connection-status info">
                                             {$_(
-                                                "profileDialog.login_method_nsec",
+                                                "profileDialog.amber_connection_auto_recovering",
                                             )}
-                                        {:else if account.type === "nip07"}
+                                        </div>
+                                    {:else if nip46ConnectionStatus === "success"}
+                                        <div class="nip46-connection-status success">
                                             {$_(
-                                                "profileDialog.login_method_nip07",
+                                                "profileDialog.amber_connection_success",
                                             )}
-                                        {:else if account.type === "nip46"}
+                                        </div>
+                                    {:else if nip46ConnectionStatus === "failure"}
+                                        <div class="nip46-connection-status error">
                                             {$_(
-                                                "profileDialog.login_method_nip46",
+                                                "profileDialog.amber_connection_failed",
                                             )}
-                                        {:else if account.type === "parentClient"}
-                                            {$_(
-                                                "profileDialog.login_method_parent_client",
+                                        </div>
+                                    {/if}
+                                    <Button
+                                        className="nip46-connection-button"
+                                        variant="secondary"
+                                        shape="rounded"
+                                        disabled={isLoggingOut ||
+                                            isSwitchingAccount ||
+                                            nip46ConnectionOperationState !==
+                                                "idle"}
+                                        onClick={() =>
+                                            handleCheckNip46Connection(
+                                                account.pubkeyHex,
                                             )}
-                                        {/if}
-                                    </span>
-                                </div>
-                                {#if isActive}
-                                    <span class="active-badge"
-                                        >{$_("profileDialog.active")}</span
+                                        ariaLabel={$_(
+                                            "profileDialog.amber_connection_check",
+                                        )}
                                     >
-                                {/if}
-                            </button>
-                            <button
-                                class="account-logout-button"
-                                onclick={() => handleLogout(account.pubkeyHex)}
-                                disabled={isLoggingOut || isSwitchingAccount}
-                                aria-label={$_("profileDialog.logout_account")}
-                            >
-                                <div class="xmark-small-icon svg-icon"></div>
-                            </button>
+                                        <span>
+                                            {nip46ConnectionOperationState ===
+                                            "manual-check"
+                                                ? $_(
+                                                      "profileDialog.amber_connection_checking",
+                                                  )
+                                                : $_(
+                                                      "profileDialog.amber_connection_check",
+                                                  )}
+                                        </span>
+                                    </Button>
+                                </div>
+                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -461,10 +533,17 @@
 
         .account-item {
             display: flex;
-            align-items: center;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
             padding: 0;
             border-radius: 8px;
             transition: background-color 0.15s;
+
+            .account-row {
+                display: flex;
+                align-items: center;
+            }
 
             &.active {
                 :global(:disabled) {
@@ -598,6 +677,51 @@
 
         .add-account-label {
             font-size: 1rem;
+        }
+
+        .nip46-connection-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--btn-bg), transparent 18%);
+        }
+
+        .nip46-connection-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .nip46-connection-description {
+            margin: 0;
+            font-size: 0.8125rem;
+            line-height: 1.45;
+            color: var(--text-light);
+        }
+
+        .nip46-connection-status {
+            font-size: 0.8125rem;
+            line-height: 1.4;
+        }
+
+        .nip46-connection-status.info {
+            color: var(--text-light);
+        }
+
+        .nip46-connection-status.success {
+            color: var(--theme);
+        }
+
+        .nip46-connection-status.error {
+            color: var(--danger);
+        }
+
+        :global(button.nip46-connection-button) {
+            width: fit-content;
+            min-height: 40px;
         }
     }
 

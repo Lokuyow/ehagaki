@@ -39,6 +39,7 @@ export interface PostDeletionServiceDeps {
     console?: Console;
     seckeySignerFn?: (key: string) => DeletionSigner;
     getNip46SignerFn?: () => DeletionSigner | null | undefined;
+    waitForNip46ReadyFn?: () => Promise<boolean>;
     getParentClientSignerFn?: () => DeletionSigner | null | undefined;
     writeRelaysStore?: {
         value: string[];
@@ -142,6 +143,9 @@ export class PostDeletionService {
                     : createFallbackConsole()),
             seckeySignerFn: deps.seckeySignerFn ?? seckeySigner,
             getNip46SignerFn: deps.getNip46SignerFn ?? (() => nip46Service.getSigner()),
+            waitForNip46ReadyFn:
+                deps.waitForNip46ReadyFn
+                ?? (() => nip46Service.waitForPendingOperation()),
             getParentClientSignerFn:
                 deps.getParentClientSignerFn
                 ?? (() => parentClientAuthService.getSigner()),
@@ -169,6 +173,18 @@ export class PostDeletionService {
 
         if (!canRequestPostDeletion(params.post, currentPubkey)) {
             return { success: false, error: "deletion_request_not_allowed" };
+        }
+
+        if (auth.type === "nip46") {
+            try {
+                const nip46Ready = await this.deps.waitForNip46ReadyFn();
+                if (!nip46Ready) {
+                    return { success: false, error: "nip46_signer_not_available" };
+                }
+            } catch (error) {
+                this.deps.console.error("post_deletion_nip46_wait_failed", error);
+                return { success: false, error: "post_error" };
+            }
         }
 
         const signerResolution = this.resolveSigner(auth);

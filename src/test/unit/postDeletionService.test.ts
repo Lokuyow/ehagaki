@@ -276,6 +276,26 @@ describe("PostDeletionService", () => {
         expect(sendEvent).toHaveBeenCalledTimes(2);
     });
 
+    it("NIP-46 recovery失敗時は署名せずエラーを返す", async () => {
+        const nip46SignEvent = vi.fn();
+        const service = new PostDeletionService({
+            authStateStore: { value: createAuthState({ type: "nip46" }) },
+            waitForNip46ReadyFn: vi.fn().mockResolvedValue(false),
+            getNip46SignerFn: () => ({ signEvent: nip46SignEvent }),
+        });
+
+        const result = await service.requestDeletion({
+            post: createRecord(),
+            rxNostr: {} as any,
+        });
+
+        expect(result).toEqual({
+            success: false,
+            error: "nip46_signer_not_available",
+        });
+        expect(nip46SignEvent).not.toHaveBeenCalled();
+    });
+
     it("signEvent を持たない signer では送信しない", async () => {
         const sendEvent = vi.fn();
         const service = new PostDeletionService({
