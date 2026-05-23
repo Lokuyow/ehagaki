@@ -326,12 +326,12 @@
                                 <div class="nip46-connection-panel">
                                     <div class="nip46-connection-title">
                                         {$_(
-                                            "profileDialog.amber_connection_title",
+                                            "profileDialog.nip46_connection_title",
                                         )}
                                     </div>
                                     <p class="nip46-connection-description">
                                         {$_(
-                                            "profileDialog.amber_connection_description",
+                                            "profileDialog.nip46_connection_description",
                                         )}
                                     </p>
                                     {#if nip46ConnectionOperationState === "auto-recovery"}
@@ -339,7 +339,7 @@
                                             class="nip46-connection-status info"
                                         >
                                             {$_(
-                                                "profileDialog.amber_connection_auto_recovering",
+                                                "profileDialog.nip46_connection_auto_recovering",
                                             )}
                                         </div>
                                     {:else if nip46ConnectionStatus === "success"}
@@ -347,7 +347,7 @@
                                             class="nip46-connection-status success"
                                         >
                                             {$_(
-                                                "profileDialog.amber_connection_success",
+                                                "profileDialog.nip46_connection_success",
                                             )}
                                         </div>
                                     {:else if nip46ConnectionStatus === "failure"}
@@ -355,7 +355,7 @@
                                             class="nip46-connection-status error"
                                         >
                                             {$_(
-                                                "profileDialog.amber_connection_failed",
+                                                "profileDialog.nip46_connection_failed",
                                             )}
                                         </div>
                                     {/if}
@@ -372,17 +372,17 @@
                                                 account.pubkeyHex,
                                             )}
                                         ariaLabel={$_(
-                                            "profileDialog.amber_connection_check",
+                                            "profileDialog.nip46_connection_check",
                                         )}
                                     >
                                         <span>
                                             {nip46ConnectionOperationState ===
                                             "manual-check"
                                                 ? $_(
-                                                      "profileDialog.amber_connection_checking",
+                                                      "profileDialog.nip46_connection_checking",
                                                   )
                                                 : $_(
-                                                      "profileDialog.amber_connection_check",
+                                                      "profileDialog.nip46_connection_check",
                                                   )}
                                         </span>
                                     </Button>

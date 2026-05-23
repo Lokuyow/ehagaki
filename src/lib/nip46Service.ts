@@ -129,8 +129,10 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
 
 /**
  * NIP-46 connect時にリモートサイナーへ要求するパーミッション。
- * Amberなどのリモートサイナーで「アプリが要求するkindのみ許可」を選択した場合に使われる。
- * - ping — 接続状態確認。手動の「Amber 接続確認」と、許可済み session の長時間バックグラウンド復帰で使用
+ * 要求パーミッションを扱うリモートサイナーでは、
+ * クライアントが利用する操作の許可設定に使われる。
+ * リモートサイナー実装によっては、この要求を参照しない場合がある。
+ * - ping — 接続状態確認。手動の接続確認と、確認済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
@@ -583,10 +585,12 @@ export class Nip46Service {
         });
 
         // セッション復元時はping()を行わない。
-        // Amber等のリモートサイナーはping含む全リクエストにユーザー承認が必要で、
-        // タイムアウトでセッションが破棄されてしまうため。
-        // リレー接続の確認はcreateConnectedPool()で行われており、
-        // 実際の署名時にリモートサイナーとの通信が検証される。
+        // permission を扱うリモートサイナーでは ping に初回許可操作が必要になり得る一方、
+        // permission を参照しないリモートサイナーも存在し得る。
+        // eHagaki は signer 種別を推測せず、手動確認に成功した session だけを
+        // 後続の auto ping 対象として扱う。
+        // リレー接続の確認は createConnectedPool() で行われており、
+        // 実際のリモートサイナーとの疎通は手動接続確認または確認済み session の auto ping で検証する。
         console.debug('[NIP-46] reconnect: session restored (relay connected, ping skipped)');
 
         this.userPubkey = session.userPubkey;
@@ -612,8 +616,14 @@ export class Nip46Service {
     /**
      * リレー接続が生きているか確認し、切れている場合はセッションから再接続する。
      * visibilitychange でバックグラウンド復帰時に呼び出す。
-     * Amber等のリモートサイナーはping含む全リクエストにユーザー承認が必要なため、
-     * pingは使用せず、pool + BunkerSignerの完全再構築で確実な接続復元を行う。
+        * permission を扱うリモートサイナーでは ping に初回許可操作が必要になり得るが、
+        * permission を参照しないリモートサイナーも存在し得る。
+        * eHagaki は signer 種別を推測せず、30 秒以上バックグラウンドだった後でも
+        * 手動確認に成功した session のみ auto ping を試す。
+        * auto ping が成功した場合は既存 connection を維持し、failure の場合は
+        * `pingVerified` を false に戻して pool + BunkerSigner の rebuild に fallback する。
+        * 未確認 session では auto ping を送らず、従来どおり rebuild を使う。
+        * nokandro のように無操作で応答する signer でも、この保守的フローで安全に扱う。
      *
      * バックグラウンド移行時にWebSocketが切断されると、SimplePool内のリレーオブジェクトが
      * 削除され（enableReconnect=false時）、BunkerSignerの内部サブスクリプションも失われる。

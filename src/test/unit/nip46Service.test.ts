@@ -499,7 +499,7 @@ describe('Nip46Service', () => {
             expect(pubkey).toBe('user-pub-reconnect');
             expect(service.isConnected()).toBe(true);
             expect(BunkerSigner.fromBunker).toHaveBeenCalled();
-            // pingはスキップされる（Amber等のリモートサイナー対応）
+            // pingはスキップされる（復元直後の未確認 session は手動確認または後続 recovery で検証する）
             expect(mockSigner.sendRequest).not.toHaveBeenCalled();
             service.saveSession(mockStorage, sessionData.userPubkey);
             expect(JSON.parse(mockStorage.getItem('nostr-nip46-session-user-pub-reconnect')!)).toEqual(sessionData);

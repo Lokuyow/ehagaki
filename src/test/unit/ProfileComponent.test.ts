@@ -56,7 +56,7 @@ describe('ProfileComponent', () => {
         };
     });
 
-    it('activeなNIP-46アカウントにAmber接続確認UIを表示してハンドラを呼ぶ', async () => {
+    it('activeなNIP-46アカウントにリモートサイナー接続確認UIを表示してハンドラを呼ぶ', async () => {
         const onCheckNip46Connection = vi.fn();
 
         render(ProfileComponent, {
@@ -72,14 +72,14 @@ describe('ProfileComponent', () => {
             nip46ConnectionStatus: 'idle',
         });
 
-        expect(screen.getByText('Amber 接続確認')).toBeTruthy();
+        expect(screen.getByText('NIP-46 接続')).toBeTruthy();
 
-        await fireEvent.click(screen.getByRole('button', { name: '接続を確認' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'リモートサイナー接続確認' }));
 
         expect(onCheckNip46Connection).toHaveBeenCalledWith(ACTIVE_PUBKEY);
     });
 
-    it('auto recovery中はAmber接続確認ボタンを無効化して案内を出す', () => {
+    it('auto recovery中はリモートサイナー接続確認ボタンを無効化して案内を出す', () => {
         render(ProfileComponent, {
             show: true,
             onClose: vi.fn(),
@@ -91,10 +91,10 @@ describe('ProfileComponent', () => {
         });
 
         expect(
-            screen.getByText('バックグラウンド復帰の再接続中です。完了後に再試行してください。'),
+            screen.getByText('バックグラウンド復帰後の接続確認を実行中です。完了後に再試行してください。'),
         ).toBeTruthy();
         expect(
-            screen.getByRole('button', { name: '接続を確認' }).hasAttribute('disabled'),
+            screen.getByRole('button', { name: 'リモートサイナー接続確認' }).hasAttribute('disabled'),
         ).toBe(true);
     });
 });
