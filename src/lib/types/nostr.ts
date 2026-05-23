@@ -26,7 +26,8 @@ export interface HashtagData {
 export type Nip46RelayResolution =
     | 'signer-negotiated'
     | 'signer-confirmed-unchanged'
-    | 'client-initial-fallback';
+    | 'client-initial-fallback'
+    | 'client-initial-unconfirmed';
 
 export interface Nip46SessionData {
     clientSecretKeyHex: string;

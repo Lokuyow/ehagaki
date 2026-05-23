@@ -22,6 +22,7 @@ export const NIP46_AUTO_PING_TIMEOUT_MS = 4000;
 export const NIP46_MANUAL_PING_TIMEOUT_MS = 30000;
 export const NIP46_NOSTRCONNECT_TIMEOUT_MS = 300000;
 const NIP46_RELAY_RECONCILIATION_TIMEOUT_MS = 5000;
+const NIP46_GET_PUBLIC_KEY_TIMEOUT_MS = 5000;
 const LOCAL_NETWORK_IFRAME_ALLOW_VALUE = 'local-network-access; local-network; loopback-network';
 const LOCAL_NETWORK_PERMISSION_FEATURES = [
     'loopback-network',
@@ -66,6 +67,11 @@ type Nip46RelayResolutionResult =
     }
     | {
         kind: 'method-unsupported';
+        finalRelays: string[];
+        sessionRelayResolution: Nip46RelayResolution;
+    }
+    | {
+        kind: 'client-initial-unconfirmed';
         finalRelays: string[];
         sessionRelayResolution: Nip46RelayResolution;
     };
@@ -434,10 +440,26 @@ function normalizeRelayResolution(
         case 'signer-negotiated':
         case 'signer-confirmed-unchanged':
         case 'client-initial-fallback':
+        case 'client-initial-unconfirmed':
             return value;
         default:
             return undefined;
     }
+}
+
+function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(timeoutMessage));
+            }, timeoutMs);
+        }),
+    ]);
 }
 
 export function sanitizeNip46NostrConnectRelays(relays: string[]): string[] {
@@ -512,6 +534,53 @@ function isUnsupportedSwitchRelaysError(error: unknown): boolean {
         || message.includes('invalid method');
 }
 
+function createNostrConnectBunkerSigner(
+    clientSecretKey: Uint8Array,
+    remoteSignerPubkey: string,
+    relays: string[],
+    sharedSecret: string,
+    pool: SimplePool,
+): BunkerSigner {
+    return BunkerSigner.fromBunker(
+        clientSecretKey,
+        {
+            pubkey: remoteSignerPubkey,
+            relays,
+            secret: sharedSecret,
+        },
+        {
+            pool,
+            onauth: (url: string) => {
+                console.debug('[NIP-46] onauth URL:', url);
+            },
+        },
+    );
+}
+
+async function closeNostrConnectTemporarySigner(
+    signer: BunkerSigner | null,
+): Promise<void> {
+    if (!signer) {
+        return;
+    }
+
+    try {
+        await signer.close();
+    } catch {
+        // noop
+    }
+}
+
+async function getNostrConnectPublicKeyWithTimeout(
+    signer: BunkerSigner,
+): Promise<string> {
+    return await withTimeout(
+        signer.getPublicKey(),
+        NIP46_GET_PUBLIC_KEY_TIMEOUT_MS,
+        'Timed out waiting for get_public_key response',
+    );
+}
+
 async function resolveNostrConnectRelayResolution(
     signer: BunkerSigner,
     fallbackRelays: string[],
@@ -532,7 +601,11 @@ async function resolveNostrConnectRelayResolution(
     ]);
 
     if (reconciliationResult.type === 'timeout') {
-        throw new Error('Timed out waiting for switch_relays response');
+        return {
+            kind: 'client-initial-unconfirmed',
+            finalRelays: [...fallbackRelays],
+            sessionRelayResolution: 'client-initial-unconfirmed',
+        };
     }
 
     if (reconciliationResult.type === 'error') {
@@ -891,6 +964,7 @@ export class Nip46Service {
         let handshakeAccepted = false;
         let handshakeSubscription: { close: () => void } | null = null;
         let interimSigner: BunkerSigner | null = null;
+        let fallbackSigner: BunkerSigner | null = null;
         let pendingPool: SimplePool | null = null;
         let connectedRelays: string[] = [];
 
@@ -903,14 +977,11 @@ export class Nip46Service {
             handshakeSubscription?.close();
             handshakeSubscription = null;
 
-            if (interimSigner) {
-                try {
-                    await interimSigner.close();
-                } catch {
-                    // noop
-                }
-                interimSigner = null;
-            }
+            await closeNostrConnectTemporarySigner(interimSigner);
+            interimSigner = null;
+
+            await closeNostrConnectTemporarySigner(fallbackSigner);
+            fallbackSigner = null;
 
             pendingPool?.destroy();
             pendingPool = null;
@@ -1052,19 +1123,12 @@ export class Nip46Service {
                                     throw new Error('Nostr Connect handshake pool is unavailable');
                                 }
 
-                                interimSigner = BunkerSigner.fromBunker(
+                                interimSigner = createNostrConnectBunkerSigner(
                                     clientSecretKey,
-                                    {
-                                        pubkey: event.pubkey,
-                                        relays: connectedRelays,
-                                        secret: sharedSecret,
-                                    },
-                                    {
-                                        pool: activePool,
-                                        onauth: (url: string) => {
-                                            console.debug('[NIP-46] onauth URL:', url);
-                                        },
-                                    },
+                                    event.pubkey,
+                                    connectedRelays,
+                                    sharedSecret,
+                                    activePool,
                                 );
 
                                 const relayResolution = await resolveNostrConnectRelayResolution(
@@ -1086,29 +1150,49 @@ export class Nip46Service {
 
                                     finalPool = finalConnection.pool;
                                     pendingPool = finalPool;
-                                    finalSigner = BunkerSigner.fromBunker(
+                                    finalSigner = createNostrConnectBunkerSigner(
                                         clientSecretKey,
-                                        {
-                                            pubkey: event.pubkey,
-                                            relays: finalConnection.connectedRelays,
-                                            secret: sharedSecret,
-                                        },
-                                        {
-                                            pool: finalPool,
-                                            onauth: (url: string) => {
-                                                console.debug('[NIP-46] onauth URL:', url);
-                                            },
-                                        },
+                                        event.pubkey,
+                                        finalConnection.connectedRelays,
+                                        sharedSecret,
+                                        finalPool,
                                     );
 
-                                    await interimSigner.close().catch(() => {
-                                        // noop
-                                    });
+                                    await closeNostrConnectTemporarySigner(interimSigner);
                                     initialConnection.pool.destroy();
                                     interimSigner = null;
                                 }
 
-                                const userPubkey = await finalSigner.getPublicKey();
+                                if (
+                                    relayResolution.kind ===
+                                    'client-initial-unconfirmed'
+                                ) {
+                                    const fallbackPool = finalPool;
+                                    if (!fallbackPool) {
+                                        throw new Error(
+                                            'Nostr Connect handshake pool is unavailable',
+                                        );
+                                    }
+
+                                    console.debug(
+                                        '[NIP-46] switch_relays timed out; verifying signer on initial ready relay',
+                                    );
+                                    await closeNostrConnectTemporarySigner(interimSigner);
+                                    interimSigner = null;
+
+                                    fallbackSigner = createNostrConnectBunkerSigner(
+                                        clientSecretKey,
+                                        event.pubkey,
+                                        finalRelays,
+                                        sharedSecret,
+                                        fallbackPool,
+                                    );
+                                    finalSigner = fallbackSigner;
+                                }
+
+                                const userPubkey = await getNostrConnectPublicKeyWithTimeout(
+                                    finalSigner,
+                                );
 
                                 await this.closeRuntimeResources();
                                 this.pool = finalPool;
@@ -1116,6 +1200,12 @@ export class Nip46Service {
                                 this.bunkerSigner = finalSigner;
                                 this.userPubkey = userPubkey;
                                 this.signerAdapter = new Nip46SignerAdapter(finalSigner);
+                                if (finalSigner === fallbackSigner) {
+                                    fallbackSigner = null;
+                                }
+                                if (finalSigner === interimSigner) {
+                                    interimSigner = null;
+                                }
                                 this.setCurrentSession({
                                     clientSecretKeyHex,
                                     remoteSignerPubkey: event.pubkey,
