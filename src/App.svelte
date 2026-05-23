@@ -9,6 +9,7 @@
   import { iframeMessageService } from "./lib/iframeMessageService";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
+  import { PendingNip46OperationTracker } from "./lib/nip46PendingOperationUtils";
   import {
     nip46Service,
     type Nip46ConnectionOperationState,
@@ -312,10 +313,11 @@
   let isLoadingParentClient = $state(false);
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
-  let pendingNip46AuthSession = $state<PendingNip46AuthSession | null>(null);
+  let hasPendingNip46AuthSession = $state(false);
   let pendingNip46ConnectionUri = $state<string | null>(null);
   let nip46NostrConnectErrorMessage = $state("");
-  let pendingNip46StartGeneration = 0;
+  let pendingNip46AuthSession: PendingNip46AuthSession | null = null;
+  const pendingNip46OperationTracker = new PendingNip46OperationTracker();
   let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
@@ -420,7 +422,9 @@
   function resetPendingNip46State(
     options: { preserveError?: boolean } = {},
   ): void {
-    pendingNip46AuthSession = null;
+    pendingNip46OperationTracker.clearPendingSession();
+    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
+    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
     pendingNip46ConnectionUri = null;
     if (!options.preserveError) {
       nip46NostrConnectErrorMessage = "";
@@ -431,16 +435,18 @@
     session: PendingNip46AuthSession | null = pendingNip46AuthSession,
     options: { preserveError?: boolean } = {},
   ): Promise<void> {
-    pendingNip46StartGeneration += 1;
+    const pendingSession = pendingNip46OperationTracker.cancelPending(session);
+    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
+    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
     isLoadingNip46 = false;
 
-    if (!session) {
+    if (!pendingSession) {
       resetPendingNip46State(options);
       return;
     }
 
     resetPendingNip46State(options);
-    await session.cancel();
+    await pendingSession.cancel();
   }
 
   function handleLoginDialogClose(): void {
@@ -453,14 +459,8 @@
     void cancelPendingNip46Auth();
   }
 
-  function isCurrentPendingNip46Session(
-    session: PendingNip46AuthSession,
-    requestGeneration: number,
-  ): boolean {
-    return (
-      pendingNip46StartGeneration === requestGeneration &&
-      pendingNip46AuthSession === session
-    );
+  function isCurrentPendingNip46Operation(requestGeneration: number): boolean {
+    return pendingNip46OperationTracker.isCurrentOperation(requestGeneration);
   }
 
   async function waitForPendingNip46Ready(
@@ -473,7 +473,7 @@
       return;
     }
 
-    if (!isCurrentPendingNip46Session(session, requestGeneration)) {
+    if (!isCurrentPendingNip46Operation(requestGeneration)) {
       return;
     }
 
@@ -486,15 +486,14 @@
     requestGeneration: number,
   ): Promise<void> {
     const result = await session.completion;
-    if (!isCurrentPendingNip46Session(session, requestGeneration)) {
+    if (!isCurrentPendingNip46Operation(requestGeneration)) {
       return;
     }
 
     isLoadingNip46 = false;
 
     if (!result.success) {
-      pendingNip46AuthSession = null;
-      pendingNip46ConnectionUri = null;
+      resetPendingNip46State({ preserveError: true });
       nip46NostrConnectErrorMessage = result.error ?? "nip46_connection_failed";
       return;
     }
@@ -1328,8 +1327,10 @@
   async function handleNostrConnectStart(
     relayCandidates: string[],
   ): Promise<string | undefined> {
-    const requestGeneration = ++pendingNip46StartGeneration;
-    const previousSession = pendingNip46AuthSession;
+    const { requestGeneration, previousSession } =
+      pendingNip46OperationTracker.beginOperation();
+    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
+    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
 
     isLoadingNip46 = true;
     nip46NostrConnectErrorMessage = "";
@@ -1342,12 +1343,15 @@
     try {
       const pending = await authService.startNip46NostrConnect(relayCandidates);
 
-      if (requestGeneration !== pendingNip46StartGeneration) {
+      if (!isCurrentPendingNip46Operation(requestGeneration)) {
         await pending.cancel();
         return undefined;
       }
 
-      pendingNip46AuthSession = pending;
+      pendingNip46OperationTracker.attachPendingSession(pending);
+      pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
+      hasPendingNip46AuthSession =
+        pendingNip46OperationTracker.hasPendingSession;
       saveLastUsedNip46ConnectionRelayCandidates(
         typeof localStorage === "undefined" ? undefined : localStorage,
         relayCandidates,
@@ -1356,7 +1360,7 @@
       void waitForPendingNip46Auth(pending, requestGeneration);
       return undefined;
     } catch (error) {
-      if (requestGeneration !== pendingNip46StartGeneration) {
+      if (!isCurrentPendingNip46Operation(requestGeneration)) {
         return undefined;
       }
 
@@ -1367,7 +1371,7 @@
       return nip46NostrConnectErrorMessage;
     } finally {
       if (
-        requestGeneration === pendingNip46StartGeneration &&
+        isCurrentPendingNip46Operation(requestGeneration) &&
         pendingNip46AuthSession === null
       ) {
         isLoadingNip46 = false;
@@ -2047,9 +2051,9 @@
           {isLoadingNip07}
           {isLoadingNip46}
           isPreparingNip46NostrConnect={isLoadingNip46 &&
-            pendingNip46AuthSession !== null &&
+            hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri === null}
-          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null &&
+          isWaitingNip46NostrConnect={hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
@@ -2076,9 +2080,9 @@
           {isLoadingNip07}
           {isLoadingNip46}
           isPreparingNip46NostrConnect={isLoadingNip46 &&
-            pendingNip46AuthSession !== null &&
+            hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri === null}
-          isWaitingNip46NostrConnect={pendingNip46AuthSession !== null &&
+          isWaitingNip46NostrConnect={hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
