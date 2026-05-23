@@ -224,6 +224,13 @@ async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "
     const win = windowObj ?? window;
     try {
         const doc = (win && (win as any).document) || document;
+        const activeElement = doc.activeElement;
+        const activeHtmlElement =
+            activeElement instanceof HTMLElement ? activeElement : null;
+        const fallbackHost =
+            activeHtmlElement?.closest(
+                "dialog, [role='dialog'], .dialog",
+            ) ?? doc.body;
         const textarea = doc.createElement("textarea");
         textarea.value = text;
         // ページ表示を汚さないため off-screen に配置
@@ -231,13 +238,13 @@ async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "
         textarea.style.left = "-9999px";
         textarea.style.top = "0";
         textarea.setAttribute("readonly", "true");
-        doc.body.appendChild(textarea);
+        fallbackHost.appendChild(textarea);
         textarea.focus();
         textarea.select();
 
         // execCommandの戻りを確認
         const successful = doc.execCommand && doc.execCommand("copy");
-        doc.body.removeChild(textarea);
+        fallbackHost.removeChild(textarea);
 
         if (successful) {
             console.log(`${type} copied to clipboard (fallback)`);

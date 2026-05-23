@@ -2,15 +2,21 @@
  * clipboardUtils のテスト
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { 
     normalizeClipboardText, 
     serializeParagraphs, 
     visualizeLineBreaks,
-    analyzeLineBreaks 
+    analyzeLineBreaks,
+    tryCopyToClipboard,
 } from '../../lib/utils/clipboardUtils';
 
 describe('clipboardUtils', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
     describe('normalizeClipboardText', () => {
         it('LF改行を正しく処理', () => {
             const text = 'Line 1\nLine 2\nLine 3';
@@ -227,6 +233,71 @@ describe('clipboardUtils', () => {
             
             expect(result.totalLines).toBe(1);
             expect(result.hasTrailingNewline).toBe(false);
+        });
+    });
+
+    describe('tryCopyToClipboard', () => {
+        it('ダイアログ内のボタンから実行した fallback copy は一時 textarea をダイアログ内に配置する', async () => {
+            const dialog = document.createElement('div');
+            dialog.className = 'dialog';
+            const button = document.createElement('button');
+            dialog.appendChild(button);
+            document.body.appendChild(dialog);
+            button.focus();
+
+            const execCommand = vi.fn(() => {
+                const textarea = dialog.querySelector('textarea');
+
+                expect(textarea).not.toBeNull();
+                expect(textarea?.value).toBe('nostrconnect://client');
+                return true;
+            });
+
+            Object.defineProperty(document, 'execCommand', {
+                configurable: true,
+                value: execCommand,
+            });
+
+            const copied = await tryCopyToClipboard(
+                'nostrconnect://client',
+                'nostrconnect',
+                { clipboard: undefined } as unknown as Navigator,
+                window,
+            );
+
+            expect(copied).toBe(true);
+            expect(execCommand).toHaveBeenCalledWith('copy');
+            expect(dialog.querySelector('textarea')).toBeNull();
+        });
+
+        it('ダイアログ外では従来どおり body に一時 textarea を配置する', async () => {
+            const button = document.createElement('button');
+            document.body.appendChild(button);
+            button.focus();
+
+            const execCommand = vi.fn(() => {
+                const textarea = document.body.querySelector('textarea');
+
+                expect(textarea).not.toBeNull();
+                expect(textarea?.value).toBe('https://example.com/image.jpg');
+                return true;
+            });
+
+            Object.defineProperty(document, 'execCommand', {
+                configurable: true,
+                value: execCommand,
+            });
+
+            const copied = await tryCopyToClipboard(
+                'https://example.com/image.jpg',
+                'URL',
+                { clipboard: undefined } as unknown as Navigator,
+                window,
+            );
+
+            expect(copied).toBe(true);
+            expect(execCommand).toHaveBeenCalledWith('copy');
+            expect(document.body.querySelector('textarea')).toBeNull();
         });
     });
 
