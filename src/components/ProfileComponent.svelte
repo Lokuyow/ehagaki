@@ -38,7 +38,10 @@
         >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
-        nip46ConnectionOperationState?: "idle" | "manual-check" | "auto-recovery";
+        nip46ConnectionOperationState?:
+            | "idle"
+            | "manual-check"
+            | "auto-recovery";
         nip46ConnectionStatus?: "idle" | "success" | "failure";
     }
 
@@ -246,7 +249,9 @@
                                     class="account-info-button"
                                     onclick={() => {
                                         if (!isActive && !isSwitchingAccount) {
-                                            handleSwitchAccount(account.pubkeyHex);
+                                            handleSwitchAccount(
+                                                account.pubkeyHex,
+                                            );
                                         }
                                     }}
                                     disabled={isActive || isSwitchingAccount}
@@ -266,10 +271,14 @@
                                             <span class="account-name">
                                                 {cachedProfile?.displayName ||
                                                     cachedProfile?.name ||
-                                                    $_("profileDialog.anonymous")}
+                                                    $_(
+                                                        "profileDialog.anonymous",
+                                                    )}
                                             </span>
                                             <span class="account-npub-short">
-                                                {formatNpubShort(account.pubkeyHex)}
+                                                {formatNpubShort(
+                                                    account.pubkeyHex,
+                                                )}
                                             </span>
                                         </div>
                                         <span class="account-type-badge">
@@ -300,17 +309,25 @@
                                 </button>
                                 <button
                                     class="account-logout-button"
-                                    onclick={() => handleLogout(account.pubkeyHex)}
-                                    disabled={isLoggingOut || isSwitchingAccount}
-                                    aria-label={$_("profileDialog.logout_account")}
+                                    onclick={() =>
+                                        handleLogout(account.pubkeyHex)}
+                                    disabled={isLoggingOut ||
+                                        isSwitchingAccount}
+                                    aria-label={$_(
+                                        "profileDialog.logout_account",
+                                    )}
                                 >
-                                    <div class="xmark-small-icon svg-icon"></div>
+                                    <div
+                                        class="xmark-small-icon svg-icon"
+                                    ></div>
                                 </button>
                             </div>
                             {#if showNip46ConnectionPanel}
                                 <div class="nip46-connection-panel">
                                     <div class="nip46-connection-title">
-                                        {$_("profileDialog.amber_connection_title")}
+                                        {$_(
+                                            "profileDialog.amber_connection_title",
+                                        )}
                                     </div>
                                     <p class="nip46-connection-description">
                                         {$_(
@@ -318,19 +335,25 @@
                                         )}
                                     </p>
                                     {#if nip46ConnectionOperationState === "auto-recovery"}
-                                        <div class="nip46-connection-status info">
+                                        <div
+                                            class="nip46-connection-status info"
+                                        >
                                             {$_(
                                                 "profileDialog.amber_connection_auto_recovering",
                                             )}
                                         </div>
                                     {:else if nip46ConnectionStatus === "success"}
-                                        <div class="nip46-connection-status success">
+                                        <div
+                                            class="nip46-connection-status success"
+                                        >
                                             {$_(
                                                 "profileDialog.amber_connection_success",
                                             )}
                                         </div>
                                     {:else if nip46ConnectionStatus === "failure"}
-                                        <div class="nip46-connection-status error">
+                                        <div
+                                            class="nip46-connection-status error"
+                                        >
                                             {$_(
                                                 "profileDialog.amber_connection_failed",
                                             )}

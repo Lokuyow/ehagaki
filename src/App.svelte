@@ -75,7 +75,13 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type { AuthResult, Draft, MediaGalleryItem, NostrEvent, PostResult } from "./lib/types";
+  import type {
+    AuthResult,
+    Draft,
+    MediaGalleryItem,
+    NostrEvent,
+    PostResult,
+  } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -1219,7 +1225,10 @@
   }
 
   async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
-    if (authState.value?.type !== "nip46" || authState.value?.pubkey !== pubkeyHex) {
+    if (
+      authState.value?.type !== "nip46" ||
+      authState.value?.pubkey !== pubkeyHex
+    ) {
       return;
     }
 
