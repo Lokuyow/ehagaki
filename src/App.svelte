@@ -11,7 +11,6 @@
   import { AccountManager } from "./lib/accountManager";
   import {
     nip46Service,
-    sanitizeNip46NostrConnectRelays,
     type Nip46ConnectionOperationState,
   } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
@@ -108,8 +107,10 @@
     setChannelContext,
   } from "./stores/channelContextStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
-  import { RelayConfigUtils } from "./lib/relayConfigUtils";
-  import { getNip46ConnectRelaysStorageKey } from "./lib/authStorageKeys";
+  import {
+    resolveInitialNip46ConnectionRelays,
+    saveLastUsedNip46ConnectionRelays,
+  } from "./lib/nip46ConnectUiUtils";
   import {
     initializeNostrSession,
     completePostAuthBootstrap,
@@ -314,6 +315,7 @@
   let pendingNip46AuthSession = $state<PendingNip46AuthSession | null>(null);
   let pendingNip46ConnectionUri = $state<string | null>(null);
   let nip46NostrConnectErrorMessage = $state("");
+  let pendingNip46StartGeneration = 0;
   let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
@@ -409,83 +411,35 @@
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
   );
-  const NIP46_CONNECT_RELAYS_STORAGE_KEY = getNip46ConnectRelaysStorageKey();
-
-  function formatNip46ConnectRelayInput(relays: string[]): string {
-    return relays.join("\n");
-  }
-
-  function getNip46RelaySuggestions(): string[] {
-    return sanitizeNip46NostrConnectRelays(
-      relayConfigStore.value
-        ? RelayConfigUtils.extractAllRelays(relayConfigStore.value)
-        : [],
+  function getInitialNip46ConnectRelays(): string[] {
+    return resolveInitialNip46ConnectionRelays(
+      typeof localStorage === "undefined" ? undefined : localStorage,
     );
   }
 
-  function loadSavedNip46ConnectRelays(): string[] {
-    if (typeof localStorage === "undefined") {
-      return [];
-    }
-
-    try {
-      const rawValue = localStorage.getItem(NIP46_CONNECT_RELAYS_STORAGE_KEY);
-      if (!rawValue) {
-        return [];
-      }
-
-      const parsed = JSON.parse(rawValue) as unknown;
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      return sanitizeNip46NostrConnectRelays(
-        parsed.filter((relay): relay is string => typeof relay === "string"),
-      );
-    } catch {
-      return [];
-    }
-  }
-
-  function saveNip46ConnectRelays(relays: string[]): void {
-    if (typeof localStorage === "undefined") {
-      return;
-    }
-
-    try {
-      localStorage.setItem(
-        NIP46_CONNECT_RELAYS_STORAGE_KEY,
-        JSON.stringify(relays),
-      );
-    } catch {
-      // noop
-    }
-  }
-
-  function getInitialNip46ConnectRelayInput(): string {
-    const savedRelays = loadSavedNip46ConnectRelays();
-    if (savedRelays.length > 0) {
-      return formatNip46ConnectRelayInput(savedRelays);
-    }
-
-    return formatNip46ConnectRelayInput(getNip46RelaySuggestions());
-  }
-
-  function resetPendingNip46State(): void {
+  function resetPendingNip46State(
+    options: { preserveError?: boolean } = {},
+  ): void {
     pendingNip46AuthSession = null;
     pendingNip46ConnectionUri = null;
-    nip46NostrConnectErrorMessage = "";
+    if (!options.preserveError) {
+      nip46NostrConnectErrorMessage = "";
+    }
   }
 
   async function cancelPendingNip46Auth(
     session: PendingNip46AuthSession | null = pendingNip46AuthSession,
+    options: { preserveError?: boolean } = {},
   ): Promise<void> {
+    pendingNip46StartGeneration += 1;
+    isLoadingNip46 = false;
+
     if (!session) {
-      resetPendingNip46State();
+      resetPendingNip46State(options);
       return;
     }
 
-    resetPendingNip46State();
+    resetPendingNip46State(options);
     await session.cancel();
   }
 
@@ -1343,25 +1297,47 @@
   async function handleNostrConnectStart(
     relays: string[],
   ): Promise<string | undefined> {
-    if (pendingNip46AuthSession) {
-      await cancelPendingNip46Auth();
-    }
+    const requestGeneration = ++pendingNip46StartGeneration;
+    const previousSession = pendingNip46AuthSession;
 
     isLoadingNip46 = true;
     nip46NostrConnectErrorMessage = "";
+    resetPendingNip46State();
+
+    if (previousSession) {
+      await previousSession.cancel();
+    }
 
     try {
       const pending = await authService.startNip46NostrConnect(relays);
+
+      if (requestGeneration !== pendingNip46StartGeneration) {
+        await pending.cancel();
+        return undefined;
+      }
+
       pendingNip46AuthSession = pending;
       pendingNip46ConnectionUri = pending.connectionUri;
-      saveNip46ConnectRelays(relays);
+      saveLastUsedNip46ConnectionRelays(
+        typeof localStorage === "undefined" ? undefined : localStorage,
+        relays,
+      );
       void waitForPendingNip46Auth(pending);
       return undefined;
     } catch (error) {
+      if (requestGeneration !== pendingNip46StartGeneration) {
+        return undefined;
+      }
+
       console.error("NIP-46 nostrconnectログインでエラー:", error);
-      return error instanceof Error ? error.message : "NIP-46 login failed";
+      resetPendingNip46State({ preserveError: true });
+      nip46NostrConnectErrorMessage =
+        error instanceof Error ? error.message : "NIP-46 login failed";
+      return nip46NostrConnectErrorMessage;
     } finally {
-      isLoadingNip46 = false;
+      if (requestGeneration === pendingNip46StartGeneration) {
+        isLoadingNip46 = false;
+      }
     }
   }
 
@@ -2039,8 +2015,7 @@
           isWaitingNip46NostrConnect={pendingNip46AuthSession !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
-          nostrConnectRelaySuggestions={getNip46RelaySuggestions()}
-          initialNostrConnectRelayInput={getInitialNip46ConnectRelayInput()}
+          initialNostrConnectRelays={getInitialNip46ConnectRelays()}
         />
       {/if}
       {#if showTransitionOverlay}
@@ -2065,8 +2040,7 @@
           isWaitingNip46NostrConnect={pendingNip46AuthSession !== null}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
-          nostrConnectRelaySuggestions={getNip46RelaySuggestions()}
-          initialNostrConnectRelayInput={getInitialNip46ConnectRelayInput()}
+          initialNostrConnectRelays={getInitialNip46ConnectRelays()}
           isAddAccountMode={true}
         />
       {/if}

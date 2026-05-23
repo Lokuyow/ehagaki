@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Nip46SignerAdapter, Nip46Service } from '../../lib/nip46Service';
+import {
+    Nip46SignerAdapter,
+    Nip46Service,
+    NIP46_REQUESTED_PERMISSIONS,
+    NIP46_REQUESTED_PERMS,
+} from '../../lib/nip46Service';
 import { MockStorage } from '../helpers';
 
 vi.mock('nostr-tools', () => ({
@@ -149,6 +154,12 @@ describe('Nip46Service', () => {
         (createNostrConnectURI as any).mockClear();
     });
 
+    async function getPendingNostrConnectHandlers() {
+        await Promise.resolve();
+        await Promise.resolve();
+        return mockPool.subscribe.mock.calls[0][2];
+    }
+
     async function connectService(options: {
         remoteSignerPubkey?: string;
         relays?: string[];
@@ -259,7 +270,7 @@ describe('Nip46Service', () => {
         (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
         const pending = await service.startNostrConnect(initialRelays);
-        const handlers = mockPool.subscribe.mock.calls[0][2];
+        const handlers = await getPendingNostrConnectHandlers();
 
         return {
             pending,
@@ -282,7 +293,7 @@ describe('Nip46Service', () => {
             expect(service.getSigner()).not.toBeNull();
             expect(mockSigner.sendRequest).toHaveBeenCalledWith(
                 'connect',
-                [mockBp.pubkey, 'test-secret', 'ping,sign_event:1,sign_event:5,sign_event:42,sign_event:10063,sign_event:27235,sign_event:24242']
+                [mockBp.pubkey, 'test-secret', NIP46_REQUESTED_PERMS]
             );
         });
 
@@ -486,19 +497,11 @@ describe('Nip46Service', () => {
             expect(createNostrConnectURI).toHaveBeenCalledWith(
                 expect.objectContaining({
                     relays: initialRelays,
-                    perms: [
-                        'ping',
-                        'sign_event:1',
-                        'sign_event:5',
-                        'sign_event:42',
-                        'sign_event:10063',
-                        'sign_event:27235',
-                        'sign_event:24242',
-                    ],
+                    perms: [...NIP46_REQUESTED_PERMISSIONS],
                 }),
             );
 
-            const handlers = mockPool.subscribe.mock.calls[0][2];
+            const handlers = await getPendingNostrConnectHandlers();
             await handlers.onevent({
                 content: 'encrypted-content',
                 pubkey: remoteSignerPubkey,
@@ -580,7 +583,7 @@ describe('Nip46Service', () => {
             });
         });
 
-        it('switch_relays timeout は client-initial fallback として接続成功する', async () => {
+        it('switch_relays timeout では session を保存せず接続失敗として cleanup する', async () => {
             vi.useFakeTimers();
 
             const pendingFlow = await createPendingFallbackNostrConnect({
@@ -597,18 +600,16 @@ describe('Nip46Service', () => {
             await vi.advanceTimersByTimeAsync(5000);
             await oneventPromise;
 
-            const pubkey = await pendingFlow.pending.completion;
-
-            expect(pubkey).toBe('user-pubkey-hex');
-            service.saveSession(mockStorage, pubkey);
-            expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
-                clientSecretKeyHex: 'ab'.repeat(32),
-                remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
-                relays: pendingFlow.initialRelays,
-                userPubkey: 'user-pubkey-hex',
-                pingVerified: false,
-                relayResolution: 'client-initial-fallback',
-            });
+            await expect(pendingFlow.pending.completion).rejects.toThrow(
+                'Timed out waiting for switch_relays response',
+            );
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+            expect(
+                mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
+            ).toBeNull();
+            expect(pendingFlow.closeSubscription).toHaveBeenCalled();
+            expect(pendingFlow.mockSigner.close).toHaveBeenCalled();
+            expect(service.isConnected()).toBe(false);
         });
 
         it('client-initial fallback で保存した session は reconnect / rebuild / ping に initial relay を使える', async () => {
@@ -711,7 +712,7 @@ describe('Nip46Service', () => {
                 'wss://relay.example.com',
             ]);
 
-            const handlers = mockPool.subscribe.mock.calls[0][2];
+            const handlers = await getPendingNostrConnectHandlers();
             await handlers.onclose();
 
             await expect(pending.completion).rejects.toThrow(
@@ -722,6 +723,23 @@ describe('Nip46Service', () => {
                 mockStorage.getItem('nostr-nip46-session-user-pubkey-hex'),
             ).toBeNull();
             expect(service.isConnected()).toBe(false);
+        });
+
+        it('bunker connect request と nostrconnect URI は同じ permission 定義を使う', async () => {
+            const { mockBp, mockSigner } = await connectService({ secret: 'test-secret' });
+            const { createNostrConnectURI } = await import('nostr-tools/nip46');
+
+            await service.startNostrConnect(['wss://relay.example.com']);
+
+            expect(mockSigner.sendRequest).toHaveBeenCalledWith(
+                'connect',
+                [mockBp.pubkey, 'test-secret', NIP46_REQUESTED_PERMS],
+            );
+            expect(createNostrConnectURI).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    perms: [...NIP46_REQUESTED_PERMISSIONS],
+                }),
+            );
         });
     });
 
@@ -796,6 +814,23 @@ describe('Nip46Service', () => {
             expect(saved).not.toBeNull();
             // legacyキーには保存されない
             expect(mockStorage.getItem('nostr-nip46-session')).toBeNull();
+        });
+
+        it('saveSession は last-used NIP-46 connection relay を上書きしない', async () => {
+            mockStorage.setItem(
+                'nostr-nip46-connect-relays',
+                JSON.stringify(['wss://ui-relay.example.com/']),
+            );
+            await connectService({
+                remoteSignerPubkey: 'b'.repeat(64),
+                relays: ['wss://relay1.example.com'],
+            });
+
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+
+            expect(mockStorage.getItem('nostr-nip46-connect-relays')).toBe(
+                JSON.stringify(['wss://ui-relay.example.com/']),
+            );
         });
 
         it('loadSession: 保存済みセッションを復元', () => {

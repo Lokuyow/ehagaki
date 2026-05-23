@@ -67,11 +67,6 @@ type Nip46RelayResolutionResult =
         kind: 'method-unsupported';
         finalRelays: string[];
         sessionRelayResolution: Nip46RelayResolution;
-    }
-    | {
-        kind: 'timeout';
-        finalRelays: string[];
-        sessionRelayResolution: Nip46RelayResolution;
     };
 
 type PermissionsPolicyLike = {
@@ -190,7 +185,7 @@ export const NIP46_REQUESTED_PERMISSIONS = [
     'sign_event:24242',
 ] as const;
 
-const NIP46_REQUESTED_PERMS = NIP46_REQUESTED_PERMISSIONS.join(',');
+export const NIP46_REQUESTED_PERMS = NIP46_REQUESTED_PERMISSIONS.join(',');
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {
@@ -425,8 +420,6 @@ async function resolveNostrConnectRelayResolution(
     signer: BunkerSigner,
     initialRelays: string[],
 ): Promise<Nip46RelayResolutionResult> {
-    // `nostr-tools` の fromURI() も switch_relays を待ちきれない場合は初期 relay のまま resolve する。
-    // eHagaki でも timeout を即 failure に固定せず、現時点では client-initial fallback として扱う。
     const reconciliationResult = await Promise.race([
         signer.sendRequest('switch_relays', []).then((value) => ({
             type: 'response' as const,
@@ -443,11 +436,7 @@ async function resolveNostrConnectRelayResolution(
     ]);
 
     if (reconciliationResult.type === 'timeout') {
-        return {
-            kind: 'timeout',
-            finalRelays: [...initialRelays],
-            sessionRelayResolution: 'client-initial-fallback',
-        };
+        throw new Error('Timed out waiting for switch_relays response');
     }
 
     if (reconciliationResult.type === 'error') {
@@ -543,8 +532,11 @@ export class Nip46Service {
 
         this.setCurrentSession({
             clientSecretKeyHex: this.clientSecretKeyHex,
-            remoteSignerPubkey: this.bunkerSigner.bp.pubkey,
-            relays: [...this.bunkerSigner.bp.relays],
+            remoteSignerPubkey: this.currentSession?.remoteSignerPubkey
+                ?? this.bunkerSigner.bp.pubkey,
+            relays: this.currentSession?.relays
+                ? [...this.currentSession.relays]
+                : [...this.bunkerSigner.bp.relays],
             userPubkey: this.userPubkey,
             pingVerified: pingVerified ?? this.currentSession?.pingVerified === true,
             relayResolution: this.currentSession?.relayResolution,
@@ -787,14 +779,13 @@ export class Nip46Service {
             throw new Error('At least one public wss relay is required for nostrconnect');
         }
 
-        const { pool, connectedRelays } = await createConnectedPool(sanitizedRelays);
         const clientSecretKey = generateSecretKey();
         const clientSecretKeyHex = bytesToHex(clientSecretKey);
         const clientPubkey = getPublicKey(clientSecretKey);
         const sharedSecret = bytesToHex(generateSecretKey());
         const connectionUri = createNostrConnectURI({
             clientPubkey,
-            relays: connectedRelays,
+            relays: sanitizedRelays,
             secret: sharedSecret,
             perms: [...NIP46_REQUESTED_PERMISSIONS],
         });
@@ -804,6 +795,8 @@ export class Nip46Service {
         let handshakeAccepted = false;
         let handshakeSubscription: { close: () => void } | null = null;
         let interimSigner: BunkerSigner | null = null;
+        let pendingPool: SimplePool | null = null;
+        let connectedRelays: string[] = [];
 
         const closeHandshakeResources = async (): Promise<void> => {
             if (handshakeClosed) {
@@ -823,146 +816,184 @@ export class Nip46Service {
                 interimSigner = null;
             }
 
-            pool.destroy();
+            pendingPool?.destroy();
+            pendingPool = null;
         };
 
+        let resolveCompletion:
+            | ((value: string | PromiseLike<string>) => void)
+            | null = null;
         let rejectCompletion: ((reason?: unknown) => void) | null = null;
 
         const completion = new Promise<string>((resolve, reject) => {
+            resolveCompletion = resolve;
             rejectCompletion = reject;
+        });
+        void completion.catch(() => undefined);
 
-            handshakeSubscription = pool.subscribe(
-                connectedRelays,
-                {
-                    kinds: [kinds.NostrConnect],
-                    '#p': [clientPubkey],
-                    limit: 0,
-                },
-                {
-                    onevent: async (event: { content: string; pubkey: string }) => {
-                        if (settled) {
-                            return;
-                        }
+        void (async () => {
+            try {
+                const initialConnection = await createConnectedPool(sanitizedRelays);
+                if (settled) {
+                    initialConnection.pool.destroy();
+                    return;
+                }
 
-                        try {
-                            const temporaryConversationKey = nip44.getConversationKey(
-                                clientSecretKey,
-                                event.pubkey,
-                            );
-                            const decrypted = nip44.decrypt(
-                                event.content,
-                                temporaryConversationKey,
-                            );
-                            const response = JSON.parse(decrypted) as {
-                                result?: string;
-                            };
+                pendingPool = initialConnection.pool;
+                connectedRelays = initialConnection.connectedRelays;
 
-                            if (response.result !== sharedSecret) {
+                handshakeSubscription = pendingPool.subscribe(
+                    connectedRelays,
+                    {
+                        kinds: [kinds.NostrConnect],
+                        '#p': [clientPubkey],
+                        limit: 0,
+                    },
+                    {
+                        onevent: async (event: { content: string; pubkey: string }) => {
+                            if (settled) {
                                 return;
                             }
 
-                            handshakeAccepted = true;
-                            handshakeSubscription?.close();
-                            handshakeSubscription = null;
-
-                            interimSigner = BunkerSigner.fromBunker(
-                                clientSecretKey,
-                                {
-                                    pubkey: event.pubkey,
-                                    relays: connectedRelays,
-                                    secret: sharedSecret,
-                                },
-                                {
-                                    pool,
-                                    onauth: (url: string) => {
-                                        console.debug('[NIP-46] onauth URL:', url);
-                                    },
-                                },
-                            );
-
-                            const relayResolution = await resolveNostrConnectRelayResolution(
-                                interimSigner,
-                                connectedRelays,
-                            );
-                            const finalRelays = relayResolution.finalRelays;
-
-                            let finalPool = pool;
-                            let finalSigner = interimSigner;
-
-                            if (
-                                relayResolution.kind === 'signer-negotiated'
-                                && !areRelaySetsEqual(connectedRelays, finalRelays)
-                            ) {
-                                const finalConnection = await createConnectedPool(
-                                    finalRelays,
+                            try {
+                                const temporaryConversationKey = nip44.getConversationKey(
+                                    clientSecretKey,
+                                    event.pubkey,
                                 );
+                                const decrypted = nip44.decrypt(
+                                    event.content,
+                                    temporaryConversationKey,
+                                );
+                                const response = JSON.parse(decrypted) as {
+                                    result?: string;
+                                };
 
-                                finalPool = finalConnection.pool;
-                                finalSigner = BunkerSigner.fromBunker(
+                                if (response.result !== sharedSecret) {
+                                    return;
+                                }
+
+                                handshakeAccepted = true;
+                                handshakeSubscription?.close();
+                                handshakeSubscription = null;
+
+                                const activePool = pendingPool;
+                                if (!activePool) {
+                                    throw new Error('Nostr Connect handshake pool is unavailable');
+                                }
+
+                                interimSigner = BunkerSigner.fromBunker(
                                     clientSecretKey,
                                     {
                                         pubkey: event.pubkey,
-                                        relays: finalRelays,
+                                        relays: connectedRelays,
                                         secret: sharedSecret,
                                     },
                                     {
-                                        pool: finalPool,
+                                        pool: activePool,
                                         onauth: (url: string) => {
                                             console.debug('[NIP-46] onauth URL:', url);
                                         },
                                     },
                                 );
 
-                                await interimSigner.close().catch(() => {
-                                    // noop
+                                const relayResolution = await resolveNostrConnectRelayResolution(
+                                    interimSigner,
+                                    sanitizedRelays,
+                                );
+                                const finalRelays = relayResolution.finalRelays;
+
+                                let finalPool = pendingPool;
+                                let finalSigner = interimSigner;
+
+                                if (
+                                    relayResolution.kind === 'signer-negotiated'
+                                    && !areRelaySetsEqual(connectedRelays, finalRelays)
+                                ) {
+                                    const finalConnection = await createConnectedPool(
+                                        finalRelays,
+                                    );
+
+                                    finalPool = finalConnection.pool;
+                                    pendingPool = finalPool;
+                                    finalSigner = BunkerSigner.fromBunker(
+                                        clientSecretKey,
+                                        {
+                                            pubkey: event.pubkey,
+                                            relays: finalConnection.connectedRelays,
+                                            secret: sharedSecret,
+                                        },
+                                        {
+                                            pool: finalPool,
+                                            onauth: (url: string) => {
+                                                console.debug('[NIP-46] onauth URL:', url);
+                                            },
+                                        },
+                                    );
+
+                                    await interimSigner.close().catch(() => {
+                                        // noop
+                                    });
+                                    initialConnection.pool.destroy();
+                                    interimSigner = null;
+                                }
+
+                                const userPubkey = await finalSigner.getPublicKey();
+
+                                await this.closeRuntimeResources();
+                                this.pool = finalPool;
+                                this.clientSecretKeyHex = clientSecretKeyHex;
+                                this.bunkerSigner = finalSigner;
+                                this.userPubkey = userPubkey;
+                                this.signerAdapter = new Nip46SignerAdapter(finalSigner);
+                                this.setCurrentSession({
+                                    clientSecretKeyHex,
+                                    remoteSignerPubkey: event.pubkey,
+                                    relays: [...finalRelays],
+                                    userPubkey,
+                                    pingVerified: false,
+                                    relayResolution:
+                                        relayResolution.sessionRelayResolution,
                                 });
-                                pool.destroy();
-                                interimSigner = null;
+
+                                settled = true;
+                                resolveCompletion?.(userPubkey);
+                            } catch (error) {
+                                settled = true;
+                                await closeHandshakeResources();
+                                rejectCompletion?.(error);
+                            }
+                        },
+                        onclose: async () => {
+                            if (settled || handshakeAccepted) {
+                                return;
                             }
 
-                            const userPubkey = await finalSigner.getPublicKey();
-
-                            await this.closeRuntimeResources();
-                            this.pool = finalPool;
-                            this.clientSecretKeyHex = clientSecretKeyHex;
-                            this.bunkerSigner = finalSigner;
-                            this.userPubkey = userPubkey;
-                            this.signerAdapter = new Nip46SignerAdapter(finalSigner);
-                            this.setCurrentSession({
-                                clientSecretKeyHex,
-                                remoteSignerPubkey: event.pubkey,
-                                relays: [...finalRelays],
-                                userPubkey,
-                                pingVerified: false,
-                                relayResolution:
-                                    relayResolution.sessionRelayResolution,
-                            });
-
-                            settled = true;
-                            resolve(userPubkey);
-                        } catch (error) {
                             settled = true;
                             await closeHandshakeResources();
-                            reject(error);
-                        }
+                            rejectCompletion?.(
+                                new Error(
+                                    'Nostr Connect timed out before the remote signer connected',
+                                ),
+                            );
+                        },
+                        maxWait: timeoutMs,
                     },
-                    onclose: async () => {
-                        if (settled || handshakeAccepted) {
-                            return;
-                        }
+                );
+            } catch (error) {
+                if (settled) {
+                    return;
+                }
 
-                        settled = true;
-                        await closeHandshakeResources();
-                        reject(
-                            new Error(
-                                'Nostr Connect timed out before the remote signer connected',
-                            ),
-                        );
-                    },
-                    maxWait: timeoutMs,
-                },
-            );
-        });
+                settled = true;
+                await closeHandshakeResources();
+                const rejectCurrentCompletion = rejectCompletion as
+                    | ((reason?: unknown) => void)
+                    | null;
+                if (rejectCurrentCompletion) {
+                    rejectCurrentCompletion(error);
+                }
+            }
+        })();
 
         return {
             connectionUri,

@@ -2,15 +2,22 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
+    import { BUNKER_REGEX } from "../lib/nip46Service";
     import {
-        BUNKER_REGEX,
-        sanitizeNip46NostrConnectRelays,
-    } from "../lib/nip46Service";
+        createNip46ConnectionRelayDrafts,
+        ensureNip46ConnectionRelayDraftRows,
+        getDefaultNip46ConnectionRelays,
+        openNip46ConnectionUri,
+        validateNip46ConnectionRelayDrafts,
+    } from "../lib/nip46ConnectUiUtils";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import QrCodeDisplay from "./QrCodeDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+
+    type RemoteSignerTab = "qr" | "bunker";
 
     interface Props {
         show: boolean;
@@ -30,8 +37,7 @@
         isWaitingNip46NostrConnect?: boolean;
         nip46NostrConnectUri?: string | null;
         nip46NostrConnectErrorMessage?: string;
-        nostrConnectRelaySuggestions?: string[];
-        initialNostrConnectRelayInput?: string;
+        initialNostrConnectRelays?: string[];
         isAddAccountMode?: boolean;
     }
 
@@ -53,8 +59,7 @@
         isWaitingNip46NostrConnect = false,
         nip46NostrConnectUri = null,
         nip46NostrConnectErrorMessage = "",
-        nostrConnectRelaySuggestions = [],
-        initialNostrConnectRelayInput = "",
+        initialNostrConnectRelays = [],
         isAddAccountMode = false,
     }: Props = $props();
 
@@ -79,31 +84,107 @@
 
     // --- NIP-46 bunker URL ---
     let bunkerUrl = $state("");
-    let nostrConnectRelayInput = $state("");
+    let activeRemoteSignerTab = $state<RemoteSignerTab>("qr");
+    let wasOpen = $state(false);
+    let lastRequestedNostrConnectSignature = $state<string | null>(null);
+    let isNostrConnectRelaySettingsExpanded = $state(false);
+    let nostrConnectRelayDrafts = $state<string[]>([""]);
     let bunkerInputEl: HTMLInputElement | null = $state(null);
     let parentClientErrorMessage = $state("");
     let nip07ErrorMessage = $state("");
     let nip46ErrorMessage = $state("");
-    let nostrConnectLocalErrorMessage = $state("");
     let hasCopiedNostrConnectUri = $state(false);
+
+    function getResolvedInitialNostrConnectRelays(): string[] {
+        return initialNostrConnectRelays.length > 0
+            ? [...initialNostrConnectRelays]
+            : getDefaultNip46ConnectionRelays();
+    }
+
+    function resetNostrConnectDraftState(): void {
+        nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
+            getResolvedInitialNostrConnectRelays(),
+        );
+        activeRemoteSignerTab = "qr";
+        isNostrConnectRelaySettingsExpanded = false;
+        lastRequestedNostrConnectSignature = null;
+    }
 
     // --- ダイアログを開くたびに入力をクリア ---
     $effect(() => {
-        if (show) {
+        if (show && !wasOpen) {
+            wasOpen = true;
             secretKey = "";
             bunkerUrl = "";
-            nostrConnectRelayInput = initialNostrConnectRelayInput;
             parentClientErrorMessage = "";
             nip07ErrorMessage = "";
             nip46ErrorMessage = "";
-            nostrConnectLocalErrorMessage = "";
             hasCopiedNostrConnectUri = false;
+            resetNostrConnectDraftState();
+            return;
+        }
+
+        if (!show) {
+            wasOpen = false;
         }
     });
 
     $effect(() => {
         nip46NostrConnectUri;
         hasCopiedNostrConnectUri = false;
+    });
+
+    let nostrConnectRelayValidation = $derived(
+        validateNip46ConnectionRelayDrafts(nostrConnectRelayDrafts),
+    );
+    let nostrConnectRelaySignature = $derived(
+        nostrConnectRelayValidation.errorKey === null
+            ? nostrConnectRelayValidation.relays.join("\n")
+            : null,
+    );
+    let displayedNostrConnectRelays = $derived(
+        nostrConnectRelayValidation.relays.length > 0
+            ? nostrConnectRelayValidation.relays
+            : nostrConnectRelayDrafts
+                  .map((relay) => relay.trim())
+                  .filter((relay) => relay.length > 0),
+    );
+    let localNostrConnectErrorMessage = $derived(
+        activeRemoteSignerTab === "qr" && nostrConnectRelayValidation.errorKey
+            ? $_(nostrConnectRelayValidation.errorKey)
+            : "",
+    );
+    let isNostrConnectPending = $derived(
+        isLoadingNip46 || isWaitingNip46NostrConnect,
+    );
+
+    $effect(() => {
+        show;
+        activeRemoteSignerTab;
+        const relaySignature = nostrConnectRelaySignature;
+        const relayValidationError = nostrConnectRelayValidation.errorKey;
+
+        if (!show || activeRemoteSignerTab !== "qr") {
+            return;
+        }
+
+        if (relayValidationError !== null) {
+            if (lastRequestedNostrConnectSignature !== null) {
+                lastRequestedNostrConnectSignature = null;
+                onNostrConnectCancel?.();
+            }
+            return;
+        }
+
+        if (
+            !relaySignature ||
+            relaySignature === lastRequestedNostrConnectSignature
+        ) {
+            return;
+        }
+
+        lastRequestedNostrConnectSignature = relaySignature;
+        void onNostrConnectStart?.(nostrConnectRelayValidation.relays);
     });
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
@@ -201,9 +282,13 @@
     function resolveNostrConnectErrorMessage(errorMessage: string): string {
         switch (errorMessage) {
             case "At least one public wss relay is required for nostrconnect":
-                return $_("loginDialog.nostrconnect_relay_invalid");
+                return $_("loginDialog.nostrconnect_relay_required");
             case "Nostr Connect timed out before the remote signer connected":
                 return $_("loginDialog.nostrconnect_timeout");
+            case "Timed out waiting for switch_relays response":
+            case "Relay connection failed":
+            case "Nostr Connect handshake pool is unavailable":
+                return $_("loginDialog.nostrconnect_connection_failed");
             case "Timed out waiting for final relay list":
             case "Remote signer did not return final relay list":
             case "Remote signer returned an invalid final relay list":
@@ -214,21 +299,11 @@
             case "Nostr Connect connection was cancelled":
                 return "";
             default:
+                if (errorMessage.startsWith("Relay connection failed:")) {
+                    return $_("loginDialog.nostrconnect_connection_failed");
+                }
                 return errorMessage;
         }
-    }
-
-    function formatNostrConnectRelays(relays: string[]): string {
-        return relays.join("\n");
-    }
-
-    function parseNostrConnectRelays(input: string): string[] {
-        return sanitizeNip46NostrConnectRelays(
-            input
-                .split(/[\s,]+/)
-                .map((relay) => relay.trim())
-                .filter((relay) => relay.length > 0),
-        );
     }
 
     async function handleNip07Login() {
@@ -307,40 +382,55 @@
         nip46ErrorMessage = "";
     }
 
-    async function handleNostrConnectStart() {
-        nostrConnectLocalErrorMessage = "";
-        const trimmed = nostrConnectRelayInput.trim();
-
-        if (!trimmed) {
-            nostrConnectLocalErrorMessage = $_(
-                "loginDialog.nostrconnect_relay_required",
-            );
+    function selectRemoteSignerTab(tab: RemoteSignerTab) {
+        if (activeRemoteSignerTab === tab) {
             return;
         }
 
-        const relays = parseNostrConnectRelays(trimmed);
-        if (relays.length === 0) {
-            nostrConnectLocalErrorMessage = $_(
-                "loginDialog.nostrconnect_relay_invalid",
-            );
+        activeRemoteSignerTab = tab;
+
+        if (tab === "bunker") {
+            lastRequestedNostrConnectSignature = null;
+            onNostrConnectCancel?.();
             return;
         }
 
-        nostrConnectRelayInput = formatNostrConnectRelays(relays);
-        const errorMessage = await onNostrConnectStart?.(relays);
-        if (errorMessage) {
-            nostrConnectLocalErrorMessage =
-                resolveNostrConnectErrorMessage(errorMessage);
-        }
+        lastRequestedNostrConnectSignature = null;
     }
 
-    function applyNostrConnectRelaySuggestion(relay: string) {
-        const relays = parseNostrConnectRelays(nostrConnectRelayInput);
-        relays.push(relay);
-        nostrConnectRelayInput = formatNostrConnectRelays(
-            sanitizeNip46NostrConnectRelays(relays),
+    function updateNostrConnectRelayDraft(index: number, value: string) {
+        const nextDrafts = [...nostrConnectRelayDrafts];
+        nextDrafts[index] = value;
+        nostrConnectRelayDrafts =
+            ensureNip46ConnectionRelayDraftRows(nextDrafts);
+    }
+
+    function addNostrConnectRelayDraft() {
+        nostrConnectRelayDrafts = [...nostrConnectRelayDrafts, ""];
+        isNostrConnectRelaySettingsExpanded = true;
+    }
+
+    function removeNostrConnectRelayDraft(index: number) {
+        nostrConnectRelayDrafts = ensureNip46ConnectionRelayDraftRows(
+            nostrConnectRelayDrafts.filter(
+                (_, relayIndex) => relayIndex !== index,
+            ),
         );
-        nostrConnectLocalErrorMessage = "";
+    }
+
+    function resetNostrConnectRelaysToDefault() {
+        nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
+            getDefaultNip46ConnectionRelays(),
+        );
+        lastRequestedNostrConnectSignature = null;
+    }
+
+    function handleOpenNostrConnectUri() {
+        if (!nip46NostrConnectUri) {
+            return;
+        }
+
+        openNip46ConnectionUri(nip46NostrConnectUri);
     }
 
     async function handleCopyNostrConnectUri() {
@@ -356,7 +446,6 @@
     }
 
     function handleNostrConnectCancel() {
-        nostrConnectLocalErrorMessage = "";
         onNostrConnectCancel?.();
     }
 
@@ -366,7 +455,10 @@
             : "",
     );
     let displayedNostrConnectErrorMessage = $derived(
-        resolvedRemoteNostrConnectErrorMessage || nostrConnectLocalErrorMessage,
+        activeRemoteSignerTab === "qr"
+            ? resolvedRemoteNostrConnectErrorMessage ||
+                  localNostrConnectErrorMessage
+            : "",
     );
 
     // 新しいフォームsubmit用ハンドラ
@@ -487,174 +579,268 @@
         <span>or</span>
     </div>
 
-    <div class="bunker-section">
-        <div class="bunker-heading-row">
+    <div class="remote-signer-section">
+        <div class="remote-signer-heading-row">
             <div class="vault-icon svg-icon" aria-hidden="true"></div>
-            <h3>{$_("loginDialog.bunker_input_title")}</h3>
+            <h3>{$_("loginDialog.remote_signer_title")}</h3>
         </div>
-        <form
-            novalidate
-            onsubmit={(e) => {
-                e.preventDefault();
-                handleNip46Login();
-            }}
-        >
-            <div class="bunker-input-row">
-                <input
-                    type="password"
-                    bind:value={bunkerUrl}
-                    placeholder="bunker://..."
-                    class="bunker-input u-control"
-                    required
-                    autocomplete="off"
-                    bind:this={bunkerInputEl}
-                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
-                    oninput={() => {
-                        nip46ErrorMessage = "";
-                        if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
-                    }}
-                />
-                <Button
-                    variant="primary"
-                    shape="square"
-                    type="submit"
-                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
-                    className="bunker-connect-btn u-control {isLoadingNip46
-                        ? 'loading'
-                        : ''}"
-                >
-                    {#if isLoadingNip46}
-                        <LoadingPlaceholder
-                            text={true}
-                            showLoader={true}
-                            customClass="bunker-connect-placeholder"
-                        />
-                    {:else}
-                        {$_("loginDialog.bunker_connect")}
-                    {/if}
-                </Button>
-            </div>
 
-            {#if nip46ErrorMessage}
+        <div class="remote-signer-tabs" role="tablist">
+            <button
+                type="button"
+                class:selected={activeRemoteSignerTab === "qr"}
+                class="remote-signer-tab"
+                role="tab"
+                aria-selected={activeRemoteSignerTab === "qr"}
+                data-testid="nostrconnect-qr-tab"
+                onclick={() => selectRemoteSignerTab("qr")}
+            >
+                {$_("loginDialog.nostrconnect_qr_tab")}
+            </button>
+            <button
+                type="button"
+                class:selected={activeRemoteSignerTab === "bunker"}
+                class="remote-signer-tab"
+                role="tab"
+                aria-selected={activeRemoteSignerTab === "bunker"}
+                data-testid="nostrconnect-bunker-tab"
+                onclick={() => selectRemoteSignerTab("bunker")}
+            >
+                {$_("loginDialog.nostrconnect_bunker_tab")}
+            </button>
+        </div>
+
+        {#if activeRemoteSignerTab === "qr"}
+            <div class="remote-signer-panel nostrconnect-panel" role="tabpanel">
+                <div class="section-feedback info">
+                    {$_("loginDialog.nostrconnect_scan_hint")}
+                </div>
+
+                {#if nip46NostrConnectUri}
+                    <div
+                        class="nostrconnect-qr-shell"
+                        data-testid="nostrconnect-qr-code"
+                    >
+                        <QrCodeDisplay
+                            value={nip46NostrConnectUri}
+                            label={$_("loginDialog.nostrconnect_qr_alt")}
+                        />
+                    </div>
+                {:else if isNostrConnectPending}
+                    <div class="nostrconnect-qr-loading">
+                        <LoadingPlaceholder text={true} showLoader={true} />
+                    </div>
+                {/if}
+
+                <div class="nostrconnect-uri-card">
+                    <div class="nostrconnect-uri-label">
+                        {$_("loginDialog.nostrconnect_uri_label")}
+                    </div>
+                    <div
+                        class="nostrconnect-uri"
+                        data-testid="nostrconnect-uri"
+                    >
+                        {nip46NostrConnectUri || ""}
+                    </div>
+                </div>
+
                 <div
-                    class="section-feedback error"
-                    aria-live="polite"
-                    role="alert"
+                    class="section-feedback info nostrconnect-status"
+                    role="status"
                 >
-                    {nip46ErrorMessage}
+                    {isNostrConnectPending
+                        ? $_("loginDialog.nostrconnect_waiting")
+                        : $_("loginDialog.nostrconnect_idle")}
                 </div>
-            {/if}
-        </form>
-    </div>
 
-    <div class="divider">
-        <span>or</span>
-    </div>
-
-    <div class="nostrconnect-section">
-        <div class="nostrconnect-heading-row">
-            <h3>{$_("loginDialog.nostrconnect_input_title")}</h3>
-        </div>
-
-        <div class="section-feedback info">
-            {$_("loginDialog.nostrconnect_relay_hint")}
-        </div>
-
-        <form
-            novalidate
-            onsubmit={(event) => {
-                event.preventDefault();
-                handleNostrConnectStart();
-            }}
-        >
-            <textarea
-                bind:value={nostrConnectRelayInput}
-                placeholder={$_("loginDialog.nostrconnect_relay_placeholder")}
-                class="nostrconnect-relay-input"
-                rows="3"
-                disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
-                oninput={() => {
-                    nostrConnectLocalErrorMessage = "";
-                }}
-            ></textarea>
-
-            {#if nostrConnectRelaySuggestions.length > 0}
-                <div class="relay-suggestion-list">
-                    {#each nostrConnectRelaySuggestions as relay}
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            shape="pill"
-                            className="relay-suggestion-btn"
-                            onClick={() =>
-                                applyNostrConnectRelaySuggestion(relay)}
-                            disabled={isLoadingNip46 ||
-                                isWaitingNip46NostrConnect}
-                        >
-                            {relay}
-                        </Button>
-                    {/each}
+                <div class="nostrconnect-code-actions">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleCopyNostrConnectUri}
+                        disabled={!nip46NostrConnectUri}
+                        className="nostrconnect-copy-btn"
+                        data-testid="nostrconnect-copy-button"
+                    >
+                        {hasCopiedNostrConnectUri
+                            ? $_("loginDialog.nostrconnect_copied")
+                            : $_("loginDialog.nostrconnect_copy")}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleOpenNostrConnectUri}
+                        disabled={!nip46NostrConnectUri}
+                        className="nostrconnect-open-btn"
+                        data-testid="nostrconnect-open-button"
+                    >
+                        {$_("loginDialog.nostrconnect_open")}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleNostrConnectCancel}
+                        disabled={!isNostrConnectPending &&
+                            !nip46NostrConnectUri}
+                        className="nostrconnect-cancel-btn"
+                    >
+                        {$_("loginDialog.nostrconnect_cancel_waiting")}
+                    </Button>
                 </div>
-            {/if}
 
-            <div class="nostrconnect-action-row">
-                <Button
-                    variant="primary"
-                    type="submit"
-                    disabled={isLoadingNip46 || isWaitingNip46NostrConnect}
-                    className="nostrconnect-generate-btn u-control {isLoadingNip46
-                        ? 'loading'
-                        : ''}"
+                <div class="nostrconnect-relay-summary">
+                    <div class="nostrconnect-relay-summary-label">
+                        {$_("loginDialog.nostrconnect_relay_label")}
+                    </div>
+                    <div class="nostrconnect-current-relays">
+                        {#each displayedNostrConnectRelays as relay}
+                            <div class="nostrconnect-current-relay">
+                                {relay}
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+
+                <details
+                    bind:open={isNostrConnectRelaySettingsExpanded}
+                    class="nostrconnect-relay-settings"
                 >
-                    {#if isLoadingNip46}
-                        <LoadingPlaceholder
-                            text={true}
-                            showLoader={true}
-                            customClass="bunker-connect-placeholder"
-                        />
-                    {:else}
-                        {$_("loginDialog.nostrconnect_generate")}
-                    {/if}
-                </Button>
-            </div>
+                    <summary>
+                        {$_("loginDialog.nostrconnect_edit_relays")}
+                    </summary>
 
-            {#if isWaitingNip46NostrConnect && nip46NostrConnectUri}
-                <div class="nostrconnect-code-card">
                     <div class="section-feedback info">
-                        {$_("loginDialog.nostrconnect_waiting")}
+                        {$_("loginDialog.nostrconnect_relay_hint")}
                     </div>
-                    <div class="nostrconnect-uri">{nip46NostrConnectUri}</div>
-                    <div class="nostrconnect-code-actions">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handleCopyNostrConnectUri}
-                        >
-                            {hasCopiedNostrConnectUri
-                                ? $_("loginDialog.nostrconnect_copied")
-                                : $_("loginDialog.nostrconnect_copy")}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handleNostrConnectCancel}
-                        >
-                            {$_("loginDialog.nostrconnect_cancel_waiting")}
-                        </Button>
+                    <div class="section-feedback info">
+                        {$_("loginDialog.nostrconnect_relay_switch_hint")}
                     </div>
-                </div>
-            {/if}
+                    <div class="section-feedback info">
+                        {$_("loginDialog.nostrconnect_relay_update_hint")}
+                    </div>
 
-            {#if displayedNostrConnectErrorMessage}
-                <div
-                    class="section-feedback error"
-                    aria-live="polite"
-                    role="alert"
+                    <div class="nostrconnect-relay-editor-list">
+                        {#each nostrConnectRelayDrafts as relay, index}
+                            <div class="nostrconnect-relay-row">
+                                <input
+                                    type="url"
+                                    value={relay}
+                                    class="nostrconnect-relay-field"
+                                    placeholder={$_(
+                                        "loginDialog.nostrconnect_relay_placeholder",
+                                    )}
+                                    oninput={(event) =>
+                                        updateNostrConnectRelayDraft(
+                                            index,
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="nostrconnect-remove-relay-btn"
+                                    onClick={() =>
+                                        removeNostrConnectRelayDraft(index)}
+                                    disabled={nostrConnectRelayDrafts.length ===
+                                        1 && !relay.trim()}
+                                >
+                                    {$_(
+                                        "loginDialog.nostrconnect_remove_relay",
+                                    )}
+                                </Button>
+                            </div>
+                        {/each}
+                    </div>
+
+                    <div class="nostrconnect-relay-editor-actions">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={addNostrConnectRelayDraft}
+                        >
+                            {$_("loginDialog.nostrconnect_add_relay")}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={resetNostrConnectRelaysToDefault}
+                            data-testid="nostrconnect-reset-relays"
+                        >
+                            {$_("loginDialog.nostrconnect_reset_relays")}
+                        </Button>
+                    </div>
+                </details>
+
+                {#if displayedNostrConnectErrorMessage}
+                    <div
+                        class="section-feedback error"
+                        aria-live="polite"
+                        role="alert"
+                    >
+                        {displayedNostrConnectErrorMessage}
+                    </div>
+                {/if}
+            </div>
+        {:else}
+            <div class="remote-signer-panel bunker-panel" role="tabpanel">
+                <form
+                    novalidate
+                    onsubmit={(e) => {
+                        e.preventDefault();
+                        handleNip46Login();
+                    }}
                 >
-                    {displayedNostrConnectErrorMessage}
-                </div>
-            {/if}
-        </form>
+                    <div class="bunker-input-row">
+                        <input
+                            type="password"
+                            bind:value={bunkerUrl}
+                            placeholder="bunker://..."
+                            class="bunker-input u-control"
+                            required
+                            autocomplete="off"
+                            bind:this={bunkerInputEl}
+                            disabled={isLoadingNip46}
+                            oninput={() => {
+                                nip46ErrorMessage = "";
+                                if (bunkerInputEl)
+                                    bunkerInputEl.setCustomValidity("");
+                            }}
+                        />
+                        <Button
+                            variant="primary"
+                            shape="square"
+                            type="submit"
+                            disabled={isLoadingNip46}
+                            className="bunker-connect-btn u-control {isLoadingNip46
+                                ? 'loading'
+                                : ''}"
+                        >
+                            {#if isLoadingNip46}
+                                <LoadingPlaceholder
+                                    text={true}
+                                    showLoader={true}
+                                    customClass="bunker-connect-placeholder"
+                                />
+                            {:else}
+                                {$_("loginDialog.bunker_connect")}
+                            {/if}
+                        </Button>
+                    </div>
+
+                    {#if nip46ErrorMessage}
+                        <div
+                            class="section-feedback error"
+                            aria-live="polite"
+                            role="alert"
+                        >
+                            {nip46ErrorMessage}
+                        </div>
+                    {/if}
+                </form>
+            </div>
+        {/if}
     </div>
 
     <div class="divider">
@@ -838,30 +1024,27 @@
         height: 32px;
     }
 
-    .bunker-section,
+    .remote-signer-section,
     .secret-key-section {
         display: flex;
         flex-direction: column;
         width: 100%;
-        height: 100px;
+        gap: 12px;
     }
 
-    .nostrconnect-section {
+    .remote-signer-panel {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        width: 100%;
+        gap: 12px;
     }
 
     .secret-heading-row,
-    .bunker-heading-row,
-    .nostrconnect-heading-row {
+    .remote-signer-heading-row {
         display: flex;
         gap: 6px;
         justify-content: center;
         align-items: center;
         width: 100%;
-        flex: 1;
     }
 
     .secret-input-row,
@@ -883,58 +1066,133 @@
     }
 
     .secret-heading-row h3,
-    .bunker-heading-row h3,
-    .nostrconnect-heading-row h3 {
+    .remote-signer-heading-row h3 {
         margin: 0;
     }
 
-    .nostrconnect-relay-input {
-        width: 100%;
-        min-height: 92px;
-        resize: vertical;
-        font-family: monospace;
-        font-size: 0.95rem;
-        padding: 0.75rem;
-        background-color: var(--btn-bg);
+    .remote-signer-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .remote-signer-tab {
         border: 1px solid var(--border-hr);
-        box-sizing: border-box;
+        background: var(--btn-bg);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 12px 16px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
     }
 
-    .relay-suggestion-list {
+    .remote-signer-tab.selected {
+        border-color: color-mix(
+            in srgb,
+            var(--accent-color, var(--text)) 45%,
+            var(--border-hr)
+        );
+        background: color-mix(
+            in srgb,
+            var(--btn-bg) 50%,
+            var(--bg-color, #ffffff)
+        );
+    }
+
+    .nostrconnect-qr-shell,
+    .nostrconnect-qr-loading {
+        width: 100%;
+    }
+
+    .nostrconnect-qr-loading {
+        min-height: 320px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 8px;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        border-radius: 16px;
+        background: var(--btn-bg);
+        border: 1px solid var(--border-hr);
     }
 
-    :global(.relay-suggestion-btn) {
-        max-width: 100%;
-        word-break: break-all;
-    }
-
-    .nostrconnect-action-row,
-    .nostrconnect-code-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-        flex-wrap: wrap;
-    }
-
-    .nostrconnect-code-card {
+    .nostrconnect-uri-card,
+    .nostrconnect-relay-summary {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        margin-top: 8px;
     }
 
+    .nostrconnect-uri-label,
+    .nostrconnect-relay-summary-label {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-light);
+    }
+
+    .nostrconnect-current-relays,
     .nostrconnect-uri {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
         padding: 10px;
         background: var(--btn-bg);
         border: 1px solid var(--border-hr);
+        border-radius: 12px;
         font-family: monospace;
         font-size: 0.9rem;
         line-height: 1.4;
         word-break: break-all;
+        box-sizing: border-box;
+    }
+
+    .nostrconnect-status {
+        margin: 0;
+    }
+
+    .nostrconnect-code-actions,
+    .nostrconnect-relay-editor-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .nostrconnect-relay-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        background: color-mix(in srgb, var(--btn-bg) 70%, transparent);
+        border: 1px solid var(--border-hr);
+        border-radius: 16px;
+    }
+
+    .nostrconnect-relay-settings summary {
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .nostrconnect-relay-editor-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .nostrconnect-relay-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .nostrconnect-relay-field {
+        flex: 1;
+        min-height: 48px;
+        padding: 0.75rem;
+        background: var(--btn-bg);
+        border: 1px solid var(--border-hr);
+        border-radius: 12px;
+        font-family: monospace;
+        font-size: 0.95rem;
     }
 
     .secret-icon {
@@ -950,9 +1208,20 @@
         mask-image: url("/icons/shield_locked_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 30px;
         height: 30px;
-        padding: 12px 18px 12px 16px;
         display: inline-block;
         vertical-align: middle;
+    }
+
+    @media (max-width: 640px) {
+        .nostrconnect-relay-row,
+        .bunker-input-row,
+        .secret-input-row {
+            flex-direction: column;
+        }
+
+        :global(input.u-control, button.u-control) {
+            width: 100%;
+        }
     }
 
     .divider {
