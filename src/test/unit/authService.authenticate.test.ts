@@ -223,7 +223,10 @@ describe('AuthService.authenticateWithNip46', () => {
         expect(result.success).toBe(true);
         expect(result.pubkeyHex).toBe(validPubkey);
         expect(mockDependencies.setNip46Auth).toHaveBeenCalled();
-        expect(nip46Service.saveSession).toHaveBeenCalled();
+        expect(nip46Service.saveSession).toHaveBeenCalledWith(
+            mockDependencies.localStorage,
+            validPubkey,
+        );
         expect(mockAccountManager.addAccount).toHaveBeenCalledWith(validPubkey, 'nip46');
     });
 

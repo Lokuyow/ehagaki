@@ -68,7 +68,7 @@ describe('AuthService.restoreAccount', () => {
     it('restoreNip46Account: セッション復元→再接続成功', async () => {
         const validPubkey = 'ab'.repeat(32);
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
-        const session = createMockNip46Session(validPubkey);
+        const session = createMockNip46Session(validPubkey, { pingVerified: true });
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
         vi.mocked(nip46Service.reconnect).mockResolvedValue(validPubkey);
 
@@ -77,6 +77,11 @@ describe('AuthService.restoreAccount', () => {
 
         expect(result.hasAuth).toBe(true);
         expect(result.pubkeyHex).toBe(validPubkey);
+        expect(nip46Service.reconnect).toHaveBeenCalledWith(session);
+        expect(nip46Service.bindSessionPersistence).toHaveBeenCalledWith(
+            mockDependencies.localStorage,
+            validPubkey,
+        );
         expect(mockDependencies.setNip46Auth).toHaveBeenCalled();
     });
 

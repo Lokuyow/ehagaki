@@ -32,11 +32,6 @@ export class NostrAuthService implements AuthService {
         }
 
         if (authState.value.type === 'nip46') {
-            const initialSigner = nip46Service.getSigner();
-            if (initialSigner) {
-                return initialSigner;
-            }
-
             const connected = await nip46Service.waitForPendingOperation();
             if (connected) {
                 const signer = nip46Service.getSigner();
