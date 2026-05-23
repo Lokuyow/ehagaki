@@ -3,6 +3,7 @@ import {
     Nip46SignerAdapter,
     Nip46Service,
     NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
+    NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS,
     NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
     NIP46_INITIAL_READINESS_RETRY_WINDOW_MS,
     NIP46_REQUESTED_PERMISSIONS,
@@ -182,6 +183,10 @@ describe('Nip46Service', () => {
             resolve: resolve!,
             reject: reject!,
         };
+    }
+
+    function getNostrConnectUriRelays(uri: string): string[] {
+        return new URL(uri).searchParams.getAll('relay');
     }
 
     afterEach(() => {
@@ -676,7 +681,124 @@ describe('Nip46Service', () => {
             expect(mockPool.subscribe).toHaveBeenCalledTimes(1);
         });
 
-        it('複数 initial relay のうち 1 件が到達可能なら、他の遅延 relay を待たずに ready になる', async () => {
+        it('最初の ready 後 1500ms の収集猶予時間内に ready になった initial relay だけを URI に含める', async () => {
+            vi.useFakeTimers();
+
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.fast.example.com') {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve({}), 100);
+                    });
+                }
+
+                if (relay === 'wss://relay.within-window.example.com') {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve({}), 1200);
+                    });
+                }
+
+                if (relay === 'wss://relay.failed.example.com') {
+                    return Promise.reject(new Error('connection timed out'));
+                }
+
+                return new Promise((resolve) => {
+                    setTimeout(() => resolve({}), 1700);
+                });
+            });
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.fast.example.com',
+                'wss://relay.within-window.example.com',
+                'wss://relay.late.example.com',
+                'wss://relay.failed.example.com',
+            ]);
+            let readyResolved = false;
+            void pending.ready.then(() => {
+                readyResolved = true;
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            expect(readyResolved).toBe(false);
+            expect(mockPool.subscribe).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS - 1,
+            );
+            expect(readyResolved).toBe(false);
+            expect(mockPool.subscribe).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(1);
+            await pending.ready;
+
+            expect(mockPool.subscribe).toHaveBeenCalledWith(
+                [
+                    'wss://relay.fast.example.com',
+                    'wss://relay.within-window.example.com',
+                ],
+                expect.any(Object),
+                expect.any(Object),
+            );
+            expect(getNostrConnectUriRelays(pending.connectionUri)).toEqual([
+                'wss://relay.fast.example.com',
+                'wss://relay.within-window.example.com',
+            ]);
+        });
+
+        it('全 candidate が収集猶予時間前に settle した場合は 1500ms を待たずに ready になる', async () => {
+            vi.useFakeTimers();
+
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.fast.example.com') {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve({}), 100);
+                    });
+                }
+
+                if (relay === 'wss://relay.second.example.com') {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve({}), 300);
+                    });
+                }
+
+                return new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('connection timed out')), 250);
+                });
+            });
+
+            const pending = await service.startNostrConnect([
+                'wss://relay.fast.example.com',
+                'wss://relay.second.example.com',
+                'wss://relay.failed.example.com',
+            ]);
+            let readyResolved = false;
+            void pending.ready.then(() => {
+                readyResolved = true;
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            expect(readyResolved).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(200);
+            await pending.ready;
+
+            expect(readyResolved).toBe(true);
+            expect(mockPool.subscribe).toHaveBeenCalledWith(
+                [
+                    'wss://relay.fast.example.com',
+                    'wss://relay.second.example.com',
+                ],
+                expect.any(Object),
+                expect.any(Object),
+            );
+            expect(getNostrConnectUriRelays(pending.connectionUri)).toEqual([
+                'wss://relay.fast.example.com',
+                'wss://relay.second.example.com',
+            ]);
+        });
+
+        it('複数 initial relay のうち 1 件だけ ready でも、全 candidate を待たずに猶予時間後に ready になる', async () => {
+            vi.useFakeTimers();
+
             const slowRelayConnection = createDeferred<{}>();
             let slowRelaySettled = false;
 
@@ -699,6 +821,22 @@ describe('Nip46Service', () => {
                 'wss://relay.ready.example.com',
                 'wss://relay.failed.example.com',
             ]);
+            let readyResolved = false;
+            void pending.ready.then(() => {
+                readyResolved = true;
+            });
+
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(readyResolved).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS - 1,
+            );
+            expect(readyResolved).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(1);
 
             await pending.ready;
 
@@ -708,15 +846,9 @@ describe('Nip46Service', () => {
                 expect.any(Object),
                 expect.any(Object),
             );
-            expect(pending.connectionUri).toContain(
-                encodeURIComponent('wss://relay.ready.example.com'),
-            );
-            expect(pending.connectionUri).not.toContain(
-                encodeURIComponent('wss://relay.slow.example.com'),
-            );
-            expect(pending.connectionUri).not.toContain(
-                encodeURIComponent('wss://relay.failed.example.com'),
-            );
+            expect(getNostrConnectUriRelays(pending.connectionUri)).toEqual([
+                'wss://relay.ready.example.com',
+            ]);
         });
 
         it('ready 前に cancel すると cleanup され、古い operation は ready に到達しない', async () => {
@@ -1142,7 +1274,10 @@ describe('Nip46Service', () => {
 
         it('switch_relays が null を返した場合は接続済み initial relay subset を signer-confirmed-unchanged として保存する', async () => {
             mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
-                if (relay === 'wss://relay.ready.example.com') {
+                if (
+                    relay === 'wss://relay.ready.example.com'
+                    || relay === 'wss://relay.backup-ready.example.com'
+                ) {
                     return Promise.resolve({});
                 }
 
@@ -1157,6 +1292,7 @@ describe('Nip46Service', () => {
             } = await createPendingFallbackNostrConnect({
                 initialRelays: [
                     'wss://relay.ready.example.com',
+                    'wss://relay.backup-ready.example.com',
                     'wss://relay.dead.example.com',
                 ],
                 sendRequestResult: 'null',
@@ -1177,7 +1313,10 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey,
-                relays: ['wss://relay.ready.example.com'],
+                relays: [
+                    'wss://relay.ready.example.com',
+                    'wss://relay.backup-ready.example.com',
+                ],
                 userPubkey: 'user-pubkey-hex',
                 pingVerified: false,
                 relayResolution: 'signer-confirmed-unchanged',
@@ -1186,7 +1325,10 @@ describe('Nip46Service', () => {
 
         it('switch_relays が unsupported method error を返した場合は接続済み initial relay subset で fallback 接続する', async () => {
             mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
-                if (relay === 'wss://relay.ready.example.com') {
+                if (
+                    relay === 'wss://relay.ready.example.com'
+                    || relay === 'wss://relay.backup-ready.example.com'
+                ) {
                     return Promise.resolve({});
                 }
 
@@ -1201,6 +1343,7 @@ describe('Nip46Service', () => {
             } = await createPendingFallbackNostrConnect({
                 initialRelays: [
                     'wss://relay.ready.example.com',
+                    'wss://relay.backup-ready.example.com',
                     'wss://relay.dead.example.com',
                 ],
                 sendRequestError: 'unsupported method: switch_relays',
@@ -1212,16 +1355,23 @@ describe('Nip46Service', () => {
             });
 
             const pubkey = await pending.completion;
+            const initialReadyRelays = [
+                'wss://relay.ready.example.com',
+                'wss://relay.backup-ready.example.com',
+            ];
 
             expect(pubkey).toBe('user-pubkey-hex');
             expect(
                 interimSigner.getPublicKey.mock.invocationCallOrder[0],
             ).toBeLessThan(interimSigner.sendRequest.mock.invocationCallOrder[0]);
+            expect(getNostrConnectUriRelays(pending.connectionUri)).toEqual(
+                initialReadyRelays,
+            );
             service.saveSession(mockStorage, pubkey);
             expect(Nip46Service.loadSession(mockStorage, pubkey)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey,
-                relays: ['wss://relay.ready.example.com'],
+                relays: initialReadyRelays,
                 userPubkey: 'user-pubkey-hex',
                 pingVerified: false,
                 relayResolution: 'client-initial-fallback',
@@ -1532,7 +1682,23 @@ describe('Nip46Service', () => {
         it('switch_relays timeout 後に fallback signer の get_public_key 検証が成功した場合は client-initial-unconfirmed として接続成功する', async () => {
             vi.useFakeTimers();
 
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
+                if (
+                    relay === 'wss://relay.ready.example.com'
+                    || relay === 'wss://relay.backup-ready.example.com'
+                ) {
+                    return Promise.resolve({});
+                }
+
+                return Promise.reject(new Error('connection timed out'));
+            });
+
             const pendingFlow = await createPendingFallbackNostrConnect({
+                initialRelays: [
+                    'wss://relay.ready.example.com',
+                    'wss://relay.backup-ready.example.com',
+                    'wss://relay.dead.example.com',
+                ],
                 sendRequestPromise: new Promise<string>(() => {
                     // never resolves
                 }),
@@ -1557,7 +1723,10 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, 'user-pubkey-hex')).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
-                relays: pendingFlow.initialRelays,
+                relays: [
+                    'wss://relay.ready.example.com',
+                    'wss://relay.backup-ready.example.com',
+                ],
                 userPubkey: 'user-pubkey-hex',
                 pingVerified: false,
                 relayResolution: 'client-initial-unconfirmed',

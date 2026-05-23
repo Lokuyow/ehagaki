@@ -291,12 +291,12 @@ describe('LoginDialog', () => {
         expect(await screen.findByText('接続に失敗しました')).toBeTruthy();
     });
 
-    it('QR タブ初期表示では default relay candidates で開始し、first reachable relay だけを URI と QR に使う', async () => {
+    it('QR タブ初期表示では default relay candidates で開始し、確定した複数 ready relay を URI と QR に使う', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
         const uri =
-            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F';
+            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F&relay=wss%3A%2F%2Ftheforest.nostr1.com%2F&relay=wss%3A%2F%2Frelay.primal.net%2F';
 
         const { rerender } = render(LoginDialog, {
             props: {
@@ -332,8 +332,8 @@ describe('LoginDialog', () => {
                     ?.getAttribute('data-qr-value'),
             ).toBe(uri);
         });
-        expect(uri).not.toContain('theforest.nostr1.com');
-        expect(uri).not.toContain('relay.primal.net');
+        expect(uri).toContain('theforest.nostr1.com');
+        expect(uri).toContain('relay.primal.net');
         expect(uri).not.toContain('ephemeral.snowflare.cc');
         expect(screen.queryByTestId('nostrconnect-active-relays')).toBeNull();
         expect(screen.queryByTestId('nostrconnect-relay-candidates')).toBeNull();
@@ -393,7 +393,7 @@ describe('LoginDialog', () => {
         const assign = vi.fn();
         vi.stubGlobal('location', { assign });
         const { tryCopyToClipboard } = await import('../../lib/utils/clipboardUtils');
-        const uri = 'nostrconnect://client?relay=wss://relay.example.com';
+        const uri = 'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&relay=wss%3A%2F%2Frelay.backup.example.com%2F';
 
         render(LoginDialog, {
             props: {
@@ -409,6 +409,14 @@ describe('LoginDialog', () => {
         await waitFor(() => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
+
+        expect(screen.getByText(uri)).toBeTruthy();
+        expect(
+            screen
+                .getByTestId('nostrconnect-qr-code')
+                .querySelector('[data-qr-value]')
+                ?.getAttribute('data-qr-value'),
+        ).toBe(uri);
 
         await fireEvent.click(screen.getByTestId('nostrconnect-copy-button'));
         expect(tryCopyToClipboard).toHaveBeenCalledWith(uri, 'nostrconnect');

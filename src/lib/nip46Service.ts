@@ -25,6 +25,7 @@ export const NIP46_NOSTRCONNECT_TIMEOUT_MS = 300000;
 export const NIP46_INITIAL_READINESS_RETRY_WINDOW_MS = 40000;
 export const NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS = 5000;
 export const NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS = 1000;
+export const NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS = 1500;
 const NIP46_RELAY_RECONCILIATION_TIMEOUT_MS = 5000;
 const NIP46_GET_PUBLIC_KEY_TIMEOUT_MS = 5000;
 const NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE =
@@ -396,6 +397,7 @@ async function createConnectedPoolReadyOnFirstReachable(
     relays: string[],
     logMessages: RelayConnectionLogMessages =
         FIRST_REACHABLE_RELAY_CONNECTION_LOG_MESSAGES,
+    collectReadyWindowMs: number = 0,
 ): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
@@ -410,6 +412,7 @@ async function createConnectedPoolReadyOnFirstReachable(
     let rejectAllFailed: ((reason?: unknown) => void) | null = null;
     let firstReachableSettled = false;
     let remainingAttempts = uniqueRelays.length;
+    const connectedRelaySet = new Set<string>();
 
     const firstReachable = new Promise<void>((resolve, reject) => {
         resolveFirstReachable = resolve;
@@ -455,6 +458,7 @@ async function createConnectedPoolReadyOnFirstReachable(
                 connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
             });
             console.debug(logMessages.connected, relay);
+            connectedRelaySet.add(relay);
             connectedRelays.push(relay);
             settleFirstReachable();
         } catch (err) {
@@ -476,13 +480,41 @@ async function createConnectedPoolReadyOnFirstReachable(
         throw error;
     }
 
+    if (collectReadyWindowMs > 0 && remainingAttempts > 0) {
+        await new Promise<void>((resolve) => {
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                resolve();
+            }, collectReadyWindowMs);
+
+            void Promise.allSettled(connectionAttempts).then(() => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                clearTimeout(timer);
+                resolve();
+            });
+        });
+    }
+
+    const finalizedConnectedRelays = uniqueRelays.filter((relay) =>
+        connectedRelaySet.has(relay),
+    );
+
     if (connectionErrors.length > 0) {
-        console.warn(logMessages.partial, connectedRelays);
+        console.warn(logMessages.partial, finalizedConnectedRelays);
     }
 
     return {
         pool,
-        connectedRelays: [...connectedRelays],
+        connectedRelays: finalizedConnectedRelays,
     };
 }
 
@@ -1402,6 +1434,8 @@ export class Nip46Service {
             try {
                 const initialConnection = await createConnectedPoolReadyOnFirstReachable(
                     sanitizedRelays,
+                    FIRST_REACHABLE_RELAY_CONNECTION_LOG_MESSAGES,
+                    NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS,
                 );
                 if (settled) {
                     initialConnection.pool.destroy();
