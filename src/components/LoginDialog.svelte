@@ -6,7 +6,6 @@
     import {
         createNip46ConnectionRelayDrafts,
         ensureNip46ConnectionRelayDraftRows,
-        extractNip46ConnectionUriRelays,
         getDefaultNip46ConnectionRelayCandidates,
         openNip46ConnectionUri,
         validateNip46ConnectionRelayDrafts,
@@ -144,16 +143,6 @@
         nostrConnectRelayValidation.errorKey === null
             ? nostrConnectRelayValidation.relays.join("\n")
             : null,
-    );
-    let displayedNostrConnectRelayCandidates = $derived(
-        nostrConnectRelayValidation.relays.length > 0
-            ? nostrConnectRelayValidation.relays
-            : nostrConnectRelayDrafts
-                  .map((relay) => relay.trim())
-                  .filter((relay) => relay.length > 0),
-    );
-    let activeNostrConnectRelays = $derived(
-        extractNip46ConnectionUriRelays(nip46NostrConnectUri),
     );
     let localNostrConnectErrorMessage = $derived(
         activeRemoteSignerTab === "qr" && nostrConnectRelayValidation.errorKey
@@ -661,24 +650,6 @@
                     </div>
                 </div>
 
-                {#if activeNostrConnectRelays.length > 0}
-                    <div
-                        class="nostrconnect-relay-summary"
-                        data-testid="nostrconnect-active-relays"
-                    >
-                        <div class="nostrconnect-relay-summary-label">
-                            {$_("loginDialog.nostrconnect_active_relay_label")}
-                        </div>
-                        <div class="nostrconnect-current-relays">
-                            {#each activeNostrConnectRelays as relay}
-                                <div class="nostrconnect-current-relay">
-                                    {relay}
-                                </div>
-                            {/each}
-                        </div>
-                    </div>
-                {/if}
-
                 <div
                     class="section-feedback info nostrconnect-status"
                     role="status"
@@ -726,22 +697,6 @@
                     >
                         {$_("loginDialog.nostrconnect_cancel_waiting")}
                     </Button>
-                </div>
-
-                <div
-                    class="nostrconnect-relay-summary"
-                    data-testid="nostrconnect-relay-candidates"
-                >
-                    <div class="nostrconnect-relay-summary-label">
-                        {$_("loginDialog.nostrconnect_relay_label")}
-                    </div>
-                    <div class="nostrconnect-current-relays">
-                        {#each displayedNostrConnectRelayCandidates as relay}
-                            <div class="nostrconnect-current-relay">
-                                {relay}
-                            </div>
-                        {/each}
-                    </div>
                 </div>
 
                 <details
@@ -1159,21 +1114,18 @@
         border: 1px solid var(--border-hr);
     }
 
-    .nostrconnect-uri-card,
-    .nostrconnect-relay-summary {
+    .nostrconnect-uri-card {
         display: flex;
         flex-direction: column;
         gap: 8px;
     }
 
-    .nostrconnect-uri-label,
-    .nostrconnect-relay-summary-label {
+    .nostrconnect-uri-label {
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--text-light);
     }
 
-    .nostrconnect-current-relays,
     .nostrconnect-uri {
         display: flex;
         flex-direction: column;
