@@ -15,6 +15,7 @@
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
@@ -171,6 +172,8 @@
                     .filter((eventId): eventId is string => !!eventId),
             }),
     });
+    const postActionUi =
+        usePostHistoryPostActionUiController<PostHistoryRecord>();
 
     let copyState = $state<Record<string, "failed" | undefined>>({});
     let showCopyFloatingMessage = $state(false);
@@ -181,15 +184,12 @@
     let lastCopyPointerPosition:
         | { eventId: string; x: number; y: number }
         | undefined;
-    let deleteConfirmOpen = $state(false);
-    let deleteTargetPost = $state<PostHistoryRecord | null>(null);
     let localHistoryDeleteConfirmOpen = $state(false);
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let jumpDateInput = $state("");
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
-    let postMenuOpenState = $state<Record<string, boolean>>({});
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -277,8 +277,7 @@
         hideCopyFloatingMessage();
         cancelCurrentMonthLabelFrame();
         currentMonthLabel = null;
-        deleteConfirmOpen = false;
-        deleteTargetPost = null;
+        postActionUi.resetDeleteConfirmation();
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
@@ -359,8 +358,7 @@
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
         postHistoryThreadGraph.cancelCurrentGraphFetches();
-        deleteConfirmOpen = false;
-        deleteTargetPost = null;
+        postActionUi.resetDeleteConfirmation();
         localHistoryDeleteConfirmOpen = false;
         headingMenuOpen = false;
         hideCopyFloatingMessage();
@@ -1321,22 +1319,7 @@
             return;
         }
 
-        closeAllPostItemMenus();
-        deleteTargetPost = post;
-        deleteConfirmOpen = true;
-    }
-
-    function setPostMenuOpen(postEventId: string, open: boolean): void {
-        postMenuOpenState = {
-            ...postMenuOpenState,
-            [postEventId]: open,
-        };
-    }
-
-    function closeAllPostItemMenus(): void {
-        if (Object.keys(postMenuOpenState).length > 0) {
-            postMenuOpenState = {};
-        }
+        postActionUi.openDeleteConfirm(post);
     }
 
     function handleReplyPost(post: PostHistoryRecord): void {
@@ -1358,8 +1341,7 @@
     }
 
     function handleDeleteCancel(): void {
-        deleteConfirmOpen = false;
-        deleteTargetPost = null;
+        postActionUi.cancelDeleteConfirm();
     }
 
     async function focusSearchInputSoon(): Promise<void> {
@@ -1444,7 +1426,7 @@
     }
 
     async function handleDeleteConfirm(): Promise<void> {
-        const targetPost = deleteTargetPost;
+        const targetPost = postActionUi.deleteTargetPost;
         if (!targetPost) {
             return;
         }
@@ -1487,7 +1469,7 @@
             };
         }
 
-        deleteTargetPost = null;
+        postActionUi.clearDeleteTarget();
     }
 
     async function handleLocalHistoryDeleteConfirm(): Promise<void> {
@@ -1823,13 +1805,13 @@
                                                     )}</span
                                                 >
                                                 <DropdownMenu.Root
-                                                    open={postMenuOpenState[
-                                                        post.eventId
-                                                    ] ?? false}
+                                                    open={postActionUi.isPostMenuOpen(
+                                                        post.eventId,
+                                                    )}
                                                     onOpenChange={(
                                                         open: boolean,
                                                     ) =>
-                                                        setPostMenuOpen(
+                                                        postActionUi.setPostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
@@ -2110,13 +2092,13 @@
                                                 class="post-preview-footer-right"
                                             >
                                                 <DropdownMenu.Root
-                                                    open={postMenuOpenState[
-                                                        post.eventId
-                                                    ] ?? false}
+                                                    open={postActionUi.isPostMenuOpen(
+                                                        post.eventId,
+                                                    )}
                                                     onOpenChange={(
                                                         open: boolean,
                                                     ) =>
-                                                        setPostMenuOpen(
+                                                        postActionUi.setPostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
@@ -2359,16 +2341,18 @@
 </DialogWrapper>
 
 <ConfirmDialog
-    bind:open={deleteConfirmOpen}
+    open={postActionUi.deleteConfirmOpen}
+    onOpenChange={postActionUi.setDeleteConfirmOpen}
     title={$_("postHistory.deleteRequestTitle")}
     description={$_("postHistory.deleteRequestDescription")}
-    confirmLabel={deleteTargetPost && isDeletionSending(deleteTargetPost)
+    confirmLabel={postActionUi.deleteTargetPost &&
+    isDeletionSending(postActionUi.deleteTargetPost)
         ? $_("postHistory.deleteSending")
         : $_("postHistory.deleteConfirm")}
     cancelLabel={$_("postHistory.deleteCancel")}
     confirmVariant="danger"
-    confirmDisabled={deleteTargetPost
-        ? isDeletionSending(deleteTargetPost)
+    confirmDisabled={postActionUi.deleteTargetPost
+        ? isDeletionSending(postActionUi.deleteTargetPost)
         : false}
     onConfirm={handleDeleteConfirm}
     onCancel={handleDeleteCancel}
