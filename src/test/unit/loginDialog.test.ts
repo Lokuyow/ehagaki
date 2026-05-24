@@ -29,7 +29,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_uri_label': '接続 URI',
         'loginDialog.nostrconnect_active_relay_label': '今回の接続に使用する relay',
         'loginDialog.nostrconnect_relay_label': 'NIP-46 接続候補 relay',
-        'loginDialog.nostrconnect_input_title': 'Nostr Connect コードを作成',
+        'loginDialog.nostrconnect_input_title': 'QRコードまたは bunker:// で接続',
         'loginDialog.nostrconnect_relay_hint': '接続に使用する relay の候補を設定します。',
         'loginDialog.nostrconnect_relay_switch_hint': 'リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。',
         'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',

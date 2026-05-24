@@ -54,7 +54,7 @@
     "bunker_invalid": "無効なbunker URLです",
     "bunker_connection_failed": "接続に失敗しました",
     "remote_signer_title": "リモートサイナー",
-    "nostrconnect_input_title": "Nostr Connect コードを作成",
+    "nostrconnect_input_title": "QRコードまたは bunker:// で接続",
     "nostrconnect_qr_tab": "QRコード",
     "nostrconnect_bunker_tab": "bunker:// を入力",
     "nostrconnect_qr_alt": "Nostr Connect QR コード",

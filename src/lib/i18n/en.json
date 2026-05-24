@@ -54,7 +54,7 @@
     "bunker_invalid": "Invalid bunker URL",
     "bunker_connection_failed": "Connection failed",
     "remote_signer_title": "Remote Signer",
-    "nostrconnect_input_title": "Create Nostr Connect Code",
+    "nostrconnect_input_title": "Connect with QR Code or bunker://",
     "nostrconnect_qr_tab": "QR Code",
     "nostrconnect_bunker_tab": "Enter bunker://",
     "nostrconnect_qr_alt": "Nostr Connect QR code",
