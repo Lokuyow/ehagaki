@@ -34,8 +34,12 @@ function logToDevFooter(...args: any[]) {
     devLog.update((logs) => [entry, ...logs].slice(0, 250));
 }
 
-// --- console.logフック ---
+// --- consoleフック ---
 const originalConsoleLog = console.log;
+const originalConsoleDebug = console.debug;
+const originalConsoleInfo = console.info;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
 if (typeof window !== "undefined") {
     (window as any).__originalConsoleLog = originalConsoleLog;
 }
@@ -45,13 +49,34 @@ if (
     ENABLE_DEV_LOG_HOOK &&
     !(window as any).__devLogHooked
 ) {
-    console.log = function (...args: any[]) {
+    const shouldSkipDevFooterLog = (args: any[]): boolean => {
         const firstArg = args[0];
-        if (typeof firstArg === 'string' && firstArg.includes('[FooterInfoDisplay Debug]')) {
-            originalConsoleLog.apply(console, args);
-            return;
-        }
+        return typeof firstArg === 'string' && firstArg.includes('[FooterInfoDisplay Debug]');
+    };
+
+    console.log = function (...args: any[]) {
         originalConsoleLog.apply(console, args);
+        if (shouldSkipDevFooterLog(args)) return;
+        logToDevFooter(...args);
+    };
+    console.debug = function (...args: any[]) {
+        originalConsoleDebug.apply(console, args);
+        if (shouldSkipDevFooterLog(args)) return;
+        logToDevFooter(...args);
+    };
+    console.info = function (...args: any[]) {
+        originalConsoleInfo.apply(console, args);
+        if (shouldSkipDevFooterLog(args)) return;
+        logToDevFooter(...args);
+    };
+    console.warn = function (...args: any[]) {
+        originalConsoleWarn.apply(console, args);
+        if (shouldSkipDevFooterLog(args)) return;
+        logToDevFooter(...args);
+    };
+    console.error = function (...args: any[]) {
+        originalConsoleError.apply(console, args);
+        if (shouldSkipDevFooterLog(args)) return;
         logToDevFooter(...args);
     };
     (window as any).__devLogHooked = true;
