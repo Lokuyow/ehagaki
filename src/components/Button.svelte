@@ -110,7 +110,7 @@
                     background: color-mix(in srgb, var(--btn-bg), black 4%);
 
                     :global(.svg-icon) {
-                        --svg: currentColor;
+                        background-color: currentColor;
                     }
                 }
                 :global(:root.dark) & {
@@ -118,7 +118,7 @@
                     background: color-mix(in srgb, var(--btn-bg), black 7%);
 
                     :global(.svg-icon) {
-                        --svg: currentColor;
+                        background-color: currentColor;
                     }
                 }
             }
