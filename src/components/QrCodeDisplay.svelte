@@ -57,7 +57,6 @@
         min-height: 320px;
         padding: 16px;
         border-radius: 16px;
-        background: #ffffff;
         border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
         box-sizing: border-box;
     }

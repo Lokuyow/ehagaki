@@ -4,16 +4,16 @@ import { readable } from 'svelte/store';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
-        'loginDialog.input_secret': '秘密鍵の入力',
+        'loginDialog.input_secret': '秘密鍵',
         'loginDialog.hint_input_secret': 'nsec1から始まる秘密鍵を入力',
         'loginDialog.add_account_title': 'アカウントを追加',
         'loginDialog.add_account_hint': '追加するアカウントでログイン',
-        'loginDialog.login_with_parent_client': '親クライアント連携でログイン',
+        'loginDialog.login_with_parent_client': '親クライアント連携',
         'loginDialog.parent_client_hint': '親ページ側でログインを許可すると接続します',
         'loginDialog.parent_client_timeout': '親ページからの応答がありませんでした',
         'loginDialog.parent_client_not_logged_in': '親ページ側でログインしてから再度お試しください',
         'loginDialog.parent_client_auth_error': '親クライアント連携に失敗しました',
-        'loginDialog.login_with_extension': 'ブラウザ拡張機能でログイン',
+        'loginDialog.login_with_extension': 'ブラウザ拡張機能',
         'loginDialog.extension_login_failed': 'ブラウザ拡張機能でのログインに失敗しました',
         'loginDialog.extension_not_found': 'NIP-07対応の拡張機能が見つかりません',
         'loginDialog.bunker_input_title': 'バンカーURLを入力',
@@ -21,7 +21,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.bunker_connection_failed': '接続に失敗しました',
         'loginDialog.bunker_invalid': '無効なbunker URLです',
         'loginDialog.bunker_url_required': 'バンカーURLを入力してください',
-        'loginDialog.remote_signer_title': 'リモートサイナーで接続',
+        'loginDialog.remote_signer_title': 'リモートサイナー',
         'loginDialog.nostrconnect_qr_tab': 'QRコード',
         'loginDialog.nostrconnect_bunker_tab': 'bunker:// を入力',
         'loginDialog.nostrconnect_qr_alt': 'Nostr Connect QR コード',
@@ -42,7 +42,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_idle': '接続待機は停止しています。',
         'loginDialog.nostrconnect_copy': '接続 URI をコピー',
         'loginDialog.nostrconnect_copied': '接続 URI をコピーしました',
-        'loginDialog.nostrconnect_open': 'リモートサイナーで開く',
+        'loginDialog.nostrconnect_open': 'この端末のリモートサイナーを開く',
         'loginDialog.nostrconnect_edit_relays': '接続 relay を変更',
         'loginDialog.nostrconnect_add_relay': 'relay を追加',
         'loginDialog.nostrconnect_remove_relay': 'relay を削除',
@@ -146,7 +146,7 @@ describe('LoginDialog', () => {
             props: defaultProps,
         });
 
-        expect(screen.getByText('親クライアント連携でログイン')).toBeTruthy();
+        expect(screen.getByText('親クライアント連携')).toBeTruthy();
         expect(
             screen.getByText('親ページ側でログインを許可すると接続します'),
         ).toBeTruthy();
@@ -165,7 +165,7 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(
-            screen.getByText('親クライアント連携でログイン'),
+            screen.getByText('親クライアント連携'),
         );
 
         expect(onParentClientLogin).toHaveBeenCalledTimes(1);
@@ -187,7 +187,7 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(
-            screen.getByText('親クライアント連携でログイン'),
+            screen.getByText('親クライアント連携'),
         );
 
         expect(onParentClientLogin).toHaveBeenCalledTimes(1);
@@ -209,7 +209,7 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(
-            screen.getByText('親クライアント連携でログイン'),
+            screen.getByText('親クライアント連携'),
         );
         expect(
             await screen.findByText('親ページからの応答がありませんでした'),
@@ -260,7 +260,7 @@ describe('LoginDialog', () => {
             },
         });
 
-        await fireEvent.click(screen.getByText('ブラウザ拡張機能でログイン'));
+        await fireEvent.click(screen.getByText('ブラウザ拡張機能'));
 
         expect(onNip07Login).toHaveBeenCalledTimes(1);
         expect(
@@ -322,7 +322,7 @@ describe('LoginDialog', () => {
             nip46NostrConnectUri: uri,
         });
 
-        expect(screen.getByText('リモートサイナーで接続')).toBeTruthy();
+        expect(screen.getByText('リモートサイナー')).toBeTruthy();
         expect(screen.getByText(uri)).toBeTruthy();
         await waitFor(() => {
             expect(
