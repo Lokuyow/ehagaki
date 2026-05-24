@@ -518,6 +518,63 @@ async function createConnectedPoolReadyOnFirstReachable(
     };
 }
 
+async function createConnectedPoolForReachableRelays(
+    relays: string[],
+    logMessages: RelayConnectionLogMessages,
+): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
+    const origWs = globalThis.WebSocket;
+    useWebSocketImplementation(Nip46WebSocket);
+    const pool = new SimplePool();
+    useWebSocketImplementation(origWs);
+
+    const uniqueRelays = [...new Set(relays)];
+    const connectedRelaySet = new Set<string>();
+    const connectionErrors: string[] = [];
+
+    await Promise.all(
+        uniqueRelays.map(async (relay) => {
+            try {
+                console.debug(logMessages.connecting, relay);
+                await pool.ensureRelay(relay, {
+                    connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
+                });
+                console.debug(logMessages.connected, relay);
+                connectedRelaySet.add(relay);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(logMessages.failed, relay, msg);
+                connectionErrors.push(`${relay}: ${msg}`);
+            }
+        }),
+    );
+
+    const finalizedConnectedRelays = uniqueRelays.filter((relay) =>
+        connectedRelaySet.has(relay),
+    );
+
+    if (finalizedConnectedRelays.length === 0) {
+        pool.destroy();
+        const hint = getRelayConnectionFailureHint(relays);
+        const message = connectionErrors.length > 0
+            ? connectionErrors.join('; ')
+            : 'no reachable relays';
+        throw new Error(
+            hint
+                ? `Relay connection failed: ${message}. ${hint}`
+                : `Relay connection failed: ${message}`,
+        );
+    }
+
+    if (connectionErrors.length > 0) {
+        console.warn(logMessages.partial, finalizedConnectedRelays);
+    }
+
+    return {
+        pool,
+        connectedRelays: finalizedConnectedRelays,
+    };
+}
+
 function normalizePublicWssRelay(relay: string): string | null {
     const normalized = RelayConfigUtils.normalizeExternalRelayUrl(relay);
     if (!normalized) {
@@ -1309,53 +1366,59 @@ export class Nip46Service {
                 connectedRelays: string[];
             } | null = null;
             let finalSignerCandidate: BunkerSigner | null = null;
-            let selectedRelay: string | null = null;
 
             try {
-                finalConnection = await createConnectedPoolReadyOnFirstReachable(
+                finalConnection = await createConnectedPoolForReachableRelays(
                     finalRelayCandidates,
                     NEGOTIATED_FINAL_RELAY_CONNECTION_LOG_MESSAGES,
                 );
                 ensurePendingActive();
-
-                selectedRelay = finalConnection.connectedRelays[0] ?? null;
-                if (!selectedRelay) {
-                    throw new Error('No reachable final relay candidate');
-                }
-
-                finalSignerCandidate = createNostrConnectBunkerSigner(
-                    clientSecretKey,
-                    remoteSignerPubkey,
-                    [selectedRelay],
-                    sharedSecret,
-                    finalConnection.pool,
-                );
-
-                const verifiedUserPubkey = await getNostrConnectPublicKeyWithTimeout(
-                    finalSignerCandidate,
-                );
-                ensurePendingActive();
-
-                if (verifiedUserPubkey !== expectedUserPubkey) {
-                    console.warn(
-                        '[NIP-46] negotiated final relay returned unexpected public key:',
-                        selectedRelay,
-                    );
-                    throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
-                }
-
-                return {
-                    pool: finalConnection.pool,
-                    signer: finalSignerCandidate,
-                    userPubkey: verifiedUserPubkey,
-                    selectedRelay,
-                };
             } catch (error) {
                 if (settled) {
                     throw createNostrConnectCancellationError();
                 }
 
-                if (selectedRelay) {
+                if (containsLoopbackFinalRelay) {
+                    throw new Error(NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE);
+                }
+
+                throw error;
+            }
+
+            for (const selectedRelay of finalConnection.connectedRelays) {
+                try {
+                    finalSignerCandidate = createNostrConnectBunkerSigner(
+                        clientSecretKey,
+                        remoteSignerPubkey,
+                        [selectedRelay],
+                        sharedSecret,
+                        finalConnection.pool,
+                    );
+
+                    const verifiedUserPubkey = await getNostrConnectPublicKeyWithTimeout(
+                        finalSignerCandidate,
+                    );
+                    ensurePendingActive();
+
+                    if (verifiedUserPubkey !== expectedUserPubkey) {
+                        console.warn(
+                            '[NIP-46] negotiated final relay returned unexpected public key:',
+                            selectedRelay,
+                        );
+                        throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
+                    }
+
+                    return {
+                        pool: finalConnection.pool,
+                        signer: finalSignerCandidate,
+                        userPubkey: verifiedUserPubkey,
+                        selectedRelay,
+                    };
+                } catch (error) {
+                    if (settled) {
+                        throw createNostrConnectCancellationError();
+                    }
+
                     const message = error instanceof Error
                         ? error.message
                         : String(error);
@@ -1364,17 +1427,14 @@ export class Nip46Service {
                         selectedRelay,
                         message,
                     );
+
+                    await closeNostrConnectTemporarySigner(finalSignerCandidate);
+                    finalSignerCandidate = null;
                 }
-
-                await closeNostrConnectTemporarySigner(finalSignerCandidate);
-                finalConnection?.pool.destroy();
-
-                if (!selectedRelay && containsLoopbackFinalRelay) {
-                    throw new Error(NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE);
-                }
-
-                throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
             }
+
+            finalConnection.pool.destroy();
+            throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
         };
 
         const completion = new Promise<string>((resolve, reject) => {
