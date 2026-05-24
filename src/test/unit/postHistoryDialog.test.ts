@@ -2098,6 +2098,79 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[inbound-realtime] dialog-open-refresh中の返信通知でも表示中投稿を維持してbadgeだけ更新する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: 'open refresh中の親投稿',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: 'open refresh中の親投稿',
+            tags: [],
+            media: [],
+        });
+        const realtimeReply = createDirectReplyEventRecord({
+            eventId: '5'.repeat(64),
+            parentEventId,
+            content: 'open refresh中に保存された返信',
+        });
+        let storedReplies: any[] = [];
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            parentId === parentEventId ? storedReplies : [],
+        );
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
+            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '返信を確認' })).toBeTruthy();
+        });
+
+        storedReplies = [realtimeReply];
+        await view.rerender({
+            show: true,
+            onClose: vi.fn(),
+            onReplyPost: vi.fn(),
+            pubkeyHex: 'a'.repeat(64),
+            rxNostr: {} as any,
+            inboundDirectReplySave: {
+                revision: 1,
+                parentEventIds: [parentEventId],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        expect(screen.getAllByText('open refresh中の親投稿')).toHaveLength(1);
+        expect(screen.queryByText('open refresh中に保存された返信')).toBeNull();
+        expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+    });
+
     it('[inbound-realtime] closed dialog ignores saved reply and authored post UI signals', async () => {
         const parentEventId = '1'.repeat(64);
         const post = createRecord({

@@ -247,7 +247,7 @@ describe('PostHistoryMediaList', () => {
                 objectUrl: 'blob:snapshot-image',
             });
 
-        render(PostHistoryMediaList, {
+        const { container, unmount } = render(PostHistoryMediaList, {
             props: {
                 media: [
                     {
@@ -263,8 +263,22 @@ describe('PostHistoryMediaList', () => {
             expect(screen.getByAltText('snapshot image')).toBeTruthy();
         });
 
+        expect(screen.getByAltText('snapshot image').getAttribute('src')).toBe(
+            'blob:snapshot-image',
+        );
+        expect(
+            container.querySelector('.post-history-media-placeholder-blurhash'),
+        ).toBeNull();
+        expect(
+            container.querySelector('.post-history-media-placeholder-loader'),
+        ).toBeNull();
         expect(postMediaCacheServiceMock.getCachedMediaDescriptor).not.toHaveBeenCalled();
         expect(postMediaCacheServiceMock.createCachedMediaObjectUrl).not.toHaveBeenCalled();
+
+        unmount();
+        expect(postMediaCacheServiceMock.revokeObjectUrl).toHaveBeenCalledWith(
+            'blob:snapshot-image',
+        );
     });
 
     it('null descriptor snapshot の item は通常 resolve を省略して自動取得へ進む', async () => {
