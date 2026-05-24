@@ -30,6 +30,7 @@ import {
     readPersistedPostHistoryViewState,
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
+import { resolvePostHistoryDialogOpenRefreshDecision } from "../postHistoryDialogOpenRefreshDecision";
 import type { PostHistoryDialogScrollState } from "../postHistoryDialogScrollState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import {
@@ -2072,26 +2073,33 @@ export function usePostHistoryListing({
             return;
         }
 
-        const didVisibleMateriallyChange =
-            nextVisibleUntil !== previousVisibleUntil;
-        const didMateriallyChange =
-            upsertSummary.insertedCount + upsertSummary.updatedCount > 0
-            || didVisibleMateriallyChange;
+        const refreshDecision = resolvePostHistoryDialogOpenRefreshDecision({
+            insertedCount: upsertSummary.insertedCount,
+            updatedCount: upsertSummary.updatedCount,
+            previousVisibleUntil,
+            nextVisibleUntil,
+            searchQuery: state.searchQuery,
+            loadedPostsLength: state.loadedPosts.length,
+            hasNewerLocal: state.hasNewerLocal,
+        });
 
         updateRelayHistoryCursorAfterDialogRefresh(result);
 
-        state.syncStatus = resolveSyncStatusAfterFetch(result, didMateriallyChange);
+        state.syncStatus = resolveSyncStatusAfterFetch(
+            result,
+            refreshDecision.didMateriallyChange,
+        );
         scheduleSyncStatusMessageClearIfNeeded();
 
-        if (didMateriallyChange) {
-            if (state.searchQuery) {
-                await loadSearchPage(state.searchPage, state.searchQuery);
-            } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
-                await loadLatestVisiblePosts();
-            } else {
-                await refreshTotalCountFromRepository();
-                await refreshTimelineAvailability(pubkeyHex);
-            }
+        if (refreshDecision.applyAction === "reload-search-page") {
+            await loadSearchPage(state.searchPage, state.searchQuery);
+        } else if (refreshDecision.applyAction === "load-latest-visible-posts") {
+            await loadLatestVisiblePosts();
+        } else if (
+            refreshDecision.applyAction === "refresh-count-and-availability"
+        ) {
+            await refreshTotalCountFromRepository();
+            await refreshTimelineAvailability(pubkeyHex);
         }
     }
 
