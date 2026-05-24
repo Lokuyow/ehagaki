@@ -279,13 +279,7 @@
     });
 </script>
 
-<div class="image-fullscreen-host" aria-hidden="true"></div>
-
 <style>
-    .image-fullscreen-host {
-        display: none;
-    }
-
     :global(.ehagaki-pswp) {
         --pswp-bg: #000;
     }

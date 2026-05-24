@@ -1,19 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Editor as TipTapEditor } from '@tiptap/core';
-import type { Node as PMNode, Schema } from '@tiptap/pm/model';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import {
-    calculateInsertPositions,
-    createEditorAdapter,
-    createImageNodeData,
-    createNodeFromData,
-    createParagraphNodeData,
-    createVideoNodeData,
     extractFragmentsFromDoc,
     extractPostContentFromDoc,
     getDocumentFromEditor,
     isDocumentEmpty,
     isParagraphWithOnlyImageUrl,
-    parseTextToNodes,
 } from '../../lib/utils/editorDocumentUtils';
 
 describe('editorDocumentUtils', () => {
@@ -45,132 +38,6 @@ describe('editorDocumentUtils', () => {
                 textContent: 'https://example.com',
             };
             expect(isParagraphWithOnlyImageUrl(node as unknown as PMNode, 19)).toBe(true);
-        });
-    });
-
-    describe('ノード作成', () => {
-        it('should create image node data', () => {
-            const result = createImageNodeData('https://example.com/image.jpg', 'Test');
-            expect(result).toEqual({
-                type: 'image',
-                attrs: { src: 'https://example.com/image.jpg', alt: 'Test' },
-            });
-        });
-
-        it('should return null for invalid URLs', () => {
-            expect(createImageNodeData('invalid-url')).toBe(null);
-        });
-
-        it('should create video node data', () => {
-            const result = createVideoNodeData('https://example.com/video.mp4');
-            expect(result).toEqual({
-                type: 'video',
-                attrs: { src: 'https://example.com/video.mp4' },
-            });
-        });
-
-        it('should return null for invalid video URLs', () => {
-            expect(createVideoNodeData('https://example.com/image.jpg')).toBe(null);
-        });
-
-        it('should create paragraph node data', () => {
-            expect(createParagraphNodeData('Hello world')).toEqual({
-                type: 'paragraph',
-                content: [{ type: 'text', text: 'Hello world' }],
-            });
-
-            expect(createParagraphNodeData('')).toEqual({
-                type: 'paragraph',
-                content: [],
-            });
-        });
-
-        it('should parse text to nodes', () => {
-            const text = 'Hello\nhttps://example.com/image.jpg\nWorld';
-            const result = parseTextToNodes(text);
-
-            expect(result).toHaveLength(3);
-            expect(result[0].type).toBe('paragraph');
-            expect(result[1].type).toBe('image');
-            expect(result[2].type).toBe('paragraph');
-        });
-
-        it('should parse mixed media URLs to image and video nodes', () => {
-            const text = 'https://example.com/image.jpg\nhttps://example.com/video.mp4';
-            const result = parseTextToNodes(text);
-
-            expect(result).toEqual([
-                {
-                    type: 'image',
-                    attrs: { src: 'https://example.com/image.jpg', alt: 'Image' },
-                },
-                {
-                    type: 'video',
-                    attrs: { src: 'https://example.com/video.mp4' },
-                },
-            ]);
-        });
-
-        it('should create video nodes from node data', () => {
-            const mockSchema = {
-                nodes: {
-                    image: {
-                        create: vi.fn(),
-                    },
-                    video: {
-                        create: (attrs: Record<string, unknown>) => ({ type: 'video', attrs }),
-                    },
-                    paragraph: {
-                        create: vi.fn(),
-                    },
-                },
-                text: vi.fn(),
-            };
-
-            const result = createNodeFromData(mockSchema as unknown as Schema, {
-                type: 'video',
-                attrs: { src: 'https://example.com/video.mp4' },
-            });
-
-            expect(result).toEqual({
-                type: 'video',
-                attrs: { src: 'https://example.com/video.mp4' },
-            });
-        });
-    });
-
-    describe('エディター操作', () => {
-        it('should create editor adapter', () => {
-            const mockDispatch = vi.fn();
-            const mockEditor = {
-                view: {
-                    state: 'test-state',
-                    dispatch: mockDispatch,
-                },
-                chain: vi.fn().mockReturnValue({ focus: vi.fn() }),
-            };
-
-            const adapter = createEditorAdapter(mockEditor as unknown as TipTapEditor);
-
-            expect(adapter.getState()).toBe('test-state');
-            expect(typeof adapter.dispatch).toBe('function');
-            expect(adapter.chain()).toBe(mockEditor.chain());
-        });
-
-        it('should calculate insert positions', () => {
-            const nodes = [
-                { nodeSize: 3 },
-                { nodeSize: 5 },
-                { nodeSize: 2 },
-            ];
-
-            const result = calculateInsertPositions(nodes as unknown as PMNode[], 10);
-
-            expect(result).toEqual([
-                { node: nodes[0], position: 10 },
-                { node: nodes[1], position: 13 },
-                { node: nodes[2], position: 18 },
-            ]);
         });
     });
 

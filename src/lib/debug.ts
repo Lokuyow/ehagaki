@@ -102,16 +102,6 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
     copyToClipboard(joined, "dev log", navigator, window);
 }
 
-// --- デバッグ用ユーティリティ ---
-export function debugLog(...args: any[]) {
-    if (shouldShowDevLog()) {
-        console.log("[DEBUG]", ...args);
-    }
-}
-
-// DEBUG_ENABLED: devログ表示判定に基づくフラグ
-const DEBUG_ENABLED = shouldShowDevLog();
-
 // --- showSwUpdateModalDebug: SW更新ボタン強制表示デバッグ機能 ---
 declare global {
     interface Window {

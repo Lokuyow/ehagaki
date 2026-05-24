@@ -98,15 +98,4 @@ export function applyHashtagData(store: HashtagData, data: HashtagData): void {
 // 引数は文字列（プレーンテキスト）または ProseMirror の doc を受け取れるようにする
 export function updateHashtagData(contentOrDoc: string | PMNode): void {
     applyHashtagData(hashtagDataStore, buildHashtagData(contentOrDoc));
-
-    // 開発モードのみログ出力
-    // const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV;
-    // if (isDev) {
-    //     const added = hashtags.filter(h => !prevHashtags.includes(h));
-    //     const removed = prevHashtags.filter(h => !hashtags.includes(h));
-    //     console.log('[dev] updateHashtagData: contentLength=', content.length);
-    //     // 実際に投稿時に使われる 't' タグ（小文字化済み）をログ出力する
-    //     console.log('[dev] updateHashtagData: tags=', tags);
-    //     console.log('[dev] updateHashtagData: added=', added, 'removed=', removed);
-    // }
 }

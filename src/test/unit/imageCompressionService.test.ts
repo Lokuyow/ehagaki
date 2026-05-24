@@ -24,7 +24,6 @@ vi.mock('@jsquash/webp', () => ({
 
 // debug.tsのモック（setup.tsより具体的なモックで上書き）
 vi.mock('../../lib/debug', () => ({
-    debugLog: vi.fn(),
     showCompressedImagePreview: vi.fn()
 }));
 

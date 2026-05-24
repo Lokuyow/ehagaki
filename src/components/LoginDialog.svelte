@@ -856,13 +856,6 @@
         </div>
 
         <form novalidate onsubmit={handleFormSubmit}>
-            <input
-                type="text"
-                name="username"
-                autocomplete="username"
-                style="display: none;"
-                aria-hidden="true"
-            />
             <div class="secret-input-row">
                 <input
                     type="password"

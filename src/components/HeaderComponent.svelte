@@ -91,15 +91,6 @@
         resolveCompactMessageText(compactMessage, compactSuccessText),
     );
 
-    // iPhone用振動チェックボックスの参照
-    let vibrateSwitchInput: HTMLInputElement | undefined = $state();
-
-    // マウント時にswitch属性を設定
-    $effect(() => {
-        if (vibrateSwitchInput) {
-            vibrateSwitchInput.setAttribute("switch", "");
-        }
-    });
 </script>
 
 <div class="header-container">
@@ -236,13 +227,6 @@
         </Tooltip.Provider>
     </div>
 </div>
-
-<!-- iPhone用の振動トリガー（非表示） -->
-<!-- svelte-ignore a11y_hidden -->
-<!-- svelte-ignore a11y_label_has_associated_control -->
-<label id="vibrateSwitch" style="display: none;" aria-hidden="true">
-    <input type="checkbox" checked bind:this={vibrateSwitchInput} />
-</label>
 
 <!-- 下書き保存成功メッセージ -->
 <FloatingMessage
