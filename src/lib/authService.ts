@@ -115,7 +115,7 @@ export class AuthService {
                 return pending.connectionUri;
             },
             ready: pending.ready,
-            completion: this.wrapPendingNip46Authentication(pending),
+            completion: this.wrapPendingNip46Connection(pending),
             cancel: pending.cancel,
         };
     }
@@ -236,7 +236,7 @@ export class AuthService {
         }
     }
 
-    private async finalizeNip46Authentication(
+    async finalizeNip46Authentication(
         pubkeyHex: string,
     ): Promise<AuthResult> {
         applyPublicKeyAuth('nip46', pubkeyHex, {
@@ -249,12 +249,12 @@ export class AuthService {
         return { success: true, pubkeyHex };
     }
 
-    private async wrapPendingNip46Authentication(
+    private async wrapPendingNip46Connection(
         pending: Nip46PendingNostrConnectSession,
     ): Promise<AuthResult> {
         try {
             const pubkeyHex = await pending.completion;
-            return await this.finalizeNip46Authentication(pubkeyHex);
+            return { success: true, pubkeyHex };
         } catch (error) {
             this.runtime.console.error('NIP-46 nostrconnect認証エラー:', error);
             return {

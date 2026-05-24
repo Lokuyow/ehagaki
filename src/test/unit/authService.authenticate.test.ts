@@ -241,7 +241,7 @@ describe('AuthService.authenticateWithNip46', () => {
         expect(result.error).toBe('Connection timeout');
     });
 
-    it('nostrconnect 待機成功で setNip46Auth + session保存 + addAccount を行う', async () => {
+    it('nostrconnect 待機成功は pubkey を返し、認証状態はまだ確定しない', async () => {
         const validPubkey = 'cd'.repeat(32);
         const { nip46Service } = await import('../../lib/nip46Service');
         vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
@@ -265,6 +265,23 @@ describe('AuthService.authenticateWithNip46', () => {
             ['wss://relay'],
             undefined,
         );
+        expect(mockDependencies.setNip46Auth).not.toHaveBeenCalled();
+        expect(nip46Service.saveSession).not.toHaveBeenCalled();
+        expect(mockAccountManager.addAccount).not.toHaveBeenCalled();
+    });
+
+    it('nostrconnect 認証確定は App 側の current operation 確認後に実行できる', async () => {
+        const validPubkey = 'cd'.repeat(32);
+        const { nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(nip46Service.saveSession).mockImplementation(() => { });
+
+        const service = new AuthService(mockDependencies);
+        const mockAccountManager = createMockAccountManager();
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.finalizeNip46Authentication(validPubkey);
+
+        expect(result).toEqual({ success: true, pubkeyHex: validPubkey });
         expect(mockDependencies.setNip46Auth).toHaveBeenCalled();
         expect(nip46Service.saveSession).toHaveBeenCalledWith(
             mockDependencies.localStorage,

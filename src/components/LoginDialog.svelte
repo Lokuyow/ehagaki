@@ -511,7 +511,7 @@
                     ? 'loading'
                     : ''}"
                 onClick={handleParentClientLogin}
-                disabled={isLoadingParentClient || isWaitingNip46NostrConnect}
+                disabled={isLoadingParentClient}
             >
                 {#if isLoadingParentClient}
                     <LoadingPlaceholder
@@ -552,9 +552,7 @@
                 ? 'loading'
                 : ''}"
             onClick={handleNip07Login}
-            disabled={isLoadingNip07 ||
-                !isNip07Available ||
-                isWaitingNip46NostrConnect}
+            disabled={isLoadingNip07 || !isNip07Available}
         >
             {#if isLoadingNip07}
                 <LoadingPlaceholder
@@ -870,7 +868,6 @@
                     maxlength="63"
                     bind:this={inputEl}
                     title={$_("loginDialog.hint_input_secret")}
-                    disabled={isWaitingNip46NostrConnect}
                     onkeydown={(e) => {
                         if (e.key === "Enter") handleSave();
                     }}
@@ -884,7 +881,6 @@
                     variant="primary"
                     shape="square"
                     type="submit"
-                    disabled={isWaitingNip46NostrConnect}
                     className="save-btn u-control"
                 >
                     {$_("loginDialog.save")}

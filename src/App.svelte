@@ -498,8 +498,21 @@
       return;
     }
 
+    if (!result.pubkeyHex) {
+      resetPendingNip46State({ preserveError: true });
+      nip46NostrConnectErrorMessage = "nip46_connection_failed";
+      return;
+    }
+
+    const authResult = await authService.finalizeNip46Authentication(
+      result.pubkeyHex,
+    );
+    if (!isCurrentPendingNip46Operation(requestGeneration)) {
+      return;
+    }
+
     resetPendingNip46State();
-    await handleSuccessfulAuthResult(result, handlePostAuth);
+    await handleSuccessfulAuthResult(authResult, handlePostAuth);
   }
 
   const draftLimitConfirm = createDraftLimitConfirmHandlers({
@@ -1093,6 +1106,8 @@
 
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
+    await cancelPendingNip46Auth();
+
     const result = await authService.authenticateWithNsec(secretKey);
     if (!result.success) {
       errorMessage = result.error || "authentication_error";
@@ -1267,8 +1282,9 @@
   }
 
   async function handleNip07Login(): Promise<string | undefined> {
-    isLoadingNip07 = true;
     try {
+      await cancelPendingNip46Auth();
+      isLoadingNip07 = true;
       const result = await authService.authenticateWithNip07();
       if (!result.success) {
         console.error("NIP-07認証失敗:", result.error);
@@ -1294,6 +1310,7 @@
 
   async function handleParentClientLogin(): Promise<string | undefined> {
     try {
+      await cancelPendingNip46Auth();
       return await activateParentClientAuth();
     } catch (error) {
       console.error("親クライアント連携ログインでエラー:", error);

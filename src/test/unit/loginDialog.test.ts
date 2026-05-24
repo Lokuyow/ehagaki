@@ -348,6 +348,57 @@ describe('LoginDialog', () => {
         ).toBe(false);
     });
 
+    it('NostrConnect 待受中でも他のログイン方式を開始できる', async () => {
+        const onParentClientLogin = vi
+            .fn<() => Promise<string | undefined>>()
+            .mockResolvedValue(undefined);
+        const onNip07Login = vi
+            .fn<() => Promise<string | undefined>>()
+            .mockResolvedValue(undefined);
+        const onSave = vi.fn();
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onParentClientLogin,
+                onNip07Login,
+                onSave,
+                isWaitingNip46NostrConnect: true,
+                nip46NostrConnectUri:
+                    'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&name=eHagaki',
+            },
+        });
+
+        const parentButton = screen
+            .getByText('親クライアント連携')
+            .closest('button') as HTMLButtonElement;
+        const extensionButton = screen
+            .getByText('ブラウザ拡張機能')
+            .closest('button') as HTMLButtonElement;
+        const secretInput = screen.getByPlaceholderText(
+            'nsec1...',
+        ) as HTMLInputElement;
+        const saveButton = screen
+            .getByText('保存')
+            .closest('button') as HTMLButtonElement;
+
+        expect(parentButton.disabled).toBe(false);
+        expect(extensionButton.disabled).toBe(false);
+        expect(secretInput.disabled).toBe(false);
+        expect(saveButton.disabled).toBe(false);
+
+        await fireEvent.input(secretInput, {
+            target: { value: 'nsec1' + 'a'.repeat(58) },
+        });
+        await fireEvent.click(parentButton);
+        await fireEvent.click(extensionButton);
+        await fireEvent.click(saveButton);
+
+        expect(onParentClientLogin).toHaveBeenCalledTimes(1);
+        expect(onNip07Login).toHaveBeenCalledTimes(1);
+        expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
     it('待受準備中は QR / copy / direct-open を利用可能にしない', async () => {
         render(LoginDialog, {
             props: {
