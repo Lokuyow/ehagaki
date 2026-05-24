@@ -35,12 +35,16 @@ vi.mock('nostr-tools/nip46', () => ({
         clientPubkey: string;
         relays: string[];
         secret: string;
+        name?: string;
     }) => {
         const query = new URLSearchParams();
         for (const relay of params.relays) {
             query.append('relay', relay);
         }
         query.set('secret', params.secret);
+        if (params.name) {
+            query.set('name', params.name);
+        }
         return `nostrconnect://${params.clientPubkey}?${query.toString()}`;
     }),
     BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
@@ -187,6 +191,10 @@ describe('Nip46Service', () => {
 
     function getNostrConnectUriRelays(uri: string): string[] {
         return new URL(uri).searchParams.getAll('relay');
+    }
+
+    function getNostrConnectUriName(uri: string): string | null {
+        return new URL(uri).searchParams.get('name');
     }
 
     afterEach(() => {
@@ -748,6 +756,7 @@ describe('Nip46Service', () => {
                 'wss://relay.fast.example.com',
                 'wss://relay.within-window.example.com',
             ]);
+            expect(getNostrConnectUriName(pending.connectionUri)).toBe('eHagaki');
         });
 
         it('全 candidate が収集猶予時間前に settle した場合は 1500ms を待たずに ready になる', async () => {
@@ -959,10 +968,12 @@ describe('Nip46Service', () => {
             await pending.ready;
 
             expect(pending.connectionUri).toContain('nostrconnect://');
+            expect(getNostrConnectUriName(pending.connectionUri)).toBe('eHagaki');
             expect(createNostrConnectURI).toHaveBeenCalledWith(
                 expect.objectContaining({
                     relays: initialRelays,
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
+                    name: 'eHagaki',
                 }),
             );
 
@@ -2150,6 +2161,7 @@ describe('Nip46Service', () => {
             expect(createNostrConnectURI).toHaveBeenCalledWith(
                 expect.objectContaining({
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
+                    name: 'eHagaki',
                 }),
             );
         });

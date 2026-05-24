@@ -296,7 +296,7 @@ describe('LoginDialog', () => {
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
         const uri =
-            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F&relay=wss%3A%2F%2Ftheforest.nostr1.com%2F&relay=wss%3A%2F%2Frelay.primal.net%2F';
+            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F&relay=wss%3A%2F%2Ftheforest.nostr1.com%2F&relay=wss%3A%2F%2Frelay.primal.net%2F&name=eHagaki';
 
         const { rerender } = render(LoginDialog, {
             props: {
@@ -335,6 +335,7 @@ describe('LoginDialog', () => {
         expect(uri).toContain('theforest.nostr1.com');
         expect(uri).toContain('relay.primal.net');
         expect(uri).not.toContain('ephemeral.snowflare.cc');
+        expect(new URL(uri).searchParams.get('name')).toBe('eHagaki');
         expect(screen.queryByTestId('nostrconnect-active-relays')).toBeNull();
         expect(screen.queryByTestId('nostrconnect-relay-candidates')).toBeNull();
         expect(
@@ -393,7 +394,7 @@ describe('LoginDialog', () => {
         const assign = vi.fn();
         vi.stubGlobal('location', { assign });
         const { tryCopyToClipboard } = await import('../../lib/utils/clipboardUtils');
-        const uri = 'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&relay=wss%3A%2F%2Frelay.backup.example.com%2F';
+        const uri = 'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&relay=wss%3A%2F%2Frelay.backup.example.com%2F&name=eHagaki';
 
         render(LoginDialog, {
             props: {
@@ -411,6 +412,7 @@ describe('LoginDialog', () => {
         });
 
         expect(screen.getByText(uri)).toBeTruthy();
+        expect(new URL(uri).searchParams.get('name')).toBe('eHagaki');
         expect(
             screen
                 .getByTestId('nostrconnect-qr-code')

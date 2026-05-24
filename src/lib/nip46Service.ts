@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { getNip46SessionStorageKey } from './authStorageKeys';
 import { RelayConfigUtils } from './relayConfigUtils';
+import { EHAGAKI_APP_NAME } from './tags/clientTag';
 
 export { BUNKER_REGEX };
 
@@ -1211,6 +1212,7 @@ export class Nip46Service {
             relays: sanitizedRelays,
             secret: sharedSecret,
             perms: [...NIP46_REQUESTED_PERMISSIONS],
+            name: EHAGAKI_APP_NAME,
         });
 
         let handshakeClosed = false;
@@ -1509,6 +1511,7 @@ export class Nip46Service {
                     relays: connectedRelays,
                     secret: sharedSecret,
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
+                    name: EHAGAKI_APP_NAME,
                 });
 
                 if (settled) {
