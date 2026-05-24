@@ -586,24 +586,20 @@
     </div>
 
     <div class="remote-signer-section">
-        <div class="remote-signer-heading-row">
+        <Button
+            type="button"
+            variant="primary"
+            shape="square"
+            ariaLabel={$_("loginDialog.nostrconnect_open")}
+            onClick={handleOpenNostrConnectUri}
+            disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
+            className="nostrconnect-open-btn u-control"
+            data-testid="nostrconnect-open-button"
+        >
             <div class="vault-icon svg-icon" aria-hidden="true"></div>
-            <h3>{$_("loginDialog.remote_signer_title")}</h3>
-        </div>
-
-        <div class="remote-signer-open-row">
-            <Button
-                type="button"
-                variant="primary"
-                shape="square"
-                onClick={handleOpenNostrConnectUri}
-                disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
-                className="nostrconnect-open-btn"
-                data-testid="nostrconnect-open-button"
+            <span class="btn-text">{$_("loginDialog.remote_signer_title")}</span
             >
-                {$_("loginDialog.nostrconnect_open")}
-            </Button>
-        </div>
+        </Button>
 
         <Tabs.Root
             value={activeRemoteSignerTab}
@@ -974,7 +970,6 @@
         justify-content: center;
         align-items: stretch;
         width: 100%;
-        min-height: 120px;
         gap: 6px;
     }
 
@@ -1001,9 +996,10 @@
     }
 
     :global(.parent-client-login-button.primary),
-    :global(.nip07-login-button.primary) {
+    :global(.nip07-login-button.primary),
+    :global(.nostrconnect-open-btn.primary) {
         width: 100%;
-        height: 60px;
+        height: 50px;
         flex-shrink: 0;
         position: relative;
         overflow: hidden;
@@ -1045,7 +1041,7 @@
     }
 
     .secret-heading-row,
-    .remote-signer-heading-row {
+    :global(.nostrconnect-open-btn) {
         display: flex;
         gap: 6px;
         justify-content: center;
@@ -1071,8 +1067,7 @@
         flex: 1;
     }
 
-    .secret-heading-row h3,
-    .remote-signer-heading-row h3 {
+    .secret-heading-row h3 {
         margin: 0;
     }
 
@@ -1080,11 +1075,6 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
-    }
-
-    .remote-signer-open-row {
-        display: flex;
-        justify-content: center;
     }
 
     :global(.remote-signer-tab-list) {
@@ -1115,10 +1105,6 @@
             var(--btn-bg) 50%,
             var(--bg-color, #ffffff)
         );
-    }
-
-    :global(.nostrconnect-open-btn) {
-        white-space: nowrap;
     }
 
     .nostrconnect-qr-shell,
@@ -1230,19 +1216,11 @@
         vertical-align: middle;
     }
 
-    @media (max-width: 640px) {
-        .remote-signer-open-row :global(.nostrconnect-open-btn) {
-            width: 100%;
-        }
-
+    @media (max-width: 600px) {
         .nostrconnect-relay-row,
         .bunker-input-row,
         .secret-input-row {
             flex-direction: column;
-        }
-
-        :global(input.u-control, button.u-control) {
-            width: 100%;
         }
     }
 
@@ -1250,7 +1228,7 @@
         display: flex;
         align-items: center;
         text-align: center;
-        margin: 0;
+        margin: 16px 0;
         width: 100%;
         height: 64px;
     }
@@ -1274,9 +1252,15 @@
         height: 54px;
         min-height: 54px;
         min-width: 60px;
-        width: 120px;
+        width: 100%;
         display: inline-flex;
         align-items: center;
         box-sizing: border-box;
+    }
+
+    @media (min-width: 601px) {
+        :global(.save-btn.u-control) {
+            width: 120px;
+        }
     }
 </style>
