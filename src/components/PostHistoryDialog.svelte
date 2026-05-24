@@ -38,6 +38,13 @@
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import {
+        hasRenderablePostHistoryPreviewContent,
+        resolvePostHistoryCountSummaryState,
+        resolvePostHistoryNavigationLabelKey,
+        resolvePostHistoryRepliesActionLabelState,
+        type PostHistoryDialogMessageState,
+    } from "../lib/postHistoryDialogPresentation";
+    import {
         clearPostHistoryDialogScrollState,
         readPostHistoryDialogScrollState,
         writePostHistoryDialogScrollState,
@@ -584,20 +591,24 @@
             remainingScroll <= HISTORY_SCROLL_BOTTOM_TOLERANCE_PX;
     }
 
-    function buildVisibleCountLabel(): string | null {
-        if (history.displayTotalCount <= 0) {
+    function translateDialogMessage(
+        state: PostHistoryDialogMessageState | null,
+    ): string | null {
+        if (!state) {
             return null;
         }
 
-        return $_(
-            history.isSearchMode
-                ? "postHistory.searchCountSummary"
-                : "postHistory.visibleCountSummary",
-            {
-                values: {
-                    total: history.displayTotalCount,
-                },
-            },
+        return state.values
+            ? $_(state.key, { values: state.values })
+            : $_(state.key);
+    }
+
+    function buildVisibleCountLabel(): string | null {
+        return translateDialogMessage(
+            resolvePostHistoryCountSummaryState({
+                totalCount: history.displayTotalCount,
+                isSearchMode: history.isSearchMode,
+            }),
         );
     }
 
@@ -883,19 +894,17 @@
     }
 
     function getLoadOlderLabel(): string {
-        return $_(
-            history.isSearchMode
-                ? "postHistory.loadOlderSearchResults"
-                : "postHistory.loadOlder",
-        );
+        return $_(resolvePostHistoryNavigationLabelKey({
+            direction: "older",
+            isSearchMode: history.isSearchMode,
+        }));
     }
 
     function getLoadNewerLabel(): string {
-        return $_(
-            history.isSearchMode
-                ? "postHistory.loadNewerSearchResults"
-                : "postHistory.loadNewer",
-        );
+        return $_(resolvePostHistoryNavigationLabelKey({
+            direction: "newer",
+            isSearchMode: history.isSearchMode,
+        }));
     }
 
     async function handleLoadOlder(): Promise<void> {
@@ -998,18 +1007,8 @@
         );
     }
 
-    function hasRenderablePreviewContent(
-        previewContent: PostHistoryPreviewContentData,
-    ): boolean {
-        return previewContent.segments.some(
-            (segment) =>
-                segment.type === "emoji" ||
-                (segment.type === "text" && segment.text.trim().length > 0),
-        );
-    }
-
     function hasRenderablePostPreviewContent(post: PostHistoryRecord): boolean {
-        return hasRenderablePreviewContent(getPreviewContent(post));
+        return hasRenderablePostHistoryPreviewContent(getPreviewContent(post));
     }
 
     function syncEmojiLoadState(urls: string[]): string[] {
@@ -1294,30 +1293,9 @@
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
-        if (state.status === "loading") {
-            return $_("postHistory.checkingReplies");
-        }
-
-        if (state.status === "failed") {
-            return $_("postHistory.recheckReplies");
-        }
-
-        if (state.status === "loaded") {
-            const count = state.replyCount;
-            if (count === 0) {
-                return $_("postHistory.recheckReplies");
-            }
-
-            if (state.visible) {
-                return $_("postHistory.hideReplies");
-            }
-
-            return $_("postHistory.showRepliesWithCount", {
-                values: { count },
-            });
-        }
-
-        return $_("postHistory.checkReplies");
+        return translateDialogMessage(
+            resolvePostHistoryRepliesActionLabelState(state),
+        ) ?? "";
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
