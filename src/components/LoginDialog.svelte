@@ -630,217 +630,230 @@
                         value="qr"
                         class="remote-signer-panel nostrconnect-panel"
                     >
-                    <div class="section-feedback info">
-                        {$_("loginDialog.nostrconnect_scan_hint")}
-                    </div>
+                        <div class="section-feedback info">
+                            {$_("loginDialog.nostrconnect_scan_hint")}
+                        </div>
 
-                    {#if nip46NostrConnectUri}
+                        {#if nip46NostrConnectUri}
+                            <div
+                                class="nostrconnect-qr-shell"
+                                data-testid="nostrconnect-qr-code"
+                            >
+                                <QrCodeDisplay
+                                    value={nip46NostrConnectUri}
+                                    label={$_(
+                                        "loginDialog.nostrconnect_qr_alt",
+                                    )}
+                                />
+                            </div>
+                        {:else if isNostrConnectPreparing}
+                            <div class="nostrconnect-qr-loading">
+                                <LoadingPlaceholder
+                                    text={true}
+                                    showLoader={true}
+                                />
+                            </div>
+                        {/if}
+
+                        <div class="nostrconnect-uri-card">
+                            <div class="nostrconnect-uri-label">
+                                {$_("loginDialog.nostrconnect_uri_label")}
+                            </div>
+                            <div
+                                class="nostrconnect-uri"
+                                data-testid="nostrconnect-uri"
+                            >
+                                {nip46NostrConnectUri || ""}
+                            </div>
+                        </div>
+
                         <div
-                            class="nostrconnect-qr-shell"
-                            data-testid="nostrconnect-qr-code"
+                            class="section-feedback info nostrconnect-status"
+                            role="status"
                         >
-                            <QrCodeDisplay
-                                value={nip46NostrConnectUri}
-                                label={$_("loginDialog.nostrconnect_qr_alt")}
-                            />
+                            {isNostrConnectPreparing
+                                ? $_("loginDialog.nostrconnect_preparing")
+                                : isWaitingNip46NostrConnect
+                                  ? $_("loginDialog.nostrconnect_waiting")
+                                  : $_("loginDialog.nostrconnect_idle")}
                         </div>
-                    {:else if isNostrConnectPreparing}
-                        <div class="nostrconnect-qr-loading">
-                            <LoadingPlaceholder text={true} showLoader={true} />
-                        </div>
-                    {/if}
 
-                    <div class="nostrconnect-uri-card">
-                        <div class="nostrconnect-uri-label">
-                            {$_("loginDialog.nostrconnect_uri_label")}
+                        <div class="nostrconnect-code-actions">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={handleCopyNostrConnectUri}
+                                disabled={isNostrConnectPreparing ||
+                                    !nip46NostrConnectUri}
+                                className="nostrconnect-copy-btn"
+                                data-testid="nostrconnect-copy-button"
+                            >
+                                {hasCopiedNostrConnectUri
+                                    ? $_("loginDialog.nostrconnect_copied")
+                                    : $_("loginDialog.nostrconnect_copy")}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={handleNostrConnectCancel}
+                                disabled={!isNostrConnectPreparing &&
+                                    !isWaitingNip46NostrConnect &&
+                                    !nip46NostrConnectUri}
+                                className="nostrconnect-cancel-btn"
+                            >
+                                {$_("loginDialog.nostrconnect_cancel_waiting")}
+                            </Button>
                         </div>
-                        <div
-                            class="nostrconnect-uri"
-                            data-testid="nostrconnect-uri"
+
+                        <details
+                            bind:open={isNostrConnectRelaySettingsExpanded}
+                            class="nostrconnect-relay-settings"
                         >
-                            {nip46NostrConnectUri || ""}
-                        </div>
-                    </div>
+                            <summary>
+                                {$_("loginDialog.nostrconnect_edit_relays")}
+                            </summary>
 
-                    <div
-                        class="section-feedback info nostrconnect-status"
-                        role="status"
-                    >
-                        {isNostrConnectPreparing
-                            ? $_("loginDialog.nostrconnect_preparing")
-                            : isWaitingNip46NostrConnect
-                              ? $_("loginDialog.nostrconnect_waiting")
-                              : $_("loginDialog.nostrconnect_idle")}
-                    </div>
+                            <div class="section-feedback info">
+                                {$_("loginDialog.nostrconnect_relay_hint")}
+                            </div>
+                            <div class="section-feedback info">
+                                {$_(
+                                    "loginDialog.nostrconnect_relay_update_hint",
+                                )}
+                            </div>
+                            <div class="section-feedback info">
+                                {$_(
+                                    "loginDialog.nostrconnect_relay_switch_hint",
+                                )}
+                            </div>
 
-                    <div class="nostrconnect-code-actions">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handleCopyNostrConnectUri}
-                            disabled={isNostrConnectPreparing ||
-                                !nip46NostrConnectUri}
-                            className="nostrconnect-copy-btn"
-                            data-testid="nostrconnect-copy-button"
-                        >
-                            {hasCopiedNostrConnectUri
-                                ? $_("loginDialog.nostrconnect_copied")
-                                : $_("loginDialog.nostrconnect_copy")}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={handleNostrConnectCancel}
-                            disabled={!isNostrConnectPreparing &&
-                                !isWaitingNip46NostrConnect &&
-                                !nip46NostrConnectUri}
-                            className="nostrconnect-cancel-btn"
-                        >
-                            {$_("loginDialog.nostrconnect_cancel_waiting")}
-                        </Button>
-                    </div>
-
-                    <details
-                        bind:open={isNostrConnectRelaySettingsExpanded}
-                        class="nostrconnect-relay-settings"
-                    >
-                        <summary>
-                            {$_("loginDialog.nostrconnect_edit_relays")}
-                        </summary>
-
-                        <div class="section-feedback info">
-                            {$_("loginDialog.nostrconnect_relay_hint")}
-                        </div>
-                        <div class="section-feedback info">
-                            {$_("loginDialog.nostrconnect_relay_update_hint")}
-                        </div>
-                        <div class="section-feedback info">
-                            {$_("loginDialog.nostrconnect_relay_switch_hint")}
-                        </div>
-
-                        <div class="nostrconnect-relay-editor-list">
-                            {#each nostrConnectRelayDrafts as relay, index}
-                                <div class="nostrconnect-relay-row">
-                                    <input
-                                        type="url"
-                                        value={relay}
-                                        class="nostrconnect-relay-field"
-                                        placeholder={$_(
-                                            "loginDialog.nostrconnect_relay_placeholder",
-                                        )}
-                                        oninput={(event) =>
-                                            updateNostrConnectRelayDraft(
-                                                index,
-                                                (
-                                                    event.currentTarget as HTMLInputElement
-                                                ).value,
+                            <div class="nostrconnect-relay-editor-list">
+                                {#each nostrConnectRelayDrafts as relay, index}
+                                    <div class="nostrconnect-relay-row">
+                                        <input
+                                            type="url"
+                                            value={relay}
+                                            class="nostrconnect-relay-field"
+                                            placeholder={$_(
+                                                "loginDialog.nostrconnect_relay_placeholder",
                                             )}
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        className="nostrconnect-remove-relay-btn"
-                                        onClick={() =>
-                                            removeNostrConnectRelayDraft(index)}
-                                        disabled={nostrConnectRelayDrafts.length ===
-                                            1 && !relay.trim()}
-                                    >
-                                        {$_(
-                                            "loginDialog.nostrconnect_remove_relay",
-                                        )}
-                                    </Button>
-                                </div>
-                            {/each}
-                        </div>
+                                            oninput={(event) =>
+                                                updateNostrConnectRelayDraft(
+                                                    index,
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            className="nostrconnect-remove-relay-btn"
+                                            onClick={() =>
+                                                removeNostrConnectRelayDraft(
+                                                    index,
+                                                )}
+                                            disabled={nostrConnectRelayDrafts.length ===
+                                                1 && !relay.trim()}
+                                        >
+                                            {$_(
+                                                "loginDialog.nostrconnect_remove_relay",
+                                            )}
+                                        </Button>
+                                    </div>
+                                {/each}
+                            </div>
 
-                        <div class="nostrconnect-relay-editor-actions">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={addNostrConnectRelayDraft}
-                            >
-                                {$_("loginDialog.nostrconnect_add_relay")}
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={resetNostrConnectRelaysToDefault}
-                                data-testid="nostrconnect-reset-relays"
-                            >
-                                {$_("loginDialog.nostrconnect_reset_relays")}
-                            </Button>
-                        </div>
-                    </details>
+                            <div class="nostrconnect-relay-editor-actions">
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={addNostrConnectRelayDraft}
+                                >
+                                    {$_("loginDialog.nostrconnect_add_relay")}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={resetNostrConnectRelaysToDefault}
+                                    data-testid="nostrconnect-reset-relays"
+                                >
+                                    {$_(
+                                        "loginDialog.nostrconnect_reset_relays",
+                                    )}
+                                </Button>
+                            </div>
+                        </details>
 
-                    {#if displayedNostrConnectErrorMessage}
-                        <div
-                            class="section-feedback error"
-                            aria-live="polite"
-                            role="alert"
-                        >
-                            {displayedNostrConnectErrorMessage}
-                        </div>
-                    {/if}
+                        {#if displayedNostrConnectErrorMessage}
+                            <div
+                                class="section-feedback error"
+                                aria-live="polite"
+                                role="alert"
+                            >
+                                {displayedNostrConnectErrorMessage}
+                            </div>
+                        {/if}
                     </Tabs.Content>
                 {:else}
                     <Tabs.Content
                         value="bunker"
                         class="remote-signer-panel bunker-panel"
                     >
-                    <form
-                        novalidate
-                        onsubmit={(e) => {
-                            e.preventDefault();
-                            handleNip46Login();
-                        }}
-                    >
-                        <div class="bunker-input-row">
-                            <input
-                                type="password"
-                                bind:value={bunkerUrl}
-                                placeholder="bunker://..."
-                                class="bunker-input u-control"
-                                required
-                                autocomplete="off"
-                                bind:this={bunkerInputEl}
-                                disabled={isLoadingNip46}
-                                oninput={() => {
-                                    nip46ErrorMessage = "";
-                                    if (bunkerInputEl)
-                                        bunkerInputEl.setCustomValidity("");
-                                }}
-                            />
-                            <Button
-                                variant="primary"
-                                shape="square"
-                                type="submit"
-                                disabled={isLoadingNip46}
-                                className="bunker-connect-btn u-control {isLoadingNip46
-                                    ? 'loading'
-                                    : ''}"
-                            >
-                                {#if isLoadingNip46}
-                                    <LoadingPlaceholder
-                                        text={true}
-                                        showLoader={true}
-                                        customClass="bunker-connect-placeholder"
-                                    />
-                                {:else}
-                                    {$_("loginDialog.bunker_connect")}
-                                {/if}
-                            </Button>
-                        </div>
-
-                        {#if nip46ErrorMessage}
-                            <div
-                                class="section-feedback error"
-                                aria-live="polite"
-                                role="alert"
-                            >
-                                {nip46ErrorMessage}
+                        <form
+                            novalidate
+                            onsubmit={(e) => {
+                                e.preventDefault();
+                                handleNip46Login();
+                            }}
+                        >
+                            <div class="bunker-input-row">
+                                <input
+                                    type="password"
+                                    bind:value={bunkerUrl}
+                                    placeholder="bunker://..."
+                                    class="bunker-input u-control"
+                                    required
+                                    autocomplete="off"
+                                    bind:this={bunkerInputEl}
+                                    disabled={isLoadingNip46}
+                                    oninput={() => {
+                                        nip46ErrorMessage = "";
+                                        if (bunkerInputEl)
+                                            bunkerInputEl.setCustomValidity("");
+                                    }}
+                                />
+                                <Button
+                                    variant="primary"
+                                    shape="square"
+                                    type="submit"
+                                    disabled={isLoadingNip46}
+                                    className="bunker-connect-btn u-control {isLoadingNip46
+                                        ? 'loading'
+                                        : ''}"
+                                >
+                                    {#if isLoadingNip46}
+                                        <LoadingPlaceholder
+                                            text={true}
+                                            showLoader={true}
+                                            customClass="bunker-connect-placeholder"
+                                        />
+                                    {:else}
+                                        {$_("loginDialog.bunker_connect")}
+                                    {/if}
+                                </Button>
                             </div>
-                        {/if}
-                    </form>
+
+                            {#if nip46ErrorMessage}
+                                <div
+                                    class="section-feedback error"
+                                    aria-live="polite"
+                                    role="alert"
+                                >
+                                    {nip46ErrorMessage}
+                                </div>
+                            {/if}
+                        </form>
                     </Tabs.Content>
                 {/if}
             </Tabs.Root>
@@ -1033,7 +1046,6 @@
 
     .remote-signer-details {
         width: 100%;
-        padding: 12px;
         background: color-mix(in srgb, var(--btn-bg) 70%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;
@@ -1041,12 +1053,13 @@
     }
 
     .remote-signer-details summary {
+        padding: 12px;
         cursor: pointer;
         font-weight: 600;
     }
 
     .remote-signer-details[open] :global(.remote-signer-tabs) {
-        margin-top: 12px;
+        margin-top: 6px;
     }
 
     .secret-heading-row {
