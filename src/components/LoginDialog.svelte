@@ -1,6 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { Dialog } from "bits-ui";
+    import { Dialog, Tabs } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
     import { BUNKER_REGEX } from "../lib/nip46Service";
     import {
@@ -591,33 +591,47 @@
             <h3>{$_("loginDialog.remote_signer_title")}</h3>
         </div>
 
-        <div class="remote-signer-tabs" role="tablist">
-            <button
+        <div class="remote-signer-open-row">
+            <Button
                 type="button"
-                class:selected={activeRemoteSignerTab === "qr"}
-                class="remote-signer-tab"
-                role="tab"
-                aria-selected={activeRemoteSignerTab === "qr"}
-                data-testid="nostrconnect-qr-tab"
-                onclick={() => selectRemoteSignerTab("qr")}
+                variant="secondary"
+                onClick={handleOpenNostrConnectUri}
+                disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
+                className="nostrconnect-open-btn"
+                data-testid="nostrconnect-open-button"
             >
-                {$_("loginDialog.nostrconnect_qr_tab")}
-            </button>
-            <button
-                type="button"
-                class:selected={activeRemoteSignerTab === "bunker"}
-                class="remote-signer-tab"
-                role="tab"
-                aria-selected={activeRemoteSignerTab === "bunker"}
-                data-testid="nostrconnect-bunker-tab"
-                onclick={() => selectRemoteSignerTab("bunker")}
-            >
-                {$_("loginDialog.nostrconnect_bunker_tab")}
-            </button>
+                {$_("loginDialog.nostrconnect_open")}
+            </Button>
         </div>
 
-        {#if activeRemoteSignerTab === "qr"}
-            <div class="remote-signer-panel nostrconnect-panel" role="tabpanel">
+        <Tabs.Root
+            value={activeRemoteSignerTab}
+            onValueChange={(value) =>
+                selectRemoteSignerTab(value as RemoteSignerTab)}
+            class="remote-signer-tabs"
+        >
+            <Tabs.List class="remote-signer-tab-list">
+                <Tabs.Trigger
+                    value="qr"
+                    class="remote-signer-tab"
+                    data-testid="nostrconnect-qr-tab"
+                >
+                    {$_("loginDialog.nostrconnect_qr_tab")}
+                </Tabs.Trigger>
+                <Tabs.Trigger
+                    value="bunker"
+                    class="remote-signer-tab"
+                    data-testid="nostrconnect-bunker-tab"
+                >
+                    {$_("loginDialog.nostrconnect_bunker_tab")}
+                </Tabs.Trigger>
+            </Tabs.List>
+
+            {#if activeRemoteSignerTab === "qr"}
+                <Tabs.Content
+                    value="qr"
+                    class="remote-signer-panel nostrconnect-panel"
+                >
                 <div class="section-feedback info">
                     {$_("loginDialog.nostrconnect_scan_hint")}
                 </div>
@@ -674,17 +688,6 @@
                         {hasCopiedNostrConnectUri
                             ? $_("loginDialog.nostrconnect_copied")
                             : $_("loginDialog.nostrconnect_copy")}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={handleOpenNostrConnectUri}
-                        disabled={isNostrConnectPreparing ||
-                            !nip46NostrConnectUri}
-                        className="nostrconnect-open-btn"
-                        data-testid="nostrconnect-open-button"
-                    >
-                        {$_("loginDialog.nostrconnect_open")}
                     </Button>
                     <Button
                         type="button"
@@ -780,9 +783,12 @@
                         {displayedNostrConnectErrorMessage}
                     </div>
                 {/if}
-            </div>
-        {:else}
-            <div class="remote-signer-panel bunker-panel" role="tabpanel">
+                </Tabs.Content>
+            {:else}
+                <Tabs.Content
+                    value="bunker"
+                    class="remote-signer-panel bunker-panel"
+                >
                 <form
                     novalidate
                     onsubmit={(e) => {
@@ -837,8 +843,9 @@
                         </div>
                     {/if}
                 </form>
-            </div>
-        {/if}
+                </Tabs.Content>
+            {/if}
+        </Tabs.Root>
     </div>
 
     <div class="divider">
@@ -1030,7 +1037,7 @@
         gap: 12px;
     }
 
-    .remote-signer-panel {
+    :global(.remote-signer-panel) {
         display: flex;
         flex-direction: column;
         gap: 12px;
@@ -1068,13 +1075,24 @@
         margin: 0;
     }
 
-    .remote-signer-tabs {
+    :global(.remote-signer-tabs) {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .remote-signer-open-row {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    :global(.remote-signer-tab-list) {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
 
-    .remote-signer-tab {
+    :global(.remote-signer-tab) {
         border: 1px solid var(--border-hr);
         background: var(--btn-bg);
         color: var(--text);
@@ -1085,7 +1103,7 @@
         cursor: pointer;
     }
 
-    .remote-signer-tab.selected {
+    :global(.remote-signer-tab[data-state="active"]) {
         border-color: color-mix(
             in srgb,
             var(--accent-color, var(--text)) 45%,
@@ -1096,6 +1114,10 @@
             var(--btn-bg) 50%,
             var(--bg-color, #ffffff)
         );
+    }
+
+    :global(.nostrconnect-open-btn) {
+        white-space: nowrap;
     }
 
     .nostrconnect-qr-shell,
@@ -1208,6 +1230,10 @@
     }
 
     @media (max-width: 640px) {
+        .remote-signer-open-row :global(.nostrconnect-open-btn) {
+            width: 100%;
+        }
+
         .nostrconnect-relay-row,
         .bunker-input-row,
         .secret-input-row {
