@@ -1074,7 +1074,6 @@
     }
 
     :global(.remote-signer-tab) {
-        border: 1px solid var(--border-hr);
         background: var(--btn-bg);
         color: var(--text);
         border-radius: 999px;
