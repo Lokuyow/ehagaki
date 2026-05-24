@@ -998,8 +998,6 @@
     :global(.parent-client-login-button.primary),
     :global(.nip07-login-button.primary),
     :global(.nostrconnect-open-btn.primary) {
-        width: 100%;
-        height: 50px;
         flex-shrink: 0;
         position: relative;
         overflow: hidden;
@@ -1040,8 +1038,7 @@
         gap: 12px;
     }
 
-    .secret-heading-row,
-    :global(.nostrconnect-open-btn) {
+    .secret-heading-row {
         display: flex;
         gap: 6px;
         justify-content: center;
@@ -1247,10 +1244,8 @@
         font-size: 1rem;
     }
 
-    /* 共通コントロール高さ 54px */
     :global(input.u-control, button.u-control) {
-        height: 54px;
-        min-height: 54px;
+        height: 50px;
         min-width: 60px;
         width: 100%;
         display: inline-flex;
