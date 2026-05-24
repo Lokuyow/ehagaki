@@ -1095,6 +1095,7 @@
     :global(.remote-signer-tabs) {
         display: flex;
         flex-direction: column;
+        padding: 8px;
         gap: 8px;
     }
 
