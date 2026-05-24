@@ -599,34 +599,37 @@
             >
         </Button>
 
-        <Tabs.Root
-            value={activeRemoteSignerTab}
-            onValueChange={(value) =>
-                selectRemoteSignerTab(value as RemoteSignerTab)}
-            class="remote-signer-tabs"
-        >
-            <Tabs.List class="remote-signer-tab-list">
-                <Tabs.Trigger
-                    value="qr"
-                    class="remote-signer-tab"
-                    data-testid="nostrconnect-qr-tab"
-                >
-                    {$_("loginDialog.nostrconnect_qr_tab")}
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                    value="bunker"
-                    class="remote-signer-tab"
-                    data-testid="nostrconnect-bunker-tab"
-                >
-                    {$_("loginDialog.nostrconnect_bunker_tab")}
-                </Tabs.Trigger>
-            </Tabs.List>
+        <details class="remote-signer-details">
+            <summary>{$_("loginDialog.nostrconnect_input_title")}</summary>
 
-            {#if activeRemoteSignerTab === "qr"}
-                <Tabs.Content
-                    value="qr"
-                    class="remote-signer-panel nostrconnect-panel"
-                >
+            <Tabs.Root
+                value={activeRemoteSignerTab}
+                onValueChange={(value) =>
+                    selectRemoteSignerTab(value as RemoteSignerTab)}
+                class="remote-signer-tabs"
+            >
+                <Tabs.List class="remote-signer-tab-list">
+                    <Tabs.Trigger
+                        value="qr"
+                        class="remote-signer-tab"
+                        data-testid="nostrconnect-qr-tab"
+                    >
+                        {$_("loginDialog.nostrconnect_qr_tab")}
+                    </Tabs.Trigger>
+                    <Tabs.Trigger
+                        value="bunker"
+                        class="remote-signer-tab"
+                        data-testid="nostrconnect-bunker-tab"
+                    >
+                        {$_("loginDialog.nostrconnect_bunker_tab")}
+                    </Tabs.Trigger>
+                </Tabs.List>
+
+                {#if activeRemoteSignerTab === "qr"}
+                    <Tabs.Content
+                        value="qr"
+                        class="remote-signer-panel nostrconnect-panel"
+                    >
                     <div class="section-feedback info">
                         {$_("loginDialog.nostrconnect_scan_hint")}
                     </div>
@@ -778,12 +781,12 @@
                             {displayedNostrConnectErrorMessage}
                         </div>
                     {/if}
-                </Tabs.Content>
-            {:else}
-                <Tabs.Content
-                    value="bunker"
-                    class="remote-signer-panel bunker-panel"
-                >
+                    </Tabs.Content>
+                {:else}
+                    <Tabs.Content
+                        value="bunker"
+                        class="remote-signer-panel bunker-panel"
+                    >
                     <form
                         novalidate
                         onsubmit={(e) => {
@@ -838,9 +841,10 @@
                             </div>
                         {/if}
                     </form>
-                </Tabs.Content>
-            {/if}
-        </Tabs.Root>
+                    </Tabs.Content>
+                {/if}
+            </Tabs.Root>
+        </details>
     </div>
 
     <div class="divider">
@@ -1025,6 +1029,24 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
+    }
+
+    .remote-signer-details {
+        width: 100%;
+        padding: 12px;
+        background: color-mix(in srgb, var(--btn-bg) 70%, transparent);
+        border: 1px solid var(--border-hr);
+        border-radius: 16px;
+        box-sizing: border-box;
+    }
+
+    .remote-signer-details summary {
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .remote-signer-details[open] :global(.remote-signer-tabs) {
+        margin-top: 12px;
     }
 
     .secret-heading-row {
@@ -1242,7 +1264,7 @@
     }
 
     @media (min-width: 601px) {
-        :global(.save-btn.u-control) {
+        :global(.save-btn.u-control, .bunker-connect-btn.u-control) {
             width: 120px;
         }
     }

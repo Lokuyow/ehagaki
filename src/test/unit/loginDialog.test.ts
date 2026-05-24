@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
@@ -138,6 +138,7 @@ describe('LoginDialog', () => {
     });
 
     afterEach(() => {
+        cleanup();
         vi.unstubAllGlobals();
     });
 
@@ -346,6 +347,40 @@ describe('LoginDialog', () => {
             (screen.getByTestId('nostrconnect-open-button') as HTMLButtonElement)
                 .disabled,
         ).toBe(false);
+    });
+
+    it('remote-signer-section は direct-open ボタンだけを外に出し、詳細UIを折りたたむ', async () => {
+        const onNostrConnectStart = vi
+            .fn<(relays: string[]) => Promise<string | undefined>>()
+            .mockResolvedValue(undefined);
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNostrConnectStart,
+            },
+        });
+
+        await waitFor(() => {
+            expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
+        });
+
+        const remoteSignerSection = document.body.querySelector(
+            '.remote-signer-section',
+        );
+        const directChildren = Array.from(
+            remoteSignerSection?.children ?? [],
+        );
+        const openButton = screen.getByTestId('nostrconnect-open-button');
+        const details = directChildren.find((element) =>
+            element.matches('details.remote-signer-details'),
+        ) as HTMLDetailsElement | undefined;
+
+        expect(directChildren.find((element) => element === openButton)).toBe(
+            openButton,
+        );
+        expect(details).toBeTruthy();
+        expect(details?.open).toBe(false);
+        expect(details?.querySelector('.remote-signer-tabs')).toBeTruthy();
     });
 
     it('NostrConnect 待受中でも他のログイン方式を開始できる', async () => {

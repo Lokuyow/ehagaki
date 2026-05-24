@@ -50,15 +50,7 @@
 
 <style>
     .qr-code-frame {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
-        min-height: 320px;
-        padding: 16px;
-        border-radius: 16px;
-        border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
-        box-sizing: border-box;
+        padding: 8px;
     }
 
     .qr-code-svg {
