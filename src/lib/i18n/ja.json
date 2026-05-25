@@ -59,7 +59,6 @@
     "nostrconnect_qr_tab": "QRコード",
     "nostrconnect_bunker_tab": "bunker:// を入力",
     "nostrconnect_qr_alt": "Nostr Connect QR コード",
-    "nostrconnect_scan_hint": "対応するリモートサイナーで QR コードを読み取るか、接続 URI を開いてください。",
     "nostrconnect_active_relay_label": "今回の接続に使用する relay",
     "nostrconnect_relay_label": "NIP-46 接続候補 relay",
     "nostrconnect_relay_hint": "接続に使用する relay の候補を設定します。",

@@ -730,10 +730,6 @@
                         value="qr"
                         class="remote-signer-panel nostrconnect-panel"
                     >
-                        <div class="section-feedback info">
-                            {$_("loginDialog.nostrconnect_scan_hint")}
-                        </div>
-
                         {#if nip46NostrConnectUri}
                             <div
                                 class="nostrconnect-qr-shell"

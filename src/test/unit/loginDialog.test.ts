@@ -25,7 +25,6 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_qr_tab': 'QRコード',
         'loginDialog.nostrconnect_bunker_tab': 'bunker:// を入力',
         'loginDialog.nostrconnect_qr_alt': 'Nostr Connect QR コード',
-        'loginDialog.nostrconnect_scan_hint': '対応するリモートサイナーで QR コードを読み取るか、接続 URI を開いてください。',
         'loginDialog.nostrconnect_active_relay_label': '今回の接続に使用する relay',
         'loginDialog.nostrconnect_relay_label': 'NIP-46 接続候補 relay',
         'loginDialog.nostrconnect_input_title': 'QRコードまたは bunker:// で接続',
