@@ -805,21 +805,27 @@
 
                         <div class="nostrconnect-relay-settings">
                             <div class="nostrconnect-relay-settings-header">
-                                <div class="nostrconnect-relay-settings-title-row">
-                                    <span class="nostrconnect-relay-settings-title"
-                                        >{$_("loginDialog.nostrconnect_edit_relays")}</span
+                                <div
+                                    class="nostrconnect-relay-settings-title-row"
+                                >
+                                    <span
+                                        class="nostrconnect-relay-settings-title"
+                                        >{$_(
+                                            "loginDialog.nostrconnect_edit_relays",
+                                        )}</span
                                     >
                                     <InfoPopoverButton
                                         side="top"
                                         sideOffset={8}
-                                        ariaLabel={
-                                            $_("loginDialog.nostrconnect_edit_relays") +
-                                            "の説明"
-                                        }
+                                        ariaLabel={$_(
+                                            "loginDialog.nostrconnect_edit_relays",
+                                        ) + "の説明"}
                                     >
                                         <div class="nostrconnect-relay-popover">
                                             <div>
-                                                {$_("loginDialog.nostrconnect_relay_hint")}
+                                                {$_(
+                                                    "loginDialog.nostrconnect_relay_hint",
+                                                )}
                                             </div>
                                             <div>
                                                 {$_(
@@ -887,7 +893,9 @@
                                     onClick={resetNostrConnectRelaysToDefault}
                                     data-testid="nostrconnect-reset-relays"
                                 >
-                                    {$_("loginDialog.nostrconnect_reset_relays")}
+                                    {$_(
+                                        "loginDialog.nostrconnect_reset_relays",
+                                    )}
                                 </Button>
                             </div>
                         </div>
@@ -1213,13 +1221,11 @@
     :global(.remote-signer-tab-list) {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
     }
 
     :global(.remote-signer-tab) {
         background: var(--btn-bg2);
         color: var(--text);
-        border-radius: 999px;
         padding: 12px 16px;
         font-size: 0.95rem;
         font-weight: 600;
