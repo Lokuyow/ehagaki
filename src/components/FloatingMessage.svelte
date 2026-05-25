@@ -6,11 +6,13 @@
         show = false,
         x = 0,
         y = 0,
+        variant = "pointer",
         children = undefined,
     } = $props<{
         show?: boolean;
         x?: number;
         y?: number;
+        variant?: "pointer" | "top-right";
         children?: () => any;
     }>();
 
@@ -21,12 +23,16 @@
     const SCREEN_PADDING = 10;
 
     $effect(() => {
+        if (variant !== "pointer") {
+            return;
+        }
+
         messageX = x;
         messageY = y;
     });
 
     $effect(() => {
-        if (!show || !container) return;
+        if (!show || !container || variant !== "pointer") return;
 
         (async () => {
             await tick();
@@ -63,8 +69,12 @@
     <Portal>
         <div
             bind:this={container}
-            class="floating-message"
-            style="left: {messageX}px; top: {messageY}px;"
+            class="floating-message {variant === 'top-right'
+                ? 'top-right'
+                : 'pointer'}"
+            style={variant === "pointer"
+                ? `left: ${messageX}px; top: ${messageY}px;`
+                : undefined}
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -94,6 +104,13 @@
         align-items: flex-start;
         white-space: nowrap;
         pointer-events: none;
+    }
+
+    .floating-message.top-right {
+        top: 16px;
+        right: 16px;
+        max-width: min(360px, calc(100vw - 32px));
+        white-space: normal;
     }
 
     .floating-message-body {

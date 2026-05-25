@@ -13,6 +13,7 @@
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import QrCodeDisplay from "./QrCodeDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -96,6 +97,23 @@
     let nip07ErrorMessage = $state("");
     let nip46ErrorMessage = $state("");
     let hasCopiedNostrConnectUri = $state(false);
+    let showNostrConnectDirectOpenHint = $state(false);
+    let nostrConnectDirectOpenHintTimer:
+        | ReturnType<typeof setTimeout>
+        | undefined = undefined;
+    let pendingDirectOpenHintUri = $state<string | null>(null);
+
+    const NOSTRCONNECT_DIRECT_OPEN_HINT_DELAY_MS = 1200;
+    const NOSTRCONNECT_DIRECT_OPEN_HINT_DURATION_MS = 6000;
+
+    function cleanupNostrConnectDirectOpenHint(): void {
+        if (nostrConnectDirectOpenHintTimer) {
+            clearTimeout(nostrConnectDirectOpenHintTimer);
+            nostrConnectDirectOpenHintTimer = undefined;
+        }
+        pendingDirectOpenHintUri = null;
+        showNostrConnectDirectOpenHint = false;
+    }
 
     function getResolvedInitialNostrConnectRelayCandidates(): string[] {
         return initialNostrConnectRelayCandidates.length > 0
@@ -104,6 +122,7 @@
     }
 
     function resetNostrConnectDraftState(): void {
+        cleanupNostrConnectDirectOpenHint();
         nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
             getResolvedInitialNostrConnectRelayCandidates(),
         );
@@ -128,12 +147,35 @@
 
         if (!show) {
             wasOpen = false;
+            cleanupNostrConnectDirectOpenHint();
         }
     });
 
     $effect(() => {
         nip46NostrConnectUri;
         hasCopiedNostrConnectUri = false;
+        cleanupNostrConnectDirectOpenHint();
+    });
+
+    $effect(() => {
+        if (typeof document === "undefined") {
+            return;
+        }
+
+        function handleVisibilityChange(): void {
+            if (document.visibilityState !== "visible") {
+                cleanupNostrConnectDirectOpenHint();
+            }
+        }
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => {
+            document.removeEventListener(
+                "visibilitychange",
+                handleVisibilityChange,
+            );
+            cleanupNostrConnectDirectOpenHint();
+        };
     });
 
     let nostrConnectRelayValidation = $derived(
@@ -153,6 +195,22 @@
     let isNostrConnectPending = $derived(
         isNostrConnectPreparing || isWaitingNip46NostrConnect,
     );
+
+    $effect(() => {
+        show;
+        activeRemoteSignerTab;
+        nip46NostrConnectUri;
+        isNostrConnectPending;
+
+        if (
+            !show ||
+            activeRemoteSignerTab !== "qr" ||
+            !nip46NostrConnectUri ||
+            !isNostrConnectPending
+        ) {
+            cleanupNostrConnectDirectOpenHint();
+        }
+    });
 
     $effect(() => {
         show;
@@ -313,6 +371,7 @@
     }
 
     async function handleNip07Login() {
+        cleanupNostrConnectDirectOpenHint();
         nip07ErrorMessage = "";
         const errorMessage = await onNip07Login?.();
         if (errorMessage) {
@@ -344,6 +403,7 @@
     }
 
     async function handleParentClientLogin() {
+        cleanupNostrConnectDirectOpenHint();
         parentClientErrorMessage = "";
         const errorMessage = await onParentClientLogin?.();
         if (errorMessage) {
@@ -353,6 +413,7 @@
     }
 
     async function handleNip46Login() {
+        cleanupNostrConnectDirectOpenHint();
         nip46ErrorMessage = "";
         if (bunkerInputEl) {
             const trimmed = bunkerInputEl.value.trim();
@@ -394,6 +455,7 @@
         }
 
         activeRemoteSignerTab = tab;
+        cleanupNostrConnectDirectOpenHint();
 
         if (tab === "bunker") {
             lastRequestedNostrConnectSignature = null;
@@ -436,7 +498,40 @@
             return;
         }
 
-        openNip46ConnectionUri(nip46NostrConnectUri);
+        const openedUri = nip46NostrConnectUri;
+        cleanupNostrConnectDirectOpenHint();
+        pendingDirectOpenHintUri = openedUri;
+        openNip46ConnectionUri(openedUri);
+
+        nostrConnectDirectOpenHintTimer = setTimeout(() => {
+            nostrConnectDirectOpenHintTimer = undefined;
+
+            if (
+                typeof document !== "undefined" &&
+                document.visibilityState !== "visible"
+            ) {
+                cleanupNostrConnectDirectOpenHint();
+                return;
+            }
+
+            if (
+                show &&
+                activeRemoteSignerTab === "qr" &&
+                (isPreparingNip46NostrConnect ||
+                    isWaitingNip46NostrConnect) &&
+                nip46NostrConnectUri === openedUri &&
+                pendingDirectOpenHintUri === openedUri
+            ) {
+                showNostrConnectDirectOpenHint = true;
+                nostrConnectDirectOpenHintTimer = setTimeout(() => {
+                    showNostrConnectDirectOpenHint = false;
+                    nostrConnectDirectOpenHintTimer = undefined;
+                }, NOSTRCONNECT_DIRECT_OPEN_HINT_DURATION_MS);
+                return;
+            }
+
+            cleanupNostrConnectDirectOpenHint();
+        }, NOSTRCONNECT_DIRECT_OPEN_HINT_DELAY_MS);
     }
 
     async function handleCopyNostrConnectUri() {
@@ -452,6 +547,7 @@
     }
 
     function handleNostrConnectCancel() {
+        cleanupNostrConnectDirectOpenHint();
         onNostrConnectCancel?.();
     }
 
@@ -469,6 +565,7 @@
 
     // 新しいフォームsubmit用ハンドラ
     function handleFormSubmit(event: Event) {
+        cleanupNostrConnectDirectOpenHint();
         event.preventDefault();
         handleSave();
     }
@@ -591,12 +688,25 @@
             ariaLabel={$_("loginDialog.nostrconnect_open")}
             onClick={handleOpenNostrConnectUri}
             disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
-            className="nostrconnect-open-btn u-control"
+            className="nostrconnect-open-btn u-control {isNostrConnectPreparing &&
+            !nip46NostrConnectUri
+                ? 'loading'
+                : ''}"
             data-testid="nostrconnect-open-button"
         >
-            <div class="vault-icon svg-icon" aria-hidden="true"></div>
-            <span class="btn-text">{$_("loginDialog.remote_signer_title")}</span
-            >
+            {#if isNostrConnectPreparing && !nip46NostrConnectUri}
+                <LoadingPlaceholder
+                    text={$_("loginDialog.nostrconnect_preparing")}
+                    showLoader={true}
+                    loaderSize={28}
+                    customClass="nostrconnect-open-placeholder"
+                />
+            {:else}
+                <div class="vault-icon svg-icon" aria-hidden="true"></div>
+                <span class="btn-text"
+                    >{$_("loginDialog.remote_signer_title")}</span
+                >
+            {/if}
         </Button>
 
         <details class="remote-signer-details">
@@ -922,6 +1032,10 @@
     {/snippet}
 </DialogWrapper>
 
+<FloatingMessage show={showNostrConnectDirectOpenHint} variant="top-right">
+    <div>{$_("loginDialog.nostrconnect_direct_open_hint")}</div>
+</FloatingMessage>
+
 <style>
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -1014,8 +1128,14 @@
     }
 
     :global(.parent-client-login-button.loading),
-    :global(.nip07-login-button.loading) {
+    :global(.nip07-login-button.loading),
+    :global(.nostrconnect-open-btn.loading) {
         cursor: not-allowed;
+    }
+
+    :global(.nostrconnect-open-placeholder .placeholder-text) {
+        color: whitesmoke;
+        opacity: 0.9;
     }
 
     .svg-icon.parent-client-icon {

@@ -32,4 +32,18 @@ describe("FloatingMessage", () => {
 
         expect(screen.queryByRole("status")).toBeNull();
     });
+
+    it("supports a top-right toast variant without pointer positioning", () => {
+        render(FloatingMessage, {
+            props: {
+                show: true,
+                variant: "top-right",
+            },
+        });
+
+        const message = screen.getByRole("status");
+
+        expect(message.classList.contains("top-right")).toBe(true);
+        expect(message.getAttribute("style") ?? "").not.toContain("left:");
+    });
 });
