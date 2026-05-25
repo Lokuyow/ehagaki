@@ -10,12 +10,14 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
+    import { usePostHistoryQuotePreviews } from "../lib/hooks/usePostHistoryQuotePreviews.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
@@ -144,6 +146,12 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
+    });
+    const quotePreviews = usePostHistoryQuotePreviews({
+        getShow: () => show,
+        getPosts: () => history.posts,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
     });
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
         getShow: () => show,
@@ -1011,6 +1019,10 @@
 
     function hasRenderablePostPreviewContent(post: PostHistoryRecord): boolean {
         return hasRenderablePostHistoryPreviewContent(getPreviewContent(post));
+    }
+
+    function getQuotePreviewStates(post: PostHistoryRecord) {
+        return quotePreviews.getQuotePreviews(post);
     }
 
     function syncEmojiLoadState(urls: string[]): string[] {
@@ -2024,6 +2036,21 @@
                                                     scrollRoot={historyContainer}
                                                     onImageOpen={handleImageOpen}
                                                 />
+                                            </div>
+                                        {/if}
+                                        {#if getQuotePreviewStates(post).length > 0}
+                                            <div class="post-preview-quotes">
+                                                {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
+                                                    <PostHistoryQuotePreview
+                                                        preview={quotePreview}
+                                                        scrollRoot={historyContainer}
+                                                        onImageOpen={handleImageOpen}
+                                                        onRetry={() =>
+                                                            quotePreviews.retryQuotePreview(
+                                                                quotePreview.eventId,
+                                                            )}
+                                                    />
+                                                {/each}
                                             </div>
                                         {/if}
                                     </div>
@@ -3052,6 +3079,12 @@
 
         .post-preview-media {
             display: block;
+        }
+
+        .post-preview-quotes {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         .post-preview-toggle-row {

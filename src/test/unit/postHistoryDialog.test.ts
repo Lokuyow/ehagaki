@@ -77,6 +77,10 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.showReplyTarget': '返信先を見る',
         'postHistory.hideReplyTarget': '返信先を隠す',
         'postHistory.replyTargetDeleted': '返信先削除済み',
+        'postHistory.quoteLoading': '引用投稿を読み込み中...',
+        'postHistory.quoteNotFound': '引用投稿が見つかりませんでした',
+        'postHistory.quoteFetchFailed': '引用投稿を取得できませんでした',
+        'postHistory.quoteDeleted': '引用元削除済み',
         'postHistory.contextLoading': '関連投稿を読み込み中...',
         'postHistory.contextNotFound': '返信先が見つかりませんでした',
         'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
@@ -515,6 +519,65 @@ function createReplyContextRecords() {
     return { parentRecord, post, replyId };
 }
 
+function createQuoteContextRecords(
+    overrides: {
+        postId?: string;
+        postContent?: string;
+        quoteId?: string;
+        quoteContent?: string;
+        quoteAuthorPubkey?: string;
+        quoteRelayHint?: string;
+        includeAuthorHint?: boolean;
+    } = {},
+) {
+    const quoteId = overrides.quoteId ?? '6'.repeat(64);
+    const quoteAuthorPubkey = overrides.quoteAuthorPubkey ?? 'e'.repeat(64);
+    const quoteRelayHint = overrides.quoteRelayHint ?? 'wss://quote.example.com/';
+    const quoteContent = overrides.quoteContent ?? '引用元の投稿';
+    const quoteTag = [
+        'q',
+        quoteId,
+        quoteRelayHint,
+        ...(overrides.includeAuthorHint === false ? [] : [quoteAuthorPubkey]),
+    ];
+    const quotedRecord = createRecord({
+        eventId: quoteId,
+        pubkeyHex: quoteAuthorPubkey,
+        content: quoteContent,
+        tags: [],
+        rawEvent: {
+            id: quoteId,
+            pubkey: quoteAuthorPubkey,
+            kind: 1,
+            content: quoteContent,
+            tags: [],
+            created_at: 1_699_999_500,
+            sig: '8'.repeat(128),
+        },
+    });
+    const post = createRecord({
+        eventId: overrides.postId ?? '5'.repeat(64),
+        content: overrides.postContent ?? '自分の引用',
+        rawEvent: {
+            id: overrides.postId ?? '5'.repeat(64),
+            pubkey: 'a'.repeat(64),
+            kind: 1,
+            content: overrides.postContent ?? '自分の引用',
+            tags: [quoteTag],
+            created_at: 1_700_000_000,
+            sig: '9'.repeat(128),
+        },
+        tags: [quoteTag],
+    });
+
+    return {
+        quotedRecord,
+        post,
+        quoteId,
+        quoteAuthorPubkey,
+    };
+}
+
 function createDirectReplyEventRecord(overrides: Record<string, any> = {}) {
     const parentEventId = '1'.repeat(64);
     const eventId = overrides.eventId ?? '4'.repeat(64);
@@ -923,6 +986,160 @@ describe('PostHistoryDialog', () => {
         });
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[quote-preview-cache-first] qタグ付き投稿の下に引用プレビューを自動表示し、履歴DBを優先する', async () => {
+        const { quotedRecord, post, quoteId } = createQuoteContextRecords();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('自分の引用');
+        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
+        expect(historyItem).toBeTruthy();
+        const queries = within(historyItem as HTMLElement);
+
+        await waitFor(() => {
+            expect(queries.getByText('引用元の投稿')).toBeTruthy();
+        });
+
+        const currentContent = queries.getByText('自分の引用');
+        const quotedContent = queries.getByText('引用元の投稿');
+        expect(
+            currentContent.compareDocumentPosition(quotedContent)
+            & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(contextFetchServiceMock.fetchEventById).not.toHaveBeenCalled();
+        expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+    });
+
+    it('[quote-preview-dedupe] 同じ引用先を複数投稿が参照しても1回だけ取得する', async () => {
+        const quoteId = '6'.repeat(64);
+        const { quotedRecord, post: firstPost } = createQuoteContextRecords({
+            postId: '5'.repeat(64),
+            postContent: '自分の引用その1',
+            quoteId,
+        });
+        const { post: secondPost } = createQuoteContextRecords({
+            postId: '7'.repeat(64),
+            postContent: '自分の引用その2',
+            quoteId,
+        });
+
+        repositoryMock.getPage.mockResolvedValue([firstPost, secondPost]);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: quotedRecord.rawEvent,
+                relayUrl: 'wss://quote.example.com/',
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await screen.findByText('自分の引用その1');
+        await screen.findByText('自分の引用その2');
+        const firstHistoryItem = document.querySelector(`[data-post-history-event-id="${firstPost.eventId}"]`);
+        const secondHistoryItem = document.querySelector(`[data-post-history-event-id="${secondPost.eventId}"]`);
+        expect(firstHistoryItem).toBeTruthy();
+        expect(secondHistoryItem).toBeTruthy();
+
+        await waitFor(() => {
+            expect(within(firstHistoryItem as HTMLElement).getByText('引用元の投稿')).toBeTruthy();
+            expect(within(secondHistoryItem as HTMLElement).getByText('引用元の投稿')).toBeTruthy();
+        });
+
+        expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+        expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(1);
+    });
+
+    it('[quote-preview-nip09] tombstone がある引用先は削除済みラベルを表示する', async () => {
+        const { post, quoteId, quoteAuthorPubkey } = createQuoteContextRecords();
+        const deletedTargets = new Map<string, Set<string>>([
+            [quoteAuthorPubkey, new Set([quoteId])],
+        ]);
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(deletedTargets);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('自分の引用');
+        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
+        expect(historyItem).toBeTruthy();
+        const queries = within(historyItem as HTMLElement);
+
+        await waitFor(() => {
+            expect(queries.getByText('引用元削除済み')).toBeTruthy();
+        });
+
+        expect(queries.queryByText('引用元の投稿')).toBeNull();
+        expect(contextFetchServiceMock.fetchEventById).not.toHaveBeenCalled();
+    });
+
+    it('[quote-preview-not-found] qタグ対象が見つからない場合は未検出ラベルを表示する', async () => {
+        const { post } = createQuoteContextRecords({
+            includeAuthorHint: false,
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event: null,
+                relayUrl: null,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await screen.findByText('自分の引用');
+        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
+        expect(historyItem).toBeTruthy();
+        const queries = within(historyItem as HTMLElement);
+
+        await waitFor(() => {
+            expect(queries.getByText('引用投稿が見つかりませんでした')).toBeTruthy();
+        });
+
+        expect(queries.queryByText('引用元削除済み')).toBeNull();
     });
 
     it('[reply-context-scroll] 返信先の展開と折りたたみで起点投稿の表示位置を維持する', async () => {
