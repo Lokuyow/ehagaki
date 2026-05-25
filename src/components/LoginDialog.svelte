@@ -614,7 +614,6 @@
                     <LoadingPlaceholder
                         text={true}
                         showLoader={true}
-                        customClass="parent-client-login-placeholder"
                     />
                 {:else}
                     <div class="parent-client-icon svg-icon"></div>
@@ -655,7 +654,6 @@
                 <LoadingPlaceholder
                     text={true}
                     showLoader={true}
-                    customClass="nip07-login-placeholder"
                 />
             {:else}
                 <div class="extension-icon svg-icon"></div>
@@ -699,7 +697,6 @@
                     text={$_("loginDialog.nostrconnect_preparing")}
                     showLoader={true}
                     loaderSize={28}
-                    customClass="nostrconnect-open-placeholder"
                 />
             {:else}
                 <div class="vault-icon svg-icon" aria-hidden="true"></div>
@@ -946,7 +943,6 @@
                                         <LoadingPlaceholder
                                             text={true}
                                             showLoader={true}
-                                            customClass="bunker-connect-placeholder"
                                         />
                                     {:else}
                                         {$_("loginDialog.bunker_connect")}
@@ -1131,11 +1127,6 @@
     :global(.nip07-login-button.loading),
     :global(.nostrconnect-open-btn.loading) {
         cursor: not-allowed;
-    }
-
-    :global(.nostrconnect-open-placeholder .placeholder-text) {
-        color: whitesmoke;
-        opacity: 0.9;
     }
 
     .svg-icon.parent-client-icon {

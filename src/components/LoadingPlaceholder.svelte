@@ -70,6 +70,12 @@
         font-size: 0.875rem;
         font-weight: 500;
     }
+
+    :global(.primary .loading-placeholder .placeholder-text) {
+        color: whitesmoke;
+        opacity: 0.9;
+    }
+
     .loading-text {
         animation: pulse-text 1.5s ease-in-out infinite;
     }
@@ -125,7 +131,7 @@
         animation: compactFloatAndRotate 4s infinite ease-in-out;
     }
 
-    :global(.primary.loading div.loader-container div.square) {
+    :global(.primary.loading .loader-container .square) {
         background-color: whitesmoke;
     }
 
