@@ -1210,8 +1210,7 @@
 
     .remote-signer-details {
         width: 100%;
-        background: color-mix(in srgb, var(--btn-bg) 55%, transparent);
-        border: 1px solid var(--border-hr);
+        background: var(--dialog-bg2);
         border-radius: 16px;
         box-sizing: border-box;
     }
@@ -1301,9 +1300,8 @@
         align-items: center;
         position: relative;
         height: 40px;
-        padding: 8px 40px 8px 12px;
-        background: var(--btn-bg);
-        border: 1px solid var(--border-hr);
+        padding: 0 40px 0 12px;
+        background: var(--btn-bg2);
         border-radius: 12px;
         font-family: monospace;
         font-size: 0.9rem;
@@ -1313,10 +1311,8 @@
         width: 100%;
         border: none;
         background: transparent;
-        color: inherit;
         font-family: inherit;
         font-size: inherit;
-        line-height: 1.4;
         outline: none;
         min-width: 0;
         white-space: nowrap;
@@ -1352,15 +1348,13 @@
         flex-direction: column;
         gap: 6px;
         padding: 2px 12px 12px;
-        background: color-mix(in srgb, var(--btn-bg) 60%, transparent);
-        border: 1px solid var(--border-hr);
+        background: var(--dialog-bg3);
         border-radius: 16px;
     }
 
     .nostrconnect-relay-settings-title-row {
         display: flex;
         align-items: center;
-        gap: 4px;
     }
 
     .nostrconnect-relay-settings-title {
@@ -1376,27 +1370,37 @@
     .nostrconnect-relay-editor-list {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 4px;
     }
 
     .nostrconnect-relay-row {
         display: flex;
-        /* gap: 6px; */
-        align-items: center;
+        align-items: stretch;
+        height: 40px;
 
         :global(.nostrconnect-remove-relay-btn) {
+            width: auto;
             height: auto;
             border-radius: 0 12px 12px 0;
-            --btn-bg: var(--btn-bg2);
+            --btn-bg: var(--btn-bg3);
+            opacity: 1;
+            aspect-ratio: 1;
+
+            :global(.close-icon) {
+                --svg: currentColor;
+                width: 24px;
+                height: 24px;
+            }
         }
     }
 
     .nostrconnect-relay-field {
         flex: 1;
-        min-height: 48px;
-        padding: 0.75rem;
-        background: var(--btn-bg);
-        border: 1px solid var(--border-hr);
+        width: auto;
+        height: auto;
+        padding: 0 0.75rem;
+        background: var(--btn-bg3);
+        border: none;
         border-radius: 12px 0 0 12px;
         font-family: monospace;
         font-size: 0.95rem;

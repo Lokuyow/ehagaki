@@ -753,7 +753,7 @@
 
         :global(button) {
             min-width: 74px;
-            min-height: 44px;
+            height: auto;
             padding: 8px 10px;
             font-size: 0.875rem;
             font-weight: normal;

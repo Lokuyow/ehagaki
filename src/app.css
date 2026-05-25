@@ -40,6 +40,7 @@
 
   --btn-bg: hsl(0, 0%, 92%);
   --btn-bg2: color-mix(in srgb, var(--btn-bg), black 5%);
+  --btn-bg3: color-mix(in srgb, var(--btn-bg), black 10%);
   --btn-border: hsl(0, 0%, 75%);
   --btn-hover-bg: rgba(50, 50, 50, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 74%);
@@ -58,7 +59,8 @@
   --link-visited: #681da8;
 
   --dialog-bg: white;
-  --dialog-bg-2: hsl(0, 0%, 94%);
+  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), black 5%);
+  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), black 10%);
   --dialog-bg-overlay: rgba(0, 0, 0, 0.6);
 
   --window: hsl(0, 0%, 95%);
@@ -213,6 +215,7 @@ select {
 
   --btn-bg: hsl(0, 0%, 25%);
   --btn-bg2: color-mix(in srgb, var(--btn-bg), white 10%);
+  --btn-bg3: color-mix(in srgb, var(--btn-bg), white 20%);
   --btn-border: hsl(0, 0%, 30%);
   --btn-hover-bg: rgba(255, 255, 255, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 36%);
@@ -231,7 +234,8 @@ select {
   --link-visited: #c58af9;
 
   --dialog-bg: hsl(0, 0%, 14%);
-  --dialog-bg-2: hsl(0, 0%, 20%);
+  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), white 8%);
+  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), white 14%);
   --dialog-bg-overlay: rgba(0, 0, 0, 0.8);
 
   --window: hsl(0, 0%, 14%);
@@ -322,8 +326,9 @@ select {
 .setting-row {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
+  min-height: 50px;
 }
 
 .setting-label {
@@ -338,7 +343,7 @@ select {
 
 .setting-control {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
-  height: fit-content;
+  height: auto;
 }

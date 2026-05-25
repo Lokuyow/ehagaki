@@ -328,8 +328,6 @@
     }
     .rounded {
         border-radius: 6px;
-        min-height: 50px;
-        min-width: 50px;
     }
     .pill {
         border-radius: 50px;

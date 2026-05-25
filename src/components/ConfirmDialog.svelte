@@ -198,7 +198,7 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: var(--dialog-bg-2);
+        background-color: var(--dialog-bg2);
         color: var(--text);
         width: 100%;
         max-width: 500px;
