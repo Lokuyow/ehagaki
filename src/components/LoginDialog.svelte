@@ -756,9 +756,6 @@
                         {/if}
 
                         <div class="nostrconnect-uri-card">
-                            <div class="nostrconnect-uri-label">
-                                {$_("loginDialog.nostrconnect_uri_label")}
-                            </div>
                             <div
                                 class="nostrconnect-uri"
                                 data-testid="nostrconnect-uri"
@@ -1261,12 +1258,6 @@
         gap: 8px;
     }
 
-    .nostrconnect-uri-label {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: var(--text-light);
-    }
-
     .nostrconnect-uri {
         display: flex;
         flex-direction: column;
@@ -1315,8 +1306,6 @@
     .nostrconnect-relay-settings {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        padding: 12px;
         background: color-mix(in srgb, var(--btn-bg) 60%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;

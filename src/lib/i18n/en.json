@@ -60,7 +60,6 @@
     "nostrconnect_bunker_tab": "Enter bunker://",
     "nostrconnect_qr_alt": "Nostr Connect QR code",
     "nostrconnect_scan_hint": "Scan the QR code with a compatible remote signer or open the connection URI.",
-    "nostrconnect_uri_label": "Connection URI",
     "nostrconnect_active_relay_label": "Relay used for this connection",
     "nostrconnect_relay_label": "NIP-46 relay candidates",
     "nostrconnect_relay_hint": "Configure the relay candidates used for the connection.",

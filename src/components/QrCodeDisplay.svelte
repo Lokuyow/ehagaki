@@ -49,10 +49,6 @@
 </div>
 
 <style>
-    .qr-code-frame {
-        padding: 8px;
-    }
-
     .qr-code-svg {
         display: flex;
         justify-content: center;
