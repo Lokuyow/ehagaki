@@ -14,6 +14,7 @@
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import FloatingMessage from "./FloatingMessage.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import QrCodeDisplay from "./QrCodeDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -90,7 +91,6 @@
     let activeRemoteSignerTab = $state<RemoteSignerTab>("qr");
     let wasOpen = $state(false);
     let lastRequestedNostrConnectSignature = $state<string | null>(null);
-    let isNostrConnectRelaySettingsExpanded = $state(false);
     let nostrConnectRelayDrafts = $state<string[]>([""]);
     let bunkerInputEl: HTMLInputElement | null = $state(null);
     let parentClientErrorMessage = $state("");
@@ -127,7 +127,6 @@
             getResolvedInitialNostrConnectRelayCandidates(),
         );
         activeRemoteSignerTab = "qr";
-        isNostrConnectRelaySettingsExpanded = false;
         lastRequestedNostrConnectSignature = null;
     }
 
@@ -475,7 +474,6 @@
 
     function addNostrConnectRelayDraft() {
         nostrConnectRelayDrafts = [...nostrConnectRelayDrafts, ""];
-        isNostrConnectRelaySettingsExpanded = true;
     }
 
     function removeNostrConnectRelayDraft(index: number) {
@@ -805,26 +803,37 @@
                             </Button>
                         </div>
 
-                        <details
-                            bind:open={isNostrConnectRelaySettingsExpanded}
-                            class="nostrconnect-relay-settings"
-                        >
-                            <summary>
-                                {$_("loginDialog.nostrconnect_edit_relays")}
-                            </summary>
-
-                            <div class="section-feedback info">
-                                {$_("loginDialog.nostrconnect_relay_hint")}
-                            </div>
-                            <div class="section-feedback info">
-                                {$_(
-                                    "loginDialog.nostrconnect_relay_update_hint",
-                                )}
-                            </div>
-                            <div class="section-feedback info">
-                                {$_(
-                                    "loginDialog.nostrconnect_relay_switch_hint",
-                                )}
+                        <div class="nostrconnect-relay-settings">
+                            <div class="nostrconnect-relay-settings-header">
+                                <div class="nostrconnect-relay-settings-title-row">
+                                    <span class="nostrconnect-relay-settings-title"
+                                        >{$_("loginDialog.nostrconnect_edit_relays")}</span
+                                    >
+                                    <InfoPopoverButton
+                                        side="top"
+                                        sideOffset={8}
+                                        ariaLabel={
+                                            $_("loginDialog.nostrconnect_edit_relays") +
+                                            "の説明"
+                                        }
+                                    >
+                                        <div class="nostrconnect-relay-popover">
+                                            <div>
+                                                {$_("loginDialog.nostrconnect_relay_hint")}
+                                            </div>
+                                            <div>
+                                                {$_(
+                                                    "loginDialog.nostrconnect_relay_update_hint",
+                                                )}
+                                            </div>
+                                            <div>
+                                                {$_(
+                                                    "loginDialog.nostrconnect_relay_switch_hint",
+                                                )}
+                                            </div>
+                                        </div>
+                                    </InfoPopoverButton>
+                                </div>
                             </div>
 
                             <div class="nostrconnect-relay-editor-list">
@@ -878,12 +887,10 @@
                                     onClick={resetNostrConnectRelaysToDefault}
                                     data-testid="nostrconnect-reset-relays"
                                 >
-                                    {$_(
-                                        "loginDialog.nostrconnect_reset_relays",
-                                    )}
+                                    {$_("loginDialog.nostrconnect_reset_relays")}
                                 </Button>
                             </div>
-                        </details>
+                        </div>
 
                         {#if displayedNostrConnectErrorMessage}
                             <div
@@ -1302,14 +1309,27 @@
     .nostrconnect-relay-settings {
         display: flex;
         flex-direction: column;
+        gap: 12px;
+        padding: 12px;
         background: color-mix(in srgb, var(--btn-bg) 60%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;
     }
 
-    .nostrconnect-relay-settings summary {
-        cursor: pointer;
+    .nostrconnect-relay-settings-title-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .nostrconnect-relay-settings-title {
         font-weight: 600;
+    }
+
+    .nostrconnect-relay-popover {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
     }
 
     .nostrconnect-relay-editor-list {

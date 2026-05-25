@@ -645,13 +645,20 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
+        await fireEvent.click(
+            screen.getByLabelText('接続 relay を変更の説明'),
+        );
         expect(
-            screen.getByText('接続に使用する relay の候補を設定します。'),
+            await screen.findByText('接続に使用する relay の候補を設定します。'),
         ).toBeTruthy();
         expect(
             screen.getByText(
                 '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',
+            ),
+        ).toBeTruthy();
+        expect(
+            screen.getByText(
+                'リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。',
             ),
         ).toBeTruthy();
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
@@ -669,7 +676,7 @@ describe('LoginDialog', () => {
         });
     });
 
-    it('初期値に戻すで default relay candidates に戻して再開始し、relay 一覧は折りたたみ内だけに表示する', async () => {
+    it('初期値に戻すで default relay candidates に戻して再開始し、relay 一覧は常に表示する', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
@@ -687,7 +694,6 @@ describe('LoginDialog', () => {
         expect(screen.queryByTestId('nostrconnect-active-relays')).toBeNull();
         expect(screen.queryByTestId('nostrconnect-relay-candidates')).toBeNull();
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
         await fireEvent.input(relayInputs[0], {
             target: { value: 'wss://relay.changed.example.com/' },
@@ -742,7 +748,6 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
         const relayInputs = screen.getAllByPlaceholderText('wss://relay.example.com');
         await fireEvent.input(relayInputs[0], {
             target: { value: 'https://invalid.example.com' },
@@ -773,7 +778,6 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        await fireEvent.click(screen.getByText('接続 relay を変更'));
         for (const relayInput of screen.getAllByPlaceholderText('wss://relay.example.com')) {
             await fireEvent.input(relayInput, {
                 target: { value: '' },
