@@ -754,7 +754,14 @@
                                 class="nostrconnect-uri"
                                 data-testid="nostrconnect-uri"
                             >
-                                <span>{nip46NostrConnectUri || ""}</span>
+                                <input
+                                    type="text"
+                                    readonly
+                                    value={nip46NostrConnectUri || ""}
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    title={nip46NostrConnectUri || ""}
+                                />
                                 <Button
                                     type="button"
                                     variant="copy"
@@ -1160,7 +1167,7 @@
     :global(.remote-signer-panel) {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
     }
 
     .remote-signer-details {
@@ -1257,25 +1264,36 @@
 
     .nostrconnect-uri {
         display: flex;
-        flex-direction: column;
-        gap: 6px;
+        align-items: center;
         position: relative;
-        min-height: 72px;
-        padding: 10px;
+        height: 40px;
+        padding: 8px 40px 8px 12px;
         background: var(--btn-bg);
         border: 1px solid var(--border-hr);
         border-radius: 12px;
         font-family: monospace;
         font-size: 0.9rem;
+    }
+
+    .nostrconnect-uri input {
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-family: inherit;
+        font-size: inherit;
         line-height: 1.4;
-        word-break: break-all;
-        box-sizing: border-box;
+        outline: none;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     :global(button.nostrconnect-copy-btn.circle.copy) {
         position: absolute;
-        right: 8px;
-        bottom: 8px;
+        right: 2px;
+        bottom: 2px;
         width: 34px;
         min-width: 34px;
         height: 34px;
