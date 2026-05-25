@@ -762,7 +762,26 @@
                                 class="nostrconnect-uri"
                                 data-testid="nostrconnect-uri"
                             >
-                                {nip46NostrConnectUri || ""}
+                                <span>{nip46NostrConnectUri || ""}</span>
+                                <Button
+                                    type="button"
+                                    variant="copy"
+                                    shape="circle"
+                                    contentLayout="icon"
+                                    onClick={handleCopyNostrConnectUri}
+                                    disabled={isNostrConnectPreparing ||
+                                        !nip46NostrConnectUri}
+                                    className="nostrconnect-copy-btn"
+                                    ariaLabel={hasCopiedNostrConnectUri
+                                        ? $_("loginDialog.nostrconnect_copied")
+                                        : $_("loginDialog.nostrconnect_copy")}
+                                    data-testid="nostrconnect-copy-button"
+                                >
+                                    <div
+                                        class="copy-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                </Button>
                             </div>
                         </div>
 
@@ -778,19 +797,6 @@
                         </div>
 
                         <div class="nostrconnect-code-actions">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={handleCopyNostrConnectUri}
-                                disabled={isNostrConnectPreparing ||
-                                    !nip46NostrConnectUri}
-                                className="nostrconnect-copy-btn"
-                                data-testid="nostrconnect-copy-button"
-                            >
-                                {hasCopiedNostrConnectUri
-                                    ? $_("loginDialog.nostrconnect_copied")
-                                    : $_("loginDialog.nostrconnect_copy")}
-                            </Button>
                             <Button
                                 type="button"
                                 variant="secondary"
@@ -1263,6 +1269,8 @@
         display: flex;
         flex-direction: column;
         gap: 6px;
+        position: relative;
+        min-height: 72px;
         padding: 10px;
         background: var(--btn-bg);
         border: 1px solid var(--border-hr);
@@ -1272,6 +1280,23 @@
         line-height: 1.4;
         word-break: break-all;
         box-sizing: border-box;
+    }
+
+    :global(button.nostrconnect-copy-btn.circle.copy) {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        z-index: 1;
+    }
+
+    :global(button.nostrconnect-copy-btn .copy-icon) {
+        width: 18px;
+        height: 18px;
+        mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .nostrconnect-status {
