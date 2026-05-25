@@ -1224,25 +1224,13 @@
     }
 
     :global(.remote-signer-tab) {
-        background: var(--btn-bg2);
+        background: var(--btn-bg);
+        --btn-bg: var(--btn-bg2);
         color: var(--text);
         padding: 12px 16px;
         font-size: 0.95rem;
         font-weight: 600;
         cursor: pointer;
-    }
-
-    :global(.remote-signer-tab[data-state="active"]) {
-        border-color: color-mix(
-            in srgb,
-            var(--accent-color, var(--text)) 45%,
-            var(--border-hr)
-        );
-        background: color-mix(
-            in srgb,
-            var(--btn-bg) 50%,
-            var(--bg-color, #ffffff)
-        );
     }
 
     .nostrconnect-qr-shell,

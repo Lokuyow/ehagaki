@@ -253,7 +253,8 @@ select {
   background-color: color-mix(in srgb, var(--btn-bg), black 18%);
 }
 
-:root.dark button.selected:where(:not(:disabled)) {
+:root.dark button.selected:where(:not(:disabled)),
+:root.dark button:where([data-state="active"]) {
   background-color: color-mix(in srgb, var(--btn-bg), white 22%);
 }
 
@@ -281,7 +282,8 @@ select {
     }
   }
 
-  :root.light button.selected:where(:hover:not(:disabled)) {
+  :root.light button.selected:where(:hover:not(:disabled)),
+  :root.light button:where([data-state="active"]:hover:not(:disabled)) {
     background-color: color-mix(in srgb, var(--btn-bg), black 20%);
     color: color-mix(in srgb, var(--text), black 20%);
 
@@ -290,7 +292,8 @@ select {
     }
   }
 
-  :root.dark button.selected:where(:hover:not(:disabled)) {
+  :root.dark button.selected:where(:hover:not(:disabled)),
+  :root.dark button:where([data-state="active"]):where(:hover:not(:disabled)) {
     background-color: color-mix(in srgb, var(--btn-bg), white 30%);
     color: color-mix(in srgb, var(--text), white 30%);
 
