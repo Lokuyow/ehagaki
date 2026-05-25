@@ -850,8 +850,12 @@
                                         />
                                         <Button
                                             type="button"
-                                            variant="secondary"
+                                            variant="close"
+                                            shape="circle"
                                             className="nostrconnect-remove-relay-btn"
+                                            ariaLabel={$_(
+                                                "loginDialog.nostrconnect_remove_relay",
+                                            )}
                                             onClick={() =>
                                                 removeNostrConnectRelayDraft(
                                                     index,
@@ -859,9 +863,10 @@
                                             disabled={nostrConnectRelayDrafts.length ===
                                                 1 && !relay.trim()}
                                         >
-                                            {$_(
-                                                "loginDialog.nostrconnect_remove_relay",
-                                            )}
+                                            <div
+                                                class="close-icon svg-icon"
+                                                aria-hidden="true"
+                                            ></div>
                                         </Button>
                                     </div>
                                 {/each}
@@ -1365,7 +1370,6 @@
     }
 
     @media (max-width: 600px) {
-        .nostrconnect-relay-row,
         .bunker-input-row,
         .secret-input-row {
             flex-direction: column;
