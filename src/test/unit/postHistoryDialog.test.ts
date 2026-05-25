@@ -579,6 +579,40 @@ function expectDefaultMediaReplacement(): void {
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
+function mockCachedImagePreviews(entries: Record<string, string>): void {
+    postMediaCacheServiceMock.getCachedMediaDescriptor.mockImplementation(async (url: string) => {
+        if (!(url in entries)) {
+            return null;
+        }
+
+        return {
+            cacheKey: url,
+            url,
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+        };
+    });
+
+    postMediaCacheServiceMock.createCachedMediaObjectUrl.mockImplementation(async (url: string) => {
+        const objectUrl = entries[url];
+        if (!objectUrl) {
+            return null;
+        }
+
+        return {
+            cacheKey: url,
+            url,
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+            objectUrl,
+        };
+    });
+}
+
 async function openPostHistoryMenu(): Promise<void> {
     const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
     await fireEvent.click(trigger);
@@ -1604,6 +1638,67 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
+    it('[thread-graph-parent-media] 返信先カードで既存メディア表示を再利用する', async () => {
+        const parentEventId = '2'.repeat(64);
+        const parentImageUrl = 'https://example.com/parent-related.jpg';
+        const post = createRecord({
+            eventId: '1'.repeat(64),
+            rawEvent: {
+                id: '1'.repeat(64),
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の返信',
+            tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+            media: [],
+        });
+        const parentEvent = {
+            id: parentEventId,
+            pubkey: 'd'.repeat(64),
+            kind: 1,
+            content: '他人の返信先\n' + parentImageUrl,
+            tags: [
+                ['imeta', `url ${parentImageUrl}`, 'm image/jpeg', 'alt 返信先画像'],
+            ],
+            created_at: 1_699_999_000,
+            sig: 'e'.repeat(128),
+        };
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockImplementation((_rxNostr: any, params: any) => ({
+            promise: Promise.resolve({
+                event: params.eventId === parentEventId ? parentEvent : null,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        }));
+        mockCachedImagePreviews({
+            [parentImageUrl]: 'blob:parent-related-image',
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('他人の返信先')).toBeTruthy();
+            expect(screen.getByAltText('返信先画像')).toBeTruthy();
+        });
+        expect(screen.queryByText(parentImageUrl)).toBeNull();
+    });
+
     it('[thread-graph-parent-scroll] 関連node内の返信先展開で起点nodeの表示位置を維持する', async () => {
         const parentEventId = '2'.repeat(64);
         const grandParentEventId = '5'.repeat(64);
@@ -1794,6 +1889,7 @@ describe('PostHistoryDialog', () => {
         const replyBEventId = '4'.repeat(64);
         const replyCEventId = '6'.repeat(64);
         const replyDEventId = '8'.repeat(64);
+        const replyImageUrl = 'https://example.com/reply-related.jpg';
         const post = createRecord({
             eventId: parentEventId,
             rawEvent: {
@@ -1818,7 +1914,10 @@ describe('PostHistoryDialog', () => {
                 pubkey: 'd'.repeat(64),
                 kind: 1,
                 content: '他人からの返信B',
-                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                tags: [
+                    ['e', parentEventId, 'wss://parent.example.com/', 'reply'],
+                    ['imeta', `url ${replyImageUrl}`, 'm image/jpeg', 'alt 返信画像'],
+                ],
                 created_at: 1_700_000_010,
                 sig: 'f'.repeat(128),
             },
@@ -1890,6 +1989,9 @@ describe('PostHistoryDialog', () => {
             }),
             cancel: vi.fn(),
         }));
+        mockCachedImagePreviews({
+            [replyImageUrl]: 'blob:reply-related-image',
+        });
 
         render(PostHistoryDialog, {
             props: {
@@ -1905,7 +2007,9 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('他人からの返信B')).toBeTruthy();
             expect(screen.getByText('子返信なしD')).toBeTruthy();
+            expect(screen.getByAltText('返信画像')).toBeTruthy();
         });
+        expect(screen.queryByText(replyImageUrl)).toBeNull();
         expect(screen.queryByRole('button', { name: '返信先を見る' })).toBeNull();
         await waitFor(() => {
             expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();

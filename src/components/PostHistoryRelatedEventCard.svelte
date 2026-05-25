@@ -1,14 +1,28 @@
 <script lang="ts">
     import { nip19 } from "nostr-tools";
     import type { Snippet } from "svelte";
-    import type { NostrEvent, ProfileData } from "../lib/types";
-    import { sanitizePlainText } from "../lib/utils/domSanitizer";
+    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import {
+        buildPreviewContent,
+        formatPostedAt,
+    } from "../lib/postHistoryDialogUtils";
+    import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
+    import type {
+        FullscreenMediaItem,
+        NostrEvent,
+        ProfileData,
+    } from "../lib/types";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
-    import { formatPostedAt } from "../lib/postHistoryDialogUtils";
 
     interface Props {
         event: NostrEvent;
         profile?: ProfileData | null;
+        media?: PostHistoryMediaRecord[];
+        scrollRoot?: HTMLElement | null;
+        onImageOpen?: (params: {
+            index: number;
+            mediaList: FullscreenMediaItem[];
+        }) => void;
         showHeaderDate?: boolean;
         topActions?: Snippet;
         children?: Snippet;
@@ -17,6 +31,9 @@
     let {
         event,
         profile = null,
+        media = [],
+        scrollRoot = null,
+        onImageOpen = undefined,
         showHeaderDate = true,
         topActions = undefined,
         children = undefined,
@@ -31,7 +48,26 @@
 
         return shortenMiddle(nip19.npubEncode(event.pubkey), 12, 4);
     });
-    let content = $derived(sanitizePlainText(event.content));
+    let content = $derived.by(() =>
+        buildPreviewContent({
+            content: event.content,
+            tags: event.tags,
+            media,
+        })
+            .segments.map((segment) => {
+                if (segment.type === "text") {
+                    return segment.text;
+                }
+
+                if (segment.type === "emoji") {
+                    return segment.rawShortcodeText;
+                }
+
+                return "";
+            })
+            .join(""),
+    );
+    let hasContent = $derived(content.trim().length > 0);
     let postedAt = $derived(formatPostedAt(event.created_at * 1000));
 </script>
 
@@ -58,8 +94,13 @@
             {/if}
             <span class="post-history-related-author-name">{authorName}</span>
         </div>
-        {#if content}
+        {#if hasContent}
             <p class="post-history-related-content">{content}</p>
+        {/if}
+        {#if media.length > 0}
+            <div class="post-history-related-media">
+                <PostHistoryMediaList {media} {scrollRoot} {onImageOpen} />
+            </div>
         {/if}
         {@render children?.()}
     </div>
@@ -130,5 +171,10 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         line-height: 1.45;
+    }
+
+    .post-history-related-media {
+        display: block;
+        margin-top: 6px;
     }
 </style>

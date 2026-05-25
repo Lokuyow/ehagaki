@@ -6,10 +6,16 @@
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphAnchorState;
         section: "parent" | "children";
+        scrollRoot?: HTMLElement | null;
+        onImageOpen?: (params: {
+            index: number;
+            mediaList: FullscreenMediaItem[];
+        }) => void;
         onToggleParent?: () => void;
         onRetryParent?: () => void;
         onToggleNodeParent?: (nodeEventId: string) => void;
@@ -21,6 +27,8 @@
     let {
         state,
         section,
+        scrollRoot = null,
+        onImageOpen = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleNodeParent = undefined,
@@ -29,8 +37,7 @@
         onRetryNodeChildren = undefined,
     }: Props = $props();
 
-    const directParentIndent =
-        `${resolvePostHistoryThreadContextIndentRem(-1)}rem`;
+    const directParentIndent = `${resolvePostHistoryThreadContextIndentRem(-1)}rem`;
 </script>
 
 {#if section === "parent" && state.parentTargetId}
@@ -41,6 +48,8 @@
         {#if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
+                {scrollRoot}
+                {onImageOpen}
                 onToggleParent={onToggleNodeParent}
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
@@ -48,18 +57,28 @@
             />
         {:else if state.parentExpansion.visibleParent && state.parentNode}
             <div class="post-history-thread-direct-parent-context">
-                <PostHistoryThreadNode node={state.parentNode} />
+                <PostHistoryThreadNode
+                    node={state.parentNode}
+                    {scrollRoot}
+                    {onImageOpen}
+                />
             </div>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
-            <span class="post-history-context-deleted-label post-history-thread-direct-parent-context">
+            <span
+                class="post-history-context-deleted-label post-history-thread-direct-parent-context"
+            >
                 {$_("postHistory.replyTargetDeleted")}
             </span>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentMissing}
-            <p class="post-history-context-message post-history-thread-direct-parent-context">
+            <p
+                class="post-history-context-message post-history-thread-direct-parent-context"
+            >
                 {$_("postHistory.contextNotFound")}
             </p>
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentError}
-            <p class="post-history-context-message post-history-context-error post-history-thread-direct-parent-context">
+            <p
+                class="post-history-context-message post-history-context-error post-history-thread-direct-parent-context"
+            >
                 {$_("postHistory.contextFetchFailed")}
             </p>
             <Button
@@ -98,6 +117,8 @@
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
+                    {scrollRoot}
+                    {onImageOpen}
                     onToggleParent={onToggleNodeParent}
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}

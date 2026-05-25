@@ -1,9 +1,9 @@
 import {
-    extractPostHistoryMedia,
     postHistoryRepository,
     type PostHistoryRepository,
     type PostHistorySaveInput,
 } from './storage/postHistoryRepository';
+import { extractPostHistoryMedia } from './postHistoryMediaUtils';
 import {
     postMediaCacheRepository,
     type PostMediaCacheRepository,

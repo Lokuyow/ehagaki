@@ -8,9 +8,15 @@
     import { formatPostedAt } from "../lib/postHistoryDialogUtils";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphNodeState;
+        scrollRoot?: HTMLElement | null;
+        onImageOpen?: (params: {
+            index: number;
+            mediaList: FullscreenMediaItem[];
+        }) => void;
         onToggleParent?: (nodeEventId: string) => void;
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
@@ -19,6 +25,8 @@
 
     let {
         state,
+        scrollRoot = null,
+        onImageOpen = undefined,
         onToggleParent = undefined,
         onRetryParent = undefined,
         onToggleChildren = undefined,
@@ -81,6 +89,8 @@
             {#if state.parentExpansion.visibleParent && state.parentNodeState}
                 <PostHistoryThreadGraphNodeView
                     state={state.parentNodeState}
+                    {scrollRoot}
+                    {onImageOpen}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}
@@ -116,7 +126,12 @@
         data-post-history-thread-anchor-scope-id={state.anchorEventId}
         data-post-history-thread-anchor-event-id={state.node.eventId}
     >
-        <PostHistoryThreadNode node={state.node} showHeaderDate={false}>
+        <PostHistoryThreadNode
+            node={state.node}
+            {scrollRoot}
+            {onImageOpen}
+            showHeaderDate={false}
+        >
             {#snippet topActions()}
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
@@ -133,7 +148,8 @@
                                 : $_("postHistory.showReplyTarget")}
                             selected={state.parentExpansion.visibleParent}
                             loading={state.parentExpansion.visibleParent &&
-                                state.parentExpansion.showParentLoadingIndicator}
+                                state.parentExpansion
+                                    .showParentLoadingIndicator}
                             onClick={() => onToggleParent?.(state.node.eventId)}
                         />
                     </div>
@@ -156,6 +172,8 @@
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
+                    {scrollRoot}
+                    {onImageOpen}
                     {onToggleParent}
                     {onRetryParent}
                     {onToggleChildren}

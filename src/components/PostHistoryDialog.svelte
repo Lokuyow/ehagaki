@@ -892,17 +892,21 @@
     }
 
     function getLoadOlderLabel(): string {
-        return $_(resolvePostHistoryNavigationLabelKey({
-            direction: "older",
-            isSearchMode: history.isSearchMode,
-        }));
+        return $_(
+            resolvePostHistoryNavigationLabelKey({
+                direction: "older",
+                isSearchMode: history.isSearchMode,
+            }),
+        );
     }
 
     function getLoadNewerLabel(): string {
-        return $_(resolvePostHistoryNavigationLabelKey({
-            direction: "newer",
-            isSearchMode: history.isSearchMode,
-        }));
+        return $_(
+            resolvePostHistoryNavigationLabelKey({
+                direction: "newer",
+                isSearchMode: history.isSearchMode,
+            }),
+        );
     }
 
     async function handleLoadOlder(): Promise<void> {
@@ -1291,9 +1295,11 @@
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
-        return translateDialogMessage(
-            resolvePostHistoryRepliesActionLabelState(state),
-        ) ?? "";
+        return (
+            translateDialogMessage(
+                resolvePostHistoryRepliesActionLabelState(state),
+            ) ?? ""
+        );
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
@@ -1914,6 +1920,8 @@
                                 <PostHistoryThreadGraphPanel
                                     state={graphState}
                                     section="parent"
+                                    scrollRoot={historyContainer}
+                                    onImageOpen={handleImageOpen}
                                     onToggleParent={() =>
                                         preserveThreadParentToggleScroll(
                                             post.eventId,
@@ -2200,6 +2208,8 @@
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
+                                        scrollRoot={historyContainer}
+                                        onImageOpen={handleImageOpen}
                                         onToggleNodeParent={(nodeEventId) =>
                                             preserveThreadParentToggleScroll(
                                                 post.eventId,
