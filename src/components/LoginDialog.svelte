@@ -533,9 +533,9 @@
         }, NOSTRCONNECT_DIRECT_OPEN_HINT_DELAY_MS);
     }
 
-    async function handleCopyNostrConnectUri() {
+    async function handleCopyNostrConnectUri(): Promise<boolean> {
         if (!nip46NostrConnectUri) {
-            return;
+            return false;
         }
 
         const copied = await tryCopyToClipboard(
@@ -543,6 +543,7 @@
             "nostrconnect",
         );
         hasCopiedNostrConnectUri = copied;
+        return copied;
     }
 
     function handleNostrConnectCancel() {
@@ -769,6 +770,7 @@
                                     shape="circle"
                                     contentLayout="icon"
                                     onClick={handleCopyNostrConnectUri}
+                                    floatingMessage={$_("common.copySuccess")}
                                     disabled={isNostrConnectPreparing ||
                                         !nip46NostrConnectUri}
                                     className="nostrconnect-copy-btn"

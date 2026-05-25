@@ -16,7 +16,8 @@
   },
   "common": {
     "ok": "OK",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "copySuccess": "Copied"
   },
   "welcomeDialog": {
     "title": "Welcome to eHagaki",

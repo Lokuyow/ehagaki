@@ -979,6 +979,9 @@ describe('PostHistoryMediaList', () => {
             navigator,
             window,
         );
+        await waitFor(() => {
+            expect(screen.getByText('URLをコピーしました')).toBeTruthy();
+        });
         expect(onImageOpen).not.toHaveBeenCalled();
     });
 

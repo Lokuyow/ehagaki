@@ -147,6 +147,12 @@
         return $_(`${namespace}.copyUrl`);
     }
 
+    function getCopyButtonFloatingMessage(
+        kind: PostHistoryDisplayMediaKind,
+    ): string {
+        return $_(`${getCopyKey(kind)}.copySuccess`);
+    }
+
     function getImageSurfaceAriaLabel(item: {
         url: string;
         alt?: string;
@@ -325,7 +331,7 @@
     async function handleCopyUrl(
         item: DisplayMediaItem,
         event: MouseEvent,
-    ): Promise<void> {
+    ): Promise<boolean> {
         event.stopPropagation();
         event.preventDefault();
 
@@ -347,6 +353,8 @@
                 [item.url]: undefined,
             };
         }, 1800);
+
+        return copied;
     }
 
     function handleRetry(item: DisplayMediaItem): void {
@@ -478,7 +486,8 @@
         className={`post-history-media-copy-button ${className}`}
         ariaLabel={getCopyButtonLabel(item.kind, item.url)}
         title={getCopyButtonLabel(item.kind, item.url)}
-        onClick={(event) => void handleCopyUrl(item, event)}
+        onClick={(event) => handleCopyUrl(item, event)}
+        floatingMessage={getCopyButtonFloatingMessage(item.kind)}
     >
         <div class="copy-icon svg-icon"></div>
     </Button>

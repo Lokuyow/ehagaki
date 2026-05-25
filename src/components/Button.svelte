@@ -1,5 +1,7 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import type { HTMLButtonAttributes } from "svelte/elements";
+    import FloatingMessage from "./FloatingMessage.svelte";
 
     interface Props extends HTMLButtonAttributes {
         className?: string;
@@ -20,8 +22,10 @@
         shape?: "square" | "rounded" | "pill" | "circle";
         contentLayout?: "text" | "icon" | "iconText";
         children?: import("svelte").Snippet;
-        onClick?: (event: MouseEvent) => void;
+        onClick?: (event: MouseEvent) => unknown | Promise<unknown>;
         selected?: boolean;
+        floatingMessage?: string;
+        floatingMessageDuration?: number;
     }
 
     let {
@@ -37,8 +41,15 @@
         children,
         onClick = undefined,
         selected = false,
+        floatingMessage = "",
+        floatingMessageDuration = 1800,
         ...restProps
     }: Props = $props();
+
+    let showFloatingMessage = $state(false);
+    let floatingMessageX = $state(0);
+    let floatingMessageY = $state(0);
+    let floatingMessageTimeout: ReturnType<typeof setTimeout> | undefined;
 
     let variantClass = $derived(variant ?? "");
     let contentLayoutClass = $derived(
@@ -47,9 +58,59 @@
     let computedClassName = $derived(`${classAttr} ${className}`.trim());
     let shapeClass = $derived(shape ?? "");
 
-    function handleClick(event: MouseEvent) {
-        if (onClick) onClick(event);
+    function clearFloatingMessageTimeout() {
+        if (floatingMessageTimeout !== undefined) {
+            clearTimeout(floatingMessageTimeout);
+            floatingMessageTimeout = undefined;
+        }
     }
+
+    function resolveFloatingMessagePosition(event: MouseEvent): {
+        x: number;
+        y: number;
+    } {
+        if (event.detail !== 0) {
+            return {
+                x: event.clientX,
+                y: event.clientY,
+            };
+        }
+
+        const rect = (
+            event.currentTarget as HTMLElement
+        ).getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.bottom + 8,
+        };
+    }
+
+    function showClickFloatingMessage(position: { x: number; y: number }) {
+        if (!floatingMessage) {
+            return;
+        }
+
+        clearFloatingMessageTimeout();
+        floatingMessageX = position.x;
+        floatingMessageY = position.y;
+        showFloatingMessage = true;
+        floatingMessageTimeout = setTimeout(() => {
+            showFloatingMessage = false;
+            floatingMessageTimeout = undefined;
+        }, floatingMessageDuration);
+    }
+
+    async function handleClick(event: MouseEvent) {
+        const floatingMessagePosition = floatingMessage
+            ? resolveFloatingMessagePosition(event)
+            : null;
+        const result = onClick ? await onClick(event) : undefined;
+        if (result !== false && floatingMessagePosition) {
+            showClickFloatingMessage(floatingMessagePosition);
+        }
+    }
+
+    onDestroy(clearFloatingMessageTimeout);
 </script>
 
 <button
@@ -63,6 +124,14 @@
 >
     {@render children?.()}
 </button>
+
+<FloatingMessage
+    show={showFloatingMessage}
+    x={floatingMessageX}
+    y={floatingMessageY}
+>
+    <div>{floatingMessage}</div>
+</FloatingMessage>
 
 <style>
     button {

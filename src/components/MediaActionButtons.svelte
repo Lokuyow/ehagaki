@@ -1,7 +1,6 @@
 <script lang="ts">
     import Button from "./Button.svelte";
-    import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { postComponentUIStore } from "../stores/postUIStore.svelte";
+    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
 
     interface Props {
         src: string;
@@ -27,14 +26,9 @@
         layout = "editor-image",
     }: Props = $props();
 
-    function handleCopy(event: MouseEvent) {
+    async function handleCopy(event: MouseEvent): Promise<boolean> {
         event.stopPropagation();
-        copyToClipboard(src, "URL");
-        postComponentUIStore.showFloatingMessage(
-            event.clientX,
-            event.clientY,
-            copySuccessMessage,
-        );
+        return tryCopyToClipboard(src, "URL", navigator, window);
     }
 
     function handleDelete(event: MouseEvent) {
@@ -49,6 +43,7 @@
     className="media-copy-btn media-copy-btn--{layout}"
     ariaLabel={copyAriaLabel}
     onClick={handleCopy}
+    floatingMessage={copySuccessMessage}
 >
     <div class="copy-icon svg-icon"></div>
 </Button>

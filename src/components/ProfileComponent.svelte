@@ -1,15 +1,12 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { onDestroy } from "svelte";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
-    import FloatingMessage from "./FloatingMessage.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
     import { authState } from "../stores/authStore.svelte";
-    import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
+    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import type { StoredAccount } from "../lib/types";
     import { toNpub } from "../lib/utils/nostrUtils";
@@ -76,21 +73,6 @@
     // ログアウト中の場合、プロフィールデータを保持して表示を維持
     let displayedProfile = $state(profileDataStore.value);
 
-    // コピー成功メッセージの状態
-    let showCopyMessage = $state(false);
-    let copyMessageX = $state(0);
-    let copyMessageY = $state(0);
-    let copyMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    function clearCopyMessageTimeout() {
-        if (copyMessageTimeoutId !== undefined) {
-            clearTimeout(copyMessageTimeoutId);
-            copyMessageTimeoutId = undefined;
-        }
-    }
-
-    onDestroy(clearCopyMessageTimeout);
-
     $effect(() => {
         // ログアウト中でない場合のみ、プロフィールデータを更新
         if (!isLoggingOut && profile) {
@@ -112,26 +94,8 @@
         void onCheckNip46Connection?.(pubkeyHex);
     }
 
-    async function handleCopy(text: string, type: string, event: MouseEvent) {
-        try {
-            await copyToClipboard(text, type, navigator, window);
-            clearCopyMessageTimeout();
-            // コピー成功時にメッセージを表示
-            const pos = calculateContextMenuPosition(
-                event.clientX,
-                event.clientY,
-            );
-            copyMessageX = pos.x;
-            copyMessageY = pos.y;
-            showCopyMessage = true;
-            // 1.8秒後に自動で消す
-            copyMessageTimeoutId = setTimeout(() => {
-                showCopyMessage = false;
-                copyMessageTimeoutId = undefined;
-            }, 1800);
-        } catch (error) {
-            console.warn("Copy failed:", error);
-        }
+    async function handleCopy(text: string, type: string): Promise<boolean> {
+        return tryCopyToClipboard(text, type, navigator, window);
     }
 </script>
 
@@ -181,13 +145,13 @@
                                 <Button
                                     shape="square"
                                     className="copy-button"
-                                    onClick={(event) =>
+                                    onClick={() =>
                                         handleCopy(
                                             displayedProfile.npub!,
                                             "npub",
-                                            event,
                                         )}
                                     ariaLabel={$_("profileDialog.copy_npub")}
+                                    floatingMessage={$_("common.copySuccess")}
                                 >
                                     <div
                                         class="copy-icon svg-icon"
@@ -207,15 +171,15 @@
                                 >
                                 <Button
                                     className="copy-button"
-                                    onClick={(event) =>
+                                    onClick={() =>
                                         handleCopy(
                                             displayedProfile.nprofile!,
                                             "nprofile",
-                                            event,
                                         )}
                                     ariaLabel={$_(
                                         "profileDialog.copy_nprofile",
                                     )}
+                                    floatingMessage={$_("common.copySuccess")}
                                 >
                                     <div
                                         class="copy-icon svg-icon"
@@ -421,10 +385,6 @@
         </Dialog.Close>
     {/snippet}
 </DialogWrapper>
-
-<FloatingMessage show={showCopyMessage} x={copyMessageX} y={copyMessageY}>
-    <div>{$_("profileDialog.copy_success")}</div>
-</FloatingMessage>
 
 <style>
     .xmark-icon {

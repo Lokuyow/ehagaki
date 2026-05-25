@@ -16,7 +16,8 @@
   },
   "common": {
     "ok": "OK",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "copySuccess": "コピーしました"
   },
   "welcomeDialog": {
     "title": "eHagaki へようこそ",

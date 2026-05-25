@@ -42,6 +42,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_idle': '接続待機は停止しています。',
         'loginDialog.nostrconnect_copy': '接続 URI をコピー',
         'loginDialog.nostrconnect_copied': '接続 URI をコピーしました',
+        'common.copySuccess': 'コピーしました',
         'loginDialog.nostrconnect_open': 'この端末のリモートサイナーを開く',
         'loginDialog.nostrconnect_direct_open_hint': 'リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。',
         'loginDialog.nostrconnect_edit_relays': '接続 relay を変更',
@@ -515,6 +516,9 @@ describe('LoginDialog', () => {
 
         await fireEvent.click(screen.getByTestId('nostrconnect-copy-button'));
         expect(tryCopyToClipboard).toHaveBeenCalledWith(uri, 'nostrconnect');
+        await waitFor(() => {
+            expect(screen.getByText('コピーしました')).toBeTruthy();
+        });
 
         await fireEvent.click(screen.getByTestId('nostrconnect-open-button'));
         expect(assign).toHaveBeenCalledWith(uri);

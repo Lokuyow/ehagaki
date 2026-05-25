@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { locale, waitLocale } from 'svelte-i18n';
 
+const clipboardMock = vi.hoisted(() => ({
+    tryCopyToClipboard: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
+
 import '../../i18n';
 import ProfileComponent from '../../components/ProfileComponent.svelte';
 import { authState } from '../../stores/authStore.svelte';
@@ -96,5 +102,25 @@ describe('ProfileComponent', () => {
         expect(
             screen.getByRole('button', { name: 'リモートサイナー接続確認' }).hasAttribute('disabled'),
         ).toBe(true);
+    });
+
+    it('npub コピーボタンで共通のコピー通知を表示する', async () => {
+        render(ProfileComponent, {
+            show: true,
+            onClose: vi.fn(),
+            onLogout: vi.fn(),
+            accounts: createAccounts(),
+            accountProfiles: new Map(),
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'npubをコピー' }));
+
+        expect(clipboardMock.tryCopyToClipboard).toHaveBeenCalledWith(
+            'npub1testprofile',
+            'npub',
+            navigator,
+            window,
+        );
+        expect(screen.getByText('コピーしました')).toBeTruthy();
     });
 });
