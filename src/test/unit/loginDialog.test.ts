@@ -47,7 +47,6 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_add_relay': 'relay を追加',
         'loginDialog.nostrconnect_remove_relay': 'relay を削除',
         'loginDialog.nostrconnect_reset_relays': '初期値に戻す',
-        'loginDialog.nostrconnect_cancel_waiting': '接続をキャンセル',
         'loginDialog.nostrconnect_timeout': 'リモートサイナーからの接続が時間内に完了しませんでした',
         'loginDialog.nostrconnect_relay_reconciliation_failed': '接続後の final relay を確定できませんでした',
         'loginDialog.nostrconnect_no_usable_final_relay': 'リモートサイナーが利用可能な接続 relay を返しませんでした。ブラウザから接続するには、リモートサイナー側の NIP-46 relay 設定に wss:// relay、または同じ端末内で利用できる local relay が必要です。',
@@ -329,7 +328,7 @@ describe('LoginDialog', () => {
         });
 
         expect(screen.getByText('リモートサイナー')).toBeTruthy();
-        expect(screen.getByText(uri)).toBeTruthy();
+        expect(screen.getByDisplayValue(uri)).toBeTruthy();
         await waitFor(() => {
             expect(
                 screen
@@ -482,7 +481,6 @@ describe('LoginDialog', () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
-        const onNostrConnectCancel = vi.fn();
         const assign = vi.fn();
         vi.stubGlobal('location', { assign });
         const { tryCopyToClipboard } = await import('../../lib/utils/clipboardUtils');
@@ -492,7 +490,6 @@ describe('LoginDialog', () => {
             props: {
                 ...defaultProps,
                 onNostrConnectStart,
-                onNostrConnectCancel,
                 isPreparingNip46NostrConnect: false,
                 isWaitingNip46NostrConnect: true,
                 nip46NostrConnectUri: uri,
@@ -503,7 +500,7 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
-        expect(screen.getByText(uri)).toBeTruthy();
+        expect(screen.getByDisplayValue(uri)).toBeTruthy();
         expect(new URL(uri).searchParams.get('name')).toBe('eHagaki');
         expect(
             screen
@@ -520,9 +517,6 @@ describe('LoginDialog', () => {
 
         await fireEvent.click(screen.getByTestId('nostrconnect-open-button'));
         expect(assign).toHaveBeenCalledWith(uri);
-
-        await fireEvent.click(screen.getByText('接続をキャンセル'));
-        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
         expect(screen.getByTestId('nostrconnect-copy-button')).toBeTruthy();
     });
 

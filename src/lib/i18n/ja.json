@@ -3,16 +3,7 @@
     "login": "ログイン"
   },
   "global": {
-    "close": "閉じる",
-    "error_saving": "鍵の保存中にエラーが発生しました",
-    "key_not_found": "鍵が見つかりません",
-    "login_required": "ログインしてください",
-    "nostr_not_ready": "Nostrに接続できていません",
-    "preview": "プレビュー",
-    "profile": "プロフィール",
-    "service_worker_error": "Service Workerでエラーが発生しました",
-    "shared_media_failed": "共有メディアの取得に失敗しました",
-    "upload_destination_settings": "アップロード先設定"
+    "close": "閉じる"
   },
   "common": {
     "ok": "OK",
@@ -29,7 +20,6 @@
     "input_secret": "秘密鍵",
     "hint_input_secret": "nsec1から始まる秘密鍵を入力",
     "save": "保存",
-    "clear": "クリア",
     "login_with_parent_client": "親クライアント連携",
     "parent_client_hint": "親ページ側でログインを許可すると接続します",
     "parent_client_not_available": "親クライアント連携はこの埋め込みでは利用できません",
@@ -42,14 +32,12 @@
     "login_with_extension": "ブラウザ拡張機能",
     "extension_login_failed": "ブラウザ拡張機能でのログインに失敗しました",
     "extension_not_found": "NIP-07対応の拡張機能が見つかりません",
-    "secret_required": "秘密鍵を入力してください",
     "secret_key_required": "秘密鍵を入力してください",
     "secret_must_start_nsec1": "秘密鍵は「nsec1」で始まる必要があります",
     "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
     "secret_too_long": "秘密鍵が長すぎます（63文字以内で入力してください）",
     "invalid_secret": "無効な秘密鍵です",
     "bunker_connect": "接続",
-    "bunker_connecting": "接続中...",
     "bunker_input_title": "バンカーURLを入力",
     "bunker_url_required": "バンカーURLを入力してください",
     "bunker_invalid": "無効なbunker URLです",
@@ -79,7 +67,6 @@
     "nostrconnect_add_relay": "relay を追加",
     "nostrconnect_remove_relay": "relay を削除",
     "nostrconnect_reset_relays": "初期値に戻す",
-    "nostrconnect_cancel_waiting": "接続をキャンセル",
     "nostrconnect_timeout": "リモートサイナーからの接続が時間内に完了しませんでした",
     "nostrconnect_relay_reconciliation_failed": "接続後の final relay を確定できませんでした",
     "nostrconnect_no_usable_final_relay": "リモートサイナーが利用可能な接続 relay を返しませんでした。ブラウザから接続するには、リモートサイナー側の NIP-46 relay 設定に wss:// relay、または同じ端末内で利用できる local relay が必要です。",
@@ -90,8 +77,6 @@
     "add_account_hint": "追加するアカウントでログイン"
   },
   "logoutDialog": {
-    "logout_confirmation": "ログアウト確認",
-    "logout_warning": "本当にログアウトしますか？",
     "last_account_reset_confirmation": "全てのアカウントをログアウト",
     "last_account_reset_warning": "全てのアカウントをログアウトすると、eHagaki が保存した認証情報、アカウント情報、プロフィール、リレー、絵文字、下書き、共有メディア、関連画像キャッシュを削除します。",
     "last_account_reset_error": "削除に失敗しました。時間をおいてもう一度お試しください。",
@@ -104,14 +89,12 @@
     "npub": "公開鍵",
     "copy_npub": "npubをコピー",
     "copy_nprofile": "nprofileをコピー",
-    "login_method": "ログイン方法",
     "login_method_nsec": "秘密鍵",
     "login_method_nip07": "ブラウザ拡張（NIP-07）",
     "login_method_nip46": "リモート署名（NIP-46）",
     "login_method_parent_client": "親クライアント連携",
     "accounts": "アカウント",
     "add_account": "アカウントを追加",
-    "switch_account": "切替",
     "active": "使用中",
     "logout_account": "ログアウト",
     "nip46_connection_title": "NIP-46 接続",
@@ -120,8 +103,7 @@
     "nip46_connection_checking": "リモートサイナーとの接続を確認中...",
     "nip46_connection_auto_recovering": "バックグラウンド復帰後の接続確認を実行中です。完了後に再試行してください。",
     "nip46_connection_success": "リモートサイナーに接続できます。以後は長時間バックグラウンド復帰時に自動確認を試みます。",
-    "nip46_connection_failed": "リモートサイナーの応答を確認できませんでした。リモートサイナー側の確認操作、接続状態、またはアプリの起動状態を確認してから再試行してください。",
-    "copy_success": "コピーしました"
+    "nip46_connection_failed": "リモートサイナーの応答を確認できませんでした。リモートサイナー側の確認操作、接続状態、またはアプリの起動状態を確認してから再試行してください。"
   },
   "postHistory": {
     "open": "投稿履歴を開く",
@@ -216,7 +198,6 @@
     "mediaNotCached": "未キャッシュ",
     "mediaFetchAndCache": "再取得して保存",
     "mediaOpen": "開く",
-    "mediaLoadCachedVideo": "動画を表示",
     "mediaLoading": "読み込み中...",
     "mediaLoadFailed": "読み込みに失敗しました",
     "expand": "もっと見る",
@@ -247,7 +228,6 @@
     "uploadDestinationDelete": "削除",
     "uploadDestinationPreset": "プリセット",
     "uploadDestinationProtocol": "Protocol",
-    "uploadDestinationName": "名前",
     "uploadDestinationEnabled": "有効",
     "uploadDestinationSave": "保存",
     "uploadDestinationAdd": "追加",
@@ -297,12 +277,10 @@
   "postComponent": {
     "enter_your_text": "いまどうしてる？",
     "post": "投稿",
-    "posting": "投稿中",
     "cancel": "キャンセル",
     "clear_editor": "エディターをクリア",
     "upload_image": "メディアアップロード",
     "upload_failed": "アップロードに失敗しました",
-    "only_images_allowed": "画像ファイルのみアップロード可能です",
     "content_warning_reason_label": "Content Warning理由",
     "content_warning_reason_placeholder": "センシティブコンテンツ：理由を入力...",
     "warning": "警告",
@@ -310,14 +288,12 @@
   },
   "imageContextMenu": {
     "delete": "削除",
-    "fullscreen": "全画面表示",
     "copyUrl": "URLをコピー",
     "copySuccess": "URLをコピーしました",
     "copyFailed": "コピーに失敗しました"
   },
   "videoContextMenu": {
     "delete": "削除",
-    "playPause": "再生/停止",
     "copyUrl": "URLをコピー",
     "copySuccess": "URLをコピーしました",
     "copyFailed": "コピーに失敗しました"
@@ -367,18 +343,11 @@
     "aborted": "中止",
     "data_size": "送信サイズ",
     "no_compression": "圧縮なし",
-    "video_compressing": "動画圧縮中",
     "videoQualityLevel": {
       "high": "高",
       "medium": "中",
       "low": "低"
-    },
-    "shared_media_error": "共有メディアエラー",
-    "processing_error": "共有メディアの処理中にエラーが発生しました",
-    "no_image": "共有メディアが見つかりませんでした",
-    "upload_failed": "メディアのアップロードに失敗しました",
-    "network_error": "ネットワークエラーが発生しました",
-    "client_error": "画像共有処理でエラーが発生しました"
+    }
   },
   "loadingPlaceholder": {
     "loading": "読み込み中..."
@@ -407,13 +376,11 @@
     }
   },
   "channelComposer": {
-    "header_label": "選択中のチャンネル",
     "selected_label": "チャンネル",
     "expand": "チャンネル情報を展開",
     "collapse": "チャンネル情報を折りたたむ",
     "clear": "チャンネル選択を解除",
     "loading": "チャンネル情報を読み込み中...",
-    "event_label": "チャンネルイベント",
     "relays_label": "リレー"
   },
   "balloonMessage": {

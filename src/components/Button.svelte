@@ -194,7 +194,8 @@
         }
     }
 
-    .secondary {
+    :global(html body :where(.secondary)) {
+        padding: 8px 12px 8px 12px;
         border: 1px solid var(--btn-border);
         --btn-bg: white;
         --text: var(--text-black);

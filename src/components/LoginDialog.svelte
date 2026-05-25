@@ -544,11 +544,6 @@
         return copied;
     }
 
-    function handleNostrConnectCancel() {
-        cleanupNostrConnectDirectOpenHint();
-        onNostrConnectCancel?.();
-    }
-
     let resolvedRemoteNostrConnectErrorMessage = $derived(
         nip46NostrConnectErrorMessage
             ? resolveNostrConnectErrorMessage(nip46NostrConnectErrorMessage)
@@ -794,20 +789,6 @@
                                 : isWaitingNip46NostrConnect
                                   ? $_("loginDialog.nostrconnect_waiting")
                                   : $_("loginDialog.nostrconnect_idle")}
-                        </div>
-
-                        <div class="nostrconnect-code-actions">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={handleNostrConnectCancel}
-                                disabled={!isNostrConnectPreparing &&
-                                    !isWaitingNip46NostrConnect &&
-                                    !nip46NostrConnectUri}
-                                className="nostrconnect-cancel-btn"
-                            >
-                                {$_("loginDialog.nostrconnect_cancel_waiting")}
-                            </Button>
                         </div>
 
                         <div class="nostrconnect-relay-settings">
@@ -1311,7 +1292,6 @@
         margin: 0;
     }
 
-    .nostrconnect-code-actions,
     .nostrconnect-relay-editor-actions {
         display: flex;
         flex-wrap: wrap;
