@@ -307,6 +307,37 @@
                                             )}
                                         </InfoPopoverButton>
                                     </div>
+                                    <Button
+                                        className="nip46-connection-button"
+                                        variant="secondary"
+                                        shape="rounded"
+                                        disabled={isLoggingOut ||
+                                            isSwitchingAccount ||
+                                            nip46ConnectionOperationState !==
+                                                "idle"}
+                                        onClick={() =>
+                                            handleCheckNip46Connection(
+                                                account.pubkeyHex,
+                                            )}
+                                        ariaLabel={$_(
+                                            "profileDialog.nip46_connection_check",
+                                        )}
+                                    >
+                                        <div
+                                            class="network-ping-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>
+                                            {nip46ConnectionOperationState ===
+                                            "manual-check"
+                                                ? $_(
+                                                      "profileDialog.nip46_connection_checking",
+                                                  )
+                                                : $_(
+                                                      "profileDialog.nip46_connection_check",
+                                                  )}
+                                        </span>
+                                    </Button>
                                     {#if nip46ConnectionOperationState === "auto-recovery"}
                                         <div
                                             class="nip46-connection-status info"
@@ -332,33 +363,6 @@
                                             )}
                                         </div>
                                     {/if}
-                                    <Button
-                                        className="nip46-connection-button"
-                                        variant="secondary"
-                                        shape="rounded"
-                                        disabled={isLoggingOut ||
-                                            isSwitchingAccount ||
-                                            nip46ConnectionOperationState !==
-                                                "idle"}
-                                        onClick={() =>
-                                            handleCheckNip46Connection(
-                                                account.pubkeyHex,
-                                            )}
-                                        ariaLabel={$_(
-                                            "profileDialog.nip46_connection_check",
-                                        )}
-                                    >
-                                        <span>
-                                            {nip46ConnectionOperationState ===
-                                            "manual-check"
-                                                ? $_(
-                                                      "profileDialog.nip46_connection_checking",
-                                                  )
-                                                : $_(
-                                                      "profileDialog.nip46_connection_check",
-                                                  )}
-                                        </span>
-                                    </Button>
                                 </div>
                             {/if}
                         </div>
@@ -674,8 +678,8 @@
         .nip46-connection-panel {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            padding: 12px;
+            gap: 6px;
+            padding: 8px;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: color-mix(in srgb, var(--btn-bg), transparent 18%);
@@ -684,17 +688,17 @@
         .nip46-connection-title-row {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 2px;
         }
 
         .nip46-connection-title {
-            font-size: 0.875rem;
+            font-size: 1rem;
             font-weight: 600;
             color: var(--text);
         }
 
         .nip46-connection-status {
-            font-size: 0.8125rem;
+            font-size: 0.875rem;
             line-height: 1.4;
         }
 
@@ -713,6 +717,17 @@
         :global(button.nip46-connection-button) {
             width: fit-content;
             min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .network-ping-icon.svg-icon {
+            width: 26px;
+            height: 26px;
+            mask-image: url("/icons/network_ping_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            background-color: currentColor;
+            flex-shrink: 0;
         }
     }
 

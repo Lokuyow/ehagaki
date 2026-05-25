@@ -43,8 +43,8 @@
 
 <style>
     :global(button.info-trigger) {
-        height: 40px;
-        width: 40px;
+        height: 32px;
+        width: 32px;
         --btn-bg: transparent;
         border-radius: 50%;
     }
