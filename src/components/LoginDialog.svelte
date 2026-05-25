@@ -1092,16 +1092,13 @@
 
     .parent-client-feedback,
     .section-feedback {
-        padding: 8px 10px;
+        margin-bottom: 14px;
         font-size: 0.95rem;
-        line-height: 1.4;
         text-align: center;
     }
 
     .parent-client-feedback.info,
     .section-feedback.info {
-        background: var(--btn-bg);
-        border: 1px solid var(--border-hr);
         color: var(--text-light);
     }
 
@@ -1168,10 +1165,6 @@
         padding: 12px;
         cursor: pointer;
         font-weight: 600;
-    }
-
-    .remote-signer-details[open] :global(.remote-signer-tabs) {
-        margin-top: 6px;
     }
 
     .secret-heading-row {
@@ -1293,21 +1286,17 @@
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    .nostrconnect-status {
-        margin: 0;
-    }
-
     .nostrconnect-relay-editor-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 6px;
     }
 
     .nostrconnect-relay-settings {
         display: flex;
         flex-direction: column;
-        gap: 12px;
-        padding: 12px;
+        gap: 6px;
+        padding: 2px 12px 12px;
         background: color-mix(in srgb, var(--btn-bg) 60%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;
@@ -1332,12 +1321,12 @@
     .nostrconnect-relay-editor-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
     }
 
     .nostrconnect-relay-row {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         align-items: center;
     }
 
