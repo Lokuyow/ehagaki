@@ -39,6 +39,7 @@
   --bg-buttonbar: hsl(0, 0%, 91%);
 
   --btn-bg: hsl(0, 0%, 92%);
+  --btn-bg2: color-mix(in srgb, var(--btn-bg), black 5%);
   --btn-border: hsl(0, 0%, 75%);
   --btn-hover-bg: rgba(50, 50, 50, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 74%);
@@ -211,6 +212,7 @@ select {
   --bg-buttonbar: hsl(0, 0%, 28%);
 
   --btn-bg: hsl(0, 0%, 25%);
+  --btn-bg2: color-mix(in srgb, var(--btn-bg), white 10%);
   --btn-border: hsl(0, 0%, 30%);
   --btn-hover-bg: rgba(255, 255, 255, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 36%);
@@ -246,8 +248,9 @@ select {
 }
 
 
-:root.light button.selected:where(:not(:disabled)) {
-  background-color: color-mix(in srgb, var(--btn-bg), black 16%);
+:root.light button.selected:where(:not(:disabled)),
+:root.light button:where([data-state="active"]) {
+  background-color: color-mix(in srgb, var(--btn-bg), black 18%);
 }
 
 :root.dark button.selected:where(:not(:disabled)) {

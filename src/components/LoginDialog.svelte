@@ -1149,7 +1149,7 @@
 
     .remote-signer-details {
         width: 100%;
-        background: color-mix(in srgb, var(--btn-bg) 70%, transparent);
+        background: color-mix(in srgb, var(--btn-bg) 55%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;
         box-sizing: border-box;
@@ -1209,7 +1209,7 @@
     }
 
     :global(.remote-signer-tab) {
-        background: var(--btn-bg);
+        background: var(--btn-bg2);
         color: var(--text);
         border-radius: 999px;
         padding: 12px 16px;
@@ -1290,7 +1290,7 @@
         flex-direction: column;
         gap: 10px;
         padding: 12px;
-        background: color-mix(in srgb, var(--btn-bg) 70%, transparent);
+        background: color-mix(in srgb, var(--btn-bg) 60%, transparent);
         border: 1px solid var(--border-hr);
         border-radius: 16px;
     }
