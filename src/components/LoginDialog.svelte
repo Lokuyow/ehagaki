@@ -851,7 +851,7 @@
                                         <Button
                                             type="button"
                                             variant="close"
-                                            shape="circle"
+                                            shape="rounded"
                                             className="nostrconnect-remove-relay-btn"
                                             ariaLabel={$_(
                                                 "loginDialog.nostrconnect_remove_relay",
@@ -1326,8 +1326,14 @@
 
     .nostrconnect-relay-row {
         display: flex;
-        gap: 6px;
+        /* gap: 6px; */
         align-items: center;
+
+        :global(.nostrconnect-remove-relay-btn) {
+            height: auto;
+            border-radius: 0 12px 12px 0;
+            --btn-bg: var(--btn-bg2);
+        }
     }
 
     .nostrconnect-relay-field {
@@ -1336,7 +1342,7 @@
         padding: 0.75rem;
         background: var(--btn-bg);
         border: 1px solid var(--border-hr);
-        border-radius: 12px;
+        border-radius: 12px 0 0 12px;
         font-family: monospace;
         font-size: 0.95rem;
     }
