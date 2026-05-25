@@ -74,6 +74,7 @@
     :global(.primary .loading-placeholder .placeholder-text) {
         color: whitesmoke;
         opacity: 0.9;
+        font-size: inherit;
     }
 
     .loading-text {
