@@ -517,8 +517,7 @@
             if (
                 show &&
                 activeRemoteSignerTab === "qr" &&
-                (isPreparingNip46NostrConnect ||
-                    isWaitingNip46NostrConnect) &&
+                (isPreparingNip46NostrConnect || isWaitingNip46NostrConnect) &&
                 nip46NostrConnectUri === openedUri &&
                 pendingDirectOpenHintUri === openedUri
             ) {
@@ -611,10 +610,7 @@
                 disabled={isLoadingParentClient}
             >
                 {#if isLoadingParentClient}
-                    <LoadingPlaceholder
-                        text={true}
-                        showLoader={true}
-                    />
+                    <LoadingPlaceholder text={true} showLoader={true} />
                 {:else}
                     <div class="parent-client-icon svg-icon"></div>
                     <span class="btn-text"
@@ -651,10 +647,7 @@
             disabled={isLoadingNip07 || !isNip07Available}
         >
             {#if isLoadingNip07}
-                <LoadingPlaceholder
-                    text={true}
-                    showLoader={true}
-                />
+                <LoadingPlaceholder text={true} showLoader={true} />
             {:else}
                 <div class="extension-icon svg-icon"></div>
                 <span class="btn-text"
@@ -696,7 +689,6 @@
                 <LoadingPlaceholder
                     text={$_("loginDialog.nostrconnect_preparing")}
                     showLoader={true}
-                    loaderSize={28}
                 />
             {:else}
                 <div class="vault-icon svg-icon" aria-hidden="true"></div>
