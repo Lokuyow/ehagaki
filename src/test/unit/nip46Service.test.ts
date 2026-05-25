@@ -695,6 +695,32 @@ describe('Nip46Service', () => {
             expect(mockPool.subscribe).toHaveBeenCalledTimes(1);
         });
 
+        it('最初の NIP-46 EVENT 受信で handshakeStarted が解決する', async () => {
+            const sendRequestDeferred = createDeferred<string>();
+            const pendingFlow = await createPendingFallbackNostrConnect({
+                sendRequestPromise: sendRequestDeferred.promise,
+            });
+            let handshakeStartedResolved = false;
+            void pendingFlow.pending.handshakeStarted.then(() => {
+                handshakeStartedResolved = true;
+            });
+
+            const oneventPromise = pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+
+            await Promise.resolve();
+
+            expect(handshakeStartedResolved).toBe(true);
+
+            sendRequestDeferred.resolve(JSON.stringify(pendingFlow.initialRelays));
+            await oneventPromise;
+
+            await expect(pendingFlow.pending.handshakeStarted).resolves.toBeUndefined();
+            await expect(pendingFlow.pending.completion).resolves.toBe('user-pubkey-hex');
+        });
+
         it('最初の ready 後 1500ms の収集猶予時間内に ready になった initial relay だけを URI に含める', async () => {
             vi.useFakeTimers();
 

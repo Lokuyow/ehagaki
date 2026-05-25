@@ -19,6 +19,7 @@ type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'time
 export interface PendingNip46AuthSession {
     connectionUri: string;
     ready: Promise<void>;
+    handshakeStarted: Promise<void>;
     completion: Promise<AuthResult>;
     cancel: () => Promise<void>;
 }
@@ -115,6 +116,7 @@ export class AuthService {
                 return pending.connectionUri;
             },
             ready: pending.ready,
+            handshakeStarted: pending.handshakeStarted,
             completion: this.wrapPendingNip46Connection(pending),
             cancel: pending.cancel,
         };

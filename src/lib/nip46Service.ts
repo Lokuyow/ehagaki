@@ -89,6 +89,7 @@ export interface Nip46ManualConnectionCheckResult {
 export interface Nip46PendingNostrConnectSession {
     connectionUri: string;
     ready: Promise<void>;
+    handshakeStarted: Promise<void>;
     completion: Promise<string>;
     cancel: () => Promise<void>;
 }
@@ -1268,7 +1269,10 @@ export class Nip46Service {
         let rejectCompletion: ((reason?: unknown) => void) | null = null;
         let resolveReady: (() => void) | null = null;
         let rejectReady: ((reason?: unknown) => void) | null = null;
+        let resolveHandshakeStarted: (() => void) | null = null;
+        let rejectHandshakeStarted: ((reason?: unknown) => void) | null = null;
         let readySettled = false;
+        let handshakeStartedSettled = false;
 
         const ensurePendingActive = (): void => {
             if (settled) {
@@ -1470,11 +1474,39 @@ export class Nip46Service {
             rejectReady = null;
         };
 
+        const settleHandshakeStartedSuccess = (): void => {
+            if (handshakeStartedSettled) {
+                return;
+            }
+
+            handshakeStartedSettled = true;
+            resolveHandshakeStarted?.();
+            resolveHandshakeStarted = null;
+            rejectHandshakeStarted = null;
+        };
+
+        const settleHandshakeStartedFailure = (reason: unknown): void => {
+            if (handshakeStartedSettled) {
+                return;
+            }
+
+            handshakeStartedSettled = true;
+            rejectHandshakeStarted?.(reason);
+            resolveHandshakeStarted = null;
+            rejectHandshakeStarted = null;
+        };
+
+        const handshakeStarted = new Promise<void>((resolve, reject) => {
+            resolveHandshakeStarted = resolve;
+            rejectHandshakeStarted = reject;
+        });
+
         const pendingSession: Nip46PendingNostrConnectSession = {
             get connectionUri() {
                 return connectionUri;
             },
             ready,
+            handshakeStarted,
             completion,
             cancel: async () => {
                 if (settled) {
@@ -1485,11 +1517,13 @@ export class Nip46Service {
                 await closeHandshakeResources();
                 const cancellationError = createNostrConnectCancellationError();
                 settleReadyFailure(cancellationError);
+                settleHandshakeStartedFailure(cancellationError);
                 rejectCompletion?.(cancellationError);
             },
         };
 
         void ready.catch(() => undefined);
+        void handshakeStarted.catch(() => undefined);
         void completion.catch(() => undefined);
 
         void (async () => {
@@ -1539,6 +1573,8 @@ export class Nip46Service {
                             if (settled) {
                                 return;
                             }
+
+                            settleHandshakeStartedSuccess();
 
                             try {
                                 const temporaryConversationKey = nip44.getConversationKey(
@@ -1688,11 +1724,11 @@ export class Nip46Service {
 
                             settled = true;
                             await closeHandshakeResources();
-                            rejectCompletion?.(
-                                new Error(
-                                    'Nostr Connect timed out before the remote signer connected',
-                                ),
+                            const timeoutError = new Error(
+                                'Nostr Connect timed out before the remote signer connected',
                             );
+                            settleHandshakeStartedFailure(timeoutError);
+                            rejectCompletion?.(timeoutError);
                         },
                         maxWait: timeoutMs,
                     },
@@ -1706,6 +1742,7 @@ export class Nip46Service {
                 settled = true;
                 await closeHandshakeResources();
                 settleReadyFailure(error);
+                settleHandshakeStartedFailure(error);
                 const rejectCurrentCompletion = rejectCompletion as
                     | ((reason?: unknown) => void)
                     | null;

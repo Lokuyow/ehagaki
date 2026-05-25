@@ -315,6 +315,7 @@
   let isLoadingNip46 = $state(false);
   let hasPendingNip46AuthSession = $state(false);
   let pendingNip46ConnectionUri = $state<string | null>(null);
+  let isHandshakeStartedNip46NostrConnect = $state(false);
   let nip46NostrConnectErrorMessage = $state("");
   let pendingNip46AuthSession: PendingNip46AuthSession | null = null;
   const pendingNip46OperationTracker = new PendingNip46OperationTracker();
@@ -426,6 +427,7 @@
     pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
     hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
     pendingNip46ConnectionUri = null;
+    isHandshakeStartedNip46NostrConnect = false;
     if (!options.preserveError) {
       nip46NostrConnectErrorMessage = "";
     }
@@ -479,6 +481,23 @@
 
     pendingNip46ConnectionUri = session.connectionUri;
     isLoadingNip46 = false;
+  }
+
+  async function waitForPendingNip46HandshakeStarted(
+    session: PendingNip46AuthSession,
+    requestGeneration: number,
+  ): Promise<void> {
+    try {
+      await session.handshakeStarted;
+    } catch {
+      return;
+    }
+
+    if (!isCurrentPendingNip46Operation(requestGeneration)) {
+      return;
+    }
+
+    isHandshakeStartedNip46NostrConnect = true;
   }
 
   async function waitForPendingNip46Auth(
@@ -1373,6 +1392,7 @@
         typeof localStorage === "undefined" ? undefined : localStorage,
         relayCandidates,
       );
+      void waitForPendingNip46HandshakeStarted(pending, requestGeneration);
       void waitForPendingNip46Ready(pending, requestGeneration);
       void waitForPendingNip46Auth(pending, requestGeneration);
       return undefined;
@@ -2072,6 +2092,7 @@
             pendingNip46ConnectionUri === null}
           isWaitingNip46NostrConnect={hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri !== null}
+          {isHandshakeStartedNip46NostrConnect}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
@@ -2101,6 +2122,7 @@
             pendingNip46ConnectionUri === null}
           isWaitingNip46NostrConnect={hasPendingNip46AuthSession &&
             pendingNip46ConnectionUri !== null}
+          {isHandshakeStartedNip46NostrConnect}
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}

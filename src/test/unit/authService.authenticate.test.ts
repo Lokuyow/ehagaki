@@ -247,6 +247,7 @@ describe('AuthService.authenticateWithNip46', () => {
         vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
             connectionUri: 'nostrconnect://client-pubkey?relay=wss://relay',
             ready: Promise.resolve(),
+            handshakeStarted: Promise.resolve(),
             completion: Promise.resolve(validPubkey),
             cancel: vi.fn().mockResolvedValue(undefined),
         } as any);
@@ -295,6 +296,7 @@ describe('AuthService.authenticateWithNip46', () => {
         vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
             connectionUri: 'nostrconnect://client-pubkey?relay=wss://relay',
             ready: Promise.resolve(),
+            handshakeStarted: Promise.resolve(),
             completion: Promise.reject(
                 new Error('Remote signer did not return final relay list'),
             ),
@@ -313,12 +315,14 @@ describe('AuthService.authenticateWithNip46', () => {
         expect(mockDependencies.setNip46Auth).not.toHaveBeenCalled();
     });
 
-    it('nostrconnect pending ready をそのまま公開する', async () => {
+    it('nostrconnect pending ready / handshakeStarted をそのまま公開する', async () => {
         const ready = Promise.resolve();
+        const handshakeStarted = Promise.resolve();
         const { nip46Service } = await import('../../lib/nip46Service');
         vi.mocked(nip46Service.startNostrConnect).mockResolvedValue({
             connectionUri: 'nostrconnect://client-pubkey?relay=wss://relay',
             ready,
+            handshakeStarted,
             completion: Promise.resolve('cd'.repeat(32)),
             cancel: vi.fn().mockResolvedValue(undefined),
         } as any);
@@ -327,6 +331,7 @@ describe('AuthService.authenticateWithNip46', () => {
         const pending = await service.startNip46NostrConnect(['wss://relay']);
 
         await expect(pending.ready).resolves.toBeUndefined();
+        await expect(pending.handshakeStarted).resolves.toBeUndefined();
     });
 
     it('nostrconnect connectionUri は ready 後の最新値を参照する', async () => {
@@ -338,6 +343,7 @@ describe('AuthService.authenticateWithNip46', () => {
                 return connectionUri;
             },
             ready,
+            handshakeStarted: Promise.resolve(),
             completion: Promise.resolve('cd'.repeat(32)),
             cancel: vi.fn().mockResolvedValue(undefined),
         } as any);

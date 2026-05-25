@@ -62,6 +62,8 @@
     "nostrconnect_copy": "接続 URI をコピー",
     "nostrconnect_copied": "接続 URI をコピーしました",
     "nostrconnect_open": "この端末のリモートサイナーを開く",
+    "nostrconnect_opening_signer": "リモートサイナーを開いています...",
+    "nostrconnect_handshake_started": "接続中...",
     "nostrconnect_direct_open_hint": "リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。",
     "nostrconnect_edit_relays": "接続 relay を変更",
     "nostrconnect_add_relay": "relay を追加",

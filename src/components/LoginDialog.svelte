@@ -38,6 +38,7 @@
         isLoadingNip46?: boolean;
         isPreparingNip46NostrConnect?: boolean;
         isWaitingNip46NostrConnect?: boolean;
+        isHandshakeStartedNip46NostrConnect?: boolean;
         nip46NostrConnectUri?: string | null;
         nip46NostrConnectErrorMessage?: string;
         initialNostrConnectRelayCandidates?: string[];
@@ -61,6 +62,7 @@
         isLoadingNip46 = false,
         isPreparingNip46NostrConnect = false,
         isWaitingNip46NostrConnect = false,
+        isHandshakeStartedNip46NostrConnect = false,
         nip46NostrConnectUri = null,
         nip46NostrConnectErrorMessage = "",
         initialNostrConnectRelayCandidates = [],
@@ -98,6 +100,7 @@
     let nip46ErrorMessage = $state("");
     let hasCopiedNostrConnectUri = $state(false);
     let showNostrConnectDirectOpenHint = $state(false);
+    let isNostrConnectOpeningSigner = $state(false);
     let nostrConnectDirectOpenHintTimer:
         | ReturnType<typeof setTimeout>
         | undefined = undefined;
@@ -115,6 +118,11 @@
         showNostrConnectDirectOpenHint = false;
     }
 
+    function cleanupNostrConnectDirectOpenState(): void {
+        cleanupNostrConnectDirectOpenHint();
+        isNostrConnectOpeningSigner = false;
+    }
+
     function getResolvedInitialNostrConnectRelayCandidates(): string[] {
         return initialNostrConnectRelayCandidates.length > 0
             ? [...initialNostrConnectRelayCandidates]
@@ -122,7 +130,7 @@
     }
 
     function resetNostrConnectDraftState(): void {
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
         nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
             getResolvedInitialNostrConnectRelayCandidates(),
         );
@@ -146,14 +154,14 @@
 
         if (!show) {
             wasOpen = false;
-            cleanupNostrConnectDirectOpenHint();
+            cleanupNostrConnectDirectOpenState();
         }
     });
 
     $effect(() => {
         nip46NostrConnectUri;
         hasCopiedNostrConnectUri = false;
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
     });
 
     $effect(() => {
@@ -173,7 +181,7 @@
                 "visibilitychange",
                 handleVisibilityChange,
             );
-            cleanupNostrConnectDirectOpenHint();
+            cleanupNostrConnectDirectOpenState();
         };
     });
 
@@ -191,9 +199,21 @@
             : "",
     );
     let isNostrConnectPreparing = $derived(isPreparingNip46NostrConnect);
+    let isNostrConnectHandshakeStarted = $derived(
+        isHandshakeStartedNip46NostrConnect,
+    );
     let isNostrConnectPending = $derived(
         isNostrConnectPreparing || isWaitingNip46NostrConnect,
     );
+
+    $effect(() => {
+        if (!isNostrConnectHandshakeStarted) {
+            return;
+        }
+
+        isNostrConnectOpeningSigner = false;
+        cleanupNostrConnectDirectOpenHint();
+    });
 
     $effect(() => {
         show;
@@ -207,7 +227,7 @@
             !nip46NostrConnectUri ||
             !isNostrConnectPending
         ) {
-            cleanupNostrConnectDirectOpenHint();
+            cleanupNostrConnectDirectOpenState();
         }
     });
 
@@ -260,6 +280,7 @@
 
     // --- UIイベントハンドラ ---
     function handleSave() {
+        cleanupNostrConnectDirectOpenState();
         if (inputEl) {
             const validity = inputEl.validity;
             const value = inputEl.value ?? "";
@@ -370,7 +391,7 @@
     }
 
     async function handleNip07Login() {
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
         nip07ErrorMessage = "";
         const errorMessage = await onNip07Login?.();
         if (errorMessage) {
@@ -402,7 +423,7 @@
     }
 
     async function handleParentClientLogin() {
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
         parentClientErrorMessage = "";
         const errorMessage = await onParentClientLogin?.();
         if (errorMessage) {
@@ -412,7 +433,7 @@
     }
 
     async function handleNip46Login() {
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
         nip46ErrorMessage = "";
         if (bunkerInputEl) {
             const trimmed = bunkerInputEl.value.trim();
@@ -454,7 +475,7 @@
         }
 
         activeRemoteSignerTab = tab;
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
 
         if (tab === "bunker") {
             lastRequestedNostrConnectSignature = null;
@@ -499,6 +520,7 @@
         const openedUri = nip46NostrConnectUri;
         cleanupNostrConnectDirectOpenHint();
         pendingDirectOpenHintUri = openedUri;
+        isNostrConnectOpeningSigner = true;
         openNip46ConnectionUri(openedUri);
 
         nostrConnectDirectOpenHintTimer = setTimeout(() => {
@@ -516,6 +538,7 @@
                 show &&
                 activeRemoteSignerTab === "qr" &&
                 (isPreparingNip46NostrConnect || isWaitingNip46NostrConnect) &&
+                !isNostrConnectHandshakeStarted &&
                 nip46NostrConnectUri === openedUri &&
                 pendingDirectOpenHintUri === openedUri
             ) {
@@ -558,7 +581,7 @@
 
     // 新しいフォームsubmit用ハンドラ
     function handleFormSubmit(event: Event) {
-        cleanupNostrConnectDirectOpenHint();
+        cleanupNostrConnectDirectOpenState();
         event.preventDefault();
         handleSave();
     }
@@ -670,11 +693,20 @@
             type="button"
             variant="primary"
             shape="square"
-            ariaLabel={$_("loginDialog.nostrconnect_open")}
+            ariaLabel={isNostrConnectHandshakeStarted
+                ? $_("loginDialog.nostrconnect_handshake_started")
+                : isNostrConnectOpeningSigner
+                  ? $_("loginDialog.nostrconnect_opening_signer")
+                  : $_("loginDialog.nostrconnect_open")}
             onClick={handleOpenNostrConnectUri}
-            disabled={isNostrConnectPreparing || !nip46NostrConnectUri}
-            className="nostrconnect-open-btn u-control {isNostrConnectPreparing &&
-            !nip46NostrConnectUri
+            disabled={isNostrConnectPreparing ||
+                !nip46NostrConnectUri ||
+                isNostrConnectOpeningSigner ||
+                isNostrConnectHandshakeStarted}
+            className="nostrconnect-open-btn u-control {(isNostrConnectPreparing &&
+                !nip46NostrConnectUri) ||
+            isNostrConnectOpeningSigner ||
+            isNostrConnectHandshakeStarted
                 ? 'loading'
                 : ''}"
             data-testid="nostrconnect-open-button"
@@ -682,6 +714,16 @@
             {#if isNostrConnectPreparing && !nip46NostrConnectUri}
                 <LoadingPlaceholder
                     text={$_("loginDialog.nostrconnect_preparing")}
+                    showLoader={true}
+                />
+            {:else if isNostrConnectHandshakeStarted}
+                <LoadingPlaceholder
+                    text={$_("loginDialog.nostrconnect_handshake_started")}
+                    showLoader={true}
+                />
+            {:else if isNostrConnectOpeningSigner}
+                <LoadingPlaceholder
+                    text={$_("loginDialog.nostrconnect_opening_signer")}
                     showLoader={true}
                 />
             {:else}
@@ -784,11 +826,27 @@
                             class="section-feedback info nostrconnect-status"
                             role="status"
                         >
-                            {isNostrConnectPreparing
-                                ? $_("loginDialog.nostrconnect_preparing")
-                                : isWaitingNip46NostrConnect
-                                  ? $_("loginDialog.nostrconnect_waiting")
-                                  : $_("loginDialog.nostrconnect_idle")}
+                            {#if isNostrConnectPreparing}
+                                {$_("loginDialog.nostrconnect_preparing")}
+                            {:else if isNostrConnectOpeningSigner}
+                                <LoadingPlaceholder
+                                    text={$_(
+                                        "loginDialog.nostrconnect_opening_signer",
+                                    )}
+                                    showLoader={true}
+                                />
+                            {:else if isNostrConnectHandshakeStarted}
+                                <LoadingPlaceholder
+                                    text={$_(
+                                        "loginDialog.nostrconnect_handshake_started",
+                                    )}
+                                    showLoader={true}
+                                />
+                            {:else if isWaitingNip46NostrConnect}
+                                {$_("loginDialog.nostrconnect_waiting")}
+                            {:else}
+                                {$_("loginDialog.nostrconnect_idle")}
+                            {/if}
                         </div>
 
                         <div class="nostrconnect-relay-settings">
@@ -941,10 +999,7 @@
                                         : ''}"
                                 >
                                     {#if isLoadingNip46}
-                                        <LoadingPlaceholder
-                                            text={true}
-                                            showLoader={true}
-                                        />
+                                        <LoadingPlaceholder showLoader={true} />
                                     {:else}
                                         {$_("loginDialog.bunker_connect")}
                                     {/if}

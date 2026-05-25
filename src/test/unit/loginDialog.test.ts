@@ -42,6 +42,8 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_copied': '接続 URI をコピーしました',
         'common.copySuccess': 'コピーしました',
         'loginDialog.nostrconnect_open': 'この端末のリモートサイナーを開く',
+        'loginDialog.nostrconnect_opening_signer': 'リモートサイナーを開いています...',
+        'loginDialog.nostrconnect_handshake_started': '接続中...',
         'loginDialog.nostrconnect_direct_open_hint': 'リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。',
         'loginDialog.nostrconnect_edit_relays': '接続 relay を変更',
         'loginDialog.nostrconnect_add_relay': 'relay を追加',
@@ -126,6 +128,7 @@ describe('LoginDialog', () => {
         isLoadingNip46: false,
         isPreparingNip46NostrConnect: false,
         isWaitingNip46NostrConnect: false,
+        isHandshakeStartedNip46NostrConnect: false,
         nip46NostrConnectUri: null,
         nip46NostrConnectErrorMessage: '',
         initialNostrConnectRelayCandidates: [...DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES],
@@ -461,6 +464,59 @@ describe('LoginDialog', () => {
         ).toContain('接続コードを準備しています...');
     });
 
+    it('QR 待機だけでは接続中 loader を表示しない', () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isWaitingNip46NostrConnect: true,
+                nip46NostrConnectUri:
+                    'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&name=eHagaki',
+            },
+        });
+
+        expect(screen.queryByText('接続中...')).toBeNull();
+        expect(
+            screen.getByText('リモートサイナーとの接続を準備しています。初回接続には時間がかかる場合があります。'),
+        ).toBeTruthy();
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナー');
+    });
+
+    it('QR 接続で最初の EVENT 受信後は接続中表示になる', () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isWaitingNip46NostrConnect: true,
+                isHandshakeStartedNip46NostrConnect: true,
+                nip46NostrConnectUri:
+                    'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&name=eHagaki',
+            },
+        });
+
+        expect(screen.getAllByText('接続中...').length).toBeGreaterThanOrEqual(1);
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('接続中...');
+    });
+
+    it('URI 表示経由の接続でも handshake-started では接続中表示になる', () => {
+        const uri =
+            'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&relay=wss%3A%2F%2Frelay.backup.example.com%2F&name=eHagaki';
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isWaitingNip46NostrConnect: true,
+                isHandshakeStartedNip46NostrConnect: true,
+                nip46NostrConnectUri: uri,
+            },
+        });
+
+        expect(screen.getByDisplayValue(uri)).toBeTruthy();
+        expect(screen.getAllByText('接続中...').length).toBeGreaterThanOrEqual(1);
+    });
+
     it('待受準備中でも bunker タブ切替は cancel cleanup を要求する', async () => {
         const onNostrConnectCancel = vi.fn();
 
@@ -536,12 +592,47 @@ describe('LoginDialog', () => {
 
         await fireEvent.click(screen.getByTestId('nostrconnect-open-button'));
         expect(assign).toHaveBeenCalledWith(uri);
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナーを開いています...');
 
         await vi.advanceTimersByTimeAsync(1200);
 
         expect(
             screen.getByText('リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。'),
         ).toBeTruthy();
+    });
+
+    it('direct-open 後は opening-signer を表示し、handshake-started で接続中へ切り替わる', async () => {
+        const assign = vi.fn();
+        vi.stubGlobal('location', { assign });
+        const uri = 'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&name=eHagaki';
+
+        const { rerender } = render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isWaitingNip46NostrConnect: true,
+                nip46NostrConnectUri: uri,
+            },
+        });
+
+        await fireEvent.click(screen.getByTestId('nostrconnect-open-button'));
+
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナーを開いています...');
+
+        await rerender({
+            ...defaultProps,
+            isWaitingNip46NostrConnect: true,
+            isHandshakeStartedNip46NostrConnect: true,
+            nip46NostrConnectUri: uri,
+        });
+
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('接続中...');
+        expect(screen.queryByText('リモートサイナーを開いています...')).toBeNull();
     });
 
     it('direct-open 後にページがバックグラウンドへ移った場合は案内 toast を表示しない', async () => {
@@ -593,12 +684,19 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(screen.getByTestId('nostrconnect-open-button'));
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナーを開いています...');
 
         await rerender({
             ...defaultProps,
             isWaitingNip46NostrConnect: true,
             nip46NostrConnectUri: nextUri,
         });
+
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナー');
 
         await vi.advanceTimersByTimeAsync(1200);
 
@@ -621,6 +719,9 @@ describe('LoginDialog', () => {
         expect(
             screen.queryByText('リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。'),
         ).toBeNull();
+        expect(
+            screen.getByTestId('nostrconnect-open-button').textContent,
+        ).toContain('リモートサイナー');
     });
 
     it('relay を変更すると新しい relay 一覧で再開始する', async () => {

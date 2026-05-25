@@ -62,6 +62,8 @@
     "nostrconnect_copy": "Copy Connection URI",
     "nostrconnect_copied": "Connection URI copied",
     "nostrconnect_open": "Open remote signer on this device",
+    "nostrconnect_opening_signer": "Opening remote signer...",
+    "nostrconnect_handshake_started": "Connecting...",
     "nostrconnect_direct_open_hint": "If the remote signer does not open, scan the QR code or copy the connection URI.",
     "nostrconnect_edit_relays": "Change Connection Relays",
     "nostrconnect_add_relay": "Add Relay",

@@ -8,6 +8,7 @@ function createPendingSession(
     const rawSession = {
         connectionUri,
         ready: Promise.resolve(),
+        handshakeStarted: Promise.resolve(),
         completion: Promise.resolve({ success: true, pubkeyHex: 'ab'.repeat(32) }),
         cancel: vi.fn().mockResolvedValue(undefined),
     } satisfies PendingNip46AuthSession;
