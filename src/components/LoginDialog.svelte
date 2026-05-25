@@ -1147,7 +1147,6 @@
 
     .parent-client-feedback,
     .section-feedback {
-        margin-bottom: 14px;
         font-size: 0.95rem;
         text-align: center;
     }
