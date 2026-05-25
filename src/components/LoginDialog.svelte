@@ -1435,7 +1435,6 @@
         text-align: center;
         margin: 16px 0;
         width: 100%;
-        height: 64px;
     }
 
     .divider::before,

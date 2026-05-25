@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
@@ -288,16 +289,24 @@
                             </div>
                             {#if showNip46ConnectionPanel}
                                 <div class="nip46-connection-panel">
-                                    <div class="nip46-connection-title">
-                                        {$_(
-                                            "profileDialog.nip46_connection_title",
-                                        )}
+                                    <div class="nip46-connection-title-row">
+                                        <div class="nip46-connection-title">
+                                            {$_(
+                                                "profileDialog.nip46_connection_title",
+                                            )}
+                                        </div>
+                                        <InfoPopoverButton
+                                            side="bottom"
+                                            sideOffset={6}
+                                            ariaLabel={$_(
+                                                "profileDialog.nip46_connection_description",
+                                            )}
+                                        >
+                                            {$_(
+                                                "profileDialog.nip46_connection_description",
+                                            )}
+                                        </InfoPopoverButton>
                                     </div>
-                                    <p class="nip46-connection-description">
-                                        {$_(
-                                            "profileDialog.nip46_connection_description",
-                                        )}
-                                    </p>
                                     {#if nip46ConnectionOperationState === "auto-recovery"}
                                         <div
                                             class="nip46-connection-status info"
@@ -358,7 +367,7 @@
                 <Button
                     onClick={() => onAddAccount?.()}
                     className="add-account-btn"
-                    variant="default"
+                    variant="primary"
                     shape="square"
                 >
                     <div class="plus-icon svg-icon" aria-hidden="true"></div>
@@ -672,17 +681,16 @@
             background: color-mix(in srgb, var(--btn-bg), transparent 18%);
         }
 
+        .nip46-connection-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         .nip46-connection-title {
             font-size: 0.875rem;
             font-weight: 600;
             color: var(--text);
-        }
-
-        .nip46-connection-description {
-            margin: 0;
-            font-size: 0.8125rem;
-            line-height: 1.45;
-            color: var(--text-light);
         }
 
         .nip46-connection-status {
