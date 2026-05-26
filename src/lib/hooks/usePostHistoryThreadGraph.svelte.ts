@@ -26,6 +26,7 @@ import {
     type PostHistoryReplyEventsAdapter,
 } from "../postHistoryReplyEventsAdapter";
 import { RelayConfigUtils } from "../relayConfigUtils";
+import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
 import type { PostHistoryRecord, PostHistoryReplyEventRecord } from "../storage/ehagakiDb";
 import {
@@ -388,18 +389,19 @@ export function usePostHistoryThreadGraph({
         nodeEventId: string,
         node: PostHistoryThreadGraphNode,
     ): RelatedTargetDescriptor | null {
-        if (!node.parentEventId) {
+        const context = postHistoryReplyParentTargetDiscoveryAdapter.buildContext(
+            post,
+            nodeEventId,
+            node,
+        );
+        if (!context) {
             return null;
         }
 
-        return {
-            sourceEventId: nodeEventId,
-            targetEventId: node.parentEventId,
-            relationKind: "reply-parent",
-            relayHints: getParentRelayHints(post, node),
-            authorHint: getParentAuthorHint(node),
-            scopeKey: parentResolverScopeKey,
-        };
+        return postHistoryReplyParentTargetDiscoveryAdapter.toDescriptor(
+            context,
+            parentResolverScopeKey,
+        );
     }
 
     function resolveNodeWithParentTargetSnapshot(
@@ -436,33 +438,11 @@ export function usePostHistoryThreadGraph({
     }
 
     function getParentRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
-        const references = parseKind1ThreadReferences(node.event);
-        return sanitizeRelayUrls([
-            ...(references.replyRelayHint ? [references.replyRelayHint] : []),
-            ...(references.rootRelayHint ? [references.rootRelayHint] : []),
-            ...node.relayUrls,
-            ...references.relayHints,
-            ...post.relayHints,
-            ...post.acceptedRelays,
-            ...(post.fetchedRelays ?? []),
-        ]);
+        return postHistoryReplyParentTargetDiscoveryAdapter.getRelayHints(post, node);
     }
 
     function getParentAuthorHint(node: PostHistoryThreadGraphNode): string | null {
-        const references = parseKind1ThreadReferences(node.event);
-        if (!references.parentId) {
-            return null;
-        }
-
-        if (references.parentId === references.replyId) {
-            return references.replyAuthorHint;
-        }
-
-        if (references.parentId === references.rootId) {
-            return references.rootAuthorHint;
-        }
-
-        return references.replyAuthorHint ?? references.rootAuthorHint;
+        return postHistoryReplyParentTargetDiscoveryAdapter.getAuthorHint(node);
     }
 
     function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {

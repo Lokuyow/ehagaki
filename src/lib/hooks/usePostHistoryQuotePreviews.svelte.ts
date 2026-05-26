@@ -4,7 +4,6 @@ import {
     createPostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetStatus,
-    type RelatedTargetDescriptor,
 } from "../postHistoryRelatedTargetResolver.svelte";
 import {
     postHistoryContextFetchService,
@@ -15,10 +14,11 @@ import {
     type PostHistoryDeletionFetchService,
 } from "../postHistoryDeletionFetchService";
 import {
-    parsePostHistoryQuoteReferences,
-    type PostHistoryQuoteReference,
-} from "../postHistoryQuoteUtils";
-import { RelayConfigUtils } from "../relayConfigUtils";
+    EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX,
+    postHistoryQuoteTargetDiscoveryAdapter,
+    type PostHistoryQuoteTargetContext,
+    type PostHistoryQuoteTargetIndex,
+} from "../postHistoryRelatedTargetDiscoveryAdapter";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
@@ -34,7 +34,6 @@ import {
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
 
-const POST_HISTORY_QUOTE_PREVIEW_RELAY_LIMIT = 8;
 let nextQuotePreviewResolverScopeId = 0;
 
 export type PostHistoryQuotePreviewStatus =
@@ -51,23 +50,6 @@ export interface PostHistoryQuotePreviewState {
     profile: ProfileData | null;
 }
 
-interface QuoteLoadContext {
-    eventId: string;
-    sourceEventId: string;
-    authorHint: string | null;
-    relayHints: string[];
-}
-
-interface QuoteIndex {
-    byPostId: Record<string, PostHistoryQuoteReference[]>;
-    contextsByEventId: Record<string, QuoteLoadContext>;
-}
-
-const EMPTY_QUOTE_INDEX: QuoteIndex = {
-    byPostId: {},
-    contextsByEventId: {},
-};
-
 interface UsePostHistoryQuotePreviewsParams {
     getShow: () => boolean;
     getPosts: () => PostHistoryRecord[];
@@ -82,46 +64,6 @@ interface UsePostHistoryQuotePreviewsParams {
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
     profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
     relatedTargetResolver?: PostHistoryRelatedTargetResolver;
-}
-
-function sanitizeRelayHints(relayHints: string[]): string[] {
-    return RelayConfigUtils.sanitizeExternalRelayUrls(relayHints, {
-        limit: POST_HISTORY_QUOTE_PREVIEW_RELAY_LIMIT,
-    });
-}
-
-function buildQuoteIndex(posts: PostHistoryRecord[]): QuoteIndex {
-    const byPostId: Record<string, PostHistoryQuoteReference[]> = {};
-    const contextsByEventId: Record<string, QuoteLoadContext> = {};
-
-    for (const post of posts) {
-        const references = parsePostHistoryQuoteReferences(post);
-        if (references.length === 0) {
-            continue;
-        }
-
-        byPostId[post.eventId] = references;
-        for (const reference of references) {
-            const existing = contextsByEventId[reference.eventId];
-            contextsByEventId[reference.eventId] = {
-                eventId: reference.eventId,
-                sourceEventId: existing?.sourceEventId ?? post.eventId,
-                authorHint: existing?.authorHint ?? reference.authorHint,
-                relayHints: sanitizeRelayHints([
-                    ...(existing?.relayHints ?? []),
-                    ...(reference.relayHint ? [reference.relayHint] : []),
-                    ...post.relayHints,
-                    ...post.acceptedRelays,
-                    ...(post.fetchedRelays ?? []),
-                ]),
-            };
-        }
-    }
-
-    return {
-        byPostId,
-        contextsByEventId,
-    };
 }
 
 function toQuotePreviewStatus(
@@ -165,21 +107,10 @@ export function usePostHistoryQuotePreviews({
     const scopeKey = `post-history-quote-preview:${++nextQuotePreviewResolverScopeId}`;
 
     let resolverRevision = $state(0);
-    let quoteIndex = $state<QuoteIndex>(EMPTY_QUOTE_INDEX);
-
-    function toDescriptor(context: QuoteLoadContext): RelatedTargetDescriptor {
-        return {
-            sourceEventId: context.sourceEventId,
-            targetEventId: context.eventId,
-            relationKind: "quote",
-            relayHints: context.relayHints,
-            authorHint: context.authorHint,
-            scopeKey,
-        };
-    }
+    let quoteIndex = $state<PostHistoryQuoteTargetIndex>(EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX);
 
     function resetState(): void {
-        quoteIndex = EMPTY_QUOTE_INDEX;
+        quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
         if (ownsResolver) {
             resolver.reset();
         }
@@ -206,7 +137,9 @@ export function usePostHistoryQuotePreviews({
             return;
         }
 
-        void resolver.retryTarget(toDescriptor(context));
+        void resolver.retryTarget(
+            postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
+        );
     }
 
     $effect(() => {
@@ -214,7 +147,7 @@ export function usePostHistoryQuotePreviews({
             return;
         }
 
-        quoteIndex = EMPTY_QUOTE_INDEX;
+        quoteIndex = EMPTY_POST_HISTORY_QUOTE_TARGET_INDEX;
     });
 
     $effect(() => {
@@ -230,7 +163,7 @@ export function usePostHistoryQuotePreviews({
             return;
         }
 
-        quoteIndex = buildQuoteIndex(getPosts());
+        quoteIndex = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(getPosts());
     });
 
     $effect(() => {
@@ -245,7 +178,11 @@ export function usePostHistoryQuotePreviews({
             return;
         }
 
-        void resolver.ensureTargets(contexts.map((context) => toDescriptor(context)));
+        void resolver.ensureTargets(
+            contexts.map((context) =>
+                postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
+            ),
+        );
     });
 
     onDestroy(() => {
