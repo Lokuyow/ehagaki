@@ -207,8 +207,8 @@
     }
 
     .post-history-thread-action-icon {
-        width: 22px;
-        height: 22px;
+        width: 24px;
+        height: 24px;
     }
 
     .post-history-thread-action-icon-find_in_page {
