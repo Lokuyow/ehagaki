@@ -1687,6 +1687,7 @@
             <Button
                 type="button"
                 variant="default"
+                shape="circle"
                 className="post-history-latest-button"
                 contentLayout="icon"
                 ariaLabel={$_("postHistory.returnToLatest")}
@@ -2038,13 +2039,16 @@
 
         :global(.post-history-latest-button) {
             min-width: 50px;
-            min-height: 40px;
-            background-color: color-mix(
-                in srgb,
-                var(--btn-bg) 30%,
-                transparent
-            );
+            min-height: 50px;
+            background-color: color-mix(in srgb, var(--theme) 15%, transparent);
             backdrop-filter: blur(1px);
+
+            :global(.vertical-align-top-icon) {
+                mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+                width: 26px;
+                height: 26px;
+                opacity: 0.6;
+            }
         }
     }
 
@@ -2329,13 +2333,6 @@
         height: 28px;
     }
 
-    :global(.post-history-latest-button .vertical-align-top-icon) {
-        mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 28px;
-        height: 28px;
-        opacity: 0.8;
-    }
-
     :global(.post-history-nav-loading-placeholder .loader-container .square) {
         background-color: currentColor;
     }
@@ -2462,10 +2459,10 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            min-width: 85px;
+            min-width: 80px;
 
             .post-preview-date {
-                font-size: 1rem;
+                font-size: 0.9375rem;
                 white-space: nowrap;
             }
         }
@@ -2481,7 +2478,6 @@
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            min-width: 85px;
         }
 
         .post-preview-action-buttons-group {
