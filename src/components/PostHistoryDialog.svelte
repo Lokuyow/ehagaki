@@ -11,7 +11,6 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
-    import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
@@ -1442,7 +1441,14 @@
                                             </div>
                                         {/if}
                                     </div>
-                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || graphState.reactionSummary.totalCount > 0}
+                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
+                                        {@const repliesActionLabel =
+                                            getRepliesActionLabel(post)}
+                                        {@const showRepliesBadge =
+                                            graphState.repliesActionState
+                                                .status === "loaded" &&
+                                            graphState.repliesActionState
+                                                .replyCount > 0}
                                         <div class="post-preview-footer">
                                             <div
                                                 class="post-preview-footer-left"
@@ -1479,16 +1485,40 @@
                                                             ></div>
                                                         </Button>
                                                     {/if}
-                                                    <PostHistoryRepliesActionButton
-                                                        state={graphState.repliesActionState}
-                                                        ariaLabel={getRepliesActionLabel(
-                                                            post,
-                                                        )}
-                                                        onClick={() =>
-                                                            handleRepliesAction(
-                                                                post,
-                                                            )}
-                                                    />
+                                                    <div
+                                                        class="post-preview-footer-replies-slot"
+                                                    >
+                                                        {#if showRepliesBadge}
+                                                            <Button
+                                                                type="button"
+                                                                class="post-preview-replies-badge-button"
+                                                                ariaLabel={repliesActionLabel}
+                                                                title={repliesActionLabel}
+                                                                contentLayout="icon"
+                                                                shape="square"
+                                                                selected={graphState
+                                                                    .repliesActionState
+                                                                    .visible}
+                                                                onClick={() =>
+                                                                    handleRepliesAction(
+                                                                        post,
+                                                                    )}
+                                                            >
+                                                                <span
+                                                                    class="post-preview-replies-icon-wrapper post-preview-replies-badge-anchor"
+                                                                    aria-hidden="true"
+                                                                >
+                                                                    <span
+                                                                        class="post-preview-replies-count post-preview-replies-badge"
+                                                                    >
+                                                                        {graphState
+                                                                            .repliesActionState
+                                                                            .replyCount}
+                                                                    </span>
+                                                                </span>
+                                                            </Button>
+                                                        {/if}
+                                                    </div>
                                                 </div>
                                                 {#if onQuotePost}
                                                     <Button
@@ -1579,6 +1609,34 @@
                                                             <div
                                                                 class="post-history-menu-body"
                                                             >
+                                                                <DropdownMenu.Item
+                                                                    class="menu-action-button"
+                                                                    disabled={graphState
+                                                                        .repliesActionState
+                                                                        .status ===
+                                                                        "loading"}
+                                                                    onSelect={() =>
+                                                                        handleRepliesAction(
+                                                                            post,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class={`${
+                                                                            graphState
+                                                                                .repliesActionState
+                                                                                .visible
+                                                                                ? "collapse-content-icon"
+                                                                                : "find_in_page-icon"
+                                                                        } svg-icon`}
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {repliesActionLabel}
+                                                                    </span>
+                                                                </DropdownMenu.Item>
+                                                                <DropdownMenu.Separator
+                                                                    class="post-history-menu-separator"
+                                                                />
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
                                                                     onpointerdown={(
@@ -2436,6 +2494,22 @@
         background-color: currentColor;
     }
 
+    :global(.post-history-menu-content .menu-action-button .find_in_page-icon) {
+        mask-image: url("/icons/find_in_page_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(
+            .post-history-menu-content
+                .menu-action-button
+                .collapse-content-icon
+        ) {
+        mask-image: url("/icons/collapse_content_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+        width: 24px;
+        height: 24px;
+    }
+
     :global(
             .post-history-menu-content
                 .menu-action-button
@@ -2622,6 +2696,14 @@
             align-items: stretch;
         }
 
+        .post-preview-footer-replies-slot {
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+            flex: 0 0 36px;
+            min-width: 36px;
+        }
+
         .post-preview-footer-reaction-slot {
             display: flex;
             align-items: stretch;
@@ -2641,9 +2723,47 @@
             }
         }
 
-        :global(.post-preview-replies-action-button:disabled) {
-            opacity: 1;
+        :global(.post-preview-replies-badge-button) {
+            width: 36px;
+            min-width: 36px;
+            min-height: auto;
+            padding: 0;
+            --btn-bg: transparent;
+            background-color: transparent;
             color: var(--btn-post-preview-action);
+        }
+
+        :global(
+                .post-preview-replies-badge-button.selected:not(:hover)
+                    .post-preview-replies-badge
+            ) {
+            background-color: var(--text-light);
+        }
+
+        .post-preview-replies-badge-anchor {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+        }
+
+        .post-preview-replies-badge {
+            position: absolute;
+            top: -4px;
+            right: -5px;
+            min-width: 14px;
+            height: 14px;
+            padding: 0 3px;
+            border-radius: 999px;
+            background: var(--btn-post-preview-action);
+            color: var(--dialog-bg);
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 14px;
+            text-align: center;
         }
 
         :global(:where(.post-preview-reactions-button)) {
@@ -2658,6 +2778,15 @@
                 --svg: var(--btn-post-preview-action);
                 width: 22px;
                 height: 22px;
+            }
+        }
+
+        @media (min-width: 601px) {
+            :global(
+                    .post-preview-replies-badge-button:hover:not(:disabled)
+                        .post-preview-replies-badge
+                ) {
+                background-color: var(--text);
             }
         }
     }

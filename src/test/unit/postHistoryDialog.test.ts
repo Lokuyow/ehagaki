@@ -734,6 +734,31 @@ async function openPostHistoryMenu(): Promise<void> {
     await fireEvent.click(trigger);
 }
 
+async function openPostActionMenu(container?: HTMLElement): Promise<void> {
+    const queries = container ? within(container) : screen;
+    await fireEvent.click(await queries.findByRole('button', { name: 'アクションを表示' }));
+}
+
+async function findPostRepliesMenuAction(
+    name: string | RegExp = '返信を確認',
+    container?: HTMLElement,
+): Promise<HTMLElement> {
+    const existing = screen.queryByRole('menuitem', { name });
+    if (existing) {
+        return existing as HTMLElement;
+    }
+
+    await openPostActionMenu(container);
+    return screen.findByRole('menuitem', { name }) as Promise<HTMLElement>;
+}
+
+async function clickPostRepliesMenuAction(
+    name: string | RegExp = '返信を確認',
+    container?: HTMLElement,
+): Promise<void> {
+    await fireEvent.click(await findPostRepliesMenuAction(name, container));
+}
+
 async function openSearchBar(): Promise<HTMLInputElement> {
     await openPostHistoryMenu();
     await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
@@ -2246,7 +2271,7 @@ describe('PostHistoryDialog', () => {
         expect(historyItem).toBeTruthy();
         const footer = (historyItem as HTMLElement).querySelector('.post-preview-footer');
         expect(footer).toBeTruthy();
-        await fireEvent.click(within(footer as HTMLElement).getByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction('返信を確認', historyItem as HTMLElement);
         await waitFor(() => {
             expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalled();
         });
@@ -2374,7 +2399,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('他人からの返信B')).toBeTruthy();
             expect(screen.getByText('子返信なしD')).toBeTruthy();
@@ -2497,7 +2522,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('他人からの返信B')).toBeTruthy();
             expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
@@ -2554,7 +2579,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        expect(await screen.findByRole('button', { name: '返信を確認' })).toBeTruthy();
+        expect(await findPostRepliesMenuAction()).toBeTruthy();
         storedReplies = [realtimeReply];
 
         await view.rerender({
@@ -2650,7 +2675,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByRole('button', { name: '返信を確認' });
+        await findPostRepliesMenuAction();
         await wait(0);
         const replyReadsBeforeScroll =
             replyEventsRepositoryMock.getDirectReplies.mock.calls.length;
@@ -3092,7 +3117,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByRole('button', { name: '返信を確認' });
+        await findPostRepliesMenuAction();
         expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
 
         firstView.unmount();
@@ -3106,7 +3131,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByRole('button', { name: '返信を確認' });
+        await findPostRepliesMenuAction();
         expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(2);
     });
 
@@ -3156,10 +3181,11 @@ describe('PostHistoryDialog', () => {
             },
         });
 
+        await openPostActionMenu();
         await waitFor(() => {
             expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を確認' })).toBeTruthy();
+            expect(screen.getByRole('menuitem', { name: '返信を確認' })).toBeTruthy();
         });
 
         storedReplies = [realtimeReply];
@@ -3212,7 +3238,7 @@ describe('PostHistoryDialog', () => {
                 pubkeyHex: 'a'.repeat(64),
             },
         });
-        expect(await screen.findByRole('button', { name: '返信を確認' })).toBeTruthy();
+        expect(await findPostRepliesMenuAction()).toBeTruthy();
         const replyReadsBeforeCloseSignal = replyEventsRepositoryMock.getDirectReplies.mock.calls.length;
         const pageReadsBeforeCloseSignal = repositoryMock.getPage.mock.calls.length;
 
@@ -3336,7 +3362,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('返信1')).toBeTruthy();
             expect(startedPrefetchBatches).toHaveLength(2);
@@ -3449,7 +3475,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('循環候補の返信B')).toBeTruthy();
         });
@@ -3583,7 +3609,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('子返信B')).toBeTruthy();
         });
@@ -3684,12 +3710,13 @@ describe('PostHistoryDialog', () => {
         });
 
         expect(screen.queryByRole('button', { name: '返信を表示' })).toBeNull();
-        const checkRepliesButton = await screen.findByRole('button', { name: '返信を確認' });
-        expect(checkRepliesButton.querySelector('.find_in_page-icon')).toBeTruthy();
+        const checkRepliesAction = await findPostRepliesMenuAction();
+        expect(screen.queryByRole('button', { name: '返信を確認' })).toBeNull();
+        expect(checkRepliesAction.querySelector('.find_in_page-icon')).toBeTruthy();
         expect(document.body.querySelector('.forum-icon')).toBeNull();
         expect(document.body.querySelector('.question-answer-icon')).toBeNull();
 
-        await fireEvent.click(checkRepliesButton);
+        await fireEvent.click(checkRepliesAction);
 
         await waitFor(() => {
             expect(screen.getByText('他人からの返信')).toBeTruthy();
@@ -3718,7 +3745,7 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: '返信 2件を表示' })).toBeTruthy();
     });
 
-    it('[direct-replies] 返信確認loading中はアイコンボタン内にテキストなしのローダーだけを表示する', async () => {
+    it('[direct-replies] 返信確認loading中はfooterに返信バッジを出さずmenu項目だけをdisabled表示する', async () => {
         const post = createRecord({
             eventId: '1'.repeat(64),
             rawEvent: {
@@ -3753,14 +3780,15 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
+        await openPostActionMenu();
 
         await waitFor(() => {
-            const loadingButton = screen.getByRole('button', { name: '返信を確認中' });
-            expect(loadingButton.querySelector('.post-preview-replies-spinner')).toBeTruthy();
-            expect(loadingButton.querySelector('.find_in_page-icon')).toBeNull();
-            expect(loadingButton.textContent?.trim()).toBe('');
+            const loadingAction = screen.getByRole('menuitem', { name: '返信を確認中' });
+            expect(loadingAction.getAttribute('data-disabled')).not.toBeNull();
+            expect(loadingAction.querySelector('.find_in_page-icon')).toBeTruthy();
         });
+        expect(screen.queryByRole('button', { name: '返信を確認中' })).toBeNull();
         expect(screen.queryByText('返信を取得中...')).toBeNull();
 
         deferredFetch.resolve({
@@ -3770,11 +3798,11 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '返信を再確認' })).toBeTruthy();
+            expect(screen.getByRole('menuitem', { name: '返信を再確認' })).toBeTruthy();
         });
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
-        expect(screen.getByRole('button', { name: '返信を再確認' }).querySelector('.post-preview-replies-count')).toBeNull();
+        expect(screen.queryByRole('button', { name: '返信を再確認' })).toBeNull();
     });
 
     it('[direct-replies] 投稿成功した自分のdirect replyをloaded済み一覧と件数バッジへ即時反映する', async () => {
@@ -3863,7 +3891,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('既存返信B')).toBeTruthy();
             expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
@@ -3985,7 +4013,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('既存返信B')).toBeTruthy();
         });
@@ -4050,7 +4078,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(deletionFetchServiceMock.fetchDeletionRequests).toHaveBeenCalled();
@@ -4098,7 +4126,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(profileFetchDataMock).toHaveBeenCalled();
@@ -4150,7 +4178,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(screen.getByText('cached profileの返信')).toBeTruthy();
@@ -4214,7 +4242,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('同じ作者の返信1')).toBeTruthy();
             expect(screen.getByText('同じ作者の返信2')).toBeTruthy();
@@ -4267,7 +4295,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('close前の返信')).toBeTruthy();
             expect(profileFetchDataMock).toHaveBeenCalled();
@@ -4322,7 +4350,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('TTL内の返信')).toBeTruthy();
         });
@@ -4408,7 +4436,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(screen.getByText('TTL切れcached返信')).toBeTruthy();
@@ -4549,7 +4577,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(screen.queryByText('削除済み返信B')).toBeNull();
@@ -4635,7 +4663,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(screen.getByText('表示される返信B')).toBeTruthy();
@@ -4700,13 +4728,13 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await fireEvent.click(await screen.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction();
 
         await waitFor(() => {
             expect(screen.queryByText('cached削除済み返信B')).toBeNull();
-            expect(screen.getByRole('button', { name: '返信を再確認' })).toBeTruthy();
         });
-        expect(screen.getByRole('button', { name: '返信を再確認' }).querySelector('.post-preview-replies-count')).toBeNull();
+        expect(await findPostRepliesMenuAction('返信を再確認')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '返信を再確認' })).toBeNull();
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(deletedReply.eventId);
@@ -4844,7 +4872,7 @@ describe('PostHistoryDialog', () => {
         expect(parentHistoryItem).toBeTruthy();
         const parentQueries = within(parentHistoryItem as HTMLElement);
 
-        await fireEvent.click(await parentQueries.findByRole('button', { name: '返信を確認' }));
+        await clickPostRepliesMenuAction('返信を確認', parentHistoryItem as HTMLElement);
         await waitFor(() => {
             expect(screen.getAllByText('削除対象返信B')).toHaveLength(2);
             expect(screen.getByText('残る返信C')).toBeTruthy();

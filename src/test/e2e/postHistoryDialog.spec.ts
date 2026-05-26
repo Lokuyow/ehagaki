@@ -107,12 +107,12 @@ async function getPostSnapshotByEventId(page: Page, eventId: string) {
 
 async function getFooterActionPositions(page: Page, eventId: string) {
     const item = page.locator(`.post-history-item[data-post-history-event-id="${eventId}"]`);
-    const repliesActionButton = item.locator('.post-preview-replies-action-button');
+    const repliesActionSlot = item.locator('.post-preview-footer-replies-slot');
     const quoteActionButton = item.getByRole('button', { name: '引用' });
     const menuActionButton = item.getByRole('button', { name: 'アクションを表示' });
     const reactionActionButton = item.locator('.post-preview-reactions-button');
 
-    const repliesActionBox = await repliesActionButton.boundingBox();
+    const repliesActionBox = await repliesActionSlot.boundingBox();
     const quoteActionBox = await quoteActionButton.boundingBox();
     const menuActionBox = await menuActionButton.boundingBox();
 
