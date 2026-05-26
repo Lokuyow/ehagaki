@@ -11,22 +11,41 @@ export type PostHistoryReactionLifecycleStateStatus =
     | "success"
     | "failed";
 
-export const POST_HISTORY_REACTION_LIFECYCLE_KIND = 7;
+export type PostHistoryReactionLifecycleConsistencyStatus =
+    | "pending-allowed"
+    | "processing-allowed"
+    | "success-visible"
+    | "success-deleted"
+    | "retryable-failed";
 
-export interface PostHistoryReactionLifecycleCandidate {
+export const POST_HISTORY_REACTION_LIFECYCLE_KIND = 7;
+export const POST_HISTORY_REACTION_LIFECYCLE_MAX_RETRY_COUNT = 3;
+export const POST_HISTORY_REACTION_LIFECYCLE_RETRY_COOLDOWN_MS = 5_000;
+
+export interface PostHistoryReactionLifecycleKeyCandidate {
     requestKey: string;
     parentEventId: string;
     reactionEventId: string;
     kind: typeof POST_HISTORY_REACTION_LIFECYCLE_KIND;
 }
 
+export interface PostHistoryReactionLifecycleCandidate
+    extends PostHistoryReactionLifecycleKeyCandidate {
+    reactionAuthorPubkey: string;
+}
+
 export interface PostHistoryReactionLifecycleStateRecord {
     requestKey: string;
     parentEventId: string;
     reactionEventId: string;
+    reactionAuthorPubkey: string;
     kind: typeof POST_HISTORY_REACTION_LIFECYCLE_KIND;
     source: PostHistoryReactionLifecycleSource;
     status: PostHistoryReactionLifecycleStateStatus;
+    attemptCount: number;
+    deletionConfirmed: boolean;
+    consistencyStatus: PostHistoryReactionLifecycleConsistencyStatus;
+    verifiedAt: number | null;
     updatedAt: number;
     schemaVersion: number;
 }
@@ -41,7 +60,7 @@ export function buildPostHistoryReactionLifecycleRequestKey(
 
 export function parsePostHistoryReactionLifecycleRequestKey(
     requestKey: string,
-): PostHistoryReactionLifecycleCandidate | null {
+): PostHistoryReactionLifecycleKeyCandidate | null {
     const [parentEventId, reactionEventId, kindText] = requestKey.split(":");
     const kind = Number.parseInt(kindText ?? "", 10);
     if (
@@ -64,4 +83,34 @@ export function isActivePostHistoryReactionLifecycleStateStatus(
     status: PostHistoryReactionLifecycleStateStatus,
 ): boolean {
     return status === "pending" || status === "processing";
+}
+
+export function canAllowReactionRowResidue(
+    record: Pick<
+        PostHistoryReactionLifecycleStateRecord,
+        "status" | "deletionConfirmed"
+    >,
+): boolean {
+    return !record.deletionConfirmed;
+}
+
+export function isReactionDeletionUiGuaranteed(
+    record: Pick<
+        PostHistoryReactionLifecycleStateRecord,
+        "status" | "deletionConfirmed"
+    >,
+): boolean {
+    return record.status === "success" && record.deletionConfirmed;
+}
+
+export function canRetryPostHistoryReactionLifecycle(
+    record: Pick<
+        PostHistoryReactionLifecycleStateRecord,
+        "status" | "attemptCount" | "updatedAt"
+    >,
+    now = Date.now(),
+): boolean {
+    return record.status === "failed"
+        && record.attemptCount < POST_HISTORY_REACTION_LIFECYCLE_MAX_RETRY_COUNT
+        && now - record.updatedAt >= POST_HISTORY_REACTION_LIFECYCLE_RETRY_COOLDOWN_MS;
 }

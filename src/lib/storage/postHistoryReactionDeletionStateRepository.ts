@@ -2,6 +2,7 @@ import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_REACTION_LIFECYCLE_KIND,
+    type PostHistoryReactionLifecycleConsistencyStatus,
     type PostHistoryReactionLifecycleSource,
     type PostHistoryReactionLifecycleStateRecord,
     type PostHistoryReactionLifecycleStateStatus,
@@ -21,8 +22,13 @@ export interface SavePostHistoryReactionLifecycleStateInput {
     requestKey: string;
     parentEventId: string;
     reactionEventId: string;
-    source: PostHistoryReactionLifecycleSource;
-    status: PostHistoryReactionLifecycleStateStatus;
+    reactionAuthorPubkey?: string;
+    source?: PostHistoryReactionLifecycleSource;
+    status?: PostHistoryReactionLifecycleStateStatus;
+    attemptCount?: number;
+    deletionConfirmed?: boolean;
+    consistencyStatus?: PostHistoryReactionLifecycleConsistencyStatus;
+    verifiedAt?: number | null;
 }
 
 export interface PostHistoryReactionDeletionStateRepository {
@@ -60,6 +66,16 @@ function isReactionLifecycleStatus(
         || status === "failed";
 }
 
+function isReactionLifecycleConsistencyStatus(
+    status: unknown,
+): status is PostHistoryReactionLifecycleConsistencyStatus {
+    return status === "pending-allowed"
+        || status === "processing-allowed"
+        || status === "success-visible"
+        || status === "success-deleted"
+        || status === "retryable-failed";
+}
+
 function isValidStateValue(value: unknown): value is PostHistoryReactionLifecycleStateValue {
     if (!value || typeof value !== "object") {
         return false;
@@ -69,10 +85,37 @@ function isValidStateValue(value: unknown): value is PostHistoryReactionLifecycl
     return typeof state.requestKey === "string"
         && typeof state.parentEventId === "string"
         && typeof state.reactionEventId === "string"
+        && typeof state.reactionAuthorPubkey === "string"
         && state.kind === POST_HISTORY_REACTION_LIFECYCLE_KIND
         && isReactionLifecycleSource(state.source)
         && isReactionLifecycleStatus(state.status)
+        && typeof state.attemptCount === "number"
+        && typeof state.deletionConfirmed === "boolean"
+        && isReactionLifecycleConsistencyStatus(state.consistencyStatus)
+        && (typeof state.verifiedAt === "number" || state.verifiedAt === null)
         && typeof state.schemaVersion === "number";
+}
+
+function buildDefaultStateValue(
+    input: Pick<
+        SavePostHistoryReactionLifecycleStateInput,
+        "requestKey" | "parentEventId" | "reactionEventId"
+    >,
+): PostHistoryReactionLifecycleStateValue {
+    return {
+        requestKey: input.requestKey,
+        parentEventId: input.parentEventId,
+        reactionEventId: input.reactionEventId,
+        reactionAuthorPubkey: "",
+        kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
+        source: "listing-current-view",
+        status: "pending",
+        attemptCount: 0,
+        deletionConfirmed: false,
+        consistencyStatus: "pending-allowed",
+        verifiedAt: null,
+        schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
+    };
 }
 
 function toStateRecord(record: MetaRecord | null | undefined): PostHistoryReactionLifecycleStateRecord | null {
@@ -165,31 +208,71 @@ implements PostHistoryReactionDeletionStateRepository {
         }
 
         const updatedAt = this.now();
-        await this.db.transaction("rw", this.db.meta, async () => {
-            await this.db.meta.bulkPut(uniqueInputs.map((input) => ({
-                key: buildStateMetaKey(input.requestKey),
-                value: {
-                    requestKey: input.requestKey,
-                    parentEventId: input.parentEventId,
-                    reactionEventId: input.reactionEventId,
-                    kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
-                    source: input.source,
-                    status: input.status,
-                    schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
-                } satisfies PostHistoryReactionLifecycleStateValue,
-                updatedAt,
-            })));
+        const existingRecords = await this.db.meta.bulkGet(
+            uniqueInputs.map((input) => buildStateMetaKey(input.requestKey)),
+        );
+        const existingStateByRequestKey = new Map<string, PostHistoryReactionLifecycleStateRecord>();
+        existingRecords.forEach((record) => {
+            const stateRecord = toStateRecord(record);
+            if (stateRecord) {
+                existingStateByRequestKey.set(stateRecord.requestKey, stateRecord);
+            }
         });
 
-        return uniqueInputs.map((input) => ({
-            requestKey: input.requestKey,
-            parentEventId: input.parentEventId,
-            reactionEventId: input.reactionEventId,
-            kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
-            source: input.source,
-            status: input.status,
+        const nextRecords = uniqueInputs.map((input) => {
+            const existingState = existingStateByRequestKey.get(input.requestKey);
+            const nextValue: PostHistoryReactionLifecycleStateValue = {
+                ...(existingState
+                    ? {
+                        requestKey: existingState.requestKey,
+                        parentEventId: existingState.parentEventId,
+                        reactionEventId: existingState.reactionEventId,
+                        reactionAuthorPubkey: existingState.reactionAuthorPubkey,
+                        kind: existingState.kind,
+                        source: existingState.source,
+                        status: existingState.status,
+                        attemptCount: existingState.attemptCount,
+                        deletionConfirmed: existingState.deletionConfirmed,
+                        consistencyStatus: existingState.consistencyStatus,
+                        verifiedAt: existingState.verifiedAt,
+                        schemaVersion: existingState.schemaVersion,
+                    }
+                    : buildDefaultStateValue(input)),
+                requestKey: input.requestKey,
+                parentEventId: input.parentEventId,
+                reactionEventId: input.reactionEventId,
+                ...(input.reactionAuthorPubkey !== undefined
+                    ? { reactionAuthorPubkey: input.reactionAuthorPubkey }
+                    : {}),
+                ...(input.source !== undefined ? { source: input.source } : {}),
+                ...(input.status !== undefined ? { status: input.status } : {}),
+                ...(input.attemptCount !== undefined
+                    ? { attemptCount: input.attemptCount }
+                    : {}),
+                ...(input.deletionConfirmed !== undefined
+                    ? { deletionConfirmed: input.deletionConfirmed }
+                    : {}),
+                ...(input.consistencyStatus !== undefined
+                    ? { consistencyStatus: input.consistencyStatus }
+                    : {}),
+                ...(input.verifiedAt !== undefined ? { verifiedAt: input.verifiedAt } : {}),
+                schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
+            };
+
+            return {
+                key: buildStateMetaKey(input.requestKey),
+                value: nextValue,
+                updatedAt,
+            } satisfies MetaRecord;
+        });
+
+        await this.db.transaction("rw", this.db.meta, async () => {
+            await this.db.meta.bulkPut(nextRecords);
+        });
+
+        return nextRecords.map((record) => ({
+            ...(record.value as PostHistoryReactionLifecycleStateValue),
             updatedAt,
-            schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
         }));
     }
 }

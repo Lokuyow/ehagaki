@@ -2,10 +2,37 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getReactionRecordsMock = vi.hoisted(() => vi.fn());
 const cleanupReactionDeletionsMock = vi.hoisted(() => vi.fn());
+const verifyConsistencyMock = vi.hoisted(() => vi.fn(async ({
+    candidates,
+    statesByRequestKey,
+    deletionConfirmationIncomplete,
+}: any) => ({
+    deletedReactionEventIds: [],
+    correctedRequestKeys: [],
+    statePatches: candidates.map((candidate: any) => ({
+        requestKey: candidate.requestKey,
+        parentEventId: candidate.parentEventId,
+        reactionEventId: candidate.reactionEventId,
+        reactionAuthorPubkey: candidate.reactionAuthorPubkey,
+        source: statesByRequestKey.get(candidate.requestKey)?.source ?? "listing-current-view",
+        status: deletionConfirmationIncomplete ? "failed" : "success",
+        deletionConfirmed: false,
+        consistencyStatus: deletionConfirmationIncomplete
+            ? "retryable-failed"
+            : "success-visible",
+        verifiedAt: 300,
+    })),
+})));
+const getManyReactionStateMock = vi.hoisted(() => vi.fn(async () => [] as any[]));
 const saveManyReactionStateMock = vi.hoisted(() => vi.fn(async (inputs: any[]) =>
     inputs.map((input) => ({
+        reactionAuthorPubkey: "a".repeat(64),
         ...input,
         kind: 7,
+        attemptCount: input.attemptCount ?? 1,
+        deletionConfirmed: input.deletionConfirmed ?? false,
+        consistencyStatus: input.consistencyStatus ?? "success-visible",
+        verifiedAt: input.verifiedAt ?? null,
         updatedAt: 100,
         schemaVersion: 1,
     }))
@@ -24,8 +51,15 @@ vi.mock("../../lib/postHistoryReactionDeletionCleanupService", () => ({
     },
 }));
 
+vi.mock("../../lib/postHistoryReactionDeletionConsistencyService", () => ({
+    postHistoryReactionDeletionConsistencyService: {
+        verifyConsistency: verifyConsistencyMock,
+    },
+}));
+
 vi.mock("../../lib/storage/postHistoryReactionDeletionStateRepository", () => ({
     postHistoryReactionDeletionStateRepository: {
+        getMany: getManyReactionStateMock,
         saveMany: saveManyReactionStateMock,
     },
 }));
@@ -58,7 +92,9 @@ describe("triggerPostHistoryReactionLifecycle", () => {
         resetInFlightPostHistoryReactionLifecycleRequests();
         getReactionRecordsMock.mockResolvedValue([{
             eventId: REACTION_ID,
+            authorPubkey: "a".repeat(64),
         }]);
+        getManyReactionStateMock.mockResolvedValue([]);
         cleanupReactionDeletionsMock.mockResolvedValue({
             status: "completed",
             checkedParentEventIds: [PARENT_ID],
@@ -169,5 +205,66 @@ describe("triggerPostHistoryReactionLifecycle", () => {
             "processing",
             "failed",
         ]);
+    });
+
+    it("retry cooldown 中の failed request は再実行しない", async () => {
+        getManyReactionStateMock.mockResolvedValueOnce([{
+            requestKey: `${PARENT_ID}:${REACTION_ID}:7`,
+            parentEventId: PARENT_ID,
+            reactionEventId: REACTION_ID,
+            reactionAuthorPubkey: "a".repeat(64),
+            kind: 7,
+            source: "listing-current-view",
+            status: "failed",
+            attemptCount: 1,
+            deletionConfirmed: false,
+            consistencyStatus: "retryable-failed",
+            verifiedAt: 100,
+            updatedAt: Date.now(),
+            schemaVersion: 1,
+        }]);
+
+        const result = await triggerPostHistoryReactionLifecycle({
+            source: "listing-current-view",
+            parentEventIds: [PARENT_ID],
+            rxNostr: { use: vi.fn() } as any,
+        });
+
+        expect(cleanupReactionDeletionsMock).not.toHaveBeenCalled();
+        expect(saveManyReactionStateMock).not.toHaveBeenCalled();
+        expect(result.status).toBe("completed");
+    });
+
+    it("retry 可能な failed request は attemptCount を増やして再試行する", async () => {
+        getManyReactionStateMock.mockResolvedValueOnce([{
+            requestKey: `${PARENT_ID}:${REACTION_ID}:7`,
+            parentEventId: PARENT_ID,
+            reactionEventId: REACTION_ID,
+            reactionAuthorPubkey: "a".repeat(64),
+            kind: 7,
+            source: "listing-current-view",
+            status: "failed",
+            attemptCount: 1,
+            deletionConfirmed: false,
+            consistencyStatus: "retryable-failed",
+            verifiedAt: 100,
+            updatedAt: 0,
+            schemaVersion: 1,
+        }]);
+
+        await triggerPostHistoryReactionLifecycle({
+            source: "listing-current-view",
+            parentEventIds: [PARENT_ID],
+            rxNostr: { use: vi.fn() } as any,
+        });
+
+        expect(saveManyReactionStateMock).toHaveBeenCalledWith([
+            expect.objectContaining({
+                requestKey: `${PARENT_ID}:${REACTION_ID}:7`,
+                status: "pending",
+                attemptCount: 2,
+            }),
+        ]);
+        expect(cleanupReactionDeletionsMock).toHaveBeenCalledTimes(1);
     });
 });

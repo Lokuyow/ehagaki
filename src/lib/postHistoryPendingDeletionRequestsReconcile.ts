@@ -1,11 +1,12 @@
 import {
-    hasInFlightPostHistoryReactionLifecycleRequest,
-} from "./postHistoryReactionLifecycleState";
-import {
-    isActivePostHistoryReactionLifecycleStateStatus,
     parsePostHistoryReactionLifecycleRequestKey,
+    type PostHistoryReactionLifecycleCandidate,
     type PostHistoryReactionLifecycleStateRecord,
 } from "./postHistoryReactionLifecycleTypes";
+import {
+    postHistoryReactionDeletionConsistencyService,
+    type PostHistoryReactionDeletionConsistencyService,
+} from "./postHistoryReactionDeletionConsistencyService";
 import {
     postHistoryReactionDeletionStateRepository,
     type PostHistoryReactionDeletionStateRepository,
@@ -20,6 +21,10 @@ export interface PostHistoryPendingDeletionRequestsReconcileDeps {
     reactionDeletionStateRepository?: Pick<
         PostHistoryReactionDeletionStateRepository,
         "getMany" | "getForParentEventIds" | "saveMany"
+    >;
+    reactionDeletionConsistencyService?: Pick<
+        PostHistoryReactionDeletionConsistencyService,
+        "verifyConsistency"
     >;
 }
 
@@ -46,26 +51,37 @@ function toMissingEntries(requestKeys: string[]): Record<string, undefined> {
 }
 
 async function normalizeStaleActiveStates(
-    repository: Pick<PostHistoryReactionDeletionStateRepository, "saveMany">,
+    repository: Pick<
+        PostHistoryReactionDeletionStateRepository,
+        "saveMany"
+    >,
+    consistencyService: Pick<
+        PostHistoryReactionDeletionConsistencyService,
+        "verifyConsistency"
+    >,
     records: PostHistoryReactionLifecycleStateRecord[],
 ): Promise<PostHistoryReactionLifecycleStateRecord[]> {
-    const staleRecords = records.filter((record) =>
-        isActivePostHistoryReactionLifecycleStateStatus(record.status)
-        && !hasInFlightPostHistoryReactionLifecycleRequest(record.requestKey),
-    );
-    if (staleRecords.length === 0) {
+    if (records.length === 0) {
         return records;
     }
 
-    const normalizedRecords = await repository.saveMany(
-        staleRecords.map((record) => ({
+    const verificationResult = await consistencyService.verifyConsistency({
+        candidates: records.map((record) => ({
             requestKey: record.requestKey,
             parentEventId: record.parentEventId,
             reactionEventId: record.reactionEventId,
-            source: record.source,
-            status: "failed",
+            reactionAuthorPubkey: record.reactionAuthorPubkey,
+            kind: record.kind,
         })),
-    );
+        statesByRequestKey: new Map(
+            records.map((record) => [record.requestKey, record]),
+        ),
+    });
+    if (verificationResult.statePatches.length === 0) {
+        return records;
+    }
+
+    const normalizedRecords = await repository.saveMany(verificationResult.statePatches);
     const normalizedRecordsByRequestKey = new Map(
         normalizedRecords.map((record) => [record.requestKey, record]),
     );
@@ -81,9 +97,13 @@ export async function reconcilePendingDeletionRequestsForParentEventIds(
 ): Promise<void> {
     const reactionDeletionStateRepository =
         deps.reactionDeletionStateRepository ?? postHistoryReactionDeletionStateRepository;
+    const reactionDeletionConsistencyService =
+        deps.reactionDeletionConsistencyService
+        ?? postHistoryReactionDeletionConsistencyService;
     const records = await reactionDeletionStateRepository.getForParentEventIds(parentEventIds);
     const normalizedRecords = await normalizeStaleActiveStates(
         reactionDeletionStateRepository,
+        reactionDeletionConsistencyService,
         records,
     );
     replacePendingDeletionRequests(toStoreEntries(normalizedRecords));
@@ -95,9 +115,13 @@ export async function reconcilePendingDeletionRequestsForRequestKeys(
 ): Promise<void> {
     const reactionDeletionStateRepository =
         deps.reactionDeletionStateRepository ?? postHistoryReactionDeletionStateRepository;
+    const reactionDeletionConsistencyService =
+        deps.reactionDeletionConsistencyService
+        ?? postHistoryReactionDeletionConsistencyService;
     const records = await reactionDeletionStateRepository.getMany(requestKeys);
     const normalizedRecords = await normalizeStaleActiveStates(
         reactionDeletionStateRepository,
+        reactionDeletionConsistencyService,
         records,
     );
     updatePendingDeletionRequests({

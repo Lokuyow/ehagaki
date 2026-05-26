@@ -4,6 +4,9 @@ import {
     type PostHistoryReactionDeletionCleanupResult,
 } from "./postHistoryReactionDeletionCleanupService";
 import {
+    postHistoryReactionDeletionConsistencyService,
+} from "./postHistoryReactionDeletionConsistencyService";
+import {
     postHistoryReactionRecordsAdapter,
     type PostHistoryReactionRecordsAdapter,
 } from "./postHistoryReplyEventsAdapter";
@@ -14,14 +17,19 @@ import {
 } from "./postHistoryReactionLifecycleState";
 import {
     buildPostHistoryReactionLifecycleRequestKey,
+    canRetryPostHistoryReactionLifecycle,
+    isReactionDeletionUiGuaranteed,
+    POST_HISTORY_REACTION_LIFECYCLE_KIND,
     type PostHistoryReactionLifecycleCandidate,
     type PostHistoryReactionLifecycleSource,
+    type PostHistoryReactionLifecycleStateRecord,
 } from "./postHistoryReactionLifecycleTypes";
 import {
     reconcilePendingDeletionRequestsForRequestKeys,
 } from "./postHistoryPendingDeletionRequestsReconcile";
 import {
     postHistoryReactionDeletionStateRepository,
+    type SavePostHistoryReactionLifecycleStateInput,
     type PostHistoryReactionDeletionStateRepository,
 } from "./storage/postHistoryReactionDeletionStateRepository";
 import type { RelayConfig } from "./types";
@@ -63,7 +71,8 @@ async function loadReactionLifecycleCandidates(
                 ),
                 parentEventId,
                 reactionEventId: record.eventId,
-                kind: 7,
+                reactionAuthorPubkey: record.authorPubkey,
+                kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
             });
         }
     }
@@ -77,19 +86,29 @@ async function saveLifecycleStateTransitions(
     reactionDeletionStateRepository: Pick<PostHistoryReactionDeletionStateRepository, "saveMany">,
     source: PostHistoryReactionLifecycleSource,
     candidates: PostHistoryReactionLifecycleCandidate[],
-    status: "pending" | "processing" | "success" | "failed",
-): Promise<void> {
+    inputFactory: (
+        candidate: PostHistoryReactionLifecycleCandidate,
+    ) => Omit<
+        SavePostHistoryReactionLifecycleStateInput,
+        "requestKey"
+        | "parentEventId"
+        | "reactionEventId"
+        | "reactionAuthorPubkey"
+        | "source"
+    >,
+): Promise<PostHistoryReactionLifecycleStateRecord[]> {
     if (candidates.length === 0) {
-        return;
+        return [];
     }
 
-    await reactionDeletionStateRepository.saveMany(
+    return reactionDeletionStateRepository.saveMany(
         candidates.map((candidate) => ({
+            ...inputFactory(candidate),
             requestKey: candidate.requestKey,
             parentEventId: candidate.parentEventId,
             reactionEventId: candidate.reactionEventId,
+            reactionAuthorPubkey: candidate.reactionAuthorPubkey,
             source,
-            status,
         })),
     );
 }
@@ -114,11 +133,31 @@ export async function triggerPostHistoryReactionLifecycle(
         parentEventIds,
         reactionRecordsAdapter,
     );
+    const existingStateRecords = await reactionDeletionStateRepository.getMany(
+        uniqueRequestKeys(candidates),
+    );
+    const existingStateByRequestKey = new Map(
+        existingStateRecords.map((record) => [record.requestKey, record]),
+    );
     const skippedCandidates = candidates.filter((candidate) =>
-        hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey),
+        hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey)
+        || (
+            existingStateByRequestKey.has(candidate.requestKey)
+            && existingStateByRequestKey.get(candidate.requestKey)?.status === "failed"
+            && !canRetryPostHistoryReactionLifecycle(
+                existingStateByRequestKey.get(candidate.requestKey)!,
+            )
+        ),
     );
     const admittedCandidates = candidates.filter((candidate) =>
-        !hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey),
+        !hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey)
+        && (
+            !existingStateByRequestKey.has(candidate.requestKey)
+            || existingStateByRequestKey.get(candidate.requestKey)?.status !== "failed"
+            || canRetryPostHistoryReactionLifecycle(
+                existingStateByRequestKey.get(candidate.requestKey)!,
+            )
+        ),
     );
 
     if (!request.rxNostr || admittedCandidates.length === 0) {
@@ -139,23 +178,42 @@ export async function triggerPostHistoryReactionLifecycle(
     addInFlightPostHistoryReactionLifecycleRequests(admittedRequestKeys);
 
     try {
-        await saveLifecycleStateTransitions(
+        const pendingStateRecords = await saveLifecycleStateTransitions(
             reactionDeletionStateRepository,
             request.source,
             admittedCandidates,
-            "pending",
+            (candidate) => ({
+                status: "pending",
+                attemptCount:
+                    (existingStateByRequestKey.get(candidate.requestKey)?.attemptCount ?? 0) + 1,
+                deletionConfirmed: false,
+                consistencyStatus: "pending-allowed",
+                verifiedAt: null,
+            }),
         );
         await reconcilePendingDeletionRequestsForRequestKeys(admittedRequestKeys)
             .catch(() => undefined);
 
-        await saveLifecycleStateTransitions(
+        const pendingStateByRequestKey = new Map(
+            pendingStateRecords.map((record) => [record.requestKey, record]),
+        );
+        const processingStateRecords = await saveLifecycleStateTransitions(
             reactionDeletionStateRepository,
             request.source,
             admittedCandidates,
-            "processing",
+            () => ({
+                status: "processing",
+                consistencyStatus: "processing-allowed",
+                verifiedAt: null,
+            }),
         );
         await reconcilePendingDeletionRequestsForRequestKeys(admittedRequestKeys)
             .catch(() => undefined);
+
+        const processingStateByRequestKey = new Map(
+            [...pendingStateByRequestKey.values(), ...processingStateRecords]
+                .map((record) => [record.requestKey, record]),
+        );
 
         const result = await postHistoryReactionDeletionCleanupService.cleanupReactionDeletions(
             request.rxNostr,
@@ -169,23 +227,77 @@ export async function triggerPostHistoryReactionLifecycle(
             },
         );
 
-        await saveLifecycleStateTransitions(
-            reactionDeletionStateRepository,
-            request.source,
-            admittedCandidates,
-            result.status === "completed" ? "success" : "failed",
-        );
+        if (result.status === "cancelled") {
+            await saveLifecycleStateTransitions(
+                reactionDeletionStateRepository,
+                request.source,
+                admittedCandidates,
+                () => ({
+                    status: "failed",
+                    deletionConfirmed: false,
+                    consistencyStatus: "retryable-failed",
+                    verifiedAt: Date.now(),
+                }),
+            );
+
+            return {
+                source: request.source,
+                ...result,
+            };
+        }
+
+        const consistencyResult =
+            await postHistoryReactionDeletionConsistencyService.verifyConsistency({
+                candidates: admittedCandidates,
+                statesByRequestKey: processingStateByRequestKey,
+                deletionConfirmationIncomplete:
+                    result.status !== "completed"
+                    || result.deletionConfirmationIncomplete,
+                isActive: request.isActive,
+            });
+        const finalStateRecords = consistencyResult.statePatches.length > 0
+            ? await reactionDeletionStateRepository.saveMany(consistencyResult.statePatches)
+            : await saveLifecycleStateTransitions(
+                reactionDeletionStateRepository,
+                request.source,
+                admittedCandidates,
+                () => ({
+                    status: "failed",
+                    deletionConfirmed: false,
+                    consistencyStatus: "retryable-failed",
+                    verifiedAt: Date.now(),
+                }),
+            );
+        const deletedReactionEventIds = Array.from(new Set([
+            ...result.deletedReactionEventIds,
+            ...consistencyResult.deletedReactionEventIds,
+            ...finalStateRecords
+                .filter((record) => isReactionDeletionUiGuaranteed(record))
+                .map((record) => record.reactionEventId),
+        ]));
+        const hasFailedState = finalStateRecords.some((record) => record.status === "failed");
 
         return {
             source: request.source,
-            ...result,
+            status: hasFailedState ? "partial" : "completed",
+            checkedParentEventIds: Array.from(new Set(
+                admittedCandidates.map((candidate) => candidate.parentEventId),
+            )),
+            deletedReactionEventIds,
+            deletionConfirmationIncomplete:
+                result.deletionConfirmationIncomplete || hasFailedState,
         };
     } catch {
         await saveLifecycleStateTransitions(
             reactionDeletionStateRepository,
             request.source,
             admittedCandidates,
-            "failed",
+            () => ({
+                status: "failed",
+                deletionConfirmed: false,
+                consistencyStatus: "retryable-failed",
+                verifiedAt: Date.now(),
+            }),
         ).catch(() => undefined);
 
         return {
