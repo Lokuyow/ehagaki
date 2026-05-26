@@ -38,6 +38,8 @@ export interface PostHistoryReactionDeletionCleanupResult {
     deletionConfirmationIncomplete: boolean;
 }
 
+// Route A contract: production callers must enter reaction cleanup through
+// triggerPostHistoryReactionLifecycle so dedupe and retry gating stay centralized.
 export interface PostHistoryReactionDeletionCleanupServiceDeps {
     reactionRecordsAdapter?: Pick<PostHistoryReactionRecordsAdapter, "getReactionRecords">;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;

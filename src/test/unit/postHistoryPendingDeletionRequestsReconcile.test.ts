@@ -36,19 +36,18 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
                 source: "listing-current-view" as const,
                 status: "success" as const,
                 attemptCount: 1,
-                deletionConfirmed: false,
-                consistencyStatus: "success-visible" as const,
-                verifiedAt: 150,
                 updatedAt: 100,
                 schemaVersion: 1,
             }]),
             getMany: vi.fn(),
+            deleteMany: vi.fn(async () => undefined),
             saveMany: vi.fn(),
         };
         const consistencyService = {
             verifyConsistency: vi.fn(async () => ({
                 deletedReactionEventIds: [],
                 correctedRequestKeys: [],
+                resolvedRequestKeys: [REQUEST_KEY],
                 statePatches: [],
             })),
         };
@@ -59,7 +58,8 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
         });
 
         expect(repository.getForParentEventIds).toHaveBeenCalledWith([PARENT_ID]);
-        expect(pendingDeletionRequestsState[REACTION_ID]).toBe("success");
+        expect(repository.deleteMany).toHaveBeenCalledWith([REQUEST_KEY]);
+        expect(pendingDeletionRequestsState[REACTION_ID]).toBeUndefined();
     });
 
     it("reconcile は consistency diff を保存して cache へ反映する", async () => {
@@ -74,12 +74,10 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
                 source: "inbound-realtime" as const,
                 status: "processing" as const,
                 attemptCount: 1,
-                deletionConfirmed: false,
-                consistencyStatus: "processing-allowed" as const,
-                verifiedAt: null,
                 updatedAt: 100,
                 schemaVersion: 1,
             }]),
+            deleteMany: vi.fn(async () => undefined),
             saveMany: vi.fn(async () => [{
                 requestKey: REQUEST_KEY,
                 parentEventId: PARENT_ID,
@@ -89,9 +87,6 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
                 source: "inbound-realtime" as const,
                 status: "failed" as const,
                 attemptCount: 1,
-                deletionConfirmed: false,
-                consistencyStatus: "retryable-failed" as const,
-                verifiedAt: 200,
                 updatedAt: 200,
                 schemaVersion: 1,
             }]),
@@ -100,6 +95,7 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
             verifyConsistency: vi.fn(async () => ({
                 deletedReactionEventIds: [],
                 correctedRequestKeys: [REQUEST_KEY],
+                resolvedRequestKeys: [],
                 statePatches: [{
                     requestKey: REQUEST_KEY,
                     parentEventId: PARENT_ID,
@@ -107,9 +103,6 @@ describe("postHistoryPendingDeletionRequestsReconcile", () => {
                     reactionAuthorPubkey: "a".repeat(64),
                     source: "inbound-realtime" as const,
                     status: "failed" as const,
-                    deletionConfirmed: false,
-                    consistencyStatus: "retryable-failed" as const,
-                    verifiedAt: 200,
                 }],
             })),
         };

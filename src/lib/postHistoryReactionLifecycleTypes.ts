@@ -11,13 +11,6 @@ export type PostHistoryReactionLifecycleStateStatus =
     | "success"
     | "failed";
 
-export type PostHistoryReactionLifecycleConsistencyStatus =
-    | "pending-allowed"
-    | "processing-allowed"
-    | "success-visible"
-    | "success-deleted"
-    | "retryable-failed";
-
 export const POST_HISTORY_REACTION_LIFECYCLE_KIND = 7;
 export const POST_HISTORY_REACTION_LIFECYCLE_MAX_RETRY_COUNT = 3;
 export const POST_HISTORY_REACTION_LIFECYCLE_RETRY_COOLDOWN_MS = 5_000;
@@ -43,9 +36,6 @@ export interface PostHistoryReactionLifecycleStateRecord {
     source: PostHistoryReactionLifecycleSource;
     status: PostHistoryReactionLifecycleStateStatus;
     attemptCount: number;
-    deletionConfirmed: boolean;
-    consistencyStatus: PostHistoryReactionLifecycleConsistencyStatus;
-    verifiedAt: number | null;
     updatedAt: number;
     schemaVersion: number;
 }
@@ -83,24 +73,6 @@ export function isActivePostHistoryReactionLifecycleStateStatus(
     status: PostHistoryReactionLifecycleStateStatus,
 ): boolean {
     return status === "pending" || status === "processing";
-}
-
-export function canAllowReactionRowResidue(
-    record: Pick<
-        PostHistoryReactionLifecycleStateRecord,
-        "status" | "deletionConfirmed"
-    >,
-): boolean {
-    return !record.deletionConfirmed;
-}
-
-export function isReactionDeletionUiGuaranteed(
-    record: Pick<
-        PostHistoryReactionLifecycleStateRecord,
-        "status" | "deletionConfirmed"
-    >,
-): boolean {
-    return record.status === "success" && record.deletionConfirmed;
 }
 
 export function canRetryPostHistoryReactionLifecycle(

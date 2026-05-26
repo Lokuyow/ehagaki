@@ -20,7 +20,7 @@ import {
 export interface PostHistoryPendingDeletionRequestsReconcileDeps {
     reactionDeletionStateRepository?: Pick<
         PostHistoryReactionDeletionStateRepository,
-        "getMany" | "getForParentEventIds" | "saveMany"
+        "getMany" | "getForParentEventIds" | "saveMany" | "deleteMany"
     >;
     reactionDeletionConsistencyService?: Pick<
         PostHistoryReactionDeletionConsistencyService,
@@ -32,7 +32,10 @@ function toStoreEntries(
     records: PostHistoryReactionLifecycleStateRecord[],
 ): Record<string, PendingDeletionRequestStatus | undefined> {
     return Object.fromEntries(
-        records.map((record) => [record.reactionEventId, record.status]),
+        records.map((record) => [
+            record.reactionEventId,
+            record.status === "success" ? undefined : record.status,
+        ]),
     );
 }
 
@@ -53,7 +56,7 @@ function toMissingEntries(requestKeys: string[]): Record<string, undefined> {
 async function normalizeStaleActiveStates(
     repository: Pick<
         PostHistoryReactionDeletionStateRepository,
-        "saveMany"
+        "saveMany" | "deleteMany"
     >,
     consistencyService: Pick<
         PostHistoryReactionDeletionConsistencyService,
@@ -77,18 +80,33 @@ async function normalizeStaleActiveStates(
             records.map((record) => [record.requestKey, record]),
         ),
     });
+    const resolvedRequestKeys = verificationResult.resolvedRequestKeys ?? [];
     if (verificationResult.statePatches.length === 0) {
-        return records;
+        if (resolvedRequestKeys.length === 0) {
+            return records;
+        }
+
+        await repository.deleteMany(resolvedRequestKeys);
+        const resolvedRequestKeySet = new Set(resolvedRequestKeys);
+        return records.filter((record) => !resolvedRequestKeySet.has(record.requestKey));
     }
 
     const normalizedRecords = await repository.saveMany(verificationResult.statePatches);
+    if (resolvedRequestKeys.length > 0) {
+        await repository.deleteMany(resolvedRequestKeys);
+    }
     const normalizedRecordsByRequestKey = new Map(
         normalizedRecords.map((record) => [record.requestKey, record]),
     );
+    const resolvedRequestKeySet = new Set(resolvedRequestKeys);
 
-    return records.map((record) =>
-        normalizedRecordsByRequestKey.get(record.requestKey) ?? record,
-    );
+    return records.flatMap((record) => {
+        if (resolvedRequestKeySet.has(record.requestKey)) {
+            return [];
+        }
+
+        return [normalizedRecordsByRequestKey.get(record.requestKey) ?? record];
+    });
 }
 
 export async function reconcilePendingDeletionRequestsForParentEventIds(

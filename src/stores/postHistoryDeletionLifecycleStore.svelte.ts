@@ -1,7 +1,6 @@
 export type PendingDeletionRequestStatus =
     | "pending"
     | "processing"
-    | "success"
     | "failed";
 
 export const pendingDeletionRequestsState = $state<

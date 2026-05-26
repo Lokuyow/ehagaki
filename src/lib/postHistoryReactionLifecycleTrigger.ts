@@ -18,7 +18,6 @@ import {
 import {
     buildPostHistoryReactionLifecycleRequestKey,
     canRetryPostHistoryReactionLifecycle,
-    isReactionDeletionUiGuaranteed,
     POST_HISTORY_REACTION_LIFECYCLE_KIND,
     type PostHistoryReactionLifecycleCandidate,
     type PostHistoryReactionLifecycleSource,
@@ -46,6 +45,9 @@ export interface PostHistoryReactionLifecycleTriggerResult
     extends PostHistoryReactionDeletionCleanupResult {
     source: PostHistoryReactionLifecycleSource;
 }
+
+// Route A contract: this is the only production entry point for reaction
+// deletion callers. Keep dialog, sync, realtime, and listing flows routed here.
 
 function normalizeParentEventIds(parentEventIds: string[]): string[] {
     return Array.from(new Set(parentEventIds.filter((eventId) => !!eventId)));
@@ -186,9 +188,6 @@ export async function triggerPostHistoryReactionLifecycle(
                 status: "pending",
                 attemptCount:
                     (existingStateByRequestKey.get(candidate.requestKey)?.attemptCount ?? 0) + 1,
-                deletionConfirmed: false,
-                consistencyStatus: "pending-allowed",
-                verifiedAt: null,
             }),
         );
         await reconcilePendingDeletionRequestsForRequestKeys(admittedRequestKeys)
@@ -203,8 +202,6 @@ export async function triggerPostHistoryReactionLifecycle(
             admittedCandidates,
             () => ({
                 status: "processing",
-                consistencyStatus: "processing-allowed",
-                verifiedAt: null,
             }),
         );
         await reconcilePendingDeletionRequestsForRequestKeys(admittedRequestKeys)
@@ -234,9 +231,6 @@ export async function triggerPostHistoryReactionLifecycle(
                 admittedCandidates,
                 () => ({
                     status: "failed",
-                    deletionConfirmed: false,
-                    consistencyStatus: "retryable-failed",
-                    verifiedAt: Date.now(),
                 }),
             );
 
@@ -255,31 +249,25 @@ export async function triggerPostHistoryReactionLifecycle(
                     || result.deletionConfirmationIncomplete,
                 isActive: request.isActive,
             });
+        const resolvedRequestKeys = consistencyResult.resolvedRequestKeys ?? [];
         const finalStateRecords = consistencyResult.statePatches.length > 0
             ? await reactionDeletionStateRepository.saveMany(consistencyResult.statePatches)
-            : await saveLifecycleStateTransitions(
-                reactionDeletionStateRepository,
-                request.source,
-                admittedCandidates,
-                () => ({
-                    status: "failed",
-                    deletionConfirmed: false,
-                    consistencyStatus: "retryable-failed",
-                    verifiedAt: Date.now(),
-                }),
-            );
+            : [];
+        if (resolvedRequestKeys.length > 0) {
+            await reactionDeletionStateRepository.deleteMany(resolvedRequestKeys);
+        }
         const deletedReactionEventIds = Array.from(new Set([
             ...result.deletedReactionEventIds,
             ...consistencyResult.deletedReactionEventIds,
-            ...finalStateRecords
-                .filter((record) => isReactionDeletionUiGuaranteed(record))
-                .map((record) => record.reactionEventId),
         ]));
         const hasFailedState = finalStateRecords.some((record) => record.status === "failed");
 
         return {
             source: request.source,
-            status: hasFailedState ? "partial" : "completed",
+            status:
+                result.deletionConfirmationIncomplete || hasFailedState
+                    ? "partial"
+                    : "completed",
             checkedParentEventIds: Array.from(new Set(
                 admittedCandidates.map((candidate) => candidate.parentEventId),
             )),
@@ -294,9 +282,6 @@ export async function triggerPostHistoryReactionLifecycle(
             admittedCandidates,
             () => ({
                 status: "failed",
-                deletionConfirmed: false,
-                consistencyStatus: "retryable-failed",
-                verifiedAt: Date.now(),
             }),
         ).catch(() => undefined);
 

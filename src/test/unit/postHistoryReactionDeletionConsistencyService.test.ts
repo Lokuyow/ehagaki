@@ -18,16 +18,13 @@ function createStateRecord(status: "pending" | "processing" | "success" | "faile
         source: "listing-current-view" as const,
         status,
         attemptCount: 1,
-        deletionConfirmed: false,
-        consistencyStatus: "processing-allowed" as const,
-        verifiedAt: null,
         updatedAt: 100,
         schemaVersion: 1,
     };
 }
 
 describe("PostHistoryReactionDeletionConsistencyService", () => {
-    it("deletion request が確認できた row は purge して success-deleted に収束させる", async () => {
+    it("deletion request が確認できた row は purge して resolved request として返す", async () => {
         const deleteChildInteractionByEventId = vi.fn(async () => undefined);
         const service = new PostHistoryReactionDeletionConsistencyService({
             reactionRecordsAdapter: {
@@ -61,14 +58,8 @@ describe("PostHistoryReactionDeletionConsistencyService", () => {
 
         expect(deleteChildInteractionByEventId).toHaveBeenCalledWith(REACTION_ID);
         expect(result.deletedReactionEventIds).toEqual([REACTION_ID]);
-        expect(result.statePatches).toEqual([
-            expect.objectContaining({
-                requestKey: REQUEST_KEY,
-                status: "success",
-                deletionConfirmed: true,
-                consistencyStatus: "success-deleted",
-            }),
-        ]);
+        expect(result.resolvedRequestKeys).toEqual([REQUEST_KEY]);
+        expect(result.statePatches).toEqual([]);
     });
 
     it("deletion confirmation が incomplete なら tombstone 未確認 row を retryable-failed に戻す", async () => {
@@ -104,12 +95,11 @@ describe("PostHistoryReactionDeletionConsistencyService", () => {
 
         expect(deleteChildInteractionByEventId).not.toHaveBeenCalled();
         expect(result.deletedReactionEventIds).toEqual([]);
+        expect(result.resolvedRequestKeys).toEqual([]);
         expect(result.statePatches).toEqual([
             expect.objectContaining({
                 requestKey: REQUEST_KEY,
                 status: "failed",
-                deletionConfirmed: false,
-                consistencyStatus: "retryable-failed",
             }),
         ]);
     });

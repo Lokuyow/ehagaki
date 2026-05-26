@@ -9,30 +9,28 @@ const verifyConsistencyMock = vi.hoisted(() => vi.fn(async ({
 }: any) => ({
     deletedReactionEventIds: [],
     correctedRequestKeys: [],
-    statePatches: candidates.map((candidate: any) => ({
-        requestKey: candidate.requestKey,
-        parentEventId: candidate.parentEventId,
-        reactionEventId: candidate.reactionEventId,
-        reactionAuthorPubkey: candidate.reactionAuthorPubkey,
-        source: statesByRequestKey.get(candidate.requestKey)?.source ?? "listing-current-view",
-        status: deletionConfirmationIncomplete ? "failed" : "success",
-        deletionConfirmed: false,
-        consistencyStatus: deletionConfirmationIncomplete
-            ? "retryable-failed"
-            : "success-visible",
-        verifiedAt: 300,
-    })),
+    resolvedRequestKeys: deletionConfirmationIncomplete
+        ? []
+        : candidates.map((candidate: any) => candidate.requestKey),
+    statePatches: deletionConfirmationIncomplete
+        ? candidates.map((candidate: any) => ({
+            requestKey: candidate.requestKey,
+            parentEventId: candidate.parentEventId,
+            reactionEventId: candidate.reactionEventId,
+            reactionAuthorPubkey: candidate.reactionAuthorPubkey,
+            source: statesByRequestKey.get(candidate.requestKey)?.source ?? "listing-current-view",
+            status: "failed",
+        }))
+        : [],
 })));
 const getManyReactionStateMock = vi.hoisted(() => vi.fn(async () => [] as any[]));
+const deleteManyReactionStateMock = vi.hoisted(() => vi.fn(async () => undefined));
 const saveManyReactionStateMock = vi.hoisted(() => vi.fn(async (inputs: any[]) =>
     inputs.map((input) => ({
         reactionAuthorPubkey: "a".repeat(64),
         ...input,
         kind: 7,
         attemptCount: input.attemptCount ?? 1,
-        deletionConfirmed: input.deletionConfirmed ?? false,
-        consistencyStatus: input.consistencyStatus ?? "success-visible",
-        verifiedAt: input.verifiedAt ?? null,
         updatedAt: 100,
         schemaVersion: 1,
     }))
@@ -60,6 +58,7 @@ vi.mock("../../lib/postHistoryReactionDeletionConsistencyService", () => ({
 vi.mock("../../lib/storage/postHistoryReactionDeletionStateRepository", () => ({
     postHistoryReactionDeletionStateRepository: {
         getMany: getManyReactionStateMock,
+        deleteMany: deleteManyReactionStateMock,
         saveMany: saveManyReactionStateMock,
     },
 }));
@@ -141,7 +140,9 @@ describe("triggerPostHistoryReactionLifecycle", () => {
         expect(saveManyReactionStateMock.mock.calls.map(([inputs]) => inputs[0].status)).toEqual([
             "pending",
             "processing",
-            "success",
+        ]);
+        expect(deleteManyReactionStateMock).toHaveBeenCalledWith([
+            `${PARENT_ID}:${REACTION_ID}:7`,
         ]);
     });
 
@@ -217,9 +218,6 @@ describe("triggerPostHistoryReactionLifecycle", () => {
             source: "listing-current-view",
             status: "failed",
             attemptCount: 1,
-            deletionConfirmed: false,
-            consistencyStatus: "retryable-failed",
-            verifiedAt: 100,
             updatedAt: Date.now(),
             schemaVersion: 1,
         }]);
@@ -245,9 +243,6 @@ describe("triggerPostHistoryReactionLifecycle", () => {
             source: "listing-current-view",
             status: "failed",
             attemptCount: 1,
-            deletionConfirmed: false,
-            consistencyStatus: "retryable-failed",
-            verifiedAt: 100,
             updatedAt: 0,
             schemaVersion: 1,
         }]);

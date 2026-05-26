@@ -18,12 +18,9 @@ import type {
 } from "./storage/ehagakiDb";
 import type {
     SavePostHistoryReactionLifecycleStateInput,
-    PostHistoryReactionDeletionStateRepository,
 } from "./storage/postHistoryReactionDeletionStateRepository";
 import {
-    canAllowReactionRowResidue,
     type PostHistoryReactionLifecycleCandidate,
-    type PostHistoryReactionLifecycleConsistencyStatus,
     type PostHistoryReactionLifecycleStateRecord,
 } from "./postHistoryReactionLifecycleTypes";
 
@@ -37,6 +34,7 @@ export interface VerifyPostHistoryReactionDeletionConsistencyRequest {
 export interface VerifyPostHistoryReactionDeletionConsistencyResult {
     deletedReactionEventIds: string[];
     correctedRequestKeys: string[];
+    resolvedRequestKeys: string[];
     statePatches: SavePostHistoryReactionLifecycleStateInput[];
 }
 
@@ -80,70 +78,18 @@ function toReactionRecordsByParent(
     return rowsByParentEventId;
 }
 
-function resolveConsistencyStatus(
+function buildFailedStatePatch(
+    candidate: PostHistoryReactionLifecycleCandidate,
     state: PostHistoryReactionLifecycleStateRecord,
-    options: {
-        deletionRequestExists: boolean;
-        reactionRowExists: boolean;
-        deletionConfirmationIncomplete: boolean;
-    },
-): {
-    status: PostHistoryReactionLifecycleStateRecord["status"];
-    deletionConfirmed: boolean;
-    consistencyStatus: PostHistoryReactionLifecycleConsistencyStatus;
-} {
-    if (options.deletionRequestExists) {
-        return {
-            status: "success",
-            deletionConfirmed: true,
-            consistencyStatus: "success-deleted",
-        };
-    }
-
-    if (options.deletionConfirmationIncomplete) {
-        return {
-            status: "failed",
-            deletionConfirmed: false,
-            consistencyStatus: "retryable-failed",
-        };
-    }
-
-    if (state.status === "pending") {
-        return {
-            status: hasInFlightPostHistoryReactionLifecycleRequest(state.requestKey)
-                ? "pending"
-                : "failed",
-            deletionConfirmed: false,
-            consistencyStatus: hasInFlightPostHistoryReactionLifecycleRequest(state.requestKey)
-                ? "pending-allowed"
-                : "retryable-failed",
-        };
-    }
-
-    if (state.status === "processing") {
-        return {
-            status: hasInFlightPostHistoryReactionLifecycleRequest(state.requestKey)
-                ? "processing"
-                : "failed",
-            deletionConfirmed: false,
-            consistencyStatus: hasInFlightPostHistoryReactionLifecycleRequest(state.requestKey)
-                ? "processing-allowed"
-                : "retryable-failed",
-        };
-    }
-
-    if (state.status === "failed" || state.deletionConfirmed) {
-        return {
-            status: "failed",
-            deletionConfirmed: false,
-            consistencyStatus: "retryable-failed",
-        };
-    }
-
+): SavePostHistoryReactionLifecycleStateInput {
     return {
-        status: "success",
-        deletionConfirmed: false,
-        consistencyStatus: "success-visible",
+        requestKey: candidate.requestKey,
+        parentEventId: candidate.parentEventId,
+        reactionEventId: candidate.reactionEventId,
+        reactionAuthorPubkey: candidate.reactionAuthorPubkey,
+        source: state.source,
+        status: "failed",
+        attemptCount: state.attemptCount,
     };
 }
 
@@ -177,6 +123,7 @@ export class PostHistoryReactionDeletionConsistencyService {
             return {
                 deletedReactionEventIds: [],
                 correctedRequestKeys: [],
+                resolvedRequestKeys: [],
                 statePatches: [],
             };
         }
@@ -195,6 +142,7 @@ export class PostHistoryReactionDeletionConsistencyService {
             return {
                 deletedReactionEventIds: [],
                 correctedRequestKeys: [],
+                resolvedRequestKeys: [],
                 statePatches: [],
             };
         }
@@ -212,6 +160,7 @@ export class PostHistoryReactionDeletionConsistencyService {
 
         const deletedReactionEventIds: string[] = [];
         const correctedRequestKeys: string[] = [];
+        const resolvedRequestKeys: string[] = [];
         const statePatches: SavePostHistoryReactionLifecycleStateInput[] = [];
         for (const candidate of uniqueCandidates) {
             const currentState = params.statesByRequestKey.get(candidate.requestKey);
@@ -235,39 +184,35 @@ export class PostHistoryReactionDeletionConsistencyService {
                 deletedReactionEventIds.push(candidate.reactionEventId);
             }
 
-            const normalizedState = resolveConsistencyStatus(currentState, {
-                deletionRequestExists,
-                reactionRowExists: nextReactionRowExists,
-                deletionConfirmationIncomplete:
-                    params.deletionConfirmationIncomplete === true,
-            });
-            if (!canAllowReactionRowResidue({
-                status: normalizedState.status,
-                deletionConfirmed: normalizedState.deletionConfirmed,
-            }) && nextReactionRowExists) {
-                await this.childInteractionsRepository.deleteChildInteractionByEventId(
-                    candidate.reactionEventId,
-                );
-                correctedRequestKeys.push(candidate.requestKey);
-                deletedReactionEventIds.push(candidate.reactionEventId);
+            if (deletionRequestExists || !nextReactionRowExists || currentState.status === "success") {
+                resolvedRequestKeys.push(candidate.requestKey);
+                continue;
             }
 
-            statePatches.push({
-                requestKey: candidate.requestKey,
-                parentEventId: candidate.parentEventId,
-                reactionEventId: candidate.reactionEventId,
-                reactionAuthorPubkey: candidate.reactionAuthorPubkey,
-                source: currentState.source,
-                status: normalizedState.status,
-                deletionConfirmed: normalizedState.deletionConfirmed,
-                consistencyStatus: normalizedState.consistencyStatus,
-                verifiedAt: Date.now(),
-            });
+            const isInFlight = hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey);
+            const shouldPersistFailure =
+                params.deletionConfirmationIncomplete === true
+                || (
+                    (currentState.status === "pending" || currentState.status === "processing")
+                    && !isInFlight
+                );
+
+            if (!shouldPersistFailure) {
+                resolvedRequestKeys.push(candidate.requestKey);
+                continue;
+            }
+
+            if (currentState.status === "failed") {
+                continue;
+            }
+
+            statePatches.push(buildFailedStatePatch(candidate, currentState));
         }
 
         return {
             deletedReactionEventIds: uniqueEventIds(deletedReactionEventIds),
             correctedRequestKeys: uniqueRequestKeys(correctedRequestKeys),
+            resolvedRequestKeys: uniqueRequestKeys(resolvedRequestKeys),
             statePatches,
         };
     }

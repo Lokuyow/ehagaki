@@ -2,7 +2,6 @@ import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_REACTION_LIFECYCLE_KIND,
-    type PostHistoryReactionLifecycleConsistencyStatus,
     type PostHistoryReactionLifecycleSource,
     type PostHistoryReactionLifecycleStateRecord,
     type PostHistoryReactionLifecycleStateStatus,
@@ -26,14 +25,12 @@ export interface SavePostHistoryReactionLifecycleStateInput {
     source?: PostHistoryReactionLifecycleSource;
     status?: PostHistoryReactionLifecycleStateStatus;
     attemptCount?: number;
-    deletionConfirmed?: boolean;
-    consistencyStatus?: PostHistoryReactionLifecycleConsistencyStatus;
-    verifiedAt?: number | null;
 }
 
 export interface PostHistoryReactionDeletionStateRepository {
     getMany(requestKeys: string[]): Promise<PostHistoryReactionLifecycleStateRecord[]>;
     getForParentEventIds(parentEventIds: string[]): Promise<PostHistoryReactionLifecycleStateRecord[]>;
+    deleteMany(requestKeys: string[]): Promise<void>;
     saveMany(
         inputs: SavePostHistoryReactionLifecycleStateInput[],
     ): Promise<PostHistoryReactionLifecycleStateRecord[]>;
@@ -66,16 +63,6 @@ function isReactionLifecycleStatus(
         || status === "failed";
 }
 
-function isReactionLifecycleConsistencyStatus(
-    status: unknown,
-): status is PostHistoryReactionLifecycleConsistencyStatus {
-    return status === "pending-allowed"
-        || status === "processing-allowed"
-        || status === "success-visible"
-        || status === "success-deleted"
-        || status === "retryable-failed";
-}
-
 function isValidStateValue(value: unknown): value is PostHistoryReactionLifecycleStateValue {
     if (!value || typeof value !== "object") {
         return false;
@@ -90,9 +77,6 @@ function isValidStateValue(value: unknown): value is PostHistoryReactionLifecycl
         && isReactionLifecycleSource(state.source)
         && isReactionLifecycleStatus(state.status)
         && typeof state.attemptCount === "number"
-        && typeof state.deletionConfirmed === "boolean"
-        && isReactionLifecycleConsistencyStatus(state.consistencyStatus)
-        && (typeof state.verifiedAt === "number" || state.verifiedAt === null)
         && typeof state.schemaVersion === "number";
 }
 
@@ -111,9 +95,6 @@ function buildDefaultStateValue(
         source: "listing-current-view",
         status: "pending",
         attemptCount: 0,
-        deletionConfirmed: false,
-        consistencyStatus: "pending-allowed",
-        verifiedAt: null,
         schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
     };
 }
@@ -195,6 +176,17 @@ implements PostHistoryReactionDeletionStateRepository {
         return dedupeStateRecords(allRecords);
     }
 
+    async deleteMany(requestKeys: string[]): Promise<void> {
+        const uniqueRequestKeys = Array.from(new Set(requestKeys.filter((requestKey) => !!requestKey)));
+        if (uniqueRequestKeys.length === 0) {
+            return;
+        }
+
+        await this.db.meta.bulkDelete(
+            uniqueRequestKeys.map((requestKey) => buildStateMetaKey(requestKey)),
+        );
+    }
+
     async saveMany(
         inputs: SavePostHistoryReactionLifecycleStateInput[],
     ): Promise<PostHistoryReactionLifecycleStateRecord[]> {
@@ -232,9 +224,6 @@ implements PostHistoryReactionDeletionStateRepository {
                         source: existingState.source,
                         status: existingState.status,
                         attemptCount: existingState.attemptCount,
-                        deletionConfirmed: existingState.deletionConfirmed,
-                        consistencyStatus: existingState.consistencyStatus,
-                        verifiedAt: existingState.verifiedAt,
                         schemaVersion: existingState.schemaVersion,
                     }
                     : buildDefaultStateValue(input)),
@@ -249,13 +238,6 @@ implements PostHistoryReactionDeletionStateRepository {
                 ...(input.attemptCount !== undefined
                     ? { attemptCount: input.attemptCount }
                     : {}),
-                ...(input.deletionConfirmed !== undefined
-                    ? { deletionConfirmed: input.deletionConfirmed }
-                    : {}),
-                ...(input.consistencyStatus !== undefined
-                    ? { consistencyStatus: input.consistencyStatus }
-                    : {}),
-                ...(input.verifiedAt !== undefined ? { verifiedAt: input.verifiedAt } : {}),
                 schemaVersion: POST_HISTORY_REACTION_DELETION_STATE_SCHEMA_VERSION,
             };
 
