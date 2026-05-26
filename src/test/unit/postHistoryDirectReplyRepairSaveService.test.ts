@@ -136,4 +136,28 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             }),
         );
     });
+
+    it("既存replyが unchanged のみなら saved 件数に含めない", async () => {
+        const { service, replyEventsRepository } = createService();
+        replyEventsRepository.upsertDirectReplies.mockResolvedValueOnce({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 1,
+            ignoredCount: 0,
+        });
+
+        const result = await service.saveRepairDirectReplies({} as any, {
+            items: [{ parentEventId: PARENT_ID, event: createReply() }],
+        }).promise;
+
+        expect(result).toMatchObject({
+            savedParentEventIds: [],
+            savedDirectReplyCount: 0,
+        });
+        expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith(
+            expect.objectContaining({
+                parentEventId: PARENT_ID,
+            }),
+        );
+    });
 });

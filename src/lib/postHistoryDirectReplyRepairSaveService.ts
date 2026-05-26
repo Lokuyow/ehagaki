@@ -286,7 +286,7 @@ export class PostHistoryDirectReplyRepairSaveService {
                 events,
                 fetchedAt,
             });
-            const savedCount = result.insertedCount + result.updatedCount + result.unchangedCount;
+            const savedCount = result.insertedCount + result.updatedCount;
             if (savedCount > 0) {
                 savedParentEventIds.push(parentEventId);
                 savedDirectReplyCount += savedCount;

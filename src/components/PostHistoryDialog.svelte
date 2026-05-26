@@ -331,6 +331,17 @@
     });
 
     $effect(() => {
+        const posts = history.posts;
+        if (!show || posts.length === 0) {
+            return;
+        }
+
+        void untrack(() =>
+            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(posts),
+        );
+    });
+
+    $effect(() => {
         const revision = inboundDirectReplySave?.revision ?? 0;
         const parentEventIds = inboundDirectReplySave?.parentEventIds ?? [];
         const posts = history.posts;

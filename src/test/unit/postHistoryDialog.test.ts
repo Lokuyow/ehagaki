@@ -2553,6 +2553,50 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[reply-badge-preload] visible posts load cached direct reply badges without an explicit signal', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            parentEventId,
+            content: '保存済み返信',
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) =>
+            parentId === parentEventId ? [cachedReply] : [],
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
+    });
+
     it('[inbound-realtime] dialog-open-refresh中の返信通知でも表示中投稿を維持してbadgeだけ更新する', async () => {
         const parentEventId = '1'.repeat(64);
         const post = createRecord({
