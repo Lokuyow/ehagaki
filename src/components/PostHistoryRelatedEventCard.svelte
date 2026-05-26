@@ -74,11 +74,6 @@
 <article class="post-history-related-card">
     {@render topActions?.()}
     <div class="post-history-related-card-body">
-        {#if showHeaderDate}
-            <header class="post-history-related-card-header">
-                <span class="post-history-related-date">{postedAt}</span>
-            </header>
-        {/if}
         <div class="post-history-related-author">
             {#if profile?.picture}
                 <img
@@ -101,6 +96,11 @@
             <div class="post-history-related-media">
                 <PostHistoryMediaList {media} {scrollRoot} {onImageOpen} />
             </div>
+        {/if}
+        {#if showHeaderDate}
+            <header class="post-history-related-card-header">
+                <span class="post-history-related-date">{postedAt}</span>
+            </header>
         {/if}
         {@render children?.()}
     </div>
