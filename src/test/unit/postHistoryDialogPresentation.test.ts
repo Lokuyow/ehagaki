@@ -4,6 +4,7 @@ import {
     isPostHistoryFavoriteReactionContent,
     resolvePostHistoryCountSummaryState,
     resolvePostHistoryNavigationLabelKey,
+    resolvePostHistoryReactionDisplayContent,
     resolvePostHistoryReactionsActionLabelState,
     resolvePostHistoryRepliesActionLabelState,
 } from "../../lib/postHistoryDialogPresentation";
@@ -132,5 +133,11 @@ describe("postHistoryDialogPresentation", () => {
     it("favorite iconへ置換する内部値は+だけに限定する", () => {
         expect(isPostHistoryFavoriteReactionContent("+")).toBe(true);
         expect(isPostHistoryFavoriteReactionContent("👍")).toBe(false);
+    });
+
+    it("reaction表示はカスタム絵文字ショートコードを保持し、通常値は1グラフェムに制限する", () => {
+        expect(resolvePostHistoryReactionDisplayContent(":kubipaca_kao:")).toBe(":kubipaca_kao:");
+        expect(resolvePostHistoryReactionDisplayContent("🙂‍↕️🙂‍↕️🙂‍↕️")).toBe("🙂‍↕️");
+        expect(resolvePostHistoryReactionDisplayContent("abc")).toBe("a");
     });
 });

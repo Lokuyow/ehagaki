@@ -18,6 +18,11 @@ export type PostHistoryReactionsActionPresentationInput = {
     reactionCount: number;
 };
 
+const REACTION_CUSTOM_EMOJI_SHORTCODE_REGEX = /^:[\p{L}\p{N}_+-]{1,64}:$/u;
+const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
+    granularity: "grapheme",
+});
+
 export function resolvePostHistoryCountSummaryState(input: {
     totalCount: number;
     isSearchMode: boolean;
@@ -109,4 +114,22 @@ export function resolvePostHistoryReactionsActionLabelState(
 
 export function isPostHistoryFavoriteReactionContent(content: string): boolean {
     return content === "+";
+}
+
+export function resolvePostHistoryReactionDisplayContent(content: string): string {
+    const normalized = content.trim();
+    if (!normalized) {
+        return "";
+    }
+
+    if (REACTION_CUSTOM_EMOJI_SHORTCODE_REGEX.test(normalized)) {
+        return normalized;
+    }
+
+    const grapheme = reactionGraphemeSegmenter.segment(normalized)[Symbol.iterator]().next();
+    if (grapheme.done) {
+        return "";
+    }
+
+    return grapheme.value.segment;
 }

@@ -43,6 +43,7 @@
         isPostHistoryFavoriteReactionContent,
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryNavigationLabelKey,
+        resolvePostHistoryReactionDisplayContent,
         resolvePostHistoryReactionsActionLabelState,
         resolvePostHistoryRepliesActionLabelState,
         type PostHistoryDialogMessageState,
@@ -1594,7 +1595,9 @@
                                                             <span
                                                                 class="post-preview-reaction-content"
                                                             >
-                                                                {reactionGroup.content}
+                                                                {resolvePostHistoryReactionDisplayContent(
+                                                                    reactionGroup.content,
+                                                                )}
                                                             </span>
                                                         {/if}
                                                         <span
