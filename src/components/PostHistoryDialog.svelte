@@ -54,6 +54,7 @@
         type PostHistoryDialogScrollMode,
         type PostHistoryDialogScrollState,
     } from "../lib/postHistoryDialogScrollState";
+    import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { customEmojiImageMetaRepository } from "../lib/storage/customEmojiImageMetaRepository";
     import type {
@@ -147,17 +148,24 @@
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
     });
+    const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+    });
     const quotePreviews = usePostHistoryQuotePreviews({
         getShow: () => show,
         getPosts: () => history.posts,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+        relatedTargetResolver,
     });
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
         getShow: () => show,
         getPubkeyHex: () => pubkeyHex,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+        relatedTargetResolver,
     });
     usePostHistoryInboundInteractionsSync({
         getShow: () => show,
