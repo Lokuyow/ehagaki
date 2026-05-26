@@ -100,7 +100,7 @@
     .post-history-quote-top-actions {
         display: flex;
         align-items: center;
-        padding: 6px 10px 0 10px;
+        padding: 6px 10px 0 0;
     }
 
     .post-history-quote-badge {

@@ -113,12 +113,13 @@
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         color: var(--text);
         font-size: 0.9rem;
+        padding-left: 2px;
     }
 
     .post-history-related-card-body {
         display: grid;
         gap: 2px;
-        padding: 2px 10px 0 10px;
+        padding: 2px 10px 0 8px;
     }
 
     .post-history-related-card-header,

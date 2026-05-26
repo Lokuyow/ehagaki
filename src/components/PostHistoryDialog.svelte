@@ -2339,7 +2339,7 @@
         .post-preview-quotes {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 4px;
         }
 
         .post-preview-toggle-row {
