@@ -8,6 +8,7 @@ import { postHistoryLightweightSyncCoordinator } from "../postHistoryLightweight
 import {
     postHistoryInboundInteractionsSyncStateRepository,
 } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
+import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 import type {
@@ -115,6 +116,32 @@ export function usePostHistoryInboundInteractionsSync({
         }
 
         await onSavedDirectReplies(result.savedParentEventIds);
+
+        void triggerPostHistoryReactionLifecycle({
+            source: "dialog-inbound-sync",
+            parentEventIds: result.savedParentEventIds,
+            rxNostr,
+            relayConfig: getRelayConfig(),
+            isActive: () => (
+                getShow()
+                && getPubkeyHex() === ownerPubkeyHex
+                && getRxNostr() === rxNostr
+            ),
+        }).then((lifecycleResult) => {
+            if (
+                lifecycleResult.status === "cancelled"
+                || lifecycleResult.deletedReactionEventIds.length === 0
+                || !getShow()
+                || getPubkeyHex() !== ownerPubkeyHex
+                || getRxNostr() !== rxNostr
+            ) {
+                return;
+            }
+
+            return Promise.resolve(
+                onSavedDirectReplies(result.savedParentEventIds),
+            ).catch(() => undefined);
+        }).catch(() => undefined);
     }
 
     async function runInitialDialogSync(): Promise<void> {

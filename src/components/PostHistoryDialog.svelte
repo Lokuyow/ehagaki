@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
-    import { tick, untrack } from "svelte";
+    import { onDestroy, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
@@ -50,7 +50,14 @@
     import { stripPostHistoryInlineQuoteUrisForDisplay } from "../lib/postHistoryQuoteUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
+    import { triggerPostHistoryReactionLifecycle } from "../lib/postHistoryReactionLifecycleTrigger";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+    import {
+        clearPendingDeletionRequest,
+        pendingDeletionRequestsState,
+        resetPendingDeletionRequests,
+        setPendingDeletionRequest,
+    } from "../stores/postHistoryDeletionLifecycleStore.svelte";
     import type {
         FullscreenMediaItem,
         NostrEvent,
@@ -175,9 +182,6 @@
     let jumpDateInput = $state("");
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
-    let deleteRequestState = $state<
-        Record<string, "sending" | "failed" | undefined>
-    >({});
     let reactionsExpandedByEventId = $state<Record<string, boolean>>({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
@@ -265,7 +269,7 @@
         activeUtilityPanel = "none";
         jumpDateInput = "";
         headingMenuOpen = false;
-        deleteRequestState = {};
+        resetPendingDeletionRequests();
         reactionsExpandedByEventId = {};
         emojiState.resetState();
         fullscreenMediaItems = [];
@@ -311,6 +315,10 @@
         }
 
         resetDialogState();
+    });
+
+    onDestroy(() => {
+        resetPendingDeletionRequests();
     });
 
     $effect(() => {
@@ -361,6 +369,25 @@
                 parentEventIds,
             ),
         );
+
+        void triggerPostHistoryReactionLifecycle({
+            source: "dialog-inbound-save",
+            parentEventIds,
+            rxNostr,
+            relayConfig,
+            isActive: () => show,
+        })
+            .then((result) => {
+                if (!show || result.deletedReactionEventIds.length === 0) {
+                    return;
+                }
+
+                return postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
+                    history.posts,
+                    result.checkedParentEventIds,
+                );
+            })
+            .catch(() => undefined);
     });
 
     $effect(() => {
@@ -556,11 +583,11 @@
     }
 
     function isDeletionSending(post: PostHistoryRecord): boolean {
-        return deleteRequestState[post.eventId] === "sending";
+        return pendingDeletionRequestsState[post.eventId] === "sending";
     }
 
     function hasDeletionFailed(post: PostHistoryRecord): boolean {
-        return deleteRequestState[post.eventId] === "failed";
+        return pendingDeletionRequestsState[post.eventId] === "failed";
     }
 
     function getRepliesActionLabel(post: PostHistoryRecord): string {
@@ -733,10 +760,7 @@
             return;
         }
 
-        deleteRequestState = {
-            ...deleteRequestState,
-            [targetPost.eventId]: "sending",
-        };
+        setPendingDeletionRequest(targetPost.eventId, "sending");
 
         const result = await postDeletionService.requestDeletion({
             post: targetPost,
@@ -760,15 +784,9 @@
                     deletionEvent: result.deletionEvent ?? null,
                 })
                 .catch(() => undefined);
-            deleteRequestState = {
-                ...deleteRequestState,
-                [targetPost.eventId]: undefined,
-            };
+            clearPendingDeletionRequest(targetPost.eventId);
         } else {
-            deleteRequestState = {
-                ...deleteRequestState,
-                [targetPost.eventId]: "failed",
-            };
+            setPendingDeletionRequest(targetPost.eventId, "failed");
         }
 
         postActionUi.clearDeleteTarget();

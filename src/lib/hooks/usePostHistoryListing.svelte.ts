@@ -46,6 +46,7 @@ import {
     type PostHistoryVisibleRangeReplyRepairResult,
     type PostHistoryVisibleRangeReplyRepairTask,
 } from "../postHistoryVisibleRangeReplyRepairService";
+import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
@@ -778,6 +779,38 @@ export function usePostHistoryListing({
         ).catch(() => undefined);
     }
 
+    function scheduleReactionDeletionRefresh(
+        source: "listing-current-view" | "listing-older-reveal",
+        parentEventIds: string[],
+        isActive: () => boolean,
+    ): void {
+        const rxNostr = getRxNostr();
+        if (!rxNostr || parentEventIds.length === 0) {
+            return;
+        }
+
+        void triggerPostHistoryReactionLifecycle({
+            source,
+            parentEventIds,
+            rxNostr,
+            relayConfig: getRelayConfig(),
+            isActive,
+        }).then((result) => {
+            if (
+                result.status === "cancelled"
+                || result.deletedReactionEventIds.length === 0
+                || !isActive()
+            ) {
+                return;
+            }
+
+            requestReplyBadgeRefresh(
+                state.loadedPosts,
+                result.checkedParentEventIds,
+            );
+        }).catch(() => undefined);
+    }
+
     function resolveOlderRevealReplyRepairNetworkParentPosts(
         parentPosts: PostHistoryRecord[],
         nowMs: number,
@@ -807,6 +840,7 @@ export function usePostHistoryListing({
     ): void {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
+        const scopeId = olderRevealReplyRepairScopeId;
         if (!pubkeyHex || candidatePosts.length === 0) {
             return;
         }
@@ -829,6 +863,12 @@ export function usePostHistoryListing({
             return;
         }
 
+        scheduleReactionDeletionRefresh(
+            "listing-older-reveal",
+            visibleParentPosts.map((post) => post.eventId),
+            () => isActiveOlderRevealReplyRepairScope(scopeId, pubkeyHex, rxNostr),
+        );
+
         const networkParentPosts = resolveOlderRevealReplyRepairNetworkParentPosts(
             visibleParentPosts,
             Date.now(),
@@ -841,7 +881,6 @@ export function usePostHistoryListing({
             olderRevealReplyRepairInFlightParentIds.add(post.eventId);
         });
 
-        const scopeId = olderRevealReplyRepairScopeId;
         const task =
             postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
                 rxNostr,
@@ -2620,6 +2659,16 @@ export function usePostHistoryListing({
             } else {
                 await reloadVisibleWindowFromCurrentNewest();
             }
+
+            scheduleReactionDeletionRefresh(
+                "listing-current-view",
+                state.loadedPosts.map((post) => post.eventId),
+                () => (
+                    getShow()
+                    && getPubkeyHex() === pubkeyHex
+                    && getRxNostr() === rxNostr
+                ),
+            );
 
             let replyRepairResult: PostHistoryVisibleRangeReplyRepairResult | null = null;
             if (

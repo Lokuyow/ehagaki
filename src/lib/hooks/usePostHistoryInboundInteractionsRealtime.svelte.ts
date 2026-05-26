@@ -4,6 +4,7 @@ import {
     postHistoryInboundInteractionsRealtimeService,
     type PostHistoryInboundInteractionsRealtimeSubscription,
 } from "../postHistoryInboundInteractionsRealtimeService";
+import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import type { RelayConfig } from "../types";
 import type {
     PostHistoryInboundDirectReplyCandidate,
@@ -74,10 +75,39 @@ export function usePostHistoryInboundInteractionsRealtime({
             return;
         }
 
+        const handleSavedDirectReplies = async (parentEventIds: string[]) => {
+            await onSavedDirectReplies(parentEventIds);
+            void triggerPostHistoryReactionLifecycle({
+                source: "inbound-realtime",
+                parentEventIds,
+                rxNostr,
+                relayConfig,
+                isActive: () => (
+                    state.visible
+                    && getIsAuthenticated()
+                    && getPubkeyHex() === ownerPubkeyHex
+                    && getRxNostr() === rxNostr
+                ),
+            }).then((result) => {
+                if (
+                    result.status === "cancelled"
+                    || result.deletedReactionEventIds.length === 0
+                    || !state.visible
+                    || !getIsAuthenticated()
+                    || getPubkeyHex() !== ownerPubkeyHex
+                    || getRxNostr() !== rxNostr
+                ) {
+                    return;
+                }
+
+                return Promise.resolve(onSavedDirectReplies(parentEventIds)).catch(() => undefined);
+            }).catch(() => undefined);
+        };
+
         const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
-            onSavedDirectReplies,
+            onSavedDirectReplies: handleSavedDirectReplies,
             reconcileDirectReplyCandidates,
         });
         currentSubscription = subscription;
