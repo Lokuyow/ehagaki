@@ -2611,8 +2611,8 @@
     .deleted-badge {
         padding: 2px 6px;
         border-radius: 999px;
-        background: color-mix(in srgb, var(--theme), transparent 82%);
-        color: var(--theme);
+        background: color-mix(in srgb, var(--danger), transparent 82%);
+        color: var(--danger);
         font-weight: 600;
     }
 
