@@ -2895,6 +2895,172 @@ describe('PostHistoryDialog', () => {
         )).toEqual(['2', '1']);
     });
 
+    it('[reaction-custom-emoji-loading] 展開した reaction panel で custom emoji を preload して placeholder から画像へ切り替える', async () => {
+        const parentEventId = '1'.repeat(64);
+        const emojiUrl = 'https://example.com/blobcat.webp';
+        const deferred = createDeferred<{
+            ready: boolean;
+            width?: number;
+            height?: number;
+            aspectRatio?: number;
+        }>();
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const customEmojiReaction = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            kind: 7,
+            content: ':blobcat:',
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 7,
+                content: ':blobcat:',
+                tags: [
+                    ['p', 'a'.repeat(64)],
+                    ['e', parentEventId],
+                    ['emoji', 'blobcat', emojiUrl],
+                ],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockReturnValueOnce(
+            deferred.promise,
+        );
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([
+            customEmojiReaction,
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const reactionButton = await screen.findByRole('button', {
+            name: 'リアクション 1件を表示',
+        });
+
+        await fireEvent.click(reactionButton);
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                emojiUrl,
+            );
+            expect(document.querySelector('.post-preview-reaction-emoji-placeholder')).toBeTruthy();
+            expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+            expect(screen.queryByText(':blobcat:')).toBeNull();
+        });
+
+        deferred.resolve({
+            ready: true,
+            width: 120,
+            height: 60,
+            aspectRatio: 2,
+        });
+
+        await waitFor(() => {
+            const slot = document.querySelector(
+                '.post-preview-reaction-emoji-slot',
+            ) as HTMLSpanElement | null;
+            expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
+            expect(document.querySelector('.post-preview-reaction-emoji-placeholder')).toBeNull();
+            expect(slot?.getAttribute('style')).toContain('36px');
+            expect(slot?.getAttribute('style')).toContain('height: 18px');
+        });
+    });
+
+    it('[reaction-custom-emoji-fallback] custom emoji preload 失敗時は shortcode のまま表示する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const emojiUrl = 'https://example.com/party.webp';
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const customEmojiReaction = createDirectReplyEventRecord({
+            eventId: '5'.repeat(64),
+            kind: 7,
+            content: ':party:',
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '5'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 7,
+                content: ':party:',
+                tags: [
+                    ['p', 'a'.repeat(64)],
+                    ['e', parentEventId],
+                    ['emoji', 'party', emojiUrl],
+                ],
+                created_at: 1_700_000_011,
+                sig: 'f'.repeat(128),
+            },
+        });
+
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValueOnce({
+            ready: false,
+        });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([
+            customEmojiReaction,
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', {
+            name: 'リアクション 1件を表示',
+        }));
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                emojiUrl,
+            );
+            expect(screen.getByText(':party:')).toBeTruthy();
+            expect(document.querySelector('.post-preview-reaction-emoji-slot')).toBeNull();
+        });
+    });
+
     it('[reply-badge-preload] dialog reopenではvisible parentを再確認する', async () => {
         const parentEventId = '1'.repeat(64);
         const post = createRecord({

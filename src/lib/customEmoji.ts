@@ -51,6 +51,7 @@ export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
 export const EMOJIS_CACHE_SCHEMA_VERSION = 2;
 export const CUSTOM_EMOJI_SUGGESTION_LIMIT = 30;
 export const CUSTOM_EMOJI_CACHE_REQUEST_TIMEOUT = 8000;
+const CUSTOM_EMOJI_SHORTCODE_TEXT_REGEX = /^:[\p{L}\p{N}_+-]{1,64}:$/u;
 
 export interface CacheCustomEmojiImagesResult {
     success: boolean;
@@ -91,12 +92,23 @@ export interface PreloadedCustomEmojiImageResult {
     aspectRatio?: number;
 }
 
+export interface CustomEmojiTagReference {
+    shortcode: string;
+    shortcodeLower: string;
+    url: string;
+}
+
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
 }
 
 export function normalizeEmojiShortcodeForLookup(value: unknown): string {
     return normalizeEmojiShortcode(value).toLowerCase();
+}
+
+export function isCustomEmojiShortcodeText(value: unknown): boolean {
+    return typeof value === "string"
+        && CUSTOM_EMOJI_SHORTCODE_TEXT_REGEX.test(value.trim());
 }
 
 function normalizeSetAddress(value: unknown): string | null {
@@ -266,6 +278,26 @@ export function parseEmojiTags(
     }
 
     return items;
+}
+
+export function buildCustomEmojiTagMap(
+    tags: string[][],
+): Map<string, CustomEmojiTagReference> {
+    const emojiMap = new Map<string, CustomEmojiTagReference>();
+
+    for (const emoji of parseEmojiTags(tags)) {
+        if (emojiMap.has(emoji.shortcodeLower)) {
+            continue;
+        }
+
+        emojiMap.set(emoji.shortcodeLower, {
+            shortcode: emoji.shortcode,
+            shortcodeLower: emoji.shortcodeLower,
+            url: emoji.src,
+        });
+    }
+
+    return emojiMap;
 }
 
 export function parseEmojiSetAddress(value: unknown): { kind: number; pubkey: string; identifier: string; address: string } | null {

@@ -1,3 +1,4 @@
+import { isCustomEmojiShortcodeText } from "./customEmoji";
 import type {
     PostHistoryPreviewContent,
 } from "./postHistoryDialogUtils";
@@ -19,7 +20,12 @@ export type PostHistoryReactionsActionPresentationInput = {
     reactionCount: number;
 };
 
-const REACTION_CUSTOM_EMOJI_SHORTCODE_REGEX = /^:[\p{L}\p{N}_+-]{1,64}:$/u;
+export interface PostHistoryDisplayedReactionGroup {
+    content: string;
+    count: number;
+    emojiUrl?: string;
+}
+
 const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
     granularity: "grapheme",
 });
@@ -123,7 +129,7 @@ export function resolvePostHistoryReactionDisplayContent(content: string): strin
         return "";
     }
 
-    if (REACTION_CUSTOM_EMOJI_SHORTCODE_REGEX.test(normalized)) {
+    if (isCustomEmojiShortcodeText(normalized)) {
         return normalized;
     }
 
@@ -137,8 +143,9 @@ export function resolvePostHistoryReactionDisplayContent(content: string): strin
 
 export function resolvePostHistoryDisplayedReactionGroups(
     groups: PostHistoryReactionAggregate[],
-): PostHistoryReactionAggregate[] {
+): PostHistoryDisplayedReactionGroup[] {
     const countByDisplayContent = new Map<string, number>();
+    const emojiUrlByDisplayContent = new Map<string, string>();
     const orderedDisplayContents: string[] = [];
 
     for (const group of groups) {
@@ -151,14 +158,28 @@ export function resolvePostHistoryDisplayedReactionGroups(
             orderedDisplayContents.push(displayContent);
         }
 
+        if (group.emojiUrl && !emojiUrlByDisplayContent.has(displayContent)) {
+            emojiUrlByDisplayContent.set(displayContent, group.emojiUrl);
+        }
+
         countByDisplayContent.set(
             displayContent,
             (countByDisplayContent.get(displayContent) ?? 0) + group.count,
         );
     }
 
-    return orderedDisplayContents.map((content) => ({
-        content,
-        count: countByDisplayContent.get(content) ?? 0,
-    }));
+    return orderedDisplayContents.map((content) => {
+        const emojiUrl = emojiUrlByDisplayContent.get(content);
+
+        return emojiUrl
+            ? {
+                content,
+                count: countByDisplayContent.get(content) ?? 0,
+                emojiUrl,
+            }
+            : {
+                content,
+                count: countByDisplayContent.get(content) ?? 0,
+            };
+    });
 }

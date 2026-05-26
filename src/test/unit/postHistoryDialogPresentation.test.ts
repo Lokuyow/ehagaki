@@ -153,4 +153,36 @@ describe("postHistoryDialogPresentation", () => {
             { content: ":kubipaca_kao:", count: 5 },
         ]);
     });
+
+    it("custom emoji reaction の表示集約は最初の解決済み url を保持する", () => {
+        expect(resolvePostHistoryDisplayedReactionGroups([
+            { content: ":blobcat:", count: 1 },
+            {
+                content: ":blobcat:",
+                count: 2,
+                emojiUrl: "https://example.com/blobcat.webp",
+            },
+            {
+                content: ":party:",
+                count: 1,
+                emojiUrl: "https://example.com/party-first.webp",
+            },
+            {
+                content: ":party:",
+                count: 3,
+                emojiUrl: "https://example.com/party-second.webp",
+            },
+        ])).toEqual([
+            {
+                content: ":blobcat:",
+                count: 3,
+                emojiUrl: "https://example.com/blobcat.webp",
+            },
+            {
+                content: ":party:",
+                count: 4,
+                emojiUrl: "https://example.com/party-first.webp",
+            },
+        ]);
+    });
 });

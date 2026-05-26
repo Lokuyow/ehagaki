@@ -4,8 +4,8 @@ import {
     normalizePostMediaUrl,
 } from "./postMediaCacheUtils";
 import {
+    buildCustomEmojiTagMap,
     normalizeEmojiShortcodeForLookup,
-    parseEmojiTags,
 } from "./customEmoji";
 import type { PostHistoryRelayFetchResult } from "./postHistoryRelayFetchService";
 import type { FullscreenMediaItem } from "./types";
@@ -465,7 +465,7 @@ export function buildPreviewContent(
         Partial<Pick<PostHistoryRecord, "media">>,
 ): PostHistoryPreviewContent {
     const normalizedContent = buildPreview(post.content);
-    const emojiMap = buildPostEmojiMap(post.tags);
+    const emojiMap = buildCustomEmojiTagMap(post.tags);
     const mediaMap = buildPostMediaMap(post.media ?? []);
     const segments: PostHistoryPreviewSegment[] = [];
     const emojiUrls = new Set<string>();
@@ -518,25 +518,6 @@ export function buildPreviewContent(
         segments,
         emojiUrls: [...emojiUrls],
     };
-}
-
-function buildPostEmojiMap(
-    tags: string[][],
-): Map<string, { shortcode: string; url: string }> {
-    const emojiMap = new Map<string, { shortcode: string; url: string }>();
-
-    for (const emoji of parseEmojiTags(tags)) {
-        if (emojiMap.has(emoji.shortcodeLower)) {
-            continue;
-        }
-
-        emojiMap.set(emoji.shortcodeLower, {
-            shortcode: emoji.shortcode,
-            url: emoji.src,
-        });
-    }
-
-    return emojiMap;
 }
 
 function resolvePostHistoryImageRowPattern(count: number): number[] {

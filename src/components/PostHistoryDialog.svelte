@@ -41,6 +41,7 @@
     import {
         hasRenderablePostHistoryPreviewContent,
         isPostHistoryFavoriteReactionContent,
+        type PostHistoryDisplayedReactionGroup,
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryDisplayedReactionGroups,
         resolvePostHistoryNavigationLabelKey,
@@ -62,6 +63,8 @@
     } from "../lib/types";
 
     type PostHistoryUtilityPanel = "none" | "search" | "jump-date";
+
+    const POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE = 18;
 
     interface Props {
         show: boolean;
@@ -218,6 +221,40 @@
         });
     }
 
+    function isReactionEmojiReady(url: string): boolean {
+        return emojiState.emojiLoadStateByUrl[url] === "ready";
+    }
+
+    function hasReactionEmojiFailed(url: string): boolean {
+        return emojiState.emojiLoadStateByUrl[url] === "failed";
+    }
+
+    function formatReactionEmojiPixelValue(value: number): string {
+        return Number.isInteger(value)
+            ? `${value}`
+            : value
+                  .toFixed(6)
+                  .replace(/\.0+$/, "")
+                  .replace(/(\.\d*?)0+$/, "$1");
+    }
+
+    function getReactionEmojiSlotStyle(url: string): string {
+        const aspectRatio = emojiState.emojiImageMetaByUrl[url]?.aspectRatio;
+        const hasAspectRatio =
+            typeof aspectRatio === "number" &&
+            Number.isFinite(aspectRatio) &&
+            aspectRatio > 0;
+        const slotWidth = hasAspectRatio
+            ? POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE * aspectRatio
+            : POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE;
+
+        return [
+            `width: ${formatReactionEmojiPixelValue(slotWidth)}px;`,
+            `height: ${POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE}px;`,
+            "vertical-align: bottom;",
+        ].join(" ");
+    }
+
     let previewContentByEventId = $derived.by(() => {
         const nextContent: Record<string, PostHistoryPreviewContentData> = {};
 
@@ -226,6 +263,20 @@
         }
 
         return nextContent;
+    });
+    let displayedReactionGroupsByEventId = $derived.by(() => {
+        const nextGroups: Record<string, PostHistoryDisplayedReactionGroup[]> =
+            {};
+
+        for (const post of history.posts) {
+            nextGroups[post.eventId] =
+                resolvePostHistoryDisplayedReactionGroups(
+                    postHistoryThreadGraph.getAnchorState(post).reactionSummary
+                        .groups,
+                );
+        }
+
+        return nextGroups;
     });
     let headingStatusMessageKey = $derived(
         history.currentViewRefetchStatusMessageKey ??
@@ -255,6 +306,20 @@
         for (const previewContent of Object.values(previewContentByEventId)) {
             for (const url of previewContent.emojiUrls) {
                 urls.add(url);
+            }
+        }
+
+        for (const post of history.posts) {
+            if (!reactionsExpandedByEventId[post.eventId]) {
+                continue;
+            }
+
+            for (const reactionGroup of displayedReactionGroupsByEventId[
+                post.eventId
+            ] ?? []) {
+                if (reactionGroup.emojiUrl) {
+                    urls.add(reactionGroup.emojiUrl);
+                }
             }
         }
 
@@ -621,6 +686,12 @@
                 }),
             ) ?? ""
         );
+    }
+
+    function getDisplayedReactionGroups(
+        post: PostHistoryRecord,
+    ): PostHistoryDisplayedReactionGroup[] {
+        return displayedReactionGroupsByEventId[post.eventId] ?? [];
     }
 
     function toggleReactions(post: PostHistoryRecord): void {
@@ -1582,7 +1653,7 @@
                                             <div
                                                 class="post-preview-reactions-panel"
                                             >
-                                                {#each resolvePostHistoryDisplayedReactionGroups(graphState.reactionSummary.groups) as reactionGroup (reactionGroup.content)}
+                                                {#each getDisplayedReactionGroups(post) as reactionGroup (reactionGroup.content)}
                                                     <div
                                                         class="post-preview-reaction-chip"
                                                     >
@@ -1591,6 +1662,38 @@
                                                                 class="favorite-icon svg-icon post-preview-reaction-symbol"
                                                                 aria-hidden="true"
                                                             ></div>
+                                                        {:else if reactionGroup.emojiUrl}
+                                                            {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
+                                                                <span
+                                                                    class="post-preview-reaction-content"
+                                                                >
+                                                                    {reactionGroup.content}
+                                                                </span>
+                                                            {:else}
+                                                                <span
+                                                                    class="post-preview-reaction-emoji-slot"
+                                                                    style={getReactionEmojiSlotStyle(
+                                                                        reactionGroup.emojiUrl,
+                                                                    )}
+                                                                >
+                                                                    {#if isReactionEmojiReady(reactionGroup.emojiUrl)}
+                                                                        <img
+                                                                            src={reactionGroup.emojiUrl}
+                                                                            alt={reactionGroup.content}
+                                                                            title={reactionGroup.content}
+                                                                            class="post-preview-reaction-emoji"
+                                                                            draggable="false"
+                                                                            loading="lazy"
+                                                                            decoding="async"
+                                                                        />
+                                                                    {:else}
+                                                                        <span
+                                                                            class="post-preview-reaction-emoji-placeholder"
+                                                                            aria-hidden="true"
+                                                                        ></span>
+                                                                    {/if}
+                                                                </span>
+                                                            {/if}
                                                         {:else}
                                                             <span
                                                                 class="post-preview-reaction-content"
@@ -2581,6 +2684,33 @@
     :global(.post-preview-reaction-count) {
         font-size: 0.92rem;
         line-height: 1;
+    }
+
+    :global(.post-preview-reaction-emoji-slot) {
+        display: inline-grid;
+        margin: 0;
+        padding: 0;
+    }
+
+    :global(.post-preview-reaction-emoji),
+    :global(.post-preview-reaction-emoji-placeholder) {
+        width: 100%;
+        height: 100%;
+    }
+
+    :global(.post-preview-reaction-emoji) {
+        display: block;
+        margin: 0;
+        padding: 0;
+        object-fit: contain;
+        user-select: none;
+        -webkit-user-drag: none;
+    }
+
+    :global(.post-preview-reaction-emoji-placeholder) {
+        display: block;
+        border-radius: 4px;
+        background: rgba(127, 127, 127, 0.18);
     }
 
     :global(.post-preview-reaction-count) {
