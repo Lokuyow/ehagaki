@@ -51,30 +51,9 @@
         media={getMedia()}
         {scrollRoot}
         {onImageOpen}
-    >
-        {#snippet topActions()}
-            <div class="post-history-quote-top-actions">
-                <span class="post-history-quote-badge">
-                    <span
-                        class="post-history-quote-badge-icon svg-icon"
-                        aria-hidden="true"
-                    ></span>
-                    {$_("replyQuote.quote_label")}
-                </span>
-            </div>
-        {/snippet}
-    </PostHistoryRelatedEventCard>
+    />
 {:else}
     <article class="post-history-quote-status-card">
-        <div class="post-history-quote-top-actions">
-            <span class="post-history-quote-badge">
-                <span
-                    class="post-history-quote-badge-icon svg-icon"
-                    aria-hidden="true"
-                ></span>
-                {$_("replyQuote.quote_label")}
-            </span>
-        </div>
         <div class="post-history-quote-status-body">
             <p
                 class="post-history-quote-status-message"
@@ -97,30 +76,6 @@
 {/if}
 
 <style>
-    .post-history-quote-top-actions {
-        display: flex;
-        align-items: center;
-        padding: 6px 10px 0 0;
-    }
-
-    .post-history-quote-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 2px;
-        color: var(--text-muted);
-        font-size: 0.76rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-    }
-
-    .post-history-quote-badge-icon {
-        width: 16px;
-        height: 16px;
-        background-color: currentColor;
-        mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-    }
-
     .post-history-quote-status-card {
         display: grid;
         border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
