@@ -217,6 +217,7 @@ export function usePostHistoryThreadGraph({
     const deletionTasksByKey = new Map<string, PostHistoryDeletionFetchTask>();
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
+    const replyBadgePreloadKeys = new Set<string>();
     let requestId = 0;
     let childRequestId = 0;
     const childrenRequestIdsByKey = new Map<string, number>();
@@ -1687,12 +1688,30 @@ export function usePostHistoryThreadGraph({
         }
 
         const activeRequestId = requestId;
+        const isTargetedRefresh = !!parentEventIds?.length;
         const postByEventId = new Map(posts.map((post) => [post.eventId, post]));
         for (const parentEventId of targetParentIds) {
             const post = postByEventId.get(parentEventId);
             if (!post || activeRequestId !== requestId || !getShow()) {
                 continue;
             }
+
+            const preloadKey = buildAnchorNodeKey(post.eventId, parentEventId);
+            const expansion = getExpansion(post.eventId, parentEventId);
+            if (
+                !isTargetedRefresh
+                && (
+                    replyBadgePreloadKeys.has(preloadKey)
+                    || expansion.loadedChildren
+                    || expansion.loadingChildren
+                    || expansion.revalidatingChildren
+                )
+            ) {
+                replyBadgePreloadKeys.add(preloadKey);
+                continue;
+            }
+
+            replyBadgePreloadKeys.add(preloadKey);
 
             const anchorNode = ensureAnchorNode(post);
             const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId);
@@ -2117,6 +2136,7 @@ export function usePostHistoryThreadGraph({
         childrenByParentId = {};
         expansionByAnchorNodeKey = {};
         deletedEventIdsByPubkey = {};
+        replyBadgePreloadKeys.clear();
     }
 
     $effect(() => {

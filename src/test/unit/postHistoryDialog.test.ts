@@ -2588,6 +2588,7 @@ describe('PostHistoryDialog', () => {
                 onClose: vi.fn(),
                 onReplyPost: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
             },
         });
 
@@ -2595,6 +2596,224 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
         });
         expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it('[reply-badge-preload] scrollでは確認済みvisible parentを再読込しない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await screen.findByRole('button', { name: '返信を確認' });
+        await wait(0);
+        const replyReadsBeforeScroll =
+            replyEventsRepositoryMock.getDirectReplies.mock.calls.length;
+
+        const historyContainer = document.querySelector('.post-history-container') as HTMLDivElement;
+        historyContainer.scrollTop = 160;
+        await fireEvent.scroll(historyContainer);
+        await wait(0);
+
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(
+            replyReadsBeforeScroll,
+        );
+    });
+
+    it('[reply-badge-preload] visible posts追加時は新規visible parentだけを確認する', async () => {
+        const firstParentEventId = '1'.repeat(64);
+        const secondParentEventId = '2'.repeat(64);
+        const firstPost = createRecord({
+            eventId: firstParentEventId,
+            content: '新しい投稿',
+            createdAt: 1_700_000_100,
+            postedAt: Date.UTC(2024, 0, 3, 3, 4, 0),
+            rawEvent: {
+                id: firstParentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '新しい投稿',
+                tags: [],
+                created_at: 1_700_000_100,
+                sig: 'c'.repeat(128),
+            },
+        });
+        const secondPost = createRecord({
+            eventId: secondParentEventId,
+            content: '古い投稿',
+            createdAt: 1_700_000_000,
+            postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+            rawEvent: {
+                id: secondParentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '古い投稿',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'd'.repeat(128),
+            },
+        });
+
+        repositoryMock.getPage.mockResolvedValue([firstPost]);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ cursor }: Record<string, any>) => {
+            if (cursor?.eventId === firstParentEventId) {
+                return [secondPost];
+            }
+
+            return [];
+        });
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('新しい投稿');
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+
+        await fireEvent.click(await screen.findByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('古い投稿')).toBeTruthy();
+        });
+
+        await waitFor(() => {
+            expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(2);
+        });
+        expect(replyEventsRepositoryMock.getDirectReplies.mock.calls).toEqual([
+            [firstParentEventId],
+            [secondParentEventId],
+        ]);
+    });
+
+    it('[reply-badge-preload] cached reply badge からの表示切り替えでは再読込しない', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const cachedReply = createDirectReplyEventRecord({
+            content: 'cacheから即表示される返信',
+            fetchedAt: Date.now(),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([cachedReply]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+
+        await fireEvent.click(screen.getByRole('button', { name: '返信 1件を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('cacheから即表示される返信')).toBeTruthy();
+        });
+
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+    });
+
+    it('[reply-badge-preload] dialog reopenではvisible parentを再確認する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByRole('button', { name: '返信を確認' });
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+
+        firstView.unmount();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByRole('button', { name: '返信を確認' });
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(2);
     });
 
     it('[inbound-realtime] dialog-open-refresh中の返信通知でも表示中投稿を維持してbadgeだけ更新する', async () => {
@@ -3711,7 +3930,9 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getAllByText('Shared Profile User')).toHaveLength(2);
         });
-        expect(profileFetchDataMock).toHaveBeenCalledTimes(1);
+        expect(
+            profileFetchDataMock.mock.calls.filter(([pubkey]) => pubkey === sharedPubkey),
+        ).toHaveLength(1);
     });
 
     it('[direct-replies-cache-first] dialog close後にprofile fetchが解決しても閉じたgraphへ反映しない', async () => {
