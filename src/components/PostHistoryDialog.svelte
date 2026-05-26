@@ -2439,7 +2439,7 @@
         display: flex;
         flex-direction: column;
         padding-left: 1rem;
-        gap: 8px;
+        gap: 4px;
 
         .post-preview-content {
             overflow-wrap: anywhere;
