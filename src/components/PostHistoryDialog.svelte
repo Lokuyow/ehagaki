@@ -2651,7 +2651,7 @@
 
     .post-preview-reaction-symbol {
         mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-        background-color: crimson;
+        background-color: rgb(249, 24, 128);
         width: 18px;
         height: 18px;
     }
