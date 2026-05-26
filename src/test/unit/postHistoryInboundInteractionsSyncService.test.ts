@@ -312,6 +312,46 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(result.savedDirectReplyCount).toBe(0);
     });
 
+    it("root付きkind:7 reactionは返信先イベントへ保存する", async () => {
+        const threadedReaction = createEvent({
+            id: "b".repeat(64),
+            kind: 7,
+            content: "🍬",
+            tags: [
+                ["e", OTHER_PARENT_ID, "wss://root.example.com", "root", OWNER_PUBKEY],
+                ["p", OWNER_PUBKEY],
+                ["e", PARENT_ID, "wss://reply.example.com", OWNER_PUBKEY],
+            ],
+            created_at: 1_700_000_122,
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(threadedReaction));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const { service, postHistoryReplyEventsRepository } = createService();
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+            relayConfig: null,
+        }).promise;
+
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [
+                { event: threadedReaction, relayUrls: ["wss://relay.example.com/"] },
+            ],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(result.classifications).toMatchObject({
+            reaction: 1,
+        });
+        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+    });
+
     it("fetch後にlightweight sessionが失効した結果は保存、state更新、reconciliationへ流さない", async () => {
         let active = true;
         const getExistingStarted = createDeferred<void>();

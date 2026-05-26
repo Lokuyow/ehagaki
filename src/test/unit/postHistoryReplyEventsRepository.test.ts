@@ -157,6 +157,47 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
         db.close();
     });
 
+    it("root付きkind:7 reactionは末尾の対象e tagに紐づけて保存する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const rootEventId = "8".repeat(64);
+        const parentEventId = "1".repeat(64);
+        const reaction = createSignedEvent({
+            id: "4".repeat(64),
+            pubkey: "d".repeat(64),
+            kind: 7,
+            content: "+",
+            tags: [
+                ["e", rootEventId, "wss://root.example.com/", "root", "b".repeat(64)],
+                ["p", "b".repeat(64)],
+                ["e", parentEventId, "wss://parent.example.com/", "b".repeat(64)],
+            ],
+            created_at: 220,
+        });
+
+        const result = await repository.upsertDirectReplies({
+            parentEventId,
+            events: [{ event: reaction, relayUrls: ["wss://relay.example.com"] }],
+            fetchedAt: 900,
+        });
+
+        expect(result).toMatchObject({
+            insertedCount: 1,
+            ignoredCount: 0,
+        });
+
+        await expect(repository.getRelatedEvents(parentEventId)).resolves.toMatchObject([
+            {
+                eventId: reaction.id,
+                parentEventId,
+                kind: 7,
+                discoveredAs: ["reaction"],
+            },
+        ]);
+
+        db.close();
+    });
+
     it("同じeventを再保存してもPostHistoryRecordには混ぜない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);

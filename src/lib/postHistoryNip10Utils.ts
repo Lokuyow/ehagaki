@@ -89,6 +89,61 @@ function compactUnique(values: Array<string | null | undefined>): string[] {
     return result;
 }
 
+function normalizeReactionTargetMarker(value: unknown): "reply" | "root" | "unknown" | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length === 0 || isValidHexId(trimmed)) {
+        return null;
+    }
+
+    if (trimmed === "reply" || trimmed === "root") {
+        return trimmed;
+    }
+
+    return "unknown";
+}
+
+export function resolveKind7ReactionTargetEventId(
+    event: Pick<NostrEvent, "kind" | "tags"> | null | undefined,
+): string | null {
+    if (!event || event.kind !== 7) {
+        return null;
+    }
+
+    const eTags = event.tags.filter(
+        (tag): tag is string[] => Array.isArray(tag) && tag[0] === "e" && isValidHexId(tag[1]),
+    );
+    if (eTags.length === 0) {
+        return null;
+    }
+
+    const replyTag = [...eTags]
+        .reverse()
+        .find((tag) => normalizeReactionTargetMarker(tag[3]) === "reply");
+    if (replyTag) {
+        return replyTag[1];
+    }
+
+    const legacyLikeTag = [...eTags]
+        .reverse()
+        .find((tag) => normalizeReactionTargetMarker(tag[3]) === null);
+    if (legacyLikeTag) {
+        return legacyLikeTag[1];
+    }
+
+    const rootTag = [...eTags]
+        .reverse()
+        .find((tag) => normalizeReactionTargetMarker(tag[3]) === "root");
+    if (rootTag) {
+        return rootTag[1];
+    }
+
+    return eTags[eTags.length - 1][1];
+}
+
 export function parseKind1ThreadReferences(
     event: Pick<NostrEvent, "kind" | "tags"> | null | undefined,
 ): PostHistoryThreadReferences {

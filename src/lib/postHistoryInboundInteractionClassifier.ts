@@ -1,4 +1,8 @@
-import { parseKind1ThreadReferences, type PostHistoryThreadReferences } from "./postHistoryNip10Utils";
+import {
+    parseKind1ThreadReferences,
+    resolveKind7ReactionTargetEventId,
+    type PostHistoryThreadReferences,
+} from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
 
 export type PostHistoryInboundInteractionType =
@@ -48,7 +52,7 @@ export function classifyPostHistoryInboundInteraction(input: {
 
     if (event.kind === 7) {
         // TODO(PR5): Store reactions in postHistoryReactionEvents with ownerPubkeyHex scope.
-        const targetEventId = findFirstTagValue(event, "e");
+        const targetEventId = resolveKind7ReactionTargetEventId(event);
         const targetAuthorPubkey = findFirstTagValue(event, "p");
 
         return {

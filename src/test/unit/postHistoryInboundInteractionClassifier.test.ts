@@ -118,6 +118,29 @@ describe("classifyPostHistoryInboundInteraction", () => {
         });
     });
 
+    it("kind:7 reactionはroot付きでも末尾の返信対象を優先する", () => {
+        const reaction = createEvent({
+            kind: 7,
+            content: "🍬",
+            tags: [
+                ["e", ROOT_ID, "wss://root.example.com", "root", OWNER_PUBKEY],
+                ["p", OWNER_PUBKEY],
+                ["e", OTHER_PARENT_ID, "wss://reply.example.com", OWNER_PUBKEY],
+            ],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event: reaction,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([ROOT_ID, OTHER_PARENT_ID]),
+        })).toMatchObject({
+            type: "reaction",
+            targetEventId: OTHER_PARENT_ID,
+            targetAuthorPubkey: OWNER_PUBKEY,
+            reason: "reaction-not-implemented",
+        });
+    });
+
     it("自分が自分の投稿へ付けたkind:7 reactionもreactionに分類する", () => {
         const reaction = createEvent({
             pubkey: OWNER_PUBKEY,
