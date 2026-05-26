@@ -2503,7 +2503,7 @@
 
         :global(:where(.post-preview-reactions-button)) {
             min-height: auto;
-            gap: 6px;
+            gap: 2px;
             padding-inline: 10px;
             --btn-bg: var(--dialog-bg);
             background-color: var(--dialog-bg);
@@ -2515,39 +2515,39 @@
                 height: 22px;
             }
         }
+    }
 
-        :global(.post-preview-reactions-panel) {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            padding: 0 16px 14px;
-        }
+    :global(.post-preview-reactions-panel) {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 16px 14px;
+    }
 
-        :global(.post-preview-reaction-chip) {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            min-height: 32px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: color-mix(in srgb, var(--theme), var(--dialog-bg) 92%);
-            color: var(--text);
-        }
+    :global(.post-preview-reaction-chip) {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--theme), var(--dialog-bg) 92%);
+        color: var(--text);
+    }
 
-        :global(.post-preview-reaction-content),
-        :global(.post-preview-reaction-count) {
-            font-size: 0.92rem;
-            line-height: 1;
-        }
+    :global(.post-preview-reaction-content),
+    :global(.post-preview-reaction-count) {
+        font-size: 0.92rem;
+        line-height: 1;
+    }
 
-        :global(.post-preview-reaction-count) {
-            color: var(--text-muted);
-        }
+    :global(.post-preview-reaction-count) {
+        color: var(--text-muted);
+    }
 
-        :global(.post-preview-reaction-symbol) {
-            width: 18px;
-            height: 18px;
-        }
+    :global(.post-preview-reaction-symbol) {
+        width: 18px;
+        height: 18px;
     }
 
     .post-meta-inline {
@@ -2606,6 +2606,13 @@
 
     .favorite-icon {
         mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .post-preview-reaction-symbol {
+        mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+        background-color: crimson;
+        width: 18px;
+        height: 18px;
     }
 
     .search-icon {
