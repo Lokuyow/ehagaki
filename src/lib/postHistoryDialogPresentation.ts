@@ -1,6 +1,7 @@
 import type {
     PostHistoryPreviewContent,
 } from "./postHistoryDialogUtils";
+import type { PostHistoryReactionAggregate } from "./postHistoryReactionSummary";
 
 export type PostHistoryDialogMessageState = {
     key: string;
@@ -132,4 +133,32 @@ export function resolvePostHistoryReactionDisplayContent(content: string): strin
     }
 
     return grapheme.value.segment;
+}
+
+export function resolvePostHistoryDisplayedReactionGroups(
+    groups: PostHistoryReactionAggregate[],
+): PostHistoryReactionAggregate[] {
+    const countByDisplayContent = new Map<string, number>();
+    const orderedDisplayContents: string[] = [];
+
+    for (const group of groups) {
+        const displayContent = resolvePostHistoryReactionDisplayContent(group.content);
+        if (!displayContent) {
+            continue;
+        }
+
+        if (!countByDisplayContent.has(displayContent)) {
+            orderedDisplayContents.push(displayContent);
+        }
+
+        countByDisplayContent.set(
+            displayContent,
+            (countByDisplayContent.get(displayContent) ?? 0) + group.count,
+        );
+    }
+
+    return orderedDisplayContents.map((content) => ({
+        content,
+        count: countByDisplayContent.get(content) ?? 0,
+    }));
 }

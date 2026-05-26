@@ -42,8 +42,8 @@
         hasRenderablePostHistoryPreviewContent,
         isPostHistoryFavoriteReactionContent,
         resolvePostHistoryCountSummaryState,
+        resolvePostHistoryDisplayedReactionGroups,
         resolvePostHistoryNavigationLabelKey,
-        resolvePostHistoryReactionDisplayContent,
         resolvePostHistoryReactionsActionLabelState,
         resolvePostHistoryRepliesActionLabelState,
         type PostHistoryDialogMessageState,
@@ -1582,7 +1582,7 @@
                                             <div
                                                 class="post-preview-reactions-panel"
                                             >
-                                                {#each graphState.reactionSummary.groups as reactionGroup (reactionGroup.content)}
+                                                {#each resolvePostHistoryDisplayedReactionGroups(graphState.reactionSummary.groups) as reactionGroup (reactionGroup.content)}
                                                     <div
                                                         class="post-preview-reaction-chip"
                                                     >
@@ -1595,9 +1595,7 @@
                                                             <span
                                                                 class="post-preview-reaction-content"
                                                             >
-                                                                {resolvePostHistoryReactionDisplayContent(
-                                                                    reactionGroup.content,
-                                                                )}
+                                                                {reactionGroup.content}
                                                             </span>
                                                         {/if}
                                                         <span

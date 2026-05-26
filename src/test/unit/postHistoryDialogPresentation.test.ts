@@ -3,6 +3,7 @@ import {
     hasRenderablePostHistoryPreviewContent,
     isPostHistoryFavoriteReactionContent,
     resolvePostHistoryCountSummaryState,
+    resolvePostHistoryDisplayedReactionGroups,
     resolvePostHistoryNavigationLabelKey,
     resolvePostHistoryReactionDisplayContent,
     resolvePostHistoryReactionsActionLabelState,
@@ -139,5 +140,17 @@ describe("postHistoryDialogPresentation", () => {
         expect(resolvePostHistoryReactionDisplayContent(":kubipaca_kao:")).toBe(":kubipaca_kao:");
         expect(resolvePostHistoryReactionDisplayContent("🙂‍↕️🙂‍↕️🙂‍↕️")).toBe("🙂‍↕️");
         expect(resolvePostHistoryReactionDisplayContent("abc")).toBe("a");
+    });
+
+    it("同一表示へ縮約されたreactionはcountをマージする", () => {
+        expect(resolvePostHistoryDisplayedReactionGroups([
+            { content: "🙂‍↕️🙂‍↕️", count: 1 },
+            { content: "🙂‍↕️", count: 1 },
+            { content: ":kubipaca_kao:", count: 2 },
+            { content: ":kubipaca_kao:", count: 3 },
+        ])).toEqual([
+            { content: "🙂‍↕️", count: 2 },
+            { content: ":kubipaca_kao:", count: 5 },
+        ]);
     });
 });
