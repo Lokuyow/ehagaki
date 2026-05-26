@@ -1505,16 +1505,12 @@
                                                                     )}
                                                             >
                                                                 <span
-                                                                    class="post-preview-replies-icon-wrapper post-preview-replies-badge-anchor"
+                                                                    class="post-preview-replies-count post-preview-replies-badge"
                                                                     aria-hidden="true"
                                                                 >
-                                                                    <span
-                                                                        class="post-preview-replies-count post-preview-replies-badge"
-                                                                    >
-                                                                        {graphState
-                                                                            .repliesActionState
-                                                                            .replyCount}
-                                                                    </span>
+                                                                    {graphState
+                                                                        .repliesActionState
+                                                                        .replyCount}
                                                                 </span>
                                                             </Button>
                                                         {/if}
@@ -2728,6 +2724,9 @@
             min-width: 36px;
             min-height: auto;
             padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             --btn-bg: transparent;
             background-color: transparent;
             color: var(--btn-post-preview-action);
@@ -2740,29 +2739,19 @@
             background-color: var(--text-light);
         }
 
-        .post-preview-replies-badge-anchor {
-            position: relative;
+        .post-preview-replies-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 22px;
-            height: 22px;
-            flex: 0 0 22px;
-        }
-
-        .post-preview-replies-badge {
-            position: absolute;
-            top: -4px;
-            right: -5px;
-            min-width: 14px;
-            height: 14px;
-            padding: 0 3px;
+            aspect-ratio: 1;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
             border-radius: 999px;
             background: var(--btn-post-preview-action);
             color: var(--dialog-bg);
-            font-size: 0.68rem;
+            font-size: 0.6875rem;
             font-weight: 700;
-            line-height: 14px;
             text-align: center;
         }
 
