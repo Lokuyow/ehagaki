@@ -8,6 +8,10 @@ type HarnessState = {
     initialMonthLabel: string;
     scrollTargetContent: string;
     scrollTargetMonthLabel: string;
+    reactionPostEventId: string;
+    plainPostEventId: string;
+    scrolledReactionPostEventId: string;
+    scrolledPlainPostEventId: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -33,6 +37,12 @@ async function expectCurrentMonthLabel(page: Page, label: string) {
 async function scrollPostIntoView(page: Page, content: string) {
     await page.getByText(content, { exact: true }).evaluate((element) => {
         element.closest('.post-history-item')?.scrollIntoView({ block: 'start' });
+    });
+}
+
+async function scrollPostIntoViewByEventId(page: Page, eventId: string) {
+    await page.locator(`.post-history-item[data-post-history-event-id="${eventId}"]`).evaluate((element) => {
+        (element as HTMLElement).scrollIntoView({ block: 'start' });
     });
 }
 
@@ -95,6 +105,29 @@ async function getPostSnapshotByEventId(page: Page, eventId: string) {
     }, eventId);
 }
 
+async function getFooterActionPositions(page: Page, eventId: string) {
+    const item = page.locator(`.post-history-item[data-post-history-event-id="${eventId}"]`);
+    const repliesActionButton = item.locator('.post-preview-replies-action-button');
+    const quoteActionButton = item.getByRole('button', { name: '引用' });
+    const menuActionButton = item.getByRole('button', { name: 'アクションを表示' });
+    const reactionActionButton = item.locator('.post-preview-reactions-button');
+
+    const repliesActionBox = await repliesActionButton.boundingBox();
+    const quoteActionBox = await quoteActionButton.boundingBox();
+    const menuActionBox = await menuActionButton.boundingBox();
+
+    expect(repliesActionBox).not.toBeNull();
+    expect(quoteActionBox).not.toBeNull();
+    expect(menuActionBox).not.toBeNull();
+
+    return {
+        repliesX: repliesActionBox!.x,
+        quoteX: quoteActionBox!.x,
+        menuX: menuActionBox!.x,
+        hasReactionButton: await reactionActionButton.count() > 0,
+    };
+}
+
 test.describe('PostHistoryDialog Playwright', () => {
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
@@ -153,6 +186,42 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(after).not.toBeNull();
         expect(after!.eventId).toBe(before!.eventId);
         expect(Math.abs(after!.offsetTop - before!.offsetTop)).toBeLessThanOrEqual(1);
+    });
+
+    test('reaction button presence does not shift other footer actions', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoHarness(page);
+
+        const reactionPost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`,
+        );
+        const plainPost = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
+        );
+
+        await expect(reactionPost.locator('.post-preview-reactions-button')).toHaveCount(1);
+        await expect(plainPost.locator('.post-preview-reactions-button')).toHaveCount(0);
+
+        const topReactionPositions = await getFooterActionPositions(page, harness.reactionPostEventId);
+        const topPlainPositions = await getFooterActionPositions(page, harness.plainPostEventId);
+
+        expect(topReactionPositions.hasReactionButton).toBe(true);
+        expect(topPlainPositions.hasReactionButton).toBe(false);
+        expect(Math.abs(topReactionPositions.repliesX - topPlainPositions.repliesX)).toBeLessThanOrEqual(1);
+        expect(Math.abs(topReactionPositions.quoteX - topPlainPositions.quoteX)).toBeLessThanOrEqual(1);
+        expect(Math.abs(topReactionPositions.menuX - topPlainPositions.menuX)).toBeLessThanOrEqual(1);
+
+        await scrollPostIntoViewByEventId(page, harness.scrolledReactionPostEventId);
+
+        const scrolledReactionPositions = await getFooterActionPositions(page, harness.scrolledReactionPostEventId);
+        const scrolledPlainPositions = await getFooterActionPositions(page, harness.scrolledPlainPostEventId);
+
+        expect(scrolledReactionPositions.hasReactionButton).toBe(true);
+        expect(scrolledPlainPositions.hasReactionButton).toBe(false);
+        expect(Math.abs(scrolledReactionPositions.repliesX - scrolledPlainPositions.repliesX)).toBeLessThanOrEqual(1);
+        expect(Math.abs(scrolledReactionPositions.quoteX - scrolledPlainPositions.quoteX)).toBeLessThanOrEqual(1);
+        expect(Math.abs(scrolledReactionPositions.menuX - scrolledPlainPositions.menuX)).toBeLessThanOrEqual(1);
     });
 
     test('mobile timeline controls stay usable and fit the viewport', async ({ page, isMobile }) => {

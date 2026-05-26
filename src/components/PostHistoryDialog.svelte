@@ -1405,31 +1405,35 @@
                                                         ></div>
                                                     </Button>
                                                 {/if}
-                                                {#if graphState.reactionSummary.totalCount > 0}
-                                                    <Button
-                                                        type="button"
-                                                        class="post-preview-reactions-button"
-                                                        ariaLabel={getReactionsActionLabel(
-                                                            post,
-                                                        )}
-                                                        contentLayout="iconText"
-                                                        shape="pill"
-                                                        onClick={() =>
-                                                            toggleReactions(
+                                                <div
+                                                    class="post-preview-footer-reaction-slot"
+                                                >
+                                                    {#if graphState.reactionSummary.totalCount > 0}
+                                                        <Button
+                                                            type="button"
+                                                            class="post-preview-reactions-button"
+                                                            ariaLabel={getReactionsActionLabel(
                                                                 post,
                                                             )}
-                                                    >
-                                                        <div
-                                                            class="favorite-icon svg-icon"
-                                                            aria-hidden="true"
-                                                        ></div>
-                                                        <span>
-                                                            {graphState
-                                                                .reactionSummary
-                                                                .totalCount}
-                                                        </span>
-                                                    </Button>
-                                                {/if}
+                                                            contentLayout="iconText"
+                                                            shape="pill"
+                                                            onClick={() =>
+                                                                toggleReactions(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="favorite-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                            <span>
+                                                                {graphState
+                                                                    .reactionSummary
+                                                                    .totalCount}
+                                                            </span>
+                                                        </Button>
+                                                    {/if}
+                                                </div>
                                             </div>
                                             <div
                                                 class="post-preview-footer-right"
@@ -2483,6 +2487,14 @@
         .post-preview-action-buttons-group {
             display: flex;
             align-items: stretch;
+        }
+
+        .post-preview-footer-reaction-slot {
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+            flex: 0 0 70px;
+            min-width: 70px;
         }
 
         :global(:where(.post-preview-action-button)) {

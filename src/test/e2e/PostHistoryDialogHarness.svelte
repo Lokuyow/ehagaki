@@ -6,6 +6,7 @@
     import {
         ehagakiDb,
         type PostHistoryRecord,
+        type PostHistoryReplyEventRecord,
     } from "../../lib/storage/ehagakiDb";
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
@@ -27,6 +28,10 @@
         initialMonthLabel: string;
         scrollTargetContent: string;
         scrollTargetMonthLabel: string;
+        reactionPostEventId: string;
+        plainPostEventId: string;
+        scrolledReactionPostEventId: string;
+        scrolledPlainPostEventId: string;
     };
 
     type HarnessWindow = Window &
@@ -72,9 +77,46 @@
         };
     }
 
+    function buildReactionRecord(index: number): PostHistoryReplyEventRecord {
+        const parentPost = posts[index];
+        const createdAt = parentPost.createdAt + 60;
+
+        return {
+            id: `playwright-reaction-${index}`,
+            eventId: buildHexId(index, "bb"),
+            parentEventId: parentPost.eventId,
+            authorPubkey: buildHexId(index, "cc"),
+            kind: 7,
+            content: "+",
+            tags: [
+                ["p", HARNESS_PUBKEY],
+                ["e", parentPost.eventId],
+            ],
+            createdAt,
+            relayUrls: ["wss://relay.example.com/"],
+            discoveredAs: ["reaction"],
+            rawEvent: {
+                id: buildHexId(index, "bb"),
+                pubkey: buildHexId(index, "cc"),
+                kind: 7,
+                content: "+",
+                tags: [
+                    ["p", HARNESS_PUBKEY],
+                    ["e", parentPost.eventId],
+                ],
+                created_at: createdAt,
+                sig: "d".repeat(128),
+            },
+            fetchedAt: parentPost.updatedAt,
+            updatedAt: parentPost.updatedAt,
+            schemaVersion: 1,
+        };
+    }
+
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) =>
         buildPost(index),
     );
+    const reactionRecords = [buildReactionRecord(0), buildReactionRecord(20)];
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
     const initialMonthLabel = formatPostHistoryMonthLabel(
@@ -95,6 +137,10 @@
         initialMonthLabel,
         scrollTargetContent: scrollTargetPost.content,
         scrollTargetMonthLabel,
+        reactionPostEventId: posts[0].eventId,
+        plainPostEventId: posts[1].eventId,
+        scrolledReactionPostEventId: posts[20].eventId,
+        scrolledPlainPostEventId: posts[21].eventId,
     };
 
     onMount(async () => {
@@ -105,7 +151,9 @@
             .where("pubkeyHex")
             .equals(HARNESS_PUBKEY)
             .delete();
+        await ehagakiDb.postHistoryReplyEvents.clear();
         await ehagakiDb.postHistory.bulkPut(posts);
+        await ehagakiDb.postHistoryReplyEvents.bulkPut(reactionRecords);
 
         ready = true;
         (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
@@ -117,6 +165,10 @@
             initialMonthLabel,
             scrollTargetContent: scrollTargetPost.content,
             scrollTargetMonthLabel,
+            reactionPostEventId: posts[0].eventId,
+            plainPostEventId: posts[1].eventId,
+            scrolledReactionPostEventId: posts[20].eventId,
+            scrolledPlainPostEventId: posts[21].eventId,
         };
     });
 </script>
@@ -131,6 +183,7 @@
             show={true}
             onClose={() => undefined}
             pubkeyHex={HARNESS_PUBKEY}
+            onQuotePost={() => undefined}
         />
     {/if}
 </div>
