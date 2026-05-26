@@ -1,3 +1,4 @@
+import { nip19 } from 'nostr-tools';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
@@ -460,6 +461,22 @@ function createDeferred<T>() {
     return { promise, resolve };
 }
 
+function createQuoteNoteUri(eventId: string): string {
+    return `nostr:${nip19.noteEncode(eventId)}`;
+}
+
+function createQuoteNeventUri(
+    eventId: string,
+    authorPubkey?: string,
+    relayHints: string[] = [],
+): string {
+    return `nostr:${nip19.neventEncode({
+        id: eventId,
+        author: authorPubkey,
+        relays: relayHints.length > 0 ? relayHints : undefined,
+    })}`;
+}
+
 function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -476,6 +493,23 @@ function createMockRect(top: number, height: number): DOMRect {
         height,
         toJSON: () => ({}),
     } as DOMRect;
+}
+
+async function findHistoryItem(eventId: string): Promise<HTMLElement> {
+    let historyItem: HTMLElement | null = null;
+
+    await waitFor(() => {
+        historyItem = document.querySelector(
+            `[data-post-history-event-id="${eventId}"]`,
+        ) as HTMLElement | null;
+        expect(historyItem).toBeTruthy();
+    });
+
+    if (!historyItem) {
+        throw new Error(`History item not found: ${eventId}`);
+    }
+
+    return historyItem;
 }
 
 function createReplyContextRecords() {
@@ -989,7 +1023,12 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[quote-preview-cache-first] qタグ付き投稿の下に引用プレビューを自動表示し、履歴DBを優先する', async () => {
-        const { quotedRecord, post, quoteId } = createQuoteContextRecords();
+        const quoteId = '6'.repeat(64);
+        const quoteUri = createQuoteNoteUri(quoteId);
+        const { quotedRecord, post } = createQuoteContextRecords({
+            quoteId,
+            postContent: ['前文', quoteUri, '後文'].join('\n'),
+        });
 
         repositoryMock.getPage.mockResolvedValue([post]);
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -1005,21 +1044,20 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByText('自分の引用');
-        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
-        expect(historyItem).toBeTruthy();
-        const queries = within(historyItem as HTMLElement);
+        const historyItem = await findHistoryItem(post.eventId);
+        const queries = within(historyItem);
 
         await waitFor(() => {
             expect(queries.getByText('引用元の投稿')).toBeTruthy();
         });
 
-        const currentContent = queries.getByText('自分の引用');
         const quotedContent = queries.getByText('引用元の投稿');
-        expect(
-            currentContent.compareDocumentPosition(quotedContent)
-            & Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
+        const historyText = historyItem.textContent ?? '';
+        expect(historyText).toContain('前文');
+        expect(historyText).toContain('後文');
+        expect(historyText).not.toContain(quoteUri);
+        expect(queries.getByLabelText('postHistory.mediaNotCached image.jpg')).toBeTruthy();
+        expect(historyText.indexOf('前文')).toBeLessThan(historyText.indexOf(quotedContent.textContent ?? ''));
         expect(contextFetchServiceMock.fetchEventById).not.toHaveBeenCalled();
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
     });
@@ -1057,16 +1095,12 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByText('自分の引用その1');
-        await screen.findByText('自分の引用その2');
-        const firstHistoryItem = document.querySelector(`[data-post-history-event-id="${firstPost.eventId}"]`);
-        const secondHistoryItem = document.querySelector(`[data-post-history-event-id="${secondPost.eventId}"]`);
-        expect(firstHistoryItem).toBeTruthy();
-        expect(secondHistoryItem).toBeTruthy();
+        const firstHistoryItem = await findHistoryItem(firstPost.eventId);
+        const secondHistoryItem = await findHistoryItem(secondPost.eventId);
 
         await waitFor(() => {
-            expect(within(firstHistoryItem as HTMLElement).getByText('引用元の投稿')).toBeTruthy();
-            expect(within(secondHistoryItem as HTMLElement).getByText('引用元の投稿')).toBeTruthy();
+            expect(within(firstHistoryItem).getByText('引用元の投稿')).toBeTruthy();
+            expect(within(secondHistoryItem).getByText('引用元の投稿')).toBeTruthy();
         });
 
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
@@ -1074,7 +1108,12 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[quote-preview-nip09] tombstone がある引用先は削除済みラベルを表示する', async () => {
-        const { post, quoteId, quoteAuthorPubkey } = createQuoteContextRecords();
+        const quoteId = '6'.repeat(64);
+        const quoteUri = createQuoteNoteUri(quoteId);
+        const { post, quoteAuthorPubkey } = createQuoteContextRecords({
+            quoteId,
+            postContent: quoteUri,
+        });
         const deletedTargets = new Map<string, Set<string>>([
             [quoteAuthorPubkey, new Set([quoteId])],
         ]);
@@ -1092,21 +1131,24 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByText('自分の引用');
-        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
-        expect(historyItem).toBeTruthy();
-        const queries = within(historyItem as HTMLElement);
+        const historyItem = await findHistoryItem(post.eventId);
+        const queries = within(historyItem);
 
         await waitFor(() => {
             expect(queries.getByText('引用元削除済み')).toBeTruthy();
         });
 
+        expect(historyItem.textContent).not.toContain(quoteUri);
         expect(queries.queryByText('引用元の投稿')).toBeNull();
         expect(contextFetchServiceMock.fetchEventById).not.toHaveBeenCalled();
     });
 
     it('[quote-preview-not-found] qタグ対象が見つからない場合は未検出ラベルを表示する', async () => {
+        const quoteId = '6'.repeat(64);
+        const quoteUri = createQuoteNeventUri(quoteId, undefined, ['wss://quote.example.com/']);
         const { post } = createQuoteContextRecords({
+            quoteId,
+            postContent: quoteUri,
             includeAuthorHint: false,
         });
 
@@ -1130,16 +1172,108 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await screen.findByText('自分の引用');
-        const historyItem = document.querySelector(`[data-post-history-event-id="${post.eventId}"]`);
-        expect(historyItem).toBeTruthy();
-        const queries = within(historyItem as HTMLElement);
+        const historyItem = await findHistoryItem(post.eventId);
+        const queries = within(historyItem);
 
         await waitFor(() => {
             expect(queries.getByText('引用投稿が見つかりませんでした')).toBeTruthy();
         });
 
+        expect(historyItem.textContent).not.toContain(quoteUri);
         expect(queries.queryByText('引用元削除済み')).toBeNull();
+    });
+
+    it('[quote-preview-loading] 引用読込中は inline quote URI を表示せず loading ラベルを出す', async () => {
+        const quoteId = '8'.repeat(64);
+        const quoteUri = createQuoteNeventUri(quoteId, 'e'.repeat(64), ['wss://quote.example.com/']);
+        const deferred = createDeferred<{ event: null; relayUrl: string | null }>();
+        const { post } = createQuoteContextRecords({
+            quoteId,
+            postContent: ['導入', quoteUri, '末尾'].join('\n'),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById.mockReturnValue({
+            promise: deferred.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const queries = within(historyItem);
+
+        await waitFor(() => {
+            expect(queries.getByText('引用投稿を読み込み中...')).toBeTruthy();
+        });
+
+        expect(historyItem.textContent).toContain('導入');
+        expect(historyItem.textContent).toContain('末尾');
+        expect(historyItem.textContent).not.toContain(quoteUri);
+
+        deferred.resolve({
+            event: null,
+            relayUrl: null,
+        });
+    });
+
+    it('[quote-preview-retry] 引用取得失敗時は retry を表示し、再試行で解決できる', async () => {
+        const quoteId = '9'.repeat(64);
+        const quoteUri = createQuoteNoteUri(quoteId);
+        const { quotedRecord, post } = createQuoteContextRecords({
+            quoteId,
+            postContent: quoteUri,
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        contextFetchServiceMock.fetchEventById
+            .mockReturnValueOnce({
+                promise: Promise.reject(new Error('fetch failed')),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    event: quotedRecord.rawEvent,
+                    relayUrl: 'wss://quote.example.com/',
+                }),
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const queries = within(historyItem);
+
+        await waitFor(() => {
+            expect(queries.getByText('引用投稿を取得できませんでした')).toBeTruthy();
+        });
+
+        expect(historyItem.textContent).not.toContain(quoteUri);
+        await fireEvent.click(queries.getByRole('button', { name: '再試行' }));
+
+        await waitFor(() => {
+            expect(queries.getByText('引用元の投稿')).toBeTruthy();
+        });
+
+        expect(contextFetchServiceMock.fetchEventById).toHaveBeenCalledTimes(2);
     });
 
     it('[reply-context-scroll] 返信先の展開と折りたたみで起点投稿の表示位置を維持する', async () => {

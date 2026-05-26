@@ -3,6 +3,8 @@ import type { RxNostr } from "rx-nostr";
 import {
     createPostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetResolver,
+    type PostHistoryRelatedTargetErrorCode,
+    type PostHistoryRelatedTargetSnapshot,
     type PostHistoryRelatedTargetStatus,
 } from "../postHistoryRelatedTargetResolver.svelte";
 import {
@@ -37,18 +39,53 @@ import type { NostrEvent, ProfileData, RelayConfig } from "../types";
 let nextQuotePreviewResolverScopeId = 0;
 
 export type PostHistoryQuotePreviewStatus =
+    | "idle"
     | "loading"
     | "resolved"
     | "not-found"
     | "deleted"
     | "error";
 
-export interface PostHistoryQuotePreviewState {
+export interface PostHistoryQuotePreviewIdleState {
     eventId: string;
-    status: PostHistoryQuotePreviewStatus;
-    event: NostrEvent | null;
+    status: "idle";
+}
+
+export interface PostHistoryQuotePreviewLoadingState {
+    eventId: string;
+    status: "loading";
+}
+
+export interface PostHistoryQuotePreviewResolvedState {
+    eventId: string;
+    status: "resolved";
+    event: NostrEvent;
     profile: ProfileData | null;
 }
+
+export interface PostHistoryQuotePreviewNotFoundState {
+    eventId: string;
+    status: "not-found";
+}
+
+export interface PostHistoryQuotePreviewDeletedState {
+    eventId: string;
+    status: "deleted";
+}
+
+export interface PostHistoryQuotePreviewErrorState {
+    eventId: string;
+    status: "error";
+    errorCode: PostHistoryRelatedTargetErrorCode;
+}
+
+export type PostHistoryQuotePreviewState =
+    | PostHistoryQuotePreviewIdleState
+    | PostHistoryQuotePreviewLoadingState
+    | PostHistoryQuotePreviewResolvedState
+    | PostHistoryQuotePreviewNotFoundState
+    | PostHistoryQuotePreviewDeletedState
+    | PostHistoryQuotePreviewErrorState;
 
 interface UsePostHistoryQuotePreviewsParams {
     getShow: () => boolean;
@@ -70,6 +107,8 @@ function toQuotePreviewStatus(
     status: PostHistoryRelatedTargetStatus | undefined,
 ): PostHistoryQuotePreviewStatus {
     switch (status) {
+        case undefined:
+            return "idle";
         case "resolved":
         case "not-found":
         case "deleted":
@@ -77,6 +116,56 @@ function toQuotePreviewStatus(
             return status;
         default:
             return "loading";
+    }
+}
+
+function toQuotePreviewState(
+    eventId: string,
+    snapshot: PostHistoryRelatedTargetSnapshot | null | undefined,
+): PostHistoryQuotePreviewState {
+    const status = toQuotePreviewStatus(snapshot?.status);
+    switch (status) {
+        case "idle":
+            return {
+                eventId,
+                status,
+            };
+        case "loading":
+            return {
+                eventId,
+                status,
+            };
+        case "resolved":
+            if (snapshot?.event) {
+                return {
+                    eventId,
+                    status,
+                    event: snapshot.event,
+                    profile: snapshot.profile ?? null,
+                };
+            }
+
+            return {
+                eventId,
+                status: "error",
+                errorCode: snapshot?.errorCode ?? "fetch_failed",
+            };
+        case "not-found":
+            return {
+                eventId,
+                status,
+            };
+        case "deleted":
+            return {
+                eventId,
+                status,
+            };
+        case "error":
+            return {
+                eventId,
+                status,
+                errorCode: snapshot?.errorCode ?? null,
+            };
     }
 }
 
@@ -120,14 +209,10 @@ export function usePostHistoryQuotePreviews({
         resolverRevision;
 
         return (quoteIndex.byPostId[post.eventId] ?? []).map((reference) => {
-            const snapshot = resolver.getTargetSnapshot(reference.eventId);
-
-            return {
-                eventId: reference.eventId,
-                status: toQuotePreviewStatus(snapshot?.status),
-                event: snapshot?.event ?? null,
-                profile: snapshot?.profile ?? null,
-            };
+            return toQuotePreviewState(
+                reference.eventId,
+                resolver.getTargetSnapshot(reference.eventId),
+            );
         });
     }
 

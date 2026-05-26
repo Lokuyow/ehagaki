@@ -25,7 +25,9 @@
     }: Props = $props();
 
     function getMedia(): PostHistoryMediaRecord[] {
-        return preview.event ? extractPostHistoryMedia(preview.event) : [];
+        return preview.status === "resolved"
+            ? extractPostHistoryMedia(preview.event)
+            : [];
     }
 
     function getStatusMessage(): string {
@@ -42,7 +44,7 @@
     }
 </script>
 
-{#if preview.status === "resolved" && preview.event}
+{#if preview.status === "resolved"}
     <PostHistoryRelatedEventCard
         event={preview.event}
         profile={preview.profile}

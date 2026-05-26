@@ -45,6 +45,7 @@
         resolvePostHistoryRepliesActionLabelState,
         type PostHistoryDialogMessageState,
     } from "../lib/postHistoryDialogPresentation";
+    import { stripPostHistoryInlineQuoteUrisForDisplay } from "../lib/postHistoryQuoteUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
@@ -199,11 +200,22 @@
         getEmojiUrls: () => dialogEmojiUrls,
         onStateChanged: () => previewCollapse.remeasure(),
     });
+
+    function buildDisplayPreviewContent(
+        post: PostHistoryRecord,
+    ): PostHistoryPreviewContentData {
+        return buildPreviewContent({
+            content: stripPostHistoryInlineQuoteUrisForDisplay(post),
+            tags: post.tags,
+            media: post.media,
+        });
+    }
+
     let previewContentByEventId = $derived.by(() => {
         const nextContent: Record<string, PostHistoryPreviewContentData> = {};
 
         for (const post of history.posts) {
-            nextContent[post.eventId] = buildPreviewContent(post);
+            nextContent[post.eventId] = buildDisplayPreviewContent(post);
         }
 
         return nextContent;
@@ -513,7 +525,8 @@
         post: PostHistoryRecord,
     ): PostHistoryPreviewContentData {
         return (
-            previewContentByEventId[post.eventId] ?? buildPreviewContent(post)
+            previewContentByEventId[post.eventId] ??
+            buildDisplayPreviewContent(post)
         );
     }
 
