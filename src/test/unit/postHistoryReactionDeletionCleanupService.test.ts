@@ -163,4 +163,45 @@ describe("PostHistoryReactionDeletionCleanupService", () => {
             REACTION_ID,
         );
     });
+
+    it("admitted reaction ids だけを cleanup 対象にする", async () => {
+        const { service, deletionFetchService } = createService();
+        const otherReactionId = "3".repeat(64);
+        const reactionRecordsAdapter = {
+            getReactionRecords: vi.fn(async () => [
+                createReactionRecord(),
+                createReactionRecord({ id: otherReactionId, eventId: otherReactionId }),
+            ]),
+        };
+        const filteredService = new PostHistoryReactionDeletionCleanupService({
+            reactionRecordsAdapter,
+            deletionFetchService,
+            deletionRequestsRepository: {
+                getDeletedTargets: vi.fn(async () => new Map<string, Set<string>>()),
+                upsertValidDeletionRequests: vi.fn(async () => ({
+                    insertedCount: 0,
+                    updatedCount: 0,
+                    unchangedCount: 0,
+                    ignoredCount: 0,
+                })),
+            },
+            childInteractionsRepository: {
+                deleteChildInteractionByEventId: vi.fn(async () => undefined),
+            },
+        });
+
+        await filteredService.cleanupReactionDeletions({} as any, {
+            parentEventIds: [PARENT_ID],
+            reactionEventIds: [REACTION_ID],
+        });
+
+        expect(deletionFetchService.fetchDeletionRequests).toHaveBeenCalledWith(
+            {} as any,
+            expect.objectContaining({
+                targets: [expect.objectContaining({
+                    event: expect.objectContaining({ id: REACTION_ID }),
+                })],
+            }),
+        );
+    });
 });

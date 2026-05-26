@@ -26,6 +26,7 @@ interface ReactionCleanupItem {
 
 export interface PostHistoryReactionDeletionCleanupRequest {
     parentEventIds: string[];
+    reactionEventIds?: string[];
     relayConfig?: RelayConfig | null;
     isActive?: () => boolean;
 }
@@ -117,11 +118,15 @@ export class PostHistoryReactionDeletionCleanupService {
     ): Promise<PostHistoryReactionDeletionCleanupResult> {
         const isActive = () => params.isActive?.() !== false;
         const checkedParentEventIds = uniqueEventIds(params.parentEventIds);
+        const checkedReactionEventIds = uniqueEventIds(params.reactionEventIds ?? []);
         if (checkedParentEventIds.length === 0) {
             return EMPTY_RESULT;
         }
 
-        const allItems = await this.loadReactionItems(checkedParentEventIds);
+        const allItems = await this.loadReactionItems(
+            checkedParentEventIds,
+            checkedReactionEventIds,
+        );
         if (!isActive()) {
             return {
                 ...EMPTY_RESULT,
@@ -198,12 +203,25 @@ export class PostHistoryReactionDeletionCleanupService {
         };
     }
 
-    private async loadReactionItems(parentEventIds: string[]): Promise<ReactionCleanupItem[]> {
+    private async loadReactionItems(
+        parentEventIds: string[],
+        reactionEventIds: string[],
+    ): Promise<ReactionCleanupItem[]> {
         const items: ReactionCleanupItem[] = [];
+        const allowedReactionEventIdSet = reactionEventIds.length > 0
+            ? new Set(reactionEventIds)
+            : null;
 
         for (const parentEventId of parentEventIds) {
             const records = await this.reactionRecordsAdapter.getReactionRecords(parentEventId);
             for (const record of records) {
+                if (
+                    allowedReactionEventIdSet
+                    && !allowedReactionEventIdSet.has(record.eventId)
+                ) {
+                    continue;
+                }
+
                 items.push({
                     parentEventId,
                     record,

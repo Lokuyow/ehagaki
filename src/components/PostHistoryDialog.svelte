@@ -50,14 +50,10 @@
     import { stripPostHistoryInlineQuoteUrisForDisplay } from "../lib/postHistoryQuoteUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
+    import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryReactionLifecycle } from "../lib/postHistoryReactionLifecycleTrigger";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
-    import {
-        clearPendingDeletionRequest,
-        pendingDeletionRequestsState,
-        resetPendingDeletionRequests,
-        setPendingDeletionRequest,
-    } from "../stores/postHistoryDeletionLifecycleStore.svelte";
+    import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
     import type {
         FullscreenMediaItem,
         NostrEvent,
@@ -182,6 +178,9 @@
     let jumpDateInput = $state("");
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
+    let deleteRequestState = $state<
+        Record<string, "sending" | "failed" | undefined>
+    >({});
     let reactionsExpandedByEventId = $state<Record<string, boolean>>({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
@@ -269,6 +268,7 @@
         activeUtilityPanel = "none";
         jumpDateInput = "";
         headingMenuOpen = false;
+        deleteRequestState = {};
         resetPendingDeletionRequests();
         reactionsExpandedByEventId = {};
         emojiState.resetState();
@@ -347,6 +347,10 @@
         if (!show || posts.length === 0) {
             return;
         }
+
+        void reconcilePendingDeletionRequestsForParentEventIds(
+            posts.map((post) => post.eventId),
+        ).catch(() => undefined);
 
         void untrack(() =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
@@ -583,11 +587,11 @@
     }
 
     function isDeletionSending(post: PostHistoryRecord): boolean {
-        return pendingDeletionRequestsState[post.eventId] === "sending";
+        return deleteRequestState[post.eventId] === "sending";
     }
 
     function hasDeletionFailed(post: PostHistoryRecord): boolean {
-        return pendingDeletionRequestsState[post.eventId] === "failed";
+        return deleteRequestState[post.eventId] === "failed";
     }
 
     function getRepliesActionLabel(post: PostHistoryRecord): string {
@@ -760,7 +764,10 @@
             return;
         }
 
-        setPendingDeletionRequest(targetPost.eventId, "sending");
+        deleteRequestState = {
+            ...deleteRequestState,
+            [targetPost.eventId]: "sending",
+        };
 
         const result = await postDeletionService.requestDeletion({
             post: targetPost,
@@ -784,9 +791,15 @@
                     deletionEvent: result.deletionEvent ?? null,
                 })
                 .catch(() => undefined);
-            clearPendingDeletionRequest(targetPost.eventId);
+            deleteRequestState = {
+                ...deleteRequestState,
+                [targetPost.eventId]: undefined,
+            };
         } else {
-            setPendingDeletionRequest(targetPost.eventId, "failed");
+            deleteRequestState = {
+                ...deleteRequestState,
+                [targetPost.eventId]: "failed",
+            };
         }
 
         postActionUi.clearDeleteTarget();
