@@ -50,7 +50,7 @@ import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
-import { postHistoryReplyEventsRepository } from "../storage/postHistoryReplyEventsRepository";
+import { postHistoryChildInteractionsRepository } from "../storage/postHistoryReplyEventsRepository";
 import {
     buildPostHistoryVisibleKindsKey,
     postHistoryVisibleRangeRepository,
@@ -2721,7 +2721,7 @@ export function usePostHistoryListing({
 
         try {
             await Promise.all([
-                postHistoryReplyEventsRepository.deleteForPostHistoryPubkey(pubkeyHex),
+                postHistoryChildInteractionsRepository.deleteChildInteractionsForPostHistoryPubkey(pubkeyHex),
                 postHistoryRepository.deleteForPubkey(pubkeyHex),
                 postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
             ]);

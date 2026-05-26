@@ -104,13 +104,15 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
                 ],
             }),
         };
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
         const replyEventsRepository = {
-            upsertDirectReplies: vi.fn(async () => ({
-                insertedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                ignoredCount: 0,
-            })),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const reconciliation = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {

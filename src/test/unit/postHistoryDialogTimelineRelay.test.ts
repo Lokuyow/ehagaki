@@ -76,13 +76,15 @@ describe('PostHistoryDialog timeline relay flows', () => {
             created_at: 1_700_000_000,
             sig: 'd'.repeat(128),
         };
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
         const replyEventsRepository = {
-            upsertDirectReplies: vi.fn(async () => ({
-                insertedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                ignoredCount: 0,
-            })),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {

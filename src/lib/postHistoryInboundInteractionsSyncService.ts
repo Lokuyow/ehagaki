@@ -15,8 +15,8 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import {
-    postHistoryReplyEventsRepository,
-    type PostHistoryReplyEventsRepository,
+    postHistoryChildInteractionsRepository,
+    type PostHistoryChildInteractionsRepository,
     type PostHistoryReplyEventItem,
 } from "./storage/postHistoryReplyEventsRepository";
 import {
@@ -88,7 +88,7 @@ export interface PostHistoryInboundInteractionsSyncTask {
 
 export interface PostHistoryInboundInteractionsSyncServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+    postHistoryReplyEventsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -164,7 +164,7 @@ function toResultEvents(eventsById: Map<string, EventAccumulator>): Array<{
 
 export class PostHistoryInboundInteractionsSyncService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    private postHistoryReplyEventsRepository: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+    private postHistoryReplyEventsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -174,7 +174,7 @@ export class PostHistoryInboundInteractionsSyncService {
     constructor(deps: PostHistoryInboundInteractionsSyncServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryReplyEventsRepository =
-            deps.postHistoryReplyEventsRepository ?? postHistoryReplyEventsRepository;
+            deps.postHistoryReplyEventsRepository ?? postHistoryChildInteractionsRepository;
         this.syncStateRepository =
             deps.syncStateRepository ?? postHistoryInboundInteractionsSyncStateRepository;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
@@ -423,7 +423,7 @@ export class PostHistoryInboundInteractionsSyncService {
             savedDirectReplyCount = reconciled.savedDirectReplyCount;
         } else {
             for (const [parentEventId, events] of directRepliesByParentId.entries()) {
-                const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+                const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
                     parentEventId,
                     events,
                     fetchedAt: input.fetchedAt,
@@ -440,7 +440,7 @@ export class PostHistoryInboundInteractionsSyncService {
 
         const savedParentEventIdSet = new Set(savedParentEventIds);
         for (const [parentEventId, events] of reactionsByParentId.entries()) {
-            const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+            const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt: input.fetchedAt,

@@ -40,14 +40,18 @@ function createService(overrides: Record<string, any> = {}) {
             ignoredCount: 0,
         })),
     };
+    const upsertChildInteractions = vi.fn(async () => ({
+        insertedCount: 1,
+        updatedCount: 0,
+        unchangedCount: 0,
+        ignoredCount: 0,
+    }));
+    const deleteChildInteractionByEventId = vi.fn(async () => undefined);
     const replyEventsRepository = {
-        upsertDirectReplies: vi.fn(async () => ({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
-            ignoredCount: 0,
-        })),
-        deleteByEventId: vi.fn(async () => undefined),
+        upsertChildInteractions,
+        deleteChildInteractionByEventId,
+        upsertDirectReplies: upsertChildInteractions,
+        deleteByEventId: deleteChildInteractionByEventId,
     };
 
     return {

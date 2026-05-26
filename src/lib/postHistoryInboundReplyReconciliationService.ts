@@ -13,9 +13,9 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import {
-    postHistoryReplyEventsRepository,
+    postHistoryChildInteractionsRepository,
     type PostHistoryReplyEventItem,
-    type PostHistoryReplyEventsRepository,
+    type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
 import type { RelayConfig } from "./types";
 
@@ -40,7 +40,7 @@ export interface PostHistoryInboundReplyReconciliationServiceDeps {
         PostHistoryRepository,
         "getExistingEventIdsForPubkey" | "upsertFetchedEvents"
     >;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+    postHistoryReplyEventsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     selfParentFetchService?: Pick<PostHistorySelfParentFetchService, "fetchSelfParent">;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
@@ -256,7 +256,7 @@ export class PostHistoryInboundReplyReconciliationSession {
         let savedDirectReplyCount = 0;
         const savedParentEventIds: string[] = [];
         for (const [parentEventId, events] of directRepliesByParentId.entries()) {
-            const result = await this.deps.postHistoryReplyEventsRepository.upsertDirectReplies({
+            const result = await this.deps.postHistoryReplyEventsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt: this.deps.now(),
@@ -295,7 +295,7 @@ export class PostHistoryInboundReplyReconciliationService {
         this.deps = {
             postHistoryRepository: deps.postHistoryRepository ?? postHistoryRepository,
             postHistoryReplyEventsRepository:
-                deps.postHistoryReplyEventsRepository ?? postHistoryReplyEventsRepository,
+                deps.postHistoryReplyEventsRepository ?? postHistoryChildInteractionsRepository,
             selfParentFetchService: deps.selfParentFetchService ?? postHistorySelfParentFetchService,
             console: deps.console ?? (typeof globalThis.console !== "undefined"
                 ? globalThis.console

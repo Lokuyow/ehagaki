@@ -22,8 +22,10 @@ import {
     type PostHistoryDeletionFetchTask,
 } from "../postHistoryDeletionFetchService";
 import {
-    postHistoryReplyEventsAdapter,
-    type PostHistoryReplyEventsAdapter,
+    postHistoryDirectReplyRecordsAdapter,
+    postHistoryReactionRecordsAdapter,
+    type PostHistoryDirectReplyRecordsAdapter,
+    type PostHistoryReactionRecordsAdapter,
 } from "../postHistoryReplyEventsAdapter";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
@@ -34,8 +36,8 @@ import {
     type PostHistoryRepository,
 } from "../storage/postHistoryRepository";
 import {
-    postHistoryReplyEventsRepository,
-    type PostHistoryReplyEventsRepository,
+    postHistoryChildInteractionsRepository,
+    type PostHistoryChildInteractionsRepository,
 } from "../storage/postHistoryReplyEventsRepository";
 import {
     postHistoryDeletionRequestsRepository,
@@ -117,10 +119,11 @@ interface UsePostHistoryThreadGraphParams {
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
     postHistoryRepositoryImpl?: Pick<PostHistoryRepository, "getByEventId">;
-    replyEventsAdapterImpl?: PostHistoryReplyEventsAdapter;
-    replyEventsRepositoryImpl?: Pick<
-        PostHistoryReplyEventsRepository,
-        "getDirectReplies" | "upsertDirectReplies" | "deleteByEventId"
+    directReplyRecordsAdapterImpl?: PostHistoryDirectReplyRecordsAdapter;
+    reactionRecordsAdapterImpl?: PostHistoryReactionRecordsAdapter;
+    childInteractionsRepositoryImpl?: Pick<
+        PostHistoryChildInteractionsRepository,
+        "upsertChildInteractions" | "deleteChildInteractionByEventId"
     >;
     deletionRequestsRepositoryImpl?: Pick<
         PostHistoryDeletionRequestsRepository,
@@ -188,8 +191,9 @@ export function usePostHistoryThreadGraph({
     getRxNostr,
     getRelayConfig,
     postHistoryRepositoryImpl = postHistoryRepository,
-    replyEventsAdapterImpl = postHistoryReplyEventsAdapter,
-    replyEventsRepositoryImpl = postHistoryReplyEventsRepository,
+    directReplyRecordsAdapterImpl = postHistoryDirectReplyRecordsAdapter,
+    reactionRecordsAdapterImpl = postHistoryReactionRecordsAdapter,
+    childInteractionsRepositoryImpl = postHistoryChildInteractionsRepository,
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     profilesRepositoryImpl = profilesRepository,
     contextFetchService = postHistoryContextFetchService,
@@ -888,7 +892,7 @@ export function usePostHistoryThreadGraph({
         for (const eventIds of deletedTargets.values()) {
             for (const eventId of eventIds) {
                 removeEventIdFromChildren(eventId);
-                await replyEventsRepositoryImpl.deleteByEventId(eventId);
+                await childInteractionsRepositoryImpl.deleteChildInteractionByEventId(eventId);
             }
         }
     }
@@ -966,7 +970,7 @@ export function usePostHistoryThreadGraph({
         const visibleEvents: NostrEvent[] = [];
         for (const event of events) {
             if (await isHiddenOrDeletedEvent(event)) {
-                await replyEventsRepositoryImpl.deleteByEventId(event.id);
+                await childInteractionsRepositoryImpl.deleteChildInteractionByEventId(event.id);
                 continue;
             }
 
@@ -1403,7 +1407,7 @@ export function usePostHistoryThreadGraph({
         currentNode: PostHistoryThreadGraphNode,
         options: { prefetchOnly?: boolean } = {},
     ): Promise<boolean> {
-        const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId);
+        const rawCachedRecords = await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId);
         void fetchAndStoreDeletionRequests(
             post.eventId,
             rawCachedRecords.map((record) => toEventFromReplyRecord(record)),
@@ -1493,7 +1497,7 @@ export function usePostHistoryThreadGraph({
             );
             const fetchedEvents = await filterVisibleReplyItems(result.events);
             if (result.events.length > 0) {
-                await replyEventsRepositoryImpl.upsertDirectReplies({
+                await childInteractionsRepositoryImpl.upsertChildInteractions({
                     parentEventId: nodeEventId,
                     events: fetchedEvents,
                     fetchedAt: result.fetchedAt,
@@ -1501,7 +1505,7 @@ export function usePostHistoryThreadGraph({
             }
 
             const nextRecords = await filterVisibleReplyRecords(
-                await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId),
+                await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
             );
             if (
                 activeGraphRequestId !== requestId ||
@@ -1670,7 +1674,7 @@ export function usePostHistoryThreadGraph({
         post: PostHistoryRecord,
         nodeEventId: string,
     ): Promise<boolean> {
-        const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(nodeEventId);
+        const rawCachedRecords = await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId);
         if (!getShow()) {
             return false;
         }
@@ -1776,22 +1780,28 @@ export function usePostHistoryThreadGraph({
             replyBadgePreloadKeys.add(preloadKey);
 
             const anchorNode = ensureAnchorNode(post);
-            const rawCachedRecords = await replyEventsAdapterImpl.getRelatedEventRecords(parentEventId);
+            const [rawCachedReactionRecords, rawCachedDirectReplyRecords] = await Promise.all([
+                reactionRecordsAdapterImpl.getReactionRecords(parentEventId),
+                directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
+            ]);
             if (activeRequestId !== requestId || !getShow()) {
                 continue;
             }
 
-            const cachedRecords = await filterVisibleReplyRecords(rawCachedRecords);
+            const [cachedReactionRecords, cachedDirectReplyRecords] = await Promise.all([
+                filterVisibleReplyRecords(rawCachedReactionRecords),
+                filterVisibleReplyRecords(rawCachedDirectReplyRecords),
+            ]);
             if (activeRequestId !== requestId || !getShow()) {
                 continue;
             }
 
-            preloadCachedReactionSummaryForParent(parentEventId, cachedRecords);
+            preloadCachedReactionSummaryForParent(parentEventId, cachedReactionRecords);
 
             await preloadCachedDirectReplyStateForParent({
                 post,
                 parentEventId,
-                cachedRecords,
+                cachedRecords: cachedDirectReplyRecords,
                 anchorNode,
                 activeRequestId,
             });
@@ -1884,7 +1894,7 @@ export function usePostHistoryThreadGraph({
             for (const eventId of batchEventIds) {
                 const items = itemsByParentId.get(eventId) ?? [];
                 if (items.length > 0) {
-                    await replyEventsRepositoryImpl.upsertDirectReplies({
+                    await childInteractionsRepositoryImpl.upsertChildInteractions({
                         parentEventId: eventId,
                         events: items,
                         fetchedAt: result.fetchedAt,
@@ -1892,7 +1902,7 @@ export function usePostHistoryThreadGraph({
                 }
 
                 const nextRecords = await filterVisibleReplyRecords(
-                    await replyEventsAdapterImpl.getDirectReplyRecords(eventId),
+                    await directReplyRecordsAdapterImpl.getDirectReplyRecords(eventId),
                 );
                 await upsertReplyRecords(eventId, nextRecords, ["reply-db", "fetched-child"], {
                     resolveProfiles: false,
@@ -2053,7 +2063,7 @@ export function usePostHistoryThreadGraph({
             return false;
         }
 
-        await replyEventsRepositoryImpl.upsertDirectReplies({
+        await childInteractionsRepositoryImpl.upsertChildInteractions({
             parentEventId,
             events: [
                 {
@@ -2064,7 +2074,7 @@ export function usePostHistoryThreadGraph({
         });
 
         const nextRecords = await filterVisibleReplyRecords(
-            await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId),
+            await directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
         );
         if (!getShow()) {
             return false;
@@ -2124,7 +2134,7 @@ export function usePostHistoryThreadGraph({
                 fetchedAt: Date.now(),
             });
         }
-        await replyEventsRepositoryImpl.deleteByEventId(input.eventId);
+        await childInteractionsRepositoryImpl.deleteChildInteractionByEventId(input.eventId);
     }
 
     $effect(() => {

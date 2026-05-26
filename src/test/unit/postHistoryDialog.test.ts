@@ -127,12 +127,28 @@ const repositoryMock = vi.hoisted(() => ({
     deleteForPubkey: vi.fn(),
 }));
 
-const replyEventsRepositoryMock = vi.hoisted(() => ({
-    getDirectReplies: vi.fn(),
-    upsertDirectReplies: vi.fn(),
-    deleteByEventId: vi.fn(),
-    deleteForPostHistoryPubkey: vi.fn(),
-}));
+const replyEventsRepositoryMock = vi.hoisted(() => {
+    const getChildInteractions = vi.fn();
+    const getDirectReplyInteractions = vi.fn();
+    const getReactionInteractions = vi.fn();
+    const upsertChildInteractions = vi.fn();
+    const deleteChildInteractionByEventId = vi.fn();
+    const deleteChildInteractionsForPostHistoryPubkey = vi.fn();
+
+    return {
+        getChildInteractions,
+        getDirectReplyInteractions,
+        getReactionInteractions,
+        upsertChildInteractions,
+        deleteChildInteractionByEventId,
+        deleteChildInteractionsForPostHistoryPubkey,
+        getRelatedEvents: getChildInteractions,
+        getDirectReplies: getDirectReplyInteractions,
+        upsertDirectReplies: upsertChildInteractions,
+        deleteByEventId: deleteChildInteractionByEventId,
+        deleteForPostHistoryPubkey: deleteChildInteractionsForPostHistoryPubkey,
+    };
+});
 
 const deletionRequestsRepositoryMock = vi.hoisted(() => ({
     getDeletedTargets: vi.fn(),
@@ -312,6 +328,7 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
 }));
 
 vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
+    postHistoryChildInteractionsRepository: replyEventsRepositoryMock,
     postHistoryReplyEventsRepository: replyEventsRepositoryMock,
 }));
 
@@ -780,7 +797,7 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
         });
         repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
-        delete (replyEventsRepositoryMock as any).getRelatedEvents;
+        replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([]);
         replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
         replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
             insertedCount: 0,
@@ -2844,7 +2861,7 @@ describe('PostHistoryDialog', () => {
 
         repositoryMock.getPage.mockResolvedValue([post]);
         repositoryMock.countForPubkey.mockResolvedValue(1);
-        (replyEventsRepositoryMock as any).getRelatedEvents = vi.fn().mockResolvedValue([
+        replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([
             favoriteReaction,
             thumbsUpReaction,
             secondFavoriteReaction,
@@ -2863,7 +2880,7 @@ describe('PostHistoryDialog', () => {
         const reactionButton = await screen.findByRole('button', {
             name: 'リアクション 3件を表示',
         });
-        expect((replyEventsRepositoryMock as any).getRelatedEvents).toHaveBeenCalledWith(parentEventId);
+        expect(replyEventsRepositoryMock.getChildInteractions).toHaveBeenCalledWith(parentEventId);
         expect(screen.queryByText('👍')).toBeNull();
 
         await fireEvent.click(reactionButton);

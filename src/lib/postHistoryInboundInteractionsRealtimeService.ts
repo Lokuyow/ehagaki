@@ -11,8 +11,8 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import {
-    postHistoryReplyEventsRepository,
-    type PostHistoryReplyEventsRepository,
+    postHistoryChildInteractionsRepository,
+    type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 
@@ -36,7 +36,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+    postHistoryReplyEventsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
 }
@@ -53,14 +53,14 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 
 export class PostHistoryInboundInteractionsRealtimeService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    private postHistoryReplyEventsRepository: Pick<PostHistoryReplyEventsRepository, "upsertDirectReplies">;
+    private postHistoryReplyEventsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
 
     constructor(deps: PostHistoryInboundInteractionsRealtimeServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.postHistoryReplyEventsRepository =
-            deps.postHistoryReplyEventsRepository ?? postHistoryReplyEventsRepository;
+            deps.postHistoryReplyEventsRepository ?? postHistoryChildInteractionsRepository;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -173,7 +173,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
                 typeof packet.from === "string" ? [packet.from] : [],
                 { limit: 1 },
             )[0];
-            const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+            const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
                 parentEventId: preliminary.targetEventId,
                 events: [{
                     event,
@@ -232,7 +232,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             typeof packet.from === "string" ? [packet.from] : [],
             { limit: 1 },
         )[0];
-        const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+        const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
             parentEventId: classification.parentEventId,
             events: [{
                 event,

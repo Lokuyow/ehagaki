@@ -54,13 +54,15 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
                 unchangedCount: 0,
             })),
         };
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
         const postHistoryReplyEventsRepository = {
-            upsertDirectReplies: vi.fn(async () => ({
-                insertedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                ignoredCount: 0,
-            })),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const selfParentFetchService = {
             fetchSelfParent: vi.fn(() => ({
@@ -114,8 +116,10 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
     });
 
     it("leaves targeted parent fetch null results unresolved without storing the candidate", async () => {
+        const upsertChildInteractions = vi.fn();
         const postHistoryReplyEventsRepository = {
-            upsertDirectReplies: vi.fn(),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {
@@ -147,8 +151,10 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             getExistingEventIdsForPubkey: vi.fn(async () => []),
             upsertFetchedEvents: vi.fn(),
         };
+        const upsertChildInteractions = vi.fn();
         const postHistoryReplyEventsRepository = {
-            upsertDirectReplies: vi.fn(),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository,
@@ -183,13 +189,15 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
     });
 
     it("keeps pending repository saves active across Dialog close while owner session stays active", async () => {
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
         const postHistoryReplyEventsRepository = {
-            upsertDirectReplies: vi.fn(async () => ({
-                insertedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                ignoredCount: 0,
-            })),
+            upsertChildInteractions,
+            upsertDirectReplies: upsertChildInteractions,
         };
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {

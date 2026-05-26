@@ -45,13 +45,15 @@ function createService(overrides: Record<string, any> = {}) {
             eventIds.filter((eventId) => eventId === PARENT_ID)
         ),
     };
+    const upsertChildInteractions = vi.fn(async () => ({
+        insertedCount: 1,
+        updatedCount: 0,
+        unchangedCount: 0,
+        ignoredCount: 0,
+    }));
     const postHistoryReplyEventsRepository = {
-        upsertDirectReplies: vi.fn(async () => ({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
-            ignoredCount: 0,
-        })),
+        upsertChildInteractions,
+        upsertDirectReplies: upsertChildInteractions,
     };
     const syncStateRepository = {
         get: vi.fn(async () => null),
