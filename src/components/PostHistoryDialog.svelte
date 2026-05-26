@@ -112,7 +112,7 @@
             await notifySavedAuthoredPosts?.(eventIds);
         },
         onReplyBadgeRefreshRequested: (posts, parentEventIds) =>
-            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+            postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
                 parentEventIds,
             ),
@@ -151,7 +151,7 @@
         getRelayConfig: () => relayConfig,
         getPosts: () => history.posts,
         onSavedDirectReplies: (parentEventIds) =>
-            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+            postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 history.posts,
                 parentEventIds,
             ),
@@ -341,7 +341,9 @@
         }
 
         void untrack(() =>
-            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(posts),
+            postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
+                posts,
+            ),
         );
     });
 
@@ -354,7 +356,7 @@
         }
 
         void untrack(() =>
-            postHistoryThreadGraph.loadCachedReplyBadgesForPosts(
+            postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
                 parentEventIds,
             ),
