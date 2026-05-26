@@ -30,7 +30,7 @@ function toNormalizedRelativePath(rootPath: string, filePath: string): string {
 describe("postHistoryReactionLifecycle boundary contract", () => {
     const srcRootPath = join(process.cwd(), "src");
 
-    it("cleanup singleton is imported only by the trigger in production code", () => {
+    it("Checklist 1: cleanup singleton import allowlist", () => {
         const importers = collectSourceFiles(srcRootPath)
             .filter((filePath) => readFileSync(filePath, "utf8").includes("postHistoryReactionDeletionCleanupService"))
             .map((filePath) => toNormalizedRelativePath(srcRootPath, filePath))
@@ -41,7 +41,7 @@ describe("postHistoryReactionLifecycle boundary contract", () => {
         ]);
     });
 
-    it("production callers enter reaction deletion through the trigger only", () => {
+    it("Checklist 2: trigger caller allowlist", () => {
         const importers = collectSourceFiles(srcRootPath)
             .filter((filePath) => /\btriggerPostHistoryReactionLifecycle\s*\(/.test(readFileSync(filePath, "utf8")))
             .map((filePath) => toNormalizedRelativePath(srcRootPath, filePath))
