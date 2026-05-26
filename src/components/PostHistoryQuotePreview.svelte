@@ -106,7 +106,7 @@
     .post-history-quote-badge {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 2px;
         color: var(--text-muted);
         font-size: 0.76rem;
         font-weight: 600;
