@@ -1384,31 +1384,6 @@
                                                                 post,
                                                             )}
                                                     />
-                                                    {#if graphState.reactionSummary.totalCount > 0}
-                                                        <Button
-                                                            type="button"
-                                                            class="post-preview-reactions-button"
-                                                            ariaLabel={getReactionsActionLabel(
-                                                                post,
-                                                            )}
-                                                            contentLayout="iconText"
-                                                            shape="pill"
-                                                            onClick={() =>
-                                                                toggleReactions(
-                                                                    post,
-                                                                )}
-                                                        >
-                                                            <div
-                                                                class="favorite-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {graphState
-                                                                    .reactionSummary
-                                                                    .totalCount}
-                                                            </span>
-                                                        </Button>
-                                                    {/if}
                                                 </div>
                                                 {#if onQuotePost}
                                                     <Button
@@ -1428,6 +1403,31 @@
                                                             class="quote-icon svg-icon"
                                                             aria-hidden="true"
                                                         ></div>
+                                                    </Button>
+                                                {/if}
+                                                {#if graphState.reactionSummary.totalCount > 0}
+                                                    <Button
+                                                        type="button"
+                                                        class="post-preview-reactions-button"
+                                                        ariaLabel={getReactionsActionLabel(
+                                                            post,
+                                                        )}
+                                                        contentLayout="iconText"
+                                                        shape="pill"
+                                                        onClick={() =>
+                                                            toggleReactions(
+                                                                post,
+                                                            )}
+                                                    >
+                                                        <div
+                                                            class="favorite-icon svg-icon"
+                                                            aria-hidden="true"
+                                                        ></div>
+                                                        <span>
+                                                            {graphState
+                                                                .reactionSummary
+                                                                .totalCount}
+                                                        </span>
                                                     </Button>
                                                 {/if}
                                             </div>
@@ -2511,6 +2511,8 @@
 
             :global(.svg-icon) {
                 --svg: var(--btn-post-preview-action);
+                width: 22px;
+                height: 22px;
             }
         }
 
