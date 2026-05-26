@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
-    import { flushSync, tick, untrack } from "svelte";
+    import { tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
@@ -15,10 +15,13 @@
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
+    import { usePostHistoryCopyNevent } from "../lib/hooks/usePostHistoryCopyNevent.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { usePostHistoryEmojiState } from "../lib/hooks/usePostHistoryEmojiState.svelte";
     import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
     import { usePostHistoryQuotePreviews } from "../lib/hooks/usePostHistoryQuotePreviews.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
+    import { usePostHistoryDialogViewport } from "../lib/hooks/usePostHistoryDialogViewport.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
@@ -27,17 +30,12 @@
         PostHistoryInboundReplyReconciliationResult,
     } from "../lib/postHistoryInboundReplyReconciliationService";
     import {
-        preloadCustomEmojiImageWithMeta,
-        type PreloadedCustomEmojiImageResult,
-    } from "../lib/customEmoji";
-    import {
         canRequestPostDeletion,
         postDeletionService,
     } from "../lib/postDeletionService";
     import {
         buildPreviewContent,
         formatPostedAt,
-        formatPostHistoryMonthLabel,
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import {
@@ -47,35 +45,14 @@
         resolvePostHistoryRepliesActionLabelState,
         type PostHistoryDialogMessageState,
     } from "../lib/postHistoryDialogPresentation";
-    import {
-        clearPostHistoryDialogScrollState,
-        readPostHistoryDialogScrollState,
-        writePostHistoryDialogScrollState,
-        type PostHistoryDialogScrollMode,
-        type PostHistoryDialogScrollState,
-    } from "../lib/postHistoryDialogScrollState";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
-    import { customEmojiImageMetaRepository } from "../lib/storage/customEmojiImageMetaRepository";
-    import type {
-        CustomEmojiImageMetaRecord,
-        PostHistoryRecord,
-    } from "../lib/storage/ehagakiDb";
+    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type {
         FullscreenMediaItem,
         NostrEvent,
         RelayConfig,
     } from "../lib/types";
-    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
-    import { toNevent } from "../lib/utils/nostrUtils";
-
-    import { writeRelaysStore } from "../stores/relayStore.svelte";
-    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
-
-    type EmojiImageMetaSnapshot = Pick<
-        CustomEmojiImageMetaRecord,
-        "url" | "width" | "height" | "aspectRatio"
-    >;
 
     type PostHistoryUtilityPanel = "none" | "search" | "jump-date";
 
@@ -125,12 +102,9 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getSessionScrollState: () =>
-            readPostHistoryDialogScrollState({
-                pubkeyHex,
-                mode: "normal",
-            }),
+            historyViewport.readCurrentSessionScrollState(),
         onSessionScrollStateInvalidated: () =>
-            clearAllSessionScrollAnchorsForCurrentPubkey(),
+            historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey(),
         onSavedAuthoredPosts: async (eventIds) => {
             await notifySavedAuthoredPosts?.(eventIds);
         },
@@ -190,16 +164,8 @@
     });
     const postActionUi =
         usePostHistoryPostActionUiController<PostHistoryRecord>();
+    const copyNeventUi = usePostHistoryCopyNevent();
 
-    let copyState = $state<Record<string, "failed" | undefined>>({});
-    let showCopyFloatingMessage = $state(false);
-    let copyFloatingMessageX = $state(0);
-    let copyFloatingMessageY = $state(0);
-    let copyFloatingMessageTimeout: ReturnType<typeof setTimeout> | undefined;
-    let currentMonthLabel = $state<string | null>(null);
-    let lastCopyPointerPosition:
-        | { eventId: string; x: number; y: number }
-        | undefined;
     let localHistoryDeleteConfirmOpen = $state(false);
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
@@ -209,41 +175,29 @@
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
-    let emojiLoadStateByUrl = $state<
-        Record<string, "loading" | "ready" | "failed" | undefined>
-    >({});
-    let emojiImageMetaByUrl = $state<
-        Record<string, EmojiImageMetaSnapshot | undefined>
-    >({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
-    let isHistoryScrolledToTop = $state(true);
-    let isHistoryScrolledToBottom = $state(true);
     let searchInputElement = $state<HTMLInputElement | null>(null);
-    let historyMonthLabelFrameId: number | null = null;
-    let pendingSessionScrollRestore =
-        $state<PostHistoryDialogScrollState | null>(null);
-    let wasOpenForScrollRestore = false;
-    let restoredSessionScrollKey: string | null = null;
-    type HistoryScrollAnchor = {
-        eventId: string;
-        offsetTop: number;
-    };
-    type ThreadScrollPositionAnchor = {
-        scopeEventId: string;
-        eventId: string;
-        top: number;
-    };
-    const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
-    const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
-    const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
-    const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
         getPosts: () => history.posts,
         getContainer: () => historyContainer,
+    });
+    const historyViewport = usePostHistoryDialogViewport({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getPosts: () => history.posts,
+        getLocale: () => $locale,
+        getContainer: () => historyContainer,
+        getIsSearchMode: () => history.isSearchMode,
+        getSearchQuery: () => history.state.searchQuery,
+    });
+    const emojiState = usePostHistoryEmojiState({
+        getShow: () => show,
+        getEmojiUrls: () => dialogEmojiUrls,
+        onStateChanged: () => previewCollapse.remeasure(),
     });
     let previewContentByEventId = $derived.by(() => {
         const nextContent: Record<string, PostHistoryPreviewContentData> = {};
@@ -271,10 +225,10 @@
                 "postHistory.repairFetchFailed",
     );
     let canUseReturnToLatest = $derived(
-        history.canReturnToLatest || !isHistoryScrolledToTop,
+        history.canReturnToLatest || !historyViewport.isHistoryScrolledToTop,
     );
     let canUseJumpToOldest = $derived(
-        history.canJumpToOldest || !isHistoryScrolledToBottom,
+        history.canJumpToOldest || !historyViewport.isHistoryScrolledToBottom,
     );
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();
@@ -289,10 +243,7 @@
     });
 
     function resetDialogState(): void {
-        copyState = {};
-        hideCopyFloatingMessage();
-        cancelCurrentMonthLabelFrame();
-        currentMonthLabel = null;
+        copyNeventUi.resetState();
         postActionUi.resetDeleteConfirmation();
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
@@ -300,76 +251,14 @@
         jumpDateInput = "";
         headingMenuOpen = false;
         deleteRequestState = {};
-        emojiLoadStateByUrl = {};
+        emojiState.resetState();
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
         showImageFullscreen = false;
-        loadingEmojiUrls.clear();
-    }
-
-    function getCurrentScrollMode(): PostHistoryDialogScrollMode {
-        return history.isSearchMode ? "search" : "normal";
-    }
-
-    function getCurrentScrollSearchQuery(): string {
-        return history.isSearchMode ? history.state.searchQuery : "";
-    }
-
-    function readCurrentSessionScrollState(): PostHistoryDialogScrollState | null {
-        return readPostHistoryDialogScrollState({
-            pubkeyHex,
-            mode: getCurrentScrollMode(),
-            searchQuery: getCurrentScrollSearchQuery(),
-        });
-    }
-
-    function buildSessionScrollRestoreKey(
-        state: PostHistoryDialogScrollState,
-    ): string {
-        return `${state.pubkeyHex}:${state.mode}:${state.searchQuery}:${state.anchor.eventId}:${state.savedAt}`;
-    }
-
-    function hasPostForScrollAnchor(
-        state: PostHistoryDialogScrollState | null,
-    ): state is PostHistoryDialogScrollState {
-        return (
-            !!state &&
-            history.posts.some((post) => post.eventId === state.anchor.eventId)
-        );
-    }
-
-    function saveCurrentSessionScrollAnchor(): void {
-        const anchor = captureHistoryScrollAnchor();
-        if (!anchor) {
-            return;
-        }
-
-        writePostHistoryDialogScrollState({
-            pubkeyHex,
-            mode: getCurrentScrollMode(),
-            searchQuery: getCurrentScrollSearchQuery(),
-            anchor,
-        });
-    }
-
-    function clearCurrentSessionScrollAnchor(): void {
-        clearPostHistoryDialogScrollState({
-            pubkeyHex,
-            mode: getCurrentScrollMode(),
-            searchQuery: getCurrentScrollSearchQuery(),
-        });
-        pendingSessionScrollRestore = null;
-        restoredSessionScrollKey = null;
-    }
-
-    function clearAllSessionScrollAnchorsForCurrentPubkey(): void {
-        clearPostHistoryDialogScrollState({ pubkeyHex });
-        pendingSessionScrollRestore = null;
-        restoredSessionScrollKey = null;
     }
 
     function handleClose() {
-        saveCurrentSessionScrollAnchor();
+        historyViewport.saveCurrentSessionScrollAnchor();
         history.cancelCurrentSync();
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
@@ -377,7 +266,7 @@
         postActionUi.resetDeleteConfirmation();
         localHistoryDeleteConfirmOpen = false;
         headingMenuOpen = false;
-        hideCopyFloatingMessage();
+        copyNeventUi.hideCopyFloatingMessage();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -430,45 +319,6 @@
     });
 
     $effect(() => {
-        if (!show) {
-            wasOpenForScrollRestore = false;
-            pendingSessionScrollRestore = null;
-            restoredSessionScrollKey = null;
-            return;
-        }
-
-        if (wasOpenForScrollRestore) {
-            return;
-        }
-
-        wasOpenForScrollRestore = true;
-        pendingSessionScrollRestore = readCurrentSessionScrollState();
-        restoredSessionScrollKey = null;
-    });
-
-    $effect(() => {
-        if (!show || !hasPostForScrollAnchor(pendingSessionScrollRestore)) {
-            return;
-        }
-
-        const scrollState = pendingSessionScrollRestore;
-        const restoreKey = buildSessionScrollRestoreKey(scrollState);
-        if (restoredSessionScrollKey === restoreKey) {
-            return;
-        }
-
-        void tick().then(() => {
-            if (!show || pendingSessionScrollRestore !== scrollState) {
-                return;
-            }
-
-            restoreHistoryScrollAnchor(scrollState.anchor);
-            restoredSessionScrollKey = restoreKey;
-            pendingSessionScrollRestore = null;
-        });
-    });
-
-    $effect(() => {
         const revision = inboundDirectReplySave?.revision ?? 0;
         const parentEventIds = inboundDirectReplySave?.parentEventIds ?? [];
         const posts = history.posts;
@@ -500,31 +350,6 @@
 
     $effect(() => {
         if (!show) {
-            currentMonthLabel = null;
-            return;
-        }
-
-        historyContainer;
-        history.posts;
-        $locale;
-
-        void tick().then(() => {
-            if (!show) {
-                return;
-            }
-
-            updateCurrentMonthLabel();
-            updateHistoryScrolledToTop();
-            updateHistoryScrolledToBottom();
-        });
-
-        return () => {
-            cancelCurrentMonthLabelFrame();
-        };
-    });
-
-    $effect(() => {
-        if (!show) {
             return;
         }
 
@@ -532,78 +357,6 @@
             channelDisplay.cancelCurrentChannelResolution();
         };
     });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        void hydratePostHistoryEmojiImageMeta(dialogEmojiUrls);
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        const pendingUrls = syncEmojiLoadState(dialogEmojiUrls);
-        for (const url of pendingUrls) {
-            void loadPostHistoryEmoji(url);
-        }
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        emojiLoadStateByUrl;
-        emojiImageMetaByUrl;
-        void previewCollapse.remeasure();
-    });
-
-    function resetHistoryScrollPosition(): void {
-        if (historyContainer) {
-            historyContainer.scrollTop = 0;
-            updateHistoryScrolledToTop();
-            updateHistoryScrolledToBottom();
-            scheduleCurrentMonthLabelUpdate();
-        }
-    }
-
-    function resetHistoryScrollToBottomPosition(): void {
-        if (historyContainer) {
-            historyContainer.scrollTop = historyContainer.scrollHeight;
-            updateHistoryScrolledToTop();
-            updateHistoryScrolledToBottom();
-            scheduleCurrentMonthLabelUpdate();
-        }
-    }
-
-    function updateHistoryScrolledToTop(): void {
-        if (!historyContainer) {
-            isHistoryScrolledToTop = true;
-            return;
-        }
-
-        isHistoryScrolledToTop =
-            historyContainer.scrollTop <=
-            HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
-    }
-
-    function updateHistoryScrolledToBottom(): void {
-        if (!historyContainer) {
-            isHistoryScrolledToBottom = true;
-            return;
-        }
-
-        const remainingScroll =
-            historyContainer.scrollHeight -
-            historyContainer.clientHeight -
-            historyContainer.scrollTop;
-        isHistoryScrolledToBottom =
-            remainingScroll <= HISTORY_SCROLL_BOTTOM_TOLERANCE_PX;
-    }
 
     function translateDialogMessage(
         state: PostHistoryDialogMessageState | null,
@@ -626,99 +379,6 @@
         );
     }
 
-    function formatCurrentMonthLabel(
-        postedAt: number,
-        localeValue: string | null | undefined,
-        now: number = Date.now(),
-    ): string {
-        return formatPostHistoryMonthLabel(postedAt, localeValue, now);
-    }
-
-    function findTopVisiblePostPostedAt(): number | null {
-        if (!historyContainer) {
-            return null;
-        }
-
-        const containerRect = historyContainer.getBoundingClientRect();
-        const targetTop = containerRect.top + HISTORY_MONTH_LABEL_OFFSET_PX;
-        const items = Array.from(
-            historyContainer.querySelectorAll<HTMLElement>(
-                "[data-post-history-event-id]",
-            ),
-        );
-        let firstVisiblePostedAt: number | null = null;
-
-        for (const item of items) {
-            const postedAt = Number(item.dataset.postHistoryPostedAt);
-            if (!Number.isFinite(postedAt)) {
-                continue;
-            }
-
-            const itemRect = item.getBoundingClientRect();
-            const isVisible =
-                itemRect.bottom >
-                    containerRect.top +
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX &&
-                itemRect.top <
-                    containerRect.bottom -
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
-
-            if (!isVisible) {
-                continue;
-            }
-
-            if (itemRect.top <= targetTop && itemRect.bottom > targetTop) {
-                return postedAt;
-            }
-
-            if (firstVisiblePostedAt === null) {
-                firstVisiblePostedAt = postedAt;
-            }
-        }
-
-        return firstVisiblePostedAt;
-    }
-
-    function updateCurrentMonthLabel(): void {
-        if (!show || history.posts.length === 0) {
-            currentMonthLabel = null;
-            return;
-        }
-
-        const postedAt = findTopVisiblePostPostedAt();
-        currentMonthLabel =
-            postedAt === null
-                ? null
-                : formatCurrentMonthLabel(postedAt, $locale);
-    }
-
-    function cancelCurrentMonthLabelFrame(): void {
-        if (historyMonthLabelFrameId === null) {
-            return;
-        }
-
-        cancelAnimationFrame(historyMonthLabelFrameId);
-        historyMonthLabelFrameId = null;
-    }
-
-    function scheduleCurrentMonthLabelUpdate(): void {
-        if (!show) {
-            return;
-        }
-
-        cancelCurrentMonthLabelFrame();
-        historyMonthLabelFrameId = requestAnimationFrame(() => {
-            historyMonthLabelFrameId = null;
-            updateCurrentMonthLabel();
-        });
-    }
-
-    function handleHistoryScroll(): void {
-        updateHistoryScrolledToTop();
-        updateHistoryScrolledToBottom();
-        scheduleCurrentMonthLabelUpdate();
-    }
-
     function parseDateInputToCreatedAt(value: string): number | null {
         const [yearText, monthText, dayText] = value.split("-");
         const year = Number(yearText);
@@ -736,175 +396,6 @@
         const date = new Date(year, month - 1, day, 23, 59, 59, 999);
         const time = date.getTime();
         return Number.isFinite(time) ? Math.floor(time / 1000) : null;
-    }
-
-    function resetHistoryScrollSoon(): void {
-        void tick().then(() => {
-            if (!show) {
-                return;
-            }
-
-            resetHistoryScrollPosition();
-        });
-    }
-
-    function resetHistoryScrollToBottomSoon(): void {
-        void tick().then(() => {
-            if (!show) {
-                return;
-            }
-
-            resetHistoryScrollToBottomPosition();
-        });
-    }
-
-    function captureHistoryScrollAnchor(): HistoryScrollAnchor | null {
-        if (!historyContainer) {
-            return null;
-        }
-
-        const containerRect = historyContainer.getBoundingClientRect();
-        const items = Array.from(
-            historyContainer.querySelectorAll<HTMLElement>(
-                "[data-post-history-event-id]",
-            ),
-        );
-
-        for (const item of items) {
-            const eventId = item.dataset.postHistoryEventId;
-            if (!eventId) {
-                continue;
-            }
-
-            const itemRect = item.getBoundingClientRect();
-            if (
-                itemRect.bottom >
-                    containerRect.top +
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX &&
-                itemRect.top <
-                    containerRect.bottom -
-                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX
-            ) {
-                return {
-                    eventId,
-                    offsetTop: itemRect.top - containerRect.top,
-                };
-            }
-        }
-
-        return null;
-    }
-
-    function restoreHistoryScrollAnchor(
-        anchor: HistoryScrollAnchor | null,
-    ): boolean {
-        if (!anchor || !show || !historyContainer) {
-            return false;
-        }
-
-        flushSync();
-
-        const anchoredItem = Array.from(
-            historyContainer.querySelectorAll<HTMLElement>(
-                "[data-post-history-event-id]",
-            ),
-        ).find((item) => item.dataset.postHistoryEventId === anchor.eventId);
-        if (!anchoredItem) {
-            return false;
-        }
-
-        const containerRect = historyContainer.getBoundingClientRect();
-        const itemRect = anchoredItem.getBoundingClientRect();
-        const nextOffsetTop = itemRect.top - containerRect.top;
-        historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
-        scheduleCurrentMonthLabelUpdate();
-        return true;
-    }
-
-    function findThreadScrollAnchorElement(
-        scopeEventId: string,
-        eventId: string,
-    ): HTMLElement | null {
-        if (!historyContainer) {
-            return null;
-        }
-
-        return (
-            Array.from(
-                historyContainer.querySelectorAll<HTMLElement>(
-                    "[data-post-history-thread-anchor-event-id]",
-                ),
-            ).find(
-                (item) =>
-                    item.dataset.postHistoryThreadAnchorScopeId ===
-                        scopeEventId &&
-                    item.dataset.postHistoryThreadAnchorEventId === eventId,
-            ) ?? null
-        );
-    }
-
-    function captureThreadScrollPositionAnchor(
-        scopeEventId: string,
-        eventId: string,
-    ): ThreadScrollPositionAnchor | null {
-        const anchoredItem = findThreadScrollAnchorElement(
-            scopeEventId,
-            eventId,
-        );
-        if (!anchoredItem) {
-            return null;
-        }
-
-        return {
-            scopeEventId,
-            eventId,
-            top: anchoredItem.getBoundingClientRect().top,
-        };
-    }
-
-    function restoreThreadScrollPositionAnchor(
-        anchor: ThreadScrollPositionAnchor | null,
-    ): boolean {
-        if (!anchor || !show || !historyContainer) {
-            return false;
-        }
-
-        flushSync();
-
-        const anchoredItem = findThreadScrollAnchorElement(
-            anchor.scopeEventId,
-            anchor.eventId,
-        );
-        if (!anchoredItem) {
-            return false;
-        }
-
-        const topDelta = anchoredItem.getBoundingClientRect().top - anchor.top;
-        if (Math.abs(topDelta) < 0.5) {
-            return true;
-        }
-
-        historyContainer.scrollTop += topDelta;
-        scheduleCurrentMonthLabelUpdate();
-        updateHistoryScrolledToTop();
-        updateHistoryScrolledToBottom();
-        return true;
-    }
-
-    async function preserveThreadParentToggleScroll(
-        scopeEventId: string,
-        eventId: string,
-        action: () => void | Promise<void>,
-    ): Promise<void> {
-        const anchor = captureThreadScrollPositionAnchor(scopeEventId, eventId);
-        const actionResult = action();
-
-        await tick();
-        restoreThreadScrollPositionAnchor(anchor);
-
-        await actionResult;
-        await tick();
-        restoreThreadScrollPositionAnchor(anchor);
     }
 
     function getLoadOlderLabel(): string {
@@ -930,7 +421,7 @@
     }
 
     async function handleFetchOlderFromRelays(): Promise<void> {
-        const scrollAnchor = captureHistoryScrollAnchor();
+        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
         const loadedPostsBeforeLength = history.state.loadedPosts.length;
         const scrollHeightBefore = historyContainer?.scrollHeight ?? null;
@@ -943,7 +434,8 @@
         let didPreserveScrollTop = false;
         const didFollowBottom = false;
         if (changed && previousScrollTop !== null && show && historyContainer) {
-            didRestoreAnchor = restoreHistoryScrollAnchor(scrollAnchor);
+            didRestoreAnchor =
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             if (!didRestoreAnchor) {
                 historyContainer.scrollTop = previousScrollTop;
                 didPreserveScrollTop = true;
@@ -982,24 +474,24 @@
     async function handleLoadNewer(): Promise<void> {
         const scrollAnchor = history.isSearchMode
             ? null
-            : captureHistoryScrollAnchor();
+            : historyViewport.captureHistoryScrollAnchor();
         const changed = await history.loadNewer();
         if (changed) {
             if (history.isSearchMode) {
-                resetHistoryScrollSoon();
+                historyViewport.resetHistoryScrollSoon();
             } else {
-                restoreHistoryScrollAnchor(scrollAnchor);
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             }
         }
     }
 
     async function handleReturnToLatest(): Promise<void> {
-        clearAllSessionScrollAnchorsForCurrentPubkey();
+        historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
         const changed = history.canReturnToLatest
             ? await history.returnToLatest()
             : false;
-        if (changed || !isHistoryScrolledToTop) {
-            resetHistoryScrollSoon();
+        if (changed || !historyViewport.isHistoryScrolledToTop) {
+            historyViewport.resetHistoryScrollSoon();
         }
     }
 
@@ -1009,11 +501,11 @@
             return;
         }
 
-        clearAllSessionScrollAnchorsForCurrentPubkey();
+        historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
         const changed = await history.jumpToCreatedAt(createdAt);
         if (changed) {
             activeUtilityPanel = "none";
-            resetHistoryScrollSoon();
+            historyViewport.resetHistoryScrollSoon();
         }
     }
 
@@ -1031,277 +523,6 @@
 
     function getQuotePreviewStates(post: PostHistoryRecord) {
         return quotePreviews.getQuotePreviews(post);
-    }
-
-    function syncEmojiLoadState(urls: string[]): string[] {
-        const nextState: Record<
-            string,
-            "loading" | "ready" | "failed" | undefined
-        > = {};
-
-        for (const url of urls) {
-            if (loadingEmojiUrls.has(url)) {
-                nextState[url] = "loading";
-                continue;
-            }
-
-            const currentState = emojiLoadStateByUrl[url];
-            if (currentState === "ready" || currentState === "failed") {
-                nextState[url] = currentState;
-            }
-        }
-
-        const pendingUrls = urls.filter((url) => !nextState[url]);
-        for (const url of pendingUrls) {
-            loadingEmojiUrls.add(url);
-            nextState[url] = "loading";
-        }
-
-        if (!hasSameEmojiLoadState(emojiLoadStateByUrl, nextState)) {
-            emojiLoadStateByUrl = nextState;
-        }
-
-        return pendingUrls;
-    }
-
-    function toEmojiImageMetaSnapshot(
-        record: Pick<
-            CustomEmojiImageMetaRecord,
-            "url" | "width" | "height" | "aspectRatio"
-        >,
-    ): EmojiImageMetaSnapshot {
-        return {
-            url: record.url,
-            width: record.width,
-            height: record.height,
-            aspectRatio: record.aspectRatio,
-        };
-    }
-
-    function hasResolvedEmojiImageMeta(
-        result: PreloadedCustomEmojiImageResult,
-    ): result is PreloadedCustomEmojiImageResult & {
-        width: number;
-        height: number;
-        aspectRatio: number;
-    } {
-        return (
-            Number.isSafeInteger(result.width) &&
-            Number.isSafeInteger(result.height) &&
-            (result.width ?? 0) > 0 &&
-            (result.height ?? 0) > 0 &&
-            Number.isFinite(result.aspectRatio) &&
-            (result.aspectRatio ?? 0) > 0
-        );
-    }
-
-    function upsertEmojiImageMetaSnapshots(
-        snapshots: Record<string, EmojiImageMetaSnapshot>,
-    ): void {
-        let changed = false;
-        const nextState = { ...emojiImageMetaByUrl };
-
-        for (const [url, snapshot] of Object.entries(snapshots)) {
-            const current = nextState[url];
-            if (
-                current?.width === snapshot.width &&
-                current?.height === snapshot.height &&
-                current?.aspectRatio === snapshot.aspectRatio
-            ) {
-                continue;
-            }
-
-            nextState[url] = snapshot;
-            changed = true;
-        }
-
-        if (changed) {
-            emojiImageMetaByUrl = nextState;
-        }
-    }
-
-    async function hydratePostHistoryEmojiImageMeta(
-        urls: string[],
-    ): Promise<void> {
-        if (urls.length === 0) {
-            return;
-        }
-
-        try {
-            const records = await customEmojiImageMetaRepository.getMany(urls);
-            const foundUrls = Object.keys(records);
-            if (foundUrls.length === 0) {
-                return;
-            }
-
-            upsertEmojiImageMetaSnapshots(
-                Object.fromEntries(
-                    foundUrls.map((url) => [
-                        url,
-                        toEmojiImageMetaSnapshot(records[url]),
-                    ]),
-                ) as Record<string, EmojiImageMetaSnapshot>,
-            );
-            void customEmojiImageMetaRepository.touchMany(foundUrls);
-        } catch {
-            // Metadata hydration is an optimization for layout stability.
-        }
-    }
-
-    async function persistPostHistoryEmojiImageMeta(input: {
-        url: string;
-        width: number;
-        height: number;
-    }): Promise<void> {
-        try {
-            await customEmojiImageMetaRepository.upsert(input);
-        } catch {
-            // Metadata persistence should never break rendering.
-        }
-    }
-
-    async function loadPostHistoryEmoji(url: string): Promise<void> {
-        const result = await preloadCustomEmojiImageWithMeta(url);
-        loadingEmojiUrls.delete(url);
-
-        if (!dialogEmojiUrls.includes(url)) {
-            return;
-        }
-
-        if (result.ready && hasResolvedEmojiImageMeta(result)) {
-            upsertEmojiImageMetaSnapshots({
-                [url]: toEmojiImageMetaSnapshot({
-                    url,
-                    width: result.width,
-                    height: result.height,
-                    aspectRatio: result.aspectRatio,
-                }),
-            });
-            void persistPostHistoryEmojiImageMeta({
-                url,
-                width: result.width,
-                height: result.height,
-            });
-        }
-
-        const nextState = result.ready ? "ready" : "failed";
-        if (emojiLoadStateByUrl[url] === nextState) {
-            return;
-        }
-
-        emojiLoadStateByUrl = {
-            ...emojiLoadStateByUrl,
-            [url]: nextState,
-        };
-    }
-
-    function hasSameEmojiLoadState(
-        left: Record<string, "loading" | "ready" | "failed" | undefined>,
-        right: Record<string, "loading" | "ready" | "failed" | undefined>,
-    ): boolean {
-        const leftKeys = Object.keys(left);
-        const rightKeys = Object.keys(right);
-        if (leftKeys.length !== rightKeys.length) {
-            return false;
-        }
-
-        return leftKeys.every((key) => left[key] === right[key]);
-    }
-
-    function buildNevent(post: PostHistoryRecord): string {
-        return toNevent({
-            eventId: post.eventId,
-            authorPubkey: post.pubkeyHex,
-            kind: post.kind,
-            acceptedRelays: post.acceptedRelays,
-            relayHints: post.relayHints,
-            writeRelays: writeRelaysStore.value,
-        });
-    }
-
-    function hideCopyFloatingMessage(): void {
-        if (copyFloatingMessageTimeout) {
-            clearTimeout(copyFloatingMessageTimeout);
-            copyFloatingMessageTimeout = undefined;
-        }
-        showCopyFloatingMessage = false;
-        lastCopyPointerPosition = undefined;
-    }
-
-    function captureCopyPointerPosition(
-        post: PostHistoryRecord,
-        event: PointerEvent,
-    ): void {
-        lastCopyPointerPosition = {
-            eventId: post.eventId,
-            ...calculateContextMenuPosition(event.clientX, event.clientY),
-        };
-    }
-
-    function getFloatingMessagePosition(
-        post: PostHistoryRecord,
-        event: Event,
-    ): { x: number; y: number } {
-        if (lastCopyPointerPosition?.eventId === post.eventId) {
-            return {
-                x: lastCopyPointerPosition.x,
-                y: lastCopyPointerPosition.y,
-            };
-        }
-
-        const target = event.currentTarget;
-        const rect =
-            target instanceof HTMLElement
-                ? target.getBoundingClientRect()
-                : null;
-
-        return calculateContextMenuPosition(
-            rect ? rect.left + rect.width / 2 : 0,
-            rect ? rect.bottom + 8 : 0,
-        );
-    }
-
-    function showCopySuccessMessage(x: number, y: number): void {
-        if (copyFloatingMessageTimeout) {
-            clearTimeout(copyFloatingMessageTimeout);
-        }
-
-        copyFloatingMessageX = x;
-        copyFloatingMessageY = y;
-        showCopyFloatingMessage = true;
-        copyFloatingMessageTimeout = setTimeout(() => {
-            showCopyFloatingMessage = false;
-            copyFloatingMessageTimeout = undefined;
-        }, 1800);
-    }
-
-    async function handleCopyNevent(post: PostHistoryRecord, event: Event) {
-        const messagePosition = getFloatingMessagePosition(post, event);
-        const nevent = buildNevent(post);
-        const copied = nevent
-            ? await tryCopyToClipboard(nevent, "nevent", navigator, window)
-            : false;
-
-        if (copied) {
-            copyState = {
-                ...copyState,
-                [post.eventId]: undefined,
-            };
-            showCopySuccessMessage(messagePosition.x, messagePosition.y);
-            return;
-        }
-
-        copyState = {
-            ...copyState,
-            [post.eventId]: "failed",
-        };
-
-        setTimeout(() => {
-            copyState = {
-                ...copyState,
-                [post.eventId]: undefined,
-            };
-        }, 1800);
     }
 
     function isDeletionSending(post: PostHistoryRecord): boolean {
@@ -1392,7 +613,7 @@
     }
 
     function hideSearch(): void {
-        clearCurrentSessionScrollAnchor();
+        historyViewport.clearCurrentSessionScrollAnchor();
         activeUtilityPanel = "none";
         history.resetSearchState();
     }
@@ -1414,11 +635,11 @@
     }
 
     function handleJumpToOldestFromMenu(): void {
-        clearAllSessionScrollAnchorsForCurrentPubkey();
+        historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
         headingMenuOpen = false;
         void history.jumpToOldest().then((changed) => {
-            if (changed || !isHistoryScrolledToBottom) {
-                resetHistoryScrollToBottomSoon();
+            if (changed || !historyViewport.isHistoryScrolledToBottom) {
+                historyViewport.resetHistoryScrollToBottomSoon();
             }
         });
     }
@@ -1507,10 +728,10 @@
         try {
             const deleted = await history.deleteLocalHistory();
             if (deleted) {
-                clearAllSessionScrollAnchorsForCurrentPubkey();
+                historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
                 localHistoryDeleteConfirmOpen = false;
                 activeUtilityPanel = "none";
-                resetHistoryScrollPosition();
+                historyViewport.resetHistoryScrollSoon();
             }
         } finally {
             isDeletingLocalHistory = false;
@@ -1532,14 +753,14 @@
 >
     <div class="post-history-heading">
         <div class="post-history-heading-main">
-            {#if currentMonthLabel}
+            {#if historyViewport.currentMonthLabel}
                 <h3 class="post-history-current-month-heading">
                     <button
                         type="button"
                         class="post-history-current-month"
                         onclick={toggleJumpDate}
                     >
-                        {currentMonthLabel}
+                        {historyViewport.currentMonthLabel}
                     </button>
                 </h3>
             {/if}
@@ -1739,7 +960,7 @@
     <div
         class="post-history-container"
         bind:this={historyContainer}
-        onscroll={handleHistoryScroll}
+        onscroll={historyViewport.handleHistoryScroll}
     >
         {#if history.posts.length === 0}
             <div class="empty-state">
@@ -1871,14 +1092,14 @@
                                                                     onpointerdown={(
                                                                         event,
                                                                     ) =>
-                                                                        captureCopyPointerPosition(
+                                                                        copyNeventUi.captureCopyPointerPosition(
                                                                             post,
                                                                             event,
                                                                         )}
                                                                     onSelect={(
                                                                         event,
                                                                     ) =>
-                                                                        void handleCopyNevent(
+                                                                        void copyNeventUi.handleCopyNevent(
                                                                             post,
                                                                             event,
                                                                         )}
@@ -1888,7 +1109,8 @@
                                                                         aria-hidden="true"
                                                                     ></div>
                                                                     <span>
-                                                                        {copyState[
+                                                                        {copyNeventUi
+                                                                            .copyState[
                                                                             post
                                                                                 .eventId
                                                                         ] ===
@@ -1943,7 +1165,7 @@
                                     scrollRoot={historyContainer}
                                     onImageOpen={handleImageOpen}
                                     onToggleParent={() =>
-                                        preserveThreadParentToggleScroll(
+                                        historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
                                             post.eventId,
                                             () =>
@@ -1956,7 +1178,7 @@
                                             post,
                                         )}
                                     onToggleNodeParent={(nodeEventId) =>
-                                        preserveThreadParentToggleScroll(
+                                        historyViewport.preserveThreadParentToggleScroll(
                                             post.eventId,
                                             nodeEventId,
                                             () =>
@@ -1993,8 +1215,8 @@
                                                     previewContent={getPreviewContent(
                                                         post,
                                                     )}
-                                                    {emojiLoadStateByUrl}
-                                                    {emojiImageMetaByUrl}
+                                                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                                     previewCollapseAction={previewCollapse.previewRef}
                                                     previewCollapseEventId={post.eventId}
                                                     previewContentId={"post-preview-content-" +
@@ -2175,14 +1397,14 @@
                                                                     onpointerdown={(
                                                                         event,
                                                                     ) =>
-                                                                        captureCopyPointerPosition(
+                                                                        copyNeventUi.captureCopyPointerPosition(
                                                                             post,
                                                                             event,
                                                                         )}
                                                                     onSelect={(
                                                                         event,
                                                                     ) =>
-                                                                        void handleCopyNevent(
+                                                                        void copyNeventUi.handleCopyNevent(
                                                                             post,
                                                                             event,
                                                                         )}
@@ -2192,7 +1414,8 @@
                                                                         aria-hidden="true"
                                                                     ></div>
                                                                     <span>
-                                                                        {copyState[
+                                                                        {copyNeventUi
+                                                                            .copyState[
                                                                             post
                                                                                 .eventId
                                                                         ] ===
@@ -2246,7 +1469,7 @@
                                         scrollRoot={historyContainer}
                                         onImageOpen={handleImageOpen}
                                         onToggleNodeParent={(nodeEventId) =>
-                                            preserveThreadParentToggleScroll(
+                                            historyViewport.preserveThreadParentToggleScroll(
                                                 post.eventId,
                                                 nodeEventId,
                                                 () =>
@@ -2448,9 +1671,9 @@
 />
 
 <FloatingMessage
-    show={showCopyFloatingMessage}
-    x={copyFloatingMessageX}
-    y={copyFloatingMessageY}
+    show={copyNeventUi.showCopyFloatingMessage}
+    x={copyNeventUi.copyFloatingMessageX}
+    y={copyNeventUi.copyFloatingMessageY}
 >
     <div>{$_("postHistory.copied")}</div>
 </FloatingMessage>
