@@ -104,6 +104,59 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
         db.close();
     });
 
+    it("kind:7 reactionをrelated eventとして保存し、direct reply取得には混ぜない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const parentEventId = "1".repeat(64);
+        const directReply = createSignedEvent({
+            id: "2".repeat(64),
+            content: "direct reply",
+            tags: [["e", parentEventId, "", "reply"]],
+            created_at: 200,
+        });
+        const reaction = createSignedEvent({
+            id: "3".repeat(64),
+            kind: 7,
+            content: "+",
+            tags: [
+                ["p", "d".repeat(64)],
+                ["e", parentEventId],
+            ],
+            created_at: 210,
+        });
+
+        const result = await repository.upsertDirectReplies({
+            parentEventId,
+            events: [
+                { event: directReply },
+                { event: reaction, relayUrls: ["wss://relay.example.com"] },
+            ],
+            fetchedAt: 900,
+        });
+
+        expect(result).toMatchObject({
+            insertedCount: 2,
+            ignoredCount: 0,
+        });
+
+        await expect(repository.getDirectReplies(parentEventId)).resolves.toMatchObject([
+            { eventId: directReply.id },
+        ]);
+
+        await expect(repository.getRelatedEvents(parentEventId)).resolves.toMatchObject([
+            { eventId: directReply.id, discoveredAs: ["direct-reply"] },
+            {
+                eventId: reaction.id,
+                kind: 7,
+                content: "+",
+                relayUrls: ["wss://relay.example.com/"],
+                discoveredAs: ["reaction"],
+            },
+        ]);
+
+        db.close();
+    });
+
     it("同じeventを再保存してもPostHistoryRecordには混ぜない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);

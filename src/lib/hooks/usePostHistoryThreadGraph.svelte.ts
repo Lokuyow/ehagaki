@@ -47,6 +47,11 @@ import {
 } from "../storage/profilesRepository";
 import { parseKind1ThreadReferences } from "../postHistoryNip10Utils";
 import {
+    EMPTY_POST_HISTORY_REACTION_SUMMARY,
+    type PostHistoryReactionSummary,
+    summarizePostHistoryReactionRecords,
+} from "../postHistoryReactionSummary";
+import {
     buildAnchorNodeKey,
     buildInitialExpansionState,
     buildThreadGraphNode,
@@ -101,6 +106,7 @@ export interface PostHistoryThreadGraphAnchorState {
     parentNodeState: PostHistoryThreadGraphNodeState | null;
     parentExpansion: PostHistoryThreadGraphExpansionState;
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
+    reactionSummary: PostHistoryReactionSummary;
     replyItems: PostHistoryThreadGraphReplyItem[];
     replyNodeStates: PostHistoryThreadGraphNodeState[];
 }
@@ -218,9 +224,26 @@ export function usePostHistoryThreadGraph({
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
     const replyBadgePreloadKeys = new Set<string>();
+    let reactionSummaryByParentId =
+        $state.raw<Record<string, PostHistoryReactionSummary>>({});
     let requestId = 0;
     let childRequestId = 0;
     const childrenRequestIdsByKey = new Map<string, number>();
+
+    function setReactionSummary(
+        parentEventId: string,
+        records: PostHistoryReplyEventRecord[],
+    ): void {
+        reactionSummaryByParentId = {
+            ...reactionSummaryByParentId,
+            [parentEventId]: summarizePostHistoryReactionRecords(records),
+        };
+    }
+
+    function getReactionSummary(parentEventId: string): PostHistoryReactionSummary {
+        return reactionSummaryByParentId[parentEventId]
+            ?? EMPTY_POST_HISTORY_REACTION_SUMMARY;
+    }
 
     function getExpansion(anchorEventId: string, nodeEventId: string): PostHistoryThreadGraphExpansionState {
         return expansionByAnchorNodeKey[buildAnchorNodeKey(anchorEventId, nodeEventId)]
@@ -680,6 +703,7 @@ export function usePostHistoryThreadGraph({
                 replyCount,
                 error: expansion.childrenError,
             },
+            reactionSummary: getReactionSummary(post.eventId),
             replyItems,
             replyNodeStates,
         };
@@ -1714,17 +1738,24 @@ export function usePostHistoryThreadGraph({
             replyBadgePreloadKeys.add(preloadKey);
 
             const anchorNode = ensureAnchorNode(post);
-            const rawCachedRecords = await replyEventsAdapterImpl.getDirectReplyRecords(parentEventId);
-            if (activeRequestId !== requestId || !getShow() || rawCachedRecords.length === 0) {
+            const rawCachedRecords = await replyEventsAdapterImpl.getRelatedEventRecords(parentEventId);
+            if (activeRequestId !== requestId || !getShow()) {
                 continue;
             }
 
             const cachedRecords = await filterVisibleReplyRecords(rawCachedRecords);
-            if (activeRequestId !== requestId || !getShow() || cachedRecords.length === 0) {
+            if (activeRequestId !== requestId || !getShow()) {
                 continue;
             }
 
-            await upsertReplyRecords(parentEventId, cachedRecords, ["reply-db", "inbound-sync"], {
+            setReactionSummary(parentEventId, cachedRecords);
+
+            const cachedDirectReplies = cachedRecords.filter((record) => record.kind === 1);
+            if (cachedDirectReplies.length === 0) {
+                continue;
+            }
+
+            await upsertReplyRecords(parentEventId, cachedDirectReplies, ["reply-db", "inbound-sync"], {
                 resolveProfiles: false,
             });
             if (activeRequestId !== requestId || !getShow()) {
@@ -1738,7 +1769,7 @@ export function usePostHistoryThreadGraph({
                 loadingChildren: false,
                 revalidatingChildren: state.revalidatingChildren,
                 childrenError: null,
-                lastFetchedChildrenAt: resolveCachedReplyFetchedAt(cachedRecords) ?? state.lastFetchedChildrenAt,
+                lastFetchedChildrenAt: resolveCachedReplyFetchedAt(cachedDirectReplies) ?? state.lastFetchedChildrenAt,
             }));
             refreshProfileForPubkeyInBackground(anchorNode.authorPubkey, anchorNode.relayUrls);
         }
@@ -2136,6 +2167,7 @@ export function usePostHistoryThreadGraph({
         childrenByParentId = {};
         expansionByAnchorNodeKey = {};
         deletedEventIdsByPubkey = {};
+        reactionSummaryByParentId = {};
         replyBadgePreloadKeys.clear();
     }
 

@@ -118,7 +118,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         }).promise;
 
         expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1],
+            kinds: [1, 7],
             "#p": [OWNER_PUBKEY],
             since: 1_699_395_200,
             limit: 150,
@@ -255,6 +255,59 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         ]);
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(result.savedParentEventIds).toEqual([OTHER_PARENT_ID]);
+    });
+
+    it("他人と自分のkind:7 reactionをowner投稿向けrelated eventとして保存する", async () => {
+        const externalReaction = createEvent({
+            id: "9".repeat(64),
+            kind: 7,
+            content: "+",
+            tags: [
+                ["p", OWNER_PUBKEY],
+                ["e", PARENT_ID],
+            ],
+            created_at: 1_700_000_120,
+        });
+        const selfReaction = createEvent({
+            id: "a".repeat(64),
+            pubkey: OWNER_PUBKEY,
+            kind: 7,
+            content: "👍",
+            tags: [
+                ["p", OWNER_PUBKEY],
+                ["e", PARENT_ID],
+            ],
+            created_at: 1_700_000_121,
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next(createPacket(externalReaction));
+                next(createPacket(selfReaction));
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+        const { service, postHistoryReplyEventsRepository } = createService();
+
+        const result = await service.syncRecent(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER_PUBKEY,
+            reason: "dialog-open-refresh",
+            relayConfig: null,
+        }).promise;
+
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [
+                { event: selfReaction, relayUrls: ["wss://relay.example.com/"] },
+                { event: externalReaction, relayUrls: ["wss://relay.example.com/"] },
+            ],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(result.classifications).toMatchObject({
+            reaction: 2,
+        });
+        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+        expect(result.savedDirectReplyCount).toBe(0);
     });
 
     it("fetch後にlightweight sessionが失効した結果は保存、state更新、reconciliationへ流さない", async () => {

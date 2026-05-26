@@ -253,7 +253,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     });
 
                     rxReq.emit({
-                        kinds: [1],
+                        kinds: [1, 7],
                         "#p": [params.ownerPubkeyHex],
                         since,
                         limit,
@@ -336,16 +336,19 @@ export class PostHistoryInboundInteractionsSyncService {
         ), null);
         const candidateParentIds = Array.from(new Set(
             input.events
-                .filter((item) => item.event.kind === 1)
                 .map((item) => item.event)
-                .map((event) => {
-                    const references = classifyPostHistoryInboundInteraction({
+                .map((event) =>
+                    classifyPostHistoryInboundInteraction({
                         event,
                         ownerPubkeyHex: input.ownerPubkeyHex,
                         ownerPostEventIds: new Set(),
-                    }).references;
-                    return references?.parentId ?? null;
-                })
+                    }))
+                .map((classification) =>
+                    classification.type === "direct-reply-candidate"
+                        || classification.type === "reaction"
+                        ? classification.targetEventId
+                        : null,
+                )
                 .filter((eventId): eventId is string => !!eventId),
         ));
         const ownerPostEventIds = new Set(
@@ -358,6 +361,7 @@ export class PostHistoryInboundInteractionsSyncService {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
         const directRepliesByParentId = new Map<string, PostHistoryReplyEventItem[]>();
+        const reactionsByParentId = new Map<string, PostHistoryReplyEventItem[]>();
         const directReplyCandidates: PostHistoryInboundDirectReplyCandidate[] = [];
 
         for (const item of input.events) {
@@ -383,6 +387,20 @@ export class PostHistoryInboundInteractionsSyncService {
             }
 
             if (classification.type !== "direct-reply" || !classification.parentEventId) {
+                if (
+                    classification.type !== "reaction"
+                    || !classification.targetEventId
+                    || !ownerPostEventIds.has(classification.targetEventId)
+                ) {
+                    continue;
+                }
+
+                const reactions = reactionsByParentId.get(classification.targetEventId) ?? [];
+                reactions.push({
+                    event: item.event,
+                    relayUrls: item.relayUrls,
+                });
+                reactionsByParentId.set(classification.targetEventId, reactions);
                 continue;
             }
 
@@ -419,6 +437,22 @@ export class PostHistoryInboundInteractionsSyncService {
                 savedDirectReplyCount += result.insertedCount + result.updatedCount + result.unchangedCount;
             }
         }
+
+        const savedParentEventIdSet = new Set(savedParentEventIds);
+        for (const [parentEventId, events] of reactionsByParentId.entries()) {
+            const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+                parentEventId,
+                events,
+                fetchedAt: input.fetchedAt,
+            });
+            if (!input.isActive()) {
+                return this.buildCancelledResultFromFetchedEvents(input);
+            }
+            if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
+                savedParentEventIdSet.add(parentEventId);
+            }
+        }
+        savedParentEventIds = Array.from(savedParentEventIdSet);
 
         const saturated = input.events.length >= input.limit || input.rawCount >= input.limit;
         const maybeIncomplete = saturated;

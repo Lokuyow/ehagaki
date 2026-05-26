@@ -111,7 +111,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             });
 
             rxReq.emit({
-                kinds: [1],
+                kinds: [1, 7],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);
@@ -147,7 +147,56 @@ export class PostHistoryInboundInteractionsRealtimeService {
             ownerPubkeyHex: params.ownerPubkeyHex,
             ownerPostEventIds: new Set(),
         });
-        if (preliminary.type !== "direct-reply-candidate" || !preliminary.parentEventId) {
+        if (
+            preliminary.type !== "direct-reply-candidate"
+            && preliminary.type !== "reaction"
+        ) {
+            return;
+        }
+
+        if (preliminary.type === "reaction") {
+            if (!preliminary.targetEventId) {
+                return;
+            }
+
+            const ownerPostEventIds = new Set(
+                await this.postHistoryRepository.getExistingEventIdsForPubkey({
+                    pubkeyHex: params.ownerPubkeyHex,
+                    eventIds: [preliminary.targetEventId],
+                }),
+            );
+            if (!isActive() || !ownerPostEventIds.has(preliminary.targetEventId)) {
+                return;
+            }
+
+            const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
+                typeof packet.from === "string" ? [packet.from] : [],
+                { limit: 1 },
+            )[0];
+            const result = await this.postHistoryReplyEventsRepository.upsertDirectReplies({
+                parentEventId: preliminary.targetEventId,
+                events: [{
+                    event,
+                    ...(relayUrl ? { relayUrls: [relayUrl] } : {}),
+                }],
+                fetchedAt: this.now(),
+            });
+            if (
+                !isActive()
+                || result.insertedCount + result.updatedCount + result.unchangedCount === 0
+            ) {
+                return;
+            }
+
+            try {
+                await params.onSavedDirectReplies?.([preliminary.targetEventId]);
+            } catch (error) {
+                this.console.warn("post_history_inbound_interactions_realtime_saved_callback_error", error);
+            }
+            return;
+        }
+
+        if (!preliminary.parentEventId) {
             return;
         }
 

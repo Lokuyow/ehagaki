@@ -108,7 +108,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         await subscription.waitForIdle();
 
         expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1],
+            kinds: [1, 7],
             "#p": [OWNER_PUBKEY],
             since: 1_699_999_940,
         }]);
@@ -146,6 +146,43 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
 
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(onSavedDirectReplies).not.toHaveBeenCalled();
+    });
+
+    it("自分が自分の投稿へ付けたkind:7 reactionも保存して通知する", async () => {
+        const observer: Record<string, any> = {};
+        const selfReaction = createEvent({
+            id: "6".repeat(64),
+            pubkey: OWNER_PUBKEY,
+            kind: 7,
+            content: "+",
+            tags: [
+                ["p", OWNER_PUBKEY],
+                ["e", PARENT_ID],
+            ],
+        });
+        const {
+            subscription,
+            postHistoryRepository,
+            postHistoryReplyEventsRepository,
+            onSavedDirectReplies,
+        } = openSubscription(observer);
+
+        observer.next({ event: selfReaction, from: "wss://relay.example.com" });
+        await subscription.waitForIdle();
+
+        expect(postHistoryRepository.getExistingEventIdsForPubkey).toHaveBeenCalledWith({
+            pubkeyHex: OWNER_PUBKEY,
+            eventIds: [PARENT_ID],
+        });
+        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+            parentEventId: PARENT_ID,
+            events: [{
+                event: selfReaction,
+                relayUrls: ["wss://relay.example.com/"],
+            }],
+            fetchedAt: 1_700_000_000_000,
+        });
+        expect(onSavedDirectReplies).toHaveBeenCalledWith([PARENT_ID]);
     });
 
     it("unsubscribes and does not save packets queued after stop", async () => {

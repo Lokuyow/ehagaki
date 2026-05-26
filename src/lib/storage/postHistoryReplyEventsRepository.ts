@@ -30,6 +30,7 @@ export interface UpsertPostHistoryReplyEventsResult {
 }
 
 export interface PostHistoryReplyEventsRepository {
+    getRelatedEvents(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
     getDirectReplies(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
     upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult>;
     deleteByEventId(eventId: string): Promise<void>;
@@ -45,7 +46,7 @@ function normalizeRelayUrls(relayUrls: string[] | undefined): string[] {
     );
 }
 
-function sortDirectReplies(records: PostHistoryReplyEventRecord[]): PostHistoryReplyEventRecord[] {
+function sortRelatedEvents(records: PostHistoryReplyEventRecord[]): PostHistoryReplyEventRecord[] {
     return records.sort((left, right) => {
         if (left.createdAt !== right.createdAt) {
             return left.createdAt - right.createdAt;
@@ -68,6 +69,50 @@ function areStringArraysEqual(left: string[] | undefined, right: string[] | unde
 function areTagsEqual(left: string[][], right: string[][]): boolean {
     return left.length === right.length
         && left.every((tag, index) => areStringArraysEqual(tag, right[index]));
+}
+
+function findFirstTagValue(event: NostrEvent, tagName: string): string | null {
+    for (const tag of event.tags) {
+        if (tag[0] === tagName && typeof tag[1] === "string" && tag[1].length > 0) {
+            return tag[1];
+        }
+    }
+
+    return null;
+}
+
+function isSupportedRelatedEventKind(kind: number): kind is 1 | 7 {
+    return kind === 1 || kind === 7;
+}
+
+function resolveRelatedEventParentId(event: NostrEvent): string | null {
+    if (event.kind === 1) {
+        return parseKind1ThreadReferences(event).parentId;
+    }
+
+    if (event.kind === 7) {
+        return findFirstTagValue(event, "e");
+    }
+
+    return null;
+}
+
+function resolveRelatedEventRootId(event: NostrEvent): string | undefined {
+    if (event.kind !== 1) {
+        return undefined;
+    }
+
+    return parseKind1ThreadReferences(event).rootId ?? undefined;
+}
+
+function resolveRelatedEventDiscoveryKinds(event: NostrEvent): string[] {
+    return event.kind === 7 ? ["reaction"] : ["direct-reply"];
+}
+
+function filterDirectReplyRecords(
+    records: PostHistoryReplyEventRecord[],
+): PostHistoryReplyEventRecord[] {
+    return records.filter((record) => record.kind === 1);
 }
 
 function hasMaterialReplyEventChanges(
@@ -95,7 +140,7 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
             : { log: () => undefined, warn: () => undefined, error: () => undefined } as Console,
     ) { }
 
-    async getDirectReplies(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+    async getRelatedEvents(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
         if (!parentEventId) {
             return [];
         }
@@ -105,7 +150,11 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
             .between([parentEventId, Dexie.minKey], [parentEventId, Dexie.maxKey])
             .toArray();
 
-        return sortDirectReplies(records);
+        return sortRelatedEvents(records);
+    }
+
+    async getDirectReplies(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+        return filterDirectReplyRecords(await this.getRelatedEvents(parentEventId));
     }
 
     async upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult> {
@@ -123,14 +172,14 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
         const normalizedItems = new Map<string, PostHistoryReplyEventItem>();
 
         for (const item of input.events) {
-            if (!item?.event?.id || item.event.kind !== 1) {
+            if (!item?.event?.id || !isSupportedRelatedEventKind(item.event.kind)) {
                 ignoredCount += 1;
                 continue;
             }
 
-            const references = parseKind1ThreadReferences(item.event);
+            const resolvedParentEventId = resolveRelatedEventParentId(item.event);
             if (
-                references.parentId !== input.parentEventId
+                resolvedParentEventId !== input.parentEventId
                 || item.event.id === input.parentEventId
             ) {
                 ignoredCount += 1;
@@ -179,23 +228,27 @@ export class DexiePostHistoryReplyEventsRepository implements PostHistoryReplyEv
 
             const nextRecords = items.map((item) => {
                 const existingRecord = existingMap.get(item.event.id);
-                const references = parseKind1ThreadReferences(item.event);
                 const relayUrls = normalizeRelayUrls([
                     ...(existingRecord?.relayUrls ?? []),
                     ...(item.relayUrls ?? []),
                 ]);
+                const rootEventId = resolveRelatedEventRootId(item.event);
+                const discoveredAs = Array.from(new Set([
+                    ...(existingRecord?.discoveredAs ?? []),
+                    ...resolveRelatedEventDiscoveryKinds(item.event),
+                ]));
                 const nextRecord = {
                     id: item.event.id,
                     eventId: item.event.id,
                     parentEventId: input.parentEventId,
-                    ...(references.rootId ? { rootEventId: references.rootId } : {}),
+                    ...(rootEventId ? { rootEventId } : {}),
                     authorPubkey: item.event.pubkey,
                     kind: item.event.kind,
                     content: item.event.content,
                     tags: item.event.tags.map((tag) => [...tag]),
                     createdAt: item.event.created_at,
                     relayUrls,
-                    discoveredAs: ["direct-reply"],
+                    discoveredAs,
                     rawEvent: cloneNostrEvent(item.event),
                     fetchedAt,
                     updatedAt: this.now(),

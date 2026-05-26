@@ -5,14 +5,21 @@ import {
 } from "./storage/postHistoryReplyEventsRepository";
 
 export interface PostHistoryReplyEventsAdapter {
+    getRelatedEventRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
     getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
 }
 
 export class RepositoryPostHistoryReplyEventsAdapter implements PostHistoryReplyEventsAdapter {
     constructor(
-        private repository: Pick<PostHistoryReplyEventsRepository, "getDirectReplies"> =
+        private repository: Pick<PostHistoryReplyEventsRepository, "getDirectReplies">
+            & Partial<Pick<PostHistoryReplyEventsRepository, "getRelatedEvents">> =
             postHistoryReplyEventsRepository,
     ) {}
+
+    async getRelatedEventRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+        return this.repository.getRelatedEvents?.(parentEventId)
+            ?? this.repository.getDirectReplies(parentEventId);
+    }
 
     async getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
         return this.repository.getDirectReplies(parentEventId);

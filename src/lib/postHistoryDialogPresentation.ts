@@ -13,6 +13,11 @@ export type PostHistoryRepliesActionPresentationInput = {
     replyCount: number;
 };
 
+export type PostHistoryReactionsActionPresentationInput = {
+    visible: boolean;
+    reactionCount: number;
+};
+
 export function resolvePostHistoryCountSummaryState(input: {
     totalCount: number;
     isSearchMode: boolean;
@@ -85,4 +90,23 @@ export function resolvePostHistoryRepliesActionLabelState(
     }
 
     return { key: "postHistory.checkReplies" };
+}
+
+export function resolvePostHistoryReactionsActionLabelState(
+    state: PostHistoryReactionsActionPresentationInput,
+): PostHistoryDialogMessageState {
+    if (state.visible) {
+        return { key: "postHistory.hideReactions" };
+    }
+
+    return {
+        key: "postHistory.showReactionsWithCount",
+        values: {
+            count: state.reactionCount,
+        },
+    };
+}
+
+export function isPostHistoryFavoriteReactionContent(content: string): boolean {
+    return content === "+";
 }

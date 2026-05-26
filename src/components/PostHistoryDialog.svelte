@@ -40,8 +40,10 @@
     } from "../lib/postHistoryDialogUtils";
     import {
         hasRenderablePostHistoryPreviewContent,
+        isPostHistoryFavoriteReactionContent,
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryNavigationLabelKey,
+        resolvePostHistoryReactionsActionLabelState,
         resolvePostHistoryRepliesActionLabelState,
         type PostHistoryDialogMessageState,
     } from "../lib/postHistoryDialogPresentation";
@@ -176,6 +178,7 @@
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
+    let reactionsExpandedByEventId = $state<Record<string, boolean>>({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
@@ -263,6 +266,7 @@
         jumpDateInput = "";
         headingMenuOpen = false;
         deleteRequestState = {};
+        reactionsExpandedByEventId = {};
         emojiState.resetState();
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -565,6 +569,31 @@
                 resolvePostHistoryRepliesActionLabelState(state),
             ) ?? ""
         );
+    }
+
+    function isReactionsExpanded(post: PostHistoryRecord): boolean {
+        return !!reactionsExpandedByEventId[post.eventId];
+    }
+
+    function getReactionsActionLabel(post: PostHistoryRecord): string {
+        const reactionCount =
+            postHistoryThreadGraph.getAnchorState(post).reactionSummary
+                .totalCount;
+        return (
+            translateDialogMessage(
+                resolvePostHistoryReactionsActionLabelState({
+                    visible: isReactionsExpanded(post),
+                    reactionCount,
+                }),
+            ) ?? ""
+        );
+    }
+
+    function toggleReactions(post: PostHistoryRecord): void {
+        reactionsExpandedByEventId = {
+            ...reactionsExpandedByEventId,
+            [post.eventId]: !reactionsExpandedByEventId[post.eventId],
+        };
     }
 
     function handleRepliesAction(post: PostHistoryRecord): void {
@@ -1308,7 +1337,7 @@
                                             </div>
                                         {/if}
                                     </div>
-                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
+                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || graphState.reactionSummary.totalCount > 0}
                                         <div class="post-preview-footer">
                                             <div
                                                 class="post-preview-footer-left"
@@ -1355,6 +1384,31 @@
                                                                 post,
                                                             )}
                                                     />
+                                                    {#if graphState.reactionSummary.totalCount > 0}
+                                                        <Button
+                                                            type="button"
+                                                            class="post-preview-reactions-button"
+                                                            ariaLabel={getReactionsActionLabel(
+                                                                post,
+                                                            )}
+                                                            contentLayout="iconText"
+                                                            shape="pill"
+                                                            onClick={() =>
+                                                                toggleReactions(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="favorite-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                            <span>
+                                                                {graphState
+                                                                    .reactionSummary
+                                                                    .totalCount}
+                                                            </span>
+                                                        </Button>
+                                                    {/if}
                                                 </div>
                                                 {#if onQuotePost}
                                                     <Button
@@ -1486,6 +1540,35 @@
                                                 </DropdownMenu.Root>
                                             </div>
                                         </div>
+                                        {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
+                                            <div
+                                                class="post-preview-reactions-panel"
+                                            >
+                                                {#each graphState.reactionSummary.groups as reactionGroup (reactionGroup.content)}
+                                                    <div
+                                                        class="post-preview-reaction-chip"
+                                                    >
+                                                        {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
+                                                            <div
+                                                                class="favorite-icon svg-icon post-preview-reaction-symbol"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                        {:else}
+                                                            <span
+                                                                class="post-preview-reaction-content"
+                                                            >
+                                                                {reactionGroup.content}
+                                                            </span>
+                                                        {/if}
+                                                        <span
+                                                            class="post-preview-reaction-count"
+                                                        >
+                                                            {reactionGroup.count}
+                                                        </span>
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                        {/if}
                                     {/if}
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
@@ -2417,6 +2500,52 @@
             opacity: 1;
             color: var(--btn-post-preview-action);
         }
+
+        :global(:where(.post-preview-reactions-button)) {
+            min-height: auto;
+            gap: 6px;
+            padding-inline: 10px;
+            --btn-bg: var(--dialog-bg);
+            background-color: var(--dialog-bg);
+            color: var(--btn-post-preview-action);
+
+            :global(.svg-icon) {
+                --svg: var(--btn-post-preview-action);
+            }
+        }
+
+        :global(.post-preview-reactions-panel) {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0 16px 14px;
+        }
+
+        :global(.post-preview-reaction-chip) {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 32px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--theme), var(--dialog-bg) 92%);
+            color: var(--text);
+        }
+
+        :global(.post-preview-reaction-content),
+        :global(.post-preview-reaction-count) {
+            font-size: 0.92rem;
+            line-height: 1;
+        }
+
+        :global(.post-preview-reaction-count) {
+            color: var(--text-muted);
+        }
+
+        :global(.post-preview-reaction-symbol) {
+            width: 18px;
+            height: 18px;
+        }
     }
 
     .post-meta-inline {
@@ -2471,6 +2600,10 @@
 
     .copy-icon {
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .favorite-icon {
+        mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .search-icon {

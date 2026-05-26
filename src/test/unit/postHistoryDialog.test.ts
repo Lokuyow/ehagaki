@@ -92,6 +92,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.showReplies': '返信を表示',
         'postHistory.showRepliesWithCount': `返信 ${options?.values?.count}件を表示`,
         'postHistory.hideReplies': '返信を隠す',
+        'postHistory.showReactionsWithCount': `リアクション ${options?.values?.count}件を表示`,
+        'postHistory.hideReactions': 'リアクションを隠す',
         'postHistory.repliesLoading': '返信を取得中...',
         'postHistory.repliesNotFound': 'この範囲では返信が見つかりませんでした',
         'postHistory.repliesFetchFailed': '返信を取得できませんでした',
@@ -778,6 +780,7 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
         });
         repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
+        delete (replyEventsRepositoryMock as any).getRelatedEvents;
         replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
         replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
             insertedCount: 0,
@@ -1558,7 +1561,7 @@ describe('PostHistoryDialog', () => {
             }),
         });
 
-        render(PostHistoryDialog, {
+        const view = render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -2765,6 +2768,114 @@ describe('PostHistoryDialog', () => {
         });
 
         expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+    });
+
+    it('[reply-badge-preload] cached reaction summary をfooterで表示して集約パネルを開ける', async () => {
+        const parentEventId = '1'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const favoriteReaction = createDirectReplyEventRecord({
+            eventId: '4'.repeat(64),
+            kind: 7,
+            content: '+',
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '4'.repeat(64),
+                pubkey: 'd'.repeat(64),
+                kind: 7,
+                content: '+',
+                tags: [
+                    ['p', 'a'.repeat(64)],
+                    ['e', parentEventId],
+                ],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const thumbsUpReaction = createDirectReplyEventRecord({
+            eventId: '5'.repeat(64),
+            kind: 7,
+            content: '👍',
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '5'.repeat(64),
+                pubkey: 'e'.repeat(64),
+                kind: 7,
+                content: '👍',
+                tags: [
+                    ['p', 'a'.repeat(64)],
+                    ['e', parentEventId],
+                ],
+                created_at: 1_700_000_011,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const secondFavoriteReaction = createDirectReplyEventRecord({
+            eventId: '6'.repeat(64),
+            kind: 7,
+            content: '+',
+            discoveredAs: ['reaction'],
+            rawEvent: {
+                id: '6'.repeat(64),
+                pubkey: 'f'.repeat(64),
+                kind: 7,
+                content: '+',
+                tags: [
+                    ['p', 'a'.repeat(64)],
+                    ['e', parentEventId],
+                ],
+                created_at: 1_700_000_012,
+                sig: 'f'.repeat(128),
+            },
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        (replyEventsRepositoryMock as any).getRelatedEvents = vi.fn().mockResolvedValue([
+            favoriteReaction,
+            thumbsUpReaction,
+            secondFavoriteReaction,
+        ]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const reactionButton = await screen.findByRole('button', {
+            name: 'リアクション 3件を表示',
+        });
+        expect((replyEventsRepositoryMock as any).getRelatedEvents).toHaveBeenCalledWith(parentEventId);
+        expect(screen.queryByText('👍')).toBeNull();
+
+        await fireEvent.click(reactionButton);
+
+        await waitFor(() => {
+            expect(screen.getByText('👍')).toBeTruthy();
+        });
+        expect(screen.queryByText('+')).toBeNull();
+        expect(document.body.querySelectorAll('.post-preview-reaction-chip')).toHaveLength(2);
+        expect(Array.from(document.body.querySelectorAll('.post-preview-reaction-count')).map((node) =>
+            node.textContent?.trim(),
+        )).toEqual(['2', '1']);
     });
 
     it('[reply-badge-preload] dialog reopenではvisible parentを再確認する', async () => {

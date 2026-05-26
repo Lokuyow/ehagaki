@@ -195,6 +195,8 @@
     "showReplies": "返信を表示",
     "showRepliesWithCount": "返信 {count}件を表示",
     "hideReplies": "返信を隠す",
+    "showReactionsWithCount": "リアクション {count}件を表示",
+    "hideReactions": "リアクションを隠す",
     "repliesLoading": "返信を取得中...",
     "repliesNotFound": "この範囲では返信が見つかりませんでした",
     "repliesFetchFailed": "返信を取得できませんでした",

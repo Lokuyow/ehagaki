@@ -96,8 +96,31 @@ describe("classifyPostHistoryInboundInteraction", () => {
         });
     });
 
-    it("kind:7 reactionは入口だけ分類し保存対象にしない", () => {
+    it("kind:7 reactionはtarget event付きでreactionに分類する", () => {
         const reaction = createEvent({
+            kind: 7,
+            content: "+",
+            tags: [
+                ["p", OWNER_PUBKEY],
+                ["e", PARENT_ID],
+            ],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event: reaction,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([PARENT_ID]),
+        })).toMatchObject({
+            type: "reaction",
+            targetEventId: PARENT_ID,
+            targetAuthorPubkey: OWNER_PUBKEY,
+            reason: "reaction-not-implemented",
+        });
+    });
+
+    it("自分が自分の投稿へ付けたkind:7 reactionもreactionに分類する", () => {
+        const reaction = createEvent({
+            pubkey: OWNER_PUBKEY,
             kind: 7,
             content: "+",
             tags: [

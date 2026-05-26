@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
     hasRenderablePostHistoryPreviewContent,
+    isPostHistoryFavoriteReactionContent,
     resolvePostHistoryCountSummaryState,
     resolvePostHistoryNavigationLabelKey,
+    resolvePostHistoryReactionsActionLabelState,
     resolvePostHistoryRepliesActionLabelState,
 } from "../../lib/postHistoryDialogPresentation";
 
@@ -111,5 +113,24 @@ describe("postHistoryDialogPresentation", () => {
             visible: true,
             replyCount: 2,
         })).toEqual({ key: "postHistory.hideReplies" });
+    });
+
+    it("reaction action label state は件数付き表示と折りたたみ文言を返す", () => {
+        expect(resolvePostHistoryReactionsActionLabelState({
+            visible: false,
+            reactionCount: 3,
+        })).toEqual({
+            key: "postHistory.showReactionsWithCount",
+            values: { count: 3 },
+        });
+        expect(resolvePostHistoryReactionsActionLabelState({
+            visible: true,
+            reactionCount: 3,
+        })).toEqual({ key: "postHistory.hideReactions" });
+    });
+
+    it("favorite iconへ置換する内部値は+だけに限定する", () => {
+        expect(isPostHistoryFavoriteReactionContent("+")).toBe(true);
+        expect(isPostHistoryFavoriteReactionContent("👍")).toBe(false);
     });
 });
