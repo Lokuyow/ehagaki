@@ -129,6 +129,7 @@
     "returnToLatest": "Back to latest",
     "jumpToOldest": "Jump to oldest",
     "jumpToDate": "Jump to date",
+    "jumpToPostDate": "Jump to post date",
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",
     "hideJumpToDate": "Close jump to date",

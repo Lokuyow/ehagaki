@@ -233,4 +233,66 @@ describe('PostHistoryDialog timeline search', () => {
 
         view.unmount();
     });
+
+    it('検索結果投稿のメニューから投稿の日付へ飛ぶと検索を閉じて通常履歴へ移動する', async () => {
+        const jumpCreatedAt = 1_690_100_000;
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'normal-timeline', content: '通常履歴' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'search-hit',
+                    content: '検索ヒット',
+                    createdAt: jumpCreatedAt,
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([
+            createRecord({
+                eventId: 'jumped-timeline',
+                content: '日付ジャンプ後',
+                createdAt: jumpCreatedAt,
+            }),
+        ]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'hit' } });
+        await waitForSearchDebounce();
+
+        await waitFor(() => {
+            expect(screen.getByText('検索ヒット')).toBeTruthy();
+        });
+
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '投稿の日付へ飛ぶ' }));
+
+        await waitFor(() => {
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith({
+                pubkeyHex: PUBKEY_HEX,
+                visibleUntil: null,
+                createdAt: jumpCreatedAt,
+                limit: 50,
+            });
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+            expect(screen.getByText('日付ジャンプ後')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
 });

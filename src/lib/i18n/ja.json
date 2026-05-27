@@ -129,6 +129,7 @@
     "returnToLatest": "最新へ戻る",
     "jumpToOldest": "最古へ移動",
     "jumpToDate": "日付へ移動",
+    "jumpToPostDate": "投稿の日付へ飛ぶ",
     "jumpToDateLabel": "日付",
     "jumpToDateSubmit": "この日付付近を表示",
     "hideJumpToDate": "日付へ移動を閉じる",

@@ -849,6 +849,19 @@
         history.resetSearchState();
     }
 
+    async function handleJumpToPostDate(
+        post: PostHistoryRecord,
+    ): Promise<void> {
+        historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
+        activeUtilityPanel = "none";
+        history.resetSearchState();
+
+        const changed = await history.jumpToCreatedAt(post.createdAt);
+        if (changed) {
+            historyViewport.resetHistoryScrollSoon();
+        }
+    }
+
     function toggleJumpDate(): void {
         activeUtilityPanel =
             activeUtilityPanel === "jump-date" ? "none" : "jump-date";
@@ -1318,6 +1331,28 @@
                                                             <div
                                                                 class="post-history-menu-body"
                                                             >
+                                                                {#if history.isSearchMode}
+                                                                    <DropdownMenu.Item
+                                                                        class="menu-action-button"
+                                                                        onSelect={() =>
+                                                                            void handleJumpToPostDate(
+                                                                                post,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="calendar-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {$_(
+                                                                                "postHistory.jumpToPostDate",
+                                                                            )}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                    <DropdownMenu.Separator
+                                                                        class="post-history-menu-separator"
+                                                                    />
+                                                                {/if}
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
                                                                     onpointerdown={(
@@ -1719,6 +1754,25 @@
                                                                         {repliesActionLabel}
                                                                     </span>
                                                                 </DropdownMenu.Item>
+                                                                {#if history.isSearchMode}
+                                                                    <DropdownMenu.Item
+                                                                        class="menu-action-button"
+                                                                        onSelect={() =>
+                                                                            void handleJumpToPostDate(
+                                                                                post,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="calendar-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {$_(
+                                                                                "postHistory.jumpToPostDate",
+                                                                            )}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                {/if}
                                                                 <DropdownMenu.Separator
                                                                     class="post-history-menu-separator"
                                                                 />
