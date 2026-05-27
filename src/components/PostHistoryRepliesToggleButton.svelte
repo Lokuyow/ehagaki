@@ -41,7 +41,7 @@
         ></span>
     {:else}
         <span
-            class="post-history-replies-toggle-icon-wrapper post-preview-replies-icon-wrapper"
+            class="post-history-replies-toggle-icon-wrapper"
             aria-hidden="true"
         >
             <span
@@ -53,7 +53,7 @@
             ></span>
             {#if hasBadge}
                 <span
-                    class="post-history-replies-toggle-badge post-preview-replies-count post-preview-replies-badge"
+                    class="post-history-replies-toggle-badge"
                 >
                     {state.replyCount}
                 </span>
