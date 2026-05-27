@@ -36,6 +36,7 @@
     import {
         buildPreviewContent,
         formatPostedAt,
+        formatPostedAtExact,
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import {
@@ -1331,6 +1332,17 @@
                                                             <div
                                                                 class="post-history-menu-body"
                                                             >
+                                                                <div
+                                                                    class="post-history-menu-timestamp"
+                                                                >
+                                                                    {formatPostedAtExact(
+                                                                        post.postedAt,
+                                                                        $locale,
+                                                                    )}
+                                                                </div>
+                                                                <DropdownMenu.Separator
+                                                                    class="post-history-menu-separator"
+                                                                />
                                                                 {#if history.isSearchMode}
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
@@ -1729,6 +1741,17 @@
                                                             <div
                                                                 class="post-history-menu-body"
                                                             >
+                                                                <div
+                                                                    class="post-history-menu-timestamp"
+                                                                >
+                                                                    {formatPostedAtExact(
+                                                                        post.postedAt,
+                                                                        $locale,
+                                                                    )}
+                                                                </div>
+                                                                <DropdownMenu.Separator
+                                                                    class="post-history-menu-separator"
+                                                                />
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
                                                                     disabled={graphState
@@ -2575,6 +2598,16 @@
         flex-direction: column;
         gap: 2px;
         align-items: stretch;
+    }
+
+    .post-history-menu-timestamp {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        line-height: 1.35;
+        user-select: text;
+        white-space: nowrap;
+        margin-inline: auto;
+        width: fit-content;
     }
 
     :global(.post-history-menu-content[data-state="open"]) {

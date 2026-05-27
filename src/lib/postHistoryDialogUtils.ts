@@ -203,6 +203,20 @@ export function formatPostedAt(
     }).format(postedDate);
 }
 
+export function formatPostedAtExact(
+    postedAt: number,
+    localeValue?: string | null,
+): string {
+    return new Intl.DateTimeFormat(localeValue ?? undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    }).format(new Date(postedAt));
+}
+
 export function formatPostHistoryMonthLabel(
     postedAt: number,
     localeValue: string | null | undefined,

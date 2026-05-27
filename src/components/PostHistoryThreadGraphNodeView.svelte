@@ -5,7 +5,10 @@
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
-    import { formatPostedAt } from "../lib/postHistoryDialogUtils";
+    import {
+        formatPostedAt,
+        formatPostedAtExact,
+    } from "../lib/postHistoryDialogUtils";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
     import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { FullscreenMediaItem } from "../lib/types";
@@ -56,6 +59,9 @@
     }: Props = $props();
 
     let postedAt = $derived(formatPostedAt(state.node.event.created_at * 1000));
+    let postedAtExact = $derived(
+        formatPostedAtExact(state.node.event.created_at * 1000),
+    );
     let contextIndent = $derived(
         `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
     );
@@ -242,6 +248,12 @@
                                     event.preventDefault()}
                             >
                                 <div class="post-history-menu-body">
+                                    <div class="post-history-menu-timestamp">
+                                        {postedAtExact}
+                                    </div>
+                                    <DropdownMenu.Separator
+                                        class="post-history-menu-separator"
+                                    />
                                     <DropdownMenu.Item
                                         class="menu-action-button"
                                         disabled={state.repliesActionState
@@ -402,6 +414,16 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
+    }
+
+    .post-history-menu-timestamp {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        line-height: 1.35;
+        user-select: text;
+        white-space: nowrap;
+        margin-inline: auto;
+        width: fit-content;
     }
 
     .post-preview-footer :global(.post-preview-replies-badge-button),

@@ -6,6 +6,7 @@ import {
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    formatPostedAtExact,
     formatPostHistoryMonthLabel,
     resolvePostHistoryMediaDimensionHints,
     resolvePostHistoryMediaAspectRatio,
@@ -389,6 +390,21 @@ describe("postHistoryDialogUtils", () => {
             new Intl.DateTimeFormat("ja", {
                 year: "numeric",
                 month: "numeric",
+            }).format(new Date(postedAt)),
+        );
+    });
+
+    it("formatPostedAtExact returns full date and time with seconds", () => {
+        const postedAt = new Date(2025, 5, 10, 12, 34, 56).getTime();
+
+        expect(formatPostedAtExact(postedAt, "ja")).toBe(
+            new Intl.DateTimeFormat("ja", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
             }).format(new Date(postedAt)),
         );
     });
