@@ -2501,12 +2501,12 @@
         align-items: center;
     }
 
-    .post-history-date-picker-input {
+    :global(.post-history-date-picker-input) {
         display: inline-flex;
-        align-items: center;
+        align-items: stretch;
         gap: 2px;
         min-width: 0;
-        padding: 0 12px;
+        padding: 6px;
         height: 40px;
         border: 1px solid var(--border-hr);
         background: var(--background);
@@ -2519,15 +2519,15 @@
         align-items: center;
         justify-content: center;
         min-width: 1ch;
-        min-height: 32px;
+        height: auto;
         color: var(--text-muted);
 
         &[role="spinbutton"] {
-            min-width: 40px;
+            min-width: 3ch;
         }
 
         &[data-segment="year"] {
-            min-width: 4ch;
+            min-width: 5ch;
         }
     }
 
@@ -2539,7 +2539,7 @@
     }
 
     :global(.post-history-date-picker-trigger .svg-icon) {
-        mask-image: url("/icons/calendar_month_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 24px;
         height: 24px;
     }
@@ -2592,10 +2592,12 @@
     }
 
     :global(.post-history-date-picker-nav-icon-left) {
+        margin-right: 1px;
         mask-image: url("/icons/keyboard_arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-date-picker-nav-icon-right) {
+        margin-left: 1px;
         mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
@@ -2976,7 +2978,7 @@
     }
 
     :global(.post-history-menu-content .menu-action-button .calendar-icon) {
-        mask-image: url("/icons/calendar_month_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/calendar_today_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
