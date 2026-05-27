@@ -30,7 +30,7 @@
     {ariaLabel}
     {title}
     contentLayout="icon"
-    shape="square"
+    shape="rounded"
     selected={expanded}
     disabled={loading}
     {onClick}
