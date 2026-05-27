@@ -182,6 +182,7 @@
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let jumpDateValue = $state<DateValue | undefined>(undefined);
+    let jumpDatePlaceholder = $state<DateValue | undefined>(undefined);
     let jumpDatePickerOpen = $state(false);
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
@@ -336,6 +337,7 @@
         isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
         jumpDateValue = undefined;
+        jumpDatePlaceholder = undefined;
         jumpDatePickerOpen = false;
         headingMenuOpen = false;
         deleteRequestState = {};
@@ -877,6 +879,15 @@
         jumpDatePickerOpen = false;
     }
 
+    function handleJumpDateYearShift(offsetYears: number): void {
+        const source = jumpDatePlaceholder ?? jumpDateValue;
+        if (!source || offsetYears === 0) {
+            return;
+        }
+
+        jumpDatePlaceholder = source.add({ years: offsetYears });
+    }
+
     function openLocalHistoryDeleteConfirm(): void {
         localHistoryDeleteConfirmOpen = true;
         headingMenuOpen = false;
@@ -1179,6 +1190,7 @@
             <div class="post-history-utility-controls">
                 <DatePicker.Root
                     bind:value={jumpDateValue}
+                    bind:placeholder={jumpDatePlaceholder}
                     bind:open={jumpDatePickerOpen}
                     locale={$locale ?? undefined}
                     calendarLabel={$_("postHistory.jumpToDateLabel")}
@@ -1219,6 +1231,18 @@
                                     <DatePicker.Header
                                         class="post-history-date-picker-header"
                                     >
+                                        <button
+                                            type="button"
+                                            class="post-history-date-picker-year-nav"
+                                            aria-label="Previous year"
+                                            onclick={() =>
+                                                handleJumpDateYearShift(-1)}
+                                        >
+                                            <span
+                                                class="post-history-date-picker-year-nav-icon post-history-date-picker-year-nav-icon-left svg-icon"
+                                                aria-hidden="true"
+                                            ></span>
+                                        </button>
                                         <DatePicker.PrevButton
                                             class="post-history-date-picker-nav"
                                             aria-label="Previous month"
@@ -1240,6 +1264,18 @@
                                                 aria-hidden="true"
                                             ></span>
                                         </DatePicker.NextButton>
+                                        <button
+                                            type="button"
+                                            class="post-history-date-picker-year-nav"
+                                            aria-label="Next year"
+                                            onclick={() =>
+                                                handleJumpDateYearShift(1)}
+                                        >
+                                            <span
+                                                class="post-history-date-picker-year-nav-icon post-history-date-picker-year-nav-icon-right svg-icon"
+                                                aria-hidden="true"
+                                            ></span>
+                                        </button>
                                     </DatePicker.Header>
                                     {#each months as month, monthIndex (`${month.value.toString()}-${monthIndex}`)}
                                         <DatePicker.Grid
@@ -2531,6 +2567,8 @@
     }
 
     :global(.post-history-date-picker-heading) {
+        flex: 1 1 auto;
+        text-align: center;
         font-size: 0.9rem;
         font-weight: 600;
     }
@@ -2559,6 +2597,32 @@
 
     :global(.post-history-date-picker-nav-icon-right) {
         mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-date-picker-year-nav) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        background-color: var(--btn-bg2);
+        color: var(--text);
+    }
+
+    :global(.post-history-date-picker-year-nav-icon) {
+        width: 24px;
+        height: 24px;
+        background-color: currentColor;
+    }
+
+    :global(.post-history-date-picker-year-nav-icon-left) {
+        mask-image: url("/icons/keyboard_double_arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-date-picker-year-nav-icon-right) {
+        mask-image: url("/icons/keyboard_double_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-date-picker-grid) {
