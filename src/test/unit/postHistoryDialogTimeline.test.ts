@@ -591,6 +591,54 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('visibleUntil 未確定かつ jump cache anchor がある場合は最古へ移動を無効化する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'jump-guard-newest', content: '最新投稿' }),
+            createRecord({ eventId: 'jump-guard-older', content: '古い投稿', createdAt: 1_704_153_600 }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'jump-guard-older-local', content: 'さらに古い投稿' }),
+        ]);
+        jumpCacheAnchorRepositoryMock.getForPubkey.mockResolvedValueOnce([
+            {
+                centerCreatedAt: 1_700_000_000,
+                radiusSec: 86_400,
+                fetchedAt: Date.now(),
+            },
+        ]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('古い投稿')).toBeTruthy();
+        });
+
+        await openPostHistoryMenu();
+        const jumpToOldestItem = await screen.findByRole('menuitem', { name: '最古へ移動' });
+        expect(jumpToOldestItem.getAttribute('aria-disabled')).toBe('true');
+
+        await fireEvent.click(jumpToOldestItem);
+
+        await waitFor(() => {
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    createdAt: 0,
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
     it('古い投稿が尽きても terminal noMorePosts は表示しない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([

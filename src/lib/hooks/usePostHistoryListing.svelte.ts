@@ -99,6 +99,7 @@ interface PersistedPostHistoryListingSnapshot {
     nextUntil: number | null;
     lastDialogOpenRefreshAt: number | null;
     visibleUntil: number | null;
+    hasJumpCacheAnchors: boolean;
     hasOlderLocal: boolean;
     hasNewerLocal: boolean;
 }
@@ -292,6 +293,7 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     nextUntil: null,
     lastDialogOpenRefreshAt: null,
     visibleUntil: null,
+    hasJumpCacheAnchors: false,
     hasOlderLocal: false,
     hasNewerLocal: false,
 };
@@ -506,6 +508,7 @@ function cloneListingSnapshot(
         nextUntil: snapshot.nextUntil,
         lastDialogOpenRefreshAt: snapshot.lastDialogOpenRefreshAt,
         visibleUntil: snapshot.visibleUntil,
+        hasJumpCacheAnchors: snapshot.hasJumpCacheAnchors ?? false,
         hasOlderLocal: snapshot.hasOlderLocal,
         hasNewerLocal: snapshot.hasNewerLocal,
     };
@@ -591,6 +594,7 @@ export function usePostHistoryListing({
         nextUntil: persistedListingSnapshot.nextUntil,
         lastDialogOpenRefreshAt: persistedListingSnapshot.lastDialogOpenRefreshAt,
         visibleUntil: persistedListingSnapshot.visibleUntil,
+        hasJumpCacheAnchors: persistedListingSnapshot.hasJumpCacheAnchors,
         hasOlderLocal: persistedListingSnapshot.hasOlderLocal,
         hasNewerLocal: persistedListingSnapshot.hasNewerLocal,
         latestOlderBackfillUiResult: null as OlderBackfillUiResult | null,
@@ -661,7 +665,17 @@ export function usePostHistoryListing({
         !isSearchMode && !isRefetchingAroundCurrentView && state.hasNewerLocal,
     );
     const canJumpToOldest = $derived(
-        !isSearchMode && !isRefetchingAroundCurrentView && state.hasOlderLocal,
+        !isSearchMode
+        && !isRefetchingAroundCurrentView
+        && state.hasOlderLocal
+        && !(
+            typeof visibleOldestCreatedAt === "number"
+            && (
+                state.visibleUntil === null
+                    ? state.hasJumpCacheAnchors
+                    : visibleOldestCreatedAt < state.visibleUntil
+            )
+        ),
     );
     const canFetchOlderFromRelays = $derived(
         !isSearchMode &&
@@ -1036,6 +1050,7 @@ export function usePostHistoryListing({
         state.nextUntil = null;
         state.lastDialogOpenRefreshAt = null;
         state.visibleUntil = null;
+        state.hasJumpCacheAnchors = false;
         state.hasOlderLocal = false;
         state.hasNewerLocal = false;
         state.syncStatus = "idle";
@@ -1084,16 +1099,19 @@ export function usePostHistoryListing({
     async function resolveOlderRelayFetchUntil(
         pubkeyHex: string,
     ): Promise<number | null> {
-        if (typeof olderBackfillSearch.nextUntil === "number") {
-            return olderBackfillSearch.nextUntil;
-        }
-
         if (
-            typeof state.visibleUntil === "number"
-            && typeof visibleOldestCreatedAt === "number"
-            && visibleOldestCreatedAt < state.visibleUntil
+            typeof visibleOldestCreatedAt === "number"
+            && (
+                state.visibleUntil === null
+                    ? state.hasJumpCacheAnchors
+                    : visibleOldestCreatedAt < state.visibleUntil
+            )
         ) {
             return visibleOldestCreatedAt;
+        }
+
+        if (typeof olderBackfillSearch.nextUntil === "number") {
+            return olderBackfillSearch.nextUntil;
         }
 
         return resolvePostHistoryOlderRelayFetchUntil({
@@ -1338,6 +1356,24 @@ export function usePostHistoryListing({
         return visibleUntil;
     }
 
+    async function refreshJumpCacheAnchorAvailability(
+        pubkeyHex: string,
+    ): Promise<boolean> {
+        const anchors = await postHistoryJumpCacheAnchorRepository.getForPubkey(
+            pubkeyHex,
+            {
+                maxCount: 1,
+            },
+        );
+        const hasJumpCacheAnchors = anchors.length > 0;
+
+        if (getShow() && getPubkeyHex() === pubkeyHex) {
+            state.hasJumpCacheAnchors = hasJumpCacheAnchors;
+        }
+
+        return hasJumpCacheAnchors;
+    }
+
     async function updateVisibleUntilFromFetch(
         pubkeyHex: string,
         result: PostHistoryRelayFetchResult,
@@ -1569,6 +1605,7 @@ export function usePostHistoryListing({
             state.loadedPosts = [];
             state.totalCount = 0;
             state.visibleUntil = null;
+            state.hasJumpCacheAnchors = false;
             state.hasOlderLocal = false;
             state.hasNewerLocal = false;
             return;
@@ -1576,6 +1613,7 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        await refreshJumpCacheAnchorAvailability(pubkeyHex);
         const [count, latestPosts] = await Promise.all([
             countVisiblePosts(pubkeyHex, visibleUntil),
             postHistoryRepository.getLatestVisibleChunk({
@@ -1878,6 +1916,54 @@ export function usePostHistoryListing({
         return true;
     }
 
+    async function loadOlderSparsePosts(
+        pubkeyHex: string,
+        requestId: number,
+        options: LoadOlderVisiblePostsOptions = {},
+    ): Promise<boolean> {
+        const currentLoadedPosts = state.loadedPosts;
+        const oldestCreatedAt =
+            currentLoadedPosts.length > 0
+                ? currentLoadedPosts[currentLoadedPosts.length - 1]?.createdAt ?? null
+                : null;
+        if (typeof oldestCreatedAt !== "number") {
+            return false;
+        }
+
+        const olderPosts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
+            pubkeyHex,
+            visibleUntil: state.visibleUntil,
+            createdAt: Math.max(0, oldestCreatedAt - 1),
+            limit: pageSize,
+            query: {
+                contiguous: false,
+            },
+        });
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (olderPosts.length === 0) {
+            state.hasOlderLocal = false;
+            return false;
+        }
+
+        const mergedResult = mergeOlderVisiblePostsForState(
+            currentLoadedPosts,
+            olderPosts,
+            options.anchorEventId,
+        );
+        state.loadedPosts = mergedResult.posts;
+        void prefetchCurrentPageMedia(mergedResult.posts);
+        await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
+        if (mergedResult.didDeferOlderPosts) {
+            state.hasOlderLocal = true;
+        }
+
+        return true;
+    }
+
     async function loadNewerVisiblePosts(): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         const newestCursor = toTimelineCursor(state.loadedPosts[0]);
@@ -1950,6 +2036,7 @@ export function usePostHistoryListing({
         if (!didDateChunkMissTarget(contiguousDatePosts, createdAt)) {
             state.totalCount = count;
             state.loadedPosts = contiguousDatePosts;
+            resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
@@ -1958,6 +2045,7 @@ export function usePostHistoryListing({
         if (createdAt <= 0) {
             state.totalCount = count;
             state.loadedPosts = contiguousDatePosts;
+            resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
@@ -1991,6 +2079,7 @@ export function usePostHistoryListing({
             if (!didDateChunkMissTarget(sparseDatePosts, createdAt)) {
                 state.totalCount = count;
                 state.loadedPosts = sparseDatePosts;
+                resetOlderBackfillSearchState();
                 void prefetchCurrentPageMedia(sparseDatePosts);
                 await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
                 return true;
@@ -2001,6 +2090,7 @@ export function usePostHistoryListing({
         if (!rxNostr) {
             state.totalCount = count;
             state.loadedPosts = contiguousDatePosts;
+            resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
@@ -2041,6 +2131,7 @@ export function usePostHistoryListing({
                 radiusSec: POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
                 fetchedAt: relayResult.fetchedAt,
             });
+            state.hasJumpCacheAnchors = true;
         }
 
         if (!getShow() || requestId !== loadRequestId) {
@@ -2067,6 +2158,7 @@ export function usePostHistoryListing({
         if (didDateChunkMissTarget(sparseDatePosts, createdAt)) {
             state.totalCount = count;
             state.loadedPosts = contiguousDatePosts;
+            resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
@@ -2074,6 +2166,7 @@ export function usePostHistoryListing({
 
         state.totalCount = count;
         state.loadedPosts = sparseDatePosts;
+        resetOlderBackfillSearchState();
         void prefetchCurrentPageMedia(sparseDatePosts);
         await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
         return true;
@@ -2546,15 +2639,26 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
-            const nextVisibleUntil = await updateVisibleUntilFromOlderBackfillFetch(
-                pubkeyHex,
-                result,
-            );
+            const isSparseBackfillContext =
+                typeof visibleOldestCreatedAt === "number"
+                && (
+                    previousVisibleUntil === null
+                        ? state.hasJumpCacheAnchors
+                        : visibleOldestCreatedAt < previousVisibleUntil
+                );
+
+            const nextVisibleUntil = isSparseBackfillContext
+                ? previousVisibleUntil
+                : await updateVisibleUntilFromOlderBackfillFetch(
+                    pubkeyHex,
+                    result,
+                );
             if (!isCurrentFetchRequest(requestId) || !getShow()) {
                 return batchChanged;
             }
 
-            const connectedAnchorsResult = typeof nextVisibleUntil === "number"
+            const connectedAnchorsResult =
+                !isSparseBackfillContext && typeof nextVisibleUntil === "number"
                 ? await postHistoryJumpCacheAnchorRepository.reconcileWithFrontier({
                     pubkeyHex,
                     frontierVisibleUntil: nextVisibleUntil,
@@ -2565,6 +2669,10 @@ export function usePostHistoryListing({
             const effectiveVisibleUntil = connectedAnchorsResult
                 ? connectedAnchorsResult.nextVisibleUntil
                 : nextVisibleUntil;
+            if (connectedAnchorsResult) {
+                state.hasJumpCacheAnchors =
+                    connectedAnchorsResult.anchors.length > 0;
+            }
             if (
                 connectedAnchorsResult
                 && connectedAnchorsResult.nextVisibleUntil !== nextVisibleUntil
@@ -2654,13 +2762,21 @@ export function usePostHistoryListing({
             } else {
                 state.totalCount = nextCount;
                 if (didVisibleCountIncrease || didMateriallyChange) {
-                    didLoadFetchedOlderPosts = await loadOlderVisiblePosts(
-                        {
-                            anchorEventId: options.anchorEventId,
-                            metrics: olderLoadMetrics,
-                            reason: "normal-older-reveal",
-                        },
-                    );
+                    didLoadFetchedOlderPosts = isSparseBackfillContext
+                        ? await loadOlderSparsePosts(
+                            pubkeyHex,
+                            loadRequestId,
+                            {
+                                anchorEventId: options.anchorEventId,
+                            },
+                        )
+                        : await loadOlderVisiblePosts(
+                            {
+                                anchorEventId: options.anchorEventId,
+                                metrics: olderLoadMetrics,
+                                reason: "normal-older-reveal",
+                            },
+                        );
                 } else {
                     await refreshTimelineAvailability(pubkeyHex);
                 }
@@ -3037,6 +3153,7 @@ export function usePostHistoryListing({
             nextUntil: state.nextUntil,
             lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
             visibleUntil: state.visibleUntil,
+            hasJumpCacheAnchors: state.hasJumpCacheAnchors,
             hasOlderLocal: state.hasOlderLocal,
             hasNewerLocal: state.hasNewerLocal,
         });
