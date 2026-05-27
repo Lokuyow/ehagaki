@@ -301,7 +301,6 @@ export class ProfileManager {
     if (!opts?.forceRemote) {
       const cachedProfile = await this.storage.get(pubkeyHex);
       if (cachedProfile) {
-        consoleObj.log("キャッシュからプロフィールを復元:", cachedProfile);
         return cachedProfile;
       }
     }
