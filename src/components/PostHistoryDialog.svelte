@@ -1501,7 +1501,7 @@
                                                                 ariaLabel={repliesActionLabel}
                                                                 title={repliesActionLabel}
                                                                 contentLayout="icon"
-                                                                shape="square"
+                                                                shape="circle"
                                                                 selected={graphState
                                                                     .repliesActionState
                                                                     .visible}
@@ -2758,10 +2758,6 @@
             width: 36px;
             min-width: 36px;
             min-height: auto;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             --btn-bg: var(--dialog-bg);
             color: var(--btn-post-preview-action);
         }
