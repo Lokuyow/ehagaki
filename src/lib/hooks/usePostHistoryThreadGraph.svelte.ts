@@ -167,7 +167,6 @@ const POST_HISTORY_THREAD_GRAPH_MAX_CHILD_DEPTH = 20;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT = 12;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY = 2;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE = 4;
-const POST_HISTORY_CHILD_REPLY_PREFETCH_TIMEOUT_MS = 2_000;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS = 5 * 60 * 1_000;
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
@@ -1851,9 +1850,7 @@ export function usePostHistoryThreadGraph({
             eventIds: batchEventIds,
             createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
             relayHints,
-            relayConfig: null,
-            timeoutMs: POST_HISTORY_CHILD_REPLY_PREFETCH_TIMEOUT_MS,
-            relayLimit: POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT,
+            relayConfig: getRelayConfig(),
         });
         childrenTasksByKey.set(taskKey, task);
 
