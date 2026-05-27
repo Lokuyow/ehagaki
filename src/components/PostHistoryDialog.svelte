@@ -1628,6 +1628,9 @@
                                                             )}
                                                             contentLayout="iconText"
                                                             shape="pill"
+                                                            selected={isReactionsExpanded(
+                                                                post,
+                                                            )}
                                                             onClick={() =>
                                                                 toggleReactions(
                                                                     post,
@@ -2876,7 +2879,8 @@
     :global(
             .post-history-thread-toggle-button.selected,
             .post-history-replies-toggle-button.selected,
-            .post-preview-replies-badge-button.selected
+            .post-preview-replies-badge-button.selected,
+            .post-preview-reactions-button.selected
         ) {
         --btn-bg: var(--dialog-bg);
         color: var(--text-light);
