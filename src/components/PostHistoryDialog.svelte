@@ -1,8 +1,9 @@
 <script lang="ts">
+    import type { DateValue } from "@internationalized/date";
     import type { RxNostr } from "rx-nostr";
     import { onDestroy, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
-    import { Dialog, DropdownMenu } from "bits-ui";
+    import { DatePicker, Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
@@ -180,7 +181,8 @@
     let localHistoryDeleteConfirmOpen = $state(false);
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
-    let jumpDateInput = $state("");
+    let jumpDateValue = $state<DateValue | undefined>(undefined);
+    let jumpDatePickerOpen = $state(false);
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
     let deleteRequestState = $state<
@@ -333,7 +335,8 @@
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
-        jumpDateInput = "";
+        jumpDateValue = undefined;
+        jumpDatePickerOpen = false;
         headingMenuOpen = false;
         deleteRequestState = {};
         resetPendingDeletionRequests();
@@ -506,20 +509,16 @@
         );
     }
 
-    function parseDateInputToCreatedAt(value: string): number | null {
-        const [yearText, monthText, dayText] = value.split("-");
-        const year = Number(yearText);
-        const month = Number(monthText);
-        const day = Number(dayText);
-
-        if (
-            !Number.isFinite(year) ||
-            !Number.isFinite(month) ||
-            !Number.isFinite(day)
-        ) {
+    function parseDateValueToCreatedAt(
+        value: DateValue | undefined,
+    ): number | null {
+        if (!value) {
             return null;
         }
 
+        const year = Number(value.year);
+        const month = Number(value.month);
+        const day = Number(value.day);
         const date = new Date(year, month - 1, day, 23, 59, 59, 999);
         const time = date.getTime();
         return Number.isFinite(time) ? Math.floor(time / 1000) : null;
@@ -623,7 +622,7 @@
     }
 
     async function handleJumpToDateSubmit(): Promise<void> {
-        const createdAt = parseDateInputToCreatedAt(jumpDateInput);
+        const createdAt = parseDateValueToCreatedAt(jumpDateValue);
         if (createdAt === null) {
             return;
         }
@@ -632,6 +631,7 @@
         const changed = await history.jumpToCreatedAt(createdAt);
         if (changed) {
             activeUtilityPanel = "none";
+            jumpDatePickerOpen = false;
             historyViewport.resetHistoryScrollSoon();
         }
     }
@@ -864,9 +864,17 @@
     }
 
     function toggleJumpDate(): void {
-        activeUtilityPanel =
-            activeUtilityPanel === "jump-date" ? "none" : "jump-date";
+        const willOpen = activeUtilityPanel !== "jump-date";
+        activeUtilityPanel = willOpen ? "jump-date" : "none";
+        if (!willOpen) {
+            jumpDatePickerOpen = false;
+        }
         headingMenuOpen = false;
+    }
+
+    function hideJumpDate(): void {
+        activeUtilityPanel = "none";
+        jumpDatePickerOpen = false;
     }
 
     function openLocalHistoryDeleteConfirm(): void {
@@ -1162,20 +1170,117 @@
 
     {#if activeUtilityPanel === "jump-date"}
         <div class="post-history-utility-panel">
-            <label
+            <div
                 class="post-history-utility-label"
-                for="post-history-jump-date"
+                id="post-history-jump-date-label"
             >
                 {$_("postHistory.jumpToDateLabel")}
-            </label>
+            </div>
             <div class="post-history-utility-controls">
-                <input
-                    id="post-history-jump-date"
-                    bind:value={jumpDateInput}
-                    class="post-history-date-input"
-                    type="date"
-                    aria-label={$_("postHistory.jumpToDateLabel")}
-                />
+                <DatePicker.Root
+                    bind:value={jumpDateValue}
+                    bind:open={jumpDatePickerOpen}
+                    locale={$locale ?? undefined}
+                    calendarLabel={$_("postHistory.jumpToDateLabel")}
+                >
+                    <DatePicker.Input
+                        aria-labelledby="post-history-jump-date-label"
+                        class="post-history-date-picker-input"
+                    >
+                        {#snippet children({ segments })}
+                            {#each segments as segment, segmentIndex (`${segment.part}-${segmentIndex}`)}
+                                <DatePicker.Segment
+                                    class="post-history-date-picker-segment"
+                                    part={segment.part}
+                                >
+                                    {segment.value}
+                                </DatePicker.Segment>
+                            {/each}
+                        {/snippet}
+                    </DatePicker.Input>
+                    <DatePicker.Trigger
+                        class="post-history-date-picker-trigger"
+                        aria-label={$_("postHistory.jumpToDate")}
+                    >
+                        <div
+                            class="calendar-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                    </DatePicker.Trigger>
+                    <DatePicker.Portal>
+                        <DatePicker.Content
+                            sideOffset={8}
+                            class="post-history-date-picker-content"
+                        >
+                            <DatePicker.Calendar
+                                class="post-history-date-picker-calendar"
+                            >
+                                {#snippet children({ months, weekdays })}
+                                    <DatePicker.Header
+                                        class="post-history-date-picker-header"
+                                    >
+                                        <DatePicker.PrevButton
+                                            class="post-history-date-picker-nav"
+                                            aria-label="Previous month"
+                                        >
+                                            <span
+                                                class="post-history-date-picker-nav-icon post-history-date-picker-nav-icon-left svg-icon"
+                                                aria-hidden="true"
+                                            ></span>
+                                        </DatePicker.PrevButton>
+                                        <DatePicker.Heading
+                                            class="post-history-date-picker-heading"
+                                        />
+                                        <DatePicker.NextButton
+                                            class="post-history-date-picker-nav"
+                                            aria-label="Next month"
+                                        >
+                                            <span
+                                                class="post-history-date-picker-nav-icon post-history-date-picker-nav-icon-right svg-icon"
+                                                aria-hidden="true"
+                                            ></span>
+                                        </DatePicker.NextButton>
+                                    </DatePicker.Header>
+                                    {#each months as month, monthIndex (`${month.value.toString()}-${monthIndex}`)}
+                                        <DatePicker.Grid
+                                            class="post-history-date-picker-grid"
+                                        >
+                                            <DatePicker.GridHead>
+                                                <DatePicker.GridRow>
+                                                    {#each weekdays as weekday, weekdayIndex (`${weekday}-${weekdayIndex}`)}
+                                                        <DatePicker.HeadCell
+                                                            class="post-history-date-picker-weekday"
+                                                        >
+                                                            {weekday}
+                                                        </DatePicker.HeadCell>
+                                                    {/each}
+                                                </DatePicker.GridRow>
+                                            </DatePicker.GridHead>
+                                            <DatePicker.GridBody>
+                                                {#each month.weeks as week, weekIndex (`${month.value.toString()}-week-${weekIndex}`)}
+                                                    <DatePicker.GridRow>
+                                                        {#each week as dateValue, dateIndex (`${dateValue.toString()}-${dateIndex}`)}
+                                                            <DatePicker.Cell
+                                                                date={dateValue}
+                                                                month={month.value}
+                                                            >
+                                                                <DatePicker.Day
+                                                                    class="post-history-date-picker-day"
+                                                                >
+                                                                    {dateValue.day}
+                                                                </DatePicker.Day>
+                                                            </DatePicker.Cell>
+                                                        {/each}
+                                                    </DatePicker.GridRow>
+                                                {/each}
+                                            </DatePicker.GridBody>
+                                        </DatePicker.Grid>
+                                    {/each}
+                                {/snippet}
+                            </DatePicker.Calendar>
+                        </DatePicker.Content>
+                    </DatePicker.Portal>
+                </DatePicker.Root>
                 <Button
                     type="button"
                     variant="primary"
@@ -1194,7 +1299,7 @@
                     shape="square"
                     ariaLabel={$_("postHistory.hideJumpToDate")}
                     className="post-history-utility-button post-history-utility-close-button"
-                    onClick={() => (activeUtilityPanel = "none")}
+                    onClick={hideJumpDate}
                 >
                     <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
@@ -2360,7 +2465,10 @@
         align-items: center;
     }
 
-    .post-history-date-input {
+    .post-history-date-picker-input {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
         min-width: 0;
         padding: 0 12px;
         height: 40px;
@@ -2368,6 +2476,120 @@
         background: var(--background);
         color: var(--text);
         font: inherit;
+    }
+
+    :global(.post-history-date-picker-segment) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1ch;
+        min-height: 32px;
+        color: var(--text-muted);
+
+        &[role="spinbutton"] {
+            min-width: 40px;
+        }
+
+        &[data-segment="year"] {
+            min-width: 4ch;
+        }
+    }
+
+    :global(.post-history-date-picker-trigger) {
+        flex: 0 0 auto;
+        min-width: 40px;
+        min-height: 40px;
+        padding: 0;
+    }
+
+    :global(.post-history-date-picker-trigger .svg-icon) {
+        mask-image: url("/icons/calendar_month_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.post-history-date-picker-content) {
+        z-index: 110;
+        background-color: var(--dialog-bg2);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 12px 28px rgb(0 0 0 / 0.16);
+    }
+
+    :global(.post-history-date-picker-calendar) {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    :global(.post-history-date-picker-header) {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    :global(.post-history-date-picker-heading) {
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    :global(.post-history-date-picker-nav) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        background-color: var(--btn-bg2);
+        color: var(--text);
+    }
+
+    :global(.post-history-date-picker-nav-icon) {
+        width: 24px;
+        height: 24px;
+        background-color: currentColor;
+    }
+
+    :global(.post-history-date-picker-nav-icon-left) {
+        mask-image: url("/icons/keyboard_arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-date-picker-nav-icon-right) {
+        mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-date-picker-grid) {
+        border-collapse: separate;
+        border-spacing: 2px;
+    }
+
+    :global(.post-history-date-picker-weekday) {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        font-weight: 500;
+        text-align: center;
+    }
+
+    :global(.post-history-date-picker-day) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        font-size: 0.86rem;
+    }
+
+    :global(.post-history-date-picker-day[data-selected]) {
+        background: color-mix(in srgb, var(--theme), white 10%);
+        color: white;
+    }
+
+    :global(.post-history-date-picker-day[data-disabled]) {
+        opacity: 0.45;
     }
 
     :global(.post-history-utility-button) {
