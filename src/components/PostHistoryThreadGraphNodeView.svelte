@@ -1,8 +1,8 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
-    import PostHistoryRepliesActionButton from "./PostHistoryRepliesActionButton.svelte";
-    import PostHistoryThreadActionButton from "./PostHistoryThreadActionButton.svelte";
+    import PostHistoryRepliesToggleButton from "./PostHistoryRepliesToggleButton.svelte";
+    import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import { formatPostedAt } from "../lib/postHistoryDialogUtils";
@@ -135,10 +135,7 @@
             {#snippet topActions()}
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
-                        <PostHistoryThreadActionButton
-                            icon={state.parentExpansion.visibleParent
-                                ? "collapse-content"
-                                : "arrow-top-right"}
+                        <PostHistoryThreadToggleButton
                             className="post-history-parent-toggle-button"
                             ariaLabel={state.parentExpansion.visibleParent
                                 ? $_("postHistory.hideReplyTarget")
@@ -146,7 +143,7 @@
                             title={state.parentExpansion.visibleParent
                                 ? $_("postHistory.hideReplyTarget")
                                 : $_("postHistory.showReplyTarget")}
-                            selected={state.parentExpansion.visibleParent}
+                            expanded={state.parentExpansion.visibleParent}
                             loading={state.parentExpansion.visibleParent &&
                                 state.parentExpansion
                                     .showParentLoadingIndicator}
@@ -158,7 +155,7 @@
 
             <div class="post-preview-footer">
                 <span class="post-history-related-date">{postedAt}</span>
-                <PostHistoryRepliesActionButton
+                <PostHistoryRepliesToggleButton
                     state={state.repliesActionState}
                     ariaLabel={getRepliesActionLabel()}
                     onClick={handleRepliesAction}
@@ -216,15 +213,7 @@
     }
 
     :global(.post-preview-footer > .post-history-related-date) {
-        color: var(--text-muted);
         font-size: 0.875rem;
-    }
-
-    :global(.post-preview-replies-action-button) {
-        margin: auto;
-        --btn-bg: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
-        --svg: var(--btn-post-preview-action);
-        background: var(--btn-bg);
     }
 
     :global(.post-history-context-button) {

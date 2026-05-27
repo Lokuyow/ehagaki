@@ -951,7 +951,7 @@
             {/if}
             <DropdownMenu.Root bind:open={headingMenuOpen}>
                 <DropdownMenu.Trigger
-                    class="menu-trigger post-history-heading-menu-trigger"
+                    class={`menu-trigger post-history-menu-trigger post-history-heading-menu-trigger ${headingMenuOpen ? "is-open" : ""}`.trim()}
                     aria-label={$_("postHistory.openMenu")}
                 >
                     <div class="more-icon svg-icon"></div>
@@ -1468,7 +1468,7 @@
                                                     {#if onReplyPost}
                                                         <Button
                                                             type="button"
-                                                            class="post-preview-action-button"
+                                                            class="post-preview-action-button post-history-action-button"
                                                             ariaLabel={$_(
                                                                 "replyQuote.reply_label",
                                                             )}
@@ -1491,7 +1491,13 @@
                                                         {#if showRepliesBadge}
                                                             <Button
                                                                 type="button"
-                                                                class="post-preview-replies-badge-button"
+                                                                class={`post-preview-replies-badge-button ${
+                                                                    graphState
+                                                                        .repliesActionState
+                                                                        .visible
+                                                                        ? "is-selected"
+                                                                        : ""
+                                                                }`.trim()}
                                                                 ariaLabel={repliesActionLabel}
                                                                 title={repliesActionLabel}
                                                                 contentLayout="icon"
@@ -1505,7 +1511,7 @@
                                                                     )}
                                                             >
                                                                 <span
-                                                                    class="post-preview-replies-count post-preview-replies-badge"
+                                                                    class="post-preview-replies-count post-preview-replies-badge post-preview-replies-icon-wrapper"
                                                                     aria-hidden="true"
                                                                 >
                                                                     {graphState
@@ -1519,7 +1525,7 @@
                                                 {#if onQuotePost}
                                                     <Button
                                                         type="button"
-                                                        class="post-preview-action-button"
+                                                        class="post-preview-action-button post-history-action-button"
                                                         ariaLabel={$_(
                                                             "replyQuote.quote_label",
                                                         )}
@@ -1582,7 +1588,13 @@
                                                         )}
                                                 >
                                                     <DropdownMenu.Trigger
-                                                        class="menu-trigger"
+                                                        class={`menu-trigger post-history-menu-trigger ${
+                                                            postActionUi.isPostMenuOpen(
+                                                                post.eventId,
+                                                            )
+                                                                ? "is-open"
+                                                                : ""
+                                                        }`.trim()}
                                                         aria-label="アクションを表示"
                                                     >
                                                         <div
@@ -2044,17 +2056,41 @@
         gap: 4px;
     }
 
+    :global(
+            .post-history-action-button,
+            .post-preview-replies-badge-button,
+            .post-preview-reactions-button,
+            .post-history-replies-toggle-button,
+            .post-history-thread-toggle-button,
+            .post-history-menu-trigger
+        ) {
+        color: var(--btn-post-preview-action);
+    }
+
+    :global(
+            .post-history-action-button .svg-icon,
+            .post-preview-reactions-button .svg-icon,
+            .post-history-replies-toggle-button .svg-icon,
+            .post-history-thread-toggle-button .svg-icon,
+            .post-history-menu-trigger .more-icon
+        ) {
+        --svg: currentColor;
+    }
+
     :global(.menu-trigger) {
         aspect-ratio: 1;
         border-radius: 50%;
         --btn-bg: var(--dialog-bg);
-        --text: var(--btn-post-preview-action);
+        background-color: var(--dialog-bg);
+    }
+
+    :global(.post-history-menu-trigger) {
+        color: var(--btn-post-preview-action);
 
         .more-icon {
             mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 22px;
             height: 22px;
-            --svg: CurrentColor;
         }
     }
 
@@ -2062,15 +2098,13 @@
         min-height: 50px;
         padding: 0;
         background-color: var(--dialog-bg);
-        --text: var(--text-muted);
+        color: var(--text-muted);
         border-radius: 0;
     }
 
     :global(.menu-trigger.post-history-heading-menu-trigger .more-icon) {
-        mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 28px;
         height: 28px;
-        --svg: CurrentColor;
     }
 
     .post-history-heading-summary {
@@ -2654,6 +2688,11 @@
         }
     }
 
+    :global(.post-preview-date),
+    :global(.post-history-related-date) {
+        color: var(--text-muted);
+    }
+
     .post-preview-footer {
         display: flex;
         align-items: stretch;
@@ -2713,10 +2752,6 @@
             --btn-bg: var(--dialog-bg);
             background-color: var(--dialog-bg);
             position: relative;
-
-            :global(.svg-icon) {
-                --svg: var(--btn-post-preview-action);
-            }
         }
 
         :global(.post-preview-replies-badge-button) {
@@ -2729,13 +2764,6 @@
             justify-content: center;
             --btn-bg: var(--dialog-bg);
             color: var(--btn-post-preview-action);
-        }
-
-        :global(
-                .post-preview-replies-badge-button.selected:not(:hover)
-                    .post-preview-replies-badge
-            ) {
-            background-color: var(--text-light);
         }
 
         .post-preview-replies-badge {
@@ -2761,21 +2789,79 @@
             --btn-bg: var(--dialog-bg);
             background-color: var(--dialog-bg);
             color: var(--btn-post-preview-action);
+        }
+    }
 
-            :global(.svg-icon) {
-                --svg: var(--btn-post-preview-action);
-                width: 22px;
-                height: 22px;
-            }
+    :global(.post-preview-reactions-button .svg-icon) {
+        width: 22px;
+        height: 22px;
+    }
+
+    :global(
+            .post-history-thread-toggle-button.selected:not(:hover),
+            .post-history-thread-toggle-button.is-selected:not(:hover),
+            .post-history-replies-toggle-button.selected:not(:hover),
+            .post-history-replies-toggle-button.is-selected:not(:hover),
+            .post-preview-replies-badge-button.selected:not(:hover),
+            .post-preview-replies-badge-button.is-selected:not(:hover)
+        ) {
+        background-color: transparent;
+        color: var(--text-light);
+    }
+
+    :global(
+            .post-history-replies-toggle-button.selected:not(:hover)
+                .post-history-replies-toggle-badge,
+            .post-history-replies-toggle-button.is-selected:not(:hover)
+                .post-history-replies-toggle-badge,
+            .post-preview-replies-badge-button.selected:not(:hover)
+                .post-preview-replies-badge,
+            .post-preview-replies-badge-button.is-selected:not(:hover)
+                .post-preview-replies-badge
+        ) {
+        background-color: var(--text-light);
+    }
+
+    @media (min-width: 601px) {
+        :global(.post-history-replies-toggle-button:hover:not(:disabled)) {
+            color: color-mix(in srgb, var(--text), white 50%);
         }
 
-        @media (min-width: 601px) {
-            :global(
-                    .post-preview-replies-badge-button:hover:not(:disabled)
-                        .post-preview-replies-badge
-                ) {
-                background-color: var(--text);
-            }
+        :global(
+                .post-history-replies-toggle-button:hover:not(:disabled)
+                    .post-history-replies-toggle-badge,
+                .post-preview-replies-badge-button:hover:not(:disabled)
+                    .post-preview-replies-badge
+            ) {
+            background-color: var(--text);
+        }
+
+        :global(
+                :root.light
+                    .post-history-thread-toggle-button.selected:hover:not(
+                        :disabled
+                    ),
+                :root.light
+                    .post-history-thread-toggle-button.is-selected:hover:not(
+                        :disabled
+                    )
+            ) {
+            background-color: color-mix(in srgb, var(--dialog-bg), black 20%);
+            color: color-mix(in srgb, var(--text), black 20%);
+        }
+
+        :global(
+                :root.dark
+                    .post-history-thread-toggle-button.selected:hover:not(
+                        :disabled
+                    ),
+                :root.dark
+                    .post-history-thread-toggle-button.is-selected:hover:not(
+                        :disabled
+                    )
+            ) {
+            background-color: color-mix(in srgb, var(--dialog-bg), white 30%);
+            color: color-mix(in srgb, var(--text), white 30%);
         }
     }
 
