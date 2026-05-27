@@ -169,7 +169,6 @@
         <div class="post-history-context-actions">
             {#if !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                 <PostHistoryThreadToggleButton
-                    className="post-history-parent-toggle-button"
                     ariaLabel={state.parentExpansion.visibleParent
                         ? $_("postHistory.hideReplyTarget")
                         : $_("postHistory.showReplyTarget")}

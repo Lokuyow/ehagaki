@@ -7,7 +7,6 @@
         title?: string;
         loading?: boolean;
         onClick: () => void;
-        className?: string;
     }
 
     let {
@@ -16,7 +15,6 @@
         title = ariaLabel,
         loading = false,
         onClick,
-        className = "",
     }: Props = $props();
 
     let stateClassName = $derived(
@@ -28,7 +26,7 @@
 
 <Button
     type="button"
-    className={`post-history-thread-toggle-button ${stateClassName} ${className}`.trim()}
+    className={`post-history-thread-toggle-button ${stateClassName}`.trim()}
     {ariaLabel}
     {title}
     contentLayout="icon"

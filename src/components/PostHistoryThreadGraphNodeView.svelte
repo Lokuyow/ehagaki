@@ -179,7 +179,6 @@
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
                         <PostHistoryThreadToggleButton
-                            className="post-history-parent-toggle-button"
                             ariaLabel={state.parentExpansion.visibleParent
                                 ? $_("postHistory.hideReplyTarget")
                                 : $_("postHistory.showReplyTarget")}
