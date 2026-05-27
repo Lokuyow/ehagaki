@@ -385,6 +385,42 @@
         justify-content: flex-end;
     }
 
+    .post-preview-footer-right :global(.menu-trigger.post-history-menu-trigger) {
+        --btn-bg: var(--post-history-related-card-bg, var(--dialog-bg));
+        background-color: var(--post-history-related-card-bg, var(--dialog-bg));
+    }
+
+    .post-preview-footer :global(.post-preview-replies-badge-button) {
+        width: 36px;
+        min-width: 36px;
+        min-height: auto;
+        --btn-bg: var(--post-history-related-card-bg, var(--dialog-bg));
+        background-color: var(--post-history-related-card-bg, var(--dialog-bg));
+        color: var(--btn-post-preview-action);
+    }
+
+    .post-preview-footer .post-preview-replies-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1;
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        border-radius: 999px;
+        background: var(--btn-post-preview-action);
+        color: var(--post-history-related-card-bg, var(--dialog-bg));
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    @media (min-width: 601px) {
+        .post-preview-footer :global(.post-preview-replies-badge-button:hover:not(:disabled)) {
+            color: color-mix(in srgb, var(--text), white 50%);
+        }
+    }
+
     :global(.post-preview-footer > .post-history-related-date) {
         font-size: 0.875rem;
     }

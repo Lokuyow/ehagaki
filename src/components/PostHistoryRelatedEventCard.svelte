@@ -109,8 +109,13 @@
 <style>
     .post-history-related-card {
         display: grid;
+        --post-history-related-card-bg: color-mix(
+            in srgb,
+            var(--dialog-bg),
+            var(--border-hr) 24%
+        );
         border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
-        background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
+        background: var(--post-history-related-card-bg);
         color: var(--text);
         font-size: 0.9rem;
         padding-left: 2px;
