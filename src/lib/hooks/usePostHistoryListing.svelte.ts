@@ -1492,6 +1492,10 @@ export function usePostHistoryListing({
         visibleUntil: number | null,
         currentPosts: PostHistoryRecord[] = state.loadedPosts,
     ): boolean {
+        if (state.hasJumpCacheAnchors) {
+            return true;
+        }
+
         const currentOldestCreatedAt =
             currentPosts.length > 0
                 ? currentPosts[currentPosts.length - 1]?.createdAt ?? null
@@ -1642,7 +1646,7 @@ export function usePostHistoryListing({
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
         await refreshJumpCacheAnchorAvailability(pubkeyHex);
         const [count, latestPosts] = await Promise.all([
-            countVisiblePosts(pubkeyHex, visibleUntil),
+            countDisplayPosts(pubkeyHex, visibleUntil),
             postHistoryRepository.getLatestVisibleChunk({
                 pubkeyHex,
                 limit: pageSize,
@@ -1678,7 +1682,7 @@ export function usePostHistoryListing({
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
         const [count, olderPosts] = await Promise.all([
-            countVisiblePosts(pubkeyHex, visibleUntil),
+            countDisplayPosts(pubkeyHex, visibleUntil, state.loadedPosts),
             state.loadedPosts.length > 1
                 ? postHistoryRepository.getOlderVisibleChunk({
                     pubkeyHex,
