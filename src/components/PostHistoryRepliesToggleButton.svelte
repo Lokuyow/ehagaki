@@ -17,10 +17,7 @@
     let { state, ariaLabel, onClick }: Props = $props();
 
     let stateClassName = $derived(
-        [
-            state.visible ? "is-selected" : "",
-            state.status === "loading" ? "is-loading" : "",
-        ]
+        [state.status === "loading" ? "is-loading" : ""]
             .filter(Boolean)
             .join(" "),
     );

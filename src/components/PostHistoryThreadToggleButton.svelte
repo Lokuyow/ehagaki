@@ -18,9 +18,7 @@
     }: Props = $props();
 
     let stateClassName = $derived(
-        [expanded ? "is-selected" : "", loading ? "is-loading" : ""]
-            .filter(Boolean)
-            .join(" "),
+        [loading ? "is-loading" : ""].filter(Boolean).join(" "),
     );
 </script>
 

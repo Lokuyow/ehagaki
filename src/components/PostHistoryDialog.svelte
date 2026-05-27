@@ -1571,13 +1571,7 @@
                                                         {#if showRepliesBadge}
                                                             <Button
                                                                 type="button"
-                                                                class={`post-preview-replies-badge-button ${
-                                                                    graphState
-                                                                        .repliesActionState
-                                                                        .visible
-                                                                        ? "is-selected"
-                                                                        : ""
-                                                                }`.trim()}
+                                                                class="post-preview-replies-badge-button"
                                                                 ariaLabel={repliesActionLabel}
                                                                 title={repliesActionLabel}
                                                                 contentLayout="icon"
@@ -2881,11 +2875,8 @@
 
     :global(
             .post-history-thread-toggle-button.selected:not(:hover),
-            .post-history-thread-toggle-button.is-selected:not(:hover),
             .post-history-replies-toggle-button.selected:not(:hover),
-            .post-history-replies-toggle-button.is-selected:not(:hover),
-            .post-preview-replies-badge-button.selected:not(:hover),
-            .post-preview-replies-badge-button.is-selected:not(:hover)
+            .post-preview-replies-badge-button.selected:not(:hover)
         ) {
         background-color: transparent;
         color: var(--text-light);
@@ -2894,11 +2885,7 @@
     :global(
             .post-history-replies-toggle-button.selected:not(:hover)
                 .post-history-replies-toggle-badge,
-            .post-history-replies-toggle-button.is-selected:not(:hover)
-                .post-history-replies-toggle-badge,
             .post-preview-replies-badge-button.selected:not(:hover)
-                .post-preview-replies-badge,
-            .post-preview-replies-badge-button.is-selected:not(:hover)
                 .post-preview-replies-badge
         ) {
         background-color: var(--text-light);
@@ -2922,10 +2909,6 @@
                 :root.light
                     .post-history-thread-toggle-button.selected:hover:not(
                         :disabled
-                    ),
-                :root.light
-                    .post-history-thread-toggle-button.is-selected:hover:not(
-                        :disabled
                     )
             ) {
             background-color: color-mix(in srgb, var(--dialog-bg), black 20%);
@@ -2935,10 +2918,6 @@
         :global(
                 :root.dark
                     .post-history-thread-toggle-button.selected:hover:not(
-                        :disabled
-                    ),
-                :root.dark
-                    .post-history-thread-toggle-button.is-selected:hover:not(
                         :disabled
                     )
             ) {

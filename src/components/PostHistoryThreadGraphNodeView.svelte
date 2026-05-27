@@ -204,11 +204,7 @@
                         {#if showRepliesBadge}
                             <Button
                                 type="button"
-                                class={`post-preview-replies-badge-button ${
-                                    state.repliesActionState.visible
-                                        ? "is-selected"
-                                        : ""
-                                }`.trim()}
+                                class="post-preview-replies-badge-button"
                                 ariaLabel={getRepliesActionLabel()}
                                 title={getRepliesActionLabel()}
                                 contentLayout="icon"
