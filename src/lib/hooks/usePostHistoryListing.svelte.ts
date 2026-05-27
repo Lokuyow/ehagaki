@@ -1681,23 +1681,39 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const [count, olderPosts] = await Promise.all([
-            countDisplayPosts(pubkeyHex, visibleUntil, state.loadedPosts),
-            state.loadedPosts.length > 1
-                ? postHistoryRepository.getOlderVisibleChunk({
+        const isSparseContext = isSparseListingContext(
+            visibleUntil,
+            state.loadedPosts,
+        );
+        const [count, nextPosts] = isSparseContext
+            ? await Promise.all([
+                countDisplayPosts(pubkeyHex, visibleUntil, state.loadedPosts),
+                postHistoryRepository.getVisibleChunkFromCreatedAt({
                     pubkeyHex,
                     visibleUntil,
-                    cursor: newestCursor,
-                    limit: state.loadedPosts.length - 1,
-                })
-                : Promise.resolve([]),
-        ]);
+                    createdAt: newestPost.createdAt,
+                    limit: state.loadedPosts.length,
+                    query: {
+                        contiguous: false,
+                    },
+                }),
+            ])
+            : await Promise.all([
+                countDisplayPosts(pubkeyHex, visibleUntil, state.loadedPosts),
+                state.loadedPosts.length > 1
+                    ? postHistoryRepository.getOlderVisibleChunk({
+                        pubkeyHex,
+                        visibleUntil,
+                        cursor: newestCursor,
+                        limit: state.loadedPosts.length - 1,
+                    }).then((olderPosts) => [newestPost, ...olderPosts])
+                    : Promise.resolve([newestPost]),
+            ]);
 
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
-        const nextPosts = [newestPost, ...olderPosts];
         state.totalCount = count;
         state.loadedPosts = nextPosts;
         void prefetchCurrentPageMedia(nextPosts);
