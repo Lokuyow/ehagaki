@@ -56,15 +56,34 @@ function createReply(overrides: Partial<NostrEvent> = {}): NostrEvent {
     };
 }
 
+function createReaction(overrides: Partial<NostrEvent> = {}): NostrEvent {
+    return {
+        id: "6".repeat(64),
+        pubkey: "e".repeat(64),
+        kind: 7,
+        content: "+",
+        tags: [],
+        created_at: 102,
+        sig: "f".repeat(128),
+        ...overrides,
+    };
+}
+
 describe("PostHistoryVisibleRangeReplyRepairService", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
     });
 
-    it("visible kind:1 parentを#e filterで取得し、direct replyだけ保存へ渡す", async () => {
+    it("visible kind:1 parentを#e filterで取得し、direct replyとreactionを保存へ渡す", async () => {
         const kind1Parent = "1".repeat(64);
         const kind42Parent = "2".repeat(64);
+        const upsertChildInteractions = vi.fn(async () => ({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 0,
+        }));
         const saveRepairDirectReplies = vi.fn(() => ({
             promise: Promise.resolve({
                 status: "saved",
@@ -77,6 +96,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
         }));
         const service = new PostHistoryVisibleRangeReplyRepairService({
             directReplySaveService: { saveRepairDirectReplies } as any,
+            childInteractionsRepository: { upsertChildInteractions } as any,
             setTimeoutFn: (() => 1) as any,
             clearTimeoutFn: vi.fn(),
             now: () => 500,
@@ -99,6 +119,19 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
                     }),
                     from: "wss://relay.example.com",
                 });
+                next({
+                    event: createReaction({
+                        tags: [["e", kind1Parent, "", "reply"]],
+                    }),
+                    from: "wss://relay.example.com",
+                });
+                next({
+                    event: createReaction({
+                        id: "7".repeat(64),
+                        tags: [["e", "8".repeat(64), "", "reply"]],
+                    }),
+                    from: "wss://relay.example.com",
+                });
                 complete();
                 return { unsubscribe: vi.fn() };
             },
@@ -111,7 +144,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
         }).promise;
 
         expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1],
+            kinds: [1, 7],
             "#e": [kind1Parent],
             limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
         }]);
@@ -125,6 +158,15 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
                 relayUrls: ["wss://relay.example.com/"],
             }],
         }));
+        expect(upsertChildInteractions).toHaveBeenCalledTimes(1);
+        expect(upsertChildInteractions).toHaveBeenCalledWith({
+            parentEventId: kind1Parent,
+            events: [{
+                event: expect.objectContaining({ id: "6".repeat(64), kind: 7 }),
+                relayUrls: ["wss://relay.example.com/"],
+            }],
+            fetchedAt: 500,
+        });
         expect(result).toMatchObject({
             targetParentEventIds: [kind1Parent],
             checkedParentEventIds: [kind1Parent],

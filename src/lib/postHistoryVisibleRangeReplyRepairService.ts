@@ -10,9 +10,17 @@ import {
     type PostHistoryDirectReplyRepairSaveTask,
 } from "./postHistoryDirectReplyRepairSaveService";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
-import { parseKind1ThreadReferences } from "./postHistoryNip10Utils";
+import {
+    parseKind1ThreadReferences,
+    resolveKind7ReactionTargetEventId,
+} from "./postHistoryNip10Utils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
+import {
+    postHistoryChildInteractionsRepository,
+    type PostHistoryChildInteractionItem,
+    type PostHistoryChildInteractionsRepository,
+} from "./storage/postHistoryReplyEventsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 
 export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_PARENT_LIMIT = 150;
@@ -49,6 +57,7 @@ export interface PostHistoryVisibleRangeReplyRepairTask {
 
 export interface PostHistoryVisibleRangeReplyRepairServiceDeps {
     directReplySaveService?: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
+    childInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
@@ -79,6 +88,12 @@ type EventAccumulator = {
 type ParentChunk = {
     posts: PostHistoryRecord[];
     depth: 0 | 1;
+};
+
+type PostHistoryVisibleRangeReactionItem = {
+    parentEventId: string;
+    event: NostrEvent;
+    relayUrls: string[];
 };
 
 const EMPTY_RESULT: PostHistoryVisibleRangeReplyRepairResult = {
@@ -142,6 +157,7 @@ function toResultItems(eventsById: Map<string, EventAccumulator>) {
 
 export class PostHistoryVisibleRangeReplyRepairService {
     private directReplySaveService: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
+    private childInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
@@ -150,6 +166,8 @@ export class PostHistoryVisibleRangeReplyRepairService {
     constructor(deps: PostHistoryVisibleRangeReplyRepairServiceDeps = {}) {
         this.directReplySaveService =
             deps.directReplySaveService ?? postHistoryDirectReplyRepairSaveService;
+        this.childInteractionsRepository =
+            deps.childInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -229,39 +247,60 @@ export class PostHistoryVisibleRangeReplyRepairService {
                             chunk.posts,
                             candidateResult.items,
                         );
+                        const reactionItems = this.toReactionItems(
+                            chunk.posts,
+                            candidateResult.items,
+                        );
                         const canMarkChunkChecked =
                             candidateResult.status === "success"
                             && !candidateResult.saturated;
-                        if (repairItems.length === 0) {
+                        if (repairItems.length === 0 && reactionItems.length === 0) {
                             if (canMarkChunkChecked) {
                                 chunk.posts.forEach((post) => checkedParentEventIds.add(post.eventId));
                             }
                             continue;
                         }
 
-                        const saveTask = this.directReplySaveService.saveRepairDirectReplies(rxNostr, {
-                            items: repairItems,
-                            relayHints: [
-                                ...this.collectParentRelayHints(chunk.posts),
-                                ...candidateResult.relayUrls,
-                            ],
-                            relayConfig: params.relayConfig,
-                            fetchedAt: candidateResult.fetchedAt,
-                            isActive,
-                        });
-                        saveTasks.add(saveTask);
-                        const saveResult = await saveTask.promise;
-                        saveTasks.delete(saveTask);
-                        if (!isActive() || saveResult.status === "cancelled") {
-                            return;
+                        if (repairItems.length > 0) {
+                            const saveTask = this.directReplySaveService.saveRepairDirectReplies(rxNostr, {
+                                items: repairItems,
+                                relayHints: [
+                                    ...this.collectParentRelayHints(chunk.posts),
+                                    ...candidateResult.relayUrls,
+                                ],
+                                relayConfig: params.relayConfig,
+                                fetchedAt: candidateResult.fetchedAt,
+                                isActive,
+                            });
+                            saveTasks.add(saveTask);
+                            const saveResult = await saveTask.promise;
+                            saveTasks.delete(saveTask);
+                            if (!isActive() || saveResult.status === "cancelled") {
+                                return;
+                            }
+
+                            saveResult.savedParentEventIds.forEach((eventId) =>
+                                savedParentEventIds.add(eventId)
+                            );
+                            savedDirectReplyCount += saveResult.savedDirectReplyCount;
+                            deletionConfirmationIncomplete =
+                                deletionConfirmationIncomplete || saveResult.deletionConfirmationIncomplete;
                         }
 
-                        saveResult.savedParentEventIds.forEach((eventId) =>
-                            savedParentEventIds.add(eventId)
-                        );
-                        savedDirectReplyCount += saveResult.savedDirectReplyCount;
-                        deletionConfirmationIncomplete =
-                            deletionConfirmationIncomplete || saveResult.deletionConfirmationIncomplete;
+                        if (reactionItems.length > 0) {
+                            const reactionSaveResult = await this.saveReactionInteractions(
+                                reactionItems,
+                                candidateResult.fetchedAt,
+                                isActive,
+                            );
+                            if (!isActive()) {
+                                return;
+                            }
+
+                            reactionSaveResult.savedParentEventIds.forEach((eventId) =>
+                                savedParentEventIds.add(eventId)
+                            );
+                        }
                         if (canMarkChunkChecked) {
                             chunk.posts.forEach((post) => checkedParentEventIds.add(post.eventId));
                         }
@@ -336,6 +375,66 @@ export class PostHistoryVisibleRangeReplyRepairService {
         });
     }
 
+    private toReactionItems(
+        posts: PostHistoryRecord[],
+        items: Array<{ event: NostrEvent; relayUrls: string[] }>,
+    ): PostHistoryVisibleRangeReactionItem[] {
+        const parentEventIds = new Set(posts.map((post) => post.eventId));
+        return items.flatMap((item) => {
+            if (item.event.kind !== 7) {
+                return [];
+            }
+
+            const parentEventId = resolveKind7ReactionTargetEventId(item.event);
+            if (!parentEventId || !parentEventIds.has(parentEventId) || item.event.id === parentEventId) {
+                return [];
+            }
+
+            return [{
+                parentEventId,
+                event: item.event,
+                relayUrls: item.relayUrls,
+            }];
+        });
+    }
+
+    private async saveReactionInteractions(
+        items: PostHistoryVisibleRangeReactionItem[],
+        fetchedAt: number,
+        isActive: () => boolean,
+    ): Promise<{ savedParentEventIds: string[] }> {
+        const itemsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
+        for (const item of items) {
+            const parentItems = itemsByParentId.get(item.parentEventId) ?? [];
+            parentItems.push({
+                event: item.event,
+                relayUrls: item.relayUrls,
+            });
+            itemsByParentId.set(item.parentEventId, parentItems);
+        }
+
+        const savedParentEventIds: string[] = [];
+        for (const [parentEventId, events] of itemsByParentId.entries()) {
+            if (!isActive()) {
+                break;
+            }
+
+            const result = await this.childInteractionsRepository.upsertChildInteractions({
+                parentEventId,
+                events,
+                fetchedAt,
+            });
+            const savedCount = result.insertedCount + result.updatedCount;
+            if (savedCount > 0) {
+                savedParentEventIds.push(parentEventId);
+            }
+        }
+
+        return {
+            savedParentEventIds,
+        };
+    }
+
     private fetchCandidates(
         rxNostr: RxNostr,
         posts: PostHistoryRecord[],
@@ -408,7 +507,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
                 });
 
                 rxReq.emit({
-                    kinds: [1],
+                    kinds: [1, 7],
                     "#e": parentEventIds,
                     limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
                 } as never);
@@ -435,7 +534,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
         packet: { event?: NostrEvent; from?: string },
     ): void {
         const event = packet.event;
-        if (!event?.id || event.kind !== 1) {
+        if (!event?.id || (event.kind !== 1 && event.kind !== 7)) {
             return;
         }
 
