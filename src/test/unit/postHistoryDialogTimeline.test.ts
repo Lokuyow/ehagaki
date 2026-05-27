@@ -12,6 +12,7 @@ import {
     jumpCacheAnchorRepositoryMock,
     openPostHistoryMenu,
     postMediaCacheServiceMock,
+    replyRepairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
     relayFetchServiceMock,
@@ -410,6 +411,13 @@ describe('PostHistoryDialog timeline navigation', () => {
                 expect.objectContaining({
                     reason: 'repair-visible-range',
                     pubkeyHex: PUBKEY_HEX,
+                }),
+            );
+            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledWith(
+                expect.any(Object),
+                expect.objectContaining({
+                    ownerPubkeyHex: PUBKEY_HEX,
+                    visiblePosts: [fetchedAroundTarget],
                 }),
             );
         });

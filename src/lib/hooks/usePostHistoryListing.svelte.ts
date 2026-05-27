@@ -845,6 +845,47 @@ export function usePostHistoryListing({
         }).catch(() => undefined);
     }
 
+    async function repairCurrentViewRepliesAndReactions(
+        pubkeyHex: string,
+        rxNostr: RxNostr,
+        visiblePosts: PostHistoryRecord[],
+        isActive: () => boolean,
+    ): Promise<void> {
+        if (visiblePosts.length === 0) {
+            return;
+        }
+
+        scheduleReactionDeletionRefresh(
+            "listing-current-view",
+            visiblePosts.map((post) => post.eventId),
+            isActive,
+        );
+
+        const replyRepairTask =
+            postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+                rxNostr,
+                {
+                    ownerPubkeyHex: pubkeyHex,
+                    visiblePosts,
+                    relayConfig: getRelayConfig(),
+                    isActive,
+                },
+            );
+        const replyRepairResult = await replyRepairTask.promise;
+        if (
+            replyRepairResult.status === "cancelled"
+            || !isActive()
+            || replyRepairResult.savedParentEventIds.length === 0
+        ) {
+            return;
+        }
+
+        await onReplyBadgeRefreshRequested(
+            state.loadedPosts,
+            replyRepairResult.savedParentEventIds,
+        );
+    }
+
     function resolveOlderRevealReplyRepairNetworkParentPosts(
         parentPosts: PostHistoryRecord[],
         nowMs: number,
@@ -2230,6 +2271,17 @@ export function usePostHistoryListing({
         resetOlderBackfillSearchState();
         void prefetchCurrentPageMedia(sparseDatePosts);
         await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
+        void repairCurrentViewRepliesAndReactions(
+            pubkeyHex,
+            rxNostr,
+            sparseDatePosts,
+            () => (
+                getShow()
+                && getPubkeyHex() === pubkeyHex
+                && getRxNostr() === rxNostr
+                && requestId === loadRequestId
+            ),
+        );
         return true;
     }
 
