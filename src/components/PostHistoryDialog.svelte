@@ -2878,7 +2878,7 @@
             .post-history-replies-toggle-button.selected:not(:hover),
             .post-preview-replies-badge-button.selected:not(:hover)
         ) {
-        background-color: transparent;
+        --btn-bg: var(--dialog-bg);
         color: var(--text-light);
     }
 
