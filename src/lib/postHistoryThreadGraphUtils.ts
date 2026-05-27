@@ -44,9 +44,9 @@ export interface PostHistoryThreadGraphExpansionState {
     lastFetchedChildrenAt: number | null;
 }
 
-const POST_HISTORY_THREAD_CONTEXT_PARENT_WINDOW_DEPTH = 3;
+const POST_HISTORY_THREAD_CONTEXT_PARENT_WINDOW_DEPTH = 5;
 const POST_HISTORY_THREAD_CONTEXT_INDENT_STEP_REM = 0.5;
-const POST_HISTORY_THREAD_CONTEXT_MAX_INDENT_REM = 1.5;
+const POST_HISTORY_THREAD_CONTEXT_MAX_INDENT_REM = 2.5;
 
 export function buildAnchorNodeKey(anchorEventId: string, nodeEventId: string): string {
     return `${anchorEventId}:${nodeEventId}`;
