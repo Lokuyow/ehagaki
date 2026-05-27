@@ -1687,6 +1687,117 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('日付ジャンプで frontier より古い sparse window を表示中はその最古投稿を上限に older-backfill を開始する', async () => {
+        let visibleUntil: number | null = 100;
+        const latest = createRecord({
+            eventId: 'sparse-window-latest',
+            content: '現在の投稿',
+            createdAt: 150,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const sparseJumpAnchor = createRecord({
+            eventId: 'sparse-window-anchor',
+            content: '日付ジャンプ先の投稿',
+            createdAt: 50,
+            postedAt: Date.UTC(2023, 0, 1, 0, 0, 0),
+        });
+
+        visibleRangeRepositoryMock.get.mockImplementation(async () =>
+            visibleUntil === null
+                ? null
+                : {
+                    pubkeyHex: PUBKEY_HEX,
+                    kindsKey: '1,42',
+                    visibleUntil,
+                    updatedAt: 1000,
+                },
+        );
+        visibleRangeRepositoryMock.save.mockImplementation(async (range: {
+            pubkeyHex: string;
+            kindsKey: string;
+            visibleUntil: number | null;
+        }) => {
+            visibleUntil = range.visibleUntil;
+            return {
+                ...range,
+                updatedAt: 1000,
+            };
+        });
+
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([
+            sparseJumpAnchor,
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    hasMore: true,
+                    nextUntil: 500,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('現在の投稿')).toBeTruthy();
+        });
+
+        await clickMenuAction('日付へ移動');
+        await fireEvent.input(screen.getByLabelText('日付'), {
+            target: { value: '2023-01-01' },
+        });
+        await fireEvent.click(
+            document.querySelector('.post-history-utility-submit-button') as HTMLButtonElement,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('日付ジャンプ先の投稿')).toBeTruthy();
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    reason: 'older-backfill',
+                    since: 0,
+                    until: 49,
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
     it('1回目 changed=false、2回目 changed=true かつ pageSize 到達なら同一クリック内で2回fetchして停止する', async () => {
         const initialWindowSeconds = 12 * 60 * 60;
         const latest = createRecord({

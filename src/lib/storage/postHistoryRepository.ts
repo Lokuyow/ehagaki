@@ -51,7 +51,12 @@ export type PostHistoryVisibleChunkCursorOptions =
 export type PostHistoryVisibleChunkFromCreatedAtOptions =
     PostHistoryVisibleChunkOptions & {
         createdAt: number;
+        query?: PostHistoryDateChunkQuery;
     };
+
+export type PostHistoryDateChunkQuery = {
+    contiguous?: boolean;
+};
 
 export type PostHistoryVisibleChunkAroundEventIdOptions =
     PostHistoryVisibleChunkOptions & {
@@ -132,6 +137,14 @@ function normalizeChunkLimit(limit: number): number {
 
 function normalizeCreatedAtValue(createdAt: number): number {
     return Number.isFinite(createdAt) ? Math.trunc(createdAt) : 0;
+}
+
+function normalizePostHistoryDateChunkQuery(
+    query: PostHistoryDateChunkQuery | undefined,
+): { contiguous: boolean } {
+    return {
+        contiguous: query?.contiguous !== false,
+    };
 }
 
 function comparePostHistoryTimelineOrder(
@@ -411,7 +424,10 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     ): Promise<PostHistoryRecord[]> {
         const limit = normalizeChunkLimit(options.limit);
         const targetCreatedAt = normalizeCreatedAtValue(options.createdAt);
-        const records = await this.getVisibleAll(options);
+        const query = normalizePostHistoryDateChunkQuery(options.query);
+        const records = query.contiguous
+            ? await this.getVisibleAll(options)
+            : await this.getAll(options);
 
         if (records.length === 0) {
             return [];

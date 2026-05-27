@@ -71,6 +71,13 @@ const hoisted = vi.hoisted(() => {
             save: vi.fn(),
             clearForPubkey: vi.fn(),
         },
+        jumpCacheAnchorRepositoryMock: {
+            getForPubkey: vi.fn(),
+            addForPubkey: vi.fn(),
+            hasNearbyAnchorForPubkey: vi.fn(),
+            reconcileWithFrontier: vi.fn(),
+            clearForPubkey: vi.fn(),
+        },
         repairCursorRepositoryMock: {
             clearForPubkey: vi.fn(),
         },
@@ -134,6 +141,7 @@ const hoisted = vi.hoisted(() => {
 const mockTranslate = hoisted.mockTranslate;
 export const repositoryMock = hoisted.repositoryMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
+export const jumpCacheAnchorRepositoryMock = hoisted.jumpCacheAnchorRepositoryMock;
 export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
 export const syncCoverageRepositoryMock = hoisted.syncCoverageRepositoryMock;
 export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
@@ -182,6 +190,14 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     return {
         ...actual,
         postHistoryVisibleRangeRepository: hoisted.visibleRangeRepositoryMock,
+    };
+});
+
+vi.mock('../../lib/storage/postHistoryJumpCacheAnchorRepository', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/storage/postHistoryJumpCacheAnchorRepository')>('../../lib/storage/postHistoryJumpCacheAnchorRepository');
+    return {
+        ...actual,
+        postHistoryJumpCacheAnchorRepository: hoisted.jumpCacheAnchorRepositoryMock,
     };
 });
 
@@ -375,6 +391,17 @@ export function resetPostHistoryDialogHarness(): void {
     visibleRangeRepositoryMock.get.mockResolvedValue(null);
     visibleRangeRepositoryMock.save.mockResolvedValue(null);
     visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+    jumpCacheAnchorRepositoryMock.getForPubkey.mockResolvedValue([]);
+    jumpCacheAnchorRepositoryMock.addForPubkey.mockResolvedValue([]);
+    jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(false);
+    jumpCacheAnchorRepositoryMock.reconcileWithFrontier.mockImplementation(async (input: {
+        frontierVisibleUntil: number;
+    }) => ({
+        nextVisibleUntil: input.frontierVisibleUntil,
+        removedCount: 0,
+        anchors: [],
+    }));
+    jumpCacheAnchorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
     repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
     syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
     syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);

@@ -52,6 +52,7 @@ import {
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
 import { postHistoryChildInteractionsRepository } from "../storage/postHistoryReplyEventsRepository";
+import { postHistoryJumpCacheAnchorRepository } from "../storage/postHistoryJumpCacheAnchorRepository";
 import {
     buildPostHistoryVisibleKindsKey,
     postHistoryVisibleRangeRepository,
@@ -299,8 +300,27 @@ const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
     ...POST_HISTORY_FETCH_KINDS,
 ]);
 const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
+const POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS = 3 * 24 * 60 * 60;
+const POST_HISTORY_JUMP_FETCH_LIMIT = 100;
+const POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS = 12 * 60 * 60;
 export const POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS =
     5 * 60 * 1000;
+
+function didDateChunkMissTarget(
+    chunk: PostHistoryRecord[],
+    targetCreatedAt: number,
+): boolean {
+    if (chunk.length === 0) {
+        return true;
+    }
+
+    const oldestChunkCreatedAt = chunk[chunk.length - 1]?.createdAt;
+    if (!Number.isFinite(oldestChunkCreatedAt)) {
+        return true;
+    }
+
+    return (oldestChunkCreatedAt ?? 0) > targetCreatedAt;
+}
 
 export function resolveOlderRevealReplyRepairNetworkParentIds(
     parentEventIds: string[],
@@ -1066,6 +1086,14 @@ export function usePostHistoryListing({
     ): Promise<number | null> {
         if (typeof olderBackfillSearch.nextUntil === "number") {
             return olderBackfillSearch.nextUntil;
+        }
+
+        if (
+            typeof state.visibleUntil === "number"
+            && typeof visibleOldestCreatedAt === "number"
+            && visibleOldestCreatedAt < state.visibleUntil
+        ) {
+            return visibleOldestCreatedAt;
         }
 
         return resolvePostHistoryOlderRelayFetchUntil({
@@ -1897,7 +1925,7 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const [count, datePosts] = await Promise.all([
+        const [count, contiguousDatePosts] = await Promise.all([
             countVisiblePosts(pubkeyHex, visibleUntil),
             postHistoryRepository.getVisibleChunkFromCreatedAt({
                 pubkeyHex,
@@ -1911,7 +1939,7 @@ export function usePostHistoryListing({
             return false;
         }
 
-        if (datePosts.length === 0) {
+        if (contiguousDatePosts.length === 0) {
             state.totalCount = count;
             state.loadedPosts = [];
             state.hasOlderLocal = false;
@@ -1919,10 +1947,135 @@ export function usePostHistoryListing({
             return false;
         }
 
+        if (!didDateChunkMissTarget(contiguousDatePosts, createdAt)) {
+            state.totalCount = count;
+            state.loadedPosts = contiguousDatePosts;
+            void prefetchCurrentPageMedia(contiguousDatePosts);
+            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            return true;
+        }
+
+        if (createdAt <= 0) {
+            state.totalCount = count;
+            state.loadedPosts = contiguousDatePosts;
+            void prefetchCurrentPageMedia(contiguousDatePosts);
+            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            return true;
+        }
+
+        const hasNearbyJumpCacheAnchor =
+            await postHistoryJumpCacheAnchorRepository.hasNearbyAnchorForPubkey({
+                pubkeyHex,
+                targetCreatedAt: createdAt,
+            });
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (hasNearbyJumpCacheAnchor) {
+            const sparseDatePosts =
+                await postHistoryRepository.getVisibleChunkFromCreatedAt({
+                    pubkeyHex,
+                    visibleUntil,
+                    createdAt,
+                    limit: pageSize,
+                    query: {
+                        contiguous: false,
+                    },
+                });
+
+            if (!getShow() || requestId !== loadRequestId) {
+                return false;
+            }
+
+            if (!didDateChunkMissTarget(sparseDatePosts, createdAt)) {
+                state.totalCount = count;
+                state.loadedPosts = sparseDatePosts;
+                void prefetchCurrentPageMedia(sparseDatePosts);
+                await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
+                return true;
+            }
+        }
+
+        const rxNostr = getRxNostr();
+        if (!rxNostr) {
+            state.totalCount = count;
+            state.loadedPosts = contiguousDatePosts;
+            void prefetchCurrentPageMedia(contiguousDatePosts);
+            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            return true;
+        }
+
+        cancelCurrentSync();
+        const syncRequestId = ++fetchRequestId;
+        state.syncStatus = "syncing";
+
+        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+            pubkeyHex,
+            relayConfig: getRelayConfig(),
+            reason: "repair-visible-range",
+            limit: POST_HISTORY_JUMP_FETCH_LIMIT,
+            since: Math.max(0, createdAt - POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS),
+            until: createdAt + POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
+        });
+        currentFetchTask = task;
+        const relayResult = await task.promise;
+        if (!isCurrentFetchRequest(syncRequestId) || currentFetchTask !== task) {
+            return false;
+        }
+
+        currentFetchTask = null;
+        if (!getShow() || relayResult.status === "cancelled") {
+            state.syncStatus = "idle";
+            return false;
+        }
+
+        if (relayResult.events.length > 0) {
+            await postHistoryRepository.upsertFetchedEvents({
+                events: relayResult.events,
+                fetchedAt: relayResult.fetchedAt,
+            });
+            await postHistoryJumpCacheAnchorRepository.addForPubkey({
+                pubkeyHex,
+                centerCreatedAt: createdAt,
+                radiusSec: POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
+                fetchedAt: relayResult.fetchedAt,
+            });
+        }
+
+        if (!getShow() || requestId !== loadRequestId) {
+            state.syncStatus = "idle";
+            return false;
+        }
+
+        const sparseDatePosts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
+            pubkeyHex,
+            visibleUntil,
+            createdAt,
+            limit: pageSize,
+            query: {
+                contiguous: false,
+            },
+        });
+
+        if (!getShow() || requestId !== loadRequestId) {
+            state.syncStatus = "idle";
+            return false;
+        }
+
+        state.syncStatus = "idle";
+        if (didDateChunkMissTarget(sparseDatePosts, createdAt)) {
+            state.totalCount = count;
+            state.loadedPosts = contiguousDatePosts;
+            void prefetchCurrentPageMedia(contiguousDatePosts);
+            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            return true;
+        }
+
         state.totalCount = count;
-        state.loadedPosts = datePosts;
-        void prefetchCurrentPageMedia(datePosts);
-        await refreshTimelineAvailability(pubkeyHex, datePosts, requestId);
+        state.loadedPosts = sparseDatePosts;
+        void prefetchCurrentPageMedia(sparseDatePosts);
+        await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
         return true;
     }
 
@@ -2401,7 +2554,30 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
-            const nextCount = await countVisiblePosts(pubkeyHex, nextVisibleUntil);
+            const connectedAnchorsResult = typeof nextVisibleUntil === "number"
+                ? await postHistoryJumpCacheAnchorRepository.reconcileWithFrontier({
+                    pubkeyHex,
+                    frontierVisibleUntil: nextVisibleUntil,
+                    toleranceSec:
+                        POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS,
+                })
+                : null;
+            const effectiveVisibleUntil = connectedAnchorsResult
+                ? connectedAnchorsResult.nextVisibleUntil
+                : nextVisibleUntil;
+            if (
+                connectedAnchorsResult
+                && connectedAnchorsResult.nextVisibleUntil !== nextVisibleUntil
+            ) {
+                await postHistoryVisibleRangeRepository.save({
+                    pubkeyHex,
+                    kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
+                    visibleUntil: connectedAnchorsResult.nextVisibleUntil,
+                });
+                state.visibleUntil = connectedAnchorsResult.nextVisibleUntil;
+            }
+
+            const nextCount = await countVisiblePosts(pubkeyHex, effectiveVisibleUntil);
             if (!isCurrentFetchRequest(requestId) || !getShow()) {
                 return batchChanged;
             }
@@ -2772,6 +2948,7 @@ export function usePostHistoryListing({
             await Promise.all([
                 postHistoryChildInteractionsRepository.deleteChildInteractionsForPostHistoryPubkey(pubkeyHex),
                 postHistoryRepository.deleteForPubkey(pubkeyHex),
+                postHistoryJumpCacheAnchorRepository.clearForPubkey(pubkeyHex),
                 postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
             ]);
         } catch {

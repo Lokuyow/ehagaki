@@ -432,6 +432,18 @@ describe("DexiePostHistoryRepository", () => {
             { eventId: "2".repeat(64), createdAt: 1000 },
         ]);
 
+        await expect(repository.getVisibleChunkFromCreatedAt({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            createdAt: 950,
+            limit: 2,
+            query: {
+                contiguous: false,
+            },
+        })).resolves.toMatchObject([
+            { eventId: "1".repeat(64), createdAt: 900 },
+        ]);
+
         db.close();
     });
 
