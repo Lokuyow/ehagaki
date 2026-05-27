@@ -2156,12 +2156,7 @@ export function usePostHistoryListing({
 
         state.syncStatus = "idle";
         if (didDateChunkMissTarget(sparseDatePosts, createdAt)) {
-            state.totalCount = count;
-            state.loadedPosts = contiguousDatePosts;
-            resetOlderBackfillSearchState();
-            void prefetchCurrentPageMedia(contiguousDatePosts);
-            await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
-            return true;
+            return false;
         }
 
         state.totalCount = count;

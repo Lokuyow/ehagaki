@@ -417,6 +417,94 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('日付ジャンプの relay 取得が target miss のまま終了した場合は最古へフォールバックしない', async () => {
+        const newest = createRecord({
+            eventId: 'jump-miss-no-fallback-newest',
+            content: '最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const oldestVisible = createRecord({
+            eventId: 'jump-miss-no-fallback-oldest-visible',
+            content: '今見えている最古投稿',
+            createdAt: 1_704_067_200,
+            postedAt: Date.UTC(2023, 11, 31, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, oldestVisible]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest, oldestVisible])
+            .mockResolvedValueOnce([newest, oldestVisible]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(false);
+
+        relayFetchServiceMock.fetchLatest.mockImplementation(
+            (_rxNostr: any, request: { reason?: string }) => {
+                if (request.reason !== 'repair-visible-range') {
+                    return {
+                        promise: Promise.resolve(createRelayFetchResult({
+                            status: 'cancelled',
+                        })),
+                        cancel: vi.fn(),
+                    };
+                }
+
+                return {
+                    promise: Promise.resolve(createRelayFetchResult({
+                        status: 'timeout',
+                        fetchedAt: 2000,
+                        relayUrls: ['wss://relay.example.com/'],
+                        events: [],
+                    })),
+                    cancel: vi.fn(),
+                };
+            },
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('最新投稿')).toBeTruthy();
+            expect(screen.getByText('今見えている最古投稿')).toBeTruthy();
+        });
+
+        await clickMenuAction('日付へ移動');
+        await fireEvent.input(screen.getByLabelText('日付'), {
+            target: { value: '2023-10-01' },
+        });
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('最新投稿')).toBeTruthy();
+            expect(screen.getByText('今見えている最古投稿')).toBeTruthy();
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    query: {
+                        contiguous: false,
+                    },
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
     it('最新ページでも最上部でなければ最新へ戻るで最上部へスクロールする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
