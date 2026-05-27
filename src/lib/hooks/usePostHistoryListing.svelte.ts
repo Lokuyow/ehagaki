@@ -189,6 +189,7 @@ function resolveFetchedAuthoredEventIds(
 }
 
 const SHOULD_DEBUG_POST_HISTORY_BACKFILL = import.meta.env.DEV;
+const SHOULD_DEBUG_POST_HISTORY_JUMP = import.meta.env.DEV;
 
 export function mergeOlderVisiblePosts({
     currentPosts,
@@ -322,6 +323,20 @@ function didDateChunkMissTarget(
     }
 
     return (oldestChunkCreatedAt ?? 0) > targetCreatedAt;
+}
+
+function logPostHistoryJumpTrace(
+    message: string,
+    payload: Record<string, unknown>,
+): void {
+    if (!SHOULD_DEBUG_POST_HISTORY_JUMP) {
+        return;
+    }
+
+    globalThis.console?.debug?.("post_history_jump_trace", {
+        message,
+        ...payload,
+    });
 }
 
 export function resolveOlderRevealReplyRepairNetworkParentIds(
@@ -2006,8 +2021,22 @@ export function usePostHistoryListing({
     async function jumpToCreatedAt(createdAt: number): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
+            logPostHistoryJumpTrace("abort-no-pubkey", {
+                createdAt,
+            });
             return false;
         }
+
+        logPostHistoryJumpTrace("start", {
+            pubkeyHex,
+            createdAt,
+            currentLoadRequestId: loadRequestId,
+            currentFetchRequestId: fetchRequestId,
+            visibleUntil: state.visibleUntil,
+            hasJumpCacheAnchors: state.hasJumpCacheAnchors,
+            syncStatus: state.syncStatus,
+            loadedPostsLength: state.loadedPosts.length,
+        });
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
@@ -2022,23 +2051,63 @@ export function usePostHistoryListing({
         ]);
 
         if (!getShow() || requestId !== loadRequestId) {
+            logPostHistoryJumpTrace("abort-stale-after-local-read", {
+                requestId,
+                currentLoadRequestId: loadRequestId,
+                show: getShow(),
+            });
             return false;
         }
+
+        logPostHistoryJumpTrace("after-contiguous-read", {
+            requestId,
+            createdAt,
+            visibleUntil,
+            totalCount: count,
+            contiguousLength: contiguousDatePosts.length,
+            contiguousNewestCreatedAt: contiguousDatePosts[0]?.createdAt ?? null,
+            contiguousOldestCreatedAt:
+                contiguousDatePosts[contiguousDatePosts.length - 1]?.createdAt ?? null,
+        });
 
         if (contiguousDatePosts.length === 0) {
             state.totalCount = count;
             state.loadedPosts = [];
             state.hasOlderLocal = false;
             state.hasNewerLocal = false;
+            logPostHistoryJumpTrace("abort-empty-contiguous", {
+                requestId,
+                createdAt,
+                visibleUntil,
+                totalCount: count,
+            });
             return false;
         }
 
-        if (!didDateChunkMissTarget(contiguousDatePosts, createdAt)) {
+        const didContiguousMiss = didDateChunkMissTarget(
+            contiguousDatePosts,
+            createdAt,
+        );
+        logPostHistoryJumpTrace("contiguous-evaluated", {
+            requestId,
+            createdAt,
+            didContiguousMiss,
+            contiguousNewestCreatedAt: contiguousDatePosts[0]?.createdAt ?? null,
+            contiguousOldestCreatedAt:
+                contiguousDatePosts[contiguousDatePosts.length - 1]?.createdAt ?? null,
+        });
+
+        if (!didContiguousMiss) {
             state.totalCount = count;
             state.loadedPosts = contiguousDatePosts;
             resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            logPostHistoryJumpTrace("success-contiguous", {
+                requestId,
+                createdAt,
+                loadedPostsLength: state.loadedPosts.length,
+            });
             return true;
         }
 
@@ -2048,6 +2117,11 @@ export function usePostHistoryListing({
             resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            logPostHistoryJumpTrace("success-jump-oldest-local", {
+                requestId,
+                createdAt,
+                loadedPostsLength: state.loadedPosts.length,
+            });
             return true;
         }
 
@@ -2057,8 +2131,19 @@ export function usePostHistoryListing({
                 targetCreatedAt: createdAt,
             });
         if (!getShow() || requestId !== loadRequestId) {
+            logPostHistoryJumpTrace("abort-stale-after-anchor-check", {
+                requestId,
+                currentLoadRequestId: loadRequestId,
+                show: getShow(),
+            });
             return false;
         }
+
+        logPostHistoryJumpTrace("anchor-check-result", {
+            requestId,
+            createdAt,
+            hasNearbyJumpCacheAnchor,
+        });
 
         if (hasNearbyJumpCacheAnchor) {
             const sparseDatePosts =
@@ -2073,15 +2158,39 @@ export function usePostHistoryListing({
                 });
 
             if (!getShow() || requestId !== loadRequestId) {
+                logPostHistoryJumpTrace("abort-stale-after-sparse-read", {
+                    requestId,
+                    currentLoadRequestId: loadRequestId,
+                    show: getShow(),
+                });
                 return false;
             }
 
-            if (!didDateChunkMissTarget(sparseDatePosts, createdAt)) {
+            const didSparseMiss = didDateChunkMissTarget(
+                sparseDatePosts,
+                createdAt,
+            );
+            logPostHistoryJumpTrace("sparse-local-evaluated", {
+                requestId,
+                createdAt,
+                sparseLength: sparseDatePosts.length,
+                sparseNewestCreatedAt: sparseDatePosts[0]?.createdAt ?? null,
+                sparseOldestCreatedAt:
+                    sparseDatePosts[sparseDatePosts.length - 1]?.createdAt ?? null,
+                didSparseMiss,
+            });
+
+            if (!didSparseMiss) {
                 state.totalCount = count;
                 state.loadedPosts = sparseDatePosts;
                 resetOlderBackfillSearchState();
                 void prefetchCurrentPageMedia(sparseDatePosts);
                 await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
+                logPostHistoryJumpTrace("success-sparse-local", {
+                    requestId,
+                    createdAt,
+                    loadedPostsLength: state.loadedPosts.length,
+                });
                 return true;
             }
         }
@@ -2093,6 +2202,11 @@ export function usePostHistoryListing({
             resetOlderBackfillSearchState();
             void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
+            logPostHistoryJumpTrace("success-fallback-no-rxnostr", {
+                requestId,
+                createdAt,
+                loadedPostsLength: state.loadedPosts.length,
+            });
             return true;
         }
 
@@ -2100,25 +2214,63 @@ export function usePostHistoryListing({
         const syncRequestId = ++fetchRequestId;
         state.syncStatus = "syncing";
 
+        // Prioritize target-and-older events first; otherwise the limit can be
+        // consumed by newer posts and target lookup falsely misses.
+        const repairSince = Math.max(
+            0,
+            createdAt - POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
+        );
+        const repairUntil = createdAt;
+        logPostHistoryJumpTrace("start-repair-visible-range", {
+            requestId,
+            syncRequestId,
+            createdAt,
+            since: repairSince,
+            until: repairUntil,
+            limit: POST_HISTORY_JUMP_FETCH_LIMIT,
+        });
+
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
             reason: "repair-visible-range",
             limit: POST_HISTORY_JUMP_FETCH_LIMIT,
-            since: Math.max(0, createdAt - POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS),
-            until: createdAt + POST_HISTORY_JUMP_FETCH_RADIUS_SECONDS,
+            since: repairSince,
+            until: repairUntil,
         });
         currentFetchTask = task;
         const relayResult = await task.promise;
         if (!isCurrentFetchRequest(syncRequestId) || currentFetchTask !== task) {
+            logPostHistoryJumpTrace("abort-stale-after-relay", {
+                requestId,
+                syncRequestId,
+                currentFetchRequestId: fetchRequestId,
+            });
             return false;
         }
 
         currentFetchTask = null;
         if (!getShow() || relayResult.status === "cancelled") {
             state.syncStatus = "idle";
+            logPostHistoryJumpTrace("abort-relay-cancelled", {
+                requestId,
+                syncRequestId,
+                show: getShow(),
+                relayStatus: relayResult.status,
+            });
             return false;
         }
+
+        logPostHistoryJumpTrace("relay-result", {
+            requestId,
+            syncRequestId,
+            relayStatus: relayResult.status,
+            relayEventsLength: relayResult.events.length,
+            relayNewestCreatedAt: relayResult.newestCreatedAt ?? null,
+            relayOldestCreatedAt: relayResult.oldestCreatedAt ?? null,
+            relayNextUntil: relayResult.nextUntil ?? null,
+            relayHasMore: relayResult.hasMore,
+        });
 
         if (relayResult.events.length > 0) {
             await postHistoryRepository.upsertFetchedEvents({
@@ -2136,6 +2288,11 @@ export function usePostHistoryListing({
 
         if (!getShow() || requestId !== loadRequestId) {
             state.syncStatus = "idle";
+            logPostHistoryJumpTrace("abort-stale-after-relay-upsert", {
+                requestId,
+                currentLoadRequestId: loadRequestId,
+                show: getShow(),
+            });
             return false;
         }
 
@@ -2151,11 +2308,33 @@ export function usePostHistoryListing({
 
         if (!getShow() || requestId !== loadRequestId) {
             state.syncStatus = "idle";
+            logPostHistoryJumpTrace("abort-stale-after-relay-sparse-read", {
+                requestId,
+                currentLoadRequestId: loadRequestId,
+                show: getShow(),
+            });
             return false;
         }
 
         state.syncStatus = "idle";
-        if (didDateChunkMissTarget(sparseDatePosts, createdAt)) {
+        const didRepairSparseMiss = didDateChunkMissTarget(
+            sparseDatePosts,
+            createdAt,
+        );
+        logPostHistoryJumpTrace("repair-sparse-evaluated", {
+            requestId,
+            createdAt,
+            sparseLength: sparseDatePosts.length,
+            sparseNewestCreatedAt: sparseDatePosts[0]?.createdAt ?? null,
+            sparseOldestCreatedAt:
+                sparseDatePosts[sparseDatePosts.length - 1]?.createdAt ?? null,
+            didRepairSparseMiss,
+        });
+        if (didRepairSparseMiss) {
+            logPostHistoryJumpTrace("abort-repair-target-miss", {
+                requestId,
+                createdAt,
+            });
             return false;
         }
 
@@ -2164,6 +2343,11 @@ export function usePostHistoryListing({
         resetOlderBackfillSearchState();
         void prefetchCurrentPageMedia(sparseDatePosts);
         await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
+        logPostHistoryJumpTrace("success-repair-sparse", {
+            requestId,
+            createdAt,
+            loadedPostsLength: state.loadedPosts.length,
+        });
         return true;
     }
 
