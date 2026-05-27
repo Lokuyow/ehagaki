@@ -2425,11 +2425,11 @@ describe('PostHistoryDialog', () => {
         expect(
             within(screen.getByRole('button', { name: '返信 1件を表示' }))
                 .getByText('1')
-                .closest('.post-preview-replies-icon-wrapper'),
+                .closest('.post-preview-replies-badge'),
         ).toBeTruthy();
         expect(screen.queryByText('返信Bへの返信C')).toBeNull();
         expect(
-            Array.from(document.querySelectorAll('.post-preview-replies-count'))
+            Array.from(document.querySelectorAll('.post-preview-replies-badge'))
                 .map((element) => element.textContent),
         ).not.toContain('0');
 
@@ -4267,7 +4267,7 @@ describe('PostHistoryDialog', () => {
         await clickPostRepliesMenuAction();
         await waitFor(() => {
             expect(screen.getByText('既存返信B')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
 
         await view.rerender({
@@ -4281,7 +4281,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('新規返信C')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('2');
         });
         expect(screen.getAllByText('既存返信B')).toHaveLength(1);
         expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -4401,7 +4401,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('既存返信B')).toBeTruthy();
             expect(screen.getByText('新規返信C')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('2');
         });
         expect(screen.getAllByText('既存返信B')).toHaveLength(1);
         expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(2);
@@ -4456,7 +4456,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(deletionFetchServiceMock.fetchDeletionRequests).toHaveBeenCalled();
             expect(screen.getByText('cacheから即表示される返信')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
         expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
     });
@@ -4829,7 +4829,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText('TTL切れcached返信')).toBeTruthy();
             expect(screen.getByText('backgroundで増えた返信')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('2');
         });
     });
 
@@ -4955,7 +4955,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.queryByText('削除済み返信B')).toBeNull();
             expect(screen.getByText('残る返信C')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
         expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(deletedReply.eventId);
         expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
@@ -5040,7 +5040,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('表示される返信B')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
     });
 
@@ -5249,7 +5249,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getAllByText('削除対象返信B')).toHaveLength(2);
             expect(screen.getByText('残る返信C')).toBeTruthy();
-            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('2');
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('2');
         });
 
         const replyHistoryItem = document.querySelector(`[data-post-history-event-id="${replyBEventId}"]`);
@@ -5262,7 +5262,7 @@ describe('PostHistoryDialog', () => {
             expect(replyEventsRepositoryMock.deleteByEventId).toHaveBeenCalledWith(replyBEventId);
             expect(screen.getAllByText('削除対象返信B')).toHaveLength(1);
             expect(screen.getByText('残る返信C')).toBeTruthy();
-            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
 
         await fireEvent.click(parentQueries.getByRole('button', { name: '返信を隠す' }));
@@ -5275,7 +5275,7 @@ describe('PostHistoryDialog', () => {
             expect(fetchCount).toBe(2);
             expect(screen.getAllByText('削除対象返信B')).toHaveLength(1);
             expect(screen.getByText('残る返信C')).toBeTruthy();
-            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-count')?.textContent).toBe('1');
+            expect(parentQueries.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('1');
         });
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();

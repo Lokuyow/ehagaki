@@ -1585,7 +1585,7 @@
                                                                     )}
                                                             >
                                                                 <span
-                                                                    class="post-preview-replies-count post-preview-replies-badge post-preview-replies-icon-wrapper"
+                                                                    class="post-preview-replies-badge"
                                                                     aria-hidden="true"
                                                                 >
                                                                     {graphState
