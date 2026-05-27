@@ -2874,18 +2874,18 @@
     }
 
     :global(
-            .post-history-thread-toggle-button.selected:not(:hover),
-            .post-history-replies-toggle-button.selected:not(:hover),
-            .post-preview-replies-badge-button.selected:not(:hover)
+            .post-history-thread-toggle-button.selected,
+            .post-history-replies-toggle-button.selected,
+            .post-preview-replies-badge-button.selected
         ) {
         --btn-bg: var(--dialog-bg);
         color: var(--text-light);
     }
 
     :global(
-            .post-history-replies-toggle-button.selected:not(:hover)
+            .post-history-replies-toggle-button.selected
                 .post-history-replies-toggle-badge,
-            .post-preview-replies-badge-button.selected:not(:hover)
+            .post-preview-replies-badge-button.selected
                 .post-preview-replies-badge
         ) {
         background-color: var(--text-light);
