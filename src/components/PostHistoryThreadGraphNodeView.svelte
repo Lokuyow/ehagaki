@@ -356,6 +356,30 @@
         align-items: stretch;
         justify-content: space-between;
         min-height: 28px;
+        --post-history-related-card-action-bg: var(
+            --post-history-related-card-bg,
+            var(--dialog-bg)
+        );
+        --post-history-related-card-action-hover-bg-light: color-mix(
+            in srgb,
+            var(--post-history-related-card-action-bg),
+            black 4%
+        );
+        --post-history-related-card-action-hover-bg-dark: color-mix(
+            in srgb,
+            var(--post-history-related-card-action-bg),
+            white 5%
+        );
+        --post-history-related-card-action-hover-color-light: color-mix(
+            in srgb,
+            var(--text),
+            black 40%
+        );
+        --post-history-related-card-action-hover-color-dark: color-mix(
+            in srgb,
+            var(--text),
+            white 50%
+        );
     }
 
     .post-preview-footer-left {
@@ -385,18 +409,16 @@
         justify-content: flex-end;
     }
 
-    .post-preview-footer-right
-        :global(.menu-trigger.post-history-menu-trigger) {
-        --btn-bg: var(--post-history-related-card-bg, var(--dialog-bg));
-        background-color: var(--post-history-related-card-bg, var(--dialog-bg));
+    .post-preview-footer :global(.post-preview-replies-badge-button),
+    .post-preview-footer :global(.menu-trigger.post-history-menu-trigger) {
+        --btn-bg: var(--post-history-related-card-action-bg);
+        background-color: var(--post-history-related-card-action-bg);
     }
 
     .post-preview-footer :global(.post-preview-replies-badge-button) {
         width: 36px;
         min-width: 36px;
         min-height: auto;
-        --btn-bg: var(--post-history-related-card-bg, var(--dialog-bg));
-        background-color: var(--post-history-related-card-bg, var(--dialog-bg));
         color: var(--btn-post-preview-action);
     }
 
@@ -410,7 +432,7 @@
         line-height: 20px;
         border-radius: 999px;
         background: var(--btn-post-preview-action);
-        color: var(--post-history-related-card-bg, var(--dialog-bg));
+        color: var(--post-history-related-card-action-bg);
         font-size: 0.6875rem;
         font-weight: 700;
         text-align: center;
@@ -418,23 +440,27 @@
 
     @media (min-width: 601px) {
         .post-preview-footer
-            :global(.post-preview-replies-badge-button:hover:not(:disabled)) {
+            :global(.post-preview-replies-badge-button:hover:not(:disabled)),
+        .post-preview-footer-right
+            :global(
+                .menu-trigger.post-history-menu-trigger:hover:not(:disabled)
+            ) {
             :global(:root.light) & {
-                background-color: color-mix(
-                    in srgb,
-                    var(--post-history-related-card-bg, var(--dialog-bg)),
-                    black 4%
+                background-color: var(
+                    --post-history-related-card-action-hover-bg-light
                 );
-                color: color-mix(in srgb, var(--text), black 40%);
+                color: var(
+                    --post-history-related-card-action-hover-color-light
+                );
             }
 
             :global(:root.dark) & {
-                background-color: color-mix(
-                    in srgb,
-                    var(--post-history-related-card-bg, var(--dialog-bg)),
-                    white 5%
+                background-color: var(
+                    --post-history-related-card-action-hover-bg-dark
                 );
-                color: color-mix(in srgb, var(--text), white 50%);
+                color: var(
+                    --post-history-related-card-action-hover-color-dark
+                );
             }
         }
 
@@ -444,29 +470,6 @@
                     .post-preview-replies-badge
             ) {
             background-color: var(--text);
-        }
-
-        .post-preview-footer-right
-            :global(
-                .menu-trigger.post-history-menu-trigger:hover:not(:disabled)
-            ) {
-            :global(:root.light) & {
-                background-color: color-mix(
-                    in srgb,
-                    var(--post-history-related-card-bg, var(--dialog-bg)),
-                    black 4%
-                );
-                color: color-mix(in srgb, var(--text), black 40%);
-            }
-
-            :global(:root.dark) & {
-                background-color: color-mix(
-                    in srgb,
-                    var(--post-history-related-card-bg, var(--dialog-bg)),
-                    white 5%
-                );
-                color: color-mix(in srgb, var(--text), white 50%);
-            }
         }
     }
 
