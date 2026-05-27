@@ -2727,8 +2727,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            --btn-bg: transparent;
-            background-color: transparent;
+            --btn-bg: var(--dialog-bg);
             color: var(--btn-post-preview-action);
         }
 
