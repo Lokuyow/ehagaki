@@ -417,6 +417,67 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('日付ジャンプで表示した sparse 投稿数が右上の件数表示に反映される', async () => {
+        const newest = createRecord({
+            eventId: 'jump-summary-newest',
+            content: '最新投稿',
+            createdAt: 1_779_874_028,
+            postedAt: Date.UTC(2026, 4, 14, 0, 47, 8),
+        });
+        const oldestVisible = createRecord({
+            eventId: 'jump-summary-oldest-visible',
+            content: '今見えている最古投稿',
+            createdAt: 1_779_757_267,
+            postedAt: Date.UTC(2026, 4, 12, 16, 21, 7),
+        });
+        const sparseTarget = createRecord({
+            eventId: 'jump-summary-sparse-target',
+            content: 'ジャンプ先投稿',
+            createdAt: 1_735_397_555,
+            postedAt: Date.UTC(2024, 11, 28, 0, 12, 35),
+        });
+
+        repositoryMock.countForPubkey
+            .mockResolvedValue(32)
+            .mockResolvedValueOnce(15)
+            .mockResolvedValueOnce(32);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, oldestVisible]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest, oldestVisible])
+            .mockResolvedValueOnce([sparseTarget]);
+
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('最新投稿')).toBeTruthy();
+            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('15件');
+        });
+
+        await clickMenuAction('日付へ移動');
+        await fireEvent.input(screen.getByLabelText('日付'), {
+            target: { value: '2024-12-28' },
+        });
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('ジャンプ先投稿')).toBeTruthy();
+            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('32件');
+        });
+
+        view.unmount();
+    });
+
     it('日付ジャンプの relay 取得が target miss のまま終了した場合は最古へフォールバックしない', async () => {
         const newest = createRecord({
             eventId: 'jump-miss-no-fallback-newest',
