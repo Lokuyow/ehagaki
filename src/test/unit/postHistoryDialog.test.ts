@@ -2817,7 +2817,7 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('cacheから即表示される返信')).toBeTruthy();
         });
 
-        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(1);
+        expect(replyEventsRepositoryMock.getDirectReplies).toHaveBeenCalledTimes(2);
     });
 
     it('[reply-badge-preload] cached reaction summary をfooterで表示して集約パネルを開ける', async () => {
@@ -3400,6 +3400,99 @@ describe('PostHistoryDialog', () => {
         });
         expect(maxActivePrefetchCount).toBeLessThanOrEqual(2);
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
+    });
+
+    it('[thread-graph-children-prefetch] 既にloadedな親を開いた直後に子cardの孫返信badgeをcacheから反映する', async () => {
+        const parentEventId = '1'.repeat(64);
+        const childEventId = '4'.repeat(64);
+        const grandchildEventId = '6'.repeat(64);
+        const post = createRecord({
+            eventId: parentEventId,
+            rawEvent: {
+                id: parentEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '親投稿A',
+                tags: [],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '親投稿A',
+            tags: [],
+            media: [],
+        });
+        const childReply = createDirectReplyEventRecord({
+            eventId: childEventId,
+            parentEventId,
+            content: '子返信B',
+            rawEvent: {
+                id: childEventId,
+                pubkey: 'd'.repeat(64),
+                kind: 1,
+                content: '子返信B',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_010,
+                sig: 'f'.repeat(128),
+            },
+        });
+        const grandchildReply = createDirectReplyEventRecord({
+            eventId: grandchildEventId,
+            parentEventId: childEventId,
+            authorPubkey: 'e'.repeat(64),
+            content: '孫返信C',
+            rawEvent: {
+                id: grandchildEventId,
+                pubkey: 'e'.repeat(64),
+                kind: 1,
+                content: '孫返信C',
+                tags: [['e', childEventId, 'wss://reply.example.com/', 'reply']],
+                created_at: 1_700_000_020,
+                sig: 'b'.repeat(128),
+            },
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (parentId: string) => {
+            if (parentId === parentEventId) {
+                return [childReply];
+            }
+
+            if (parentId === childEventId) {
+                return [grandchildReply];
+            }
+
+            return [];
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '返信 1件を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '返信 1件を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('子返信B')).toBeTruthy();
+        });
+
+        const childCard = screen.getByText('子返信B').closest('.post-history-related-card');
+        expect(childCard).toBeTruthy();
+        await waitFor(() => {
+            expect(
+                within(childCard as HTMLElement)
+                    .getByRole('button', { name: '返信 1件を表示' }),
+            ).toBeTruthy();
+        });
+
+        expect(replyFetchServiceMock.fetchDirectReplies).not.toHaveBeenCalled();
     });
 
     it('[thread-graph-children-renderable] path内へ戻る子候補だけなら件数バッジとactive状態を出さない', async () => {

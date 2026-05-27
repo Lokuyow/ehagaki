@@ -1587,6 +1587,9 @@ export function usePostHistoryThreadGraph({
                 ...state,
                 visibleChildren: hasReplies,
             }));
+            if (hasReplies) {
+                void prefetchChildReplyCounts(post, nodeEventId);
+            }
             if (hasReplies && isThreadGraphRevalidateStale(currentExpansion.lastFetchedChildrenAt)) {
                 void revalidateChildrenForNodeInBackground(post, nodeEventId, currentNode);
             }
@@ -1626,8 +1629,7 @@ export function usePostHistoryThreadGraph({
                     && !expansion.loadingChildren
                     && !expansion.revalidatingChildren
                     && !recentlyChecked;
-            })
-            .slice(0, POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT);
+            });
         if (candidateEventIds.length === 0) {
             return;
         }
@@ -1643,6 +1645,7 @@ export function usePostHistoryThreadGraph({
                 remainingEventIds.push(eventId);
             }
         }));
+        remainingEventIds.splice(POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT);
         if (!getShow() || remainingEventIds.length === 0) {
             return;
         }
