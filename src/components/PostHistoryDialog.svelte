@@ -24,6 +24,7 @@
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostHistoryThreadGraph } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import { usePostHistoryInboundInteractionsSync } from "../lib/hooks/usePostHistoryInboundInteractionsSync.svelte";
+    import type { PostHistoryThreadGraphNodeState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type {
         PostHistoryInboundDirectReplyCandidate,
         PostHistoryInboundReplyReconciliationResult,
@@ -726,6 +727,75 @@
         postActionUi.openDeleteConfirm(post);
     }
 
+    function buildPostRecordFromNodeState(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): PostHistoryRecord {
+        const now = Date.now();
+        const postedAt = nodeState.node.event.created_at * 1000;
+
+        return {
+            id: nodeState.node.eventId,
+            eventId: nodeState.node.eventId,
+            pubkeyHex: nodeState.node.authorPubkey,
+            kind: nodeState.node.event.kind,
+            content: nodeState.node.event.content,
+            tags: nodeState.node.event.tags.map((tag) => [...tag]),
+            createdAt: postedAt,
+            postedAt,
+            relayHints: [...nodeState.node.relayUrls],
+            acceptedRelays: [...nodeState.node.relayUrls],
+            fetchedRelays: [...nodeState.node.relayUrls],
+            media: [],
+            rawEvent: nodeState.node.event,
+            updatedAt: now,
+            schemaVersion: 1,
+        };
+    }
+
+    function isNodeCopyFailed(nodeEventId: string): boolean {
+        return copyNeventUi.copyState[nodeEventId] === "failed";
+    }
+
+    function handleNodeCopyPointerPosition(
+        nodeState: PostHistoryThreadGraphNodeState,
+        event: PointerEvent,
+    ): void {
+        copyNeventUi.captureCopyPointerPosition(
+            buildPostRecordFromNodeState(nodeState),
+            event,
+        );
+    }
+
+    function handleNodeCopyNevent(
+        nodeState: PostHistoryThreadGraphNodeState,
+        event: Event,
+    ): void {
+        void copyNeventUi.handleCopyNevent(
+            buildPostRecordFromNodeState(nodeState),
+            event,
+        );
+    }
+
+    function canDeleteNodePost(nodeState: PostHistoryThreadGraphNodeState): boolean {
+        return canRequestPostDeletion(
+            buildPostRecordFromNodeState(nodeState),
+            pubkeyHex,
+        );
+    }
+
+    function isNodeDeletionSending(nodeEventId: string): boolean {
+        return deleteRequestState[nodeEventId] === "sending";
+    }
+
+    function openNodeDeleteConfirm(nodeState: PostHistoryThreadGraphNodeState): void {
+        const post = buildPostRecordFromNodeState(nodeState);
+        if (!canDeletePost(post)) {
+            return;
+        }
+
+        postActionUi.openDeleteConfirm(post);
+    }
+
     function handleReplyPost(post: PostHistoryRecord): void {
         if (!onReplyPost) {
             return;
@@ -1359,6 +1429,14 @@
                                             post,
                                             nodeEventId,
                                         )}
+                                    onCopyPointerDown={
+                                        handleNodeCopyPointerPosition
+                                    }
+                                    onCopyNevent={handleNodeCopyNevent}
+                                    isCopyFailed={isNodeCopyFailed}
+                                    canDeleteNodePost={canDeleteNodePost}
+                                    isDeletionSending={isNodeDeletionSending}
+                                    onOpenDeleteConfirm={openNodeDeleteConfirm}
                                 />
                                 <div
                                     class="post-history-thread-anchor-post"
@@ -1807,6 +1885,14 @@
                                                 post,
                                                 nodeEventId,
                                             )}
+                                        onCopyPointerDown={
+                                            handleNodeCopyPointerPosition
+                                        }
+                                        onCopyNevent={handleNodeCopyNevent}
+                                        isCopyFailed={isNodeCopyFailed}
+                                        canDeleteNodePost={canDeleteNodePost}
+                                        isDeletionSending={isNodeDeletionSending}
+                                        onOpenDeleteConfirm={openNodeDeleteConfirm}
                                     />
                                 </div>
                             </div>
@@ -2086,12 +2172,12 @@
 
     :global(.post-history-menu-trigger) {
         color: var(--btn-post-preview-action);
+    }
 
-        .more-icon {
-            mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            width: 22px;
-            height: 22px;
-        }
+    :global(.post-history-menu-trigger .more-icon) {
+        mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 22px;
+        height: 22px;
     }
 
     :global(.menu-trigger.post-history-heading-menu-trigger) {
@@ -2971,7 +3057,7 @@
         font-size: 0.875rem;
     }
 
-    .copy-icon {
+    :global(.copy-icon) {
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
@@ -3007,7 +3093,7 @@
         mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
-    .trash-icon {
+    :global(.trash-icon) {
         mask-image: url("/icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 

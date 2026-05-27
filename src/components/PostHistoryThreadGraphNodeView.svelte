@@ -1,7 +1,7 @@
 <script lang="ts">
+    import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
-    import PostHistoryRepliesToggleButton from "./PostHistoryRepliesToggleButton.svelte";
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
@@ -21,6 +21,22 @@
         onRetryParent?: (nodeEventId: string) => void;
         onToggleChildren?: (nodeEventId: string) => void;
         onRetryChildren?: (nodeEventId: string) => void;
+        onCopyPointerDown?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: PointerEvent,
+        ) => void;
+        onCopyNevent?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: Event,
+        ) => void;
+        isCopyFailed?: (nodeEventId: string) => boolean;
+        canDeleteNodePost?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => boolean;
+        isDeletionSending?: (nodeEventId: string) => boolean;
+        onOpenDeleteConfirm?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
     }
 
     let {
@@ -31,11 +47,26 @@
         onRetryParent = undefined,
         onToggleChildren = undefined,
         onRetryChildren = undefined,
+        onCopyPointerDown = undefined,
+        onCopyNevent = undefined,
+        isCopyFailed = undefined,
+        canDeleteNodePost = undefined,
+        isDeletionSending = undefined,
+        onOpenDeleteConfirm = undefined,
     }: Props = $props();
 
     let postedAt = $derived(formatPostedAt(state.node.event.created_at * 1000));
     let contextIndent = $derived(
         `${resolvePostHistoryThreadContextIndentRem(state.depthFromAnchor)}rem`,
+    );
+    let showRepliesBadge = $derived(
+        state.repliesActionState.status === "loaded" &&
+            state.repliesActionState.replyCount > 0,
+    );
+    let copyFailed = $derived(isCopyFailed?.(state.node.eventId) ?? false);
+    let canDelete = $derived(canDeleteNodePost?.(state) ?? false);
+    let deletionSending = $derived(
+        isDeletionSending?.(state.node.eventId) ?? false,
     );
 
     function getRepliesActionLabel(): string {
@@ -77,6 +108,18 @@
         }
 
         onToggleChildren?.(state.node.eventId);
+    }
+
+    function handleCopyPointerDown(event: PointerEvent): void {
+        onCopyPointerDown?.(state, event);
+    }
+
+    function handleCopyNevent(event: Event): void {
+        onCopyNevent?.(state, event);
+    }
+
+    function openDeleteConfirm(): void {
+        onOpenDeleteConfirm?.(state);
     }
 </script>
 
@@ -154,12 +197,114 @@
             {/snippet}
 
             <div class="post-preview-footer">
-                <span class="post-history-related-date">{postedAt}</span>
-                <PostHistoryRepliesToggleButton
-                    state={state.repliesActionState}
-                    ariaLabel={getRepliesActionLabel()}
-                    onClick={handleRepliesAction}
-                />
+                <div class="post-preview-footer-left">
+                    <span class="post-history-related-date">{postedAt}</span>
+                </div>
+                <div class="post-preview-footer-actions">
+                    <div class="post-preview-footer-replies-slot">
+                        {#if showRepliesBadge}
+                            <Button
+                                type="button"
+                                class={`post-preview-replies-badge-button ${
+                                    state.repliesActionState.visible
+                                        ? "is-selected"
+                                        : ""
+                                }`.trim()}
+                                ariaLabel={getRepliesActionLabel()}
+                                title={getRepliesActionLabel()}
+                                contentLayout="icon"
+                                shape="circle"
+                                selected={state.repliesActionState.visible}
+                                onClick={handleRepliesAction}
+                            >
+                                <span
+                                    class="post-preview-replies-count post-preview-replies-badge post-preview-replies-icon-wrapper"
+                                    aria-hidden="true"
+                                >
+                                    {state.repliesActionState.replyCount}
+                                </span>
+                            </Button>
+                        {/if}
+                    </div>
+                </div>
+                <div class="post-preview-footer-right">
+                    <DropdownMenu.Root>
+                        <DropdownMenu.Trigger
+                            class="menu-trigger post-history-menu-trigger"
+                            aria-label="アクションを表示"
+                        >
+                            <div class="more-icon svg-icon"></div>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Portal>
+                            <DropdownMenu.Content
+                                side="bottom"
+                                align="start"
+                                sideOffset={8}
+                                class="post-history-menu-content"
+                                trapFocus={false}
+                                preventScroll={false}
+                                onCloseAutoFocus={(event: Event) =>
+                                    event.preventDefault()}
+                            >
+                                <div class="post-history-menu-body">
+                                    <DropdownMenu.Item
+                                        class="menu-action-button"
+                                        disabled={state.repliesActionState
+                                            .status === "loading"}
+                                        onSelect={handleRepliesAction}
+                                    >
+                                        <div
+                                            class={`${
+                                                state.repliesActionState.visible
+                                                    ? "collapse-content-icon"
+                                                    : "find_in_page-icon"
+                                            } svg-icon`}
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>{getRepliesActionLabel()}</span>
+                                    </DropdownMenu.Item>
+                                    <DropdownMenu.Separator
+                                        class="post-history-menu-separator"
+                                    />
+                                    <DropdownMenu.Item
+                                        class="menu-action-button"
+                                        onpointerdown={handleCopyPointerDown}
+                                        onSelect={handleCopyNevent}
+                                    >
+                                        <div
+                                            class="copy-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>
+                                            {copyFailed
+                                                ? $_("postHistory.copyFailed")
+                                                : $_("postHistory.copyNevent")}
+                                        </span>
+                                    </DropdownMenu.Item>
+                                    {#if canDelete}
+                                        <DropdownMenu.Item
+                                            class="menu-action-button menu-action-button-danger"
+                                            disabled={deletionSending}
+                                            onSelect={openDeleteConfirm}
+                                        >
+                                            <div
+                                                class="trash-icon svg-icon"
+                                                aria-hidden="true"
+                                            ></div>
+                                            <span>
+                                                {deletionSending
+                                                    ? $_(
+                                                          "postHistory.deleteSending",
+                                                      )
+                                                    : $_("postHistory.delete")}
+                                            </span>
+                                        </DropdownMenu.Item>
+                                    {/if}
+                                </div>
+                            </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                </div>
             </div>
         </PostHistoryThreadNode>
     </div>
@@ -208,8 +353,36 @@
 
     .post-preview-footer {
         display: flex;
-        align-items: center;
+        align-items: stretch;
+        justify-content: space-between;
         min-height: 28px;
+    }
+
+    .post-preview-footer-left {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+    .post-preview-footer-actions {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        flex: 1 0 auto;
+    }
+
+    .post-preview-footer-replies-slot {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        flex: 0 0 36px;
+        min-width: 36px;
+    }
+
+    .post-preview-footer-right {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
     }
 
     :global(.post-preview-footer > .post-history-related-date) {

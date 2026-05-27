@@ -735,6 +735,14 @@ async function openPostHistoryMenu(): Promise<void> {
 }
 
 async function openPostActionMenu(container?: HTMLElement): Promise<void> {
+    const preferredTrigger = container
+        ? container.querySelector('.post-history-thread-anchor-post .post-preview-footer-right .post-history-menu-trigger')
+        : document.querySelector('.post-history-thread-anchor-post .post-preview-footer-right .post-history-menu-trigger');
+    if (preferredTrigger instanceof HTMLElement) {
+        await fireEvent.click(preferredTrigger);
+        return;
+    }
+
     const queries = container ? within(container) : screen;
     await fireEvent.click(await queries.findByRole('button', { name: 'アクションを表示' }));
 }
@@ -3488,21 +3496,22 @@ describe('PostHistoryDialog', () => {
 
         const replyBCard = screen.getByText('循環候補の返信B').closest('.post-history-related-card');
         expect(replyBCard).toBeTruthy();
-        await waitFor(() => {
-            expect(within(replyBCard as HTMLElement)
-                .getByRole('button', { name: '返信を再確認' })).toBeTruthy();
-        });
-        const replyBRepliesButton = within(replyBCard as HTMLElement)
-            .getByRole('button', { name: '返信を再確認' });
-        expect(within(replyBRepliesButton).queryByText('0')).toBeNull();
-        expect(replyBRepliesButton.classList.contains('selected')).toBe(false);
+        expect((replyBCard as HTMLElement).querySelector('.post-preview-replies-badge-button')).toBeNull();
 
-        await fireEvent.click(replyBRepliesButton);
+        await fireEvent.click(
+            within(replyBCard as HTMLElement)
+                .getByRole('button', { name: 'アクションを表示' }),
+        );
+        const replyBRepliesAction = await screen.findByRole('menuitem', {
+            name: '返信を再確認',
+        });
+        expect(replyBRepliesAction.querySelector('.find_in_page-icon')).toBeTruthy();
+
+        await fireEvent.click(replyBRepliesAction);
         await waitFor(() => {
             expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(3);
         });
         expect(screen.getAllByText('親投稿A')).toHaveLength(1);
-        expect(replyBRepliesButton.classList.contains('selected')).toBe(false);
     });
 
     it('[thread-graph-children-renderable] path外の子候補だけを件数と表示対象にする', async () => {

@@ -3,9 +3,11 @@
     import Button from "./Button.svelte";
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
-    import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
     import { resolvePostHistoryThreadContextIndentRem } from "../lib/postHistoryThreadGraphUtils";
-    import type { PostHistoryThreadGraphAnchorState } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type {
+        PostHistoryThreadGraphAnchorState,
+        PostHistoryThreadGraphNodeState,
+    } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
     import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
@@ -22,6 +24,18 @@
         onRetryNodeParent?: (nodeEventId: string) => void;
         onToggleNodeChildren?: (nodeEventId: string) => void;
         onRetryNodeChildren?: (nodeEventId: string) => void;
+        onCopyPointerDown?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: PointerEvent,
+        ) => void;
+        onCopyNevent?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: Event,
+        ) => void;
+        isCopyFailed?: (nodeEventId: string) => boolean;
+        canDeleteNodePost?: (nodeState: PostHistoryThreadGraphNodeState) => boolean;
+        isDeletionSending?: (nodeEventId: string) => boolean;
+        onOpenDeleteConfirm?: (nodeState: PostHistoryThreadGraphNodeState) => void;
     }
 
     let {
@@ -35,9 +49,57 @@
         onRetryNodeParent = undefined,
         onToggleNodeChildren = undefined,
         onRetryNodeChildren = undefined,
+        onCopyPointerDown = undefined,
+        onCopyNevent = undefined,
+        isCopyFailed = undefined,
+        canDeleteNodePost = undefined,
+        isDeletionSending = undefined,
+        onOpenDeleteConfirm = undefined,
     }: Props = $props();
 
     const directParentIndent = `${resolvePostHistoryThreadContextIndentRem(-1)}rem`;
+
+    let fallbackParentNodeState = $derived.by(() => {
+        if (!state.parentNode) {
+            return null;
+        }
+
+        return {
+            anchorEventId: state.anchorEventId,
+            node: state.parentNode,
+            parentTargetId: null,
+            parentNodeState: null,
+            parentExpansion: {
+                loadedParent: false,
+                visibleParent: false,
+                loadingParent: false,
+                parentError: null,
+                parentMissing: false,
+                parentDeleted: false,
+                showParentLoadingIndicator: false,
+                revalidatingParent: false,
+                loadedChildren: false,
+                visibleChildren: false,
+                loadingChildren: false,
+                revalidatingChildren: false,
+                childrenError: null,
+                lastFetchedParentAt: null,
+                lastFetchedChildrenAt: null,
+            },
+            parentAlreadyInPath: true,
+            repliesActionState: {
+                status: "unloaded",
+                visible: false,
+                replies: [],
+                replyCount: 0,
+                error: null,
+            },
+            replyNodeStates: [],
+            isOwnReply: false,
+            depthFromAnchor: -1,
+            cycleDetected: false,
+        } satisfies PostHistoryThreadGraphNodeState;
+    });
 </script>
 
 {#if section === "parent" && state.parentTargetId}
@@ -54,15 +116,29 @@
                 onRetryParent={onRetryNodeParent}
                 onToggleChildren={onToggleNodeChildren}
                 onRetryChildren={onRetryNodeChildren}
+                {onCopyPointerDown}
+                {onCopyNevent}
+                {isCopyFailed}
+                {canDeleteNodePost}
+                {isDeletionSending}
+                {onOpenDeleteConfirm}
             />
-        {:else if state.parentExpansion.visibleParent && state.parentNode}
-            <div class="post-history-thread-direct-parent-context">
-                <PostHistoryThreadNode
-                    node={state.parentNode}
-                    {scrollRoot}
-                    {onImageOpen}
-                />
-            </div>
+        {:else if state.parentExpansion.visibleParent && fallbackParentNodeState}
+            <PostHistoryThreadGraphNodeView
+                state={fallbackParentNodeState}
+                {scrollRoot}
+                {onImageOpen}
+                onToggleParent={onToggleNodeParent}
+                onRetryParent={onRetryNodeParent}
+                onToggleChildren={onToggleNodeChildren}
+                onRetryChildren={onRetryNodeChildren}
+                {onCopyPointerDown}
+                {onCopyNevent}
+                {isCopyFailed}
+                {canDeleteNodePost}
+                {isDeletionSending}
+                {onOpenDeleteConfirm}
+            />
         {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
             <span
                 class="post-history-context-deleted-label post-history-thread-direct-parent-context"
@@ -120,6 +196,12 @@
                     onRetryParent={onRetryNodeParent}
                     onToggleChildren={onToggleNodeChildren}
                     onRetryChildren={onRetryNodeChildren}
+                    {onCopyPointerDown}
+                    {onCopyNevent}
+                    {isCopyFailed}
+                    {canDeleteNodePost}
+                    {isDeletionSending}
+                    {onOpenDeleteConfirm}
                 />
             {/each}
         </div>
