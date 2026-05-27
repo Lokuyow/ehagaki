@@ -3238,11 +3238,24 @@
 
         :global(:where(.post-preview-reactions-button)) {
             min-height: auto;
-            gap: 2px;
-            padding-inline: 10px;
+            gap: 4px;
+            padding-inline: 6px;
             --btn-bg: var(--dialog-bg);
             background-color: var(--dialog-bg);
             color: var(--btn-post-preview-action);
+            display: flex;
+            align-items: stretch;
+
+            .favorite-icon {
+                mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+                height: auto;
+            }
+
+            span {
+                flex: 0 0 auto;
+                line-height: 36px;
+                height: auto;
+            }
         }
     }
 
@@ -3417,10 +3430,6 @@
 
     :global(.copy-icon) {
         mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .favorite-icon {
-        mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .post-preview-reaction-symbol {
