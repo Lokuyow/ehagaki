@@ -776,7 +776,9 @@
         );
     }
 
-    function canDeleteNodePost(nodeState: PostHistoryThreadGraphNodeState): boolean {
+    function canDeleteNodePost(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): boolean {
         return canRequestPostDeletion(
             buildPostRecordFromNodeState(nodeState),
             pubkeyHex,
@@ -787,7 +789,9 @@
         return deleteRequestState[nodeEventId] === "sending";
     }
 
-    function openNodeDeleteConfirm(nodeState: PostHistoryThreadGraphNodeState): void {
+    function openNodeDeleteConfirm(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): void {
         const post = buildPostRecordFromNodeState(nodeState);
         if (!canDeletePost(post)) {
             return;
@@ -1429,12 +1433,10 @@
                                             post,
                                             nodeEventId,
                                         )}
-                                    onCopyPointerDown={
-                                        handleNodeCopyPointerPosition
-                                    }
+                                    onCopyPointerDown={handleNodeCopyPointerPosition}
                                     onCopyNevent={handleNodeCopyNevent}
                                     isCopyFailed={isNodeCopyFailed}
-                                    canDeleteNodePost={canDeleteNodePost}
+                                    {canDeleteNodePost}
                                     isDeletionSending={isNodeDeletionSending}
                                     onOpenDeleteConfirm={openNodeDeleteConfirm}
                                 />
@@ -1885,12 +1887,10 @@
                                                 post,
                                                 nodeEventId,
                                             )}
-                                        onCopyPointerDown={
-                                            handleNodeCopyPointerPosition
-                                        }
+                                        onCopyPointerDown={handleNodeCopyPointerPosition}
                                         onCopyNevent={handleNodeCopyNevent}
                                         isCopyFailed={isNodeCopyFailed}
-                                        canDeleteNodePost={canDeleteNodePost}
+                                        {canDeleteNodePost}
                                         isDeletionSending={isNodeDeletionSending}
                                         onOpenDeleteConfirm={openNodeDeleteConfirm}
                                     />

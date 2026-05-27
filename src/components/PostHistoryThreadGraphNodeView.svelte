@@ -355,7 +355,7 @@
         display: flex;
         align-items: stretch;
         justify-content: space-between;
-        min-height: 28px;
+        height: 28px;
         --post-history-related-card-action-bg: var(
             --post-history-related-card-bg,
             var(--dialog-bg)
@@ -416,8 +416,7 @@
     }
 
     .post-preview-footer :global(.post-preview-replies-badge-button) {
-        width: 36px;
-        min-width: 36px;
+        aspect-ratio: 1;
         min-height: auto;
         color: var(--btn-post-preview-action);
     }
@@ -458,9 +457,7 @@
                 background-color: var(
                     --post-history-related-card-action-hover-bg-dark
                 );
-                color: var(
-                    --post-history-related-card-action-hover-color-dark
-                );
+                color: var(--post-history-related-card-action-hover-color-dark);
             }
         }
 
