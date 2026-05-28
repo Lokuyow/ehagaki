@@ -555,18 +555,20 @@
     },
   });
 
+  function notifyInboundDirectReplySaved(parentEventIds: string[]): void {
+    latestInboundDirectReplySave = {
+      revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
+      parentEventIds,
+    };
+  }
+
   const postHistoryInboundReplyReconciliation =
     usePostHistoryInboundReplyReconciliation({
       getIsAuthenticated: () => isAuthenticated,
       getPubkeyHex: () => authState.value?.pubkey ?? null,
       getRxNostr: () => rxNostr,
       getRelayConfig: () => relayConfigStore.value,
-      onSavedDirectReplies: (parentEventIds) => {
-        latestInboundDirectReplySave = {
-          revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
-          parentEventIds,
-        };
-      },
+      onSavedDirectReplies: notifyInboundDirectReplySaved,
     });
 
   usePostHistoryInboundInteractionsRealtime({
@@ -574,6 +576,7 @@
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
+    onSavedDirectReplies: notifyInboundDirectReplySaved,
     reconcileDirectReplyCandidates:
       postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
   });
