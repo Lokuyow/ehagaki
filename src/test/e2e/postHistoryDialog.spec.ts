@@ -47,9 +47,23 @@ async function scrollPostIntoViewByEventId(page: Page, eventId: string) {
 }
 
 async function jumpToDate(page: Page, date: string) {
+    const [year, month, day] = date.split('-');
     await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
     await page.getByRole('menuitem', { name: '日付へ移動' }).click();
-    await page.getByLabel('日付', { exact: true }).fill(date);
+    await expect(page.locator('.post-history-date-picker-input')).toBeVisible();
+    const yearSegment = page.locator('.post-history-date-picker-segment[data-segment="year"]');
+    const monthSegment = page.locator('.post-history-date-picker-segment[data-segment="month"]');
+    const daySegment = page.locator('.post-history-date-picker-segment[data-segment="day"]');
+
+    await yearSegment.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(String(Number(year)));
+    await monthSegment.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(String(Number(month)));
+    await daySegment.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(String(Number(day)));
     await page.getByRole('button', { name: 'この日付付近を表示' }).click();
 }
 

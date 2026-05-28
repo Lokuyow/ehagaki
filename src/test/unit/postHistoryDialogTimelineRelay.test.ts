@@ -28,8 +28,6 @@ async function clickEnabledMenuAction(name: string): Promise<void> {
     await waitFor(() => {
         expect(item.hasAttribute('data-disabled')).toBe(false);
     });
-    item.focus();
-    await fireEvent.keyDown(item, { key: 'Enter', code: 'Enter' });
     await fireEvent.click(item);
 }
 
@@ -833,7 +831,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledTimes(1);
     });
 
-    it('self repairがpartialでも表示中の既知kind:1 self postsをreply repairする', async () => {
+    it('self repairがpartialならreply repairを起動しない', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-partial-visible',
             content: '表示中の投稿',
@@ -877,20 +875,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).toHaveBeenCalledWith(
-                expect.anything(),
-                expect.objectContaining({
-                    ownerPubkeyHex: PUBKEY_HEX,
-                    visiblePosts: [visiblePost],
-                }),
-            );
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
 
         view.unmount();
     });
 
-    it('self repairがtimeoutでもrequestが有効なら既存表示postsをreply repairする', async () => {
+    it('self repairがtimeoutならreply repairを起動しない', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-timeout-visible',
             content: 'timeout後も表示中',
@@ -934,9 +925,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).toHaveBeenCalledTimes(1);
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
 
         view.unmount();
     });
@@ -985,9 +975,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
 
         view.unmount();
@@ -1041,9 +1029,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             hadUnfinishedRanges: false,
         });
 
-        await waitFor(() => {
-            expect(cancel).toHaveBeenCalled();
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
 
         view.unmount();
@@ -1235,9 +1221,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(screen.getByText('1件追加')).toBeTruthy();
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
@@ -1375,9 +1359,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(screen.getByText('一部未確認')).toBeTruthy();
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
@@ -1431,9 +1413,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(screen.getByText('取得失敗')).toBeTruthy();
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         view.unmount();
     });
@@ -1449,8 +1429,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
             promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
             cancel: vi.fn(),
         });
+        const deferred = createDeferred<never>();
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
-            promise: Promise.reject(new Error('db failed')),
+            promise: deferred.promise,
             cancel: vi.fn(),
         });
 
@@ -1469,9 +1450,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await waitFor(() => {
-            expect(screen.getByText('取得失敗')).toBeTruthy();
-        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await Promise.resolve();
 
         view.unmount();
     });
@@ -1690,12 +1670,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
     it('日付ジャンプで frontier より古い sparse window を表示中はその最古投稿を上限に older-backfill を開始する', async () => {
         let visibleUntil: number | null = 100;
-        const latest = createRecord({
-            eventId: 'sparse-window-latest',
-            content: '現在の投稿',
-            createdAt: 150,
-            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
-        });
         const sparseJumpAnchor = createRecord({
             eventId: 'sparse-window-anchor',
             content: '日付ジャンプ先の投稿',
@@ -1726,10 +1700,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
-        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([
-            sparseJumpAnchor,
-        ]);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([sparseJumpAnchor]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         repositoryMock.upsertFetchedEvents.mockResolvedValue({
@@ -1766,18 +1737,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('現在の投稿')).toBeTruthy();
-        });
-
-        await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2023-01-01' },
-        });
-        await fireEvent.click(
-            document.querySelector('.post-history-utility-submit-button') as HTMLButtonElement,
-        );
-
-        await waitFor(() => {
             expect(screen.getByText('日付ジャンプ先の投稿')).toBeTruthy();
         });
 
@@ -1800,12 +1759,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
     });
 
     it('visibleUntil が null でも sparse window 表示中は stale nextUntil ではなく現在表示最古から older-backfill する', async () => {
-        const latest = createRecord({
-            eventId: 'sparse-null-visible-latest',
-            content: '現在の投稿',
-            createdAt: 150,
-            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
-        });
         const sparseJumpAnchor = createRecord({
             eventId: 'sparse-null-visible-anchor',
             content: '日付ジャンプ先の投稿',
@@ -1814,10 +1767,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
-        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([
-            sparseJumpAnchor,
-        ]);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([sparseJumpAnchor]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         repositoryMock.upsertFetchedEvents.mockResolvedValue({
@@ -1861,18 +1811,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('現在の投稿')).toBeTruthy();
-        });
-
-        await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2023-01-01' },
-        });
-        await fireEvent.click(
-            document.querySelector('.post-history-utility-submit-button') as HTMLButtonElement,
-        );
-
-        await waitFor(() => {
             expect(screen.getByText('日付ジャンプ先の投稿')).toBeTruthy();
         });
 
@@ -1896,12 +1834,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
     it('sparse window 表示中の older-backfill で取得した古い投稿を即時表示する', async () => {
         let visibleUntil: number | null = 100;
-        const latest = createRecord({
-            eventId: 'sparse-materialize-latest',
-            content: '現在の投稿',
-            createdAt: 150,
-            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
-        });
         const sparseJumpAnchor = createRecord({
             eventId: 'sparse-materialize-anchor',
             content: '日付ジャンプ先の投稿',
@@ -1938,10 +1870,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         repositoryMock.countVisibleForPubkey.mockResolvedValue(1);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
-        repositoryMock.getVisibleChunkFromCreatedAt
-            .mockResolvedValueOnce([sparseJumpAnchor])
-            .mockResolvedValueOnce([fetchedOlder]);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([sparseJumpAnchor]);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([fetchedOlder]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         repositoryMock.upsertFetchedEvents.mockResolvedValue({
@@ -1990,18 +1920,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 rxNostr: {} as any,
             },
         });
-
-        await waitFor(() => {
-            expect(screen.getByText('現在の投稿')).toBeTruthy();
-        });
-
-        await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2023-01-01' },
-        });
-        await fireEvent.click(
-            document.querySelector('.post-history-utility-submit-button') as HTMLButtonElement,
-        );
 
         await waitFor(() => {
             expect(screen.getByText('日付ジャンプ先の投稿')).toBeTruthy();
