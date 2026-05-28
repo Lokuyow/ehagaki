@@ -3,7 +3,7 @@ import {
     mergeOlderVisiblePosts,
     POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS,
     resolveNewlyVisibleOlderPosts,
-    resolveOlderRevealReplyRepairNetworkParentIds,
+    resolveOlderRevealChildInteractionRepairNetworkParentIds,
     resolveVisibleOlderRevealChildInteractionRepairParentPosts,
 } from '../../lib/hooks/usePostHistoryListing.svelte';
 
@@ -178,7 +178,7 @@ describe('mergeOlderVisiblePosts', () => {
         const freshCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS - 1_000);
         const staleCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS + 1_000);
 
-        const result = resolveOlderRevealReplyRepairNetworkParentIds(
+        const result = resolveOlderRevealChildInteractionRepairNetworkParentIds(
             ['fresh-parent', 'stale-parent', 'unchecked-parent', 'inflight-parent'],
             new Map([
                 ['fresh-parent', freshCheckedAt],

@@ -46,6 +46,10 @@ import {
     cleanupServiceWorkerDuplicateProfileCache,
     clearServiceWorkerProfileCache,
 } from "../src/lib/swProfileCacheActionUtils";
+import {
+    EHAGAKI_DB_NAME,
+    EHAGAKI_DB_VERSION,
+} from "../src/lib/storage/ehagakiDbConstants";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createClearSharedMediaDbOperation,
@@ -72,8 +76,9 @@ const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
 const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
-const INDEXEDDB_NAME = 'eHagakiDB';
-const INDEXEDDB_VERSION = 10;
+const INDEXEDDB_NAME = EHAGAKI_DB_NAME;
+const EHAGAKI_DB_OPEN_VERSION = EHAGAKI_DB_VERSION;
+const INDEXEDDB_VERSION = EHAGAKI_DB_OPEN_VERSION;
 const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
 const SHARED_MEDIA_RECORD_ID = 'latest';
 const SHARED_MEDIA_SCHEMA_VERSION = 1;

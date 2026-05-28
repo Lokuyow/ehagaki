@@ -1,9 +1,15 @@
 import Dexie, { type Table } from "dexie";
 import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
+import {
+    EHAGAKI_DB_NAME,
+    EHAGAKI_DB_VERSION,
+} from "./ehagakiDbConstants";
 
-export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 13;
+export {
+    EHAGAKI_DB_NAME,
+    EHAGAKI_DB_VERSION,
+};
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
