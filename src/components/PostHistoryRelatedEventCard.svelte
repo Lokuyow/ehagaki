@@ -98,7 +98,7 @@
             </div>
         {/if}
         {#if showHeaderDate}
-            <header class="post-history-related-card-header">
+            <header class="post-history-related-card-footer">
                 <span class="post-history-related-date">{postedAt}</span>
             </header>
         {/if}
@@ -127,7 +127,7 @@
         padding: 2px 10px 0 8px;
     }
 
-    .post-history-related-card-header,
+    .post-history-related-card-footer,
     .post-history-related-author {
         display: flex;
         align-items: center;
@@ -135,10 +135,11 @@
         gap: 8px;
     }
 
-    .post-history-related-card-header {
+    .post-history-related-card-footer {
         justify-content: space-between;
         color: var(--text-muted);
-        font-size: 0.78rem;
+        font-size: 0.875rem;
+        height: 26px;
     }
 
     .post-history-related-date {
