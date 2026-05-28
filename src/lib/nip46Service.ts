@@ -1569,30 +1569,66 @@ export class Nip46Service {
                         limit: 0,
                     },
                     {
-                        onevent: async (event: { content: string; pubkey: string }) => {
+                        oneose: () => {
+                            console.debug('[NIP-46] EOSE received on handshake subscription; subscription remains open awaiting signer response');
+                        },
+                        onevent: async (event: { id?: string; content: string; pubkey: string }) => {
+                            console.debug('[NIP-46] EVENT received', event.id ?? '(no id)', 'from', event.pubkey);
+
                             if (settled) {
+                                console.debug('[NIP-46] EVENT ignored: already settled');
                                 return;
                             }
 
                             settleHandshakeStartedSuccess();
 
                             try {
+                                console.debug('[NIP-46] decrypt start', 'pubkey:', event.pubkey);
                                 const temporaryConversationKey = nip44.getConversationKey(
                                     clientSecretKey,
                                     event.pubkey,
                                 );
-                                const decrypted = nip44.decrypt(
-                                    event.content,
-                                    temporaryConversationKey,
-                                );
+                                let decrypted: string;
+                                try {
+                                    decrypted = nip44.decrypt(
+                                        event.content,
+                                        temporaryConversationKey,
+                                    );
+                                    console.debug('[NIP-46] decrypt ok');
+                                } catch (decryptErr) {
+                                    console.debug('[NIP-46] decrypt fail', decryptErr);
+                                    throw decryptErr;
+                                }
                                 const response = JSON.parse(decrypted) as {
-                                    result?: string;
+                                    id?: string;
+                                    method?: string;
+                                    result?: unknown;
+                                    error?: string;
                                 };
+                                const resultValue = response.result;
+                                const resultType = typeof resultValue;
+                                const isKnownAck = resultValue === 'ack';
+                                console.debug('[NIP-46] parsed payload detail:', {
+                                    keys: Object.keys(response),
+                                    id: response.id ?? 'none',
+                                    method: response.method ?? 'none',
+                                    resultType,
+                                    resultIsKnown: isKnownAck ? 'ack' : undefined,
+                                    resultLength: resultType === 'string' ? (resultValue as string).length : 'n/a',
+                                    expectedLength: sharedSecret.length,
+                                    error: response.error ?? 'none',
+                                });
 
-                                if (response.result !== sharedSecret) {
+                                const isSecretMatch = resultValue === sharedSecret;
+                                if (!isSecretMatch && !isKnownAck) {
+                                    console.debug('[NIP-46] result mismatch; ignoring event');
                                     return;
                                 }
+                                if (isKnownAck && !isSecretMatch) {
+                                    console.warn('[NIP-46] remote signer responded with "ack" instead of the secret — accepting for compatibility (secret validation skipped)');
+                                }
 
+                                console.debug('[NIP-46] handshake accepted; isSecretMatch:', isSecretMatch, 'isAck:', isKnownAck);
                                 handshakeAccepted = true;
                                 handshakeSubscription?.close();
                                 handshakeSubscription = null;
@@ -1704,6 +1740,7 @@ export class Nip46Service {
                                         relayResolution.sessionRelayResolution,
                                 });
 
+                                console.debug('[NIP-46] auth completed; user pubkey:', resolvedUserPubkey);
                                 settled = true;
                                 resolveCompletion?.(resolvedUserPubkey);
                             } catch (error) {
@@ -1712,12 +1749,14 @@ export class Nip46Service {
                                     return;
                                 }
 
+                                console.debug('[NIP-46] onevent error (not settled):', error);
                                 settled = true;
                                 await closeHandshakeResources();
                                 rejectCompletion?.(error);
                             }
                         },
-                        onclose: async () => {
+                        onclose: async (reasons?: string[]) => {
+                            console.debug('[NIP-46] handshake subscription closed; settled:', settled, 'handshakeAccepted:', handshakeAccepted, 'reasons:', reasons);
                             if (settled || handshakeAccepted) {
                                 return;
                             }
