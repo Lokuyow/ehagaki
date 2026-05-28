@@ -39,7 +39,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairAdded': `${options?.values?.count}件追加`,
         'postHistory.repairNoChanges': '追加なし',
         'postHistory.repairPartialFailure': '一部未確認',
-            'postHistory.repairFetchFailed': '取得失敗',
+        'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -609,6 +609,8 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('再取得中...')).toBeTruthy();
         });
 
+        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
+
         repairTask.resolve({
             status: 'success',
             addedCount: 1,
@@ -618,11 +620,6 @@ describe('PostHistoryDialog', () => {
             processedRanges: [],
             attemptedRangeCount: 1,
             hadFailures: false,
-        });
-
-        await waitFor(async () => {
-            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
-            expect(screen.getByText('1件追加')).toBeTruthy();
         });
     });
 

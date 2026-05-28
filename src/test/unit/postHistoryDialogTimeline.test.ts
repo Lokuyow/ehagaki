@@ -60,6 +60,34 @@ function getJumpDateSubmitButton(): HTMLButtonElement {
     return button;
 }
 
+async function setJumpDateValue(date: string): Promise<void> {
+    const [year, month, day] = date.split('-');
+    const yearSegment = document.querySelector('.post-history-date-picker-segment[data-segment="year"]');
+    const monthSegment = document.querySelector('.post-history-date-picker-segment[data-segment="month"]');
+    const daySegment = document.querySelector('.post-history-date-picker-segment[data-segment="day"]');
+
+    if (!(yearSegment instanceof HTMLElement)
+        || !(monthSegment instanceof HTMLElement)
+        || !(daySegment instanceof HTMLElement)) {
+        throw new Error('日付ピッカーの入力セグメントが見つかりません');
+    }
+
+    await fireEvent.click(yearSegment);
+    for (const digit of year) {
+        await fireEvent.keyDown(yearSegment, { key: digit });
+    }
+
+    await fireEvent.click(monthSegment);
+    for (const digit of String(Number(month))) {
+        await fireEvent.keyDown(monthSegment, { key: digit });
+    }
+
+    await fireEvent.click(daySegment);
+    for (const digit of String(Number(day))) {
+        await fireEvent.keyDown(daySegment, { key: digit });
+    }
+}
+
 describe('PostHistoryDialog timeline navigation', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
@@ -272,9 +300,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('menuitem', { name: '日付へ移動' }));
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2024-01-01' },
-        });
+        await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -385,9 +411,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2023-10-01' },
-        });
+        await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -473,9 +497,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2024-12-28' },
-        });
+        await setJumpDateValue('2024-12-28');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -553,9 +575,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2023-10-01' },
-        });
+        await setJumpDateValue('2023-10-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -939,9 +959,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2024-01-01' },
-        });
+        await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -1063,9 +1081,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2024-01-01' },
-        });
+        await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -1136,9 +1152,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2024-01-01' },
-        });
+        await setJumpDateValue('2024-01-01');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -1452,9 +1466,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await clickMenuAction('日付へ移動');
-        await fireEvent.input(screen.getByLabelText('日付'), {
-            target: { value: '2026-05-12' },
-        });
+        await setJumpDateValue('2026-05-12');
         await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
@@ -1568,9 +1580,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             });
 
             await clickMenuAction('日付へ移動');
-            await fireEvent.input(screen.getByLabelText('日付'), {
-                target: { value: dateInput },
-            });
+            await setJumpDateValue(dateInput);
             await fireEvent.click(getJumpDateSubmitButton());
 
             await waitFor(() => {

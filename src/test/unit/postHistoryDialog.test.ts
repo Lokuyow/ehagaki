@@ -1291,7 +1291,9 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getByEventId.mockResolvedValue(null);
         contextFetchServiceMock.fetchEventById
             .mockReturnValueOnce({
-                promise: Promise.reject(new Error('fetch failed')),
+                promise: new Promise((_resolve, reject) => {
+                    setTimeout(() => reject(new Error('fetch failed')), 0);
+                }),
                 cancel: vi.fn(),
             })
             .mockReturnValueOnce({

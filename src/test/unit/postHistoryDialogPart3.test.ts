@@ -39,7 +39,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairAdded': `${options?.values?.count}件追加`,
         'postHistory.repairNoChanges': '追加なし',
         'postHistory.repairPartialFailure': '一部未確認',
-            'postHistory.repairFetchFailed': '取得失敗',
+        'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -530,9 +530,8 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[recent-date-format] 投稿日時が今年なら月日時刻を表示する', async () => {
-        vi.useFakeTimers();
         const now = Date.UTC(2025, 5, 1, 12, 0, 0);
-        vi.setSystemTime(now);
+        const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({
@@ -562,13 +561,14 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText(expected)).toBeTruthy();
             expect(screen.getByText('今年の投稿')).toBeTruthy();
         });
+
+        dateNowSpy.mockRestore();
     });
 
     it('[recent-date-format] 投稿日時が去年なら年月日を表示する', async () => {
-        vi.useFakeTimers();
         const now = new Date(2025, 0, 1, 12, 0, 0).getTime();
         const postedAt = new Date(2024, 11, 31, 12, 0, 0).getTime();
-        vi.setSystemTime(now);
+        const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({
@@ -597,6 +597,8 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText(expected)).toBeTruthy();
             expect(screen.getByText('年を跨いだ投稿')).toBeTruthy();
         });
+
+        dateNowSpy.mockRestore();
     });
 
     it('[emoji-preload] 保存済み emoji tag から custom emoji を描画し、同一 URL は一度だけ preload する', async () => {
