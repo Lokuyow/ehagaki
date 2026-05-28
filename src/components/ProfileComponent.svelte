@@ -282,9 +282,7 @@
                                         "profileDialog.logout_account",
                                     )}
                                 >
-                                    <div
-                                        class="xmark-small-icon svg-icon"
-                                    ></div>
+                                    <div class="logout-icon svg-icon"></div>
                                 </button>
                             </div>
                             {#if showNip46ConnectionPanel}
@@ -656,8 +654,8 @@
             }
         }
 
-        .xmark-small-icon {
-            mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        .logout-icon {
+            mask-image: url("/icons/logout_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 26px;
             height: 26px;
         }
