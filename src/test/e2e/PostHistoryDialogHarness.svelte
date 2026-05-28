@@ -6,7 +6,7 @@
     import {
         ehagakiDb,
         type PostHistoryRecord,
-        type PostHistoryReplyEventRecord,
+        type PostHistoryChildInteractionRecord,
     } from "../../lib/storage/ehagakiDb";
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
@@ -77,7 +77,7 @@
         };
     }
 
-    function buildReactionRecord(index: number): PostHistoryReplyEventRecord {
+    function buildReactionRecord(index: number): PostHistoryChildInteractionRecord {
         const parentPost = posts[index];
         const createdAt = parentPost.createdAt + 60;
 

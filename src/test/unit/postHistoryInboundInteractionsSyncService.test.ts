@@ -51,7 +51,7 @@ function createService(overrides: Record<string, any> = {}) {
         unchangedCount: 0,
         ignoredCount: 0,
     }));
-    const postHistoryReplyEventsRepository = {
+    const postHistoryChildInteractionsRepository = {
         upsertChildInteractions,
         upsertDirectReplies: upsertChildInteractions,
     };
@@ -70,7 +70,7 @@ function createService(overrides: Record<string, any> = {}) {
     };
     const service = new PostHistoryInboundInteractionsSyncService({
         postHistoryRepository,
-        postHistoryReplyEventsRepository,
+        postHistoryChildInteractionsRepository,
         syncStateRepository,
         now: () => 1_700_000_000_000,
         setTimeoutFn: (() => 1) as any,
@@ -82,7 +82,7 @@ function createService(overrides: Record<string, any> = {}) {
     return {
         service,
         postHistoryRepository,
-        postHistoryReplyEventsRepository,
+        postHistoryChildInteractionsRepository,
         syncStateRepository,
     };
 }
@@ -111,7 +111,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 return { unsubscribe: vi.fn() };
             },
         });
-        const { service, postHistoryReplyEventsRepository } = createService();
+        const { service, postHistoryChildInteractionsRepository } = createService();
 
         const result = await service.syncRecent(rxNostrMock as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
@@ -125,7 +125,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             since: 1_699_395_200,
             limit: 150,
         }]);
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: directReply, relayUrls: ["wss://relay.example.com/"] }],
             fetchedAt: 1_700_000_000_000,
@@ -203,7 +203,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 schemaVersion: 1,
             })),
         };
-        const { service, postHistoryReplyEventsRepository } = createService({ syncStateRepository });
+        const { service, postHistoryChildInteractionsRepository } = createService({ syncStateRepository });
 
         const result = await service.syncRecent(rxNostrMock as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
@@ -212,7 +212,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             limit: 1,
         }).promise;
 
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(result).toMatchObject({
             savedDirectReplyCount: 0,
             saturated: true,
@@ -232,7 +232,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 return { unsubscribe: vi.fn() };
             },
         });
-        const { service, postHistoryReplyEventsRepository } = createService();
+        const { service, postHistoryChildInteractionsRepository } = createService();
         const reconcileDirectReplyCandidates = vi.fn(async () => ({
             changedParentEventIds: [OTHER_PARENT_ID],
             savedDirectReplyCount: 1,
@@ -255,7 +255,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 }),
             }),
         ]);
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(result.changedParentEventIds).toEqual([OTHER_PARENT_ID]);
     });
 
@@ -289,7 +289,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 return { unsubscribe: vi.fn() };
             },
         });
-        const { service, postHistoryReplyEventsRepository } = createService();
+        const { service, postHistoryChildInteractionsRepository } = createService();
 
         const result = await service.syncRecent(rxNostrMock as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
@@ -297,7 +297,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             relayConfig: null,
         }).promise;
 
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [
                 { event: selfReaction, relayUrls: ["wss://relay.example.com/"] },
@@ -331,7 +331,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 return { unsubscribe: vi.fn() };
             },
         });
-        const { service, postHistoryReplyEventsRepository } = createService();
+        const { service, postHistoryChildInteractionsRepository } = createService();
 
         const result = await service.syncRecent(rxNostrMock as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
@@ -339,7 +339,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             relayConfig: null,
         }).promise;
 
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [
                 { event: threadedReaction, relayUrls: ["wss://relay.example.com/"] },
@@ -370,7 +370,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
                 return getExistingFinished.promise;
             }),
         };
-        const { service, postHistoryReplyEventsRepository, syncStateRepository } =
+        const { service, postHistoryChildInteractionsRepository, syncStateRepository } =
             createService({ postHistoryRepository });
 
         const task = service.syncRecent(rxNostrMock as any, {
@@ -386,7 +386,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         const result = await task.promise;
         expect(result.status).toBe("cancelled");
         expect(reconcileDirectReplyCandidates).not.toHaveBeenCalled();
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(syncStateRepository.save).not.toHaveBeenCalled();
     });
 });

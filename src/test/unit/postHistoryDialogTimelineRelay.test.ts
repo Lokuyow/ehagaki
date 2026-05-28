@@ -92,7 +92,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
                 upsertFetchedEvents: vi.fn(),
             },
-            postHistoryReplyEventsRepository: replyEventsRepository,
+            postHistoryChildInteractionsRepository: replyEventsRepository,
             selfParentFetchService: {
                 fetchSelfParent: vi.fn(() => ({
                     promise: new Promise<{ event: typeof selfParent | null; relayUrl: string | null }>(

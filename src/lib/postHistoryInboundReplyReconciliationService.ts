@@ -14,12 +14,12 @@ import {
 } from "./storage/postHistoryRepository";
 import {
     postHistoryChildInteractionsRepository,
-    type PostHistoryReplyEventItem,
+    type PostHistoryChildInteractionItem,
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
 import type { RelayConfig } from "./types";
 
-export interface PostHistoryInboundDirectReplyCandidate extends PostHistoryReplyEventItem {
+export interface PostHistoryInboundDirectReplyCandidate extends PostHistoryChildInteractionItem {
     classification: PostHistoryInboundInteractionClassification;
 }
 
@@ -40,7 +40,7 @@ export interface PostHistoryInboundReplyReconciliationServiceDeps {
         PostHistoryRepository,
         "getExistingEventIdsForPubkey" | "upsertFetchedEvents"
     >;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     selfParentFetchService?: Pick<PostHistorySelfParentFetchService, "fetchSelfParent">;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
@@ -229,7 +229,7 @@ export class PostHistoryInboundReplyReconciliationSession {
             return emptyResult();
         }
 
-        const directRepliesByParentId = new Map<string, PostHistoryReplyEventItem[]>();
+        const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         for (const candidate of candidates) {
             const parentEventId = candidate.classification.parentEventId;
             if (!parentEventId) {
@@ -256,7 +256,7 @@ export class PostHistoryInboundReplyReconciliationSession {
         let savedDirectReplyCount = 0;
         const changedParentEventIds: string[] = [];
         for (const [parentEventId, events] of directRepliesByParentId.entries()) {
-            const result = await this.deps.postHistoryReplyEventsRepository.upsertChildInteractions({
+            const result = await this.deps.postHistoryChildInteractionsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt: this.deps.now(),
@@ -294,8 +294,8 @@ export class PostHistoryInboundReplyReconciliationService {
     constructor(deps: PostHistoryInboundReplyReconciliationServiceDeps = {}) {
         this.deps = {
             postHistoryRepository: deps.postHistoryRepository ?? postHistoryRepository,
-            postHistoryReplyEventsRepository:
-                deps.postHistoryReplyEventsRepository ?? postHistoryChildInteractionsRepository,
+            postHistoryChildInteractionsRepository:
+                deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository,
             selfParentFetchService: deps.selfParentFetchService ?? postHistorySelfParentFetchService,
             console: deps.console ?? (typeof globalThis.console !== "undefined"
                 ? globalThis.console

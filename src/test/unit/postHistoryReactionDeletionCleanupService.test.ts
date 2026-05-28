@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PostHistoryReactionDeletionCleanupService } from "../../lib/postHistoryReactionDeletionCleanupService";
-import type { PostHistoryReplyEventRecord } from "../../lib/storage/ehagakiDb";
+import type { PostHistoryChildInteractionRecord } from "../../lib/storage/ehagakiDb";
 import type { NostrEvent } from "../../lib/types";
 
 const PARENT_ID = "1".repeat(64);
@@ -8,8 +8,8 @@ const REACTION_ID = "2".repeat(64);
 const REACTION_AUTHOR = "b".repeat(64);
 
 function createReactionRecord(
-    overrides: Partial<PostHistoryReplyEventRecord> = {},
-): PostHistoryReplyEventRecord {
+    overrides: Partial<PostHistoryChildInteractionRecord> = {},
+): PostHistoryChildInteractionRecord {
     return {
         id: REACTION_ID,
         eventId: REACTION_ID,

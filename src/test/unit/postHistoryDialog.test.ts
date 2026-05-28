@@ -329,7 +329,6 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
 
 vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
     postHistoryChildInteractionsRepository: replyEventsRepositoryMock,
-    postHistoryReplyEventsRepository: replyEventsRepositoryMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryInboundInteractionsSyncStateRepository', () => ({
@@ -3614,8 +3613,7 @@ describe('PostHistoryDialog', () => {
                 pubkeyHex: 'a'.repeat(64),
                 rxNostr: {} as any,
                 relayConfig: {
-                    mode: 'selected',
-                    selectedRelayUrls: ['wss://remote.example/'],
+                    'wss://remote.example/': { read: true, write: false },
                 },
             },
         });

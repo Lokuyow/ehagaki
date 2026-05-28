@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
-import { DexiePostHistoryReplyEventsRepository } from "../../lib/storage/postHistoryReplyEventsRepository";
+import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryReplyEventsRepository";
 
 const testDbNames = new Set<string>();
 
@@ -32,10 +32,10 @@ afterEach(async () => {
     testDbNames.clear();
 });
 
-describe("DexiePostHistoryReplyEventsRepository", () => {
+describe("DexiePostHistoryChildInteractionsRepository", () => {
     it("parentId が一致する kind:1 直接リプライだけを保存し、古い順で取得する", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const parentEventId = "1".repeat(64);
         const rootEventId = "9".repeat(64);
         const directReply = createSignedEvent({
@@ -106,7 +106,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("kind:7 reactionをrelated eventとして保存し、direct reply取得には混ぜない", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const parentEventId = "1".repeat(64);
         const directReply = createSignedEvent({
             id: "2".repeat(64),
@@ -159,7 +159,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("root付きkind:7 reactionは末尾の対象e tagに紐づけて保存する", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const rootEventId = "8".repeat(64);
         const parentEventId = "1".repeat(64);
         const reaction = createSignedEvent({
@@ -200,7 +200,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("同じeventを再保存してもPostHistoryRecordには混ぜない", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const parentEventId = "1".repeat(64);
         const reply = createSignedEvent({
             id: "2".repeat(64),
@@ -224,7 +224,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("self-parent eventはdirect replyとして保存しない", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const parentEventId = "1".repeat(64);
         const selfParent = createSignedEvent({
             id: parentEventId,
@@ -247,7 +247,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("指定pubkeyのpostHistory parentに紐づくreply cacheだけを削除する", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const ownerPubkey = "a".repeat(64);
         const otherPubkey = "b".repeat(64);
         const ownerParentId = "1".repeat(64);
@@ -306,7 +306,7 @@ describe("DexiePostHistoryReplyEventsRepository", () => {
 
     it("eventId指定でdirect reply cacheだけを削除し、PostHistoryRecordには影響しない", async () => {
         const db = createTestDb();
-        const repository = new DexiePostHistoryReplyEventsRepository(db, () => 1000);
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
         const parentEventId = "1".repeat(64);
         const deletedReply = createSignedEvent({
             id: "2".repeat(64),

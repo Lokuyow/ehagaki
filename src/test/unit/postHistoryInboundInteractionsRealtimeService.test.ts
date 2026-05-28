@@ -50,13 +50,13 @@ function createService() {
         unchangedCount: 0,
         ignoredCount: 0,
     }));
-    const postHistoryReplyEventsRepository = {
+    const postHistoryChildInteractionsRepository = {
         upsertChildInteractions,
         upsertDirectReplies: upsertChildInteractions,
     };
     const service = new PostHistoryInboundInteractionsRealtimeService({
         postHistoryRepository,
-        postHistoryReplyEventsRepository,
+        postHistoryChildInteractionsRepository,
         now: () => 1_700_000_000_000,
         console: { warn: vi.fn(), error: vi.fn() },
     });
@@ -64,7 +64,7 @@ function createService() {
     return {
         service,
         postHistoryRepository,
-        postHistoryReplyEventsRepository,
+        postHistoryChildInteractionsRepository,
     };
 }
 
@@ -72,7 +72,7 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
     rxNostrMock.use.mockReturnValue({
         subscribe: vi.fn(() => ({ unsubscribe })),
     });
-    const { service, postHistoryRepository, postHistoryReplyEventsRepository } = createService();
+    const { service, postHistoryRepository, postHistoryChildInteractionsRepository } = createService();
     const onSavedInboundInteractions = vi.fn();
     const subscription = service.subscribe(rxNostrMock as any, {
         ownerPubkeyHex: OWNER_PUBKEY,
@@ -85,7 +85,7 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
     return {
         subscription,
         postHistoryRepository,
-        postHistoryReplyEventsRepository,
+        postHistoryChildInteractionsRepository,
         onSavedInboundInteractions,
     };
 }
@@ -102,7 +102,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         const {
             subscription,
             postHistoryRepository,
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             onSavedInboundInteractions,
         } = openSubscription(observer);
 
@@ -118,7 +118,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             pubkeyHex: OWNER_PUBKEY,
             eventIds: [PARENT_ID],
         });
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{
                 event: directReply,
@@ -131,7 +131,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
 
     it("keeps mention-like events out of reply storage", async () => {
         const observer: Record<string, any> = {};
-        const { subscription, postHistoryReplyEventsRepository, onSavedInboundInteractions } =
+        const { subscription, postHistoryChildInteractionsRepository, onSavedInboundInteractions } =
             openSubscription(observer);
 
         observer.next({
@@ -146,7 +146,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         });
         await subscription.waitForIdle();
 
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
         expect(onSavedInboundInteractions).not.toHaveBeenCalled();
     });
 
@@ -165,7 +165,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         const {
             subscription,
             postHistoryRepository,
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             onSavedInboundInteractions,
         } = openSubscription(observer);
 
@@ -176,7 +176,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             pubkeyHex: OWNER_PUBKEY,
             eventIds: [PARENT_ID],
         });
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{
                 event: selfReaction,
@@ -190,7 +190,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
     it("unsubscribes and does not save packets queued after stop", async () => {
         const observer: Record<string, any> = {};
         const unsubscribe = vi.fn();
-        const { subscription, postHistoryReplyEventsRepository } =
+        const { subscription, postHistoryChildInteractionsRepository } =
             openSubscription(observer, unsubscribe);
 
         subscription.stop();
@@ -198,6 +198,6 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         await subscription.waitForIdle();
 
         expect(unsubscribe).toHaveBeenCalledTimes(1);
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
     });
 });

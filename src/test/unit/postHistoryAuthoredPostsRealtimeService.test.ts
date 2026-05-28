@@ -119,7 +119,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
                 upsertFetchedEvents: vi.fn(),
             },
-            postHistoryReplyEventsRepository: replyEventsRepository,
+            postHistoryChildInteractionsRepository: replyEventsRepository,
             selfParentFetchService: {
                 fetchSelfParent: vi.fn(() => ({
                     promise: new Promise<{ event: NostrEvent | null; relayUrl: string | null }>(
@@ -137,7 +137,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
             },
-            postHistoryReplyEventsRepository: replyEventsRepository,
+            postHistoryChildInteractionsRepository: replyEventsRepository,
             now: () => 1_700_000_000_000,
             console: { warn: vi.fn(), error: vi.fn() },
         }).subscribe(rxNostrMock as any, {

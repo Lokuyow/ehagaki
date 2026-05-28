@@ -3,7 +3,7 @@ import {
     isCustomEmojiShortcodeText,
     normalizeEmojiShortcodeForLookup,
 } from "./customEmoji";
-import type { PostHistoryReplyEventRecord } from "./storage/ehagakiDb";
+import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 
 export interface PostHistoryReactionAggregate {
     content: string;
@@ -22,9 +22,9 @@ export const EMPTY_POST_HISTORY_REACTION_SUMMARY: PostHistoryReactionSummary = {
 };
 
 type PostHistoryReactionRecordInput = Pick<
-    PostHistoryReplyEventRecord,
+    PostHistoryChildInteractionRecord,
     "kind" | "content"
-> & Partial<Pick<PostHistoryReplyEventRecord, "tags">>;
+> & Partial<Pick<PostHistoryChildInteractionRecord, "tags">>;
 
 function resolveReactionEmojiUrl(
     record: PostHistoryReactionRecordInput,

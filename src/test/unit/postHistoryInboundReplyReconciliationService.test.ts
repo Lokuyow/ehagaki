@@ -60,7 +60,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             unchangedCount: 0,
             ignoredCount: 0,
         }));
-        const postHistoryReplyEventsRepository = {
+        const postHistoryChildInteractionsRepository = {
             upsertChildInteractions,
             upsertDirectReplies: upsertChildInteractions,
         };
@@ -73,7 +73,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         const onSavedInboundInteractions = vi.fn();
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository,
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             selfParentFetchService,
             now: () => 1_700_000_000_000,
             console: { warn: vi.fn(), error: vi.fn() },
@@ -85,7 +85,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
 
         const result = await session.reconcile([candidate]);
         expect(result.unresolvedParentEventIds).toEqual([PARENT_ID]);
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
 
         parentFetch.resolve({
             event: createEvent({
@@ -107,7 +107,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             }],
             fetchedAt: 1_700_000_000_000,
         });
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
             fetchedAt: 1_700_000_000_000,
@@ -117,7 +117,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
 
     it("leaves targeted parent fetch null results unresolved without storing the candidate", async () => {
         const upsertChildInteractions = vi.fn();
-        const postHistoryReplyEventsRepository = {
+        const postHistoryChildInteractionsRepository = {
             upsertChildInteractions,
             upsertDirectReplies: upsertChildInteractions,
         };
@@ -126,7 +126,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
                 upsertFetchedEvents: vi.fn(),
             },
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             selfParentFetchService: {
                 fetchSelfParent: vi.fn(() => ({
                     promise: Promise.resolve({ event: null, relayUrl: null }),
@@ -142,7 +142,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         await Promise.resolve();
 
         expect(result.unresolvedParentEventIds).toEqual([PARENT_ID]);
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
     });
 
     it("does not apply a stale targeted parent result after the owner session stops", async () => {
@@ -152,13 +152,13 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             upsertFetchedEvents: vi.fn(),
         };
         const upsertChildInteractions = vi.fn();
-        const postHistoryReplyEventsRepository = {
+        const postHistoryChildInteractionsRepository = {
             upsertChildInteractions,
             upsertDirectReplies: upsertChildInteractions,
         };
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository,
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             selfParentFetchService: {
                 fetchSelfParent: vi.fn(() => ({
                     promise: parentFetch.promise,
@@ -185,7 +185,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         await Promise.resolve();
 
         expect(postHistoryRepository.upsertFetchedEvents).not.toHaveBeenCalled();
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).not.toHaveBeenCalled();
     });
 
     it("keeps pending repository saves active across Dialog close while owner session stays active", async () => {
@@ -195,7 +195,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             unchangedCount: 0,
             ignoredCount: 0,
         }));
-        const postHistoryReplyEventsRepository = {
+        const postHistoryChildInteractionsRepository = {
             upsertChildInteractions,
             upsertDirectReplies: upsertChildInteractions,
         };
@@ -204,7 +204,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
                 upsertFetchedEvents: vi.fn(),
             },
-            postHistoryReplyEventsRepository,
+            postHistoryChildInteractionsRepository,
             selfParentFetchService: {
                 fetchSelfParent: vi.fn(() => ({
                     promise: new Promise<{ event: NostrEvent | null; relayUrl: string | null }>(
@@ -222,7 +222,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         await session.reconcile([candidate]);
         await session.notifySelfPostsSaved([PARENT_ID]);
 
-        expect(postHistoryReplyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
             parentEventId: PARENT_ID,
             events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
             fetchedAt: expect.any(Number),

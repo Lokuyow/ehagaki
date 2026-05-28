@@ -1,20 +1,20 @@
-import type { PostHistoryReplyEventRecord } from "./storage/ehagakiDb";
+import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
 
 export interface PostHistoryReactionRecordsAdapter {
-    getReactionRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
+    getReactionRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
 }
 
 export interface PostHistoryDirectReplyRecordsAdapter {
-    getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
+    getDirectReplyRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
 }
 
-export interface PostHistoryReplyEventsAdapter {
-    getRelatedEventRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
-    getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]>;
+export interface PostHistoryChildInteractionsAdapter {
+    getRelatedEventRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
+    getDirectReplyRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
 }
 
 export class RepositoryPostHistoryReactionRecordsAdapter implements PostHistoryReactionRecordsAdapter {
@@ -23,7 +23,7 @@ export class RepositoryPostHistoryReactionRecordsAdapter implements PostHistoryR
             postHistoryChildInteractionsRepository,
     ) {}
 
-    async getReactionRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+    async getReactionRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
         return (await this.repository.getChildInteractions(parentEventId))
             .filter((record) => record.kind === 7);
     }
@@ -35,12 +35,12 @@ export class RepositoryPostHistoryDirectReplyRecordsAdapter implements PostHisto
             postHistoryChildInteractionsRepository,
     ) {}
 
-    async getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+    async getDirectReplyRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
         return this.repository.getDirectReplyInteractions(parentEventId);
     }
 }
 
-export class RepositoryPostHistoryReplyEventsAdapter implements PostHistoryReplyEventsAdapter {
+export class RepositoryPostHistoryChildInteractionsAdapter implements PostHistoryChildInteractionsAdapter {
     constructor(
         private repository: Pick<
             PostHistoryChildInteractionsRepository,
@@ -48,11 +48,11 @@ export class RepositoryPostHistoryReplyEventsAdapter implements PostHistoryReply
         > = postHistoryChildInteractionsRepository,
     ) {}
 
-    async getRelatedEventRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+    async getRelatedEventRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
         return this.repository.getChildInteractions(parentEventId);
     }
 
-    async getDirectReplyRecords(parentEventId: string): Promise<PostHistoryReplyEventRecord[]> {
+    async getDirectReplyRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
         return this.repository.getDirectReplyInteractions(parentEventId);
     }
 }
@@ -63,5 +63,5 @@ export const postHistoryReactionRecordsAdapter =
 export const postHistoryDirectReplyRecordsAdapter =
     new RepositoryPostHistoryDirectReplyRecordsAdapter();
 
-export const postHistoryReplyEventsAdapter =
-    new RepositoryPostHistoryReplyEventsAdapter();
+export const postHistoryChildInteractionsAdapter =
+    new RepositoryPostHistoryChildInteractionsAdapter();

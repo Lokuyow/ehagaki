@@ -30,7 +30,7 @@ import {
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
-import type { PostHistoryRecord, PostHistoryReplyEventRecord } from "../storage/ehagakiDb";
+import type { PostHistoryRecord, PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
@@ -235,7 +235,7 @@ export function usePostHistoryThreadGraph({
 
     function setReactionSummary(
         parentEventId: string,
-        records: PostHistoryReplyEventRecord[],
+        records: PostHistoryChildInteractionRecord[],
     ): void {
         reactionSummaryByParentId = {
             ...reactionSummaryByParentId,
@@ -980,12 +980,12 @@ export function usePostHistoryThreadGraph({
     }
 
     async function filterVisibleReplyRecords(
-        records: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[],
-    ): Promise<import("../storage/ehagakiDb").PostHistoryReplyEventRecord[]> {
+        records: import("../storage/ehagakiDb").PostHistoryChildInteractionRecord[],
+    ): Promise<import("../storage/ehagakiDb").PostHistoryChildInteractionRecord[]> {
         const events = records.map((record) => toEventFromReplyRecord(record));
         const visibleEvents = await filterVisibleReplyEvents(events);
         const visibleEventIds = new Set(visibleEvents.map((event) => event.id));
-        const visibleRecords: import("../storage/ehagakiDb").PostHistoryReplyEventRecord[] = [];
+        const visibleRecords: import("../storage/ehagakiDb").PostHistoryChildInteractionRecord[] = [];
         for (const record of records) {
             if (!visibleEventIds.has(record.eventId)) {
                 continue;
@@ -1391,7 +1391,7 @@ export function usePostHistoryThreadGraph({
             || Date.now() - lastFetchedAt >= POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS;
     }
 
-    function resolveCachedReplyFetchedAt(records: PostHistoryReplyEventRecord[]): number | null {
+    function resolveCachedReplyFetchedAt(records: PostHistoryChildInteractionRecord[]): number | null {
         const fetchedAtValues = records
             .map((record) => record.fetchedAt)
             .filter((value) => Number.isFinite(value));
@@ -1706,7 +1706,7 @@ export function usePostHistoryThreadGraph({
 
     function preloadCachedReactionSummaryForParent(
         parentEventId: string,
-        cachedRecords: PostHistoryReplyEventRecord[],
+        cachedRecords: PostHistoryChildInteractionRecord[],
     ): void {
         setReactionSummary(parentEventId, cachedRecords);
     }
@@ -1714,7 +1714,7 @@ export function usePostHistoryThreadGraph({
     async function preloadCachedDirectReplyStateForParent(input: {
         post: PostHistoryRecord;
         parentEventId: string;
-        cachedRecords: PostHistoryReplyEventRecord[];
+        cachedRecords: PostHistoryChildInteractionRecord[];
         anchorNode: PostHistoryThreadGraphNode;
         activeRequestId: number;
     }): Promise<void> {
@@ -1959,7 +1959,7 @@ export function usePostHistoryThreadGraph({
 
     async function upsertReplyRecords(
         parentEventId: string,
-        records: PostHistoryReplyEventRecord[],
+        records: PostHistoryChildInteractionRecord[],
         sources: PostHistoryThreadGraphSource[],
         options: { resolveProfiles?: boolean } = {},
     ): Promise<void> {

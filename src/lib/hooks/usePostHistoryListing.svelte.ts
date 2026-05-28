@@ -664,6 +664,10 @@ export function usePostHistoryListing({
     const canReturnToLatest = $derived(
         !isSearchMode && !isRefetchingAroundCurrentView && state.hasNewerLocal,
     );
+    const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
+    const visibleOldestCreatedAt = $derived(
+        posts.length > 0 ? posts[posts.length - 1]?.createdAt ?? null : null,
+    );
     const canJumpToOldest = $derived(
         !isSearchMode
         && !isRefetchingAroundCurrentView
@@ -698,10 +702,6 @@ export function usePostHistoryListing({
         state.loadedPosts.length > 0 &&
         !state.hasOlderLocal &&
         state.syncStatus !== "syncing",
-    );
-    const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
-    const visibleOldestCreatedAt = $derived(
-        posts.length > 0 ? posts[posts.length - 1]?.createdAt ?? null : null,
     );
     const visiblePostCount = $derived(posts.length);
     const canRefetchAroundCurrentView = $derived(
@@ -2772,13 +2772,13 @@ export function usePostHistoryListing({
 
             const connectedAnchorsResult =
                 !isSparseBackfillContext && typeof nextVisibleUntil === "number"
-                ? await postHistoryJumpCacheAnchorRepository.reconcileWithFrontier({
-                    pubkeyHex,
-                    frontierVisibleUntil: nextVisibleUntil,
-                    toleranceSec:
-                        POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS,
-                })
-                : null;
+                    ? await postHistoryJumpCacheAnchorRepository.reconcileWithFrontier({
+                        pubkeyHex,
+                        frontierVisibleUntil: nextVisibleUntil,
+                        toleranceSec:
+                            POST_HISTORY_JUMP_FRONTIER_CONNECT_TOLERANCE_SECONDS,
+                    })
+                    : null;
             const effectiveVisibleUntil = connectedAnchorsResult
                 ? connectedAnchorsResult.nextVisibleUntil
                 : nextVisibleUntil;

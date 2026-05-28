@@ -17,7 +17,7 @@ import {
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-    type PostHistoryReplyEventItem,
+    type PostHistoryChildInteractionItem,
 } from "./storage/postHistoryReplyEventsRepository";
 import {
     postHistoryInboundInteractionsSyncStateRepository,
@@ -88,7 +88,7 @@ export interface PostHistoryInboundInteractionsSyncTask {
 
 export interface PostHistoryInboundInteractionsSyncServiceDeps {
     postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    postHistoryReplyEventsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -164,7 +164,7 @@ function toResultEvents(eventsById: Map<string, EventAccumulator>): Array<{
 
 export class PostHistoryInboundInteractionsSyncService {
     private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
-    private postHistoryReplyEventsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -173,8 +173,8 @@ export class PostHistoryInboundInteractionsSyncService {
 
     constructor(deps: PostHistoryInboundInteractionsSyncServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
-        this.postHistoryReplyEventsRepository =
-            deps.postHistoryReplyEventsRepository ?? postHistoryChildInteractionsRepository;
+        this.postHistoryChildInteractionsRepository =
+            deps.postHistoryChildInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.syncStateRepository =
             deps.syncStateRepository ?? postHistoryInboundInteractionsSyncStateRepository;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
@@ -360,8 +360,8 @@ export class PostHistoryInboundInteractionsSyncService {
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
-        const directRepliesByParentId = new Map<string, PostHistoryReplyEventItem[]>();
-        const reactionsByParentId = new Map<string, PostHistoryReplyEventItem[]>();
+        const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
+        const reactionsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const directReplyCandidates: PostHistoryInboundDirectReplyCandidate[] = [];
 
         for (const item of input.events) {
@@ -423,7 +423,7 @@ export class PostHistoryInboundInteractionsSyncService {
             savedDirectReplyCount = reconciled.savedDirectReplyCount;
         } else {
             for (const [parentEventId, events] of directRepliesByParentId.entries()) {
-                const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
+                const result = await this.postHistoryChildInteractionsRepository.upsertChildInteractions({
                     parentEventId,
                     events,
                     fetchedAt: input.fetchedAt,
@@ -440,7 +440,7 @@ export class PostHistoryInboundInteractionsSyncService {
 
         const changedParentEventIdSet = new Set(changedParentEventIds);
         for (const [parentEventId, events] of reactionsByParentId.entries()) {
-            const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
+            const result = await this.postHistoryChildInteractionsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt: input.fetchedAt,

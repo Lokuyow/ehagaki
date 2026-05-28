@@ -14,7 +14,7 @@ import {
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
 import type {
-    PostHistoryReplyEventRecord,
+    PostHistoryChildInteractionRecord,
 } from "./storage/ehagakiDb";
 import type {
     SavePostHistoryReactionLifecycleStateInput,
@@ -60,9 +60,9 @@ function uniqueRequestKeys(requestKeys: string[]): string[] {
 
 function toReactionRecordsByParent(
     parentEventIds: string[],
-    recordsByParentEventId: Map<string, PostHistoryReplyEventRecord[]>,
-): Map<string, Map<string, PostHistoryReplyEventRecord>> {
-    const rowsByParentEventId = new Map<string, Map<string, PostHistoryReplyEventRecord>>();
+    recordsByParentEventId: Map<string, PostHistoryChildInteractionRecord[]>,
+): Map<string, Map<string, PostHistoryChildInteractionRecord>> {
+    const rowsByParentEventId = new Map<string, Map<string, PostHistoryChildInteractionRecord>>();
     for (const parentEventId of parentEventIds) {
         rowsByParentEventId.set(
             parentEventId,
@@ -131,7 +131,7 @@ export class PostHistoryReactionDeletionConsistencyService {
         const uniqueParentEventIds = uniqueEventIds(
             uniqueCandidates.map((candidate) => candidate.parentEventId),
         );
-        const recordsByParentEventId = new Map<string, PostHistoryReplyEventRecord[]>();
+        const recordsByParentEventId = new Map<string, PostHistoryChildInteractionRecord[]>();
         for (const parentEventId of uniqueParentEventIds) {
             recordsByParentEventId.set(
                 parentEventId,

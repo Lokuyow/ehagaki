@@ -15,12 +15,12 @@ import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryReplyEventsRepository";
-import type { PostHistoryReplyEventRecord } from "./storage/ehagakiDb";
+import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import type { NostrEvent, RelayConfig } from "./types";
 
 interface ReactionCleanupItem {
     parentEventId: string;
-    record: PostHistoryReplyEventRecord;
+    record: PostHistoryChildInteractionRecord;
     targetEvent: NostrEvent;
 }
 
@@ -64,7 +64,7 @@ function uniqueEventIds(eventIds: string[]): string[] {
     return Array.from(new Set(eventIds.filter((eventId) => !!eventId)));
 }
 
-function toTargetEvent(record: PostHistoryReplyEventRecord): NostrEvent {
+function toTargetEvent(record: PostHistoryChildInteractionRecord): NostrEvent {
     return {
         id: record.eventId,
         pubkey: record.authorPubkey,

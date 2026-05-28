@@ -1,6 +1,6 @@
 import type {
     PostHistoryRecord,
-    PostHistoryReplyEventRecord,
+    PostHistoryChildInteractionRecord,
 } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
 import { cloneNostrEvent, isSignedNostrEvent } from "./postHistoryEventUtils";
@@ -107,7 +107,7 @@ export function toEventFromPostHistoryRecord(record: PostHistoryRecord): NostrEv
     };
 }
 
-export function toEventFromReplyRecord(record: PostHistoryReplyEventRecord): NostrEvent {
+export function toEventFromReplyRecord(record: PostHistoryChildInteractionRecord): NostrEvent {
     if (isSignedNostrEvent(record.rawEvent)) {
         return cloneNostrEvent(record.rawEvent);
     }

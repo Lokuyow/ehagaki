@@ -170,7 +170,7 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
-export interface PostHistoryReplyEventRecord {
+export interface PostHistoryChildInteractionRecord {
     id: string;
     eventId: string;
     parentEventId: string;
@@ -247,7 +247,7 @@ export class EHagakiDB extends Dexie {
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
-    postHistoryReplyEvents!: Table<PostHistoryReplyEventRecord, string>;
+    postHistoryReplyEvents!: Table<PostHistoryChildInteractionRecord, string>;
     postHistoryDeletionRequests!: Table<PostHistoryDeletionRequestRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
