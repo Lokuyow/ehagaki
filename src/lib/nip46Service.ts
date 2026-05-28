@@ -1255,6 +1255,7 @@ export class Nip46Service {
                     connectError = null;
                     break;
                 } catch (error) {
+                    let signEventFallbackPermissionDenied = false;
                     if (isNoPermissionError(error)) {
                         console.warn('[NIP-46] get_public_key returned no permission; trying sign_event pubkey fallback');
                         try {
@@ -1280,24 +1281,26 @@ export class Nip46Service {
                             console.warn('[NIP-46] sign_event pubkey fallback returned invalid pubkey');
                         } catch (fallbackError) {
                             console.warn('[NIP-46] sign_event pubkey fallback failed', fallbackError);
+                            signEventFallbackPermissionDenied = isNoPermissionError(fallbackError);
+                        }
+
+                        if (signEventFallbackPermissionDenied) {
+                            console.warn('[NIP-46] get_public_key and sign_event are both denied; falling back to remote signer pubkey as user pubkey');
+                            resolvedUserPubkey = bunkerPointer.pubkey;
+                            connectError = null;
+                            break;
                         }
                     }
 
                     connectError = error;
-                    const canRetryWithoutPerms = params.length >= 3
-                        && isNoPermissionError(error)
-                        && connectParamCandidates.slice(attemptIndex + 1).some((candidate) => candidate.length < 3);
                     console.warn('[NIP-46] get_public_key failed after connect attempt', {
                         attempt: attemptIndex + 1,
                         total: connectParamCandidates.length,
                         withPerms: params.length >= 3,
-                        canRetryWithoutPerms,
                         error,
                     });
-
-                    if (!canRetryWithoutPerms) {
-                        break;
-                    }
+                    // connect request already succeeded; re-sending connect can consume one-time secrets.
+                    break;
                 }
             } catch (error) {
                 connectError = error;
