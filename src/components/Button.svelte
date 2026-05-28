@@ -221,9 +221,11 @@
             &:hover:not(:disabled) {
                 :global(:root.light) & {
                     background: color-mix(in srgb, var(--btn-bg), black 3%);
+                    color: color-mix(in srgb, var(--text), black 6%);
                 }
                 :global(:root.dark) & {
                     background: color-mix(in srgb, var(--btn-bg), black 8%);
+                    color: black;
                 }
             }
         }
@@ -252,10 +254,20 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 8%);
+                    background-color: color-mix(
+                        in srgb,
+                        var(--btn-bg),
+                        black 8%
+                    );
+                    color: color-mix(in srgb, white, black 8%);
                 }
                 :global(:root.dark) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 12%);
+                    background-color: color-mix(
+                        in srgb,
+                        var(--btn-bg),
+                        black 12%
+                    );
+                    color: color-mix(in srgb, white, black 12%);
                 }
             }
         }
