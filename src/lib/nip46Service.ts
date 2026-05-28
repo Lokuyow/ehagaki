@@ -767,7 +767,10 @@ function isUnsupportedSwitchRelaysError(error: unknown): boolean {
         || message.includes('not implemented')
         || message.includes('method not found')
         || message.includes('no such method')
-        || message.includes('invalid method');
+        || message.includes('invalid method')
+        || message.includes('no permission')
+        || message.includes('not supported')
+        || message.includes('not allowed');
 }
 
 function createNostrConnectBunkerSigner(
@@ -851,6 +854,7 @@ async function resolveNostrConnectRelayResolution(
 
     if (reconciliationResult.type === 'error') {
         if (isUnsupportedSwitchRelaysError(reconciliationResult.error)) {
+            console.warn('[NIP-46] switch_relays not supported by signer; using client initial relays:', reconciliationResult.error);
             return {
                 kind: 'method-unsupported',
                 finalRelays: [...fallbackRelays],
