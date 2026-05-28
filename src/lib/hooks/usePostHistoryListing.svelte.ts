@@ -81,7 +81,7 @@ interface UsePostHistoryListingParams {
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     onSessionScrollStateInvalidated?: () => void;
     onSavedAuthoredPosts?: (eventIds: string[]) => void | Promise<void>;
-    onReplyBadgeRefreshRequested?: (
+    onChildInteractionBadgeRefreshRequested?: (
         posts: PostHistoryRecord[],
         parentEventIds: string[],
     ) => void | Promise<void>;
@@ -565,7 +565,7 @@ export function usePostHistoryListing({
     getSessionScrollState = () => null,
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
-    onReplyBadgeRefreshRequested = () => undefined,
+    onChildInteractionBadgeRefreshRequested = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -800,7 +800,7 @@ export function usePostHistoryListing({
         );
     }
 
-    function requestReplyBadgeRefresh(
+    function requestChildInteractionBadgeRefresh(
         posts: PostHistoryRecord[],
         parentEventIds: string[],
     ): void {
@@ -809,7 +809,7 @@ export function usePostHistoryListing({
         }
 
         void Promise.resolve(
-            onReplyBadgeRefreshRequested(posts, parentEventIds),
+            onChildInteractionBadgeRefreshRequested(posts, parentEventIds),
         ).catch(() => undefined);
     }
 
@@ -838,7 +838,7 @@ export function usePostHistoryListing({
                 return;
             }
 
-            requestReplyBadgeRefresh(
+            requestChildInteractionBadgeRefresh(
                 state.loadedPosts,
                 result.checkedParentEventIds,
             );
@@ -880,7 +880,7 @@ export function usePostHistoryListing({
             return;
         }
 
-        await onReplyBadgeRefreshRequested(
+        await onChildInteractionBadgeRefreshRequested(
             state.loadedPosts,
             replyRepairResult.savedParentEventIds,
         );
@@ -929,7 +929,7 @@ export function usePostHistoryListing({
             return;
         }
 
-        requestReplyBadgeRefresh(
+        requestChildInteractionBadgeRefresh(
             state.loadedPosts,
             visibleParentPosts.map((post) => post.eventId),
         );
@@ -992,7 +992,7 @@ export function usePostHistoryListing({
                 }
 
                 if (result.savedParentEventIds.length > 0) {
-                    requestReplyBadgeRefresh(
+                    requestChildInteractionBadgeRefresh(
                         state.loadedPosts,
                         result.savedParentEventIds,
                     );
@@ -3113,7 +3113,7 @@ export function usePostHistoryListing({
                 }
 
                 if (replyRepairResult.savedParentEventIds.length > 0) {
-                    await onReplyBadgeRefreshRequested(
+                    await onChildInteractionBadgeRefreshRequested(
                         state.loadedPosts,
                         replyRepairResult.savedParentEventIds,
                     );

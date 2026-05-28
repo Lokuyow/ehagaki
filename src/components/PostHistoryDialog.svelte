@@ -120,7 +120,7 @@
         onSavedAuthoredPosts: async (eventIds) => {
             await notifySavedAuthoredPosts?.(eventIds);
         },
-        onReplyBadgeRefreshRequested: (posts, parentEventIds) =>
+        onChildInteractionBadgeRefreshRequested: (posts, parentEventIds) =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 posts,
                 parentEventIds,
