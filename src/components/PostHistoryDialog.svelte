@@ -3239,6 +3239,7 @@
         :global(:where(.post-preview-reactions-button)) {
             min-height: auto;
             gap: 4px;
+            padding: 0;
             padding-inline: 6px;
             --btn-bg: var(--dialog-bg);
             background-color: var(--dialog-bg);

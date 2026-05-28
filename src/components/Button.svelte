@@ -359,7 +359,6 @@
     }
     .pill {
         border-radius: 50px;
-        padding: 0;
     }
     .circle {
         border-radius: 50%;

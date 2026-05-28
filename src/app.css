@@ -153,6 +153,7 @@ select {
   padding: 0;
   font-size: 1rem;
   font-weight: 500;
+  line-height: normal;
   color: var(--text);
   background-color: inherit;
   border: none;
