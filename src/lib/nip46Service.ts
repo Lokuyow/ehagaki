@@ -586,7 +586,24 @@ function normalizePublicWssRelay(relay: string): string | null {
     }
 
     try {
-        return new URL(normalized).protocol === 'wss:' ? normalized : null;
+        const relayUrl = new URL(normalized);
+        if (relayUrl.protocol === 'wss:') {
+            return normalized;
+        }
+
+        // Allow local ws relays for signers that don't support
+        // switch_relays negotiation.
+        if (
+            relayUrl.protocol === 'ws:'
+            && (
+                relayUrl.hostname === '~'
+                || isLoopbackRelayHostname(relayUrl.hostname)
+            )
+        ) {
+            return normalized;
+        }
+
+        return null;
     } catch {
         return null;
     }

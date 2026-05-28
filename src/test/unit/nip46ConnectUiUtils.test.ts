@@ -61,6 +61,18 @@ describe('nip46ConnectUiUtils', () => {
             errorKey: 'loginDialog.nostrconnect_relay_required',
         });
 
+        expect(validateNip46ConnectionRelayDrafts(['ws://~'])).toEqual({
+            relays: ['ws://~/'],
+            errorKey: null,
+        });
+
+        expect(
+            validateNip46ConnectionRelayDrafts(['ws://127.0.0.1:4869/']),
+        ).toEqual({
+            relays: ['ws://127.0.0.1:4869/'],
+            errorKey: null,
+        });
+
         expect(
             validateNip46ConnectionRelayDrafts([
                 'wss://relay.example.com',
