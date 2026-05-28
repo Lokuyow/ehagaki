@@ -167,7 +167,7 @@
         }
 
         :global(.btn-text) {
-            color: whitesmoke;
+            color: white;
             font-size: 1rem;
             font-weight: 500;
         }
@@ -175,19 +175,35 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    color: color-mix(in srgb, whitesmoke, black 4%);
-                    background: color-mix(in srgb, var(--btn-bg), black 4%);
+                    color: color-mix(in srgb, white, black 6%);
+                    background-color: color-mix(
+                        in srgb,
+                        var(--btn-bg),
+                        black 4%
+                    );
 
                     :global(.svg-icon) {
                         background-color: currentColor;
                     }
+
+                    :global(.btn-text) {
+                        color: currentColor;
+                    }
                 }
                 :global(:root.dark) & {
-                    color: color-mix(in srgb, whitesmoke, black 7%);
-                    background: color-mix(in srgb, var(--btn-bg), black 7%);
+                    color: color-mix(in srgb, white, black 10%);
+                    background-color: color-mix(
+                        in srgb,
+                        var(--btn-bg),
+                        black 7%
+                    );
 
                     :global(.svg-icon) {
                         background-color: currentColor;
+                    }
+
+                    :global(.btn-text) {
+                        color: currentColor;
                     }
                 }
             }

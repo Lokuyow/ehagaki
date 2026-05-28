@@ -119,9 +119,11 @@
             className="login-btn"
             variant="primary"
             shape="pill"
+            contentLayout="iconText"
             onClick={onShowLoginDialog}
         >
-            {$_("app.login")}
+            <div class="login-icon svg-icon"></div>
+            <span class="btn-text">{$_("app.login")}</span>
         </Button>
     {/if}
 
@@ -164,7 +166,7 @@
 </div>
 
 <style>
-    :global(:root.light :where(.footer-bar button)) {
+    :global(:root.light :where(.footer-bar button):not(.login-btn)) {
         --btn-bg: white;
     }
     .footer-bar {
@@ -189,6 +191,12 @@
         width: 140px;
         font-size: 1.1rem;
         min-width: 50px;
+
+        .login-icon {
+            mask-image: url("/icons/login_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            width: 24px;
+            height: 24px;
+        }
     }
 
     :global(.settings-btn.default) {
