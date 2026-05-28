@@ -151,9 +151,9 @@
             .where("pubkeyHex")
             .equals(HARNESS_PUBKEY)
             .delete();
-        await ehagakiDb.postHistoryReplyEvents.clear();
+        await ehagakiDb.postHistoryChildInteractions.clear();
         await ehagakiDb.postHistory.bulkPut(posts);
-        await ehagakiDb.postHistoryReplyEvents.bulkPut(reactionRecords);
+        await ehagakiDb.postHistoryChildInteractions.bulkPut(reactionRecords);
 
         ready = true;
         (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {

@@ -143,7 +143,7 @@
     "repair": "Refetch posts around the current view",
     "repairing": "Refetching...",
     "repairAdded": "{count} added",
-    "repairRepliesAdded": "{count} replies repaired",
+    "repairChildInteractionsAdded": "{count} child interactions repaired",
     "repairNoChanges": "No additions",
     "repairPartialFailure": "Partly unchecked",
     "repairFetchFailed": "Fetch failed",

@@ -10,11 +10,11 @@ import {
 import {
     postHistoryReactionRecordsAdapter,
     type PostHistoryReactionRecordsAdapter,
-} from "./postHistoryReplyEventsAdapter";
+} from "./postHistoryChildInteractionsAdapter";
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import type { NostrEvent, RelayConfig } from "./types";
 

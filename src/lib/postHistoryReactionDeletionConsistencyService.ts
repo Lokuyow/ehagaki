@@ -4,7 +4,7 @@ import {
 import {
     postHistoryReactionRecordsAdapter,
     type PostHistoryReactionRecordsAdapter,
-} from "./postHistoryReplyEventsAdapter";
+} from "./postHistoryChildInteractionsAdapter";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
@@ -12,7 +12,7 @@ import {
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type {
     PostHistoryChildInteractionRecord,
 } from "./storage/ehagakiDb";

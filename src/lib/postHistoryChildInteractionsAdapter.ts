@@ -2,7 +2,7 @@ import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 
 export interface PostHistoryReactionRecordsAdapter {
     getReactionRecords(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;

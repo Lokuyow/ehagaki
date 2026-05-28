@@ -16,7 +16,7 @@ import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionItem,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type { RelayConfig } from "./types";
 
 export interface PostHistoryInboundDirectReplyCandidate extends PostHistoryChildInteractionItem {

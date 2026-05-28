@@ -9,7 +9,7 @@ import {
 import {
     postHistoryReactionRecordsAdapter,
     type PostHistoryReactionRecordsAdapter,
-} from "./postHistoryReplyEventsAdapter";
+} from "./postHistoryChildInteractionsAdapter";
 import {
     addInFlightPostHistoryReactionLifecycleRequests,
     hasInFlightPostHistoryReactionLifecycleRequest,

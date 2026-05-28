@@ -228,7 +228,7 @@ describe('PostHistoryDialog timeline search', () => {
             });
             expect(screen.getByText('search-page-2')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalled();
-            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).not.toHaveBeenCalled();
+            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
         });
 
         view.unmount();

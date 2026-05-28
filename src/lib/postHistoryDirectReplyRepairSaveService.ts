@@ -12,7 +12,7 @@ import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionItem,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type { RelayConfig } from "./types";
 
 export interface PostHistoryDirectReplyRepairItem extends PostHistoryChildInteractionItem {
@@ -46,7 +46,7 @@ export interface PostHistoryDirectReplyRepairSaveServiceDeps {
         PostHistoryDeletionRequestsRepository,
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
-    replyEventsRepository?: Pick<
+    childInteractionsRepository?: Pick<
         PostHistoryChildInteractionsRepository,
         "upsertChildInteractions" | "deleteChildInteractionByEventId"
     >;
@@ -114,7 +114,7 @@ export class PostHistoryDirectReplyRepairSaveService {
         PostHistoryDeletionRequestsRepository,
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
-    private replyEventsRepository: Pick<
+    private childInteractionsRepository: Pick<
         PostHistoryChildInteractionsRepository,
         "upsertChildInteractions" | "deleteChildInteractionByEventId"
     >;
@@ -124,7 +124,8 @@ export class PostHistoryDirectReplyRepairSaveService {
         this.deletionFetchService = deps.deletionFetchService ?? postHistoryDeletionFetchService;
         this.deletionRequestsRepository =
             deps.deletionRequestsRepository ?? postHistoryDeletionRequestsRepository;
-        this.replyEventsRepository = deps.replyEventsRepository ?? postHistoryChildInteractionsRepository;
+        this.childInteractionsRepository =
+            deps.childInteractionsRepository ?? postHistoryChildInteractionsRepository;
         this.now = deps.now ?? Date.now;
     }
 
@@ -255,7 +256,7 @@ export class PostHistoryDirectReplyRepairSaveService {
 
     private async purgeDeletedReplyCache(eventIds: string[]): Promise<void> {
         for (const eventId of new Set(eventIds)) {
-            await this.replyEventsRepository.deleteChildInteractionByEventId(eventId);
+            await this.childInteractionsRepository.deleteChildInteractionByEventId(eventId);
         }
     }
 
@@ -281,7 +282,7 @@ export class PostHistoryDirectReplyRepairSaveService {
                 break;
             }
 
-            const result = await this.replyEventsRepository.upsertChildInteractions({
+            const result = await this.childInteractionsRepository.upsertChildInteractions({
                 parentEventId,
                 events,
                 fetchedAt,

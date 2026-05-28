@@ -413,7 +413,7 @@ describe('PostHistoryDialog timeline navigation', () => {
                     pubkeyHex: PUBKEY_HEX,
                 }),
             );
-            expect(replyRepairServiceMock.repairVisibleKind1DirectReplies).toHaveBeenCalledWith(
+            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).toHaveBeenCalledWith(
                 expect.any(Object),
                 expect.objectContaining({
                     ownerPubkeyHex: PUBKEY_HEX,

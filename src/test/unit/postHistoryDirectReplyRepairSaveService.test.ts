@@ -47,30 +47,28 @@ function createService(overrides: Record<string, any> = {}) {
         ignoredCount: 0,
     }));
     const deleteChildInteractionByEventId = vi.fn(async () => undefined);
-    const replyEventsRepository = {
+    const childInteractionsRepository = {
         upsertChildInteractions,
         deleteChildInteractionByEventId,
-        upsertDirectReplies: upsertChildInteractions,
-        deleteByEventId: deleteChildInteractionByEventId,
     };
 
     return {
         service: new PostHistoryDirectReplyRepairSaveService({
             deletionFetchService,
             deletionRequestsRepository,
-            replyEventsRepository,
+            childInteractionsRepository,
             now: () => 300,
             ...overrides,
         }),
         deletionFetchService,
         deletionRequestsRepository,
-        replyEventsRepository,
+        childInteractionsRepository,
     };
 }
 
 describe("PostHistoryDirectReplyRepairSaveService", () => {
     it("保存済みdeletion requestがあるreplyをrepair保存前に除外してcacheも削除する", async () => {
-        const { service, deletionFetchService, deletionRequestsRepository, replyEventsRepository } =
+        const { service, deletionFetchService, deletionRequestsRepository, childInteractionsRepository } =
             createService();
         deletionRequestsRepository.getDeletedTargets.mockResolvedValueOnce(
             new Map([[REPLY_AUTHOR, new Set([REPLY_ID])]]),
@@ -85,13 +83,13 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             savedDirectReplyCount: 0,
             deletedEventIds: [REPLY_ID],
         });
-        expect(replyEventsRepository.deleteByEventId).toHaveBeenCalledWith(REPLY_ID);
-        expect(replyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(childInteractionsRepository.deleteChildInteractionByEventId).toHaveBeenCalledWith(REPLY_ID);
+        expect(childInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
         expect(deletionFetchService.fetchDeletionRequests).not.toHaveBeenCalled();
     });
 
     it("repair中のkind:5確認で削除済みになったreplyを保存しない", async () => {
-        const { service, deletionRequestsRepository, replyEventsRepository } = createService();
+        const { service, deletionRequestsRepository, childInteractionsRepository } = createService();
         deletionRequestsRepository.getDeletedTargets
             .mockResolvedValueOnce(new Map())
             .mockResolvedValueOnce(new Map([[REPLY_AUTHOR, new Set([REPLY_ID])]]));
@@ -105,12 +103,12 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             deletedEventIds: [REPLY_ID],
             deletionConfirmationIncomplete: false,
         });
-        expect(replyEventsRepository.deleteByEventId).toHaveBeenCalledWith(REPLY_ID);
-        expect(replyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
+        expect(childInteractionsRepository.deleteChildInteractionByEventId).toHaveBeenCalledWith(REPLY_ID);
+        expect(childInteractionsRepository.upsertChildInteractions).not.toHaveBeenCalled();
     });
 
     it("deletion確認timeoutはtelemetryに残し、既知tombstoneのないreplyは保存する", async () => {
-        const { service, deletionFetchService, replyEventsRepository } = createService();
+        const { service, deletionFetchService, childInteractionsRepository } = createService();
         deletionFetchService.fetchDeletionRequests.mockReturnValueOnce({
             promise: Promise.resolve({
                 status: "timeout",
@@ -130,7 +128,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             savedDirectReplyCount: 1,
             deletionConfirmationIncomplete: true,
         });
-        expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith(
+        expect(childInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith(
             expect.objectContaining({
                 parentEventId: PARENT_ID,
                 events: [expect.objectContaining({
@@ -142,8 +140,8 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
     });
 
     it("既存replyが unchanged のみなら saved 件数に含めない", async () => {
-        const { service, replyEventsRepository } = createService();
-        replyEventsRepository.upsertDirectReplies.mockResolvedValueOnce({
+        const { service, childInteractionsRepository } = createService();
+        childInteractionsRepository.upsertChildInteractions.mockResolvedValueOnce({
             insertedCount: 0,
             updatedCount: 0,
             unchangedCount: 1,
@@ -158,7 +156,7 @@ describe("PostHistoryDirectReplyRepairSaveService", () => {
             savedParentEventIds: [],
             savedDirectReplyCount: 0,
         });
-        expect(replyEventsRepository.upsertDirectReplies).toHaveBeenCalledWith(
+        expect(childInteractionsRepository.upsertChildInteractions).toHaveBeenCalledWith(
             expect.objectContaining({
                 parentEventId: PARENT_ID,
             }),

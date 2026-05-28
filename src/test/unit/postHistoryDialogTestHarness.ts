@@ -40,7 +40,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.syncFailed': 'リレーから取得できませんでした',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件追加`,
-            'postHistory.repairRepliesAdded': `返信を${options?.values?.count ?? 0}件補完`,
+            'postHistory.repairChildInteractionsAdded': `返信を${options?.values?.count ?? 0}件補完`,
             'postHistory.repairNoChanges': '追加なし',
             'postHistory.repairPartialFailure': '一部未確認',
             'postHistory.repairFetchFailed': '取得失敗',
@@ -92,7 +92,7 @@ const hoisted = vi.hoisted(() => {
             refetchAroundCurrentView: vi.fn(),
         },
         replyRepairServiceMock: {
-            repairVisibleKind1DirectReplies: vi.fn(),
+            repairVisibleRangeChildInteractions: vi.fn(),
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
@@ -219,8 +219,8 @@ vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
     postHistoryCurrentViewRefetchService: hoisted.repairServiceMock,
 }));
 
-vi.mock('../../lib/postHistoryVisibleRangeReplyRepairService', () => ({
-    postHistoryVisibleRangeReplyRepairService: hoisted.replyRepairServiceMock,
+vi.mock('../../lib/postHistoryVisibleRangeChildInteractionRepairService', () => ({
+    postHistoryVisibleRangeChildInteractionRepairService: hoisted.replyRepairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -425,7 +425,7 @@ export function resetPostHistoryDialogHarness(): void {
         }),
         cancel: vi.fn(),
     });
-    replyRepairServiceMock.repairVisibleKind1DirectReplies.mockReturnValue({
+    replyRepairServiceMock.repairVisibleRangeChildInteractions.mockReturnValue({
         promise: Promise.resolve({
             status: 'success',
             targetParentEventIds: [],

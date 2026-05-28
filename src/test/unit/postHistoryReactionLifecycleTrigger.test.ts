@@ -37,7 +37,7 @@ const saveManyReactionStateMock = vi.hoisted(() => vi.fn(async (inputs: any[]) =
 ));
 const reconcilePendingDeletionRequestsForRequestKeysMock = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("../../lib/postHistoryReplyEventsAdapter", () => ({
+vi.mock("../../lib/postHistoryChildInteractionsAdapter", () => ({
     postHistoryReactionRecordsAdapter: {
         getReactionRecords: getReactionRecordsMock,
     },

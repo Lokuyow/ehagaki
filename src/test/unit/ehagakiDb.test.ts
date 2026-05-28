@@ -40,7 +40,7 @@ describe("EHagakiDB", () => {
             "meta",
             "postHistory",
             "postHistoryDeletionRequests",
-            "postHistoryReplyEvents",
+            "postHistoryChildInteractions",
             "postMediaCache",
             "profiles",
             "relayConfigs",

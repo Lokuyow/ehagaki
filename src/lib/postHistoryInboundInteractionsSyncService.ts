@@ -18,7 +18,7 @@ import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionItem,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import {
     postHistoryInboundInteractionsSyncStateRepository,
     type PostHistoryInboundInteractionsSyncStateRepository,

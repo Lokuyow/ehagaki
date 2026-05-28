@@ -13,7 +13,7 @@ import {
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;

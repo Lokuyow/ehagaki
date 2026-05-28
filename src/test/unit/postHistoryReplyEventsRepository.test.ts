@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
-import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryReplyEventsRepository";
+import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
 
 const testDbNames = new Set<string>();
 
@@ -69,7 +69,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             created_at: 220,
         });
 
-        const result = await repository.upsertDirectReplies({
+        const result = await repository.upsertChildInteractions({
             parentEventId,
             events: [
                 { event: directReply, relayUrls: ["wss://relay.example.com"] },
@@ -86,7 +86,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             ignoredCount: 3,
         });
 
-        const replies = await repository.getDirectReplies(parentEventId);
+        const replies = await repository.getDirectReplyInteractions(parentEventId);
         expect(replies.map((record) => record.eventId)).toEqual([
             "3".repeat(64),
             "2".repeat(64),
@@ -125,7 +125,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             created_at: 210,
         });
 
-        const result = await repository.upsertDirectReplies({
+        const result = await repository.upsertChildInteractions({
             parentEventId,
             events: [
                 { event: directReply },
@@ -139,11 +139,11 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             ignoredCount: 0,
         });
 
-        await expect(repository.getDirectReplies(parentEventId)).resolves.toMatchObject([
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toMatchObject([
             { eventId: directReply.id },
         ]);
 
-        await expect(repository.getRelatedEvents(parentEventId)).resolves.toMatchObject([
+        await expect(repository.getChildInteractions(parentEventId)).resolves.toMatchObject([
             { eventId: directReply.id, discoveredAs: ["direct-reply"] },
             {
                 eventId: reaction.id,
@@ -175,7 +175,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             created_at: 220,
         });
 
-        const result = await repository.upsertDirectReplies({
+        const result = await repository.upsertChildInteractions({
             parentEventId,
             events: [{ event: reaction, relayUrls: ["wss://relay.example.com"] }],
             fetchedAt: 900,
@@ -186,7 +186,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             ignoredCount: 0,
         });
 
-        await expect(repository.getRelatedEvents(parentEventId)).resolves.toMatchObject([
+        await expect(repository.getChildInteractions(parentEventId)).resolves.toMatchObject([
             {
                 eventId: reaction.id,
                 parentEventId,
@@ -207,17 +207,17 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             tags: [["e", parentEventId, "", "reply"]],
         });
 
-        await repository.upsertDirectReplies({
+        await repository.upsertChildInteractions({
             parentEventId,
             events: [{ event: reply }],
         });
-        await repository.upsertDirectReplies({
+        await repository.upsertChildInteractions({
             parentEventId,
             events: [{ event: reply, relayUrls: ["wss://relay.example.com"] }],
         });
 
         await expect(db.postHistory.count()).resolves.toBe(0);
-        await expect(repository.getDirectReplies(parentEventId)).resolves.toHaveLength(1);
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toHaveLength(1);
 
         db.close();
     });
@@ -231,7 +231,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             tags: [["e", parentEventId, "", "reply"]],
         });
 
-        const result = await repository.upsertDirectReplies({
+        const result = await repository.upsertChildInteractions({
             parentEventId,
             events: [{ event: selfParent }],
         });
@@ -240,7 +240,7 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             insertedCount: 0,
             ignoredCount: 1,
         });
-        await expect(repository.getDirectReplies(parentEventId)).resolves.toEqual([]);
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toEqual([]);
 
         db.close();
     });
@@ -287,19 +287,19 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
                 schemaVersion: 2,
             },
         ]);
-        await repository.upsertDirectReplies({
+        await repository.upsertChildInteractions({
             parentEventId: ownerParentId,
             events: [{ event: createSignedEvent({ id: "2".repeat(64), tags: [["e", ownerParentId, "", "reply"]] }) }],
         });
-        await repository.upsertDirectReplies({
+        await repository.upsertChildInteractions({
             parentEventId: otherParentId,
             events: [{ event: createSignedEvent({ id: "3".repeat(64), tags: [["e", otherParentId, "", "reply"]] }) }],
         });
 
-        await repository.deleteForPostHistoryPubkey(ownerPubkey);
+        await repository.deleteChildInteractionsForPostHistoryPubkey(ownerPubkey);
 
-        await expect(repository.getDirectReplies(ownerParentId)).resolves.toEqual([]);
-        await expect(repository.getDirectReplies(otherParentId)).resolves.toHaveLength(1);
+        await expect(repository.getDirectReplyInteractions(ownerParentId)).resolves.toEqual([]);
+        await expect(repository.getDirectReplyInteractions(otherParentId)).resolves.toHaveLength(1);
 
         db.close();
     });
@@ -321,16 +321,16 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
             created_at: 210,
         });
 
-        await repository.upsertDirectReplies({
+        await repository.upsertChildInteractions({
             parentEventId,
             events: [
                 { event: deletedReply },
                 { event: remainingReply },
             ],
         });
-        await repository.deleteByEventId(deletedReply.id);
+        await repository.deleteChildInteractionByEventId(deletedReply.id);
 
-        await expect(repository.getDirectReplies(parentEventId)).resolves.toMatchObject([
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toMatchObject([
             { eventId: remainingReply.id },
         ]);
         await expect(db.postHistory.count()).resolves.toBe(0);

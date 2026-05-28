@@ -20,25 +20,25 @@ import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionItem,
     type PostHistoryChildInteractionsRepository,
-} from "./storage/postHistoryReplyEventsRepository";
+} from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_PARENT_LIMIT = 150;
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_CHUNK_SIZE = 30;
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FALLBACK_CHUNK_SIZE = 10;
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_CONCURRENCY = 2;
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT = 250;
-export const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_TIMEOUT_MS = 6_000;
-const POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_RELAY_LIMIT = 8;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT = 150;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE = 30;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE = 10;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CONCURRENCY = 2;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT = 250;
+export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS = 6_000;
+const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT = 8;
 
-export interface PostHistoryVisibleRangeReplyRepairRequest {
+export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
     ownerPubkeyHex: string;
     visiblePosts: PostHistoryRecord[];
     relayConfig?: RelayConfig | null;
     isActive?: () => boolean;
 }
 
-export interface PostHistoryVisibleRangeReplyRepairResult {
+export interface PostHistoryVisibleRangeChildInteractionRepairResult {
     status: "success" | "partial" | "cancelled";
     targetParentEventIds: string[];
     checkedParentEventIds: string[];
@@ -50,12 +50,12 @@ export interface PostHistoryVisibleRangeReplyRepairResult {
     deletionConfirmationIncomplete: boolean;
 }
 
-export interface PostHistoryVisibleRangeReplyRepairTask {
-    promise: Promise<PostHistoryVisibleRangeReplyRepairResult>;
+export interface PostHistoryVisibleRangeChildInteractionRepairTask {
+    promise: Promise<PostHistoryVisibleRangeChildInteractionRepairResult>;
     cancel: () => void;
 }
 
-export interface PostHistoryVisibleRangeReplyRepairServiceDeps {
+export interface PostHistoryVisibleRangeChildInteractionRepairServiceDeps {
     directReplySaveService?: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
     childInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     console?: Pick<Console, "warn" | "error">;
@@ -90,13 +90,13 @@ type ParentChunk = {
     depth: 0 | 1;
 };
 
-type PostHistoryVisibleRangeReactionItem = {
+type PostHistoryVisibleRangeChildInteractionItem = {
     parentEventId: string;
     event: NostrEvent;
     relayUrls: string[];
 };
 
-const EMPTY_RESULT: PostHistoryVisibleRangeReplyRepairResult = {
+const EMPTY_RESULT: PostHistoryVisibleRangeChildInteractionRepairResult = {
     status: "success",
     targetParentEventIds: [],
     checkedParentEventIds: [],
@@ -124,7 +124,7 @@ function toUniqueKind1OwnerPosts(
         }
 
         postsByEventId.set(post.eventId, post);
-        if (postsByEventId.size >= POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_PARENT_LIMIT) {
+        if (postsByEventId.size >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT) {
             break;
         }
     }
@@ -155,7 +155,7 @@ function toResultItems(eventsById: Map<string, EventAccumulator>) {
         });
 }
 
-export class PostHistoryVisibleRangeReplyRepairService {
+export class PostHistoryVisibleRangeChildInteractionRepairService {
     private directReplySaveService: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
     private childInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private console: Pick<Console, "warn" | "error">;
@@ -163,7 +163,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
     private now: () => number;
 
-    constructor(deps: PostHistoryVisibleRangeReplyRepairServiceDeps = {}) {
+    constructor(deps: PostHistoryVisibleRangeChildInteractionRepairServiceDeps = {}) {
         this.directReplySaveService =
             deps.directReplySaveService ?? postHistoryDirectReplyRepairSaveService;
         this.childInteractionsRepository =
@@ -176,10 +176,10 @@ export class PostHistoryVisibleRangeReplyRepairService {
         this.now = deps.now ?? Date.now;
     }
 
-    repairVisibleKind1DirectReplies(
+    repairVisibleRangeChildInteractions(
         rxNostr: RxNostr,
-        params: PostHistoryVisibleRangeReplyRepairRequest,
-    ): PostHistoryVisibleRangeReplyRepairTask {
+        params: PostHistoryVisibleRangeChildInteractionRepairRequest,
+    ): PostHistoryVisibleRangeChildInteractionRepairTask {
         let active = true;
         const candidateFetches = new Set<CandidateFetchTask>();
         const saveTasks = new Set<PostHistoryDirectReplyRepairSaveTask>();
@@ -187,7 +187,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
         const targetPosts = toUniqueKind1OwnerPosts(params.ownerPubkeyHex, params.visiblePosts);
         const targetParentEventIds = targetPosts.map((post) => post.eventId);
 
-        const promise = (async (): Promise<PostHistoryVisibleRangeReplyRepairResult> => {
+        const promise = (async (): Promise<PostHistoryVisibleRangeChildInteractionRepairResult> => {
             if (targetPosts.length === 0) {
                 return {
                     ...EMPTY_RESULT,
@@ -207,7 +207,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
                 const fallbackChunks: ParentChunk[] = [];
                 let nextIndex = 0;
                 const workerCount = Math.min(
-                    POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_CONCURRENCY,
+                    POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CONCURRENCY,
                     chunks.length,
                 );
                 const runWorker = async () => {
@@ -235,7 +235,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
                                 fallbackChunks.push(
                                     ...chunkPosts(
                                         chunk.posts,
-                                        POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FALLBACK_CHUNK_SIZE,
+                                        POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE,
                                     ).map((posts) => ({ posts, depth: 1 as const })),
                                 );
                             } else {
@@ -312,7 +312,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
             };
 
             const fallbackChunks = await processChunks(
-                chunkPosts(targetPosts, POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_CHUNK_SIZE)
+                chunkPosts(targetPosts, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE)
                     .map((posts) => ({ posts, depth: 0 as const })),
             );
             if (isActive() && fallbackChunks.length > 0) {
@@ -378,7 +378,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
     private toReactionItems(
         posts: PostHistoryRecord[],
         items: Array<{ event: NostrEvent; relayUrls: string[] }>,
-    ): PostHistoryVisibleRangeReactionItem[] {
+    ): PostHistoryVisibleRangeChildInteractionItem[] {
         const parentEventIds = new Set(posts.map((post) => post.eventId));
         return items.flatMap((item) => {
             if (item.event.kind !== 7) {
@@ -399,7 +399,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
     }
 
     private async saveReactionInteractions(
-        items: PostHistoryVisibleRangeReactionItem[],
+        items: PostHistoryVisibleRangeChildInteractionItem[],
         fetchedAt: number,
         isActive: () => boolean,
     ): Promise<{ savedParentEventIds: string[] }> {
@@ -465,8 +465,8 @@ export class PostHistoryVisibleRangeReplyRepairService {
                 items,
                 rawCount,
                 saturated:
-                    rawCount >= POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT
-                    || items.length >= POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
+                    rawCount >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT
+                    || items.length >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
                 fetchedAt: this.now(),
                 relayUrls,
             };
@@ -501,7 +501,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
                     },
                     complete: () => safeResolve("success"),
                     error: (error: unknown) => {
-                        this.console.error("post_history_visible_reply_repair_fetch_error", error);
+                        this.console.error("post_history_visible_child_interaction_repair_fetch_error", error);
                         safeResolve("error");
                     },
                 });
@@ -509,16 +509,16 @@ export class PostHistoryVisibleRangeReplyRepairService {
                 rxReq.emit({
                     kinds: [1, 7],
                     "#e": parentEventIds,
-                    limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
+                    limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
                 } as never);
                 rxReq.over();
 
                 timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_visible_reply_repair_fetch_timeout");
+                    this.console.warn("post_history_visible_child_interaction_repair_fetch_timeout");
                     safeResolve("timeout");
-                }, POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_TIMEOUT_MS);
+                }, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS);
             } catch (error) {
-                this.console.error("post_history_visible_reply_repair_request_error", error);
+                this.console.error("post_history_visible_child_interaction_repair_request_error", error);
                 safeResolve("error");
             }
         });
@@ -552,7 +552,7 @@ export class PostHistoryVisibleRangeReplyRepairService {
         }
 
         if (!isSameSignedNostrEvent(existing.event, event)) {
-            this.console.warn("post_history_visible_reply_repair_packet_conflict");
+            this.console.warn("post_history_visible_child_interaction_repair_packet_conflict");
             return;
         }
 
@@ -582,16 +582,16 @@ export class PostHistoryVisibleRangeReplyRepairService {
         const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...this.collectParentRelayHints(posts),
             ...configuredRelays,
-        ], { limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_RELAY_LIMIT });
+        ], { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT });
 
         return relayUrls.length > 0
             ? relayUrls
             : RelayConfigUtils.sanitizeExternalRelayUrls(
                 FALLBACK_RELAYS,
-                { limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_RELAY_LIMIT },
+                { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT },
             );
     }
 }
 
-export const postHistoryVisibleRangeReplyRepairService =
-    new PostHistoryVisibleRangeReplyRepairService();
+export const postHistoryVisibleRangeChildInteractionRepairService =
+    new PostHistoryVisibleRangeChildInteractionRepairService();

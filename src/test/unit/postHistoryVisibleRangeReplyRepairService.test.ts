@@ -17,9 +17,9 @@ vi.mock("rx-nostr", () => ({
 }));
 
 import {
-    POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
-    PostHistoryVisibleRangeReplyRepairService,
-} from "../../lib/postHistoryVisibleRangeReplyRepairService";
+    POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+    PostHistoryVisibleRangeChildInteractionRepairService,
+} from "../../lib/postHistoryVisibleRangeChildInteractionRepairService";
 import type { NostrEvent } from "../../lib/types";
 
 const OWNER = "a".repeat(64);
@@ -69,7 +69,7 @@ function createReaction(overrides: Partial<NostrEvent> = {}): NostrEvent {
     };
 }
 
-describe("PostHistoryVisibleRangeReplyRepairService", () => {
+describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
@@ -94,7 +94,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
             }),
             cancel: vi.fn(),
         }));
-        const service = new PostHistoryVisibleRangeReplyRepairService({
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
             directReplySaveService: { saveRepairDirectReplies } as any,
             childInteractionsRepository: { upsertChildInteractions } as any,
             setTimeoutFn: (() => 1) as any,
@@ -137,7 +137,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
             },
         });
 
-        const result = await service.repairVisibleKind1DirectReplies(rxNostrMock as any, {
+        const result = await service.repairVisibleRangeChildInteractions(rxNostrMock as any, {
             ownerPubkeyHex: OWNER,
             visiblePosts: [createPost(kind1Parent), createPost(kind42Parent, 42)],
             relayConfig: null,
@@ -146,7 +146,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
         expect(rxNostrMock.emittedFilters).toEqual([{
             kinds: [1, 7],
             "#e": [kind1Parent],
-            limit: POST_HISTORY_VISIBLE_RANGE_REPLY_REPAIR_FETCH_LIMIT,
+            limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
         }]);
         expect(rxNostrMock.emittedFilters[0]).not.toHaveProperty("since");
         expect(rxNostrMock.emittedFilters[0]).not.toHaveProperty("until");
@@ -188,7 +188,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
             }),
             cancel: vi.fn(),
         }));
-        const service = new PostHistoryVisibleRangeReplyRepairService({
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
             directReplySaveService: { saveRepairDirectReplies } as any,
             setTimeoutFn: (() => 1) as any,
             clearTimeoutFn: vi.fn(),
@@ -200,7 +200,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
             },
         });
 
-        const result = await service.repairVisibleKind1DirectReplies(rxNostrMock as any, {
+        const result = await service.repairVisibleRangeChildInteractions(rxNostrMock as any, {
             ownerPubkeyHex: OWNER,
             visiblePosts: [createPost(kind1Parent)],
             relayConfig: null,
@@ -216,7 +216,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
     });
 
     it("150件を30件chunkに分けて最大visible parent範囲だけ取得する", async () => {
-        const service = new PostHistoryVisibleRangeReplyRepairService({
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
             directReplySaveService: {
                 saveRepairDirectReplies: vi.fn(),
             } as any,
@@ -233,7 +233,7 @@ describe("PostHistoryVisibleRangeReplyRepairService", () => {
             createPost(index.toString(16).padStart(64, "0"))
         );
 
-        const result = await service.repairVisibleKind1DirectReplies(rxNostrMock as any, {
+        const result = await service.repairVisibleRangeChildInteractions(rxNostrMock as any, {
             ownerPubkeyHex: OWNER,
             visiblePosts,
             relayConfig: null,

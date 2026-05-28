@@ -143,7 +143,7 @@
     "repair": "表示中の投稿付近を再取得",
     "repairing": "再取得中...",
     "repairAdded": "{count}件追加",
-    "repairRepliesAdded": "返信を{count}件補完",
+    "repairChildInteractionsAdded": "子インタラクションを{count}件補完",
     "repairNoChanges": "追加なし",
     "repairPartialFailure": "一部未確認",
     "repairFetchFailed": "取得失敗",

@@ -327,7 +327,7 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
 }));
 
-vi.mock('../../lib/storage/postHistoryReplyEventsRepository', () => ({
+vi.mock('../../lib/storage/postHistoryChildInteractionsRepository', () => ({
     postHistoryChildInteractionsRepository: replyEventsRepositoryMock,
 }));
 

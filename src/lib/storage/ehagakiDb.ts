@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 12;
+export const EHAGAKI_DB_VERSION = 13;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -247,7 +247,7 @@ export class EHagakiDB extends Dexie {
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
-    postHistoryReplyEvents!: Table<PostHistoryChildInteractionRecord, string>;
+    postHistoryChildInteractions!: Table<PostHistoryChildInteractionRecord, string>;
     postHistoryDeletionRequests!: Table<PostHistoryDeletionRequestRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
@@ -268,7 +268,7 @@ export class EHagakiDB extends Dexie {
             customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
-            postHistoryReplyEvents: "id, eventId, parentEventId, rootEventId, authorPubkey, kind, createdAt, fetchedAt, updatedAt, schemaVersion, [parentEventId+createdAt]",
+            postHistoryChildInteractions: "id, eventId, parentEventId, rootEventId, authorPubkey, kind, createdAt, fetchedAt, updatedAt, schemaVersion, [parentEventId+createdAt]",
             postHistoryDeletionRequests: "id, targetEventId, targetAuthorPubkey, deletionEventId, fetchedAt, [targetAuthorPubkey+targetEventId]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",

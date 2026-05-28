@@ -19,15 +19,11 @@ export interface PostHistoryChildInteractionItem {
     relayUrls?: string[];
 }
 
-export type PostHistoryReplyEventItem = PostHistoryChildInteractionItem;
-
 export interface UpsertPostHistoryChildInteractionsInput {
     parentEventId: string;
     events: PostHistoryChildInteractionItem[];
     fetchedAt?: number;
 }
-
-export type UpsertPostHistoryReplyEventsInput = UpsertPostHistoryChildInteractionsInput;
 
 export interface UpsertPostHistoryChildInteractionsResult {
     insertedCount: number;
@@ -35,8 +31,6 @@ export interface UpsertPostHistoryChildInteractionsResult {
     unchangedCount: number;
     ignoredCount: number;
 }
-
-export type UpsertPostHistoryReplyEventsResult = UpsertPostHistoryChildInteractionsResult;
 
 export interface PostHistoryChildInteractionsRepository {
     getChildInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
@@ -47,16 +41,6 @@ export interface PostHistoryChildInteractionsRepository {
     deleteChildInteractionsForParent(parentEventId: string): Promise<void>;
     deleteChildInteractionsForParents(parentEventIds: string[]): Promise<void>;
     deleteChildInteractionsForPostHistoryPubkey(pubkeyHex: string | null | undefined): Promise<void>;
-}
-
-export interface PostHistoryChildInteractionsLegacyRepository {
-    getRelatedEvents(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
-    getDirectReplies(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
-    upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult>;
-    deleteByEventId(eventId: string): Promise<void>;
-    deleteForParent(parentEventId: string): Promise<void>;
-    deleteForParents(parentEventIds: string[]): Promise<void>;
-    deleteForPostHistoryPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 function normalizeRelayUrls(relayUrls: string[] | undefined): string[] {
@@ -131,7 +115,7 @@ function filterReactionRecords(
     return records.filter((record) => record.kind === 7);
 }
 
-function hasMaterialReplyEventChanges(
+function hasMaterialChildInteractionChanges(
     existingRecord: PostHistoryChildInteractionRecord,
     nextRecord: PostHistoryChildInteractionRecord,
 ): boolean {
@@ -148,7 +132,7 @@ function hasMaterialReplyEventChanges(
 }
 
 export class DexiePostHistoryChildInteractionsRepository
-    implements PostHistoryChildInteractionsRepository, PostHistoryChildInteractionsLegacyRepository {
+    implements PostHistoryChildInteractionsRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
@@ -162,7 +146,7 @@ export class DexiePostHistoryChildInteractionsRepository
             return [];
         }
 
-        const records = await this.db.postHistoryReplyEvents
+        const records = await this.db.postHistoryChildInteractions
             .where("[parentEventId+createdAt]")
             .between([parentEventId, Dexie.minKey], [parentEventId, Dexie.maxKey])
             .toArray();
@@ -209,7 +193,7 @@ export class DexiePostHistoryChildInteractionsRepository
 
             const existing = normalizedItems.get(item.event.id);
             if (existing && !isSameSignedNostrEvent(existing.event, item.event)) {
-                this.console.warn("post_history_reply_event_conflict", item.event.id);
+                this.console.warn("post_history_child_interaction_conflict", item.event.id);
                 ignoredCount += 1;
                 continue;
             }
@@ -238,8 +222,8 @@ export class DexiePostHistoryChildInteractionsRepository
         let updatedCount = 0;
         let unchangedCount = 0;
 
-        await this.db.transaction("rw", this.db.postHistoryReplyEvents, async () => {
-            const existingRecords = await this.db.postHistoryReplyEvents.bulkGet(eventIds);
+        await this.db.transaction("rw", this.db.postHistoryChildInteractions, async () => {
+            const existingRecords = await this.db.postHistoryChildInteractions.bulkGet(eventIds);
             const existingMap = new Map<string, PostHistoryChildInteractionRecord>();
             existingRecords.forEach((record) => {
                 if (record) {
@@ -278,7 +262,7 @@ export class DexiePostHistoryChildInteractionsRepository
 
                 if (!existingRecord) {
                     insertedCount += 1;
-                } else if (hasMaterialReplyEventChanges(existingRecord, nextRecord)) {
+                } else if (hasMaterialChildInteractionChanges(existingRecord, nextRecord)) {
                     updatedCount += 1;
                 } else {
                     unchangedCount += 1;
@@ -287,7 +271,7 @@ export class DexiePostHistoryChildInteractionsRepository
                 return nextRecord;
             });
 
-            await this.db.postHistoryReplyEvents.bulkPut(nextRecords);
+            await this.db.postHistoryChildInteractions.bulkPut(nextRecords);
         });
 
         return {
@@ -303,7 +287,7 @@ export class DexiePostHistoryChildInteractionsRepository
             return;
         }
 
-        await this.db.postHistoryReplyEvents
+        await this.db.postHistoryChildInteractions
             .where("parentEventId")
             .equals(parentEventId)
             .delete();
@@ -315,9 +299,9 @@ export class DexiePostHistoryChildInteractionsRepository
             return;
         }
 
-        await this.db.transaction("rw", this.db.postHistoryReplyEvents, async () => {
+        await this.db.transaction("rw", this.db.postHistoryChildInteractions, async () => {
             for (const parentEventId of uniqueParentEventIds) {
-                await this.db.postHistoryReplyEvents
+                await this.db.postHistoryChildInteractions
                     .where("parentEventId")
                     .equals(parentEventId)
                     .delete();
@@ -335,7 +319,7 @@ export class DexiePostHistoryChildInteractionsRepository
             .equals(pubkeyHex)
             .primaryKeys();
 
-        // TODO(PR5+): Consider adding ownerPubkeyHex to postHistoryReplyEvents via migration
+        // TODO(PR5+): Consider adding ownerPubkeyHex to postHistoryChildInteractions via migration
         // so owner-scoped cleanup does not have to infer scope from current postHistory parents.
         await this.deleteChildInteractionsForParents(parentEventIds.map(String));
     }
@@ -345,35 +329,7 @@ export class DexiePostHistoryChildInteractionsRepository
             return;
         }
 
-        await this.db.postHistoryReplyEvents.delete(eventId);
-    }
-
-    async getRelatedEvents(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
-        return this.getChildInteractions(parentEventId);
-    }
-
-    async getDirectReplies(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {
-        return this.getDirectReplyInteractions(parentEventId);
-    }
-
-    async upsertDirectReplies(input: UpsertPostHistoryReplyEventsInput): Promise<UpsertPostHistoryReplyEventsResult> {
-        return this.upsertChildInteractions(input);
-    }
-
-    async deleteByEventId(eventId: string): Promise<void> {
-        await this.deleteChildInteractionByEventId(eventId);
-    }
-
-    async deleteForParent(parentEventId: string): Promise<void> {
-        await this.deleteChildInteractionsForParent(parentEventId);
-    }
-
-    async deleteForParents(parentEventIds: string[]): Promise<void> {
-        await this.deleteChildInteractionsForParents(parentEventIds);
-    }
-
-    async deleteForPostHistoryPubkey(pubkeyHex: string | null | undefined): Promise<void> {
-        await this.deleteChildInteractionsForPostHistoryPubkey(pubkeyHex);
+        await this.db.postHistoryChildInteractions.delete(eventId);
     }
 }
 

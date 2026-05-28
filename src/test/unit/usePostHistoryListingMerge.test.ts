@@ -4,7 +4,7 @@ import {
     POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS,
     resolveNewlyVisibleOlderPosts,
     resolveOlderRevealReplyRepairNetworkParentIds,
-    resolveVisibleOlderRevealReplyRepairParentPosts,
+    resolveVisibleOlderRevealChildInteractionRepairParentPosts,
 } from '../../lib/hooks/usePostHistoryListing.svelte';
 
 function createPost(index: number) {
@@ -164,7 +164,7 @@ describe('mergeOlderVisiblePosts', () => {
             pubkeyHex: 'b'.repeat(64),
         };
 
-        const result = resolveVisibleOlderRevealReplyRepairParentPosts(
+        const result = resolveVisibleOlderRevealChildInteractionRepairParentPosts(
             'a'.repeat(64),
             [visibleSelf, hiddenSelf, visibleKind42, visibleOther],
             [visibleSelf, visibleKind42, visibleOther],

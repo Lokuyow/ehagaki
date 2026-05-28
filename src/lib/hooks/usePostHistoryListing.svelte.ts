@@ -42,16 +42,16 @@ import {
     type PostHistoryCurrentViewRefetchTask,
 } from "../postHistoryCurrentViewRefetchService";
 import {
-    postHistoryVisibleRangeReplyRepairService,
-    type PostHistoryVisibleRangeReplyRepairResult,
-    type PostHistoryVisibleRangeReplyRepairTask,
-} from "../postHistoryVisibleRangeReplyRepairService";
+    postHistoryVisibleRangeChildInteractionRepairService,
+    type PostHistoryVisibleRangeChildInteractionRepairResult,
+    type PostHistoryVisibleRangeChildInteractionRepairTask,
+} from "../postHistoryVisibleRangeChildInteractionRepairService";
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
-import { postHistoryChildInteractionsRepository } from "../storage/postHistoryReplyEventsRepository";
+import { postHistoryChildInteractionsRepository } from "../storage/postHistoryChildInteractionsRepository";
 import { postHistoryJumpCacheAnchorRepository } from "../storage/postHistoryJumpCacheAnchorRepository";
 import {
     buildPostHistoryVisibleKindsKey,
@@ -257,7 +257,7 @@ export function resolveNewlyVisibleOlderPosts(
     return nextPosts.filter((post) => !currentPostIds.has(post.eventId));
 }
 
-export function resolveVisibleOlderRevealReplyRepairParentPosts(
+export function resolveVisibleOlderRevealChildInteractionRepairParentPosts(
     ownerPubkeyHex: string,
     candidatePosts: PostHistoryRecord[],
     currentVisiblePosts: Array<Pick<PostHistoryRecord, "eventId">>,
@@ -324,7 +324,7 @@ function didDateChunkMissTarget(
     return (oldestChunkCreatedAt ?? 0) > targetCreatedAt;
 }
 
-export function resolveOlderRevealReplyRepairNetworkParentIds(
+export function resolveOlderRevealChildInteractionRepairNetworkParentIds(
     parentEventIds: string[],
     freshnessByParentId: ReadonlyMap<string, number>,
     inFlightParentIds: ReadonlySet<string>,
@@ -609,15 +609,15 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
-    let currentViewReplyRepairTask: PostHistoryVisibleRangeReplyRepairTask | null = null;
+    let currentViewChildInteractionRepairTask: PostHistoryVisibleRangeChildInteractionRepairTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
-    let olderRevealReplyRepairScopeId = 0;
-    let activeOlderRevealReplyRepairRxNostr = getRxNostr();
+    let olderRevealChildInteractionRepairScopeId = 0;
+    let activeOlderRevealChildInteractionRepairRxNostr = getRxNostr();
     let appliedSearchQuery = "";
-    const olderRevealReplyRepairTasks = new Set<PostHistoryVisibleRangeReplyRepairTask>();
-    const olderRevealReplyRepairFreshnessByParentId = new Map<string, number>();
-    const olderRevealReplyRepairInFlightParentIds = new Set<string>();
+    const olderRevealChildInteractionRepairTasks = new Set<PostHistoryVisibleRangeChildInteractionRepairTask>();
+    const olderRevealChildInteractionRepairFreshnessByParentId = new Map<string, number>();
+    const olderRevealChildInteractionRepairInFlightParentIds = new Set<string>();
     const olderBackfillSearch = $state<OlderBackfillSearchState>({
         windowSeconds: POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
         nextUntil: null,
@@ -757,8 +757,8 @@ export function usePostHistoryListing({
     function cancelCurrentViewRefetch(): void {
         currentViewRefetchTask?.cancel();
         currentViewRefetchTask = null;
-        currentViewReplyRepairTask?.cancel();
-        currentViewReplyRepairTask = null;
+        currentViewChildInteractionRepairTask?.cancel();
+        currentViewChildInteractionRepairTask = null;
         if (state.currentViewRefetchStatus === "refetching") {
             state.currentViewRefetchStatus = "idle";
         }
@@ -779,21 +779,21 @@ export function usePostHistoryListing({
         }
     }
 
-    function clearOlderRevealReplyRepairState(): void {
-        olderRevealReplyRepairScopeId += 1;
-        olderRevealReplyRepairTasks.forEach((task) => task.cancel());
-        olderRevealReplyRepairTasks.clear();
-        olderRevealReplyRepairFreshnessByParentId.clear();
-        olderRevealReplyRepairInFlightParentIds.clear();
+    function clearOlderRevealChildInteractionRepairState(): void {
+        olderRevealChildInteractionRepairScopeId += 1;
+        olderRevealChildInteractionRepairTasks.forEach((task) => task.cancel());
+        olderRevealChildInteractionRepairTasks.clear();
+        olderRevealChildInteractionRepairFreshnessByParentId.clear();
+        olderRevealChildInteractionRepairInFlightParentIds.clear();
     }
 
-    function isActiveOlderRevealReplyRepairScope(
+    function isActiveOlderRevealChildInteractionRepairScope(
         scopeId: number,
         pubkeyHex: string,
         rxNostr: RxNostr,
     ): boolean {
         return (
-            scopeId === olderRevealReplyRepairScopeId
+            scopeId === olderRevealChildInteractionRepairScopeId
             && getShow()
             && getPubkeyHex() === pubkeyHex
             && getRxNostr() === rxNostr
@@ -861,8 +861,8 @@ export function usePostHistoryListing({
             isActive,
         );
 
-        const replyRepairTask =
-            postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+        const childInteractionRepairTask =
+            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
                 rxNostr,
                 {
                     ownerPubkeyHex: pubkeyHex,
@@ -871,29 +871,29 @@ export function usePostHistoryListing({
                     isActive,
                 },
             );
-        const replyRepairResult = await replyRepairTask.promise;
+        const childInteractionRepairResult = await childInteractionRepairTask.promise;
         if (
-            replyRepairResult.status === "cancelled"
+            childInteractionRepairResult.status === "cancelled"
             || !isActive()
-            || replyRepairResult.savedParentEventIds.length === 0
+            || childInteractionRepairResult.savedParentEventIds.length === 0
         ) {
             return;
         }
 
         await onChildInteractionBadgeRefreshRequested(
             state.loadedPosts,
-            replyRepairResult.savedParentEventIds,
+            childInteractionRepairResult.savedParentEventIds,
         );
     }
 
-    function resolveOlderRevealReplyRepairNetworkParentPosts(
+    function resolveOlderRevealChildInteractionRepairNetworkParentPosts(
         parentPosts: PostHistoryRecord[],
         nowMs: number,
     ): PostHistoryRecord[] {
-        const networkParentIds = resolveOlderRevealReplyRepairNetworkParentIds(
+        const networkParentIds = resolveOlderRevealChildInteractionRepairNetworkParentIds(
             parentPosts.map((post) => post.eventId),
-            olderRevealReplyRepairFreshnessByParentId,
-            olderRevealReplyRepairInFlightParentIds,
+            olderRevealChildInteractionRepairFreshnessByParentId,
+            olderRevealChildInteractionRepairInFlightParentIds,
             nowMs,
         );
         const networkParentIdSet = new Set(networkParentIds);
@@ -901,26 +901,26 @@ export function usePostHistoryListing({
         return parentPosts.filter((post) => networkParentIdSet.has(post.eventId));
     }
 
-    function markOlderRevealReplyRepairParentsChecked(
+    function markOlderRevealChildInteractionRepairParentsChecked(
         parentEventIds: string[],
         checkedAt: number,
     ): void {
         parentEventIds.forEach((eventId) => {
-            olderRevealReplyRepairFreshnessByParentId.set(eventId, checkedAt);
+            olderRevealChildInteractionRepairFreshnessByParentId.set(eventId, checkedAt);
         });
     }
 
-    function scheduleOlderRevealReplyRepair(
+    function scheduleOlderRevealChildInteractionRepair(
         candidatePosts: PostHistoryRecord[],
     ): void {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
-        const scopeId = olderRevealReplyRepairScopeId;
+        const scopeId = olderRevealChildInteractionRepairScopeId;
         if (!pubkeyHex || candidatePosts.length === 0) {
             return;
         }
 
-        const visibleParentPosts = resolveVisibleOlderRevealReplyRepairParentPosts(
+        const visibleParentPosts = resolveVisibleOlderRevealChildInteractionRepairParentPosts(
             pubkeyHex,
             candidatePosts,
             state.loadedPosts,
@@ -941,10 +941,10 @@ export function usePostHistoryListing({
         scheduleReactionDeletionRefresh(
             "listing-older-reveal",
             visibleParentPosts.map((post) => post.eventId),
-            () => isActiveOlderRevealReplyRepairScope(scopeId, pubkeyHex, rxNostr),
+            () => isActiveOlderRevealChildInteractionRepairScope(scopeId, pubkeyHex, rxNostr),
         );
 
-        const networkParentPosts = resolveOlderRevealReplyRepairNetworkParentPosts(
+        const networkParentPosts = resolveOlderRevealChildInteractionRepairNetworkParentPosts(
             visibleParentPosts,
             Date.now(),
         );
@@ -953,35 +953,35 @@ export function usePostHistoryListing({
         }
 
         networkParentPosts.forEach((post) => {
-            olderRevealReplyRepairInFlightParentIds.add(post.eventId);
+            olderRevealChildInteractionRepairInFlightParentIds.add(post.eventId);
         });
 
         const task =
-            postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
                 rxNostr,
                 {
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts: networkParentPosts,
                     relayConfig: getRelayConfig(),
                     isActive: () =>
-                        isActiveOlderRevealReplyRepairScope(
+                        isActiveOlderRevealChildInteractionRepairScope(
                             scopeId,
                             pubkeyHex,
                             rxNostr,
                         ),
                 },
             );
-        olderRevealReplyRepairTasks.add(task);
+        olderRevealChildInteractionRepairTasks.add(task);
 
         void task.promise
             .then((result) => {
-                olderRevealReplyRepairTasks.delete(task);
+                olderRevealChildInteractionRepairTasks.delete(task);
                 networkParentPosts.forEach((post) => {
-                    olderRevealReplyRepairInFlightParentIds.delete(post.eventId);
+                    olderRevealChildInteractionRepairInFlightParentIds.delete(post.eventId);
                 });
 
                 if (
-                    !isActiveOlderRevealReplyRepairScope(
+                    !isActiveOlderRevealChildInteractionRepairScope(
                         scopeId,
                         pubkeyHex,
                         rxNostr,
@@ -999,16 +999,16 @@ export function usePostHistoryListing({
                 }
 
                 if (result.checkedParentEventIds.length > 0) {
-                    markOlderRevealReplyRepairParentsChecked(
+                    markOlderRevealChildInteractionRepairParentsChecked(
                         result.checkedParentEventIds,
                         Date.now(),
                     );
                 }
             })
             .catch(() => {
-                olderRevealReplyRepairTasks.delete(task);
+                olderRevealChildInteractionRepairTasks.delete(task);
                 networkParentPosts.forEach((post) => {
-                    olderRevealReplyRepairInFlightParentIds.delete(post.eventId);
+                    olderRevealChildInteractionRepairInFlightParentIds.delete(post.eventId);
                 });
             });
     }
@@ -1035,7 +1035,7 @@ export function usePostHistoryListing({
         const autoHideMessageKeys = new Set([
             "postHistory.repairNoChanges",
             "postHistory.repairAdded",
-            "postHistory.repairRepliesAdded",
+            "postHistory.repairChildInteractionsAdded",
             "postHistory.repairPartialFailure",
             "postHistory.repairFetchFailed",
         ]);
@@ -1079,7 +1079,7 @@ export function usePostHistoryListing({
     }
 
     function resetListingStateAfterLocalDelete(): void {
-        clearOlderRevealReplyRepairState();
+        clearOlderRevealChildInteractionRepairState();
         state.loadedPosts = [];
         state.searchPosts = [];
         state.totalCount = 0;
@@ -1105,7 +1105,7 @@ export function usePostHistoryListing({
     function resetState(): void {
         cancelCurrentSync();
         cancelCurrentViewRefetch();
-        clearOlderRevealReplyRepairState();
+        clearOlderRevealChildInteractionRepairState();
         state.syncStatus = "idle";
         resetOlderBackfillSearchState();
         clearCurrentViewRefetchFeedback();
@@ -1985,7 +1985,7 @@ export function usePostHistoryListing({
                 : [];
         state.loadedPosts = mergedResult.posts;
         if (newlyVisibleOlderPosts.length > 0) {
-            scheduleOlderRevealReplyRepair(newlyVisibleOlderPosts);
+            scheduleOlderRevealChildInteractionRepair(newlyVisibleOlderPosts);
         }
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
@@ -3077,7 +3077,7 @@ export function usePostHistoryListing({
                 ),
             );
 
-            let replyRepairResult: PostHistoryVisibleRangeReplyRepairResult | null = null;
+            let childInteractionRepairResult: PostHistoryVisibleRangeChildInteractionRepairResult | null = null;
             if (
                 currentViewRefetchTask === task
                 && getShow()
@@ -3085,8 +3085,8 @@ export function usePostHistoryListing({
                 && getRxNostr() === rxNostr
                 && state.loadedPosts.length > 0
             ) {
-                const replyRepairTask =
-                    postHistoryVisibleRangeReplyRepairService.repairVisibleKind1DirectReplies(
+                const childInteractionRepairTask =
+                    postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
                         rxNostr,
                         {
                             ownerPubkeyHex: pubkeyHex,
@@ -3099,23 +3099,23 @@ export function usePostHistoryListing({
                                 && getRxNostr() === rxNostr,
                         },
                     );
-                currentViewReplyRepairTask = replyRepairTask;
-                replyRepairResult = await replyRepairTask.promise;
-                if (currentViewReplyRepairTask === replyRepairTask) {
-                    currentViewReplyRepairTask = null;
+                currentViewChildInteractionRepairTask = childInteractionRepairTask;
+                childInteractionRepairResult = await childInteractionRepairTask.promise;
+                if (currentViewChildInteractionRepairTask === childInteractionRepairTask) {
+                    currentViewChildInteractionRepairTask = null;
                 }
                 if (
                     currentViewRefetchTask !== task
-                    || replyRepairResult.status === "cancelled"
+                    || childInteractionRepairResult.status === "cancelled"
                     || !getShow()
                 ) {
                     return;
                 }
 
-                if (replyRepairResult.savedParentEventIds.length > 0) {
+                if (childInteractionRepairResult.savedParentEventIds.length > 0) {
                     await onChildInteractionBadgeRefreshRequested(
                         state.loadedPosts,
-                        replyRepairResult.savedParentEventIds,
+                        childInteractionRepairResult.savedParentEventIds,
                     );
                 }
             }
@@ -3130,17 +3130,17 @@ export function usePostHistoryListing({
                     processedRangeCount: result.processedRangeCount,
                     updatedCount: result.updatedCount,
                 };
-            } else if ((replyRepairResult?.savedDirectReplyCount ?? 0) > 0) {
-                state.currentViewRefetchMessageKey = "postHistory.repairRepliesAdded";
+            } else if ((childInteractionRepairResult?.savedDirectReplyCount ?? 0) > 0) {
+                state.currentViewRefetchMessageKey = "postHistory.repairChildInteractionsAdded";
                 state.currentViewRefetchMessageValues = {
-                    count: replyRepairResult?.savedDirectReplyCount ?? 0,
+                    count: childInteractionRepairResult?.savedDirectReplyCount ?? 0,
                 };
             } else if (result.fetchFailed) {
                 state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
                 state.currentViewRefetchMessageValues = null;
             } else if (
                 result.hadUnfinishedRanges
-                || replyRepairResult?.status === "partial"
+                || childInteractionRepairResult?.status === "partial"
             ) {
                 state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
                 state.currentViewRefetchMessageValues = null;
@@ -3235,17 +3235,17 @@ export function usePostHistoryListing({
         activePubkeyKey = nextPubkeyKey;
         state.lastDialogOpenRefreshAt = null;
         resetOlderBackfillSearchState();
-        clearOlderRevealReplyRepairState();
+        clearOlderRevealChildInteractionRepairState();
     });
 
     $effect(() => {
         const nextRxNostr = getRxNostr();
-        if (nextRxNostr === activeOlderRevealReplyRepairRxNostr) {
+        if (nextRxNostr === activeOlderRevealChildInteractionRepairRxNostr) {
             return;
         }
 
-        activeOlderRevealReplyRepairRxNostr = nextRxNostr;
-        clearOlderRevealReplyRepairState();
+        activeOlderRevealChildInteractionRepairRxNostr = nextRxNostr;
+        clearOlderRevealChildInteractionRepairState();
     });
 
     $effect(() => {
@@ -3294,7 +3294,7 @@ export function usePostHistoryListing({
 
     $effect(() => {
         return () => {
-            clearOlderRevealReplyRepairState();
+            clearOlderRevealChildInteractionRepairState();
         };
     });
 

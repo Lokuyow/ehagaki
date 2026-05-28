@@ -26,7 +26,7 @@ import {
     postHistoryReactionRecordsAdapter,
     type PostHistoryDirectReplyRecordsAdapter,
     type PostHistoryReactionRecordsAdapter,
-} from "../postHistoryReplyEventsAdapter";
+} from "../postHistoryChildInteractionsAdapter";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
@@ -38,7 +38,7 @@ import {
 import {
     postHistoryChildInteractionsRepository,
     type PostHistoryChildInteractionsRepository,
-} from "../storage/postHistoryReplyEventsRepository";
+} from "../storage/postHistoryChildInteractionsRepository";
 import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
