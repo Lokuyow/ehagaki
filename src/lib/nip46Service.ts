@@ -244,6 +244,7 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * 要求パーミッションを扱うリモートサイナーでは、
  * クライアントが利用する操作の許可設定に使われる。
  * リモートサイナー実装によっては、この要求を参照しない場合がある。
+ * - get_public_key — ログイン完了時のユーザー公開鍵取得
  * - ping — 接続状態確認。手動の接続確認と、確認済み session の長時間バックグラウンド復帰で使用
  * - sign_event:1 — ショートテキストノート（投稿）
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
@@ -253,6 +254,7 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - sign_event:24242 — Blossom / BUD-11 HTTP認証（ファイルアップロード）
  */
 export const NIP46_REQUESTED_PERMISSIONS = [
+    'get_public_key',
     'ping',
     'sign_event:1',
     'sign_event:5',
@@ -773,6 +775,25 @@ function isUnsupportedSwitchRelaysError(error: unknown): boolean {
         || message.includes('not allowed');
 }
 
+function isNoPermissionError(error: unknown): boolean {
+    const message = (
+        error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+                ? error
+                : ''
+    ).trim().toLowerCase();
+
+    if (!message) {
+        return false;
+    }
+
+    return message.includes('no permission')
+        || message.includes('permission denied')
+        || message.includes('forbidden')
+        || message.includes('not allowed');
+}
+
 function createNostrConnectBunkerSigner(
     clientSecretKey: Uint8Array,
     remoteSignerPubkey: string,
@@ -1183,16 +1204,122 @@ export class Nip46Service {
         });
         console.debug('[NIP-46] connect: BunkerSigner created, subscription initiated (check WS logs for REQ)');
 
-        console.debug('[NIP-46] connect: calling bunkerSigner.connect() with perms...');
-        await Promise.race([
-            this.bunkerSigner.sendRequest('connect', [bunkerPointer.pubkey, bunkerPointer.secret || '', NIP46_REQUESTED_PERMS]),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.')), timeoutMs)
-            ),
+        const originalSecret = bunkerPointer.secret || '';
+        const normalizedSecret = originalSecret.includes(' ')
+            ? originalSecret.replace(/ /g, '+')
+            : originalSecret;
+        const secretCandidates = normalizedSecret === originalSecret
+            ? [originalSecret]
+            : [originalSecret, normalizedSecret];
+        const connectParamCandidates = secretCandidates.flatMap((secret) => [
+            [bunkerPointer.pubkey, secret, NIP46_REQUESTED_PERMS],
+            [bunkerPointer.pubkey, secret],
         ]);
+
+        console.debug('[NIP-46] connect: attempting bunker connect compatibility flow', {
+            hasSecret: originalSecret.length > 0,
+            secretLength: originalSecret.length,
+            secretContainsSpace: originalSecret.includes(' '),
+            secretContainsPlus: originalSecret.includes('+'),
+            attemptCount: connectParamCandidates.length,
+        });
+
+        let connectError: unknown = null;
+        let resolvedUserPubkey: string | null = null;
+        for (let attemptIndex = 0; attemptIndex < connectParamCandidates.length; attemptIndex += 1) {
+            const params = connectParamCandidates[attemptIndex];
+            console.debug('[NIP-46] connect attempt', {
+                attempt: attemptIndex + 1,
+                total: connectParamCandidates.length,
+                paramCount: params.length,
+                usingNormalizedSecret: params[1] === normalizedSecret && normalizedSecret !== originalSecret,
+                withPerms: params.length >= 3,
+            });
+
+            try {
+                await Promise.race([
+                    this.bunkerSigner.sendRequest('connect', params),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.')), timeoutMs)
+                    ),
+                ]);
+
+                try {
+                    const candidateUserPubkey = await Promise.race([
+                        this.bunkerSigner.getPublicKey(),
+                        new Promise<never>((_, reject) =>
+                            setTimeout(() => reject(new Error('Timed out waiting for get_public_key response')), timeoutMs)
+                        ),
+                    ]);
+                    resolvedUserPubkey = candidateUserPubkey;
+                    connectError = null;
+                    break;
+                } catch (error) {
+                    if (isNoPermissionError(error)) {
+                        console.warn('[NIP-46] get_public_key returned no permission; trying sign_event pubkey fallback');
+                        try {
+                            const signedProbe = await Promise.race([
+                                this.bunkerSigner.signEvent({
+                                    kind: 1,
+                                    content: '',
+                                    tags: [],
+                                    created_at: Math.floor(Date.now() / 1000),
+                                }),
+                                new Promise<never>((_, reject) =>
+                                    setTimeout(() => reject(new Error('Timed out waiting for sign_event pubkey fallback response')), timeoutMs)
+                                ),
+                            ]) as { pubkey?: unknown };
+
+                            if (typeof signedProbe.pubkey === 'string' && signedProbe.pubkey.length > 0) {
+                                console.debug('[NIP-46] sign_event pubkey fallback succeeded');
+                                resolvedUserPubkey = signedProbe.pubkey;
+                                connectError = null;
+                                break;
+                            }
+
+                            console.warn('[NIP-46] sign_event pubkey fallback returned invalid pubkey');
+                        } catch (fallbackError) {
+                            console.warn('[NIP-46] sign_event pubkey fallback failed', fallbackError);
+                        }
+                    }
+
+                    connectError = error;
+                    const canRetryWithoutPerms = params.length >= 3
+                        && isNoPermissionError(error)
+                        && connectParamCandidates.slice(attemptIndex + 1).some((candidate) => candidate.length < 3);
+                    console.warn('[NIP-46] get_public_key failed after connect attempt', {
+                        attempt: attemptIndex + 1,
+                        total: connectParamCandidates.length,
+                        withPerms: params.length >= 3,
+                        canRetryWithoutPerms,
+                        error,
+                    });
+
+                    if (!canRetryWithoutPerms) {
+                        break;
+                    }
+                }
+            } catch (error) {
+                connectError = error;
+                console.warn('[NIP-46] connect attempt failed', {
+                    attempt: attemptIndex + 1,
+                    total: connectParamCandidates.length,
+                    paramCount: params.length,
+                    error,
+                });
+            }
+        }
+
+        if (connectError) {
+            throw connectError;
+        }
         console.debug('[NIP-46] connect: connected successfully');
 
-        this.userPubkey = await this.bunkerSigner.getPublicKey();
+        if (!resolvedUserPubkey) {
+            throw new Error('Failed to resolve user public key after connect');
+        }
+
+        this.userPubkey = resolvedUserPubkey;
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
         this.updateCurrentSessionFromRuntime(false);
 
