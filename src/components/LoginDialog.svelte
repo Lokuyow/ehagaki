@@ -1193,12 +1193,18 @@
         height: 32px;
     }
 
-    .remote-signer-section,
+    .remote-signer-section {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        gap: 6px;
+    }
+
     .secret-key-section {
         display: flex;
         flex-direction: column;
         width: 100%;
-        gap: 12px;
+        gap: 10px;
     }
 
     :global(.remote-signer-panel) {
@@ -1210,7 +1216,7 @@
     .remote-signer-details {
         width: 100%;
         background: var(--dialog-bg2);
-        border-radius: 16px;
+        border-radius: 8px;
         box-sizing: border-box;
     }
 
@@ -1270,6 +1276,16 @@
         font-size: 0.95rem;
         font-weight: 600;
         cursor: pointer;
+
+        &[data-value="qr"] {
+            border-top-left-radius: 10px;
+            border-bottom-left-radius: 10px;
+        }
+
+        &[data-value="bunker"] {
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
     }
 
     .nostrconnect-qr-shell,
