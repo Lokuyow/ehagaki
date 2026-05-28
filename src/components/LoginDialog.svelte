@@ -1452,7 +1452,7 @@
     }
 
     :global(input.u-control, button.u-control) {
-        height: 50px;
+        min-height: 50px;
         min-width: 60px;
         width: 100%;
         display: inline-flex;
