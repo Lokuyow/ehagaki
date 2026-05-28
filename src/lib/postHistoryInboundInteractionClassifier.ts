@@ -63,7 +63,7 @@ export function classifyPostHistoryInboundInteraction(input: {
             rootEventId: null,
             targetEventId,
             targetAuthorPubkey,
-            reason: "reaction-not-implemented",
+            reason: "owner-post-reaction",
         };
     }
 
@@ -123,7 +123,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         targetEventId: references.parentId ?? references.rootId,
         targetAuthorPubkey: ownerPubkeyHex,
         reason: references.rootId
-                ? "root-only-or-parent-missing"
-                : "mention-without-thread-parent",
+            ? "root-only-or-parent-missing"
+            : "mention-without-thread-parent",
     };
 }

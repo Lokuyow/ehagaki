@@ -339,7 +339,7 @@
   let postHistoryWarmupPubkey: string | null = null;
   let postHistoryWarmupResult: PostHistoryWarmupResult | null = null;
   let postHistoryWarmupPromise: Promise<PostHistoryWarmupResult> | null = null;
-  let latestInboundDirectReplySave = $state<{
+  let latestInboundInteractionSave = $state<{
     revision: number;
     parentEventIds: string[];
   } | null>(null);
@@ -555,9 +555,9 @@
     },
   });
 
-  function notifyInboundDirectReplySaved(parentEventIds: string[]): void {
-    latestInboundDirectReplySave = {
-      revision: (latestInboundDirectReplySave?.revision ?? 0) + 1,
+  function notifyInboundInteractionsSaved(parentEventIds: string[]): void {
+    latestInboundInteractionSave = {
+      revision: (latestInboundInteractionSave?.revision ?? 0) + 1,
       parentEventIds,
     };
   }
@@ -568,7 +568,7 @@
       getPubkeyHex: () => authState.value?.pubkey ?? null,
       getRxNostr: () => rxNostr,
       getRelayConfig: () => relayConfigStore.value,
-      onSavedDirectReplies: notifyInboundDirectReplySaved,
+      onSavedInboundInteractions: notifyInboundInteractionsSaved,
     });
 
   usePostHistoryInboundInteractionsRealtime({
@@ -576,7 +576,7 @@
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     getRxNostr: () => rxNostr,
     getRelayConfig: () => relayConfigStore.value,
-    onSavedDirectReplies: notifyInboundDirectReplySaved,
+    onSavedInboundInteractions: notifyInboundInteractionsSaved,
     reconcileDirectReplyCandidates:
       postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates,
   });
@@ -2200,7 +2200,7 @@
           {rxNostr}
           relayConfig={relayConfigStore.value}
           {latestPostedEvent}
-          inboundDirectReplySave={latestInboundDirectReplySave}
+          inboundInteractionSave={latestInboundInteractionSave}
           authoredSelfPostSave={latestAuthoredSelfPostSave}
           reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
           notifySavedAuthoredPosts={postHistoryInboundReplyReconciliation.notifySelfPostsSaved}

@@ -70,7 +70,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
                 cancel: vi.fn(),
             })),
         };
-        const onSavedDirectReplies = vi.fn();
+        const onSavedInboundInteractions = vi.fn();
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository,
             postHistoryReplyEventsRepository,
@@ -79,7 +79,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             console: { warn: vi.fn(), error: vi.fn() },
         }).createSession({} as any, {
             ownerPubkeyHex: OWNER_PUBKEY,
-            onSavedDirectReplies,
+            onSavedInboundInteractions,
         });
         const candidate = createCandidate(createEvent({ id: "2".repeat(64) }));
 
@@ -112,7 +112,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
             fetchedAt: 1_700_000_000_000,
         });
-        expect(onSavedDirectReplies).toHaveBeenCalledWith([PARENT_ID]);
+        expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
     });
 
     it("leaves targeted parent fetch null results unresolved without storing the candidate", async () => {

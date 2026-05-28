@@ -114,7 +114,7 @@ describe("classifyPostHistoryInboundInteraction", () => {
             type: "reaction",
             targetEventId: PARENT_ID,
             targetAuthorPubkey: OWNER_PUBKEY,
-            reason: "reaction-not-implemented",
+            reason: "owner-post-reaction",
         });
     });
 
@@ -137,7 +137,7 @@ describe("classifyPostHistoryInboundInteraction", () => {
             type: "reaction",
             targetEventId: OTHER_PARENT_ID,
             targetAuthorPubkey: OWNER_PUBKEY,
-            reason: "reaction-not-implemented",
+            reason: "owner-post-reaction",
         });
     });
 
@@ -160,7 +160,7 @@ describe("classifyPostHistoryInboundInteraction", () => {
             type: "reaction",
             targetEventId: PARENT_ID,
             targetAuthorPubkey: OWNER_PUBKEY,
-            reason: "reaction-not-implemented",
+            reason: "owner-post-reaction",
         });
     });
 });

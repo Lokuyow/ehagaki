@@ -22,7 +22,7 @@ interface UsePostHistoryInboundInteractionsSyncParams {
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
     getPosts: () => PostHistoryRecord[];
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onSavedInboundInteractions?: (parentEventIds: string[]) => void | Promise<void>;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -38,7 +38,7 @@ export function usePostHistoryInboundInteractionsSync({
     getRxNostr,
     getRelayConfig,
     getPosts,
-    onSavedDirectReplies = () => undefined,
+    onSavedInboundInteractions = () => undefined,
     reconcileDirectReplyCandidates,
 }: UsePostHistoryInboundInteractionsSyncParams) {
     const state = $state({
@@ -110,16 +110,16 @@ export function usePostHistoryInboundInteractionsSync({
         if (
             task.joinedExisting
             || result.status === "cancelled"
-            || result.savedParentEventIds.length === 0
+            || result.changedParentEventIds.length === 0
         ) {
             return;
         }
 
-        await onSavedDirectReplies(result.savedParentEventIds);
+        await onSavedInboundInteractions(result.changedParentEventIds);
 
         void triggerPostHistoryReactionLifecycle({
             source: "dialog-inbound-sync",
-            parentEventIds: result.savedParentEventIds,
+            parentEventIds: result.changedParentEventIds,
             rxNostr,
             relayConfig: getRelayConfig(),
             isActive: () => (
@@ -139,7 +139,7 @@ export function usePostHistoryInboundInteractionsSync({
             }
 
             return Promise.resolve(
-                onSavedDirectReplies(result.savedParentEventIds),
+                onSavedInboundInteractions(result.changedParentEventIds),
             ).catch(() => undefined);
         }).catch(() => undefined);
     }

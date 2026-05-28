@@ -77,7 +77,7 @@
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
         latestPostedEvent?: NostrEvent | null;
-        inboundDirectReplySave?: {
+        inboundInteractionSave?: {
             revision: number;
             parentEventIds: string[];
         } | null;
@@ -102,7 +102,7 @@
         rxNostr = undefined,
         relayConfig = null,
         latestPostedEvent = null,
-        inboundDirectReplySave = null,
+        inboundInteractionSave = null,
         authoredSelfPostSave = null,
         reconcileInboundDirectReplyCandidates = undefined,
         notifySavedAuthoredPosts = undefined,
@@ -159,7 +159,7 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         getPosts: () => history.posts,
-        onSavedDirectReplies: (parentEventIds) =>
+        onSavedInboundInteractions: (parentEventIds) =>
             postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
                 history.posts,
                 parentEventIds,
@@ -167,7 +167,7 @@
         reconcileDirectReplyCandidates: (candidates) =>
             reconcileInboundDirectReplyCandidates?.(candidates) ??
             Promise.resolve({
-                savedParentEventIds: [],
+                changedParentEventIds: [],
                 savedDirectReplyCount: 0,
                 unresolvedParentEventIds: candidates
                     .map((candidate) => candidate.classification.parentEventId)
@@ -432,8 +432,8 @@
     });
 
     $effect(() => {
-        const revision = inboundDirectReplySave?.revision ?? 0;
-        const parentEventIds = inboundDirectReplySave?.parentEventIds ?? [];
+        const revision = inboundInteractionSave?.revision ?? 0;
+        const parentEventIds = inboundInteractionSave?.parentEventIds ?? [];
         const posts = history.posts;
         if (!show || revision <= 0 || parentEventIds.length === 0) {
             return;

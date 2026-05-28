@@ -24,7 +24,7 @@ export interface PostHistoryInboundDirectReplyCandidate extends PostHistoryReply
 }
 
 export interface PostHistoryInboundReplyReconciliationResult {
-    savedParentEventIds: string[];
+    changedParentEventIds: string[];
     savedDirectReplyCount: number;
     unresolvedParentEventIds: string[];
 }
@@ -32,7 +32,7 @@ export interface PostHistoryInboundReplyReconciliationResult {
 export interface PostHistoryInboundReplyReconciliationSessionParams {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onSavedInboundInteractions?: (parentEventIds: string[]) => void | Promise<void>;
 }
 
 export interface PostHistoryInboundReplyReconciliationServiceDeps {
@@ -52,7 +52,7 @@ type PendingParent = {
 
 function emptyResult(): PostHistoryInboundReplyReconciliationResult {
     return {
-        savedParentEventIds: [],
+        changedParentEventIds: [],
         savedDirectReplyCount: 0,
         unresolvedParentEventIds: [],
     };
@@ -254,7 +254,7 @@ export class PostHistoryInboundReplyReconciliationSession {
         }
 
         let savedDirectReplyCount = 0;
-        const savedParentEventIds: string[] = [];
+        const changedParentEventIds: string[] = [];
         for (const [parentEventId, events] of directRepliesByParentId.entries()) {
             const result = await this.deps.postHistoryReplyEventsRepository.upsertChildInteractions({
                 parentEventId,
@@ -267,21 +267,21 @@ export class PostHistoryInboundReplyReconciliationSession {
 
             const savedCount = result.insertedCount + result.updatedCount + result.unchangedCount;
             if (savedCount > 0) {
-                savedParentEventIds.push(parentEventId);
+                changedParentEventIds.push(parentEventId);
                 savedDirectReplyCount += savedCount;
             }
         }
 
-        if (savedParentEventIds.length > 0) {
+        if (changedParentEventIds.length > 0) {
             try {
-                await this.params.onSavedDirectReplies?.(savedParentEventIds);
+                await this.params.onSavedInboundInteractions?.(changedParentEventIds);
             } catch (error) {
                 this.deps.console.warn("post_history_inbound_reply_saved_callback_error", error);
             }
         }
 
         return {
-            savedParentEventIds,
+            changedParentEventIds,
             savedDirectReplyCount,
             unresolvedParentEventIds: [],
         };

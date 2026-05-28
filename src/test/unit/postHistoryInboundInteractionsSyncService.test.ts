@@ -134,7 +134,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             "direct-reply": 1,
             "direct-reply-candidate": 1,
         });
-        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+        expect(result.changedParentEventIds).toEqual([PARENT_ID]);
     });
 
     it("limit到達時はlastSeenCreatedAtを更新せずmaybeIncompleteを維持する", async () => {
@@ -234,7 +234,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         });
         const { service, postHistoryReplyEventsRepository } = createService();
         const reconcileDirectReplyCandidates = vi.fn(async () => ({
-            savedParentEventIds: [OTHER_PARENT_ID],
+            changedParentEventIds: [OTHER_PARENT_ID],
             savedDirectReplyCount: 1,
             unresolvedParentEventIds: [],
         }));
@@ -256,7 +256,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             }),
         ]);
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
-        expect(result.savedParentEventIds).toEqual([OTHER_PARENT_ID]);
+        expect(result.changedParentEventIds).toEqual([OTHER_PARENT_ID]);
     });
 
     it("他人と自分のkind:7 reactionをowner投稿向けrelated eventとして保存する", async () => {
@@ -308,7 +308,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(result.classifications).toMatchObject({
             reaction: 2,
         });
-        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+        expect(result.changedParentEventIds).toEqual([PARENT_ID]);
         expect(result.savedDirectReplyCount).toBe(0);
     });
 
@@ -349,7 +349,7 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
         expect(result.classifications).toMatchObject({
             reaction: 1,
         });
-        expect(result.savedParentEventIds).toEqual([PARENT_ID]);
+        expect(result.changedParentEventIds).toEqual([PARENT_ID]);
     });
 
     it("fetch後にlightweight sessionが失効した結果は保存、state更新、reconciliationへ流さない", async () => {

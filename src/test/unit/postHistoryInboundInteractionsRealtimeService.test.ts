@@ -73,11 +73,11 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
         subscribe: vi.fn(() => ({ unsubscribe })),
     });
     const { service, postHistoryRepository, postHistoryReplyEventsRepository } = createService();
-    const onSavedDirectReplies = vi.fn();
+    const onSavedInboundInteractions = vi.fn();
     const subscription = service.subscribe(rxNostrMock as any, {
         ownerPubkeyHex: OWNER_PUBKEY,
         relayConfig: { "wss://read.example.com/": { read: true, write: false } },
-        onSavedDirectReplies,
+        onSavedInboundInteractions,
     });
     const subscribeObserver = rxNostrMock.use.mock.results[0]?.value.subscribe.mock.calls[0]?.[0];
     Object.assign(observer, subscribeObserver);
@@ -86,7 +86,7 @@ function openSubscription(observer: Record<string, any>, unsubscribe = vi.fn()) 
         subscription,
         postHistoryRepository,
         postHistoryReplyEventsRepository,
-        onSavedDirectReplies,
+        onSavedInboundInteractions,
     };
 }
 
@@ -103,7 +103,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             subscription,
             postHistoryRepository,
             postHistoryReplyEventsRepository,
-            onSavedDirectReplies,
+            onSavedInboundInteractions,
         } = openSubscription(observer);
 
         observer.next({ event: directReply, from: "wss://relay.example.com" });
@@ -126,12 +126,12 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             }],
             fetchedAt: 1_700_000_000_000,
         });
-        expect(onSavedDirectReplies).toHaveBeenCalledWith([PARENT_ID]);
+        expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
     });
 
     it("keeps mention-like events out of reply storage", async () => {
         const observer: Record<string, any> = {};
-        const { subscription, postHistoryReplyEventsRepository, onSavedDirectReplies } =
+        const { subscription, postHistoryReplyEventsRepository, onSavedInboundInteractions } =
             openSubscription(observer);
 
         observer.next({
@@ -147,7 +147,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         await subscription.waitForIdle();
 
         expect(postHistoryReplyEventsRepository.upsertDirectReplies).not.toHaveBeenCalled();
-        expect(onSavedDirectReplies).not.toHaveBeenCalled();
+        expect(onSavedInboundInteractions).not.toHaveBeenCalled();
     });
 
     it("自分が自分の投稿へ付けたkind:7 reactionも保存して通知する", async () => {
@@ -166,7 +166,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             subscription,
             postHistoryRepository,
             postHistoryReplyEventsRepository,
-            onSavedDirectReplies,
+            onSavedInboundInteractions,
         } = openSubscription(observer);
 
         observer.next({ event: selfReaction, from: "wss://relay.example.com" });
@@ -184,7 +184,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
             }],
             fetchedAt: 1_700_000_000_000,
         });
-        expect(onSavedDirectReplies).toHaveBeenCalledWith([PARENT_ID]);
+        expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
     });
 
     it("unsubscribes and does not save packets queued after stop", async () => {

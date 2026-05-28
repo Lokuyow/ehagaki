@@ -2595,7 +2595,7 @@ describe('PostHistoryDialog', () => {
             onClose: vi.fn(),
             onReplyPost: vi.fn(),
             pubkeyHex: 'a'.repeat(64),
-            inboundDirectReplySave: {
+            inboundInteractionSave: {
                 revision: 1,
                 parentEventIds: [parentEventId],
             },
@@ -3203,7 +3203,7 @@ describe('PostHistoryDialog', () => {
             onReplyPost: vi.fn(),
             pubkeyHex: 'a'.repeat(64),
             rxNostr: {} as any,
-            inboundDirectReplySave: {
+            inboundInteractionSave: {
                 revision: 1,
                 parentEventIds: [parentEventId],
             },
@@ -3255,7 +3255,7 @@ describe('PostHistoryDialog', () => {
             onClose: vi.fn(),
             onReplyPost: vi.fn(),
             pubkeyHex: 'a'.repeat(64),
-            inboundDirectReplySave: {
+            inboundInteractionSave: {
                 revision: 1,
                 parentEventIds: [parentEventId],
             },

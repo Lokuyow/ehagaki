@@ -13,12 +13,12 @@ interface UsePostHistoryInboundReplyReconciliationParams {
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onSavedInboundInteractions?: (parentEventIds: string[]) => void | Promise<void>;
 }
 
 function emptyResult(): PostHistoryInboundReplyReconciliationResult {
     return {
-        savedParentEventIds: [],
+        changedParentEventIds: [],
         savedDirectReplyCount: 0,
         unresolvedParentEventIds: [],
     };
@@ -33,7 +33,7 @@ export function usePostHistoryInboundReplyReconciliation({
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
-    onSavedDirectReplies = () => undefined,
+    onSavedInboundInteractions = () => undefined,
 }: UsePostHistoryInboundReplyReconciliationParams) {
     const state = $state({
         visible: false,
@@ -76,7 +76,7 @@ export function usePostHistoryInboundReplyReconciliation({
         const session = postHistoryInboundReplyReconciliationService.createSession(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
-            onSavedDirectReplies,
+            onSavedInboundInteractions,
         });
         currentSession = session;
         state.activePubkeyHex = ownerPubkeyHex;

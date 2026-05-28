@@ -16,7 +16,7 @@ interface UsePostHistoryInboundInteractionsRealtimeParams {
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onSavedInboundInteractions?: (parentEventIds: string[]) => void | Promise<void>;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -31,7 +31,7 @@ export function usePostHistoryInboundInteractionsRealtime({
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
-    onSavedDirectReplies = () => undefined,
+    onSavedInboundInteractions = () => undefined,
     reconcileDirectReplyCandidates,
 }: UsePostHistoryInboundInteractionsRealtimeParams) {
     const state = $state({
@@ -75,8 +75,8 @@ export function usePostHistoryInboundInteractionsRealtime({
             return;
         }
 
-        const handleSavedDirectReplies = async (parentEventIds: string[]) => {
-            await onSavedDirectReplies(parentEventIds);
+        const handleSavedInboundInteractions = async (parentEventIds: string[]) => {
+            await onSavedInboundInteractions(parentEventIds);
             void triggerPostHistoryReactionLifecycle({
                 source: "inbound-realtime",
                 parentEventIds,
@@ -100,14 +100,14 @@ export function usePostHistoryInboundInteractionsRealtime({
                     return;
                 }
 
-                return Promise.resolve(onSavedDirectReplies(parentEventIds)).catch(() => undefined);
+                return Promise.resolve(onSavedInboundInteractions(parentEventIds)).catch(() => undefined);
             }).catch(() => undefined);
         };
 
         const subscription = postHistoryInboundInteractionsRealtimeService.subscribe(rxNostr, {
             ownerPubkeyHex,
             relayConfig,
-            onSavedDirectReplies: handleSavedDirectReplies,
+            onSavedInboundInteractions: handleSavedInboundInteractions,
             reconcileDirectReplyCandidates,
         });
         currentSubscription = subscription;

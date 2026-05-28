@@ -76,7 +76,7 @@ export interface PostHistoryInboundInteractionsSyncResult {
     saturated: boolean;
     maybeIncomplete: boolean;
     newestSeenCreatedAt: number | null;
-    savedParentEventIds: string[];
+    changedParentEventIds: string[];
     savedDirectReplyCount: number;
     classifications: Record<PostHistoryInboundInteractionClassification["type"], number>;
 }
@@ -413,13 +413,13 @@ export class PostHistoryInboundInteractionsSyncService {
         }
 
         let savedDirectReplyCount = 0;
-        let savedParentEventIds: string[] = [];
+        let changedParentEventIds: string[] = [];
         if (input.reconcileDirectReplyCandidates) {
             const reconciled = await input.reconcileDirectReplyCandidates(directReplyCandidates);
             if (!input.isActive()) {
                 return this.buildCancelledResultFromFetchedEvents(input);
             }
-            savedParentEventIds = reconciled.savedParentEventIds;
+            changedParentEventIds = reconciled.changedParentEventIds;
             savedDirectReplyCount = reconciled.savedDirectReplyCount;
         } else {
             for (const [parentEventId, events] of directRepliesByParentId.entries()) {
@@ -432,13 +432,13 @@ export class PostHistoryInboundInteractionsSyncService {
                     return this.buildCancelledResultFromFetchedEvents(input);
                 }
                 if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
-                    savedParentEventIds.push(parentEventId);
+                    changedParentEventIds.push(parentEventId);
                 }
                 savedDirectReplyCount += result.insertedCount + result.updatedCount + result.unchangedCount;
             }
         }
 
-        const savedParentEventIdSet = new Set(savedParentEventIds);
+        const changedParentEventIdSet = new Set(changedParentEventIds);
         for (const [parentEventId, events] of reactionsByParentId.entries()) {
             const result = await this.postHistoryReplyEventsRepository.upsertChildInteractions({
                 parentEventId,
@@ -449,10 +449,10 @@ export class PostHistoryInboundInteractionsSyncService {
                 return this.buildCancelledResultFromFetchedEvents(input);
             }
             if (result.insertedCount + result.updatedCount + result.unchangedCount > 0) {
-                savedParentEventIdSet.add(parentEventId);
+                changedParentEventIdSet.add(parentEventId);
             }
         }
-        savedParentEventIds = Array.from(savedParentEventIdSet);
+        changedParentEventIds = Array.from(changedParentEventIdSet);
 
         const saturated = input.events.length >= input.limit || input.rawCount >= input.limit;
         const maybeIncomplete = saturated;
@@ -486,7 +486,7 @@ export class PostHistoryInboundInteractionsSyncService {
             saturated,
             maybeIncomplete,
             newestSeenCreatedAt,
-            savedParentEventIds,
+            changedParentEventIds,
             savedDirectReplyCount,
             classifications,
         };
@@ -510,7 +510,7 @@ export class PostHistoryInboundInteractionsSyncService {
             saturated: false,
             maybeIncomplete: false,
             newestSeenCreatedAt: null,
-            savedParentEventIds: [],
+            changedParentEventIds: [],
             savedDirectReplyCount: 0,
             classifications: {
                 "direct-reply": 0,

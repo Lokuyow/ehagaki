@@ -23,7 +23,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscribeRequest {
     ownerPubkeyHex: string;
     relayConfig?: RelayConfig | null;
     relayLimit?: number;
-    onSavedDirectReplies?: (parentEventIds: string[]) => void | Promise<void>;
+    onSavedInboundInteractions?: (parentEventIds: string[]) => void | Promise<void>;
     reconcileDirectReplyCandidates?: (
         candidates: PostHistoryInboundDirectReplyCandidate[],
     ) => Promise<PostHistoryInboundReplyReconciliationResult>;
@@ -189,7 +189,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             }
 
             try {
-                await params.onSavedDirectReplies?.([preliminary.targetEventId]);
+                await params.onSavedInboundInteractions?.([preliminary.targetEventId]);
             } catch (error) {
                 this.console.warn("post_history_inbound_interactions_realtime_saved_callback_error", error);
             }
@@ -248,7 +248,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         }
 
         try {
-            await params.onSavedDirectReplies?.([classification.parentEventId]);
+            await params.onSavedInboundInteractions?.([classification.parentEventId]);
         } catch (error) {
             this.console.warn("post_history_inbound_interactions_realtime_saved_callback_error", error);
         }
