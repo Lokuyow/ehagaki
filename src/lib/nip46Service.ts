@@ -268,7 +268,10 @@ export const NIP46_REQUESTED_PERMS = NIP46_REQUESTED_PERMISSIONS.join(',');
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {
-    constructor(private bunkerSigner: BunkerSigner) { }
+    constructor(
+        private bunkerSigner: BunkerSigner,
+        private fallbackPubkey: string | null = null,
+    ) { }
 
     async signEvent<K extends number>(params: {
         kind: K;
@@ -277,12 +280,16 @@ export class Nip46SignerAdapter {
         created_at?: number;
         pubkey?: string;
     }): Promise<any> {
+        const effectivePubkey =
+            typeof params.pubkey === 'string' && params.pubkey.length > 0
+                ? params.pubkey
+                : this.fallbackPubkey;
         const template = {
             kind: params.kind,
             content: params.content,
             tags: params.tags ?? [],
             created_at: params.created_at ?? Math.floor(Date.now() / 1000),
-            ...(params.pubkey ? { pubkey: params.pubkey } : {}),
+            ...(effectivePubkey ? { pubkey: effectivePubkey } : {}),
         };
         const startedAt = Date.now();
         console.debug('[NIP-46] sign_event start', {
@@ -290,7 +297,7 @@ export class Nip46SignerAdapter {
             created_at: template.created_at,
             tagsLength: template.tags.length,
             contentLength: template.content.length,
-            hasPubkey: typeof params.pubkey === 'string' && params.pubkey.length > 0,
+            hasPubkey: typeof effectivePubkey === 'string' && effectivePubkey.length > 0,
         });
 
         try {
@@ -1142,7 +1149,10 @@ export class Nip46Service {
                 pool,
                 onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
             });
-            this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+            this.signerAdapter = new Nip46SignerAdapter(
+                this.bunkerSigner,
+                this.userPubkey,
+            );
             this.setCurrentSession({
                 ...session,
                 relays: connectedRelays,
@@ -1368,7 +1378,10 @@ export class Nip46Service {
         }
 
         this.userPubkey = resolvedUserPubkey;
-        this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+        this.signerAdapter = new Nip46SignerAdapter(
+            this.bunkerSigner,
+            this.userPubkey,
+        );
         this.updateCurrentSessionFromRuntime(false);
 
         return this.userPubkey;
@@ -1899,7 +1912,10 @@ export class Nip46Service {
                                 this.clientSecretKeyHex = clientSecretKeyHex;
                                 this.bunkerSigner = finalSigner;
                                 this.userPubkey = resolvedUserPubkey;
-                                this.signerAdapter = new Nip46SignerAdapter(finalSigner);
+                                this.signerAdapter = new Nip46SignerAdapter(
+                                    finalSigner,
+                                    resolvedUserPubkey,
+                                );
                                 if (finalSigner === fallbackSigner) {
                                     fallbackSigner = null;
                                 }
@@ -2054,7 +2070,10 @@ export class Nip46Service {
         console.debug('[NIP-46] reconnect: session restored (relay connected, ping skipped)');
 
         this.userPubkey = session.userPubkey;
-        this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+        this.signerAdapter = new Nip46SignerAdapter(
+            this.bunkerSigner,
+            this.userPubkey,
+        );
         this.updateCurrentSessionFromRuntime(session.pingVerified === true);
 
         return this.userPubkey;
