@@ -2,6 +2,7 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     inferPostMediaKind,
     normalizePostMediaUrl,
+    normalizeSafeExternalMediaUrl,
 } from "./postMediaCacheUtils";
 import {
     buildCustomEmojiTagMap,
@@ -281,7 +282,7 @@ export function resolvePostHistoryMedia(
     const seenUrls = new Set<string>();
 
     for (const item of media) {
-        const normalizedUrl = normalizePostMediaUrl(item.url);
+        const normalizedUrl = normalizeSafeExternalMediaUrl(item.url);
         if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
             continue;
         }
@@ -295,6 +296,7 @@ export function resolvePostHistoryMedia(
 
         items.push({
             ...item,
+            url: normalizedUrl,
             id: normalizedUrl,
             normalizedUrl,
             kind: inferredKind === "image" || inferredKind === "video"

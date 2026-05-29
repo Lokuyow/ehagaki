@@ -1019,4 +1019,40 @@ describe('PostHistoryMediaList', () => {
             'https://example.com/direct-video.mp4',
         );
     });
+
+    it('unsafe な media URL は表示対象から除外する', async () => {
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'javascript:alert(1)',
+                        mimeType: 'image/jpeg',
+                        alt: 'unsafe image',
+                    },
+                    {
+                        url: 'data:text/html,<svg></svg>',
+                        mimeType: 'video/mp4',
+                        alt: 'unsafe video',
+                    },
+                    {
+                        url: 'https://example.com/safe-image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'safe image',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(container.querySelector('[title="safe image"]')).toBeTruthy();
+        });
+
+        expect(screen.queryByAltText('unsafe image')).toBeNull();
+        expect(screen.queryByText('unsafe video')).toBeNull();
+        expect(
+            Array.from(container.querySelectorAll('[title]')).map((node) =>
+                node.getAttribute('title'),
+            ),
+        ).toContain('safe image');
+    });
 });

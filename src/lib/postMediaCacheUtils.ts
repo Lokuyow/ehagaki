@@ -1,5 +1,24 @@
 export type PostMediaKind = 'image' | 'video' | 'audio' | 'unknown';
 
+export function normalizeSafeExternalMediaUrl(url: string): string {
+    const normalized = String(url ?? '').trim();
+    if (!normalized) {
+        return '';
+    }
+
+    try {
+        const parsed = new URL(normalized);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return '';
+        }
+
+        parsed.hash = '';
+        return parsed.toString();
+    } catch {
+        return '';
+    }
+}
+
 export function normalizePostMediaUrl(url: string): string {
     const normalized = String(url ?? '').trim();
     if (!normalized) {

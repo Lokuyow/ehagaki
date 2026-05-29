@@ -137,7 +137,7 @@ describe("postHistoryDialogUtils", () => {
         expect(result).toEqual([
             {
                 id: "https://example.com/image.jpg",
-                url: "https://example.com/image.jpg#viewer",
+                url: "https://example.com/image.jpg",
                 normalizedUrl: "https://example.com/image.jpg",
                 mimeType: "image/jpeg",
                 alt: "first image",
@@ -157,6 +157,44 @@ describe("postHistoryDialogUtils", () => {
                 normalizedUrl: "https://example.com/file.bin",
                 mimeType: "application/octet-stream",
                 kind: "other",
+            },
+        ]);
+    });
+
+    it("resolvePostHistoryMedia filters non-http(s) media URLs", () => {
+        const result = resolvePostHistoryMedia([
+            {
+                url: "javascript:alert(1)",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "data:text/html,<svg></svg>",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "https://example.com/safe.jpg#viewer",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "http://example.com/safe.mp4",
+                mimeType: "video/mp4",
+            },
+        ]);
+
+        expect(result).toEqual([
+            {
+                id: "https://example.com/safe.jpg",
+                url: "https://example.com/safe.jpg",
+                normalizedUrl: "https://example.com/safe.jpg",
+                mimeType: "image/jpeg",
+                kind: "image",
+            },
+            {
+                id: "http://example.com/safe.mp4",
+                url: "http://example.com/safe.mp4",
+                normalizedUrl: "http://example.com/safe.mp4",
+                mimeType: "video/mp4",
+                kind: "video",
             },
         ]);
     });

@@ -59,4 +59,31 @@ describe('savePostedEventWithMediaCacheLink', () => {
         expect(putPostedEvent).toHaveBeenCalledOnce();
         expect(linkEventIdByUrls).not.toHaveBeenCalled();
     });
+
+    it('unsafe な imeta URL は link 対象に含めない', async () => {
+        const putPostedEvent = vi.fn(async () => undefined);
+        const linkEventIdByUrls = vi.fn(async () => undefined);
+
+        await savePostedEventWithMediaCacheLink({
+            input: {
+                event: {
+                    id: 'event-3',
+                    pubkey: 'a'.repeat(64),
+                    kind: 1,
+                    content: 'body',
+                    tags: [
+                        ['imeta', 'url javascript:alert(1)', 'm image/jpeg'],
+                        ['imeta', 'url data:text/html,<svg></svg>', 'm image/jpeg'],
+                    ],
+                    created_at: 100,
+                    sig: 'b'.repeat(128),
+                },
+            },
+            postHistoryRepositoryImpl: { putPostedEvent },
+            postMediaCacheRepositoryImpl: { linkEventIdByUrls },
+        });
+
+        expect(putPostedEvent).toHaveBeenCalledOnce();
+        expect(linkEventIdByUrls).not.toHaveBeenCalled();
+    });
 });

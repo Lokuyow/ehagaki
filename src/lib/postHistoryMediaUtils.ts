@@ -1,5 +1,6 @@
 import type { PostHistoryMediaRecord } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
+import { normalizeSafeExternalMediaUrl } from "./postMediaCacheUtils";
 
 function parseImetaTag(tag: string[]): PostHistoryMediaRecord | null {
     const fields = new Map<string, string>();
@@ -10,7 +11,8 @@ function parseImetaTag(tag: string[]): PostHistoryMediaRecord | null {
         fields.set(token.slice(0, separator), token.slice(separator + 1));
     }
 
-    const url = fields.get("url");
+    const rawUrl = fields.get("url");
+    const url = rawUrl ? normalizeSafeExternalMediaUrl(rawUrl) : "";
     if (!url) return null;
 
     const rawSize = fields.get("size");
@@ -65,6 +67,8 @@ function extractContentMedia(
     const matches = content.match(/https?:\/\/[^\s<>"']+/g) ?? [];
     return matches
         .map((url) => url.replace(/[),.。、]+$/u, ""))
+        .map((url) => normalizeSafeExternalMediaUrl(url))
+        .filter((url) => url.length > 0)
         .filter((url) => {
             if (existingUrls.has(url)) return false;
             return /\.(jpe?g|png|webp|gif|mp4|webm|mov)(?:$|[?#])/i.test(url);
