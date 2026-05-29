@@ -172,6 +172,14 @@
             font-weight: 500;
         }
 
+        :global(
+                .loading-placeholder.post-button-loading
+                    .loader-container
+                    .square
+            ) {
+            background-color: white;
+        }
+
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
