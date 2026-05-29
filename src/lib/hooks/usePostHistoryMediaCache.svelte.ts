@@ -161,11 +161,6 @@ export function usePostHistoryMediaCache(params: {
         };
     }
 
-    function invalidatePendingResolution(): number {
-        resolutionVersion += 1;
-        return resolutionVersion;
-    }
-
     function revokeTrackedObjectUrl(url: string): void {
         const objectUrl = activeObjectUrls.get(url);
         if (!objectUrl) {
@@ -283,7 +278,7 @@ export function usePostHistoryMediaCache(params: {
             return;
         }
 
-        const requestResolutionVersion = invalidatePendingResolution();
+        const requestResolutionVersion = resolutionVersion;
         updateItem(url, (item) => ({
             ...item,
             isCaching: true,
