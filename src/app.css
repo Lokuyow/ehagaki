@@ -39,8 +39,8 @@
   --bg-buttonbar: hsl(0, 0%, 91%);
 
   --btn-bg: hsl(0, 0%, 92%);
-  --btn-bg2: color-mix(in srgb, var(--btn-bg), black 5%);
-  --btn-bg3: color-mix(in srgb, var(--btn-bg), black 10%);
+  --btn-bg2: color-mix(in srgb, var(--btn-bg), black 6%);
+  --btn-bg3: color-mix(in srgb, var(--btn-bg), black 11%);
   --btn-border: hsl(0, 0%, 75%);
   --btn-hover-bg: rgba(50, 50, 50, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 74%);
@@ -59,8 +59,8 @@
   --link-visited: #681da8;
 
   --dialog-bg: white;
-  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), black 5%);
-  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), black 10%);
+  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), black 6%);
+  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), black 11%);
   --dialog-bg-overlay: rgba(0, 0, 0, 0.6);
 
   --window: hsl(0, 0%, 95%);
@@ -235,8 +235,8 @@ select {
   --link-visited: #c58af9;
 
   --dialog-bg: hsl(0, 0%, 14%);
-  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), white 8%);
-  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), white 14%);
+  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), white 10%);
+  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), white 16%);
   --dialog-bg-overlay: rgba(0, 0, 0, 0.8);
 
   --window: hsl(0, 0%, 14%);
