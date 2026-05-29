@@ -789,7 +789,8 @@ function isUnsupportedSwitchRelaysError(error: unknown): boolean {
         || message.includes('invalid method')
         || message.includes('no permission')
         || message.includes('not supported')
-        || message.includes('not allowed');
+        || message.includes('not allowed')
+        || /^no \S+ method$/.test(message);
 }
 
 function isNoPermissionError(error: unknown): boolean {
