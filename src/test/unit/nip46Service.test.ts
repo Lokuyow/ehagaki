@@ -112,6 +112,7 @@ describe('Nip46SignerAdapter', () => {
             content: 'hello',
             tags: [['t', 'test']],
             created_at: 1000,
+            pubkey: 'user-pubkey',
         });
         expect(result.id).toBe('signed-event-id');
     });
@@ -2363,8 +2364,13 @@ describe('Nip46Service', () => {
             expect(pubkey).toBe('user-pub-reconnect');
             expect(service.isConnected()).toBe(true);
             expect(BunkerSigner.fromBunker).toHaveBeenCalled();
+            expect(mockSigner.sendRequest).toHaveBeenCalledWith('connect', [
+                sessionData.remoteSignerPubkey,
+                '',
+                NIP46_REQUESTED_PERMS,
+            ]);
             // pingはスキップされる（復元直後の未確認 session は手動確認または後続 recovery で検証する）
-            expect(mockSigner.sendRequest).not.toHaveBeenCalled();
+            expect(mockSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
             service.saveSession(mockStorage, sessionData.userPubkey);
             expect(JSON.parse(mockStorage.getItem('nostr-nip46-session-user-pub-reconnect')!)).toEqual(sessionData);
         });
@@ -2420,7 +2426,10 @@ describe('Nip46Service', () => {
             const { sessionData, mockSigner, BunkerSigner } = await reconnectService({
                 pingVerified: true,
                 signerOverrides: {
-                    sendRequest: vi.fn().mockRejectedValue(new Error('offline')),
+                    sendRequest: vi
+                        .fn()
+                        .mockResolvedValueOnce('ack')
+                        .mockRejectedValue(new Error('offline')),
                 },
             });
             service.bindSessionPersistence(mockStorage, sessionData.userPubkey);
@@ -2484,7 +2493,10 @@ describe('Nip46Service', () => {
             const { sessionData, mockSigner } = await reconnectService({
                 pingVerified: true,
                 signerOverrides: {
-                    sendRequest: vi.fn().mockRejectedValue(new Error('permission denied')),
+                    sendRequest: vi
+                        .fn()
+                        .mockResolvedValueOnce('ack')
+                        .mockRejectedValue(new Error('permission denied')),
                 },
             });
             service.bindSessionPersistence(mockStorage, sessionData.userPubkey);

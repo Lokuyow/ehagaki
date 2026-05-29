@@ -282,8 +282,35 @@ export class Nip46SignerAdapter {
             content: params.content,
             tags: params.tags ?? [],
             created_at: params.created_at ?? Math.floor(Date.now() / 1000),
+            ...(params.pubkey ? { pubkey: params.pubkey } : {}),
         };
-        return await this.bunkerSigner.signEvent(template);
+        const startedAt = Date.now();
+        console.debug('[NIP-46] sign_event start', {
+            kind: template.kind,
+            created_at: template.created_at,
+            tagsLength: template.tags.length,
+            contentLength: template.content.length,
+            hasPubkey: typeof params.pubkey === 'string' && params.pubkey.length > 0,
+        });
+
+        try {
+            const signedEvent = await this.bunkerSigner.signEvent(template);
+            const durationMs = Date.now() - startedAt;
+            console.debug('[NIP-46] sign_event resolved', {
+                durationMs,
+                eventId: typeof signedEvent?.id === 'string' ? signedEvent.id : '(missing)',
+                pubkey: typeof signedEvent?.pubkey === 'string' ? signedEvent.pubkey : '(missing)',
+                kind: typeof signedEvent?.kind === 'number' ? signedEvent.kind : '(missing)',
+            });
+            return signedEvent;
+        } catch (error) {
+            const durationMs = Date.now() - startedAt;
+            console.error('[NIP-46] sign_event failed', {
+                durationMs,
+                error,
+            });
+            throw error;
+        }
     }
 
     async getPublicKey(): Promise<string> {
@@ -1973,6 +2000,49 @@ export class Nip46Service {
             pool,
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
         });
+
+        const reconnectConnectParamCandidates = [
+            [bunkerPointer.pubkey, '', NIP46_REQUESTED_PERMS],
+            [bunkerPointer.pubkey, ''],
+        ];
+
+        let reconnectConnectError: unknown = null;
+        for (let attemptIndex = 0; attemptIndex < reconnectConnectParamCandidates.length; attemptIndex += 1) {
+            const params = reconnectConnectParamCandidates[attemptIndex];
+            console.debug('[NIP-46] reconnect connect attempt', {
+                attempt: attemptIndex + 1,
+                total: reconnectConnectParamCandidates.length,
+                paramCount: params.length,
+                withPerms: params.length >= 3,
+            });
+            try {
+                const reconnectResponse = await this.bunkerSigner.sendRequest('connect', params);
+                console.debug('[NIP-46] reconnect connect attempt succeeded', {
+                    attempt: attemptIndex + 1,
+                    total: reconnectConnectParamCandidates.length,
+                    withPerms: params.length >= 3,
+                    responseType: typeof reconnectResponse,
+                    responsePreview:
+                        typeof reconnectResponse === 'string'
+                            ? reconnectResponse.slice(0, 120)
+                            : reconnectResponse,
+                });
+                reconnectConnectError = null;
+                break;
+            } catch (error) {
+                reconnectConnectError = error;
+                console.warn('[NIP-46] reconnect connect attempt failed', {
+                    attempt: attemptIndex + 1,
+                    total: reconnectConnectParamCandidates.length,
+                    paramCount: params.length,
+                    error,
+                });
+            }
+        }
+
+        if (reconnectConnectError) {
+            throw reconnectConnectError;
+        }
 
         // セッション復元時はping()を行わない。
         // permission を扱うリモートサイナーでは ping に初回許可操作が必要になり得る一方、

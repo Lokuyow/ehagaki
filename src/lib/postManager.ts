@@ -205,6 +205,16 @@ export class PostManager {
     signEvent?: (event: any) => Promise<any>;
     logSignedEvent?: boolean;
   }): Promise<PostResult> {
+    this.deps.console?.debug?.('[PostManager] sendPreparedEvent start', {
+      hasSigner: Boolean(params.signer),
+      hasSignEventFn: Boolean(params.signEvent),
+      eventKind: params.event?.kind,
+      eventCreatedAt: params.event?.created_at,
+      tagsLength: Array.isArray(params.event?.tags) ? params.event.tags.length : 0,
+      contentLength: typeof params.event?.content === 'string' ? params.event.content.length : 0,
+      additionalWriteRelaysCount: params.additionalWriteRelays?.length ?? 0,
+    });
+
     const signEvent = params.signEvent
       ?? (typeof params.signer?.signEvent === "function"
         ? params.signer.signEvent.bind(params.signer)
@@ -217,6 +227,12 @@ export class PostManager {
       ? await signEvent(params.event)
       : params.event;
 
+    this.deps.console?.debug?.('[PostManager] sendPreparedEvent signed', {
+      eventId: eventToSend?.id ?? '(missing)',
+      eventKind: eventToSend?.kind ?? '(missing)',
+      eventPubkey: eventToSend?.pubkey ?? '(missing)',
+    });
+
     if (signEvent && params.logSignedEvent) {
       this.deps.console?.log('署名済みイベント:', eventToSend);
     }
@@ -224,6 +240,7 @@ export class PostManager {
     const result = await this.eventSender!.sendEvent(eventToSend, {
       additionalWriteRelays: params.additionalWriteRelays,
     });
+    this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish result', result);
     const resultWithEvent: PostResult = result.success
       ? {
         ...result,
