@@ -30,7 +30,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_input_title': 'QRコードまたは bunker:// で接続',
         'loginDialog.nostrconnect_relay_hint': '接続に使用する relay の候補を設定します。',
         'loginDialog.nostrconnect_relay_switch_hint': 'リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。',
-        'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',
+        'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「接続コードを表示」で再生成してください。',
         'loginDialog.nostrconnect_relay_placeholder': 'wss://relay.example.com',
         'loginDialog.nostrconnect_relay_required': 'NIP-46 接続には1件以上の relay が必要です。',
         'loginDialog.nostrconnect_relay_invalid': 'relay の形式が正しくありません。',
@@ -748,7 +748,7 @@ describe('LoginDialog', () => {
         ).toBeTruthy();
         expect(
             screen.getByText(
-                '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。',
+                '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「接続コードを表示」で再生成してください。',
             ),
         ).toBeTruthy();
         expect(
@@ -761,6 +761,10 @@ describe('LoginDialog', () => {
             target: { value: 'wss://relay.changed.example.com/' },
         });
 
+        await waitFor(() => {
+            expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
+        });
+        await fireEvent.click(screen.getByTestId('nostrconnect-regenerate'));
         await waitFor(() => {
             expect(onNostrConnectStart).toHaveBeenLastCalledWith([
                 'wss://relay.changed.example.com/',
@@ -794,12 +798,11 @@ describe('LoginDialog', () => {
             target: { value: 'wss://relay.changed.example.com/' },
         });
 
-        await waitFor(() => {
-            expect(onNostrConnectStart).toHaveBeenCalledTimes(2);
-        });
+        expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
 
         await fireEvent.click(screen.getByText('初期値に戻す'));
 
+        await fireEvent.click(screen.getByTestId('nostrconnect-regenerate'));
         await waitFor(() => {
             expect(onNostrConnectStart).toHaveBeenLastCalledWith([
                 'wss://nostr.oxtr.dev/',
@@ -851,7 +854,7 @@ describe('LoginDialog', () => {
         expect(
             await screen.findByText('relay の形式が正しくありません。'),
         ).toBeTruthy();
-        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
+        expect(onNostrConnectCancel).toHaveBeenCalledTimes(0);
         expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
     });
 
@@ -882,10 +885,10 @@ describe('LoginDialog', () => {
         expect(
             await screen.findByText('NIP-46 接続には1件以上の relay が必要です。'),
         ).toBeTruthy();
-        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
+        expect(onNostrConnectCancel).toHaveBeenCalledTimes(0);
     });
 
-    it('QR タブから bunker タブへ切り替えると待機を cancel し、戻ると再生成する', async () => {
+    it('QR タブから bunker タブへ切り替えると待機を cancel し、戻っても自動再生成しない', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
@@ -909,10 +912,61 @@ describe('LoginDialog', () => {
 
         await fireEvent.click(screen.getByText('QRコード'));
 
+        expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
+        expect(screen.queryByPlaceholderText('bunker://...')).toBeNull();
+
+        await fireEvent.click(screen.getByTestId('nostrconnect-regenerate'));
         await waitFor(() => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(2);
         });
-        expect(screen.queryByPlaceholderText('bunker://...')).toBeNull();
+    });
+
+    it('接続コードが最新のときは再生成ボタンを無効化し、relay 編集で再び有効化する', async () => {
+        const onNostrConnectStart = vi
+            .fn<(relays: string[]) => Promise<string | undefined>>()
+            .mockResolvedValue(undefined);
+        const uri =
+            'nostrconnect://client?relay=wss%3A%2F%2Fnostr.oxtr.dev%2F&relay=wss%3A%2F%2Ftheforest.nostr1.com%2F&relay=wss%3A%2F%2Frelay.primal.net%2F&relay=wss%3A%2F%2Fephemeral.snowflare.cc%2F&name=eHagaki';
+
+        const { rerender } = render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNostrConnectStart,
+            },
+        });
+
+        const regenerateButton = screen.getByTestId(
+            'nostrconnect-regenerate',
+        ) as HTMLButtonElement;
+
+        expect(regenerateButton.disabled).toBe(false);
+        await waitFor(() => {
+            expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
+        });
+
+        await rerender({
+            ...defaultProps,
+            onNostrConnectStart,
+            isWaitingNip46NostrConnect: true,
+            nip46NostrConnectUri: uri,
+        });
+
+        expect(
+            (screen.getByTestId('nostrconnect-regenerate') as HTMLButtonElement)
+                .disabled,
+        ).toBe(true);
+
+        const relayInputs = screen.getAllByPlaceholderText(
+            'wss://relay.example.com',
+        );
+        await fireEvent.input(relayInputs[0], {
+            target: { value: 'wss://relay.changed.example.com/' },
+        });
+
+        expect(
+            (screen.getByTestId('nostrconnect-regenerate') as HTMLButtonElement)
+                .disabled,
+        ).toBe(false);
     });
 
     it('bunker:// 入力導線は維持される', async () => {

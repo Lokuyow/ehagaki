@@ -51,7 +51,7 @@
     "nostrconnect_relay_label": "NIP-46 接続候補 relay",
     "nostrconnect_relay_hint": "接続に使用する relay の候補を設定します。",
     "nostrconnect_relay_switch_hint": "リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。",
-    "nostrconnect_relay_update_hint": "利用可能な relay が接続 URI と QR コードに使用されます。候補を変更するか初期値に戻すと、新しい接続待機を開始します。",
+    "nostrconnect_relay_update_hint": "利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「接続コードを表示」で再生成してください。",
     "nostrconnect_relay_placeholder": "wss://relay.example.com",
     "nostrconnect_relay_required": "NIP-46 接続には1件以上の relay が必要です。",
     "nostrconnect_relay_invalid": "relay の形式が正しくありません。",

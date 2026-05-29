@@ -149,6 +149,12 @@
             nip46ErrorMessage = "";
             hasCopiedNostrConnectUri = false;
             resetNostrConnectDraftState();
+            queueMicrotask(() => {
+                if (!show || activeRemoteSignerTab !== "qr") {
+                    return;
+                }
+                void handleNostrConnectRegenerate();
+            });
             return;
         }
 
@@ -205,6 +211,14 @@
     let isNostrConnectPending = $derived(
         isNostrConnectPreparing || isWaitingNip46NostrConnect,
     );
+    let isNostrConnectRegenerateDisabled = $derived(
+        isNostrConnectPreparing ||
+            nostrConnectRelayValidation.errorKey !== null ||
+            !nostrConnectRelaySignature ||
+            (Boolean(nip46NostrConnectUri) &&
+                nostrConnectRelaySignature ===
+                    lastRequestedNostrConnectSignature),
+    );
 
     $effect(() => {
         if (!isNostrConnectHandshakeStarted) {
@@ -229,35 +243,6 @@
         ) {
             cleanupNostrConnectDirectOpenState();
         }
-    });
-
-    $effect(() => {
-        show;
-        activeRemoteSignerTab;
-        const relaySignature = nostrConnectRelaySignature;
-        const relayValidationError = nostrConnectRelayValidation.errorKey;
-
-        if (!show || activeRemoteSignerTab !== "qr") {
-            return;
-        }
-
-        if (relayValidationError !== null) {
-            if (lastRequestedNostrConnectSignature !== null) {
-                lastRequestedNostrConnectSignature = null;
-                onNostrConnectCancel?.();
-            }
-            return;
-        }
-
-        if (
-            !relaySignature ||
-            relaySignature === lastRequestedNostrConnectSignature
-        ) {
-            return;
-        }
-
-        lastRequestedNostrConnectSignature = relaySignature;
-        void onNostrConnectStart?.(nostrConnectRelayValidation.relays);
     });
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
@@ -509,7 +494,23 @@
         nostrConnectRelayDrafts = createNip46ConnectionRelayDrafts(
             getDefaultNip46ConnectionRelayCandidates(),
         );
-        lastRequestedNostrConnectSignature = null;
+    }
+
+    async function handleNostrConnectRegenerate(): Promise<void> {
+        if (
+            activeRemoteSignerTab !== "qr" ||
+            nostrConnectRelayValidation.errorKey !== null ||
+            !nostrConnectRelaySignature
+        ) {
+            return;
+        }
+
+        if (isNostrConnectPending) {
+            onNostrConnectCancel?.();
+        }
+
+        lastRequestedNostrConnectSignature = nostrConnectRelaySignature;
+        await onNostrConnectStart?.(nostrConnectRelayValidation.relays);
     }
 
     function handleOpenNostrConnectUri() {
@@ -931,6 +932,15 @@
                             </div>
 
                             <div class="nostrconnect-relay-editor-actions">
+                                <Button
+                                    type="button"
+                                    variant="primary"
+                                    onClick={handleNostrConnectRegenerate}
+                                    disabled={isNostrConnectRegenerateDisabled}
+                                    data-testid="nostrconnect-regenerate"
+                                >
+                                    {$_("loginDialog.nostrconnect_generate")}
+                                </Button>
                                 <Button
                                     type="button"
                                     variant="secondary"
