@@ -30,11 +30,11 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_input_title': 'QRコードまたは bunker:// で接続',
         'loginDialog.nostrconnect_relay_hint': '接続に使用する relay の候補を設定します。',
         'loginDialog.nostrconnect_relay_switch_hint': 'リモートサイナーが relay 切替に対応している場合、接続後に別の relay へ切り替わることがあります。',
-        'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「接続コードを表示」で再生成してください。',
+        'loginDialog.nostrconnect_relay_update_hint': '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「変更を反映」で再生成してください。',
         'loginDialog.nostrconnect_relay_placeholder': 'wss://relay.example.com',
         'loginDialog.nostrconnect_relay_required': 'NIP-46 接続には1件以上の relay が必要です。',
         'loginDialog.nostrconnect_relay_invalid': 'relay の形式が正しくありません。',
-        'loginDialog.nostrconnect_generate': '接続コードを表示',
+        'loginDialog.nostrconnect_generate': '変更を反映',
         'loginDialog.nostrconnect_preparing': '接続コードを準備しています...',
         'loginDialog.nostrconnect_waiting': 'リモートサイナーとの接続を準備しています。初回接続には時間がかかる場合があります。',
         'loginDialog.nostrconnect_idle': '接続待機は停止しています。',
@@ -748,7 +748,7 @@ describe('LoginDialog', () => {
         ).toBeTruthy();
         expect(
             screen.getByText(
-                '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「接続コードを表示」で再生成してください。',
+                '利用可能な relay が接続 URI と QR コードに使用されます。候補を変更したら「変更を反映」で再生成してください。',
             ),
         ).toBeTruthy();
         expect(
