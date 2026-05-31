@@ -5,6 +5,7 @@ import {
     type PostHistoryInboundInteractionsRealtimeSubscription,
 } from "../postHistoryInboundInteractionsRealtimeService";
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
+import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
 import type { RelayConfig } from "../types";
 import type {
     PostHistoryInboundDirectReplyCandidate,
@@ -92,6 +93,32 @@ export function usePostHistoryInboundInteractionsRealtime({
                 if (
                     result.status === "cancelled"
                     || result.deletedReactionEventIds.length === 0
+                    || !state.visible
+                    || !getIsAuthenticated()
+                    || getPubkeyHex() !== ownerPubkeyHex
+                    || getRxNostr() !== rxNostr
+                ) {
+                    return;
+                }
+
+                return Promise.resolve(onSavedInboundInteractions(parentEventIds)).catch(() => undefined);
+            }).catch(() => undefined);
+
+            void triggerPostHistoryDirectReplyLifecycle({
+                source: "inbound-realtime",
+                parentEventIds,
+                rxNostr,
+                relayConfig,
+                isActive: () => (
+                    state.visible
+                    && getIsAuthenticated()
+                    && getPubkeyHex() === ownerPubkeyHex
+                    && getRxNostr() === rxNostr
+                ),
+            }).then((result) => {
+                if (
+                    result.status === "cancelled"
+                    || result.deletedReplyEventIds.length === 0
                     || !state.visible
                     || !getIsAuthenticated()
                     || getPubkeyHex() !== ownerPubkeyHex

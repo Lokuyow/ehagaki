@@ -9,6 +9,7 @@ import {
     postHistoryInboundInteractionsSyncStateRepository,
 } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
+import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 import type {
@@ -131,6 +132,32 @@ export function usePostHistoryInboundInteractionsSync({
             if (
                 lifecycleResult.status === "cancelled"
                 || lifecycleResult.deletedReactionEventIds.length === 0
+                || !getShow()
+                || getPubkeyHex() !== ownerPubkeyHex
+                || getRxNostr() !== rxNostr
+            ) {
+                return;
+            }
+
+            return Promise.resolve(
+                onSavedInboundInteractions(result.changedParentEventIds),
+            ).catch(() => undefined);
+        }).catch(() => undefined);
+
+        void triggerPostHistoryDirectReplyLifecycle({
+            source: "dialog-inbound-sync",
+            parentEventIds: result.changedParentEventIds,
+            rxNostr,
+            relayConfig: getRelayConfig(),
+            isActive: () => (
+                getShow()
+                && getPubkeyHex() === ownerPubkeyHex
+                && getRxNostr() === rxNostr
+            ),
+        }).then((lifecycleResult) => {
+            if (
+                lifecycleResult.status === "cancelled"
+                || lifecycleResult.deletedReplyEventIds.length === 0
                 || !getShow()
                 || getPubkeyHex() !== ownerPubkeyHex
                 || getRxNostr() !== rxNostr

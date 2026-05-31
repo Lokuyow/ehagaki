@@ -57,6 +57,7 @@
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryReactionLifecycle } from "../lib/postHistoryReactionLifecycleTrigger";
+    import { triggerPostHistoryDirectReplyLifecycle } from "../lib/postHistoryDirectReplyLifecycleTrigger";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
     import type {
@@ -489,6 +490,25 @@
         })
             .then((result) => {
                 if (!show || result.deletedReactionEventIds.length === 0) {
+                    return;
+                }
+
+                return postHistoryThreadGraph.loadCachedChildInteractionStateForPosts(
+                    history.posts,
+                    result.checkedParentEventIds,
+                );
+            })
+            .catch(() => undefined);
+
+        void triggerPostHistoryDirectReplyLifecycle({
+            source: "dialog-inbound-save",
+            parentEventIds,
+            rxNostr,
+            relayConfig,
+            isActive: () => show,
+        })
+            .then((result) => {
+                if (!show || result.deletedReplyEventIds.length === 0) {
                     return;
                 }
 

@@ -48,6 +48,7 @@ import {
     type PostHistoryVisibleRangeRelationRepairTask,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
+import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
@@ -833,7 +834,7 @@ export function usePostHistoryListing({
         ).catch(() => undefined);
     }
 
-    function scheduleReactionDeletionRefresh(
+    function scheduleChildInteractionDeletionRefresh(
         source: "listing-current-view" | "listing-older-reveal",
         parentEventIds: string[],
         isActive: () => boolean,
@@ -863,6 +864,27 @@ export function usePostHistoryListing({
                 result.checkedParentEventIds,
             );
         }).catch(() => undefined);
+
+        void triggerPostHistoryDirectReplyLifecycle({
+            source,
+            parentEventIds,
+            rxNostr,
+            relayConfig: getRelayConfig(),
+            isActive,
+        }).then((result) => {
+            if (
+                result.status === "cancelled"
+                || result.deletedReplyEventIds.length === 0
+                || !isActive()
+            ) {
+                return;
+            }
+
+            requestChildInteractionBadgeRefresh(
+                state.loadedPosts,
+                result.checkedParentEventIds,
+            );
+        }).catch(() => undefined);
     }
 
     async function repairCurrentViewRepliesAndReactions(
@@ -875,7 +897,7 @@ export function usePostHistoryListing({
             return;
         }
 
-        scheduleReactionDeletionRefresh(
+        scheduleChildInteractionDeletionRefresh(
             "listing-current-view",
             visiblePosts.map((post) => post.eventId),
             isActive,
@@ -967,7 +989,7 @@ export function usePostHistoryListing({
             return;
         }
 
-        scheduleReactionDeletionRefresh(
+        scheduleChildInteractionDeletionRefresh(
             "listing-older-reveal",
             visibleParentPosts.map((post) => post.eventId),
             () => isActiveOlderRevealChildInteractionRepairScope(scopeId, pubkeyHex, rxNostr),
@@ -3102,7 +3124,7 @@ export function usePostHistoryListing({
                 await reloadVisibleWindowFromCurrentNewest();
             }
 
-            scheduleReactionDeletionRefresh(
+            scheduleChildInteractionDeletionRefresh(
                 "listing-current-view",
                 state.loadedPosts.map((post) => post.eventId),
                 () => (
