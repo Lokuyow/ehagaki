@@ -69,6 +69,11 @@ import {
     buildParentLoadedExpansionState,
     buildParentLoadingExpansionState,
 } from "../postHistoryThreadGraphParentExpansionState";
+import {
+    buildChildrenFailedExpansionState,
+    buildChildrenLoadedExpansionState,
+    buildChildrenLoadingExpansionState,
+} from "../postHistoryThreadGraphChildrenExpansionState";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -1383,13 +1388,12 @@ export function usePostHistoryThreadGraph({
         }
 
         updateExpansion(post.eventId, nodeEventId, (state) => ({
-            ...state,
-            loadedChildren: true,
-            visibleChildren: options.prefetchOnly ? state.visibleChildren : true,
-            loadingChildren: false,
-            revalidatingChildren: state.revalidatingChildren,
-            childrenError: null,
-            lastFetchedChildrenAt: resolveCachedReplyFetchedAt(cachedRecords) ?? state.lastFetchedChildrenAt,
+            ...buildChildrenLoadedExpansionState(state, {
+                visibleChildren: options.prefetchOnly ? state.visibleChildren : true,
+                lastFetchedChildrenAt:
+                    resolveCachedReplyFetchedAt(cachedRecords)
+                    ?? state.lastFetchedChildrenAt,
+            }),
         }));
         return true;
     }
@@ -1404,21 +1408,22 @@ export function usePostHistoryThreadGraph({
         const activeGraphRequestId = taskTracker.getRequestId();
         const activeChildRequestId = taskTracker.createChildRequestToken(key);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
-            ...state,
-            loadingChildren: !!options.showInitialLoading,
-            revalidatingChildren: !options.showInitialLoading,
-            visibleChildren: options.prefetchOnly ? state.visibleChildren : state.visibleChildren || !!options.showInitialLoading,
-            childrenError: null,
+            ...buildChildrenLoadingExpansionState(state, {
+                showInitialLoading: !!options.showInitialLoading,
+                prefetchOnly: !!options.prefetchOnly,
+            }),
         }));
 
         try {
             const rxNostr = getRxNostr();
             if (!rxNostr) {
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    loadingChildren: false,
-                    revalidatingChildren: false,
-                    childrenError: options.showInitialLoading && !options.prefetchOnly ? "nostr_not_ready" : null,
+                    ...buildChildrenFailedExpansionState(state, {
+                        nextError:
+                            options.showInitialLoading && !options.prefetchOnly
+                                ? "nostr_not_ready"
+                                : null,
+                    }),
                 }));
                 return;
             }
@@ -1475,13 +1480,10 @@ export function usePostHistoryThreadGraph({
                 });
             }
             updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadedChildren: true,
-                visibleChildren: state.visibleChildren,
-                loadingChildren: false,
-                revalidatingChildren: false,
-                childrenError: null,
-                lastFetchedChildrenAt: result.fetchedAt,
+                ...buildChildrenLoadedExpansionState(state, {
+                    revalidatingChildren: false,
+                    lastFetchedChildrenAt: result.fetchedAt,
+                }),
             }));
             if (!options.prefetchOnly) {
                 void prefetchChildReplyCounts(post, nodeEventId);
@@ -1496,11 +1498,12 @@ export function usePostHistoryThreadGraph({
             }
 
             updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadingChildren: false,
-                revalidatingChildren: false,
-                visibleChildren: state.visibleChildren,
-                childrenError: options.showInitialLoading && !options.prefetchOnly ? "fetch_failed" : state.childrenError,
+                ...buildChildrenFailedExpansionState(state, {
+                    nextError:
+                        options.showInitialLoading && !options.prefetchOnly
+                            ? "fetch_failed"
+                            : state.childrenError,
+                }),
             }));
         } finally {
             taskTracker.deleteChildrenFetchTask(key);
@@ -1649,12 +1652,9 @@ export function usePostHistoryThreadGraph({
         }
 
         updateExpansion(post.eventId, nodeEventId, (state) => ({
-            ...state,
-            loadedChildren: true,
-            visibleChildren: state.visibleChildren,
-            loadingChildren: false,
-            childrenError: null,
-            lastFetchedChildrenAt: Date.now(),
+            ...buildChildrenLoadedExpansionState(state, {
+                lastFetchedChildrenAt: Date.now(),
+            }),
         }));
         return true;
     }
@@ -1686,13 +1686,11 @@ export function usePostHistoryThreadGraph({
         }
 
         updateExpansion(input.post.eventId, input.parentEventId, (state) => ({
-            ...state,
-            loadedChildren: true,
-            visibleChildren: state.visibleChildren,
-            loadingChildren: false,
-            revalidatingChildren: state.revalidatingChildren,
-            childrenError: null,
-            lastFetchedChildrenAt: resolveCachedReplyFetchedAt(cachedDirectReplies) ?? state.lastFetchedChildrenAt,
+            ...buildChildrenLoadedExpansionState(state, {
+                lastFetchedChildrenAt:
+                    resolveCachedReplyFetchedAt(cachedDirectReplies)
+                    ?? state.lastFetchedChildrenAt,
+            }),
         }));
         refreshProfileForPubkeyInBackground(input.anchorNode.authorPubkey, input.anchorNode.relayUrls);
     }
@@ -1783,10 +1781,10 @@ export function usePostHistoryThreadGraph({
             const activeChildRequestId = taskTracker.createChildRequestToken(key);
             requestTokens.set(eventId, activeChildRequestId);
             updateExpansion(post.eventId, eventId, (state) => ({
-                ...state,
-                revalidatingChildren: true,
-                visibleChildren: state.visibleChildren,
-                childrenError: null,
+                ...buildChildrenLoadingExpansionState(state, {
+                    showInitialLoading: false,
+                    prefetchOnly: true,
+                }),
             }));
         }
 
@@ -1898,13 +1896,11 @@ export function usePostHistoryThreadGraph({
         for (const eventId of eventIds) {
             const key = buildAnchorNodeKey(anchorEventId, eventId);
             updateExpansion(anchorEventId, eventId, (state) => ({
-                ...state,
-                loadedChildren,
-                visibleChildren: state.visibleChildren,
-                loadingChildren: false,
-                revalidatingChildren: false,
-                childrenError: null,
-                lastFetchedChildrenAt: Date.now(),
+                ...buildChildrenLoadedExpansionState(state, {
+                    loadedChildren,
+                    revalidatingChildren: false,
+                    lastFetchedChildrenAt: Date.now(),
+                }),
             }));
             taskTracker.deleteChildRequestToken(key);
         }
