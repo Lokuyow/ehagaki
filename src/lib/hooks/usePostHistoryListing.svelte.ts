@@ -47,6 +47,11 @@ import {
     type PostHistoryVisibleRangeRelationRepairResult,
     type PostHistoryVisibleRangeRelationRepairTask,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
+import {
+    POST_HISTORY_RELATION_REPAIR_KINDS,
+    resolvePostHistoryRelationRefreshSignal,
+    type PostHistoryRelationRefreshSource,
+} from "../postHistoryRelationRefreshContracts";
 import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../postHistoryChildInteractionDeletionLifecycleTrigger";
 import {
     postHistoryRepository,
@@ -73,6 +78,8 @@ type PostHistoryCurrentViewRefetchMessageValues = Record<
     string,
     string | number | boolean | Date | null | undefined
 >;
+
+const RELATION_REPAIR_KINDS = POST_HISTORY_RELATION_REPAIR_KINDS;
 
 interface UsePostHistoryListingParams {
     getShow: () => boolean;
@@ -833,6 +840,46 @@ export function usePostHistoryListing({
         ).catch(() => undefined);
     }
 
+    async function dispatchRelationRepairRefreshSignal(params: {
+        source: PostHistoryRelationRefreshSource;
+        result: Pick<
+            PostHistoryVisibleRangeRelationRepairResult,
+            "relationKinds" | "savedParentEventIds" | "checkedParentEventIds" | "quoteRepairApplied" | "status"
+        >;
+        quoteRefreshPosts: PostHistoryRecord[];
+        badgeRefreshPosts: PostHistoryRecord[];
+        awaitBadgeRefresh?: boolean;
+    }): Promise<void> {
+        const signal = resolvePostHistoryRelationRefreshSignal(params.source, {
+            relationKinds: params.result.relationKinds,
+            savedParentEventIds: params.result.savedParentEventIds,
+            checkedParentEventIds: params.result.checkedParentEventIds,
+            quoteRepairApplied: params.result.quoteRepairApplied,
+            status: params.result.status,
+        });
+
+        if (signal.shouldRefreshQuotePreviews) {
+            requestQuoteVisibleRangeRefresh(params.quoteRefreshPosts);
+        }
+
+        if (signal.parentEventIds.length === 0) {
+            return;
+        }
+
+        if (params.awaitBadgeRefresh) {
+            await onChildInteractionBadgeRefreshRequested(
+                params.badgeRefreshPosts,
+                signal.parentEventIds,
+            );
+            return;
+        }
+
+        requestChildInteractionBadgeRefresh(
+            params.badgeRefreshPosts,
+            signal.parentEventIds,
+        );
+    }
+
     function scheduleChildInteractionDeletionRefresh(
         source: "listing-current-view" | "listing-older-reveal",
         parentEventIds: string[],
@@ -889,7 +936,7 @@ export function usePostHistoryListing({
                 {
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts,
-                    relationKinds: ["reply", "reaction", "quote"],
+                    relationKinds: RELATION_REPAIR_KINDS,
                     quoteVisibleRangeRepairExecutor,
                     relayConfig: getRelayConfig(),
                     isActive,
@@ -903,18 +950,13 @@ export function usePostHistoryListing({
             return;
         }
 
-        if (childInteractionRepairResult.quoteRepairApplied) {
-            requestQuoteVisibleRangeRefresh(visiblePosts);
-        }
-
-        if (childInteractionRepairResult.savedParentEventIds.length === 0) {
-            return;
-        }
-
-        await onChildInteractionBadgeRefreshRequested(
-            state.loadedPosts,
-            childInteractionRepairResult.savedParentEventIds,
-        );
+        await dispatchRelationRepairRefreshSignal({
+            source: "listing-current-view",
+            result: childInteractionRepairResult,
+            quoteRefreshPosts: visiblePosts,
+            badgeRefreshPosts: state.loadedPosts,
+            awaitBadgeRefresh: true,
+        });
     }
 
     function resolveOlderRevealChildInteractionRepairNetworkParentPosts(
@@ -993,7 +1035,7 @@ export function usePostHistoryListing({
                 {
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts: networkParentPosts,
-                    relationKinds: ["reply", "reaction", "quote"],
+                    relationKinds: RELATION_REPAIR_KINDS,
                     quoteVisibleRangeRepairExecutor,
                     relayConfig: getRelayConfig(),
                     isActive: () =>
@@ -1024,16 +1066,12 @@ export function usePostHistoryListing({
                     return;
                 }
 
-                if (result.quoteRepairApplied) {
-                    requestQuoteVisibleRangeRefresh(networkParentPosts);
-                }
-
-                if (result.savedParentEventIds.length > 0) {
-                    requestChildInteractionBadgeRefresh(
-                        state.loadedPosts,
-                        result.savedParentEventIds,
-                    );
-                }
+                void dispatchRelationRepairRefreshSignal({
+                    source: "listing-older-reveal",
+                    result,
+                    quoteRefreshPosts: networkParentPosts,
+                    badgeRefreshPosts: state.loadedPosts,
+                });
 
                 if (result.checkedParentEventIds.length > 0) {
                     markOlderRevealChildInteractionRepairParentsChecked(
@@ -3128,7 +3166,7 @@ export function usePostHistoryListing({
                         {
                             ownerPubkeyHex: pubkeyHex,
                             visiblePosts: state.loadedPosts,
-                            relationKinds: ["reply", "reaction", "quote"],
+                            relationKinds: RELATION_REPAIR_KINDS,
                             quoteVisibleRangeRepairExecutor,
                             relayConfig: getRelayConfig(),
                             isActive: () =>
@@ -3151,16 +3189,13 @@ export function usePostHistoryListing({
                     return;
                 }
 
-                if (childInteractionRepairResult.quoteRepairApplied) {
-                    requestQuoteVisibleRangeRefresh(state.loadedPosts);
-                }
-
-                if (childInteractionRepairResult.savedParentEventIds.length > 0) {
-                    await onChildInteractionBadgeRefreshRequested(
-                        state.loadedPosts,
-                        childInteractionRepairResult.savedParentEventIds,
-                    );
-                }
+                await dispatchRelationRepairRefreshSignal({
+                    source: "listing-manual-refetch",
+                    result: childInteractionRepairResult,
+                    quoteRefreshPosts: state.loadedPosts,
+                    badgeRefreshPosts: state.loadedPosts,
+                    awaitBadgeRefresh: true,
+                });
             }
 
             currentViewRefetchTask = null;

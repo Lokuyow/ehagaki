@@ -23,6 +23,10 @@ import {
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
 import type { PostHistoryRelationKind } from "./postHistoryRelationLifecycleTypes";
+import {
+    POST_HISTORY_RELATION_REPAIR_KINDS,
+    normalizePostHistoryRelationKinds,
+} from "./postHistoryRelationRefreshContracts";
 
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT = 150;
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE = 30;
@@ -32,11 +36,8 @@ export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT = 2
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS = 6_000;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT = 8;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS = 60_000;
-const DEFAULT_VISIBLE_RANGE_RELATION_KINDS: PostHistoryRelationKind[] = [
-    "reply",
-    "reaction",
-    "quote",
-];
+const DEFAULT_VISIBLE_RANGE_RELATION_KINDS: PostHistoryRelationKind[] =
+    POST_HISTORY_RELATION_REPAIR_KINDS;
 
 export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
     ownerPubkeyHex: string;
@@ -235,12 +236,9 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         rxNostr: RxNostr,
         params: PostHistoryVisibleRangeRelationRepairRequest,
     ): PostHistoryVisibleRangeRelationRepairTask {
-        const relationKinds = Array.from(new Set(
-            (params.relationKinds ?? DEFAULT_VISIBLE_RANGE_RELATION_KINDS)
-                .filter((kind): kind is PostHistoryRelationKind =>
-                    kind === "reply" || kind === "reaction" || kind === "quote"
-                ),
-        ));
+        const relationKinds = normalizePostHistoryRelationKinds(
+            params.relationKinds ?? DEFAULT_VISIBLE_RANGE_RELATION_KINDS,
+        );
         const childRepairTask = this.repairVisibleRangeChildInteractionsInternal(
             rxNostr,
             params,
