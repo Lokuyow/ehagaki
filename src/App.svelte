@@ -289,6 +289,7 @@
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerOpen = $state(false);
   const composerLayoutMetrics = useComposerLayoutMetrics({
+    setupViewportListener,
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
@@ -1089,10 +1090,6 @@
     authState.value?.type;
     nip46ConnectionCheckStatus =
       appAuthEffectController.resolveNip46ConnectionCheckStatusOnAuthIdentityChange();
-  });
-
-  $effect(() => {
-    return setupViewportListener();
   });
 
   let localeInitialized = $state(false);

@@ -14,12 +14,10 @@ import {
 import {
     postHistoryReplyFetchService,
     type PostHistoryReplyFetchService,
-    type PostHistoryReplyFetchTask,
 } from "../postHistoryReplyFetchService";
 import {
     postHistoryDeletionFetchService,
     type PostHistoryDeletionFetchService,
-    type PostHistoryDeletionFetchTask,
 } from "../postHistoryDeletionFetchService";
 import {
     postHistoryDirectReplyRecordsAdapter,
@@ -223,8 +221,6 @@ export function usePostHistoryThreadGraph({
         $state.raw<Record<string, PostHistoryThreadGraphExpansionState>>({});
     let deletedEventIdsByPubkey = $state.raw<Record<string, Record<string, true>>>({});
     let parentResolverRevision = $state(0);
-    const childrenTasksByKey = new Map<string, PostHistoryReplyFetchTask>();
-    const deletionTasksByKey = new Map<string, PostHistoryDeletionFetchTask>();
     const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
     const replyBadgePreloadKeys = new Set<string>();
@@ -926,7 +922,6 @@ export function usePostHistoryThreadGraph({
         }
 
         const key = `${anchorEventId}:deletions:${taskKeySuffix}`;
-        deletionTasksByKey.get(key)?.cancel();
         const task = deletionFetchService.fetchDeletionRequests(rxNostr, {
             targets: visibleEvents.map((event) => ({
                 event,
@@ -935,7 +930,7 @@ export function usePostHistoryThreadGraph({
             relayHints,
             relayConfig: getRelayConfig(),
         });
-        deletionTasksByKey.set(key, task);
+        taskTracker.replaceDeletionFetchTask(key, task);
 
         try {
             const result = await task.promise;
@@ -951,7 +946,7 @@ export function usePostHistoryThreadGraph({
         } catch {
             return;
         } finally {
-            deletionTasksByKey.delete(key);
+            taskTracker.deleteDeletionFetchTask(key);
         }
 
         if (!getShow()) {
@@ -1465,17 +1460,16 @@ export function usePostHistoryThreadGraph({
                 return;
             }
 
-            childrenTasksByKey.get(key)?.cancel();
             const task = replyFetchService.fetchDirectReplies(rxNostr, {
                 eventId: nodeEventId,
                 createdAt: currentNode.event.created_at,
                 relayHints: getChildrenRelayHints(post, currentNode),
                 relayConfig: getRelayConfig(),
             });
-            childrenTasksByKey.set(key, task);
+            taskTracker.replaceChildrenFetchTask(key, task);
 
             const result = await task.promise;
-            childrenTasksByKey.delete(key);
+            taskTracker.deleteChildrenFetchTask(key);
             if (
                 activeGraphRequestId !== taskTracker.getRequestId() ||
                 taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
@@ -1546,7 +1540,7 @@ export function usePostHistoryThreadGraph({
                 childrenError: options.showInitialLoading && !options.prefetchOnly ? "fetch_failed" : state.childrenError,
             }));
         } finally {
-            childrenTasksByKey.delete(key);
+            taskTracker.deleteChildrenFetchTask(key);
             taskTracker.deleteChildRequestToken(key);
         }
     }
@@ -1841,7 +1835,6 @@ export function usePostHistoryThreadGraph({
 
         const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
         const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
-        childrenTasksByKey.get(taskKey)?.cancel();
         const task = replyFetchService.fetchDirectReplies(rxNostr, {
             eventId: batchEventIds[0] ?? "",
             eventIds: batchEventIds,
@@ -1849,11 +1842,11 @@ export function usePostHistoryThreadGraph({
             relayHints,
             relayConfig: getRelayConfig(),
         });
-        childrenTasksByKey.set(taskKey, task);
+        taskTracker.replaceChildrenFetchTask(taskKey, task);
 
         try {
             const result = await task.promise;
-            childrenTasksByKey.delete(taskKey);
+            taskTracker.deleteChildrenFetchTask(taskKey);
             if (!isPrefetchBatchCurrent(post.eventId, batchEventIds, activeGraphRequestId, requestTokens)) {
                 return;
             }
@@ -1909,7 +1902,7 @@ export function usePostHistoryThreadGraph({
         } catch {
             completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, false);
         } finally {
-            childrenTasksByKey.delete(taskKey);
+            taskTracker.deleteChildrenFetchTask(taskKey);
         }
     }
 
@@ -2176,11 +2169,8 @@ export function usePostHistoryThreadGraph({
     });
 
     function cancelCurrentGraphFetches(): void {
-        childrenTasksByKey.forEach((task) => task.cancel());
-        deletionTasksByKey.forEach((task) => task.cancel());
-        childrenTasksByKey.clear();
+        taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
-        deletionTasksByKey.clear();
         profileRefreshTasksByPubkey.clear();
         parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
         parentLoadingDelayTimersByKey.clear();

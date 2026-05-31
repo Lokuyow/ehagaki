@@ -2,6 +2,7 @@ import { resolveComposerAvailableHeight, resolveComposerSiblingHeight } from "..
 import type { ReplyQuoteComposerState } from "../types";
 
 interface UseComposerLayoutMetricsParams {
+    setupViewportListener(): (() => void) | undefined;
     getComposerScrollRegionEl(): HTMLDivElement | null;
     getComposerScrollContentEl(): HTMLDivElement | null;
     getCustomEmojiPickerRegionEl(): HTMLDivElement | null;
@@ -11,6 +12,7 @@ interface UseComposerLayoutMetricsParams {
 }
 
 export function useComposerLayoutMetrics({
+    setupViewportListener,
     getComposerScrollRegionEl,
     getComposerScrollContentEl,
     getCustomEmojiPickerRegionEl,
@@ -20,6 +22,11 @@ export function useComposerLayoutMetrics({
 }: UseComposerLayoutMetricsParams) {
     let composerAvailableHeight = $state(minHeight);
     let customEmojiPickerHeight = $state(0);
+
+    $effect(() => {
+        const cleanup = setupViewportListener();
+        return cleanup;
+    });
 
     function syncComposerAvailableHeight(): void {
         const composerScrollRegionEl = getComposerScrollRegionEl();

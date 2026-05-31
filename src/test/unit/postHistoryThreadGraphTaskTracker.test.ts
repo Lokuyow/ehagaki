@@ -28,4 +28,94 @@ describe("postHistoryThreadGraphTaskTracker", () => {
         tracker.clearChildRequestTokens();
         expect(tracker.getChildRequestToken("b")).toBeUndefined();
     });
+
+    it("children/deletion task は key 単位で置換時に前回 task を cancel する", () => {
+        const tracker = createPostHistoryThreadGraphTaskTracker();
+        const firstChildrenCancel = { called: false };
+        const secondChildrenCancel = { called: false };
+        const firstDeletionCancel = { called: false };
+
+        tracker.replaceChildrenFetchTask("children", {
+            cancel: () => {
+                firstChildrenCancel.called = true;
+            },
+            promise: Promise.resolve({
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+        tracker.replaceChildrenFetchTask("children", {
+            cancel: () => {
+                secondChildrenCancel.called = true;
+            },
+            promise: Promise.resolve({
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+
+        tracker.replaceDeletionFetchTask("deletions", {
+            cancel: () => {
+                firstDeletionCancel.called = true;
+            },
+            promise: Promise.resolve({
+                status: "success",
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+        tracker.replaceDeletionFetchTask("deletions", {
+            cancel: () => undefined,
+            promise: Promise.resolve({
+                status: "success",
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+
+        expect(firstChildrenCancel.called).toBe(true);
+        expect(firstDeletionCancel.called).toBe(true);
+        expect(secondChildrenCancel.called).toBe(false);
+    });
+
+    it("cancelAndClearFetchTasks は残っている task を cancel して全消去する", () => {
+        const tracker = createPostHistoryThreadGraphTaskTracker();
+        const childrenCancel = { called: false };
+        const deletionCancel = { called: false };
+
+        tracker.replaceChildrenFetchTask("children", {
+            cancel: () => {
+                childrenCancel.called = true;
+            },
+            promise: Promise.resolve({
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+        tracker.replaceDeletionFetchTask("deletions", {
+            cancel: () => {
+                deletionCancel.called = true;
+            },
+            promise: Promise.resolve({
+                status: "success",
+                events: [],
+                relayUrls: [],
+                fetchedAt: Date.now(),
+            }),
+        });
+
+        tracker.cancelAndClearFetchTasks();
+
+        expect(childrenCancel.called).toBe(true);
+        expect(deletionCancel.called).toBe(true);
+
+        tracker.cancelAndClearFetchTasks();
+        expect(childrenCancel.called).toBe(true);
+        expect(deletionCancel.called).toBe(true);
+    });
 });
