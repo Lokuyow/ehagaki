@@ -53,6 +53,14 @@ const mockState = vi.hoisted(() => {
             }),
         },
     }));
+    const runInitializeNostrSession = vi.fn(async () => ({
+        rxNostr: undefined,
+        relayProfileService: {
+            getRelayManager: () => ({
+                loadRelayConfigForUI: vi.fn(),
+            }),
+        },
+    }));
     const completePostAuthBootstrap = vi.fn(async () => ({
         rxNostr: undefined,
         relayProfileService: {
@@ -112,6 +120,7 @@ const mockState = vi.hoisted(() => {
         logoutAccount,
         authenticateWithParentClient,
         initializeNostrSession,
+        runInitializeNostrSession,
         completePostAuthBootstrap,
         applyReplyQuoteQuery,
         applyChannelContextQuery,
@@ -285,6 +294,7 @@ vi.mock('../../lib/bootstrap/appInitializationBootstrap', () => ({
 
 vi.mock('../../lib/bootstrap/authBootstrap', () => ({
     initializeNostrSession: mockState.initializeNostrSession,
+    runInitializeNostrSession: mockState.runInitializeNostrSession,
     completePostAuthBootstrap: mockState.completePostAuthBootstrap,
     refreshRelaysAndProfileForAccount: vi.fn(),
     syncAccountStores: mockState.syncAccountStores,
@@ -486,7 +496,7 @@ describe('App parentClient integration', () => {
             nprofile: '',
         });
         expect(mockProfileStoreModule.profileLoadedStore.set).toHaveBeenCalledWith(false);
-        expect(mockState.initializeNostrSession).toHaveBeenCalledTimes(1);
+        expect(mockState.runInitializeNostrSession).toHaveBeenCalledTimes(1);
         expect(mockState.syncAccountStores).toHaveBeenCalledTimes(1);
     });
 

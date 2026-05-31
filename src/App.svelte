@@ -112,7 +112,6 @@
     saveLastUsedNip46ConnectionRelayCandidates,
   } from "./lib/nip46ConnectUiUtils";
   import {
-    initializeNostrSession,
     completePostAuthBootstrap,
     refreshRelaysAndProfileForAccount,
     runInitializeNostrSession,
@@ -143,11 +142,7 @@
     applyDraftToComposer,
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
-  import {
-    buildPostHistoryReferenceTarget,
-    buildPostHistoryReplyChannelContextQuery,
-    buildPostHistoryReplySeedEvents,
-  } from "./lib/postHistoryReplyUtils";
+  import { createPostHistoryDialogApplyController } from "./lib/postHistoryDialogApplyController";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
     createAppEmbedController,
@@ -321,6 +316,24 @@
     prefetchLatestPostHistoryDescriptors: (pubkeyHex) =>
       prefetchLatestPostHistoryDescriptors({ pubkeyHex }),
   });
+  const postHistoryDialogApplyController =
+    createPostHistoryDialogApplyController({
+      applyChannelContextQuery,
+      applyReplyQuoteQuery,
+      hydrateReplyQuoteReferences,
+      getChannelContextApplyParams: () => getChannelContextApplyParams(),
+      getReplyQuoteApplyParams: () => getReplyQuoteApplyParams(),
+      clearChannelContext,
+      hasReplyOrQuotes: () =>
+        replyQuoteState.value.reply !== null ||
+        replyQuoteState.value.quotes.length > 0,
+      clearReplyQuote,
+      addQuoteReference,
+      focusEditor: () => {
+        focusEditor(".tiptap-editor", 100);
+      },
+      logger: console,
+    });
   const nip46AuthFlowCoordinator = createNip46AuthFlowController({
     startNip46NostrConnect: (relayCandidates) =>
       authService.startNip46NostrConnect(relayCandidates),
@@ -1511,75 +1524,11 @@
   }
 
   function handlePostHistoryReply(post: PostHistoryRecord): void {
-    const preloadedEvents = buildPostHistoryReplySeedEvents(post);
-    const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
-    const referenceTarget = buildPostHistoryReferenceTarget(post);
-
-    if (channelContextQuery) {
-      void applyChannelContextQuery({
-        channelContextQuery,
-        ...getChannelContextApplyParams(),
-      }).catch((error) => {
-        console.error("投稿履歴からのチャンネル適用に失敗:", error);
-      });
-    } else {
-      clearChannelContext();
-    }
-
-    void applyReplyQuoteQuery({
-      replyQuoteQuery: {
-        reply: {
-          ...referenceTarget,
-        },
-        quotes: [],
-      },
-      ...getReplyQuoteApplyParams(),
-      ...(preloadedEvents ? { preloadedEvents } : {}),
-    }).catch((error) => {
-      console.error("投稿履歴からのリプライ適用に失敗:", error);
-    });
-
-    focusEditor(".tiptap-editor", 100);
+    postHistoryDialogApplyController.applyReply(post);
   }
 
   function handlePostHistoryQuote(post: PostHistoryRecord): void {
-    const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
-    const referenceTarget = buildPostHistoryReferenceTarget(post);
-
-    if (channelContextQuery) {
-      void applyChannelContextQuery({
-        channelContextQuery,
-        ...getChannelContextApplyParams(),
-      }).catch((error) => {
-        console.error("投稿履歴からのチャンネル適用に失敗:", error);
-      });
-    } else {
-      clearChannelContext();
-    }
-
-    if (
-      replyQuoteState.value.reply !== null ||
-      replyQuoteState.value.quotes.length > 0
-    ) {
-      clearReplyQuote();
-    }
-
-    if (!addQuoteReference(referenceTarget)) {
-      focusEditor(".tiptap-editor", 100);
-      return;
-    }
-
-    const preloadedEvents = buildPostHistoryReplySeedEvents(post);
-
-    void hydrateReplyQuoteReferences({
-      references: [referenceTarget],
-      ...getReplyQuoteApplyParams(),
-      ...(preloadedEvents ? { preloadedEvents } : {}),
-    }).catch((error) => {
-      console.error("投稿履歴からの引用適用に失敗:", error);
-    });
-
-    focusEditor(".tiptap-editor", 100);
+    postHistoryDialogApplyController.applyQuote(post);
   }
 
   function handleWarmPostHistoryDialog(): void {
