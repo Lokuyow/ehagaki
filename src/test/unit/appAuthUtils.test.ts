@@ -6,6 +6,8 @@ import {
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
+    runNip07Login,
+    runNip46Login,
 } from '../../lib/appAuthUtils';
 
 describe('disposeNostrSession', () => {
@@ -150,5 +152,81 @@ describe('restoreManagedAccountSession', () => {
         })).resolves.toBe(false);
 
         expect(onRestoreFailure).toHaveBeenCalledOnce();
+    });
+});
+
+describe('runNip07Login', () => {
+    it('成功時は NIP-46 runtime を必要に応じて切り替え、後続処理を呼ぶ', async () => {
+        const authenticateWithNip07 = vi.fn().mockResolvedValue({
+            success: true,
+            pubkeyHex: 'pubkey-1',
+        });
+        const cancelPendingNip46Auth = vi.fn().mockResolvedValue(undefined);
+        const clearNip46RuntimeForAuthChange = vi.fn().mockResolvedValue(undefined);
+        const handlePostAuth = vi.fn().mockResolvedValue(undefined);
+        const setLoading = vi.fn();
+
+        await expect(runNip07Login({
+            currentAuthType: 'nsec',
+            currentPubkeyHex: 'current-pubkey',
+            authenticateWithNip07,
+            cancelPendingNip46Auth,
+            clearNip46RuntimeForAuthChange,
+            handlePostAuth,
+            setLoading,
+            nip46Service: { disconnect: vi.fn().mockResolvedValue(undefined) },
+            console: { error: vi.fn() },
+        })).resolves.toBeUndefined();
+
+        expect(cancelPendingNip46Auth).toHaveBeenCalledOnce();
+        expect(authenticateWithNip07).toHaveBeenCalledOnce();
+        expect(clearNip46RuntimeForAuthChange).toHaveBeenCalledWith(expect.objectContaining({
+            currentAuthType: 'nsec',
+            currentPubkeyHex: 'current-pubkey',
+            nextAuthType: 'nip07',
+            nextPubkeyHex: 'pubkey-1',
+        }));
+        expect(handlePostAuth).toHaveBeenCalledWith('pubkey-1');
+        expect(setLoading).toHaveBeenNthCalledWith(1, true);
+        expect(setLoading).toHaveBeenLastCalledWith(false);
+    });
+
+    it('失敗時はエラーコードを返す', async () => {
+        const consoleError = vi.fn();
+
+        await expect(runNip07Login({
+            authenticateWithNip07: vi.fn().mockResolvedValue({ success: false, error: 'nip07_auth_error' }),
+            cancelPendingNip46Auth: vi.fn().mockResolvedValue(undefined),
+            clearNip46RuntimeForAuthChange: vi.fn(),
+            handlePostAuth: vi.fn(),
+            setLoading: vi.fn(),
+            nip46Service: { disconnect: vi.fn().mockResolvedValue(undefined) },
+            console: { error: consoleError },
+        })).resolves.toBe('nip07_auth_error');
+
+        expect(consoleError).toHaveBeenCalledWith('NIP-07認証失敗:', 'nip07_auth_error');
+    });
+});
+
+describe('runNip46Login', () => {
+    it('成功時は後続処理を呼ぶ', async () => {
+        const authenticateWithNip46 = vi.fn().mockResolvedValue({
+            success: true,
+            pubkeyHex: 'pubkey-2',
+        });
+        const handlePostAuth = vi.fn().mockResolvedValue(undefined);
+        const setLoading = vi.fn();
+
+        await expect(runNip46Login({
+            authenticateWithNip46,
+            handlePostAuth,
+            setLoading,
+            console: { error: vi.fn() },
+        }, 'bunker://example')).resolves.toBeUndefined();
+
+        expect(authenticateWithNip46).toHaveBeenCalledWith('bunker://example');
+        expect(handlePostAuth).toHaveBeenCalledWith('pubkey-2');
+        expect(setLoading).toHaveBeenNthCalledWith(1, true);
+        expect(setLoading).toHaveBeenLastCalledWith(false);
     });
 });

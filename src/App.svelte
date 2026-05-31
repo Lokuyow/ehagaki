@@ -164,6 +164,8 @@
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
+    runNip07Login,
+    runNip46Login,
   } from "./lib/appAuthUtils";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -1117,30 +1119,19 @@
   }
 
   async function handleNip07Login(): Promise<string | undefined> {
-    try {
-      await cancelPendingNip46Auth();
-      isLoadingNip07 = true;
-      const result = await authService.authenticateWithNip07();
-      if (!result.success) {
-        console.error("NIP-07認証失敗:", result.error);
-        return result.error ?? "nip07_auth_error";
-      }
-
-      await clearNip46RuntimeForAuthChange({
-        currentAuthType: authState.value?.type,
-        currentPubkeyHex: authState.value?.pubkey,
-        nextAuthType: "nip07",
-        nextPubkeyHex: result.pubkeyHex,
-        nip46Service,
-      });
-      await handleSuccessfulAuthResult(result, handlePostAuth);
-      return undefined;
-    } catch (error) {
-      console.error("NIP-07ログインでエラー:", error);
-      return error instanceof Error ? error.message : "nip07_auth_error";
-    } finally {
-      isLoadingNip07 = false;
-    }
+    return runNip07Login({
+      currentAuthType: authState.value?.type,
+      currentPubkeyHex: authState.value?.pubkey,
+      authenticateWithNip07: () => authService.authenticateWithNip07(),
+      cancelPendingNip46Auth,
+      clearNip46RuntimeForAuthChange,
+      handlePostAuth,
+      setLoading: (isLoading) => {
+        isLoadingNip07 = isLoading;
+      },
+      nip46Service,
+      console,
+    });
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
@@ -1158,22 +1149,18 @@
   async function handleNip46Login(
     bunkerUrl: string,
   ): Promise<string | undefined> {
-    isLoadingNip46 = true;
-    try {
-      const result = await authService.authenticateWithNip46(bunkerUrl);
-      if (!result.success) {
-        console.error("NIP-46認証失敗:", result.error);
-        return result.error ?? "NIP-46 authentication failed";
-      }
-
-      await handleSuccessfulAuthResult(result, handlePostAuth);
-      return undefined;
-    } catch (error) {
-      console.error("NIP-46ログインでエラー:", error);
-      return error instanceof Error ? error.message : "NIP-46 login failed";
-    } finally {
-      isLoadingNip46 = false;
-    }
+    return runNip46Login(
+      {
+        authenticateWithNip46: (targetBunkerUrl) =>
+          authService.authenticateWithNip46(targetBunkerUrl),
+        handlePostAuth,
+        setLoading: (isLoading) => {
+          isLoadingNip46 = isLoading;
+        },
+        console,
+      },
+      bunkerUrl,
+    );
   }
 
   async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
