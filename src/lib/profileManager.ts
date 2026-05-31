@@ -294,8 +294,6 @@ export class ProfileManager {
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
-    const consoleObj = this.networkFetcher['console'];
-    consoleObj.log(`プロフィール取得開始: ${pubkeyHex}`);
 
     // キャッシュチェック
     if (!opts?.forceRemote) {
