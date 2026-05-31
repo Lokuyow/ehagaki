@@ -74,6 +74,10 @@ import {
     buildChildrenLoadedExpansionState,
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
+import {
+    isThreadGraphRevalidateStale,
+    shouldSkipRevalidateAfterDisplayingCache,
+} from "../postHistoryThreadGraphLoadDecision";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -1273,7 +1277,10 @@ export function usePostHistoryThreadGraph({
                 showParentLoadingIndicator: false,
             }));
             const displayedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
-            if (displayedParent && isThreadGraphRevalidateStale(currentExpansion.lastFetchedParentAt)) {
+            if (displayedParent && isThreadGraphRevalidateStale({
+                lastFetchedAt: currentExpansion.lastFetchedParentAt,
+                ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+            })) {
                 void revalidateParentForNodeInBackground(post, nodeEventId, currentNode);
             }
             return;
@@ -1291,7 +1298,12 @@ export function usePostHistoryThreadGraph({
         scheduleParentLoadingIndicator(post.eventId, nodeEventId);
         const displayedCachedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        if (displayedCachedParent && !options.force && !isThreadGraphRevalidateStale(latestExpansion.lastFetchedParentAt)) {
+        if (shouldSkipRevalidateAfterDisplayingCache({
+            displayedCached: displayedCachedParent,
+            force: !!options.force,
+            lastFetchedAt: latestExpansion.lastFetchedParentAt,
+            ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+        })) {
             return;
         }
 
@@ -1346,11 +1358,6 @@ export function usePostHistoryThreadGraph({
 
     function retryNodeParent(post: PostHistoryRecord, nodeEventId: string): void {
         void loadParentForNode(post, nodeEventId, { force: true });
-    }
-
-    function isThreadGraphRevalidateStale(lastFetchedAt: number | null): boolean {
-        return typeof lastFetchedAt !== "number"
-            || Date.now() - lastFetchedAt >= POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS;
     }
 
     function resolveCachedReplyFetchedAt(records: PostHistoryChildInteractionRecord[]): number | null {
@@ -1547,7 +1554,10 @@ export function usePostHistoryThreadGraph({
             if (hasReplies) {
                 void prefetchChildReplyCounts(post, nodeEventId);
             }
-            if (hasReplies && isThreadGraphRevalidateStale(currentExpansion.lastFetchedChildrenAt)) {
+            if (hasReplies && isThreadGraphRevalidateStale({
+                lastFetchedAt: currentExpansion.lastFetchedChildrenAt,
+                ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+            })) {
                 void revalidateChildrenForNodeInBackground(post, nodeEventId, currentNode);
             }
             return;
@@ -1555,7 +1565,12 @@ export function usePostHistoryThreadGraph({
 
         const displayedCachedChildren = await displayCachedChildrenForNode(post, nodeEventId, currentNode, options);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        if (displayedCachedChildren && !options.force && !isThreadGraphRevalidateStale(latestExpansion.lastFetchedChildrenAt)) {
+        if (shouldSkipRevalidateAfterDisplayingCache({
+            displayedCached: displayedCachedChildren,
+            force: !!options.force,
+            lastFetchedAt: latestExpansion.lastFetchedChildrenAt,
+            ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+        })) {
             if (!options.prefetchOnly) {
                 void prefetchChildReplyCounts(post, nodeEventId);
             }
