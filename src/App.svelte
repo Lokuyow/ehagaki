@@ -155,6 +155,7 @@
     runNip46Login,
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
+  import { createAppAuthLoginController } from "./lib/appAuthLoginController";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -330,6 +331,30 @@
   const appAuthEffectController = createAppAuthEffectController({
     customEmojiStore,
     customEmojiUsageStore,
+  });
+  const appAuthLoginController = createAppAuthLoginController({
+    parentClientAuthCoordinator,
+    getCurrentAuthType: () => authState.value?.type,
+    getCurrentPubkeyHex: () => authState.value?.pubkey,
+    getCurrentRxNostr: () => rxNostr,
+    setCurrentRxNostr: (next) => {
+      rxNostr = next;
+    },
+    clearNip46RuntimeForAuthChange,
+    nip46Service,
+    disposeNostrSession,
+    handlePostAuth,
+    cancelPendingNip46Auth,
+    authenticateWithNsec: (targetSecretKey) =>
+      authService.authenticateWithNsec(targetSecretKey),
+    handleSuccessfulAuthResult,
+    setErrorMessage: (next) => {
+      errorMessage = next;
+    },
+    setProfileLoading: (next) => {
+      isLoadingProfileStore.set(next);
+    },
+    logger: console,
   });
   const nip46AuthFlowCoordinator = createNip46AuthFlowController({
     startNip46NostrConnect: (relayCandidates) =>
@@ -795,22 +820,7 @@
       timeoutMs?: number;
     } = {},
   ): Promise<string | undefined> {
-    const result =
-      await parentClientAuthCoordinator.synchronizeParentClientAuth(options);
-    if (!result.success || !result.pubkeyHex) {
-      return result.error ?? "parent_client_auth_error";
-    }
-
-    await clearNip46RuntimeForAuthChange({
-      currentAuthType: authState.value?.type,
-      currentPubkeyHex: authState.value?.pubkey,
-      nextAuthType: "parentClient",
-      nextPubkeyHex: result.pubkeyHex,
-      nip46Service,
-    });
-    rxNostr = disposeNostrSession(rxNostr);
-    await handlePostAuth(result.pubkeyHex);
-    return undefined;
+    return appAuthLoginController.activateParentClientAuth(options);
   }
 
   function getReplyQuoteApplyParams() {
@@ -996,27 +1006,7 @@
 
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
-    await cancelPendingNip46Auth();
-
-    const result = await authService.authenticateWithNsec(secretKey);
-    if (!result.success) {
-      errorMessage = result.error || "authentication_error";
-      return;
-    }
-    errorMessage = "";
-
-    try {
-      await clearNip46RuntimeForAuthChange({
-        currentAuthType: authState.value?.type,
-        currentPubkeyHex: authState.value?.pubkey,
-        nextAuthType: "nsec",
-        nextPubkeyHex: result.pubkeyHex,
-        nip46Service,
-      });
-      await handleSuccessfulAuthResult(result, handlePostAuth);
-    } catch (e) {
-      isLoadingProfileStore.set(false);
-    }
+    await appAuthLoginController.saveSecretKey(secretKey);
   }
 
   /**
@@ -1116,15 +1106,7 @@
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
-    try {
-      await cancelPendingNip46Auth();
-      return await activateParentClientAuth();
-    } catch (error) {
-      console.error("親クライアント連携ログインでエラー:", error);
-      return error instanceof Error
-        ? error.message
-        : "parent_client_auth_error";
-    }
+    return appAuthLoginController.handleParentClientLogin();
   }
 
   async function handleNip46Login(
