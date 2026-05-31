@@ -116,10 +116,6 @@
     POST_EDITOR_COMPACT_MIN_HEIGHT,
     POST_EDITOR_MIN_HEIGHT,
   } from "./lib/postLayoutUtils";
-  import {
-    resolveComposerAvailableHeight,
-    resolveComposerSiblingHeight,
-  } from "./lib/utils/composerLayoutUtils";
   import { setupViewportListener } from "./stores/uiStore.svelte";
   import {
     runAppInitializationBootstrap,
@@ -174,6 +170,7 @@
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
   import { usePostHistoryForegroundPeriodicSync } from "./lib/hooks/usePostHistoryForegroundPeriodicSync.svelte";
   import { usePostHistoryVisibilityResumeSync } from "./lib/hooks/usePostHistoryVisibilityResumeSync.svelte";
+  import { useComposerLayoutMetrics } from "./lib/hooks/useComposerLayoutMetrics.svelte";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -290,9 +287,21 @@
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
-  let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
-  let customEmojiPickerHeight = $state(0);
   let customEmojiPickerOpen = $state(false);
+  const composerLayoutMetrics = useComposerLayoutMetrics({
+    getComposerScrollRegionEl: () => composerScrollRegionEl,
+    getComposerScrollContentEl: () => composerScrollContentEl,
+    getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
+    getCustomEmojiPickerOpen: () => customEmojiPickerOpen,
+    getReplyQuoteState: () => replyQuoteState.value,
+    minHeight: POST_EDITOR_MIN_HEIGHT,
+  });
+  let composerAvailableHeight = $derived(
+    composerLayoutMetrics.composerAvailableHeight,
+  );
+  let customEmojiPickerHeight = $derived(
+    composerLayoutMetrics.customEmojiPickerHeight,
+  );
   const parentClientAuthCoordinator = createParentClientAuthCoordinator({
     authenticateWithParentClient: (options) =>
       authService.authenticateWithParentClient(options),
@@ -751,36 +760,6 @@
     }
   });
 
-  function syncComposerAvailableHeight(): void {
-    if (!composerScrollRegionEl || !composerScrollContentEl) {
-      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
-      return;
-    }
-
-    const postBlock = composerScrollContentEl.querySelector(
-      '[data-composer-block="post"]',
-    );
-
-    if (!(postBlock instanceof HTMLElement)) {
-      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
-      return;
-    }
-
-    const siblingHeight = resolveComposerSiblingHeight(
-      composerScrollContentEl,
-      postBlock,
-    );
-    const nextHeight = resolveComposerAvailableHeight({
-      composerViewportHeight: composerScrollRegionEl.clientHeight,
-      siblingHeight,
-      minHeight: POST_EDITOR_MIN_HEIGHT,
-    });
-
-    if (composerAvailableHeight !== nextHeight) {
-      composerAvailableHeight = nextHeight;
-    }
-  }
-
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     await runInitializeNostrSession({
       pubkeyHex,
@@ -1114,91 +1093,6 @@
 
   $effect(() => {
     return setupViewportListener();
-  });
-
-  $effect(() => {
-    replyQuoteState.value.reply;
-    replyQuoteState.value.quotes.length;
-    composerScrollRegionEl;
-    composerScrollContentEl;
-
-    if (typeof window === "undefined") {
-      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
-      return;
-    }
-
-    const rafId = window.requestAnimationFrame(() => {
-      syncComposerAvailableHeight();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  });
-
-  $effect(() => {
-    replyQuoteState.value.reply;
-    replyQuoteState.value.quotes.length;
-    composerScrollRegionEl;
-    composerScrollContentEl;
-
-    if (
-      !composerScrollRegionEl ||
-      !composerScrollContentEl ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-
-    syncComposerAvailableHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncComposerAvailableHeight();
-    });
-
-    resizeObserver.observe(composerScrollRegionEl);
-    resizeObserver.observe(composerScrollContentEl);
-
-    for (const child of Array.from(composerScrollContentEl.children)) {
-      resizeObserver.observe(child);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  });
-
-  $effect(() => {
-    customEmojiPickerOpen;
-    customEmojiPickerRegionEl;
-
-    if (!customEmojiPickerOpen) {
-      customEmojiPickerHeight = 0;
-      return;
-    }
-
-    if (!customEmojiPickerRegionEl || typeof ResizeObserver === "undefined") {
-      customEmojiPickerHeight = 0;
-      return;
-    }
-
-    const syncCustomEmojiPickerHeight = () => {
-      customEmojiPickerHeight = Math.ceil(
-        customEmojiPickerRegionEl?.getBoundingClientRect().height ?? 0,
-      );
-    };
-
-    syncCustomEmojiPickerHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncCustomEmojiPickerHeight();
-    });
-
-    resizeObserver.observe(customEmojiPickerRegionEl);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
   });
 
   let localeInitialized = $state(false);

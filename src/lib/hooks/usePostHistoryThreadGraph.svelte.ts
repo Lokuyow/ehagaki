@@ -65,6 +65,7 @@ import {
     type PostHistoryThreadGraphNode,
     type PostHistoryThreadGraphSource,
 } from "../postHistoryThreadGraphUtils";
+import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -229,9 +230,7 @@ export function usePostHistoryThreadGraph({
     const replyBadgePreloadKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
-    let requestId = 0;
-    let childRequestId = 0;
-    const childrenRequestIdsByKey = new Map<string, number>();
+    const taskTracker = createPostHistoryThreadGraphTaskTracker();
 
     function setReactionSummary(
         parentEventId: string,
@@ -362,12 +361,12 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeRequestId = requestId;
+        const activeRequestId = taskTracker.getRequestId();
 
         const task = (async () => {
             try {
                 const cachedProfile = await profilesRepositoryImpl.get(pubkey);
-                if (cachedProfile && activeRequestId === requestId && getShow()) {
+                if (cachedProfile && activeRequestId === taskTracker.getRequestId() && getShow()) {
                     mergeProfileForPubkey(pubkey, cachedProfile);
                 }
             } catch {
@@ -375,7 +374,7 @@ export function usePostHistoryThreadGraph({
             }
 
             const rxNostr = getRxNostr();
-            if (!rxNostr || activeRequestId !== requestId || !getShow()) {
+            if (!rxNostr || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 return;
             }
 
@@ -384,7 +383,7 @@ export function usePostHistoryThreadGraph({
                 additionalRelays,
                 forceRemote: false,
             });
-            if (!profile || activeRequestId !== requestId || !getShow()) {
+            if (!profile || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 return;
             }
 
@@ -1170,7 +1169,7 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeRequestId = ++requestId;
+        const activeRequestId = taskTracker.incrementRequestId();
         const key = buildAnchorNodeKey(post.eventId, nodeEventId);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
@@ -1196,7 +1195,7 @@ export function usePostHistoryThreadGraph({
                 force: true,
                 background: !options.showInitialLoading,
             });
-            if (activeRequestId !== requestId || !getShow()) {
+            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 clearParentLoadingDelayTimer(key);
                 return;
             }
@@ -1444,9 +1443,8 @@ export function usePostHistoryThreadGraph({
         options: { prefetchOnly?: boolean; showInitialLoading?: boolean } = {},
     ): Promise<void> {
         const key = buildAnchorNodeKey(post.eventId, nodeEventId);
-        const activeGraphRequestId = requestId;
-        const activeChildRequestId = ++childRequestId;
-        childrenRequestIdsByKey.set(key, activeChildRequestId);
+        const activeGraphRequestId = taskTracker.getRequestId();
+        const activeChildRequestId = taskTracker.createChildRequestToken(key);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...state,
             loadingChildren: !!options.showInitialLoading,
@@ -1479,8 +1477,8 @@ export function usePostHistoryThreadGraph({
             const result = await task.promise;
             childrenTasksByKey.delete(key);
             if (
-                activeGraphRequestId !== requestId ||
-                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                activeGraphRequestId !== taskTracker.getRequestId() ||
+                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
                 !getShow()
             ) {
                 return;
@@ -1507,8 +1505,8 @@ export function usePostHistoryThreadGraph({
                 await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
             );
             if (
-                activeGraphRequestId !== requestId ||
-                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                activeGraphRequestId !== taskTracker.getRequestId() ||
+                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
                 !getShow()
             ) {
                 return;
@@ -1533,8 +1531,8 @@ export function usePostHistoryThreadGraph({
             }
         } catch {
             if (
-                activeGraphRequestId !== requestId ||
-                childrenRequestIdsByKey.get(key) !== activeChildRequestId ||
+                activeGraphRequestId !== taskTracker.getRequestId() ||
+                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
                 !getShow()
             ) {
                 return;
@@ -1549,7 +1547,7 @@ export function usePostHistoryThreadGraph({
             }));
         } finally {
             childrenTasksByKey.delete(key);
-            childrenRequestIdsByKey.delete(key);
+            taskTracker.deleteChildRequestToken(key);
         }
     }
 
@@ -1726,7 +1724,7 @@ export function usePostHistoryThreadGraph({
         await upsertReplyRecords(input.parentEventId, cachedDirectReplies, ["reply-db", "inbound-sync"], {
             resolveProfiles: false,
         });
-        if (input.activeRequestId !== requestId || !getShow()) {
+        if (input.activeRequestId !== taskTracker.getRequestId() || !getShow()) {
             return;
         }
 
@@ -1755,12 +1753,12 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeRequestId = requestId;
+        const activeRequestId = taskTracker.getRequestId();
         const isTargetedRefresh = !!parentEventIds?.length;
         const postByEventId = new Map(posts.map((post) => [post.eventId, post]));
         for (const parentEventId of targetParentIds) {
             const post = postByEventId.get(parentEventId);
-            if (!post || activeRequestId !== requestId || !getShow()) {
+            if (!post || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 continue;
             }
 
@@ -1786,7 +1784,7 @@ export function usePostHistoryThreadGraph({
                 reactionRecordsAdapterImpl.getReactionRecords(parentEventId),
                 directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
             ]);
-            if (activeRequestId !== requestId || !getShow()) {
+            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 continue;
             }
 
@@ -1794,7 +1792,7 @@ export function usePostHistoryThreadGraph({
                 filterVisibleReplyRecords(rawCachedReactionRecords),
                 filterVisibleReplyRecords(rawCachedDirectReplyRecords),
             ]);
-            if (activeRequestId !== requestId || !getShow()) {
+            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 continue;
             }
 
@@ -1821,13 +1819,12 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
-        const activeGraphRequestId = requestId;
+        const activeGraphRequestId = taskTracker.getRequestId();
         const requestTokens = new Map<string, number>();
         for (const eventId of batchEventIds) {
             const key = buildAnchorNodeKey(post.eventId, eventId);
-            const activeChildRequestId = ++childRequestId;
+            const activeChildRequestId = taskTracker.createChildRequestToken(key);
             requestTokens.set(eventId, activeChildRequestId);
-            childrenRequestIdsByKey.set(key, activeChildRequestId);
             updateExpansion(post.eventId, eventId, (state) => ({
                 ...state,
                 revalidatingChildren: true,
@@ -1922,12 +1919,12 @@ export function usePostHistoryThreadGraph({
         activeGraphRequestId: number,
         requestTokens: Map<string, number>,
     ): boolean {
-        if (activeGraphRequestId !== requestId || !getShow()) {
+        if (activeGraphRequestId !== taskTracker.getRequestId() || !getShow()) {
             return false;
         }
 
         return eventIds.every((eventId) =>
-            childrenRequestIdsByKey.get(buildAnchorNodeKey(anchorEventId, eventId)) === requestTokens.get(eventId),
+            taskTracker.getChildRequestToken(buildAnchorNodeKey(anchorEventId, eventId)) === requestTokens.get(eventId),
         );
     }
 
@@ -1953,7 +1950,7 @@ export function usePostHistoryThreadGraph({
                 childrenError: null,
                 lastFetchedChildrenAt: Date.now(),
             }));
-            childrenRequestIdsByKey.delete(key);
+            taskTracker.deleteChildRequestToken(key);
         }
     }
 
@@ -2182,7 +2179,7 @@ export function usePostHistoryThreadGraph({
         childrenTasksByKey.forEach((task) => task.cancel());
         deletionTasksByKey.forEach((task) => task.cancel());
         childrenTasksByKey.clear();
-        childrenRequestIdsByKey.clear();
+        taskTracker.clearChildRequestTokens();
         deletionTasksByKey.clear();
         profileRefreshTasksByPubkey.clear();
         parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
@@ -2194,7 +2191,7 @@ export function usePostHistoryThreadGraph({
         if (ownsResolver) {
             resolver.reset();
         }
-        requestId += 1;
+        taskTracker.incrementRequestId();
         nodesById = {};
         parentByChildId = {};
         childrenByParentId = {};
