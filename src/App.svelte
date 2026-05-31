@@ -9,7 +9,6 @@
   import { iframeMessageService } from "./lib/iframeMessageService";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
-  import { PendingNip46OperationTracker } from "./lib/nip46PendingOperationUtils";
   import {
     nip46Service,
     type Nip46ConnectionOperationState,
@@ -154,6 +153,7 @@
     type AppEmbedAppliedSettingKey,
   } from "./lib/appEmbedController";
   import { createAppComponentLoaders } from "./lib/appComponentLoaders";
+  import { createNip46AuthFlowController } from "./lib/nip46AuthFlowCoordinator";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -267,7 +267,6 @@
   let isHandshakeStartedNip46NostrConnect = $state(false);
   let nip46NostrConnectErrorMessage = $state("");
   let pendingNip46AuthSession: PendingNip46AuthSession | null = null;
-  const pendingNip46OperationTracker = new PendingNip46OperationTracker();
   let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
@@ -312,6 +311,40 @@
     },
     onRequestSettled: () => {
       void flushPendingRemoteParentClientAndEmbedActions();
+    },
+  });
+  const nip46AuthFlowCoordinator = createNip46AuthFlowController({
+    startNip46NostrConnect: (relayCandidates) =>
+      authService.startNip46NostrConnect(relayCandidates),
+    finalizeNip46Authentication: (pubkeyHex) =>
+      authService.finalizeNip46Authentication(pubkeyHex),
+    onAuthenticated: handlePostAuth,
+    saveLastUsedRelayCandidates: (relayCandidates) => {
+      saveLastUsedNip46ConnectionRelayCandidates(
+        typeof localStorage === "undefined" ? undefined : localStorage,
+        relayCandidates,
+      );
+    },
+    console,
+    state: {
+      setPendingAuthSession: (session) => {
+        pendingNip46AuthSession = session;
+      },
+      setHasPendingAuthSession: (hasPendingSession) => {
+        hasPendingNip46AuthSession = hasPendingSession;
+      },
+      setConnectionUri: (connectionUri) => {
+        pendingNip46ConnectionUri = connectionUri;
+      },
+      setHandshakeStarted: (isHandshakeStarted) => {
+        isHandshakeStartedNip46NostrConnect = isHandshakeStarted;
+      },
+      setLoading: (isLoading) => {
+        isLoadingNip46 = isLoading;
+      },
+      setErrorMessage: (message) => {
+        nip46NostrConnectErrorMessage = message;
+      },
     },
   });
   let postEditorMinHeight = $derived(
@@ -374,32 +407,14 @@
   function resetPendingNip46State(
     options: { preserveError?: boolean } = {},
   ): void {
-    pendingNip46OperationTracker.clearPendingSession();
-    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
-    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
-    pendingNip46ConnectionUri = null;
-    isHandshakeStartedNip46NostrConnect = false;
-    if (!options.preserveError) {
-      nip46NostrConnectErrorMessage = "";
-    }
+    nip46AuthFlowCoordinator.resetPendingState(options);
   }
 
   async function cancelPendingNip46Auth(
     session: PendingNip46AuthSession | null = pendingNip46AuthSession,
     options: { preserveError?: boolean } = {},
   ): Promise<void> {
-    const pendingSession = pendingNip46OperationTracker.cancelPending(session);
-    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
-    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
-    isLoadingNip46 = false;
-
-    if (!pendingSession) {
-      resetPendingNip46State(options);
-      return;
-    }
-
-    resetPendingNip46State(options);
-    await pendingSession.cancel();
+    await nip46AuthFlowCoordinator.cancelPendingAuth(session, options);
   }
 
   function handleLoginDialogClose(): void {
@@ -412,77 +427,14 @@
     void cancelPendingNip46Auth();
   }
 
-  function isCurrentPendingNip46Operation(requestGeneration: number): boolean {
-    return pendingNip46OperationTracker.isCurrentOperation(requestGeneration);
+  async function handleNostrConnectStart(
+    relayCandidates: string[],
+  ): Promise<string | undefined> {
+    return nip46AuthFlowCoordinator.handleNostrConnectStart(relayCandidates);
   }
 
-  async function waitForPendingNip46Ready(
-    session: PendingNip46AuthSession,
-    requestGeneration: number,
-  ): Promise<void> {
-    try {
-      await session.ready;
-    } catch {
-      return;
-    }
-
-    if (!isCurrentPendingNip46Operation(requestGeneration)) {
-      return;
-    }
-
-    pendingNip46ConnectionUri = session.connectionUri;
-    isLoadingNip46 = false;
-  }
-
-  async function waitForPendingNip46HandshakeStarted(
-    session: PendingNip46AuthSession,
-    requestGeneration: number,
-  ): Promise<void> {
-    try {
-      await session.handshakeStarted;
-    } catch {
-      return;
-    }
-
-    if (!isCurrentPendingNip46Operation(requestGeneration)) {
-      return;
-    }
-
-    isHandshakeStartedNip46NostrConnect = true;
-  }
-
-  async function waitForPendingNip46Auth(
-    session: PendingNip46AuthSession,
-    requestGeneration: number,
-  ): Promise<void> {
-    const result = await session.completion;
-    if (!isCurrentPendingNip46Operation(requestGeneration)) {
-      return;
-    }
-
-    isLoadingNip46 = false;
-
-    if (!result.success) {
-      resetPendingNip46State({ preserveError: true });
-      nip46NostrConnectErrorMessage = result.error ?? "nip46_connection_failed";
-      return;
-    }
-
-    if (!result.pubkeyHex) {
-      resetPendingNip46State({ preserveError: true });
-      nip46NostrConnectErrorMessage = "nip46_connection_failed";
-      return;
-    }
-
-    const authResult = await authService.finalizeNip46Authentication(
-      result.pubkeyHex,
-    );
-    if (!isCurrentPendingNip46Operation(requestGeneration)) {
-      return;
-    }
-
-    resetPendingNip46State();
-    await handleSuccessfulAuthResult(authResult, handlePostAuth);
+  function handleNostrConnectCancel(): void {
+    void nip46AuthFlowCoordinator.cancelPendingAuth();
   }
 
   const draftLimitConfirm = createDraftLimitConfirmHandlers({
@@ -704,7 +656,7 @@
     const session = await completePostAuthBootstrap({
       pubkeyHex,
       closeAuthDialogs: () => {
-        resetPendingNip46State();
+        nip46AuthFlowCoordinator.resetPendingState();
         loginDialog.close();
         addAccountDialog.close();
       },
@@ -1222,66 +1174,6 @@
     } finally {
       isLoadingNip46 = false;
     }
-  }
-
-  async function handleNostrConnectStart(
-    relayCandidates: string[],
-  ): Promise<string | undefined> {
-    const { requestGeneration, previousSession } =
-      pendingNip46OperationTracker.beginOperation();
-    pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
-    hasPendingNip46AuthSession = pendingNip46OperationTracker.hasPendingSession;
-
-    isLoadingNip46 = true;
-    nip46NostrConnectErrorMessage = "";
-    resetPendingNip46State();
-
-    if (previousSession) {
-      await previousSession.cancel();
-    }
-
-    try {
-      const pending = await authService.startNip46NostrConnect(relayCandidates);
-
-      if (!isCurrentPendingNip46Operation(requestGeneration)) {
-        await pending.cancel();
-        return undefined;
-      }
-
-      pendingNip46OperationTracker.attachPendingSession(pending);
-      pendingNip46AuthSession = pendingNip46OperationTracker.currentSession;
-      hasPendingNip46AuthSession =
-        pendingNip46OperationTracker.hasPendingSession;
-      saveLastUsedNip46ConnectionRelayCandidates(
-        typeof localStorage === "undefined" ? undefined : localStorage,
-        relayCandidates,
-      );
-      void waitForPendingNip46HandshakeStarted(pending, requestGeneration);
-      void waitForPendingNip46Ready(pending, requestGeneration);
-      void waitForPendingNip46Auth(pending, requestGeneration);
-      return undefined;
-    } catch (error) {
-      if (!isCurrentPendingNip46Operation(requestGeneration)) {
-        return undefined;
-      }
-
-      console.error("NIP-46 nostrconnectログインでエラー:", error);
-      resetPendingNip46State({ preserveError: true });
-      nip46NostrConnectErrorMessage =
-        error instanceof Error ? error.message : "NIP-46 login failed";
-      return nip46NostrConnectErrorMessage;
-    } finally {
-      if (
-        isCurrentPendingNip46Operation(requestGeneration) &&
-        pendingNip46AuthSession === null
-      ) {
-        isLoadingNip46 = false;
-      }
-    }
-  }
-
-  function handleNostrConnectCancel(): void {
-    void cancelPendingNip46Auth();
   }
 
   async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
