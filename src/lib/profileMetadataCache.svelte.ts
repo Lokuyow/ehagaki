@@ -46,6 +46,7 @@ export interface ProfileMetadataCacheEntry {
 interface GetProfileOptions {
     rxNostr?: RxNostr;
     additionalRelays?: string[];
+    writeRelays?: string[];
     forceRefresh?: boolean;
     allowBackgroundRefresh?: boolean;
 }
@@ -53,6 +54,7 @@ interface GetProfileOptions {
 interface GetProfilesOptions {
     rxNostr?: RxNostr;
     additionalRelays?: string[];
+    writeRelays?: string[];
     forceRefresh?: boolean;
     allowBackgroundRefresh?: boolean;
 }
@@ -61,6 +63,7 @@ interface PendingBatchRequest {
     rxNostr: RxNostr;
     pubkey: string;
     relays: string[];
+    writeRelays: string[];
     resolve: (profile: ProfileData | null) => void;
     reject: (error: unknown) => void;
 }
@@ -212,6 +215,7 @@ function toProfileFromEvent(params: {
     content: string;
     createdAtSec: number;
     relay: string | null;
+    writeRelays: string[];
 }): ProfileData | null {
     try {
         const parsed = JSON.parse(params.content) as {
@@ -232,7 +236,7 @@ function toProfileFromEvent(params: {
             displayName: typeof parsed.display_name === "string" ? parsed.display_name : "",
             picture,
             npub: toNpub(params.pubkey),
-            nprofile: toNprofile(params.pubkey, profileRelays, []),
+            nprofile: toNprofile(params.pubkey, profileRelays, params.writeRelays),
             profileRelays: profileRelays.length > 0 ? profileRelays : undefined,
         };
 
@@ -248,6 +252,7 @@ async function fetchBatchFromNetwork(
     rxNostr: RxNostr,
     pubkeys: string[],
     relayHints: string[],
+    writeRelaysByPubkey: Record<string, string[]>,
 ): Promise<Record<string, BatchNetworkResult>> {
     const authors = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     const results: Record<string, BatchNetworkResult> = {};
@@ -285,34 +290,44 @@ async function fetchBatchFromNetwork(
             done();
         }, PROFILE_CACHE_BATCH_TIMEOUT_MS);
 
-        subscription = rxNostr
-            .use(rxReq, relayHints.length > 0
+        const isValidTimestampPacket = (packet: { event?: { created_at?: number; pubkey?: string } }): boolean => {
+            const createdAt = packet.event?.created_at;
+            if (typeof createdAt !== "number") {
+                return false;
+            }
+
+            const allow = createdAt <= nowSec() + ALLOWED_FUTURE_MARGIN_SEC;
+            if (!allow) {
+                const pubkey = packet.event?.pubkey;
+                if (pubkey && results[pubkey]) {
+                    results[pubkey] = {
+                        ...results[pubkey],
+                        rejectedFutureTimestamp: true,
+                    };
+                }
+            }
+
+            return allow;
+        };
+
+        const source = rxNostr.use(
+            rxReq,
+            relayHints.length > 0
                 ? { on: { relays: relayHints } }
-                : { on: { defaultReadRelays: true } })
-            .pipe(
-                // Upstream guard: reject bogus future kind:0 events before latest-selection.
-                filter((packet: { event?: { created_at?: number; pubkey?: string } }) => {
-                    const createdAt = packet.event?.created_at;
-                    if (typeof createdAt !== "number") {
-                        return false;
-                    }
+                : { on: { defaultReadRelays: true } },
+        ) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
-                    const allow = createdAt <= nowSec() + ALLOWED_FUTURE_MARGIN_SEC;
-                    if (!allow) {
-                        const pubkey = packet.event?.pubkey;
-                        if (pubkey && results[pubkey]) {
-                            results[pubkey] = {
-                                ...results[pubkey],
-                                rejectedFutureTimestamp: true,
-                            };
-                        }
-                    }
+        const stream = typeof source.pipe === "function"
+            // Upstream guard: reject bogus future kind:0 events before latest-selection.
+            ? source.pipe(filter(isValidTimestampPacket))
+            : source;
 
-                    return allow;
-                }),
-            )
-            .subscribe({
+        subscription = stream.subscribe({
                 next: (packet: { event?: { pubkey?: string; kind?: number; content?: string; created_at?: number }; from?: string }) => {
+                    if (!isValidTimestampPacket(packet)) {
+                        return;
+                    }
+
                     const event = packet.event;
                     if (!event || event.kind !== 0 || !event.pubkey || !authors.includes(event.pubkey)) {
                         return;
@@ -336,6 +351,7 @@ async function fetchBatchFromNetwork(
                         content: event.content ?? "",
                         createdAtSec: event.created_at,
                         relay: typeof packet.from === "string" ? packet.from : null,
+                        writeRelays: writeRelaysByPubkey[event.pubkey] ?? [],
                     });
 
                     if (!profile) {
@@ -396,6 +412,7 @@ async function flushPendingBatch(): Promise<void> {
     for (const rxBatch of groupedByRx.values()) {
         const groupedByPubkey = new Map<string, PendingBatchRequest[]>();
         const relaySet = new Set<string>();
+        const writeRelaysByPubkey: Record<string, string[]> = {};
 
         for (const request of rxBatch) {
             const current = groupedByPubkey.get(request.pubkey) ?? [];
@@ -405,6 +422,12 @@ async function flushPendingBatch(): Promise<void> {
             for (const relay of request.relays) {
                 relaySet.add(relay);
             }
+
+            const mergedWriteRelays = new Set([
+                ...(writeRelaysByPubkey[request.pubkey] ?? []),
+                ...request.writeRelays,
+            ]);
+            writeRelaysByPubkey[request.pubkey] = Array.from(mergedWriteRelays);
         }
 
         const pubkeys = Array.from(groupedByPubkey.keys());
@@ -414,6 +437,7 @@ async function flushPendingBatch(): Promise<void> {
                 rxBatch[0].rxNostr,
                 pubkeys,
                 sanitizeRelays(Array.from(relaySet)),
+                writeRelaysByPubkey,
             );
 
             for (const pubkey of pubkeys) {
@@ -461,12 +485,14 @@ function enqueueBatchRequest(
     pubkey: string,
     rxNostr: RxNostr,
     relays: string[],
+    writeRelays: string[],
 ): Promise<ProfileData | null> {
     return new Promise<ProfileData | null>((resolve, reject) => {
         pendingBatchRequests.push({
             rxNostr,
             pubkey,
             relays: [...relays],
+            writeRelays: [...writeRelays],
             resolve,
             reject,
         });
@@ -498,6 +524,7 @@ async function ensureFreshProfile(
         pubkey,
         options.rxNostr,
         sanitizeRelays(options.additionalRelays ?? []),
+        sanitizeRelays(options.writeRelays ?? []),
     ).finally(() => {
         pendingByPubkey.delete(pubkey);
         gcExpiredEntries();
@@ -563,6 +590,7 @@ async function getProfiles(
             const profile = await getProfile(pubkey, {
                 rxNostr: options.rxNostr,
                 additionalRelays: options.additionalRelays,
+                writeRelays: options.writeRelays,
                 forceRefresh: options.forceRefresh,
                 allowBackgroundRefresh: options.allowBackgroundRefresh,
             });

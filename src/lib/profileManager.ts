@@ -4,6 +4,7 @@ import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { DexieProfilesRepository, profilesRepository, type ProfilesRepository } from './storage/profilesRepository';
+import { profileMetadataCache } from './profileMetadataCache.svelte';
 import {
   addProfilePictureCacheBuster,
   addProfilePictureMarker,
@@ -294,37 +295,26 @@ export class ProfileManager {
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
-    const consoleObj = this.networkFetcher['console'];
-
-    // キャッシュチェック
-    if (!opts?.forceRemote) {
-      const cachedProfile = await this.storage.get(pubkeyHex);
-      if (cachedProfile) {
-        return cachedProfile;
-      }
-    }
-
-    consoleObj.log("リモートからプロフィール情報を取得中...");
-
-    // ネットワーク取得
-    const profile = await this.networkFetcher.fetchFromNetwork(pubkeyHex, opts);
-
-    // 取得できた場合はキャッシュに保存
-    if (profile) {
-      await this.storage.save(pubkeyHex, profile);
-    }
-
-    return profile;
+    return profileMetadataCache.getProfile(pubkeyHex, {
+      rxNostr: this.rxNostr as never,
+      additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(opts?.additionalRelays),
+      writeRelays: RelayConfigUtils.sanitizeExternalRelayUrls(opts?.writeRelays),
+      forceRefresh: opts?.forceRemote === true,
+      allowBackgroundRefresh: false,
+    });
   }
 
   async fetchProfileDataNetworkOnly(
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
-    const consoleObj = this.networkFetcher['console'];
-    consoleObj.log(`プロフィール逐次取得開始(保存なし): ${pubkeyHex}`);
-
-    return this.networkFetcher.fetchFromNetwork(pubkeyHex, opts);
+    return profileMetadataCache.getProfile(pubkeyHex, {
+      rxNostr: this.rxNostr as never,
+      additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(opts?.additionalRelays),
+      writeRelays: RelayConfigUtils.sanitizeExternalRelayUrls(opts?.writeRelays),
+      forceRefresh: true,
+      allowBackgroundRefresh: false,
+    });
   }
 
   // テスト用の内部コンポーネントへのアクセス

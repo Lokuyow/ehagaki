@@ -12,6 +12,7 @@ import {
 } from '../../lib/profilePictureUrlUtils';
 import { EHagakiDB } from '../../lib/storage/ehagakiDb';
 import { DexieProfilesRepository } from '../../lib/storage/profilesRepository';
+import { profileMetadataCache } from '../../lib/profileMetadataCache.svelte';
 import type { ProfileManagerDeps } from '../../lib/types';
 import { MockStorage, createMockRxNostr } from '../helpers';
 
@@ -408,33 +409,28 @@ describe('ProfileManager統合テスト', () => {
     });
 
     it('キャッシュからプロフィールを取得する', async () => {
-        const cachedProfile = { name: 'Cached User', picture: '', npub: 'npub123' };
-        mockStorage.setItem('nostr-profile-testpubkey', JSON.stringify(cachedProfile));
+        const getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue({
+            name: 'Cached User',
+            picture: '',
+            npub: 'npub123',
+        } as any);
 
         const result = await manager.fetchProfileData('testpubkey');
 
         expect(result).toBeTruthy();
         expect(result?.name).toBe('Cached User');
-        // ネットワークリクエストは発生しない
-        expect(mockRxNostr.use).not.toHaveBeenCalled();
+        expect(getProfileSpy).toHaveBeenCalledWith('testpubkey', expect.objectContaining({
+            forceRefresh: false,
+            allowBackgroundRefresh: false,
+        }));
     });
 
     it('forceRemoteでキャッシュを無視する', async () => {
-        const cachedProfile = { name: 'Cached User', picture: '' };
-        mockStorage.setItem('nostr-profile-testpubkey', JSON.stringify(cachedProfile));
-
-        // mockSubscriptionを定義
-        const mockSubscription = {
-            unsubscribe: vi.fn()
-        };
-
-        // Backward Strategy: イベントなしでcompleteを呼ぶ
-        mockRxNostr.use().subscribe.mockImplementation((observer: any) => {
-            queueMicrotask(() => {
-                observer.complete();
-            });
-            return mockSubscription;
-        });
+        const getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue({
+            name: '',
+            picture: '',
+            npub: 'npub1force',
+        } as any);
 
         mockDeps = {
             localStorage: mockStorage,
@@ -451,10 +447,12 @@ describe('ProfileManager統合テスト', () => {
 
         const result = await manager.fetchProfileData('testpubkey', { forceRemote: true });
 
-        // ネットワークリクエストが発生することを確認
-        expect(mockRxNostr.use).toHaveBeenCalled();
         expect(result).toBeTruthy();
-        expect(result?.name).toBe(''); // デフォルトプロフィール
+        expect(result?.name).toBe('');
+        expect(getProfileSpy).toHaveBeenCalledWith('testpubkey', expect.objectContaining({
+            forceRefresh: true,
+            allowBackgroundRefresh: false,
+        }));
     });
 
     it('内部コンポーネントへのアクセスが可能', () => {
