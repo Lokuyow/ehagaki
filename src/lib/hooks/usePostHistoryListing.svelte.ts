@@ -43,8 +43,8 @@ import {
 } from "../postHistoryCurrentViewRefetchService";
 import {
     postHistoryVisibleRangeChildInteractionRepairService,
-    type PostHistoryVisibleRangeChildInteractionRepairResult,
-    type PostHistoryVisibleRangeChildInteractionRepairTask,
+    type PostHistoryVisibleRangeRelationRepairResult,
+    type PostHistoryVisibleRangeRelationRepairTask,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
 import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
 import {
@@ -609,13 +609,13 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
-    let currentViewChildInteractionRepairTask: PostHistoryVisibleRangeChildInteractionRepairTask | null = null;
+    let currentViewChildInteractionRepairTask: PostHistoryVisibleRangeRelationRepairTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let olderRevealChildInteractionRepairScopeId = 0;
     let activeOlderRevealChildInteractionRepairRxNostr = getRxNostr();
     let appliedSearchQuery = "";
-    const olderRevealChildInteractionRepairTasks = new Set<PostHistoryVisibleRangeChildInteractionRepairTask>();
+    const olderRevealChildInteractionRepairTasks = new Set<PostHistoryVisibleRangeRelationRepairTask>();
     const olderRevealChildInteractionRepairFreshnessByParentId = new Map<string, number>();
     const olderRevealChildInteractionRepairInFlightParentIds = new Set<string>();
     const olderBackfillSearch = $state<OlderBackfillSearchState>({
@@ -862,11 +862,12 @@ export function usePostHistoryListing({
         );
 
         const childInteractionRepairTask =
-            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
+            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
                 rxNostr,
                 {
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts,
+                    relationKinds: ["reply", "reaction", "quote"],
                     relayConfig: getRelayConfig(),
                     isActive,
                 },
@@ -957,11 +958,12 @@ export function usePostHistoryListing({
         });
 
         const task =
-            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
+            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
                 rxNostr,
                 {
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts: networkParentPosts,
+                    relationKinds: ["reply", "reaction", "quote"],
                     relayConfig: getRelayConfig(),
                     isActive: () =>
                         isActiveOlderRevealChildInteractionRepairScope(
@@ -3077,7 +3079,7 @@ export function usePostHistoryListing({
                 ),
             );
 
-            let childInteractionRepairResult: PostHistoryVisibleRangeChildInteractionRepairResult | null = null;
+            let childInteractionRepairResult: PostHistoryVisibleRangeRelationRepairResult | null = null;
             if (
                 currentViewRefetchTask === task
                 && getShow()
@@ -3086,11 +3088,12 @@ export function usePostHistoryListing({
                 && state.loadedPosts.length > 0
             ) {
                 const childInteractionRepairTask =
-                    postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeChildInteractions(
+                    postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
                         rxNostr,
                         {
                             ownerPubkeyHex: pubkeyHex,
                             visiblePosts: state.loadedPosts,
+                            relationKinds: ["reply", "reaction", "quote"],
                             relayConfig: getRelayConfig(),
                             isActive: () =>
                                 currentViewRefetchTask === task
