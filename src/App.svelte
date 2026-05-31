@@ -153,6 +153,7 @@
     createAppEmbedController,
     type AppEmbedAppliedSettingKey,
   } from "./lib/appEmbedController";
+  import { createComponentLoader } from "./lib/appComponentLoader";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -197,8 +198,6 @@
     typeof import("./components/PostHistoryDialog.svelte").default;
   type CustomEmojiPickerComponent =
     typeof import("./components/CustomEmojiPicker.svelte").default;
-  type ComponentImporter<T> = () => Promise<{ default: T }>;
-
   let PostComponent: PostComponent | null = $state(null);
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
   let ProfileComponent: ProfileComponent | null = $state(null);
@@ -209,20 +208,6 @@
     $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
     $state(null);
-
-  function createComponentLoader<T>(
-    importer: ComponentImporter<T>,
-    options: { eager?: boolean } = {},
-  ): () => Promise<T> {
-    let modulePromise: Promise<T> | null = options.eager
-      ? importer().then((module) => module.default)
-      : null;
-
-    return async () => {
-      modulePromise ??= importer().then((module) => module.default);
-      return modulePromise;
-    };
-  }
 
   const loadPostComponentModule = createComponentLoader<PostComponent>(
     () => import("./components/PostComponent.svelte"),
@@ -811,7 +796,7 @@
       .finally(() => {
         isLoadingParentClient = false;
         parentClientAuthPromise = null;
-        void flushPendingRemoteEmbedActions();
+        void flushPendingRemoteParentClientAndEmbedActions();
       });
 
     return parentClientAuthPromise;
@@ -989,7 +974,8 @@
     },
   });
 
-  async function flushPendingRemoteEmbedActions(): Promise<void> {
+  // Parent client login/logout の保留処理と embed action の flush をまとめる coordinator.
+  async function flushPendingRemoteParentClientAndEmbedActions(): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       return;
     }
@@ -1024,7 +1010,7 @@
       console.error("親クライアント連携の自動同期に失敗:", error);
     }
 
-    await flushPendingRemoteEmbedActions();
+    await flushPendingRemoteParentClientAndEmbedActions();
   }
 
   async function handleRemoteParentClientLogout(
@@ -1585,7 +1571,7 @@
       console,
     }).finally(() => {
       isBootstrappingApp = false;
-      void flushPendingRemoteEmbedActions().finally(() => {
+      void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
         appEmbedController.notifyComposerContextUpdatedIfChanged();
       });
     });
