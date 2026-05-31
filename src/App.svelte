@@ -157,6 +157,7 @@
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
   import { createAppAccountDialogController } from "./lib/appAccountDialogController";
+  import { setupAppRuntimeBindings } from "./lib/appRuntimeBindings";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -1221,53 +1222,53 @@
       locationSearch: window.location.search,
     });
 
-    const cleanupParentClientLoginHandler =
-      parentClientAuthService.onRemoteLogin((pubkeyHex) => {
-        void handleRemoteParentClientLogin(pubkeyHex);
-      });
-
-    const cleanupParentClientLogoutHandler =
-      parentClientAuthService.onRemoteLogout((pubkeyHex) => {
-        void handleRemoteParentClientLogout(pubkeyHex);
-      });
-    const cleanupNip46OperationHandler = nip46Service.subscribeOperationState(
-      (state) => {
-        nip46OperationState = state;
+    const cleanupRuntimeBindings = setupAppRuntimeBindings({
+      parentClientAvailable,
+      parentClientAuthService,
+      nip46Service,
+      embedComposerContextService,
+      embedSettingsService,
+      onReplyQuoteChanged,
+      onChannelContextChanged,
+      handleRemoteParentClientLogin,
+      handleRemoteParentClientLogout,
+      setNip46OperationState: (state) => {
+        nip46OperationState = state as Nip46ConnectionOperationState;
       },
-    );
-
-    const cleanupRemoteComposerSetContextHandler =
-      embedComposerContextService.onRemoteSetContext((payload, requestId) => {
-        void appEmbedController.handleRemoteComposerSetContext(
-          payload,
-          requestId,
-        );
-      });
-
-    const cleanupRemoteSettingsSetHandler =
-      embedSettingsService.onRemoteSetSettings((payload, requestId) => {
-        void appEmbedController.handleRemoteSettingsSet(payload, requestId);
-      });
-
-    const cleanupRemoteSettingsErrorHandler =
-      embedSettingsService.onRemoteSettingsError((error, requestId) => {
+      handleRemoteComposerSetContext: (payload, requestId) => {
         if (!requestId) {
           return;
         }
 
-        iframeMessageService.notifySettingsError(error, requestId);
-      });
+        return appEmbedController.handleRemoteComposerSetContext(
+          payload as Parameters<
+            typeof appEmbedController.handleRemoteComposerSetContext
+          >[0],
+          requestId,
+        );
+      },
+      handleRemoteSettingsSet: (payload, requestId) => {
+        if (!requestId) {
+          return;
+        }
 
-    const cleanupReplyQuoteChangeHandler = onReplyQuoteChanged(() => {
-      appEmbedController.notifyComposerContextUpdatedIfChanged();
+        return appEmbedController.handleRemoteSettingsSet(
+          payload as Parameters<
+            typeof appEmbedController.handleRemoteSettingsSet
+          >[0],
+          requestId,
+        );
+      },
+      notifySettingsError: (error, requestId) =>
+        iframeMessageService.notifySettingsError(
+          error as Parameters<
+            typeof iframeMessageService.notifySettingsError
+          >[0],
+          requestId,
+        ),
+      notifyComposerContextUpdatedIfChanged: () =>
+        appEmbedController.notifyComposerContextUpdatedIfChanged(),
     });
-    const cleanupChannelContextChangeHandler = onChannelContextChanged(() => {
-      appEmbedController.notifyComposerContextUpdatedIfChanged();
-    });
-
-    if (parentClientAvailable) {
-      parentClientAuthService.announceReady();
-    }
 
     // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
     if (!nip07ExtensionAvailable) {
@@ -1330,14 +1331,7 @@
 
     return () => {
       cleanupVisibilityHandler();
-      cleanupNip46OperationHandler();
-      cleanupParentClientLoginHandler();
-      cleanupParentClientLogoutHandler();
-      cleanupRemoteComposerSetContextHandler();
-      cleanupRemoteSettingsSetHandler();
-      cleanupRemoteSettingsErrorHandler();
-      cleanupReplyQuoteChangeHandler();
-      cleanupChannelContextChangeHandler();
+      cleanupRuntimeBindings();
     };
   });
 
