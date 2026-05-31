@@ -16,6 +16,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         setIsLoggingOut: (next: boolean) => {
             isLoggingOut = next;
         },
+            setProfileLoading: vi.fn(),
         getAuthStateSnapshot: () => ({
             type: 'parentClient',
             pubkey: 'aa'.repeat(32),
@@ -54,6 +55,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         setSecretKey: vi.fn(),
         setErrorMessage: vi.fn(),
         refreshAccountList: vi.fn(),
+        reloadWindow: vi.fn(),
         closeLogoutDialog: vi.fn(),
         logger: { error: vi.fn() },
         ...overrides,
@@ -71,6 +73,7 @@ describe('createAppAccountSessionController', () => {
 
         await expect(controller.switchAccount('bb'.repeat(32))).resolves.toBe(true);
 
+        expect(deps.setProfileLoading).toHaveBeenCalledWith(false);
         expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
         expect(deps.restoreManagedAccountSession).toHaveBeenCalledTimes(1);
@@ -120,5 +123,21 @@ describe('createAppAccountSessionController', () => {
         expect(restoreManagedAccountSession).toHaveBeenCalledTimes(1);
         expect(deps.logoutAccountFromAuthService).not.toHaveBeenCalled();
         expect(deps.refreshAccountList).toHaveBeenCalledTimes(1);
+    });
+
+    it('logoutAccount の switch 分岐では再読み込みする', async () => {
+        const { deps, controller } = createController({
+            accountManager: {
+                getAccountType: vi.fn(() => 'nsec'),
+                setActiveAccount: vi.fn(),
+            },
+            logoutAccountFromAuthService: vi.fn(() => 'bb'.repeat(32)),
+        });
+
+        await controller.logoutAccount('aa'.repeat(32));
+
+        expect(deps.reloadWindow).toHaveBeenCalledTimes(1);
+        expect(deps.restoreManagedAccountSession).not.toHaveBeenCalled();
+        expect(deps.closeLogoutDialog).not.toHaveBeenCalled();
     });
 });

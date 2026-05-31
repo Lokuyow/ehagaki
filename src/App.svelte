@@ -480,6 +480,9 @@
     setIsLoggingOut: (next) => {
       isLoggingOut = next;
     },
+    setProfileLoading: (next) => {
+      isLoadingProfileStore.set(next);
+    },
     getAuthStateSnapshot: () => authState.value,
     getCurrentRxNostr: () => rxNostr,
     setCurrentRxNostr: (next) => {
@@ -514,6 +517,7 @@
       errorMessage = next;
     },
     refreshAccountList,
+    reloadWindow: () => window.location.reload(),
     closeLogoutDialog: logoutDialog.close,
     logger: console,
   });

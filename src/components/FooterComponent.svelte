@@ -90,19 +90,15 @@
             className={`profile-display${isLoadingProfile ? " loading" : ""}`}
             onClick={onOpenLogoutDialog}
         >
-            {#if isLoadingProfile}
-                <LoadingPlaceholder showLoader={true} />
-            {:else}
-                <ProfileAvatar
-                    src={profileData?.picture || ""}
-                    alt={getProfileAlt()}
-                    rootClassName="profile-picture"
-                    imageClassName="profile-picture-image"
-                    fallbackClassName="profile-picture-fallback"
-                    fallbackAriaLabel="User"
-                    onLoadingStatusChange={handleAvatarLoadingStatusChange}
-                />
-            {/if}
+            <ProfileAvatar
+                src={profileData?.picture || ""}
+                alt={getProfileAlt()}
+                rootClassName="profile-picture"
+                imageClassName="profile-picture-image"
+                fallbackClassName="profile-picture-fallback"
+                fallbackAriaLabel="User"
+                onLoadingStatusChange={handleAvatarLoadingStatusChange}
+            />
         </Button>
     {:else if !isLoadingProfile && !isAuthenticated}
         <Button

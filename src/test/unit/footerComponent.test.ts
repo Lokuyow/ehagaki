@@ -151,6 +151,16 @@ describe('FooterComponent', () => {
         expect(onOpenLogoutDialog).toHaveBeenCalledOnce();
     });
 
+    it('プロフィール読込中でも profile-display はローダーではなくアバター表示を維持する', () => {
+        isLoadingProfileStore.set(true);
+        profileLoadedStore.set(true);
+
+        const { container } = renderFooter();
+
+        expect(container.querySelector('.loading-placeholder')).toBeNull();
+        expect(container.querySelector('.profile-picture')).toBeTruthy();
+    });
+
     it('初期化中でも認証済みなら profile-display ボタン押下でログアウトダイアログを開ける', async () => {
         const onOpenLogoutDialog = vi.fn();
 

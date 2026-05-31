@@ -37,6 +37,7 @@ export interface AppAccountSessionControllerDependencies {
     setIsSwitchingAccount(next: boolean): void;
     getIsLoggingOut(): boolean;
     setIsLoggingOut(next: boolean): void;
+    setProfileLoading(next: boolean): void;
     getAuthStateSnapshot(): AuthStateSnapshot | null | undefined;
     getCurrentRxNostr(): unknown;
     setCurrentRxNostr(next: undefined): void;
@@ -79,6 +80,7 @@ export interface AppAccountSessionControllerDependencies {
     setSecretKey(next: string): void;
     setErrorMessage(next: string): void;
     refreshAccountList(): void;
+    reloadWindow(): void;
     closeLogoutDialog(): void;
     logger: Pick<Console, 'error'>;
 }
@@ -98,6 +100,7 @@ export function createAppAccountSessionController(
         }
 
         deps.setIsSwitchingAccount(true);
+        deps.setProfileLoading(false);
 
         try {
             const currentAuth = deps.getAuthStateSnapshot();
@@ -154,7 +157,9 @@ export function createAppAccountSessionController(
                 deps.setCurrentRxNostr(
                     deps.disposeNostrSession(deps.getCurrentRxNostr()),
                 );
-                await switchAccount(nextAction.pubkeyHex);
+                deps.setProfileLoading(false);
+                deps.reloadWindow();
+                return;
             } else if (nextAction.kind === 'guest') {
                 deps.setCurrentRxNostr(
                     deps.disposeNostrSession(deps.getCurrentRxNostr()),
