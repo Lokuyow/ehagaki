@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run",
+    "complexity:thread-graph": "node scripts/threadGraphComplexityCheck.mjs",
+    "test": "npm run complexity:thread-graph && vitest run",
+    "test:unit": "npm run complexity:thread-graph && vitest run src/test/unit",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "deploy": "gh-pages -d dist"

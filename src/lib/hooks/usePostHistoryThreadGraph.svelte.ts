@@ -77,6 +77,7 @@ import {
 import {
     coordinateThreadGraphNodeLoadExecution,
     coordinateThreadGraphRevalidateTemplate,
+    coordinateThreadGraphStatusStrategy,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../postHistoryThreadGraphFetchCoordinator";
 
@@ -1193,65 +1194,77 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
 
-                if (snapshot.status === "deleted") {
-                    if (snapshot.authorPubkey) {
-                        hideEvent(snapshot.authorPubkey, parentEventId);
-                        markParentDeletedForEvent(parentEventId, snapshot.authorPubkey, {
-                            revealKnownParent: true,
-                        });
-                    }
-                    setParentDeleted(post.eventId, nodeEventId);
-                    return;
-                }
+                const parentStatus = snapshot.status === "deleted"
+                    ? "deleted"
+                    : snapshot.status === "not-found"
+                        ? "not-found"
+                        : snapshot.status === "resolved" && snapshot.event
+                            ? "resolved"
+                            : "failed";
+                await coordinateThreadGraphStatusStrategy({
+                    status: parentStatus,
+                    strategies: {
+                        deleted: () => {
+                            if (snapshot.authorPubkey) {
+                                hideEvent(snapshot.authorPubkey, parentEventId);
+                                markParentDeletedForEvent(parentEventId, snapshot.authorPubkey, {
+                                    revealKnownParent: true,
+                                });
+                            }
+                            setParentDeleted(post.eventId, nodeEventId);
+                        },
+                        "not-found": () => {
+                            updateExpansion(post.eventId, nodeEventId, (state) => ({
+                                ...buildParentLoadedExpansionState(state, {
+                                    revalidatingParent: false,
+                                    parentMissing: options.showInitialLoading
+                                        ? true
+                                        : state.parentMissing,
+                                    parentDeleted: false,
+                                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                                }),
+                            }));
+                        },
+                        resolved: () => {
+                            if (!snapshot.event) {
+                                return;
+                            }
 
-                if (snapshot.status === "not-found") {
-                    updateExpansion(post.eventId, nodeEventId, (state) => ({
-                        ...buildParentLoadedExpansionState(state, {
-                            revalidatingParent: false,
-                            parentMissing: options.showInitialLoading
-                                ? true
-                                : state.parentMissing,
-                            parentDeleted: false,
-                            lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                        }),
-                    }));
-                    return;
-                }
+                            if (snapshot.authorPubkey && isDeletedEvent(snapshot.authorPubkey, parentEventId)) {
+                                setParentDeleted(post.eventId, nodeEventId);
+                                return;
+                            }
 
-                if (snapshot.status === "resolved" && snapshot.event) {
-                    if (snapshot.authorPubkey && isDeletedEvent(snapshot.authorPubkey, parentEventId)) {
-                        setParentDeleted(post.eventId, nodeEventId);
-                        return;
-                    }
-
-                    const node = upsertNode({
-                        event: snapshot.event,
-                        relayUrls: snapshot.relayHints,
-                        sources: ["fetched-parent"],
-                        profile: snapshot.profile,
-                    });
-                    upsertParentEdge(node.eventId, node.parentEventId);
-                    updateExpansion(post.eventId, nodeEventId, (state) => ({
-                        ...buildParentLoadedExpansionState(state, {
-                            revalidatingParent: false,
-                            parentMissing: false,
-                            parentDeleted: false,
-                            lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                        }),
-                    }));
-                    return;
-                }
-
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    loadingParent: false,
-                    revalidatingParent: false,
-                    visibleParent: state.visibleParent,
-                    parentError: options.showInitialLoading
-                        ? snapshot.errorCode ?? "fetch_failed"
-                        : state.parentError,
-                    showParentLoadingIndicator: false,
-                }));
+                            const node = upsertNode({
+                                event: snapshot.event,
+                                relayUrls: snapshot.relayHints,
+                                sources: ["fetched-parent"],
+                                profile: snapshot.profile,
+                            });
+                            upsertParentEdge(node.eventId, node.parentEventId);
+                            updateExpansion(post.eventId, nodeEventId, (state) => ({
+                                ...buildParentLoadedExpansionState(state, {
+                                    revalidatingParent: false,
+                                    parentMissing: false,
+                                    parentDeleted: false,
+                                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                                }),
+                            }));
+                        },
+                        failed: () => {
+                            updateExpansion(post.eventId, nodeEventId, (state) => ({
+                                ...state,
+                                loadingParent: false,
+                                revalidatingParent: false,
+                                visibleParent: state.visibleParent,
+                                parentError: options.showInitialLoading
+                                    ? snapshot.errorCode ?? "fetch_failed"
+                                    : state.parentError,
+                                showParentLoadingIndicator: false,
+                            }));
+                        },
+                    },
+                });
             },
         });
     }
@@ -1519,15 +1532,31 @@ export function usePostHistoryThreadGraph({
                         resolveProfiles: !options.prefetchOnly,
                     });
                 }
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...buildChildrenLoadedExpansionState(state, {
-                        revalidatingChildren: false,
-                        lastFetchedChildrenAt: result.fetchedAt,
-                    }),
-                }));
-                if (!options.prefetchOnly) {
-                    void prefetchChildReplyCounts(post, nodeEventId);
-                }
+
+                const childrenStatus = nextRecords.length > 0
+                    ? "resolved"
+                    : result.events.length > 0
+                        ? "deleted"
+                        : "not-found";
+                const applyChildrenLoaded = (): void => {
+                    updateExpansion(post.eventId, nodeEventId, (state) => ({
+                        ...buildChildrenLoadedExpansionState(state, {
+                            revalidatingChildren: false,
+                            lastFetchedChildrenAt: result.fetchedAt,
+                        }),
+                    }));
+                    if (!options.prefetchOnly) {
+                        void prefetchChildReplyCounts(post, nodeEventId);
+                    }
+                };
+                await coordinateThreadGraphStatusStrategy({
+                    status: childrenStatus,
+                    strategies: {
+                        resolved: applyChildrenLoaded,
+                        "not-found": applyChildrenLoaded,
+                        deleted: applyChildrenLoaded,
+                    },
+                });
             },
         });
     }
@@ -1827,122 +1856,128 @@ export function usePostHistoryThreadGraph({
             }));
         }
 
-        const rxNostr = getRxNostr();
-        if (!rxNostr) {
-            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, false);
-            return;
-        }
-
-        const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
         const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
-        const task = replyFetchService.fetchDirectReplies(rxNostr, {
-            eventId: batchEventIds[0] ?? "",
-            eventIds: batchEventIds,
-            createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
-            relayHints,
-            relayConfig: getRelayConfig(),
-        });
-        taskTracker.replaceChildrenFetchTask(taskKey, task);
-
-        try {
-            const result = await task.promise;
-            taskTracker.deleteChildrenFetchTask(taskKey);
-            if (!isPrefetchBatchCurrent(post.eventId, batchEventIds, activeGraphRequestId, requestTokens)) {
-                return;
+        const isPrefetchBatchActive = (): boolean => {
+            if (activeGraphRequestId !== taskTracker.getRequestId() || !getShow()) {
+                return false;
             }
 
-            const batchEventIdSet = new Set(batchEventIds);
-            const directReplyItems = result.events.filter((item) => {
-                const parentId = parseKind1ThreadReferences(item.event).parentId;
-                return !!parentId && batchEventIdSet.has(parentId) && item.event.id !== parentId;
-            });
-            if (directReplyItems.length > 0) {
-                await fetchAndStoreDeletionRequests(
-                    post.eventId,
-                    directReplyItems.map((item) => item.event),
-                    [...relayHints, ...result.relayUrls],
-                    `children-prefetch:${batchEventIds.join(",")}`,
-                );
-            }
-            const visibleItems = await filterVisibleReplyItems(directReplyItems);
-            if (!isPrefetchBatchCurrent(post.eventId, batchEventIds, activeGraphRequestId, requestTokens)) {
-                return;
-            }
+            return batchEventIds.every((eventId) =>
+                taskTracker.getChildRequestToken(buildAnchorNodeKey(post.eventId, eventId)) === requestTokens.get(eventId),
+            );
+        };
 
-            const itemsByParentId = new Map<string, typeof visibleItems>();
-            for (const item of visibleItems) {
-                const parentId = parseKind1ThreadReferences(item.event).parentId;
-                if (!parentId || !batchEventIdSet.has(parentId)) {
-                    continue;
+        const cleanupOwnedPrefetchTokens = (): void => {
+            for (const eventId of batchEventIds) {
+                const key = buildAnchorNodeKey(post.eventId, eventId);
+                if (taskTracker.getChildRequestToken(key) === requestTokens.get(eventId)) {
+                    taskTracker.deleteChildRequestToken(key);
                 }
+            }
+        };
 
-                const items = itemsByParentId.get(parentId) ?? [];
-                items.push(item);
-                itemsByParentId.set(parentId, items);
+        const completePrefetchBatch = (loadedChildren: boolean): void => {
+            if (!isPrefetchBatchActive()) {
+                return;
             }
 
             for (const eventId of batchEventIds) {
-                const items = itemsByParentId.get(eventId) ?? [];
-                if (items.length > 0) {
-                    await childInteractionsRepositoryImpl.upsertChildInteractions({
-                        parentEventId: eventId,
-                        events: items,
-                        fetchedAt: result.fetchedAt,
-                    });
+                updateExpansion(post.eventId, eventId, (state) => ({
+                    ...buildChildrenLoadedExpansionState(state, {
+                        loadedChildren,
+                        revalidatingChildren: false,
+                        lastFetchedChildrenAt: Date.now(),
+                    }),
+                }));
+            }
+        };
+
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: isPrefetchBatchActive,
+            cleanup: () => {
+                taskTracker.deleteChildrenFetchTask(taskKey);
+                cleanupOwnedPrefetchTokens();
+            },
+            onError: () => {
+                completePrefetchBatch(false);
+            },
+            run: async ({ ensureActive }) => {
+                const rxNostr = getRxNostr();
+                if (!rxNostr) {
+                    completePrefetchBatch(false);
+                    return;
                 }
 
-                const nextRecords = await filterVisibleReplyRecords(
-                    await directReplyRecordsAdapterImpl.getDirectReplyRecords(eventId),
-                );
-                await upsertReplyRecords(eventId, nextRecords, ["reply-db", "fetched-child"], {
-                    resolveProfiles: false,
+                const relayHints = getChildrenPrefetchRelayHints(post, batchNodes);
+                const task = replyFetchService.fetchDirectReplies(rxNostr, {
+                    eventId: batchEventIds[0] ?? "",
+                    eventIds: batchEventIds,
+                    createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
+                    relayHints,
+                    relayConfig: getRelayConfig(),
                 });
-            }
-            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, true);
-        } catch {
-            completePrefetchBatch(post.eventId, batchEventIds, activeGraphRequestId, requestTokens, false);
-        } finally {
-            taskTracker.deleteChildrenFetchTask(taskKey);
-        }
-    }
+                taskTracker.replaceChildrenFetchTask(taskKey, task);
 
-    function isPrefetchBatchCurrent(
-        anchorEventId: string,
-        eventIds: string[],
-        activeGraphRequestId: number,
-        requestTokens: Map<string, number>,
-    ): boolean {
-        if (activeGraphRequestId !== taskTracker.getRequestId() || !getShow()) {
-            return false;
-        }
+                const result = await task.promise;
+                taskTracker.deleteChildrenFetchTask(taskKey);
+                if (!ensureActive()) {
+                    return;
+                }
 
-        return eventIds.every((eventId) =>
-            taskTracker.getChildRequestToken(buildAnchorNodeKey(anchorEventId, eventId)) === requestTokens.get(eventId),
-        );
-    }
+                const batchEventIdSet = new Set(batchEventIds);
+                const directReplyItems = result.events.filter((item) => {
+                    const parentId = parseKind1ThreadReferences(item.event).parentId;
+                    return !!parentId && batchEventIdSet.has(parentId) && item.event.id !== parentId;
+                });
+                if (directReplyItems.length > 0) {
+                    await fetchAndStoreDeletionRequests(
+                        post.eventId,
+                        directReplyItems.map((item) => item.event),
+                        [...relayHints, ...result.relayUrls],
+                        `children-prefetch:${batchEventIds.join(",")}`,
+                    );
+                }
+                const visibleItems = await filterVisibleReplyItems(directReplyItems);
+                if (!ensureActive()) {
+                    return;
+                }
 
-    function completePrefetchBatch(
-        anchorEventId: string,
-        eventIds: string[],
-        activeGraphRequestId: number,
-        requestTokens: Map<string, number>,
-        loadedChildren: boolean,
-    ): void {
-        if (!isPrefetchBatchCurrent(anchorEventId, eventIds, activeGraphRequestId, requestTokens)) {
-            return;
-        }
+                const itemsByParentId = new Map<string, typeof visibleItems>();
+                for (const item of visibleItems) {
+                    const parentId = parseKind1ThreadReferences(item.event).parentId;
+                    if (!parentId || !batchEventIdSet.has(parentId)) {
+                        continue;
+                    }
 
-        for (const eventId of eventIds) {
-            const key = buildAnchorNodeKey(anchorEventId, eventId);
-            updateExpansion(anchorEventId, eventId, (state) => ({
-                ...buildChildrenLoadedExpansionState(state, {
-                    loadedChildren,
-                    revalidatingChildren: false,
-                    lastFetchedChildrenAt: Date.now(),
-                }),
-            }));
-            taskTracker.deleteChildRequestToken(key);
-        }
+                    const items = itemsByParentId.get(parentId) ?? [];
+                    items.push(item);
+                    itemsByParentId.set(parentId, items);
+                }
+
+                for (const eventId of batchEventIds) {
+                    const items = itemsByParentId.get(eventId) ?? [];
+                    if (items.length > 0) {
+                        await childInteractionsRepositoryImpl.upsertChildInteractions({
+                            parentEventId: eventId,
+                            events: items,
+                            fetchedAt: result.fetchedAt,
+                        });
+                    }
+
+                    const nextRecords = await filterVisibleReplyRecords(
+                        await directReplyRecordsAdapterImpl.getDirectReplyRecords(eventId),
+                    );
+                    await upsertReplyRecords(eventId, nextRecords, ["reply-db", "fetched-child"], {
+                        resolveProfiles: false,
+                    });
+                }
+                if (!ensureActive()) {
+                    return;
+                }
+
+                completePrefetchBatch(true);
+            },
+        });
     }
 
     async function upsertReplyRecords(

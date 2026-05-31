@@ -4,6 +4,7 @@ import {
     coordinateThreadGraphNodeLoadExecution,
     coordinateThreadGraphRevalidateExecution,
     coordinateThreadGraphRevalidateTemplate,
+    coordinateThreadGraphStatusStrategy,
     handleThreadGraphInFlightLoad,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../../lib/postHistoryThreadGraphFetchCoordinator";
@@ -338,5 +339,45 @@ describe("postHistoryThreadGraphFetchCoordinator", () => {
         });
 
         expect(runRevalidate).toHaveBeenCalledWith({ showInitialLoading: true });
+    });
+
+    it("status strategy は一致したハンドラを実行する", async () => {
+        const onResolved = vi.fn(async () => undefined);
+        const onFallback = vi.fn(async () => undefined);
+
+        await coordinateThreadGraphStatusStrategy<"resolved" | "deleted" | "not-found">({
+            status: "resolved",
+            strategies: {
+                resolved: onResolved,
+                deleted: vi.fn(async () => undefined),
+            },
+            fallback: onFallback,
+        });
+
+        expect(onResolved).toHaveBeenCalledTimes(1);
+        expect(onFallback).not.toHaveBeenCalled();
+    });
+
+    it("status strategy は一致しない場合に fallback を実行する", async () => {
+        const onFallback = vi.fn(async () => undefined);
+
+        await coordinateThreadGraphStatusStrategy<"resolved" | "deleted" | "not-found">({
+            status: "not-found",
+            strategies: {
+                resolved: vi.fn(async () => undefined),
+            },
+            fallback: onFallback,
+        });
+
+        expect(onFallback).toHaveBeenCalledTimes(1);
+    });
+
+    it("status strategy は一致と fallback が無い場合は no-op", async () => {
+        await coordinateThreadGraphStatusStrategy<"resolved" | "deleted" | "not-found">({
+            status: "deleted",
+            strategies: {
+                resolved: vi.fn(async () => undefined),
+            },
+        });
     });
 });

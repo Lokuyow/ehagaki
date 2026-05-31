@@ -63,6 +63,12 @@ export interface ThreadGraphNodeLoadExecutionOptions {
     runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void>;
 }
 
+export interface ThreadGraphStatusStrategyOptions<TStatus extends string> {
+    status: TStatus;
+    strategies: Partial<Record<TStatus, () => void | Promise<void>>>;
+    fallback?: () => void | Promise<void>;
+}
+
 export function handleThreadGraphInFlightLoad(options: ThreadGraphInFlightLoadOptions): boolean {
     if (!options.loading && !options.revalidating) {
         return false;
@@ -112,6 +118,17 @@ export async function coordinateThreadGraphRevalidateTemplate(
     } finally {
         options.cleanup?.();
     }
+}
+
+export async function coordinateThreadGraphStatusStrategy<TStatus extends string>(
+    options: ThreadGraphStatusStrategyOptions<TStatus>,
+): Promise<void> {
+    const strategy = options.strategies[options.status] ?? options.fallback;
+    if (!strategy) {
+        return;
+    }
+
+    await strategy();
 }
 
 export async function coordinateThreadGraphRevalidateExecution(
