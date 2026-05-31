@@ -156,6 +156,7 @@
   import { createAppAuthLoginController } from "./lib/appAuthLoginController";
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
+  import { createAppAccountDialogController } from "./lib/appAccountDialogController";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -503,6 +504,38 @@
     },
     refreshAccountList,
     closeLogoutDialog: logoutDialog.close,
+    logger: console,
+  });
+  const appAccountDialogController = createAppAccountDialogController({
+    accountManager,
+    requestLogoutAccount: (pubkeyHex) => logoutAccount(pubkeyHex),
+    closeLogoutDialog: logoutDialog.close,
+    openAddAccountDialog: addAccountDialog.open,
+    getPendingLastLogoutPubkey: () => pendingLastLogoutPubkey,
+    setPendingLastLogoutPubkey: (next) => {
+      pendingLastLogoutPubkey = next;
+    },
+    setLastAccountLogoutError: (next) => {
+      lastAccountLogoutError = next;
+    },
+    setShowTransitionOverlay: (next) => {
+      showTransitionOverlay = next;
+    },
+    getIsLoggingOut: () => isLoggingOut,
+    setIsLoggingOut: (next) => {
+      isLoggingOut = next;
+    },
+    setShowLastAccountLogoutConfirm: (next) => {
+      showLastAccountLogoutConfirm = next;
+    },
+    resetUploadDisplayState,
+    getCurrentRxNostr: () => rxNostr,
+    setCurrentRxNostr: (next) => {
+      rxNostr = next;
+    },
+    disposeNostrSession,
+    logoutLastAccount: (pubkeyHex) => authService.logoutLastAccount(pubkeyHex),
+    reloadWindow: () => window.location.reload(),
     logger: console,
   });
   function getInitialNip46ConnectRelayCandidates(): string[] {
@@ -1019,51 +1052,15 @@
   }
 
   function requestLogoutAccount(pubkeyHex: string) {
-    const accounts = accountManager.getAccounts();
-    const isLastAccount =
-      accounts.length === 1 && accounts[0]?.pubkeyHex === pubkeyHex;
-
-    if (!isLastAccount) {
-      void logoutAccount(pubkeyHex);
-      return;
-    }
-
-    pendingLastLogoutPubkey = pubkeyHex;
-    lastAccountLogoutError = "";
-    showTransitionOverlay = true;
-    logoutDialog.close();
-    setTimeout(() => {
-      if (pendingLastLogoutPubkey === pubkeyHex) {
-        showLastAccountLogoutConfirm = true;
-      }
-      showTransitionOverlay = false;
-    }, 50);
+    appAccountDialogController.requestLogoutAccount(pubkeyHex);
   }
 
   function cancelLastAccountLogout() {
-    if (isLoggingOut) return;
-    showLastAccountLogoutConfirm = false;
-    pendingLastLogoutPubkey = null;
-    lastAccountLogoutError = "";
+    appAccountDialogController.cancelLastAccountLogout();
   }
 
   async function confirmLastAccountLogout() {
-    if (!pendingLastLogoutPubkey || isLoggingOut) return;
-
-    isLoggingOut = true;
-    lastAccountLogoutError = "";
-    try {
-      resetUploadDisplayState();
-      rxNostr = disposeNostrSession(rxNostr);
-      await authService.logoutLastAccount(pendingLastLogoutPubkey);
-      window.location.reload();
-    } catch (error) {
-      console.error("最後のアカウントのリセット中にエラー:", error);
-      lastAccountLogoutError =
-        error instanceof Error ? error.message : "reset_failed";
-    } finally {
-      isLoggingOut = false;
-    }
+    await appAccountDialogController.confirmLastAccountLogout();
   }
 
   /**
@@ -1080,12 +1077,7 @@
    * 切替中はtransition overlayでちらつきを防止。
    */
   function handleAddAccount() {
-    showTransitionOverlay = true;
-    logoutDialog.close();
-    setTimeout(() => {
-      addAccountDialog.open();
-      showTransitionOverlay = false;
-    }, 50);
+    appAccountDialogController.handleAddAccount();
   }
 
   async function handleNip07Login(): Promise<string | undefined> {
