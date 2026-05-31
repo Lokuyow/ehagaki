@@ -75,13 +75,7 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type {
-    AuthResult,
-    Draft,
-    MediaGalleryItem,
-    NostrEvent,
-    PostResult,
-  } from "./lib/types";
+  import type { AuthResult, Draft, NostrEvent, PostResult } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -138,10 +132,7 @@
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
   import type { EmbedSettingsSetPayload } from "./lib/embedProtocol";
-  import {
-    applyDraftToComposer,
-    createDraftSavePayload,
-  } from "./lib/draftContentUtils";
+  import { createDraftComposerController } from "./lib/draftComposerController";
   import { createPostHistoryDialogApplyController } from "./lib/postHistoryDialogApplyController";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
@@ -163,6 +154,7 @@
     runNip07Login,
     runNip46Login,
   } from "./lib/appAuthUtils";
+  import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
@@ -334,6 +326,10 @@
       },
       logger: console,
     });
+  const appAuthEffectController = createAppAuthEffectController({
+    customEmojiStore,
+    customEmojiUsageStore,
+  });
   const nip46AuthFlowCoordinator = createNip46AuthFlowController({
     startNip46NostrConnect: (relayCandidates) =>
       authService.startNip46NostrConnect(relayCandidates),
@@ -477,6 +473,30 @@
         },
       );
     },
+  });
+  const draftComposerController = createDraftComposerController({
+    getEditorHtml: () => postComponentRef?.getEditorHtml?.(),
+    getGalleryItems: () => mediaGalleryStore.getItems(),
+    getChannelContextState: () => channelContextState.value,
+    getReplyQuoteState: () => replyQuoteState.value,
+    getPubkeyHex: () => authState.value?.pubkey ?? null,
+    saveDraft,
+    stageDraftLimitConfirm: draftLimitConfirm.stage,
+    isGalleryMode: () => !mediaFreePlacementStore.value,
+    document,
+    clearGallery: () => mediaGalleryStore.clearAll(),
+    addGalleryItem: (item) => mediaGalleryStore.addItem(item),
+    loadDraftContent: (content) => {
+      postComponentRef?.loadDraftContent(content);
+    },
+    appendMediaToEditor: (items) => {
+      postComponentRef?.appendMediaToEditor(items);
+    },
+    generateMediaItemId,
+    restoreChannelContext,
+    clearChannelContext,
+    restoreReplyQuote,
+    clearReplyQuote,
   });
 
   function notifyInboundInteractionsSaved(parentEventIds: string[]): void {
@@ -1184,19 +1204,16 @@
   }
 
   $effect(() => {
-    const pubkey = authState.value?.pubkey;
-    if (!pubkey || !authState.value?.isAuthenticated) {
-      return;
-    }
-
-    void customEmojiStore.prefetchCache({ pubkey });
-    void customEmojiUsageStore.load({ pubkey });
+    appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
+      authState.value,
+    );
   });
 
   $effect(() => {
     authState.value?.pubkey;
     authState.value?.type;
-    nip46ConnectionCheckStatus = "idle";
+    nip46ConnectionCheckStatus =
+      appAuthEffectController.resolveNip46ConnectionCheckStatusOnAuthIdentityChange();
   });
 
   $effect(() => {
@@ -1474,53 +1491,11 @@
 
   // --- 下書き機能ハンドラ---
   async function handleSaveDraft(): Promise<boolean> {
-    if (!postComponentRef?.getEditorHtml) return false;
-    const payload = createDraftSavePayload({
-      htmlContent: postComponentRef.getEditorHtml(),
-      galleryItems: mediaGalleryStore.getItems(),
-      channelContextState: channelContextState.value,
-      replyQuoteState: replyQuoteState.value,
-    });
-
-    if (!payload) return false;
-
-    const result = await saveDraft(
-      payload.content,
-      payload.galleryItems,
-      payload.replyQuoteData,
-      payload.channelData,
-      { pubkeyHex: authState.value?.pubkey ?? null },
-    );
-    if (result.needsConfirmation) {
-      draftLimitConfirm.stage({
-        content: payload.content,
-        galleryItems: payload.galleryItems,
-        channelData: payload.channelData,
-        replyQuoteData: payload.replyQuoteData,
-      });
-      return false;
-    }
-    return result.success;
+    return draftComposerController.saveDraftFromComposer();
   }
 
   function handleApplyDraft(draft: Draft) {
-    applyDraftToComposer({
-      draft,
-      isGalleryMode: !mediaFreePlacementStore.value,
-      document,
-      clearGallery: () => mediaGalleryStore.clearAll(),
-      addGalleryItem: (item: MediaGalleryItem) =>
-        mediaGalleryStore.addItem(item),
-      loadDraftContent: (content: string) =>
-        postComponentRef?.loadDraftContent(content),
-      appendMediaToEditor: (items: MediaGalleryItem[]) =>
-        postComponentRef?.appendMediaToEditor(items),
-      generateMediaItemId,
-      restoreChannelContext,
-      clearChannelContext,
-      restoreReplyQuote,
-      clearReplyQuote,
-    });
+    draftComposerController.applyDraftToComposer(draft);
   }
 
   function handlePostHistoryReply(post: PostHistoryRecord): void {
