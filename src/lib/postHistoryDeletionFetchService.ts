@@ -9,6 +9,7 @@ import type { NostrEvent, RelayConfig } from "./types";
 
 const POST_HISTORY_DELETION_FETCH_TIMEOUT_MS = 4_000;
 const POST_HISTORY_DELETION_FETCH_RELAY_LIMIT = 8;
+const POST_HISTORY_DELETION_FETCH_TIMEOUT_WARN_INTERVAL_MS = 60_000;
 
 export interface PostHistoryDeletionFetchTarget {
     event: NostrEvent;
@@ -89,6 +90,7 @@ export class PostHistoryDeletionFetchService {
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
     private now: () => number;
+    private lastTimeoutWarnAt = 0;
 
     constructor(deps: PostHistoryDeletionFetchServiceDeps = {}) {
         this.console = deps.console ?? (
@@ -179,7 +181,7 @@ export class PostHistoryDeletionFetchService {
                 rxReq.over();
 
                 timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_deletion_fetch_timeout");
+                    this.warnDeletionFetchTimeout();
                     safeResolve("timeout");
                 }, params.timeoutMs ?? POST_HISTORY_DELETION_FETCH_TIMEOUT_MS);
             } catch (error) {
@@ -194,6 +196,16 @@ export class PostHistoryDeletionFetchService {
                 resolveTask?.("cancelled");
             },
         };
+    }
+
+    private warnDeletionFetchTimeout(): void {
+        const now = this.now();
+        if (now - this.lastTimeoutWarnAt < POST_HISTORY_DELETION_FETCH_TIMEOUT_WARN_INTERVAL_MS) {
+            return;
+        }
+
+        this.lastTimeoutWarnAt = now;
+        this.console.warn("post_history_deletion_fetch_timeout");
     }
 
     private handlePacket(

@@ -30,6 +30,7 @@ export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CONCURRENCY = 2
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT = 250;
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS = 6_000;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT = 8;
+const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS = 60_000;
 
 export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
     ownerPubkeyHex: string;
@@ -162,6 +163,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
     private now: () => number;
+    private lastFetchTimeoutWarnAt = 0;
 
     constructor(deps: PostHistoryVisibleRangeChildInteractionRepairServiceDeps = {}) {
         this.directReplySaveService =
@@ -514,7 +516,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 rxReq.over();
 
                 timeoutId = this.setTimeoutFn(() => {
-                    this.console.warn("post_history_visible_child_interaction_repair_fetch_timeout");
+                    this.warnCandidateFetchTimeout();
                     safeResolve("timeout");
                 }, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS);
             } catch (error) {
@@ -527,6 +529,18 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             promise,
             cancel: () => resolveTask?.("cancelled"),
         };
+    }
+
+    private warnCandidateFetchTimeout(): void {
+        const now = this.now();
+        if (now - this.lastFetchTimeoutWarnAt
+            < POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS
+        ) {
+            return;
+        }
+
+        this.lastFetchTimeoutWarnAt = now;
+        this.console.warn("post_history_visible_child_interaction_repair_fetch_timeout");
     }
 
     private handleCandidatePacket(
