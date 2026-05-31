@@ -76,17 +76,10 @@
 <div class="footer-bar">
     {#if !isAuthInitialized}
         <Button
+            variant="default"
             shape="circle"
             className="profile-display loading"
-            disabled={true}
-        >
-            <LoadingPlaceholder showLoader={true} />
-        </Button>
-    {:else if isAuthenticated && isLoadingProfile}
-        <Button
-            shape="circle"
-            className="profile-display loading"
-            disabled={true}
+            onClick={onOpenLogoutDialog}
         >
             <LoadingPlaceholder showLoader={true} />
         </Button>
@@ -95,10 +88,7 @@
             variant="default"
             shape="circle"
             className={`profile-display${isLoadingProfile ? " loading" : ""}`}
-            disabled={isLoadingProfile}
-            onClick={() => {
-                if (!isLoadingProfile) onOpenLogoutDialog();
-            }}
+            onClick={onOpenLogoutDialog}
         >
             {#if isLoadingProfile}
                 <LoadingPlaceholder showLoader={true} />
