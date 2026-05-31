@@ -227,6 +227,23 @@ export function usePostHistoryQuotePreviews({
         );
     }
 
+    async function refreshQuotePreviews(posts: PostHistoryRecord[]): Promise<void> {
+        const index = postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts);
+        const contexts = Object.values(index.contextsByEventId);
+        if (contexts.length === 0) {
+            return;
+        }
+
+        await resolver.ensureTargets(
+            contexts.map((context) =>
+                postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(context, scopeKey),
+            ),
+            {
+                force: true,
+            },
+        );
+    }
+
     $effect(() => {
         if (getShow()) {
             return;
@@ -278,5 +295,6 @@ export function usePostHistoryQuotePreviews({
     return {
         getQuotePreviews,
         retryQuotePreview,
+        refreshQuotePreviews,
     };
 }

@@ -48,6 +48,10 @@ export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
 export interface PostHistoryVisibleRangeRelationRepairRequest
     extends PostHistoryVisibleRangeChildInteractionRepairRequest {
     relationKinds?: PostHistoryRelationKind[];
+    quoteVisibleRangeRepairExecutor?: (
+        rxNostr: RxNostr,
+        params: PostHistoryVisibleRangeRelationRepairRequest,
+    ) => Promise<void>;
 }
 
 export interface PostHistoryVisibleRangeChildInteractionRepairResult {
@@ -249,13 +253,16 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         const promise = (async (): Promise<PostHistoryVisibleRangeRelationRepairResult> => {
             const childResult = await childRepairTask.promise;
             let quoteRepairApplied = false;
+            const quoteExecutor =
+                params.quoteVisibleRangeRepairExecutor
+                ?? this.quoteVisibleRangeRepairExecutor;
             if (
                 relationKinds.includes("quote")
                 && childResult.status !== "cancelled"
                 && params.isActive?.() !== false
-                && this.quoteVisibleRangeRepairExecutor
+                && quoteExecutor
             ) {
-                await this.quoteVisibleRangeRepairExecutor(rxNostr, params);
+                await quoteExecutor(rxNostr, params);
                 quoteRepairApplied = true;
             }
 

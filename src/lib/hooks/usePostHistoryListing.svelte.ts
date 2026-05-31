@@ -43,6 +43,7 @@ import {
 } from "../postHistoryCurrentViewRefetchService";
 import {
     postHistoryVisibleRangeChildInteractionRepairService,
+    type PostHistoryVisibleRangeRelationRepairRequest,
     type PostHistoryVisibleRangeRelationRepairResult,
     type PostHistoryVisibleRangeRelationRepairTask,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
@@ -85,6 +86,13 @@ interface UsePostHistoryListingParams {
         posts: PostHistoryRecord[],
         parentEventIds: string[],
     ) => void | Promise<void>;
+    onQuoteVisibleRangeRefreshRequested?: (
+        posts: PostHistoryRecord[],
+    ) => void | Promise<void>;
+    quoteVisibleRangeRepairExecutor?: (
+        rxNostr: RxNostr,
+        params: PostHistoryVisibleRangeRelationRepairRequest,
+    ) => Promise<void>;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -566,6 +574,8 @@ export function usePostHistoryListing({
     onSessionScrollStateInvalidated = () => { },
     onSavedAuthoredPosts = () => undefined,
     onChildInteractionBadgeRefreshRequested = () => undefined,
+    onQuoteVisibleRangeRefreshRequested = () => undefined,
+    quoteVisibleRangeRepairExecutor = undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -813,6 +823,16 @@ export function usePostHistoryListing({
         ).catch(() => undefined);
     }
 
+    function requestQuoteVisibleRangeRefresh(posts: PostHistoryRecord[]): void {
+        if (posts.length === 0) {
+            return;
+        }
+
+        void Promise.resolve(
+            onQuoteVisibleRangeRefreshRequested(posts),
+        ).catch(() => undefined);
+    }
+
     function scheduleReactionDeletionRefresh(
         source: "listing-current-view" | "listing-older-reveal",
         parentEventIds: string[],
@@ -868,6 +888,7 @@ export function usePostHistoryListing({
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts,
                     relationKinds: ["reply", "reaction", "quote"],
+                    quoteVisibleRangeRepairExecutor,
                     relayConfig: getRelayConfig(),
                     isActive,
                 },
@@ -876,8 +897,15 @@ export function usePostHistoryListing({
         if (
             childInteractionRepairResult.status === "cancelled"
             || !isActive()
-            || childInteractionRepairResult.savedParentEventIds.length === 0
         ) {
+            return;
+        }
+
+        if (childInteractionRepairResult.quoteRepairApplied) {
+            requestQuoteVisibleRangeRefresh(visiblePosts);
+        }
+
+        if (childInteractionRepairResult.savedParentEventIds.length === 0) {
             return;
         }
 
@@ -964,6 +992,7 @@ export function usePostHistoryListing({
                     ownerPubkeyHex: pubkeyHex,
                     visiblePosts: networkParentPosts,
                     relationKinds: ["reply", "reaction", "quote"],
+                    quoteVisibleRangeRepairExecutor,
                     relayConfig: getRelayConfig(),
                     isActive: () =>
                         isActiveOlderRevealChildInteractionRepairScope(
@@ -991,6 +1020,10 @@ export function usePostHistoryListing({
                     || result.status === "cancelled"
                 ) {
                     return;
+                }
+
+                if (result.quoteRepairApplied) {
+                    requestQuoteVisibleRangeRefresh(networkParentPosts);
                 }
 
                 if (result.savedParentEventIds.length > 0) {
@@ -3094,6 +3127,7 @@ export function usePostHistoryListing({
                             ownerPubkeyHex: pubkeyHex,
                             visiblePosts: state.loadedPosts,
                             relationKinds: ["reply", "reaction", "quote"],
+                            quoteVisibleRangeRepairExecutor,
                             relayConfig: getRelayConfig(),
                             isActive: () =>
                                 currentViewRefetchTask === task
@@ -3113,6 +3147,10 @@ export function usePostHistoryListing({
                     || !getShow()
                 ) {
                     return;
+                }
+
+                if (childInteractionRepairResult.quoteRepairApplied) {
+                    requestQuoteVisibleRangeRefresh(state.loadedPosts);
                 }
 
                 if (childInteractionRepairResult.savedParentEventIds.length > 0) {

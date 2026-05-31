@@ -53,6 +53,7 @@
     } from "../lib/postHistoryDialogPresentation";
     import { stripPostHistoryInlineQuoteUrisForDisplay } from "../lib/postHistoryQuoteUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
+    import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryReactionLifecycle } from "../lib/postHistoryReactionLifecycleTrigger";
@@ -108,6 +109,11 @@
         notifySavedAuthoredPosts = undefined,
     }: Props = $props();
 
+    const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+    });
     const history = usePostHistoryListing({
         getShow: () => show,
         getPubkeyHex: () => pubkeyHex,
@@ -125,6 +131,18 @@
                 posts,
                 parentEventIds,
             ),
+        onQuoteVisibleRangeRefreshRequested: (posts) =>
+            quotePreviews.refreshQuotePreviews(posts),
+        quoteVisibleRangeRepairExecutor: async (_repairRxNostr, params) => {
+            const quoteDescriptors = collectQuoteRelatedTargetDescriptors(
+                params.visiblePosts,
+            );
+            if (quoteDescriptors.length === 0) {
+                return;
+            }
+
+            await relatedTargetResolver.ensureTargets(quoteDescriptors);
+        },
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({
@@ -134,11 +152,6 @@
         getRelayConfig: () => relayConfig,
         getIsSearchMode: () => history.isSearchMode,
     });
-    const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
-        getShow: () => show,
-        getRxNostr: () => rxNostr,
-        getRelayConfig: () => relayConfig,
-    });
     const quotePreviews = usePostHistoryQuotePreviews({
         getShow: () => show,
         getPosts: () => history.posts,
@@ -146,6 +159,17 @@
         getRelayConfig: () => relayConfig,
         relatedTargetResolver,
     });
+
+    function collectQuoteRelatedTargetDescriptors(posts: PostHistoryRecord[]) {
+        const quoteIndex =
+            postHistoryQuoteTargetDiscoveryAdapter.buildIndex(posts);
+        return Object.values(quoteIndex.contextsByEventId).map((context) =>
+            postHistoryQuoteTargetDiscoveryAdapter.toDescriptor(
+                context,
+                "post-history-listing-quote-visible-range-repair",
+            ),
+        );
+    }
     const postHistoryThreadGraph = usePostHistoryThreadGraph({
         getShow: () => show,
         getPubkeyHex: () => pubkeyHex,

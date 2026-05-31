@@ -93,6 +93,7 @@ const hoisted = vi.hoisted(() => {
         },
         replyRepairServiceMock: {
             repairVisibleRangeChildInteractions: vi.fn(),
+            repairVisibleRangeRelations: vi.fn(),
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
@@ -425,7 +426,7 @@ export function resetPostHistoryDialogHarness(): void {
         }),
         cancel: vi.fn(),
     });
-    replyRepairServiceMock.repairVisibleRangeChildInteractions.mockReturnValue({
+    const defaultRepairTask = {
         promise: Promise.resolve({
             status: 'success',
             targetParentEventIds: [],
@@ -436,9 +437,13 @@ export function resetPostHistoryDialogHarness(): void {
             saturatedChunkCount: 0,
             incompleteParentEventIds: [],
             deletionConfirmationIncomplete: false,
+            relationKinds: ['reply', 'reaction', 'quote'] as const,
+            quoteRepairApplied: false,
         }),
         cancel: vi.fn(),
-    });
+    };
+    replyRepairServiceMock.repairVisibleRangeChildInteractions.mockReturnValue(defaultRepairTask);
+    replyRepairServiceMock.repairVisibleRangeRelations.mockReturnValue(defaultRepairTask);
 
     relayFetchServiceMock.fetchLatest.mockReturnValue({
         promise: Promise.resolve(createRelayFetchResult({ status: 'cancelled' })),

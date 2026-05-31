@@ -791,7 +791,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
             cancel: vi.fn(),
         });
-        replyRepairServiceMock.repairVisibleRangeChildInteractions.mockReturnValueOnce({
+        replyRepairServiceMock.repairVisibleRangeRelations.mockReturnValueOnce({
             promise: repairComplete.promise,
             cancel,
         });
@@ -817,7 +817,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.getByText('self kind1 older')).toBeTruthy();
             expect(screen.getByText('self kind42 older')).toBeTruthy();
             expect(screen.getByText('other kind1 older')).toBeTruthy();
-            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).toHaveBeenCalledWith(
+            expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.objectContaining({
                     ownerPubkeyHex: PUBKEY_HEX,
@@ -876,7 +876,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
+        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
 
         view.unmount();
     });
@@ -926,7 +926,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
+        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
 
         view.unmount();
     });
@@ -976,7 +976,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
+        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
 
         view.unmount();
     });
@@ -1030,7 +1030,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).not.toHaveBeenCalled();
+        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
 
         view.unmount();
     });
@@ -1123,7 +1123,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await waitFor(() => {
             expect(screen.getByText('relay timeout older')).toBeTruthy();
-            expect(replyRepairServiceMock.repairVisibleRangeChildInteractions).toHaveBeenCalledWith(
+            expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.objectContaining({
                     ownerPubkeyHex: PUBKEY_HEX,

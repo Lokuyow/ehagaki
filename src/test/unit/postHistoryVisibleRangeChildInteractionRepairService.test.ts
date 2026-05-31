@@ -243,4 +243,129 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
         expect(rxNostrMock.emittedFilters).toHaveLength(5);
         expect(rxNostrMock.emittedFilters.every((filter) => filter["#e"].length === 30)).toBe(true);
     });
+
+    it("relationKinds が quote のみなら child interaction repair を reply/reaction 無効で起動する", async () => {
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService();
+        const internalRepair = vi.fn(() => ({
+            promise: Promise.resolve({
+                status: "success",
+                targetParentEventIds: [],
+                checkedParentEventIds: [],
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                attemptedChunkCount: 0,
+                saturatedChunkCount: 0,
+                incompleteParentEventIds: [],
+                deletionConfirmationIncomplete: false,
+            }),
+            cancel: vi.fn(),
+        }));
+        (service as any).repairVisibleRangeChildInteractionsInternal = internalRepair;
+
+        const result = await service.repairVisibleRangeRelations(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost("1".repeat(64)), createPost("2".repeat(64), 42)],
+            relationKinds: ["quote"],
+            relayConfig: null,
+        }).promise;
+
+        expect(internalRepair).toHaveBeenCalledWith(
+            rxNostrMock,
+            expect.objectContaining({
+                relationKinds: ["quote"],
+            }),
+            {
+                includeDirectReplies: false,
+                includeReactions: false,
+            },
+        );
+        expect(result.relationKinds).toEqual(["quote"]);
+    });
+
+    it("quote executor が指定されていれば relation-aware repair 完了後に実行される", async () => {
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService();
+        (service as any).repairVisibleRangeChildInteractionsInternal = vi.fn(() => ({
+            promise: Promise.resolve({
+                status: "success",
+                targetParentEventIds: ["1".repeat(64)],
+                checkedParentEventIds: ["1".repeat(64)],
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                attemptedChunkCount: 1,
+                saturatedChunkCount: 0,
+                incompleteParentEventIds: [],
+                deletionConfirmationIncomplete: false,
+            }),
+            cancel: vi.fn(),
+        }));
+        const quoteExecutor = vi.fn(async () => undefined);
+
+        const result = await service.repairVisibleRangeRelations(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost("1".repeat(64))],
+            relationKinds: ["reply", "reaction", "quote"],
+            quoteVisibleRangeRepairExecutor: quoteExecutor,
+            relayConfig: null,
+        }).promise;
+
+        expect(quoteExecutor).toHaveBeenCalledTimes(1);
+        expect(result.quoteRepairApplied).toBe(true);
+    });
+
+    it("quote executor が未指定なら quoteRepairApplied は false のまま", async () => {
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService();
+        (service as any).repairVisibleRangeChildInteractionsInternal = vi.fn(() => ({
+            promise: Promise.resolve({
+                status: "success",
+                targetParentEventIds: ["1".repeat(64)],
+                checkedParentEventIds: ["1".repeat(64)],
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                attemptedChunkCount: 1,
+                saturatedChunkCount: 0,
+                incompleteParentEventIds: [],
+                deletionConfirmationIncomplete: false,
+            }),
+            cancel: vi.fn(),
+        }));
+
+        const result = await service.repairVisibleRangeRelations(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost("1".repeat(64))],
+            relationKinds: ["reply", "reaction", "quote"],
+            relayConfig: null,
+        }).promise;
+
+        expect(result.quoteRepairApplied).toBe(false);
+    });
+
+    it("child interaction repair が cancelled の場合は quote executor を呼ばない", async () => {
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService();
+        (service as any).repairVisibleRangeChildInteractionsInternal = vi.fn(() => ({
+            promise: Promise.resolve({
+                status: "cancelled",
+                targetParentEventIds: ["1".repeat(64)],
+                checkedParentEventIds: [],
+                savedParentEventIds: [],
+                savedDirectReplyCount: 0,
+                attemptedChunkCount: 0,
+                saturatedChunkCount: 0,
+                incompleteParentEventIds: ["1".repeat(64)],
+                deletionConfirmationIncomplete: false,
+            }),
+            cancel: vi.fn(),
+        }));
+        const quoteExecutor = vi.fn(async () => undefined);
+
+        const result = await service.repairVisibleRangeRelations(rxNostrMock as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [createPost("1".repeat(64))],
+            relationKinds: ["quote"],
+            quoteVisibleRangeRepairExecutor: quoteExecutor,
+            relayConfig: null,
+        }).promise;
+
+        expect(quoteExecutor).not.toHaveBeenCalled();
+        expect(result.quoteRepairApplied).toBe(false);
+    });
 });
