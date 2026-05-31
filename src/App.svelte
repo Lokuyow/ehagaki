@@ -115,6 +115,7 @@
     initializeNostrSession,
     completePostAuthBootstrap,
     refreshRelaysAndProfileForAccount,
+    runInitializeNostrSession,
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
@@ -636,7 +637,7 @@
   }
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
-    const session = await initializeNostrSession({
+    await runInitializeNostrSession({
       pubkeyHex,
       relayListUpdatedStore: {
         value: relayListUpdatedStore.value,
@@ -645,10 +646,11 @@
       setRelayManager,
       onRelayConfigSaved: (pubkeyHex, relayConfig) =>
         saveRelayConfigToStorage(pubkeyHex, relayConfig ?? {}),
+      onSession: (session) => {
+        rxNostr = session.rxNostr;
+        relayProfileService = session.relayProfileService;
+      },
     });
-
-    rxNostr = session.rxNostr;
-    relayProfileService = session.relayProfileService;
   }
 
   /**

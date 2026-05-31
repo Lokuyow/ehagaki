@@ -44,6 +44,10 @@ interface InitializeNostrSessionParams {
     onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
 }
 
+interface RunInitializeNostrSessionParams extends InitializeNostrSessionParams {
+    onSession: (session: NostrSessionBootstrap) => void | Promise<void>;
+}
+
 interface SyncAccountStoresParams {
     accountManager: Pick<AccountManager, "getAccounts">;
     accountListStore: AccountListStoreLike;
@@ -102,6 +106,14 @@ export async function initializeNostrSession({
         rxNostr,
         relayProfileService,
     };
+}
+
+export async function runInitializeNostrSession({
+    onSession,
+    ...params
+}: RunInitializeNostrSessionParams): Promise<void> {
+    const session = await initializeNostrSession(params);
+    await onSession(session);
 }
 
 export function syncAccountStores({

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
     applyProfileToStores,
+    runInitializeNostrSession,
     refreshRelaysAndProfileForAccount,
 } from '../../lib/bootstrap/authBootstrap';
 
@@ -89,5 +90,27 @@ describe('refreshRelaysAndProfileForAccount', () => {
         expect(profileDataStore.set).not.toHaveBeenCalled();
         expect(profileLoadedStore.set).not.toHaveBeenCalled();
         expect(accountProfileCacheStore.setProfile).not.toHaveBeenCalled();
+    });
+});
+
+describe('runInitializeNostrSession', () => {
+    it('初期化した session を callback に渡す', async () => {
+        const onSession = vi.fn().mockResolvedValue(undefined);
+
+        await runInitializeNostrSession({
+            relayListUpdatedStore: {
+                value: 0,
+                set: vi.fn(),
+            },
+            setRelayManager: vi.fn(),
+            onRelayConfigSaved: vi.fn(),
+            onSession,
+        });
+
+        expect(onSession).toHaveBeenCalledOnce();
+        expect(onSession.mock.calls[0][0]).toEqual(expect.objectContaining({
+            rxNostr: expect.any(Object),
+            relayProfileService: expect.any(Object),
+        }));
     });
 });
