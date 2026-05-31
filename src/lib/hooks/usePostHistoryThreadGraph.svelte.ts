@@ -95,6 +95,7 @@ import {
     coordinateThreadGraphStatusStrategy,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../postHistoryThreadGraphFetchCoordinator";
+import { profileMetadataCache } from "../profileMetadataCache.svelte";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -438,14 +439,13 @@ export function usePostHistoryThreadGraph({
         const activeRequestId = taskTracker.getRequestId();
 
         const task = (async () => {
-            try {
-                const cachedProfile = await profilesRepositoryImpl.get(pubkey);
-                if (cachedProfile && activeRequestId === taskTracker.getRequestId() && getShow()) {
-                    mergeProfileForPubkey(pubkey, cachedProfile);
-                    onProfileResolved?.(cachedProfile);
-                }
-            } catch {
-                // Network profile lookup below is still allowed to refresh the visible node.
+            const cachedProfile = await profileMetadataCache.getProfile(pubkey, {
+                allowBackgroundRefresh: false,
+            });
+
+            if (cachedProfile && activeRequestId === taskTracker.getRequestId() && getShow()) {
+                mergeProfileForPubkey(pubkey, cachedProfile);
+                onProfileResolved?.(cachedProfile);
             }
 
             const rxNostr = getRxNostr();
@@ -1838,17 +1838,18 @@ export function usePostHistoryThreadGraph({
                             .filter((pubkey): pubkey is string => !!pubkey),
                     ));
                     if (reactionAuthorPubkeys.length > 0) {
-                        const cachedProfiles = await Promise.all(
-                            reactionAuthorPubkeys.map(async (pubkey) => [
-                                pubkey,
-                                await profilesRepositoryImpl.get(pubkey),
-                            ] as const),
+                        const cachedProfilesByPubkey = await profileMetadataCache.getProfiles(
+                            reactionAuthorPubkeys,
+                            {
+                                allowBackgroundRefresh: false,
+                            },
                         );
                         if (!ensureActive()) {
                             continue;
                         }
 
-                        for (const [pubkey, profile] of cachedProfiles) {
+                        for (const pubkey of reactionAuthorPubkeys) {
+                            const profile = cachedProfilesByPubkey[pubkey] ?? null;
                             setReactionProfile(pubkey, profile);
                             refreshProfileForPubkeyInBackground(
                                 pubkey,

@@ -25,6 +25,7 @@ import {
 } from "./storage/profilesRepository";
 import { toEventFromPostHistoryRecord } from "./postHistoryThreadGraphUtils";
 import type { NostrEvent, ProfileData, RelayConfig } from "./types";
+import { profileMetadataCache } from "./profileMetadataCache.svelte";
 
 const POST_HISTORY_RELATED_TARGET_RELAY_LIMIT = 8;
 
@@ -313,13 +314,11 @@ export function createPostHistoryRelatedTargetResolver({
         }
 
         const task = (async () => {
-            try {
-                const cachedProfile = await profilesRepositoryImpl.get(pubkey);
-                if (cachedProfile) {
-                    mergeProfileForPubkey(pubkey, cachedProfile);
-                }
-            } catch {
-                // Ignore cache read failures and continue with a remote refresh when possible.
+            const cachedProfile = await profileMetadataCache.getProfile(pubkey, {
+                allowBackgroundRefresh: false,
+            });
+            if (cachedProfile) {
+                mergeProfileForPubkey(pubkey, cachedProfile);
             }
 
             const currentSnapshot = snapshotsByTargetId[targetEventId];
