@@ -151,12 +151,11 @@
     handleSuccessfulAuthResult,
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
-    runNip07Login,
-    runNip46Login,
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
   import { createAppAuthLoginController } from "./lib/appAuthLoginController";
   import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
+  import { createAppAuthInteractionController } from "./lib/appAuthInteractionController";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -332,6 +331,27 @@
   const appAuthEffectController = createAppAuthEffectController({
     customEmojiStore,
     customEmojiUsageStore,
+  });
+  const appAuthInteractionController = createAppAuthInteractionController({
+    getCurrentAuthType: () => authState.value?.type,
+    getCurrentPubkeyHex: () => authState.value?.pubkey,
+    authenticateWithNip07: () => authService.authenticateWithNip07(),
+    authenticateWithNip46: (bunkerUrl) =>
+      authService.authenticateWithNip46(bunkerUrl),
+    cancelPendingNip46Auth,
+    clearNip46RuntimeForAuthChange,
+    handlePostAuth,
+    setNip07Loading: (next) => {
+      isLoadingNip07 = next;
+    },
+    setNip46Loading: (next) => {
+      isLoadingNip46 = next;
+    },
+    setNip46ConnectionCheckStatus: (next) => {
+      nip46ConnectionCheckStatus = next;
+    },
+    nip46Service,
+    logger: console,
   });
   const appAuthLoginController = createAppAuthLoginController({
     parentClientAuthCoordinator,
@@ -792,26 +812,6 @@
     accountManager.addAccount(pubkeyHex, "parentClient");
   }
 
-  function isCurrentParentClientRuntime(pubkeyHex?: string | null): boolean {
-    const currentPubkey = authState.value?.pubkey;
-    const connectedPubkey = parentClientAuthService.getUserPubkey();
-
-    if (
-      authState.value?.type !== "parentClient" ||
-      !parentClientAuthService.isConnected() ||
-      !currentPubkey ||
-      !connectedPubkey
-    ) {
-      return false;
-    }
-
-    if (!pubkeyHex) {
-      return currentPubkey === connectedPubkey;
-    }
-
-    return currentPubkey === pubkeyHex && connectedPubkey === pubkeyHex;
-  }
-
   async function activateParentClientAuth(
     options: {
       silent?: boolean;
@@ -959,7 +959,25 @@
   const appParentClientSyncController = createAppParentClientSyncController({
     isBootstrappingApp: () => isBootstrappingApp,
     hasPendingParentAuth: () => parentClientAuthCoordinator.hasPendingRequest(),
-    isCurrentParentClientRuntime,
+    isCurrentParentClientRuntime: (pubkeyHex) => {
+      const currentPubkey = authState.value?.pubkey;
+      const connectedPubkey = parentClientAuthService.getUserPubkey();
+
+      if (
+        authState.value?.type !== "parentClient" ||
+        !parentClientAuthService.isConnected() ||
+        !currentPubkey ||
+        !connectedPubkey
+      ) {
+        return false;
+      }
+
+      if (!pubkeyHex) {
+        return currentPubkey === connectedPubkey;
+      }
+
+      return currentPubkey === pubkeyHex && connectedPubkey === pubkeyHex;
+    },
     activateParentClientAuth,
     flushPendingComposerAction: () =>
       appEmbedController.flushPendingComposerAction(),
@@ -1071,19 +1089,7 @@
   }
 
   async function handleNip07Login(): Promise<string | undefined> {
-    return runNip07Login({
-      currentAuthType: authState.value?.type,
-      currentPubkeyHex: authState.value?.pubkey,
-      authenticateWithNip07: () => authService.authenticateWithNip07(),
-      cancelPendingNip46Auth,
-      clearNip46RuntimeForAuthChange,
-      handlePostAuth,
-      setLoading: (isLoading) => {
-        isLoadingNip07 = isLoading;
-      },
-      nip46Service,
-      console,
-    });
+    return appAuthInteractionController.handleNip07Login();
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
@@ -1093,35 +1099,11 @@
   async function handleNip46Login(
     bunkerUrl: string,
   ): Promise<string | undefined> {
-    return runNip46Login(
-      {
-        authenticateWithNip46: (targetBunkerUrl) =>
-          authService.authenticateWithNip46(targetBunkerUrl),
-        handlePostAuth,
-        setLoading: (isLoading) => {
-          isLoadingNip46 = isLoading;
-        },
-        console,
-      },
-      bunkerUrl,
-    );
+    return appAuthInteractionController.handleNip46Login(bunkerUrl);
   }
 
   async function handleNip46ConnectionCheck(pubkeyHex: string): Promise<void> {
-    if (
-      authState.value?.type !== "nip46" ||
-      authState.value?.pubkey !== pubkeyHex
-    ) {
-      return;
-    }
-
-    nip46ConnectionCheckStatus = "idle";
-    const result = await nip46Service.runManualConnectionCheck();
-    if (result.skipped) {
-      return;
-    }
-
-    nip46ConnectionCheckStatus = result.success ? "success" : "failure";
+    await appAuthInteractionController.handleNip46ConnectionCheck(pubkeyHex);
   }
 
   $effect(() => {
