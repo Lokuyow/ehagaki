@@ -2840,6 +2840,7 @@ describe('PostHistoryDialog', () => {
         });
         const favoriteReaction = createDirectReplyEventRecord({
             eventId: '4'.repeat(64),
+            authorPubkey: 'e'.repeat(64),
             kind: 7,
             content: '+',
             discoveredAs: ['reaction'],
@@ -2858,6 +2859,7 @@ describe('PostHistoryDialog', () => {
         });
         const thumbsUpReaction = createDirectReplyEventRecord({
             eventId: '5'.repeat(64),
+            authorPubkey: 'f'.repeat(64),
             kind: 7,
             content: '👍',
             discoveredAs: ['reaction'],
@@ -2876,6 +2878,7 @@ describe('PostHistoryDialog', () => {
         });
         const secondFavoriteReaction = createDirectReplyEventRecord({
             eventId: '6'.repeat(64),
+            authorPubkey: 'f'.repeat(64),
             kind: 7,
             content: '+',
             discoveredAs: ['reaction'],
@@ -2891,6 +2894,26 @@ describe('PostHistoryDialog', () => {
                 created_at: 1_700_000_012,
                 sig: 'f'.repeat(128),
             },
+        });
+
+        profilesRepositoryMock.get.mockImplementation(async (pubkey: string) => {
+            if (pubkey === 'e'.repeat(64)) {
+                return createProfile({
+                    displayName: 'Alice',
+                    name: 'alice',
+                    picture: 'https://example.com/alice.png',
+                });
+            }
+
+            if (pubkey === 'f'.repeat(64)) {
+                return createProfile({
+                    displayName: 'Bob',
+                    name: 'bob',
+                    picture: 'https://example.com/bob.png',
+                });
+            }
+
+            return null;
         });
 
         repositoryMock.getPage.mockResolvedValue([post]);
@@ -2927,6 +2950,11 @@ describe('PostHistoryDialog', () => {
         expect(Array.from(document.body.querySelectorAll('.post-preview-reaction-count')).map((node) =>
             node.textContent?.trim(),
         )).toEqual(['2', '1']);
+        await waitFor(() => {
+            expect(Array.from(document.body.querySelectorAll('.post-preview-reaction-actor')).map((node) =>
+                node.getAttribute('title'),
+            )).toEqual(['Alice', 'Bob', 'Bob']);
+        });
     });
 
     it('[reaction-custom-emoji-loading] 展開した reaction panel で custom emoji を preload して placeholder から画像へ切り替える', async () => {

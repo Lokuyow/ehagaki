@@ -262,19 +262,20 @@ export function usePostHistoryThreadGraph({
         $state.raw<Record<string, PostHistoryChildInteractionRecord[]>>({});
     let reactionProfilesByPubkey =
         $state.raw<Record<string, ProfileData | null>>({});
-    let reactionReadModelByParentId = $derived.by(() => {
-        const nextReadModels: Record<string, PostHistoryReactionReadModel> = {};
+    let reactionReadModelByParentId =
+        $state.raw<Record<string, PostHistoryReactionReadModel>>({});
+    const taskTracker = createPostHistoryThreadGraphTaskTracker();
 
-        for (const [parentEventId, records] of Object.entries(reactionRecordsByParentId)) {
-            nextReadModels[parentEventId] = buildPostHistoryReactionReadModel(
+    function rebuildReactionReadModelForParent(parentEventId: string): void {
+        const records = reactionRecordsByParentId[parentEventId] ?? [];
+        reactionReadModelByParentId = {
+            ...reactionReadModelByParentId,
+            [parentEventId]: buildPostHistoryReactionReadModel(
                 records,
                 reactionProfilesByPubkey,
-            );
-        }
-
-        return nextReadModels;
-    });
-    const taskTracker = createPostHistoryThreadGraphTaskTracker();
+            ),
+        };
+    }
 
     function setReactionSummary(
         parentEventId: string,
@@ -294,6 +295,7 @@ export function usePostHistoryThreadGraph({
             ...reactionRecordsByParentId,
             [parentEventId]: records,
         };
+        rebuildReactionReadModelForParent(parentEventId);
     }
 
     function setReactionProfile(pubkey: string, profile: ProfileData | null): void {
@@ -301,6 +303,11 @@ export function usePostHistoryThreadGraph({
             ...reactionProfilesByPubkey,
             [pubkey]: profile,
         };
+        for (const [parentEventId, records] of Object.entries(reactionRecordsByParentId)) {
+            if (records.some((record) => record.authorPubkey === pubkey)) {
+                rebuildReactionReadModelForParent(parentEventId);
+            }
+        }
     }
 
     function getReactionSummary(parentEventId: string): PostHistoryReactionSummary {
