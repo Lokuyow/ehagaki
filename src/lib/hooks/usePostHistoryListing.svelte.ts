@@ -47,8 +47,7 @@ import {
     type PostHistoryVisibleRangeRelationRepairResult,
     type PostHistoryVisibleRangeRelationRepairTask,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
-import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
-import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
+import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../postHistoryChildInteractionDeletionLifecycleTrigger";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
@@ -844,7 +843,7 @@ export function usePostHistoryListing({
             return;
         }
 
-        void triggerPostHistoryReactionLifecycle({
+        void triggerPostHistoryChildInteractionDeletionLifecycle({
             source,
             parentEventIds,
             rxNostr,
@@ -853,7 +852,8 @@ export function usePostHistoryListing({
         }).then((result) => {
             if (
                 result.status === "cancelled"
-                || result.deletedReactionEventIds.length === 0
+                || (result.deletedReactionEventIds.length === 0
+                    && result.deletedReplyEventIds.length === 0)
                 || !isActive()
             ) {
                 return;
@@ -865,26 +865,6 @@ export function usePostHistoryListing({
             );
         }).catch(() => undefined);
 
-        void triggerPostHistoryDirectReplyLifecycle({
-            source,
-            parentEventIds,
-            rxNostr,
-            relayConfig: getRelayConfig(),
-            isActive,
-        }).then((result) => {
-            if (
-                result.status === "cancelled"
-                || result.deletedReplyEventIds.length === 0
-                || !isActive()
-            ) {
-                return;
-            }
-
-            requestChildInteractionBadgeRefresh(
-                state.loadedPosts,
-                result.checkedParentEventIds,
-            );
-        }).catch(() => undefined);
     }
 
     async function repairCurrentViewRepliesAndReactions(

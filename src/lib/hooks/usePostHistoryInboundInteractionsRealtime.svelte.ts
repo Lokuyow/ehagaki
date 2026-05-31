@@ -4,8 +4,7 @@ import {
     postHistoryInboundInteractionsRealtimeService,
     type PostHistoryInboundInteractionsRealtimeSubscription,
 } from "../postHistoryInboundInteractionsRealtimeService";
-import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
-import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
+import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../postHistoryChildInteractionDeletionLifecycleTrigger";
 import type { RelayConfig } from "../types";
 import type {
     PostHistoryInboundDirectReplyCandidate,
@@ -78,7 +77,7 @@ export function usePostHistoryInboundInteractionsRealtime({
 
         const handleSavedInboundInteractions = async (parentEventIds: string[]) => {
             await onSavedInboundInteractions(parentEventIds);
-            void triggerPostHistoryReactionLifecycle({
+            void triggerPostHistoryChildInteractionDeletionLifecycle({
                 source: "inbound-realtime",
                 parentEventIds,
                 rxNostr,
@@ -92,33 +91,10 @@ export function usePostHistoryInboundInteractionsRealtime({
             }).then((result) => {
                 if (
                     result.status === "cancelled"
-                    || result.deletedReactionEventIds.length === 0
-                    || !state.visible
-                    || !getIsAuthenticated()
-                    || getPubkeyHex() !== ownerPubkeyHex
-                    || getRxNostr() !== rxNostr
-                ) {
-                    return;
-                }
-
-                return Promise.resolve(onSavedInboundInteractions(parentEventIds)).catch(() => undefined);
-            }).catch(() => undefined);
-
-            void triggerPostHistoryDirectReplyLifecycle({
-                source: "inbound-realtime",
-                parentEventIds,
-                rxNostr,
-                relayConfig,
-                isActive: () => (
-                    state.visible
-                    && getIsAuthenticated()
-                    && getPubkeyHex() === ownerPubkeyHex
-                    && getRxNostr() === rxNostr
-                ),
-            }).then((result) => {
-                if (
-                    result.status === "cancelled"
-                    || result.deletedReplyEventIds.length === 0
+                    || (
+                        result.deletedReactionEventIds.length === 0
+                        && result.deletedReplyEventIds.length === 0
+                    )
                     || !state.visible
                     || !getIsAuthenticated()
                     || getPubkeyHex() !== ownerPubkeyHex

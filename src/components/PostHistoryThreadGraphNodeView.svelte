@@ -2,6 +2,7 @@
     import { DropdownMenu } from "bits-ui";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
+    import PostHistoryDeletionLifecycleStatusBadge from "./PostHistoryDeletionLifecycleStatusBadge.svelte";
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
     import PostHistoryThreadGraphNodeView from "./PostHistoryThreadGraphNodeView.svelte";
     import PostHistoryThreadNode from "./PostHistoryThreadNode.svelte";
@@ -204,6 +205,9 @@
             <div class="post-preview-footer">
                 <div class="post-preview-footer-left">
                     <span class="post-history-related-date">{postedAt}</span>
+                    <PostHistoryDeletionLifecycleStatusBadge
+                        eventId={state.node.eventId}
+                    />
                 </div>
                 <div class="post-preview-footer-actions">
                     <div class="post-preview-footer-replies-slot">

@@ -8,8 +8,7 @@ import { postHistoryLightweightSyncCoordinator } from "../postHistoryLightweight
 import {
     postHistoryInboundInteractionsSyncStateRepository,
 } from "../storage/postHistoryInboundInteractionsSyncStateRepository";
-import { triggerPostHistoryReactionLifecycle } from "../postHistoryReactionLifecycleTrigger";
-import { triggerPostHistoryDirectReplyLifecycle } from "../postHistoryDirectReplyLifecycleTrigger";
+import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../postHistoryChildInteractionDeletionLifecycleTrigger";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 import type {
@@ -118,7 +117,7 @@ export function usePostHistoryInboundInteractionsSync({
 
         await onSavedInboundInteractions(result.changedParentEventIds);
 
-        void triggerPostHistoryReactionLifecycle({
+        void triggerPostHistoryChildInteractionDeletionLifecycle({
             source: "dialog-inbound-sync",
             parentEventIds: result.changedParentEventIds,
             rxNostr,
@@ -131,7 +130,10 @@ export function usePostHistoryInboundInteractionsSync({
         }).then((lifecycleResult) => {
             if (
                 lifecycleResult.status === "cancelled"
-                || lifecycleResult.deletedReactionEventIds.length === 0
+                || (
+                    lifecycleResult.deletedReactionEventIds.length === 0
+                    && lifecycleResult.deletedReplyEventIds.length === 0
+                )
                 || !getShow()
                 || getPubkeyHex() !== ownerPubkeyHex
                 || getRxNostr() !== rxNostr
@@ -144,31 +146,6 @@ export function usePostHistoryInboundInteractionsSync({
             ).catch(() => undefined);
         }).catch(() => undefined);
 
-        void triggerPostHistoryDirectReplyLifecycle({
-            source: "dialog-inbound-sync",
-            parentEventIds: result.changedParentEventIds,
-            rxNostr,
-            relayConfig: getRelayConfig(),
-            isActive: () => (
-                getShow()
-                && getPubkeyHex() === ownerPubkeyHex
-                && getRxNostr() === rxNostr
-            ),
-        }).then((lifecycleResult) => {
-            if (
-                lifecycleResult.status === "cancelled"
-                || lifecycleResult.deletedReplyEventIds.length === 0
-                || !getShow()
-                || getPubkeyHex() !== ownerPubkeyHex
-                || getRxNostr() !== rxNostr
-            ) {
-                return;
-            }
-
-            return Promise.resolve(
-                onSavedInboundInteractions(result.changedParentEventIds),
-            ).catch(() => undefined);
-        }).catch(() => undefined);
     }
 
     async function runInitialDialogSync(): Promise<void> {
