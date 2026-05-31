@@ -64,6 +64,7 @@ import {
     type PostHistoryThreadGraphSource,
 } from "../postHistoryThreadGraphUtils";
 import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
+import { createPostHistoryThreadGraphParentLoadingIndicator } from "../postHistoryThreadGraphParentLoadingIndicator";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -221,7 +222,7 @@ export function usePostHistoryThreadGraph({
         $state.raw<Record<string, PostHistoryThreadGraphExpansionState>>({});
     let deletedEventIdsByPubkey = $state.raw<Record<string, Record<string, true>>>({});
     let parentResolverRevision = $state(0);
-    const parentLoadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
+    const parentLoadingIndicator = createPostHistoryThreadGraphParentLoadingIndicator();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
     const replyBadgePreloadKeys = new Set<string>();
     let reactionSummaryByParentId =
@@ -494,21 +495,12 @@ export function usePostHistoryThreadGraph({
     }
 
     function clearParentLoadingDelayTimer(key: string): void {
-        const timer = parentLoadingDelayTimersByKey.get(key);
-        if (!timer) {
-            return;
-        }
-
-        clearTimeout(timer);
-        parentLoadingDelayTimersByKey.delete(key);
+        parentLoadingIndicator.clear(key);
     }
 
     function scheduleParentLoadingIndicator(anchorEventId: string, nodeEventId: string): void {
         const key = buildAnchorNodeKey(anchorEventId, nodeEventId);
-        clearParentLoadingDelayTimer(key);
-
-        const timer = setTimeout(() => {
-            parentLoadingDelayTimersByKey.delete(key);
+        parentLoadingIndicator.schedule(key, () => {
             const current = getExpansion(anchorEventId, nodeEventId);
             if (!current.loadingParent || !current.visibleParent) {
                 return;
@@ -518,9 +510,7 @@ export function usePostHistoryThreadGraph({
                 ...state,
                 showParentLoadingIndicator: true,
             }));
-        }, 400);
-
-        parentLoadingDelayTimersByKey.set(key, timer);
+        });
     }
 
     function toReplyItems(
@@ -2172,8 +2162,7 @@ export function usePostHistoryThreadGraph({
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
         profileRefreshTasksByPubkey.clear();
-        parentLoadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
-        parentLoadingDelayTimersByKey.clear();
+        parentLoadingIndicator.clearAll();
     }
 
     function resetState(): void {
