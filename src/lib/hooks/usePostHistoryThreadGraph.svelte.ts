@@ -65,6 +65,10 @@ import {
 } from "../postHistoryThreadGraphUtils";
 import { createPostHistoryThreadGraphTaskTracker } from "../postHistoryThreadGraphTaskTracker";
 import { createPostHistoryThreadGraphParentLoadingIndicator } from "../postHistoryThreadGraphParentLoadingIndicator";
+import {
+    buildParentLoadedExpansionState,
+    buildParentLoadingExpansionState,
+} from "../postHistoryThreadGraphParentExpansionState";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -763,17 +767,13 @@ export function usePostHistoryThreadGraph({
                 continue;
             }
 
-            updateExpansion(anchorEventId, nodeEventId, (state) => ({
-                ...state,
-                loadedParent: true,
-                visibleParent: options.revealKnownParent ? true : state.visibleParent,
-                loadingParent: false,
-                parentMissing: false,
-                parentDeleted: true,
-                parentError: null,
-                showParentLoadingIndicator: false,
-                lastFetchedParentAt: Date.now(),
-            }));
+            updateExpansion(anchorEventId, nodeEventId, (state) => {
+                return buildParentLoadedExpansionState(state, {
+                    visibleParent: options.revealKnownParent ? true : state.visibleParent,
+                    parentDeleted: true,
+                    lastFetchedParentAt: Date.now(),
+                });
+            });
         }
     }
 
@@ -1022,15 +1022,11 @@ export function usePostHistoryThreadGraph({
     function setParentDeleted(anchorEventId: string, nodeEventId: string = anchorEventId): void {
         clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, nodeEventId));
         updateExpansion(anchorEventId, nodeEventId, (state) => ({
-            ...state,
-            loadedParent: true,
-            visibleParent: true,
-            loadingParent: false,
-            parentMissing: false,
-            parentDeleted: true,
-            parentError: null,
-            showParentLoadingIndicator: false,
-            lastFetchedParentAt: Date.now(),
+            ...buildParentLoadedExpansionState(state, {
+                visibleParent: true,
+                parentDeleted: true,
+                lastFetchedParentAt: Date.now(),
+            }),
         }));
     }
 
@@ -1078,16 +1074,11 @@ export function usePostHistoryThreadGraph({
             }
 
             updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadedParent: true,
-                visibleParent: state.visibleParent,
-                loadingParent: false,
-                revalidatingParent: state.revalidatingParent,
-                parentError: null,
-                parentMissing: false,
-                parentDeleted: state.parentDeleted,
-                showParentLoadingIndicator: false,
-                lastFetchedParentAt: parentSnapshot?.updatedAt ?? state.lastFetchedParentAt,
+                ...buildParentLoadedExpansionState(state, {
+                    parentDeleted: state.parentDeleted,
+                    lastFetchedParentAt:
+                        parentSnapshot?.updatedAt ?? state.lastFetchedParentAt,
+                }),
             }));
             return true;
         }
@@ -1110,32 +1101,23 @@ export function usePostHistoryThreadGraph({
             });
             upsertParentEdge(node.eventId, node.parentEventId);
             updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadedParent: true,
-                visibleParent: state.visibleParent,
-                loadingParent: false,
-                revalidatingParent: state.revalidatingParent,
-                parentError: null,
-                parentMissing: false,
-                parentDeleted: false,
-                showParentLoadingIndicator: false,
-                lastFetchedParentAt: parentSnapshot.updatedAt ?? state.lastFetchedParentAt,
+                ...buildParentLoadedExpansionState(state, {
+                    parentDeleted: false,
+                    lastFetchedParentAt:
+                        parentSnapshot.updatedAt ?? state.lastFetchedParentAt,
+                }),
             }));
             return true;
         }
 
         if (parentSnapshot.status === "not-found") {
             updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadedParent: true,
-                visibleParent: state.visibleParent,
-                loadingParent: false,
-                revalidatingParent: state.revalidatingParent,
-                parentError: null,
-                parentMissing: true,
-                parentDeleted: false,
-                showParentLoadingIndicator: false,
-                lastFetchedParentAt: parentSnapshot.updatedAt ?? state.lastFetchedParentAt,
+                ...buildParentLoadedExpansionState(state, {
+                    parentMissing: true,
+                    parentDeleted: false,
+                    lastFetchedParentAt:
+                        parentSnapshot.updatedAt ?? state.lastFetchedParentAt,
+                }),
             }));
             return true;
         }
@@ -1157,14 +1139,9 @@ export function usePostHistoryThreadGraph({
         const activeRequestId = taskTracker.incrementRequestId();
         const key = buildAnchorNodeKey(post.eventId, nodeEventId);
         updateExpansion(post.eventId, nodeEventId, (state) => ({
-            ...state,
-            loadingParent: !!options.showInitialLoading,
-            revalidatingParent: !options.showInitialLoading,
-            visibleParent: state.visibleParent || !!options.showInitialLoading,
-            parentError: null,
-            parentMissing: false,
-            parentDeleted: false,
-            showParentLoadingIndicator: false,
+            ...buildParentLoadingExpansionState(state, {
+                showInitialLoading: !!options.showInitialLoading,
+            }),
         }));
         if (options.showInitialLoading) {
             scheduleParentLoadingIndicator(post.eventId, nodeEventId);
@@ -1203,14 +1180,14 @@ export function usePostHistoryThreadGraph({
 
             if (snapshot.status === "not-found") {
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    loadedParent: true,
-                    loadingParent: false,
-                    revalidatingParent: false,
-                    parentMissing: options.showInitialLoading ? true : state.parentMissing,
-                    parentDeleted: false,
-                    showParentLoadingIndicator: false,
-                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                    ...buildParentLoadedExpansionState(state, {
+                        revalidatingParent: false,
+                        parentMissing: options.showInitialLoading
+                            ? true
+                            : state.parentMissing,
+                        parentDeleted: false,
+                        lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                    }),
                 }));
                 return;
             }
@@ -1229,16 +1206,12 @@ export function usePostHistoryThreadGraph({
                 });
                 upsertParentEdge(node.eventId, node.parentEventId);
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    loadedParent: true,
-                    visibleParent: state.visibleParent,
-                    loadingParent: false,
-                    revalidatingParent: false,
-                    parentError: null,
-                    parentMissing: false,
-                    parentDeleted: false,
-                    showParentLoadingIndicator: false,
-                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                    ...buildParentLoadedExpansionState(state, {
+                        revalidatingParent: false,
+                        parentMissing: false,
+                        parentDeleted: false,
+                        lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                    }),
                 }));
                 return;
             }
