@@ -880,6 +880,25 @@ export function usePostHistoryListing({
         );
     }
 
+    function startRelationAwareVisibleRangeRepair(params: {
+        ownerPubkeyHex: string;
+        rxNostr: RxNostr;
+        visiblePosts: PostHistoryRecord[];
+        isActive: () => boolean;
+    }): PostHistoryVisibleRangeRelationRepairTask {
+        return postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
+            params.rxNostr,
+            {
+                ownerPubkeyHex: params.ownerPubkeyHex,
+                visiblePosts: params.visiblePosts,
+                relationKinds: RELATION_REPAIR_KINDS,
+                quoteVisibleRangeRepairExecutor,
+                relayConfig: getRelayConfig(),
+                isActive: params.isActive,
+            },
+        );
+    }
+
     function scheduleChildInteractionDeletionRefresh(
         source: "listing-current-view" | "listing-older-reveal",
         parentEventIds: string[],
@@ -931,17 +950,12 @@ export function usePostHistoryListing({
         );
 
         const childInteractionRepairTask =
-            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
+            startRelationAwareVisibleRangeRepair({
+                ownerPubkeyHex: pubkeyHex,
                 rxNostr,
-                {
-                    ownerPubkeyHex: pubkeyHex,
-                    visiblePosts,
-                    relationKinds: RELATION_REPAIR_KINDS,
-                    quoteVisibleRangeRepairExecutor,
-                    relayConfig: getRelayConfig(),
-                    isActive,
-                },
-            );
+                visiblePosts,
+                isActive,
+            });
         const childInteractionRepairResult = await childInteractionRepairTask.promise;
         if (
             childInteractionRepairResult.status === "cancelled"
@@ -1029,23 +1043,17 @@ export function usePostHistoryListing({
             olderRevealChildInteractionRepairInFlightParentIds.add(post.eventId);
         });
 
-        const task =
-            postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
-                rxNostr,
-                {
-                    ownerPubkeyHex: pubkeyHex,
-                    visiblePosts: networkParentPosts,
-                    relationKinds: RELATION_REPAIR_KINDS,
-                    quoteVisibleRangeRepairExecutor,
-                    relayConfig: getRelayConfig(),
-                    isActive: () =>
-                        isActiveOlderRevealChildInteractionRepairScope(
-                            scopeId,
-                            pubkeyHex,
-                            rxNostr,
-                        ),
-                },
-            );
+        const task = startRelationAwareVisibleRangeRepair({
+            ownerPubkeyHex: pubkeyHex,
+            rxNostr,
+            visiblePosts: networkParentPosts,
+            isActive: () =>
+                isActiveOlderRevealChildInteractionRepairScope(
+                    scopeId,
+                    pubkeyHex,
+                    rxNostr,
+                ),
+        });
         olderRevealChildInteractionRepairTasks.add(task);
 
         void task.promise
@@ -3161,21 +3169,16 @@ export function usePostHistoryListing({
                 && state.loadedPosts.length > 0
             ) {
                 const childInteractionRepairTask =
-                    postHistoryVisibleRangeChildInteractionRepairService.repairVisibleRangeRelations(
+                    startRelationAwareVisibleRangeRepair({
+                        ownerPubkeyHex: pubkeyHex,
                         rxNostr,
-                        {
-                            ownerPubkeyHex: pubkeyHex,
-                            visiblePosts: state.loadedPosts,
-                            relationKinds: RELATION_REPAIR_KINDS,
-                            quoteVisibleRangeRepairExecutor,
-                            relayConfig: getRelayConfig(),
-                            isActive: () =>
-                                currentViewRefetchTask === task
-                                && getShow()
-                                && getPubkeyHex() === pubkeyHex
-                                && getRxNostr() === rxNostr,
-                        },
-                    );
+                        visiblePosts: state.loadedPosts,
+                        isActive: () =>
+                            currentViewRefetchTask === task
+                            && getShow()
+                            && getPubkeyHex() === pubkeyHex
+                            && getRxNostr() === rxNostr,
+                    });
                 currentViewChildInteractionRepairTask = childInteractionRepairTask;
                 childInteractionRepairResult = await childInteractionRepairTask.promise;
                 if (currentViewChildInteractionRepairTask === childInteractionRepairTask) {
