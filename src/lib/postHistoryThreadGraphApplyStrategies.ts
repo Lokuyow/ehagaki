@@ -1,5 +1,8 @@
 import type { PostHistoryRelatedTargetSnapshot } from "./postHistoryRelatedTargetResolver.svelte";
-import { buildChildrenLoadedExpansionState } from "./postHistoryThreadGraphChildrenExpansionState";
+import {
+    buildChildrenFailedExpansionState,
+    buildChildrenLoadedExpansionState,
+} from "./postHistoryThreadGraphChildrenExpansionState";
 import { buildParentLoadedExpansionState } from "./postHistoryThreadGraphParentExpansionState";
 import type {
     PostHistoryThreadGraphExpansionState,
@@ -155,4 +158,45 @@ export function createChildrenRevalidateStatusStrategies(
         "not-found": applyLoaded,
         deleted: applyLoaded,
     };
+}
+
+export function applyParentRevalidateErrorState(options: {
+    updateExpansion: (
+        updater: (
+            state: PostHistoryThreadGraphExpansionState,
+        ) => PostHistoryThreadGraphExpansionState,
+    ) => void;
+    showInitialLoading: boolean;
+    errorCode?: string | null;
+}): void {
+    options.updateExpansion((state) => ({
+        ...state,
+        loadingParent: false,
+        revalidatingParent: false,
+        visibleParent: state.visibleParent,
+        parentError: options.showInitialLoading
+            ? options.errorCode ?? "fetch_failed"
+            : state.parentError,
+        showParentLoadingIndicator: false,
+    }));
+}
+
+export function applyChildrenRevalidateErrorState(options: {
+    updateExpansion: (
+        updater: (
+            state: PostHistoryThreadGraphExpansionState,
+        ) => PostHistoryThreadGraphExpansionState,
+    ) => void;
+    showInitialLoading: boolean;
+    prefetchOnly: boolean;
+    errorCode?: string | null;
+}): void {
+    options.updateExpansion((state) => ({
+        ...buildChildrenFailedExpansionState(state, {
+            nextError:
+                options.showInitialLoading && !options.prefetchOnly
+                    ? options.errorCode ?? "fetch_failed"
+                    : state.childrenError,
+        }),
+    }));
 }

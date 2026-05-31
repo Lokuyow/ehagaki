@@ -45,6 +45,22 @@ export interface ThreadGraphRevalidateTemplateOptions {
     cleanup?: () => void;
 }
 
+export interface ThreadGraphBatchLifecycleContext {
+    ensureActive: () => boolean;
+}
+
+export interface ThreadGraphBatchLifecycleOptions<TItem, TToken = undefined> {
+    items: readonly TItem[];
+    isActive: () => boolean;
+    run: (context: ThreadGraphBatchLifecycleContext) => Promise<void>;
+    prepareItem?: (item: TItem) => TToken;
+    completeBatch?: (loaded: boolean) => void;
+    cleanupItem?: (item: TItem, token: TToken) => void;
+    onInactive?: () => void;
+    onError?: (error: unknown) => void | Promise<void>;
+    cleanup?: () => void;
+}
+
 export interface ThreadGraphNodeLoadExecutionOptions {
     loading: boolean;
     revalidating: boolean;
@@ -116,6 +132,48 @@ export async function coordinateThreadGraphRevalidateTemplate(
             await options.onError?.(error);
         }
     } finally {
+        options.cleanup?.();
+    }
+}
+
+export async function coordinateThreadGraphBatchLifecycle<TItem, TToken = undefined>(
+    options: ThreadGraphBatchLifecycleOptions<TItem, TToken>,
+): Promise<void> {
+    let inactiveNotified = false;
+    const ensureActive = (): boolean => {
+        const active = options.isActive();
+        if (!active && !inactiveNotified) {
+            inactiveNotified = true;
+            options.onInactive?.();
+        }
+        return active;
+    };
+
+    const itemTokens = new Map<TItem, TToken>();
+    if (options.prepareItem) {
+        for (const item of options.items) {
+            itemTokens.set(item, options.prepareItem(item));
+        }
+    }
+
+    try {
+        await options.run({ ensureActive });
+        if (ensureActive()) {
+            options.completeBatch?.(true);
+        }
+    } catch (error) {
+        if (ensureActive()) {
+            options.completeBatch?.(false);
+            await options.onError?.(error);
+        }
+    } finally {
+        if (options.cleanupItem) {
+            for (const item of options.items) {
+                if (itemTokens.has(item)) {
+                    options.cleanupItem(item, itemTokens.get(item) as TToken);
+                }
+            }
+        }
         options.cleanup?.();
     }
 }

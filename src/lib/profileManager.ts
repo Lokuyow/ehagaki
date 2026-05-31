@@ -294,6 +294,7 @@ export class ProfileManager {
     pubkeyHex: string,
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
+    const consoleObj = this.networkFetcher['console'];
 
     // キャッシュチェック
     if (!opts?.forceRemote) {

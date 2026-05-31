@@ -75,6 +75,8 @@ import {
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
 import {
+    applyChildrenRevalidateErrorState,
+    applyParentRevalidateErrorState,
     createChildrenRevalidateStatusStrategies,
     createParentRevalidateStatusStrategies,
     resolveChildrenRevalidateStatus,
@@ -82,6 +84,7 @@ import {
 } from "../postHistoryThreadGraphApplyStrategies";
 import {
     coordinateThreadGraphNodeLoadExecution,
+    coordinateThreadGraphBatchLifecycle,
     coordinateThreadGraphRevalidateTemplate,
     coordinateThreadGraphStatusStrategy,
     shouldRunThreadGraphBackgroundRevalidate,
@@ -1170,16 +1173,11 @@ export function usePostHistoryThreadGraph({
                 clearParentLoadingDelayTimer(key);
             },
             onError: () => {
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    loadingParent: false,
-                    revalidatingParent: false,
-                    visibleParent: state.visibleParent,
-                    parentError: options.showInitialLoading
-                        ? "fetch_failed"
-                        : state.parentError,
-                    showParentLoadingIndicator: false,
-                }));
+                applyParentRevalidateErrorState({
+                    updateExpansion: (updater) => updateExpansion(post.eventId, nodeEventId, updater),
+                    showInitialLoading: !!options.showInitialLoading,
+                    errorCode: "fetch_failed",
+                });
             },
             run: async ({ ensureActive }) => {
                 const descriptor = buildParentTargetDescriptor(post, nodeEventId, currentNode);
@@ -1426,14 +1424,12 @@ export function usePostHistoryThreadGraph({
                 taskTracker.deleteChildRequestToken(key);
             },
             onError: () => {
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...buildChildrenFailedExpansionState(state, {
-                        nextError:
-                            options.showInitialLoading && !options.prefetchOnly
-                                ? "fetch_failed"
-                                : state.childrenError,
-                    }),
-                }));
+                applyChildrenRevalidateErrorState({
+                    updateExpansion: (updater) => updateExpansion(post.eventId, nodeEventId, updater),
+                    showInitialLoading: !!options.showInitialLoading,
+                    prefetchOnly: !!options.prefetchOnly,
+                    errorCode: "fetch_failed",
+                });
             },
             run: async ({ ensureActive }) => {
                 const rxNostr = getRxNostr();
@@ -1733,7 +1729,8 @@ export function usePostHistoryThreadGraph({
         const isTargetedRefresh = !!parentEventIds?.length;
         const postByEventId = new Map(posts.map((post) => [post.eventId, post]));
 
-        await coordinateThreadGraphRevalidateTemplate({
+        await coordinateThreadGraphBatchLifecycle({
+            items: targetParentIds,
             isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
             run: async ({ ensureActive }) => {
                 for (const parentEventId of targetParentIds) {
@@ -1803,17 +1800,6 @@ export function usePostHistoryThreadGraph({
 
         const activeGraphRequestId = taskTracker.getRequestId();
         const requestTokens = new Map<string, number>();
-        for (const eventId of batchEventIds) {
-            const key = buildAnchorNodeKey(post.eventId, eventId);
-            const activeChildRequestId = taskTracker.createChildRequestToken(key);
-            requestTokens.set(eventId, activeChildRequestId);
-            updateExpansion(post.eventId, eventId, (state) => ({
-                ...buildChildrenLoadingExpansionState(state, {
-                    showInitialLoading: false,
-                    prefetchOnly: true,
-                }),
-            }));
-        }
 
         const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
         const isPrefetchBatchActive = (): boolean => {
@@ -1826,44 +1812,67 @@ export function usePostHistoryThreadGraph({
             );
         };
 
-        const cleanupOwnedPrefetchTokens = (): void => {
+        const applyPrefetchBatchErrorState = (errorCode: string): void => {
             for (const eventId of batchEventIds) {
-                const key = buildAnchorNodeKey(post.eventId, eventId);
-                if (taskTracker.getChildRequestToken(key) === requestTokens.get(eventId)) {
-                    taskTracker.deleteChildRequestToken(key);
-                }
+                applyChildrenRevalidateErrorState({
+                    updateExpansion: (updater) => updateExpansion(post.eventId, eventId, updater),
+                    showInitialLoading: false,
+                    prefetchOnly: true,
+                    errorCode,
+                });
             }
         };
 
-        const completePrefetchBatch = (loadedChildren: boolean): void => {
-            if (!isPrefetchBatchActive()) {
-                return;
-            }
-
-            for (const eventId of batchEventIds) {
+        await coordinateThreadGraphBatchLifecycle({
+            items: batchEventIds,
+            isActive: isPrefetchBatchActive,
+            prepareItem: (eventId) => {
+                const key = buildAnchorNodeKey(post.eventId, eventId);
+                const activeChildRequestId = taskTracker.createChildRequestToken(key);
+                requestTokens.set(eventId, activeChildRequestId);
                 updateExpansion(post.eventId, eventId, (state) => ({
-                    ...buildChildrenLoadedExpansionState(state, {
-                        loadedChildren,
-                        revalidatingChildren: false,
-                        lastFetchedChildrenAt: Date.now(),
+                    ...buildChildrenLoadingExpansionState(state, {
+                        showInitialLoading: false,
+                        prefetchOnly: true,
                     }),
                 }));
-            }
-        };
+                return activeChildRequestId;
+            },
+            completeBatch: (loadedChildren) => {
+                if (!loadedChildren) {
+                    return;
+                }
 
-        await coordinateThreadGraphRevalidateTemplate({
-            isActive: isPrefetchBatchActive,
+                if (!isPrefetchBatchActive()) {
+                    return;
+                }
+
+                for (const eventId of batchEventIds) {
+                    updateExpansion(post.eventId, eventId, (state) => ({
+                        ...buildChildrenLoadedExpansionState(state, {
+                            loadedChildren,
+                            revalidatingChildren: false,
+                            lastFetchedChildrenAt: Date.now(),
+                        }),
+                    }));
+                }
+            },
+            cleanupItem: (eventId, activeChildRequestId) => {
+                const key = buildAnchorNodeKey(post.eventId, eventId);
+                if (taskTracker.getChildRequestToken(key) === activeChildRequestId) {
+                    taskTracker.deleteChildRequestToken(key);
+                }
+            },
             cleanup: () => {
                 taskTracker.deleteChildrenFetchTask(taskKey);
-                cleanupOwnedPrefetchTokens();
             },
             onError: () => {
-                completePrefetchBatch(false);
+                applyPrefetchBatchErrorState("fetch_failed");
             },
             run: async ({ ensureActive }) => {
                 const rxNostr = getRxNostr();
                 if (!rxNostr) {
-                    completePrefetchBatch(false);
+                    applyPrefetchBatchErrorState("nostr_not_ready");
                     return;
                 }
 
@@ -1933,8 +1942,6 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
-
-                completePrefetchBatch(true);
             },
         });
     }

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+    applyChildrenRevalidateErrorState,
+    applyParentRevalidateErrorState,
     createChildrenRevalidateStatusStrategies,
     createParentRevalidateStatusStrategies,
     resolveChildrenRevalidateStatus,
@@ -114,6 +116,124 @@ describe("postHistoryThreadGraphApplyStrategies", () => {
         expect(state.parentMissing).toBe(false);
         expect(state.parentDeleted).toBe(false);
         expect(state.lastFetchedParentAt).toBe(222);
+    });
+
+    it("parent resolved strategy は authorPubkey がなくても node upsert を続行する", () => {
+        let state = buildInitialExpansionState();
+        const upsertNode = vi.fn(() => ({ eventId: "e1", parentEventId: "p0" } as any));
+        const upsertParentEdge = vi.fn();
+
+        const strategies = createParentRevalidateStatusStrategies({
+            snapshot: {
+                status: "resolved",
+                event: { id: "e1" },
+                relayHints: [],
+                profile: null,
+                updatedAt: 333,
+            } as any,
+            parentEventId: "parent",
+            showInitialLoading: false,
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            hideEvent: () => undefined,
+            markParentDeletedForEvent: () => undefined,
+            setParentDeleted: () => undefined,
+            isDeletedEvent: () => false,
+            upsertNode,
+            upsertParentEdge,
+        });
+
+        strategies.resolved?.();
+        expect(upsertNode).toHaveBeenCalledTimes(1);
+        expect(upsertParentEdge).toHaveBeenCalledWith("e1", "p0");
+        expect(state.loadedParent).toBe(true);
+    });
+
+    it("parent resolved strategy は event がなければ状態を変えない", () => {
+        let state = buildInitialExpansionState();
+        const upsertNode = vi.fn();
+        const upsertParentEdge = vi.fn();
+
+        const strategies = createParentRevalidateStatusStrategies({
+            snapshot: {
+                status: "resolved",
+                authorPubkey: "pubkey",
+                relayHints: [],
+                profile: null,
+                updatedAt: 444,
+            } as any,
+            parentEventId: "parent",
+            showInitialLoading: true,
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            hideEvent: () => undefined,
+            markParentDeletedForEvent: () => undefined,
+            setParentDeleted: () => undefined,
+            isDeletedEvent: () => false,
+            upsertNode,
+            upsertParentEdge,
+        });
+
+        strategies.resolved?.();
+        expect(upsertNode).not.toHaveBeenCalled();
+        expect(upsertParentEdge).not.toHaveBeenCalled();
+        expect(state).toEqual(buildInitialExpansionState());
+    });
+
+    it("parent error state は errorCode あり/なしで初期読み込み時のエラーを固定する", () => {
+        let state = buildInitialExpansionState();
+
+        applyParentRevalidateErrorState({
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            showInitialLoading: true,
+            errorCode: "network_down",
+        });
+        expect(state.parentError).toBe("network_down");
+
+        applyParentRevalidateErrorState({
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            showInitialLoading: true,
+        });
+        expect(state.parentError).toBe("fetch_failed");
+    });
+
+    it("children error state は errorCode あり/なしと prefetchOnly を区別する", () => {
+        let state = buildInitialExpansionState();
+
+        applyChildrenRevalidateErrorState({
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            showInitialLoading: true,
+            prefetchOnly: false,
+            errorCode: "network_down",
+        });
+        expect(state.childrenError).toBe("network_down");
+
+        applyChildrenRevalidateErrorState({
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            showInitialLoading: true,
+            prefetchOnly: false,
+        });
+        expect(state.childrenError).toBe("fetch_failed");
+
+        applyChildrenRevalidateErrorState({
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            showInitialLoading: true,
+            prefetchOnly: true,
+            errorCode: "ignored",
+        });
+        expect(state.childrenError).toBe("fetch_failed");
     });
 
     it("children loaded strategy は loaded 更新と prefetch 呼び出しを行う", () => {
