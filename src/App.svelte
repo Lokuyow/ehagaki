@@ -138,22 +138,11 @@
     hydrateReplyQuoteReferences,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
-  import type {
-    EmbedComposerSetContextPayload,
-    EmbedSettingsSetPayload,
-  } from "./lib/embedProtocol";
-  import {
-    buildComposerContextSignature,
-    buildComposerContextUpdatedPayload,
-  } from "./lib/embedComposerContextNotification";
+  import type { EmbedSettingsSetPayload } from "./lib/embedProtocol";
   import {
     applyDraftToComposer,
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
-  import {
-    buildPatchedChannelContext,
-    buildPatchedReplyQuoteQuery,
-  } from "./lib/embedComposerContextPatch";
   import {
     buildPostHistoryReferenceTarget,
     buildPostHistoryReplyChannelContextQuery,
@@ -161,9 +150,9 @@
   } from "./lib/postHistoryReplyUtils";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
-    applyEmbedComposerContent,
-    buildEmbedComposerContextPatch,
-  } from "./lib/embedComposerContextApply";
+    createAppEmbedController,
+    type AppEmbedAppliedSettingKey,
+  } from "./lib/appEmbedController";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -384,14 +373,6 @@
   );
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
-  let lastNotifiedComposerContextSignature: string | null = null;
-  let pendingRemoteComposerAction:
-    | {
-        type: "set";
-        payload: EmbedComposerSetContextPayload;
-        requestId: string;
-      }
-    | undefined = undefined;
 
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
 
@@ -893,177 +874,120 @@
     };
   }
 
-  function notifyRemoteComposerApplied(requestId: string): void {
-    iframeMessageService.notifyComposerContextApplied(requestId);
-  }
-
-  function notifyRemoteComposerError(
-    error: string | { code: string; message?: string },
-    requestId: string,
-  ): void {
-    iframeMessageService.notifyComposerContextError(error, requestId);
-  }
-
-  function notifyRemoteComposerContextUpdated(): void {
-    const payload = buildComposerContextUpdatedPayload(
-      replyQuoteState.value,
-      channelContextState.value,
-    );
-    const signature = buildComposerContextSignature(payload);
-
-    if (signature === lastNotifiedComposerContextSignature) {
-      return;
-    }
-
-    lastNotifiedComposerContextSignature = signature;
-    iframeMessageService.notifyComposerContextUpdated({
-      reply: payload.reply,
-      quotes: payload.quotes,
-      channel: payload.channel ?? null,
-    });
-  }
-
-  async function applyRemoteComposerSetContext(
-    payload: EmbedComposerSetContextPayload,
-  ): Promise<void> {
-    applyEmbedComposerContent(payload.content, {
+  const appEmbedController = createAppEmbedController({
+    composerInput: {
+      get: () =>
+        postComponentRef
+          ? {
+              resetContent: () => postComponentRef?.resetPostContent?.(),
+              insertText: (content: string) =>
+                postComponentRef?.insertTextContent?.(content),
+            }
+          : null,
+    },
+    sharedContent: {
       clearUrlQueryContentStore,
       updateUrlQueryContentStore,
-      resetPostContent: () => postComponentRef?.resetPostContent?.(),
-      insertTextContent: postComponentRef?.insertTextContent
-        ? (content: string) => postComponentRef?.insertTextContent?.(content)
-        : undefined,
-    });
+    },
+    composerContextApply: {
+      applyReplyQuoteQuery: (query, runtime) =>
+        applyReplyQuoteQuery({
+          replyQuoteQuery: query,
+          relayProfileService: runtime.relayProfileService,
+          rxNostr: runtime.rxNostr,
+          relayConfig: runtime.relayConfig,
+          setReplyQuote,
+          updateReferencedEvent,
+          updateAuthorDisplayName,
+          setReplyQuoteError,
+        }),
+      clearReplyQuote,
+      applyChannelContextQuery: (query, runtime) =>
+        applyChannelContextQuery({
+          channelContextQuery: query,
+          rxNostr: runtime.rxNostr,
+          relayConfig: runtime.relayConfig,
+          setChannelContext,
+        }),
+      clearChannelContext,
+    },
+    settingsApply: {
+      applySettings: async (payload: EmbedSettingsSetPayload) => {
+        const applied = settingsStore.applyParentSettings(
+          payload,
+          "parentForced",
+        ) as AppEmbedAppliedSettingKey[];
+        if (payload.uploadEndpoint !== undefined) {
+          await uploadDestinationsRepository.applyUploadEndpointPreference({
+            endpoint: payload.uploadEndpoint,
+            mode: "forced",
+            pubkeyHex: null,
+          });
+          applied.push("uploadEndpoint");
+        }
 
-    const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
-      payload,
-      replyQuoteState.value,
-    );
-
-    if (channelContext !== undefined) {
-      if (channelContext === null) {
-        clearChannelContext();
-      } else {
-        await applyChannelContextQuery({
-          channelContextQuery: channelContext,
-          ...getChannelContextApplyParams(),
-        });
-      }
-    }
-
-    if (replyQuoteQuery === undefined) {
-      return;
-    }
-
-    if (replyQuoteQuery === null) {
-      clearReplyQuote();
-      return;
-    }
-
-    await applyReplyQuoteQuery({
-      replyQuoteQuery,
-      ...getReplyQuoteApplyParams(),
-    });
-  }
-
-  async function handleRemoteComposerSetContext(
-    payload: EmbedComposerSetContextPayload,
-    requestId: string,
-  ): Promise<void> {
-    if (isBootstrappingApp || parentClientAuthPromise) {
-      pendingRemoteComposerAction = {
-        type: "set",
-        payload,
-        requestId,
-      };
-      return;
-    }
-
-    try {
-      await applyRemoteComposerSetContext(payload);
-      notifyRemoteComposerApplied(requestId);
-    } catch (error) {
-      console.error("composer.setContext の適用に失敗:", error);
-      notifyRemoteComposerError(
-        {
-          code: "composer_context_apply_failed",
-          message: error instanceof Error ? error.message : String(error),
-        },
-        requestId,
-      );
-    }
-  }
-
-  async function handleRemoteSettingsSet(
-    payload: EmbedSettingsSetPayload,
-    requestId: string,
-  ): Promise<void> {
-    try {
-      const applied = settingsStore.applyParentSettings(
-        payload,
-        "parentForced",
-      );
-      if (payload.uploadEndpoint !== undefined) {
-        await uploadDestinationsRepository.applyUploadEndpointPreference({
-          endpoint: payload.uploadEndpoint,
-          mode: "forced",
-          pubkeyHex: null,
-        });
-        applied.push("uploadEndpoint");
-      }
-      iframeMessageService.notifySettingsApplied(applied, requestId);
-    } catch (error) {
-      console.error("settings.set の適用に失敗:", error);
-      iframeMessageService.notifySettingsError(
-        {
-          code: "settings_apply_failed",
-          message: error instanceof Error ? error.message : String(error),
-        },
-        requestId,
-      );
-    }
-  }
-
-  async function initializeEmbedStorageSync(): Promise<void> {
-    try {
-      const result = await embedStorageService.get([...EMBED_STORAGE_KEYS]);
-      const applied = embedStorageService.applySnapshotToLocalStorage(
-        result.values,
-      );
-      if (applied.length > 0) {
+        return applied;
+      },
+    },
+    parentFrame: {
+      notifyComposerContextApplied: (requestId: string) =>
+        iframeMessageService.notifyComposerContextApplied(requestId),
+      notifyComposerContextError: (error, requestId: string) =>
+        iframeMessageService.notifyComposerContextError(
+          {
+            code: error.code,
+            ...(error.message ? { message: error.message } : {}),
+          },
+          requestId,
+        ),
+      notifyComposerContextUpdated: (payload) =>
+        iframeMessageService.notifyComposerContextUpdated(payload),
+      notifySettingsApplied: (applied, requestId: string) =>
+        iframeMessageService.notifySettingsApplied([...applied], requestId),
+      notifySettingsError: (error, requestId: string) =>
+        iframeMessageService.notifySettingsError(
+          {
+            code: error.code,
+            ...(error.message ? { message: error.message } : {}),
+          },
+          requestId,
+        ),
+    },
+    runtime: {
+      isBootstrappingApp: () => isBootstrappingApp,
+      hasPendingParentAuth: () => parentClientAuthPromise !== null,
+      getReplyQuoteState: () => replyQuoteState.value,
+      getChannelContextState: () => channelContextState.value,
+      getRuntimeSnapshot: () => ({
+        rxNostr,
+        relayProfileService,
+        relayConfig: relayConfigStore.value,
+      }),
+    },
+    storage: {
+      getEmbedStorageSnapshot: async () => {
+        const result = await embedStorageService.get([...EMBED_STORAGE_KEYS]);
+        return result.values ?? {};
+      },
+      applyEmbedStorageSnapshot: (values) => ({
+        appliedKeys: embedStorageService.applySnapshotToLocalStorage(values),
+      }),
+      applyStoredSettingsSnapshot: () => {
         settingsStore.applyStoredSnapshot();
-      }
-      embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
-    } catch (error) {
-      console.warn("親 storage の初期同期をスキップ:", error);
-    }
-  }
-
-  async function flushPendingRemoteComposerAction(): Promise<void> {
-    if (isBootstrappingApp || parentClientAuthPromise) {
-      return;
-    }
-
-    const pendingAction = pendingRemoteComposerAction;
-    pendingRemoteComposerAction = undefined;
-    if (!pendingAction) {
-      return;
-    }
-
-    try {
-      await applyRemoteComposerSetContext(pendingAction.payload);
-      notifyRemoteComposerApplied(pendingAction.requestId);
-    } catch (error) {
-      console.error("保留中の composer.setContext の適用に失敗:", error);
-      notifyRemoteComposerError(
-        {
-          code: "composer_context_apply_failed",
-          message: error instanceof Error ? error.message : String(error),
-        },
-        pendingAction.requestId,
-      );
-    }
-  }
+      },
+      persistEmbedStorageKeys: () => {
+        embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
+      },
+    },
+    logger: {
+      warn: (message: string, meta?: unknown) => {
+        console.warn(message, meta);
+      },
+      error: (message: string, meta?: unknown) => {
+        console.error(message, meta);
+      },
+    },
+  });
 
   async function flushPendingRemoteEmbedActions(): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
@@ -1076,7 +1000,7 @@
       await handleRemoteParentClientLogin(queuedPubkey);
     }
 
-    await flushPendingRemoteComposerAction();
+    await appEmbedController.flushPendingComposerAction();
   }
 
   async function handleRemoteParentClientLogin(
@@ -1560,7 +1484,7 @@
     if (
       embedStorageService.initialize({ locationSearch: window.location.search })
     ) {
-      void initializeEmbedStorageSync();
+      void appEmbedController.initializeEmbedStorageSync();
     }
     embedIndexedDbService.initialize({
       locationSearch: window.location.search,
@@ -1583,12 +1507,15 @@
 
     const cleanupRemoteComposerSetContextHandler =
       embedComposerContextService.onRemoteSetContext((payload, requestId) => {
-        void handleRemoteComposerSetContext(payload, requestId);
+        void appEmbedController.handleRemoteComposerSetContext(
+          payload,
+          requestId,
+        );
       });
 
     const cleanupRemoteSettingsSetHandler =
       embedSettingsService.onRemoteSetSettings((payload, requestId) => {
-        void handleRemoteSettingsSet(payload, requestId);
+        void appEmbedController.handleRemoteSettingsSet(payload, requestId);
       });
 
     const cleanupRemoteSettingsErrorHandler =
@@ -1601,18 +1528,10 @@
       });
 
     const cleanupReplyQuoteChangeHandler = onReplyQuoteChanged(() => {
-      if (isBootstrappingApp) {
-        return;
-      }
-
-      notifyRemoteComposerContextUpdated();
+      appEmbedController.notifyComposerContextUpdatedIfChanged();
     });
     const cleanupChannelContextChangeHandler = onChannelContextChanged(() => {
-      if (isBootstrappingApp) {
-        return;
-      }
-
-      notifyRemoteComposerContextUpdated();
+      appEmbedController.notifyComposerContextUpdatedIfChanged();
     });
 
     if (parentClientAvailable) {
@@ -1667,7 +1586,7 @@
     }).finally(() => {
       isBootstrappingApp = false;
       void flushPendingRemoteEmbedActions().finally(() => {
-        notifyRemoteComposerContextUpdated();
+        appEmbedController.notifyComposerContextUpdatedIfChanged();
       });
     });
 
