@@ -15,6 +15,7 @@
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { usePostHistoryCopyNevent } from "../lib/hooks/usePostHistoryCopyNevent.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -44,9 +45,7 @@
     import {
         hasRenderablePostHistoryPreviewContent,
         isPostHistoryFavoriteReactionContent,
-        type PostHistoryDisplayedReactionGroup,
         resolvePostHistoryCountSummaryState,
-        resolvePostHistoryDisplayedReactionGroups,
         resolvePostHistoryNavigationLabelKey,
         resolvePostHistoryReactionsActionLabelState,
         resolvePostHistoryRepliesActionLabelState,
@@ -58,12 +57,14 @@
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
+    import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
     import type {
         FullscreenMediaItem,
         NostrEvent,
         RelayConfig,
+        ProfileData,
     } from "../lib/types";
 
     type PostHistoryUtilityPanel = "none" | "search" | "jump-date";
@@ -303,20 +304,6 @@
 
         return nextContent;
     });
-    let displayedReactionGroupsByEventId = $derived.by(() => {
-        const nextGroups: Record<string, PostHistoryDisplayedReactionGroup[]> =
-            {};
-
-        for (const post of history.posts) {
-            nextGroups[post.eventId] =
-                resolvePostHistoryDisplayedReactionGroups(
-                    postHistoryThreadGraph.getAnchorState(post).reactionSummary
-                        .groups,
-                );
-        }
-
-        return nextGroups;
-    });
     let headingStatusMessageKey = $derived(
         history.currentViewRefetchStatusMessageKey ??
             history.syncStatusMessageKey,
@@ -353,9 +340,9 @@
                 continue;
             }
 
-            for (const reactionGroup of displayedReactionGroupsByEventId[
-                post.eventId
-            ] ?? []) {
+            for (const reactionGroup of postHistoryThreadGraph.getAnchorState(
+                post,
+            ).reactionReadModel.groups) {
                 if (reactionGroup.emojiUrl) {
                     urls.add(reactionGroup.emojiUrl);
                 }
@@ -730,10 +717,16 @@
         );
     }
 
-    function getDisplayedReactionGroups(
-        post: PostHistoryRecord,
-    ): PostHistoryDisplayedReactionGroup[] {
-        return displayedReactionGroupsByEventId[post.eventId] ?? [];
+    function getDisplayedReactionGroups(post: PostHistoryRecord) {
+        return postHistoryThreadGraph.getAnchorState(post).reactionReadModel
+            .groups;
+    }
+
+    function getReactionActorLabel(actor: {
+        pubkey: string;
+        profile: ProfileData | null;
+    }): string {
+        return formatPostHistoryReactionActorLabel(actor);
     }
 
     function toggleReactions(post: PostHistoryRecord): void {
@@ -2110,6 +2103,34 @@
                                                                 {reactionGroup.content}
                                                             </span>
                                                         {/if}
+                                                        <div
+                                                            class="post-preview-reaction-actors"
+                                                        >
+                                                            {#each reactionGroup.reactors as actor (actor.eventId)}
+                                                                {@const actorLabel =
+                                                                    getReactionActorLabel(
+                                                                        actor,
+                                                                    )}
+                                                                <span
+                                                                    class="post-preview-reaction-actor"
+                                                                    title={actorLabel}
+                                                                    aria-label={actorLabel}
+                                                                >
+                                                                    <ProfileAvatar
+                                                                        src={actor
+                                                                            .profile
+                                                                            ?.picture ||
+                                                                            ""}
+                                                                        alt={actorLabel}
+                                                                        rootClassName="post-preview-reaction-avatar"
+                                                                        imageClassName="post-preview-reaction-avatar-image"
+                                                                        fallbackClassName="post-preview-reaction-avatar-fallback"
+                                                                        fallbackAriaLabel={actorLabel}
+                                                                        fallbackDelayMs={0}
+                                                                    />
+                                                                </span>
+                                                            {/each}
+                                                        </div>
                                                         <span
                                                             class="post-preview-reaction-count"
                                                         >
@@ -3393,6 +3414,7 @@
         border-radius: 999px;
         background: color-mix(in srgb, var(--theme), var(--dialog-bg) 92%);
         color: var(--text);
+        flex-wrap: wrap;
     }
 
     :global(.post-preview-reaction-content),
@@ -3430,6 +3452,40 @@
 
     :global(.post-preview-reaction-count) {
         color: var(--text-muted);
+    }
+
+    :global(.post-preview-reaction-actors) {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+    }
+
+    :global(.post-preview-reaction-actor) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        overflow: hidden;
+        flex: 0 0 auto;
+    }
+
+    :global(.post-preview-reaction-avatar) {
+        width: 100%;
+        height: 100%;
+    }
+
+    :global(.post-preview-reaction-avatar-image) {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    :global(.post-preview-reaction-avatar-fallback) {
+        width: 100%;
+        height: 100%;
     }
 
     :global(.post-preview-reaction-symbol) {

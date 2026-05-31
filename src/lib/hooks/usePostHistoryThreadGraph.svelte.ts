@@ -52,6 +52,12 @@ import {
     summarizePostHistoryReactionRecords,
 } from "../postHistoryReactionSummary";
 import {
+    EMPTY_POST_HISTORY_REACTION_READ_MODEL,
+    buildPostHistoryReactionReadModel,
+    selectPostHistoryReactionRecords,
+    type PostHistoryReactionReadModel,
+} from "../postHistoryReactionReadModel";
+import {
     buildAnchorNodeKey,
     buildInitialExpansionState,
     buildThreadGraphNode,
@@ -133,6 +139,7 @@ export interface PostHistoryThreadGraphAnchorState {
     parentExpansion: PostHistoryThreadGraphExpansionState;
     repliesActionState: PostHistoryThreadGraphRepliesActionState;
     reactionSummary: PostHistoryReactionSummary;
+    reactionReadModel: PostHistoryReactionReadModel;
     replyItems: PostHistoryThreadGraphReplyItem[];
     replyNodeStates: PostHistoryThreadGraphNodeState[];
 }
@@ -251,6 +258,22 @@ export function usePostHistoryThreadGraph({
     const replyBadgePreloadKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
+    let reactionRecordsByParentId =
+        $state.raw<Record<string, PostHistoryChildInteractionRecord[]>>({});
+    let reactionProfilesByPubkey =
+        $state.raw<Record<string, ProfileData | null>>({});
+    let reactionReadModelByParentId = $derived.by(() => {
+        const nextReadModels: Record<string, PostHistoryReactionReadModel> = {};
+
+        for (const [parentEventId, records] of Object.entries(reactionRecordsByParentId)) {
+            nextReadModels[parentEventId] = buildPostHistoryReactionReadModel(
+                records,
+                reactionProfilesByPubkey,
+            );
+        }
+
+        return nextReadModels;
+    });
     const taskTracker = createPostHistoryThreadGraphTaskTracker();
 
     function setReactionSummary(
@@ -263,9 +286,31 @@ export function usePostHistoryThreadGraph({
         };
     }
 
+    function setReactionRecords(
+        parentEventId: string,
+        records: PostHistoryChildInteractionRecord[],
+    ): void {
+        reactionRecordsByParentId = {
+            ...reactionRecordsByParentId,
+            [parentEventId]: records,
+        };
+    }
+
+    function setReactionProfile(pubkey: string, profile: ProfileData | null): void {
+        reactionProfilesByPubkey = {
+            ...reactionProfilesByPubkey,
+            [pubkey]: profile,
+        };
+    }
+
     function getReactionSummary(parentEventId: string): PostHistoryReactionSummary {
         return reactionSummaryByParentId[parentEventId]
             ?? EMPTY_POST_HISTORY_REACTION_SUMMARY;
+    }
+
+    function getReactionReadModel(parentEventId: string): PostHistoryReactionReadModel {
+        return reactionReadModelByParentId[parentEventId]
+            ?? EMPTY_POST_HISTORY_REACTION_READ_MODEL;
     }
 
     function getExpansion(anchorEventId: string, nodeEventId: string): PostHistoryThreadGraphExpansionState {
@@ -377,6 +422,7 @@ export function usePostHistoryThreadGraph({
     function refreshProfileForPubkeyInBackground(
         pubkey: string,
         additionalRelays: string[] = [],
+        onProfileResolved?: (profile: ProfileData | null) => void,
     ): void {
         if (!pubkey || profileRefreshTasksByPubkey.has(pubkey)) {
             return;
@@ -389,6 +435,7 @@ export function usePostHistoryThreadGraph({
                 const cachedProfile = await profilesRepositoryImpl.get(pubkey);
                 if (cachedProfile && activeRequestId === taskTracker.getRequestId() && getShow()) {
                     mergeProfileForPubkey(pubkey, cachedProfile);
+                    onProfileResolved?.(cachedProfile);
                 }
             } catch {
                 // Network profile lookup below is still allowed to refresh the visible node.
@@ -409,6 +456,7 @@ export function usePostHistoryThreadGraph({
             }
 
             mergeProfileForPubkey(pubkey, profile);
+            onProfileResolved?.(profile);
         })()
             .catch(() => undefined)
             .finally(() => {
@@ -716,6 +764,7 @@ export function usePostHistoryThreadGraph({
                 error: expansion.childrenError,
             },
             reactionSummary: getReactionSummary(post.eventId),
+            reactionReadModel: getReactionReadModel(post.eventId),
             replyItems,
             replyNodeStates,
         };
@@ -1681,6 +1730,7 @@ export function usePostHistoryThreadGraph({
         cachedRecords: PostHistoryChildInteractionRecord[],
     ): void {
         setReactionSummary(parentEventId, cachedRecords);
+        setReactionRecords(parentEventId, cachedRecords);
     }
 
     async function preloadCachedDirectReplyStateForParent(input: {
@@ -1758,7 +1808,7 @@ export function usePostHistoryThreadGraph({
 
                     const anchorNode = ensureAnchorNode(post);
                     const [rawCachedReactionRecords, rawCachedDirectReplyRecords] = await Promise.all([
-                        reactionRecordsAdapterImpl.getReactionRecords(parentEventId),
+                        selectPostHistoryReactionRecords(parentEventId, reactionRecordsAdapterImpl),
                         directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
                     ]);
                     if (!ensureActive()) {
@@ -1774,6 +1824,32 @@ export function usePostHistoryThreadGraph({
                     }
 
                     preloadCachedReactionSummaryForParent(parentEventId, cachedReactionRecords);
+
+                    const reactionAuthorPubkeys = Array.from(new Set(
+                        cachedReactionRecords
+                            .map((record) => record.authorPubkey)
+                            .filter((pubkey): pubkey is string => !!pubkey),
+                    ));
+                    if (reactionAuthorPubkeys.length > 0) {
+                        const cachedProfiles = await Promise.all(
+                            reactionAuthorPubkeys.map(async (pubkey) => [
+                                pubkey,
+                                await profilesRepositoryImpl.get(pubkey),
+                            ] as const),
+                        );
+                        if (!ensureActive()) {
+                            continue;
+                        }
+
+                        for (const [pubkey, profile] of cachedProfiles) {
+                            setReactionProfile(pubkey, profile);
+                            refreshProfileForPubkeyInBackground(
+                                pubkey,
+                                anchorNode.relayUrls,
+                                (nextProfile) => setReactionProfile(pubkey, nextProfile),
+                            );
+                        }
+                    }
 
                     await preloadCachedDirectReplyStateForParent({
                         post,
@@ -2186,6 +2262,8 @@ export function usePostHistoryThreadGraph({
         expansionByAnchorNodeKey = {};
         deletedEventIdsByPubkey = {};
         reactionSummaryByParentId = {};
+        reactionRecordsByParentId = {};
+        reactionProfilesByPubkey = {};
         replyBadgePreloadKeys.clear();
     }
 
