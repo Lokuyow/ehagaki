@@ -75,6 +75,12 @@ import {
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
 import {
+    createChildrenRevalidateStatusStrategies,
+    createParentRevalidateStatusStrategies,
+    resolveChildrenRevalidateStatus,
+    resolveParentRevalidateStatus,
+} from "../postHistoryThreadGraphApplyStrategies";
+import {
     coordinateThreadGraphNodeLoadExecution,
     coordinateThreadGraphRevalidateTemplate,
     coordinateThreadGraphStatusStrategy,
@@ -1194,76 +1200,30 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
 
-                const parentStatus = snapshot.status === "deleted"
-                    ? "deleted"
-                    : snapshot.status === "not-found"
-                        ? "not-found"
-                        : snapshot.status === "resolved" && snapshot.event
-                            ? "resolved"
-                            : "failed";
+                const parentStatus = resolveParentRevalidateStatus(snapshot);
                 await coordinateThreadGraphStatusStrategy({
                     status: parentStatus,
-                    strategies: {
-                        deleted: () => {
-                            if (snapshot.authorPubkey) {
-                                hideEvent(snapshot.authorPubkey, parentEventId);
-                                markParentDeletedForEvent(parentEventId, snapshot.authorPubkey, {
-                                    revealKnownParent: true,
-                                });
-                            }
+                    strategies: createParentRevalidateStatusStrategies({
+                        snapshot,
+                        parentEventId,
+                        showInitialLoading: !!options.showInitialLoading,
+                        updateExpansion: (updater) => {
+                            updateExpansion(post.eventId, nodeEventId, updater);
+                        },
+                        hideEvent,
+                        markParentDeletedForEvent,
+                        setParentDeleted: () => {
                             setParentDeleted(post.eventId, nodeEventId);
                         },
-                        "not-found": () => {
-                            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                                ...buildParentLoadedExpansionState(state, {
-                                    revalidatingParent: false,
-                                    parentMissing: options.showInitialLoading
-                                        ? true
-                                        : state.parentMissing,
-                                    parentDeleted: false,
-                                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                                }),
-                            }));
-                        },
-                        resolved: () => {
-                            if (!snapshot.event) {
-                                return;
-                            }
-
-                            if (snapshot.authorPubkey && isDeletedEvent(snapshot.authorPubkey, parentEventId)) {
-                                setParentDeleted(post.eventId, nodeEventId);
-                                return;
-                            }
-
-                            const node = upsertNode({
-                                event: snapshot.event,
-                                relayUrls: snapshot.relayHints,
-                                sources: ["fetched-parent"],
-                                profile: snapshot.profile,
-                            });
-                            upsertParentEdge(node.eventId, node.parentEventId);
-                            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                                ...buildParentLoadedExpansionState(state, {
-                                    revalidatingParent: false,
-                                    parentMissing: false,
-                                    parentDeleted: false,
-                                    lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                                }),
-                            }));
-                        },
-                        failed: () => {
-                            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                                ...state,
-                                loadingParent: false,
-                                revalidatingParent: false,
-                                visibleParent: state.visibleParent,
-                                parentError: options.showInitialLoading
-                                    ? snapshot.errorCode ?? "fetch_failed"
-                                    : state.parentError,
-                                showParentLoadingIndicator: false,
-                            }));
-                        },
-                    },
+                        isDeletedEvent,
+                        upsertNode: () => upsertNode({
+                            event: snapshot.event!,
+                            relayUrls: snapshot.relayHints,
+                            sources: ["fetched-parent"],
+                            profile: snapshot.profile,
+                        }),
+                        upsertParentEdge,
+                    }),
                 });
             },
         });
@@ -1533,29 +1493,22 @@ export function usePostHistoryThreadGraph({
                     });
                 }
 
-                const childrenStatus = nextRecords.length > 0
-                    ? "resolved"
-                    : result.events.length > 0
-                        ? "deleted"
-                        : "not-found";
-                const applyChildrenLoaded = (): void => {
-                    updateExpansion(post.eventId, nodeEventId, (state) => ({
-                        ...buildChildrenLoadedExpansionState(state, {
-                            revalidatingChildren: false,
-                            lastFetchedChildrenAt: result.fetchedAt,
-                        }),
-                    }));
-                    if (!options.prefetchOnly) {
-                        void prefetchChildReplyCounts(post, nodeEventId);
-                    }
-                };
+                const childrenStatus = resolveChildrenRevalidateStatus({
+                    nextRecordsLength: nextRecords.length,
+                    resultEventsLength: result.events.length,
+                });
                 await coordinateThreadGraphStatusStrategy({
                     status: childrenStatus,
-                    strategies: {
-                        resolved: applyChildrenLoaded,
-                        "not-found": applyChildrenLoaded,
-                        deleted: applyChildrenLoaded,
-                    },
+                    strategies: createChildrenRevalidateStatusStrategies({
+                        fetchedAt: result.fetchedAt,
+                        prefetchOnly: !!options.prefetchOnly,
+                        updateExpansion: (updater) => {
+                            updateExpansion(post.eventId, nodeEventId, updater);
+                        },
+                        prefetchChildReplyCounts: () => {
+                            void prefetchChildReplyCounts(post, nodeEventId);
+                        },
+                    }),
                 });
             },
         });
@@ -1739,7 +1692,7 @@ export function usePostHistoryThreadGraph({
         parentEventId: string;
         cachedRecords: PostHistoryChildInteractionRecord[];
         anchorNode: PostHistoryThreadGraphNode;
-        activeRequestId: number;
+        ensureActive: () => boolean;
     }): Promise<void> {
         const cachedDirectReplies = input.cachedRecords.filter((record) => record.kind === 1);
         if (cachedDirectReplies.length === 0) {
@@ -1749,7 +1702,7 @@ export function usePostHistoryThreadGraph({
         await upsertReplyRecords(input.parentEventId, cachedDirectReplies, ["reply-db", "inbound-sync"], {
             resolveProfiles: false,
         });
-        if (input.activeRequestId !== taskTracker.getRequestId() || !getShow()) {
+        if (!input.ensureActive()) {
             return;
         }
 
@@ -1779,56 +1732,62 @@ export function usePostHistoryThreadGraph({
         const activeRequestId = taskTracker.getRequestId();
         const isTargetedRefresh = !!parentEventIds?.length;
         const postByEventId = new Map(posts.map((post) => [post.eventId, post]));
-        for (const parentEventId of targetParentIds) {
-            const post = postByEventId.get(parentEventId);
-            if (!post || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
-                continue;
-            }
 
-            const preloadKey = buildAnchorNodeKey(post.eventId, parentEventId);
-            const expansion = getExpansion(post.eventId, parentEventId);
-            if (
-                !isTargetedRefresh
-                && (
-                    replyBadgePreloadKeys.has(preloadKey)
-                    || expansion.loadedChildren
-                    || expansion.loadingChildren
-                    || expansion.revalidatingChildren
-                )
-            ) {
-                replyBadgePreloadKeys.add(preloadKey);
-                continue;
-            }
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
+            run: async ({ ensureActive }) => {
+                for (const parentEventId of targetParentIds) {
+                    const post = postByEventId.get(parentEventId);
+                    if (!post || !ensureActive()) {
+                        continue;
+                    }
 
-            replyBadgePreloadKeys.add(preloadKey);
+                    const preloadKey = buildAnchorNodeKey(post.eventId, parentEventId);
+                    const expansion = getExpansion(post.eventId, parentEventId);
+                    if (
+                        !isTargetedRefresh
+                        && (
+                            replyBadgePreloadKeys.has(preloadKey)
+                            || expansion.loadedChildren
+                            || expansion.loadingChildren
+                            || expansion.revalidatingChildren
+                        )
+                    ) {
+                        replyBadgePreloadKeys.add(preloadKey);
+                        continue;
+                    }
 
-            const anchorNode = ensureAnchorNode(post);
-            const [rawCachedReactionRecords, rawCachedDirectReplyRecords] = await Promise.all([
-                reactionRecordsAdapterImpl.getReactionRecords(parentEventId),
-                directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
-            ]);
-            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
-                continue;
-            }
+                    replyBadgePreloadKeys.add(preloadKey);
 
-            const [cachedReactionRecords, cachedDirectReplyRecords] = await Promise.all([
-                filterVisibleReplyRecords(rawCachedReactionRecords),
-                filterVisibleReplyRecords(rawCachedDirectReplyRecords),
-            ]);
-            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
-                continue;
-            }
+                    const anchorNode = ensureAnchorNode(post);
+                    const [rawCachedReactionRecords, rawCachedDirectReplyRecords] = await Promise.all([
+                        reactionRecordsAdapterImpl.getReactionRecords(parentEventId),
+                        directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
+                    ]);
+                    if (!ensureActive()) {
+                        continue;
+                    }
 
-            preloadCachedReactionSummaryForParent(parentEventId, cachedReactionRecords);
+                    const [cachedReactionRecords, cachedDirectReplyRecords] = await Promise.all([
+                        filterVisibleReplyRecords(rawCachedReactionRecords),
+                        filterVisibleReplyRecords(rawCachedDirectReplyRecords),
+                    ]);
+                    if (!ensureActive()) {
+                        continue;
+                    }
 
-            await preloadCachedDirectReplyStateForParent({
-                post,
-                parentEventId,
-                cachedRecords: cachedDirectReplyRecords,
-                anchorNode,
-                activeRequestId,
-            });
-        }
+                    preloadCachedReactionSummaryForParent(parentEventId, cachedReactionRecords);
+
+                    await preloadCachedDirectReplyStateForParent({
+                        post,
+                        parentEventId,
+                        cachedRecords: cachedDirectReplyRecords,
+                        anchorNode,
+                        ensureActive,
+                    });
+                }
+            },
+        });
     }
 
     async function prefetchChildrenBatch(
