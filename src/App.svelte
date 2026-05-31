@@ -176,8 +176,8 @@
   import {
     prefetchLatestPostHistoryDescriptors,
     schedulePostHistoryWarmupOnIdle,
-    type PostHistoryWarmupResult,
   } from "./lib/postHistoryPrefetch";
+  import { createPostHistoryWarmupController } from "./lib/postHistoryWarmupController";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
@@ -287,9 +287,6 @@
   let lastAccountLogoutError = $state("");
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
-  let postHistoryWarmupPubkey: string | null = null;
-  let postHistoryWarmupResult: PostHistoryWarmupResult | null = null;
-  let postHistoryWarmupPromise: Promise<PostHistoryWarmupResult> | null = null;
   let latestInboundInteractionSave = $state<{
     revision: number;
     parentEventIds: string[];
@@ -315,6 +312,14 @@
     onRequestSettled: () => {
       void flushPendingRemoteParentClientAndEmbedActions();
     },
+  });
+  const postHistoryWarmupController = createPostHistoryWarmupController({
+    getCurrentPubkeyHex: () =>
+      authState.value?.isAuthenticated
+        ? (authState.value.pubkey ?? null)
+        : null,
+    prefetchLatestPostHistoryDescriptors: (pubkeyHex) =>
+      prefetchLatestPostHistoryDescriptors({ pubkeyHex }),
   });
   const nip46AuthFlowCoordinator = createNip46AuthFlowController({
     startNip46NostrConnect: (relayCandidates) =>
@@ -570,29 +575,12 @@
   });
 
   $effect(() => {
-    const pubkeyHex =
-      isAuthenticated && authState.value?.pubkey
-        ? authState.value.pubkey
-        : null;
-
-    if (!pubkeyHex) {
-      resetPostHistoryWarmupState(null);
-      return;
-    }
-
-    if (postHistoryWarmupPubkey !== pubkeyHex) {
-      resetPostHistoryWarmupState(pubkeyHex);
-    }
-
-    if (
-      isBootstrappingApp ||
-      (postHistoryWarmupResult && postHistoryWarmupResult.status !== "failed")
-    ) {
+    if (!showPostHistoryDialogStore.value || isBootstrappingApp) {
       return;
     }
 
     const scheduled = schedulePostHistoryWarmupOnIdle(() => {
-      void warmLatestPostHistoryDescriptors();
+      void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
     });
 
     return () => {
@@ -1594,60 +1582,8 @@
     focusEditor(".tiptap-editor", 100);
   }
 
-  function resetPostHistoryWarmupState(pubkeyHex: string | null): void {
-    postHistoryWarmupPubkey = pubkeyHex;
-    postHistoryWarmupResult = null;
-    postHistoryWarmupPromise = null;
-  }
-
-  async function warmLatestPostHistoryDescriptors(): Promise<PostHistoryWarmupResult> {
-    const pubkeyHex = authState.value?.isAuthenticated
-      ? (authState.value.pubkey ?? null)
-      : null;
-
-    if (!pubkeyHex) {
-      resetPostHistoryWarmupState(null);
-      return { status: "skipped", urlCount: 0 };
-    }
-
-    if (postHistoryWarmupPubkey !== pubkeyHex) {
-      resetPostHistoryWarmupState(pubkeyHex);
-    }
-
-    if (postHistoryWarmupPromise) {
-      return postHistoryWarmupPromise;
-    }
-
-    if (
-      postHistoryWarmupResult &&
-      postHistoryWarmupResult.status !== "failed"
-    ) {
-      return postHistoryWarmupResult;
-    }
-
-    const activePubkeyHex = pubkeyHex;
-    const warmupPromise = prefetchLatestPostHistoryDescriptors({
-      pubkeyHex: activePubkeyHex,
-    })
-      .then((result) => {
-        if (postHistoryWarmupPubkey === activePubkeyHex) {
-          postHistoryWarmupResult = result;
-        }
-
-        return result;
-      })
-      .finally(() => {
-        if (postHistoryWarmupPubkey === activePubkeyHex) {
-          postHistoryWarmupPromise = null;
-        }
-      });
-
-    postHistoryWarmupPromise = warmupPromise;
-    return warmupPromise;
-  }
-
   function handleWarmPostHistoryDialog(): void {
-    void warmLatestPostHistoryDescriptors();
+    void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
   }
 
   // バルーンメッセージフック
