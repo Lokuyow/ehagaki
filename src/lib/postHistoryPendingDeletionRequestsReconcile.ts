@@ -16,6 +16,9 @@ import {
     updatePendingDeletionRequests,
     type PendingDeletionRequestStatus,
 } from "../stores/postHistoryDeletionLifecycleStore.svelte";
+import {
+    normalizeRelationLifecycleRecords,
+} from "./postHistoryRelationLifecycleHelpers";
 
 export interface PostHistoryPendingDeletionRequestsReconcileDeps {
     reactionDeletionStateRepository?: Pick<
@@ -64,48 +67,18 @@ async function normalizeStaleActiveStates(
     >,
     records: PostHistoryReactionLifecycleStateRecord[],
 ): Promise<PostHistoryReactionLifecycleStateRecord[]> {
-    if (records.length === 0) {
-        return records;
-    }
-
-    const verificationResult = await consistencyService.verifyConsistency({
-        candidates: records.map((record) => ({
+    return normalizeRelationLifecycleRecords({
+        records,
+        toCandidate: (record) => ({
             requestKey: record.requestKey,
             parentEventId: record.parentEventId,
             reactionEventId: record.reactionEventId,
             reactionAuthorPubkey: record.reactionAuthorPubkey,
             kind: record.kind,
-        })),
-        statesByRequestKey: new Map(
-            records.map((record) => [record.requestKey, record]),
-        ),
-    });
-    const resolvedRequestKeys = verificationResult.resolvedRequestKeys ?? [];
-    if (verificationResult.statePatches.length === 0) {
-        if (resolvedRequestKeys.length === 0) {
-            return records;
-        }
-
-        await repository.deleteMany(resolvedRequestKeys);
-        const resolvedRequestKeySet = new Set(resolvedRequestKeys);
-        return records.filter((record) => !resolvedRequestKeySet.has(record.requestKey));
-    }
-
-    const normalizedRecords = await repository.saveMany(verificationResult.statePatches);
-    if (resolvedRequestKeys.length > 0) {
-        await repository.deleteMany(resolvedRequestKeys);
-    }
-    const normalizedRecordsByRequestKey = new Map(
-        normalizedRecords.map((record) => [record.requestKey, record]),
-    );
-    const resolvedRequestKeySet = new Set(resolvedRequestKeys);
-
-    return records.flatMap((record) => {
-        if (resolvedRequestKeySet.has(record.requestKey)) {
-            return [];
-        }
-
-        return [normalizedRecordsByRequestKey.get(record.requestKey) ?? record];
+        }),
+        verifyConsistency: (params) => consistencyService.verifyConsistency(params),
+        saveMany: (patches) => repository.saveMany(patches),
+        deleteMany: (requestKeys) => repository.deleteMany(requestKeys),
     });
 }
 

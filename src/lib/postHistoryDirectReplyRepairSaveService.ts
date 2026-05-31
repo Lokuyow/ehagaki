@@ -13,32 +13,27 @@ import {
     type PostHistoryChildInteractionItem,
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryChildInteractionsRepository";
-import type { RelayConfig } from "./types";
+import type {
+    PostHistoryDeletionAwareSaveRequest,
+    PostHistoryDeletionAwareSaveResult,
+    PostHistoryDeletionAwareSaveTask,
+} from "./postHistoryDeletionAwareSaveTypes";
 
 export interface PostHistoryDirectReplyRepairItem extends PostHistoryChildInteractionItem {
     parentEventId: string;
 }
 
-export interface PostHistoryDirectReplyRepairSaveRequest {
-    items: PostHistoryDirectReplyRepairItem[];
-    relayHints?: string[];
-    relayConfig?: RelayConfig | null;
-    fetchedAt?: number;
-    isActive?: () => boolean;
-}
+export interface PostHistoryDirectReplyRepairSaveRequest
+    extends PostHistoryDeletionAwareSaveRequest<PostHistoryDirectReplyRepairItem> {}
 
-export interface PostHistoryDirectReplyRepairSaveResult {
-    status: "saved" | "cancelled";
+export interface PostHistoryDirectReplyRepairSaveResult
+    extends PostHistoryDeletionAwareSaveResult {
     savedParentEventIds: string[];
     savedDirectReplyCount: number;
-    deletedEventIds: string[];
-    deletionConfirmationIncomplete: boolean;
 }
 
-export interface PostHistoryDirectReplyRepairSaveTask {
-    promise: Promise<PostHistoryDirectReplyRepairSaveResult>;
-    cancel: () => void;
-}
+export type PostHistoryDirectReplyRepairSaveTask =
+    PostHistoryDeletionAwareSaveTask<PostHistoryDirectReplyRepairSaveResult>;
 
 export interface PostHistoryDirectReplyRepairSaveServiceDeps {
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;

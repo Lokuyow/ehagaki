@@ -22,6 +22,7 @@ import {
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import type { PostHistoryRelationKind } from "./postHistoryRelationLifecycleTypes";
 
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_PARENT_LIMIT = 150;
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE = 30;
@@ -31,12 +32,22 @@ export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT = 2
 export const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS = 6_000;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT = 8;
 const POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_TIMEOUT_WARN_INTERVAL_MS = 60_000;
+const DEFAULT_VISIBLE_RANGE_RELATION_KINDS: PostHistoryRelationKind[] = [
+    "reply",
+    "reaction",
+    "quote",
+];
 
 export interface PostHistoryVisibleRangeChildInteractionRepairRequest {
     ownerPubkeyHex: string;
     visiblePosts: PostHistoryRecord[];
     relayConfig?: RelayConfig | null;
     isActive?: () => boolean;
+}
+
+export interface PostHistoryVisibleRangeRelationRepairRequest
+    extends PostHistoryVisibleRangeChildInteractionRepairRequest {
+    relationKinds?: PostHistoryRelationKind[];
 }
 
 export interface PostHistoryVisibleRangeChildInteractionRepairResult {
@@ -56,9 +67,24 @@ export interface PostHistoryVisibleRangeChildInteractionRepairTask {
     cancel: () => void;
 }
 
+export interface PostHistoryVisibleRangeRelationRepairResult
+    extends PostHistoryVisibleRangeChildInteractionRepairResult {
+    relationKinds: PostHistoryRelationKind[];
+    quoteRepairApplied: boolean;
+}
+
+export interface PostHistoryVisibleRangeRelationRepairTask {
+    promise: Promise<PostHistoryVisibleRangeRelationRepairResult>;
+    cancel: () => void;
+}
+
 export interface PostHistoryVisibleRangeChildInteractionRepairServiceDeps {
     directReplySaveService?: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
     childInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    quoteVisibleRangeRepairExecutor?: (
+        rxNostr: RxNostr,
+        params: PostHistoryVisibleRangeRelationRepairRequest,
+    ) => Promise<void>;
     console?: Pick<Console, "warn" | "error">;
     setTimeoutFn?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
@@ -95,6 +121,11 @@ type PostHistoryVisibleRangeChildInteractionItem = {
     parentEventId: string;
     event: NostrEvent;
     relayUrls: string[];
+};
+
+type VisibleRangeRepairInclusionOptions = {
+    includeDirectReplies: boolean;
+    includeReactions: boolean;
 };
 
 const EMPTY_RESULT: PostHistoryVisibleRangeChildInteractionRepairResult = {
@@ -159,6 +190,9 @@ function toResultItems(eventsById: Map<string, EventAccumulator>) {
 export class PostHistoryVisibleRangeChildInteractionRepairService {
     private directReplySaveService: Pick<PostHistoryDirectReplyRepairSaveService, "saveRepairDirectReplies">;
     private childInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
+    private quoteVisibleRangeRepairExecutor:
+        | ((rxNostr: RxNostr, params: PostHistoryVisibleRangeRelationRepairRequest) => Promise<void>)
+        | undefined;
     private console: Pick<Console, "warn" | "error">;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     private clearTimeoutFn: (id: ReturnType<typeof setTimeout>) => void;
@@ -170,6 +204,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             deps.directReplySaveService ?? postHistoryDirectReplyRepairSaveService;
         this.childInteractionsRepository =
             deps.childInteractionsRepository ?? postHistoryChildInteractionsRepository;
+        this.quoteVisibleRangeRepairExecutor = deps.quoteVisibleRangeRepairExecutor;
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { warn: () => undefined, error: () => undefined });
@@ -181,6 +216,66 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     repairVisibleRangeChildInteractions(
         rxNostr: RxNostr,
         params: PostHistoryVisibleRangeChildInteractionRepairRequest,
+    ): PostHistoryVisibleRangeChildInteractionRepairTask {
+        return this.repairVisibleRangeChildInteractionsInternal(
+            rxNostr,
+            params,
+            {
+                includeDirectReplies: true,
+                includeReactions: true,
+            },
+        );
+    }
+
+    repairVisibleRangeRelations(
+        rxNostr: RxNostr,
+        params: PostHistoryVisibleRangeRelationRepairRequest,
+    ): PostHistoryVisibleRangeRelationRepairTask {
+        const relationKinds = Array.from(new Set(
+            (params.relationKinds ?? DEFAULT_VISIBLE_RANGE_RELATION_KINDS)
+                .filter((kind): kind is PostHistoryRelationKind =>
+                    kind === "reply" || kind === "reaction" || kind === "quote"
+                ),
+        ));
+        const childRepairTask = this.repairVisibleRangeChildInteractionsInternal(
+            rxNostr,
+            params,
+            {
+                includeDirectReplies: relationKinds.includes("reply"),
+                includeReactions: relationKinds.includes("reaction"),
+            },
+        );
+
+        const promise = (async (): Promise<PostHistoryVisibleRangeRelationRepairResult> => {
+            const childResult = await childRepairTask.promise;
+            let quoteRepairApplied = false;
+            if (
+                relationKinds.includes("quote")
+                && childResult.status !== "cancelled"
+                && params.isActive?.() !== false
+                && this.quoteVisibleRangeRepairExecutor
+            ) {
+                await this.quoteVisibleRangeRepairExecutor(rxNostr, params);
+                quoteRepairApplied = true;
+            }
+
+            return {
+                ...childResult,
+                relationKinds,
+                quoteRepairApplied,
+            };
+        })();
+
+        return {
+            promise,
+            cancel: () => childRepairTask.cancel(),
+        };
+    }
+
+    private repairVisibleRangeChildInteractionsInternal(
+        rxNostr: RxNostr,
+        params: PostHistoryVisibleRangeChildInteractionRepairRequest,
+        options: VisibleRangeRepairInclusionOptions,
     ): PostHistoryVisibleRangeChildInteractionRepairTask {
         let active = true;
         const candidateFetches = new Set<CandidateFetchTask>();
@@ -245,14 +340,18 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             }
                         }
 
-                        const repairItems = this.toDirectReplyItems(
-                            chunk.posts,
-                            candidateResult.items,
-                        );
-                        const reactionItems = this.toReactionItems(
-                            chunk.posts,
-                            candidateResult.items,
-                        );
+                        const repairItems = options.includeDirectReplies
+                            ? this.toDirectReplyItems(
+                                chunk.posts,
+                                candidateResult.items,
+                            )
+                            : [];
+                        const reactionItems = options.includeReactions
+                            ? this.toReactionItems(
+                                chunk.posts,
+                                candidateResult.items,
+                            )
+                            : [];
                         const canMarkChunkChecked =
                             candidateResult.status === "success"
                             && !candidateResult.saturated;

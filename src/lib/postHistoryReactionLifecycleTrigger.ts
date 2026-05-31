@@ -24,6 +24,12 @@ import {
     type PostHistoryReactionLifecycleStateRecord,
 } from "./postHistoryReactionLifecycleTypes";
 import {
+    mapStateRecordsByRequestKey,
+    normalizeNonEmptyEventIds,
+    partitionRelationLifecycleCandidates,
+    uniqueRequestKeysFromCandidates,
+} from "./postHistoryRelationLifecycleHelpers";
+import {
     reconcilePendingDeletionRequestsForRequestKeys,
 } from "./postHistoryPendingDeletionRequestsReconcile";
 import {
@@ -50,11 +56,7 @@ export interface PostHistoryReactionLifecycleTriggerResult
 // deletion callers. Keep dialog, sync, realtime, and listing flows routed here.
 
 function normalizeParentEventIds(parentEventIds: string[]): string[] {
-    return Array.from(new Set(parentEventIds.filter((eventId) => !!eventId)));
-}
-
-function uniqueRequestKeys(candidates: PostHistoryReactionLifecycleCandidate[]): string[] {
-    return Array.from(new Set(candidates.map((candidate) => candidate.requestKey)));
+    return normalizeNonEmptyEventIds(parentEventIds);
 }
 
 async function loadReactionLifecycleCandidates(
@@ -136,35 +138,23 @@ export async function triggerPostHistoryReactionLifecycle(
         reactionRecordsAdapter,
     );
     const existingStateRecords = await reactionDeletionStateRepository.getMany(
-        uniqueRequestKeys(candidates),
+        uniqueRequestKeysFromCandidates(candidates),
     );
-    const existingStateByRequestKey = new Map(
-        existingStateRecords.map((record) => [record.requestKey, record]),
-    );
-    const skippedCandidates = candidates.filter((candidate) =>
-        hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey)
-        || (
-            existingStateByRequestKey.has(candidate.requestKey)
-            && existingStateByRequestKey.get(candidate.requestKey)?.status === "failed"
-            && !canRetryPostHistoryReactionLifecycle(
-                existingStateByRequestKey.get(candidate.requestKey)!,
-            )
-        ),
-    );
-    const admittedCandidates = candidates.filter((candidate) =>
-        !hasInFlightPostHistoryReactionLifecycleRequest(candidate.requestKey)
-        && (
-            !existingStateByRequestKey.has(candidate.requestKey)
-            || existingStateByRequestKey.get(candidate.requestKey)?.status !== "failed"
-            || canRetryPostHistoryReactionLifecycle(
-                existingStateByRequestKey.get(candidate.requestKey)!,
-            )
-        ),
-    );
+    const existingStateByRequestKey = mapStateRecordsByRequestKey(existingStateRecords);
+    const {
+        skippedCandidates,
+        admittedCandidates,
+    } = partitionRelationLifecycleCandidates({
+        candidates,
+        existingStateByRequestKey,
+        hasInFlightRequest: hasInFlightPostHistoryReactionLifecycleRequest,
+        isFailedState: (state) => state.status === "failed",
+        canRetryFailedState: canRetryPostHistoryReactionLifecycle,
+    });
 
     if (!request.rxNostr || admittedCandidates.length === 0) {
         await reconcilePendingDeletionRequestsForRequestKeys(
-            uniqueRequestKeys(candidates),
+            uniqueRequestKeysFromCandidates(candidates),
         ).catch(() => undefined);
 
         return {
@@ -176,7 +166,7 @@ export async function triggerPostHistoryReactionLifecycle(
         };
     }
 
-    const admittedRequestKeys = uniqueRequestKeys(admittedCandidates);
+    const admittedRequestKeys = uniqueRequestKeysFromCandidates(admittedCandidates);
     addInFlightPostHistoryReactionLifecycleRequests(admittedRequestKeys);
 
     try {
@@ -298,7 +288,7 @@ export async function triggerPostHistoryReactionLifecycle(
         removeInFlightPostHistoryReactionLifecycleRequests(admittedRequestKeys);
         await reconcilePendingDeletionRequestsForRequestKeys([
             ...admittedRequestKeys,
-            ...uniqueRequestKeys(skippedCandidates),
+            ...uniqueRequestKeysFromCandidates(skippedCandidates),
         ]).catch(() => undefined);
     }
 }
