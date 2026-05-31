@@ -123,4 +123,57 @@ describe('ProfileComponent', () => {
         );
         expect(screen.getByText('コピーしました')).toBeTruthy();
     });
+
+    it('アカウント一覧が空でも復旧用ログアウト操作を表示して実行できる', async () => {
+        const onLogout = vi.fn();
+
+        render(ProfileComponent, {
+            show: true,
+            onClose: vi.fn(),
+            onLogout,
+            accounts: [],
+            accountProfiles: new Map(),
+        });
+
+        expect(screen.getByText('アカウント復旧')).toBeTruthy();
+
+        await fireEvent.click(
+            screen.getByRole('button', { name: '現在のアカウントをログアウト' }),
+        );
+
+        expect(onLogout).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+    });
+
+    it('auth pubkey が空でも fallbackRecoveryPubkeyHex があれば復旧用ログアウト操作を表示できる', async () => {
+        const onLogout = vi.fn();
+        (authState as any).value = {
+            ...authState.value,
+            pubkey: '',
+            npub: '',
+            nprofile: '',
+        };
+        (profileDataStore as any).value = {
+            ...profileDataStore.value,
+            npub: '',
+            nprofile: '',
+        };
+
+        render(ProfileComponent, {
+            show: true,
+            onClose: vi.fn(),
+            onLogout,
+            fallbackRecoveryPubkeyHex: ACTIVE_PUBKEY,
+            accounts: [],
+            accountProfiles: new Map(),
+        });
+
+        expect(screen.getByText('アカウント復旧')).toBeTruthy();
+        expect(screen.getByText(/^npub1/)).toBeTruthy();
+
+        await fireEvent.click(
+            screen.getByRole('button', { name: '現在のアカウントをログアウト' }),
+        );
+
+        expect(onLogout).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+    });
 });

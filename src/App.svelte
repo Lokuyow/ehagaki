@@ -1514,6 +1514,9 @@
           show={showLogoutDialogStore.value}
           onClose={logoutDialog.close}
           onLogout={requestLogoutAccount}
+          fallbackRecoveryPubkeyHex={accountManager.getActiveAccountPubkey() ||
+            accountManager.getAccounts()[0]?.pubkeyHex ||
+            ""}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
           onCheckNip46Connection={handleNip46ConnectionCheck}

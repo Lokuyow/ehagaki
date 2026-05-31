@@ -22,10 +22,19 @@
         }
     }
 
+    function formatNpub(pubkeyHex: string): string {
+        try {
+            return toNpub(pubkeyHex);
+        } catch {
+            return "";
+        }
+    }
+
     interface Props {
         show: boolean;
         onClose: () => void;
         onLogout: (pubkeyHex: string) => void;
+        fallbackRecoveryPubkeyHex?: string;
         onSwitchAccount?: (pubkeyHex: string) => void;
         onAddAccount?: () => void;
         onCheckNip46Connection?: (pubkeyHex: string) => void | Promise<void>;
@@ -47,6 +56,7 @@
         show = $bindable(false),
         onClose,
         onLogout,
+        fallbackRecoveryPubkeyHex = "",
         onSwitchAccount,
         onAddAccount,
         onCheckNip46Connection,
@@ -73,6 +83,16 @@
 
     // ログアウト中の場合、プロフィールデータを保持して表示を維持
     let displayedProfile = $state(profileDataStore.value);
+    let currentPubkeyHex = $derived(
+        auth?.pubkey || fallbackRecoveryPubkeyHex || "",
+    );
+    let currentNpub = $derived(
+        displayedProfile.npub ||
+            (currentPubkeyHex ? formatNpub(currentPubkeyHex) : ""),
+    );
+    let showRecoveryActions = $derived(
+        accounts.length === 0 && !!currentPubkeyHex,
+    );
 
     $effect(() => {
         // ログアウト中でない場合のみ、プロフィールデータを更新
@@ -82,7 +102,8 @@
     });
 
     function handleLogout(pubkeyHex?: string) {
-        const key = pubkeyHex ?? auth?.pubkey;
+        const key =
+            pubkeyHex || auth?.pubkey || fallbackRecoveryPubkeyHex || "";
         if (key) onLogout?.(key);
     }
 
@@ -137,20 +158,17 @@
                 </div>
                 <div class="profile-info-container">
                     <!-- npub -->
-                    {#if displayedProfile.npub}
+                    {#if currentNpub}
                         <div class="profile-info-row">
                             <div class="profile-info-content">
                                 <span class="profile-info-text"
-                                    >{displayedProfile.npub}</span
+                                    >{currentNpub}</span
                                 >
                                 <Button
                                     shape="square"
                                     className="copy-button"
                                     onClick={() =>
-                                        handleCopy(
-                                            displayedProfile.npub!,
-                                            "npub",
-                                        )}
+                                        handleCopy(currentNpub, "npub")}
                                     ariaLabel={$_("profileDialog.copy_npub")}
                                     floatingMessage={$_("common.copySuccess")}
                                 >
@@ -193,6 +211,28 @@
                 </div>
             </div>
         </div>
+
+        {#if showRecoveryActions}
+            <div class="recovery-section">
+                <div class="profile-info-label">
+                    {$_("profileDialog.recovery_title")}
+                </div>
+                <div class="recovery-description">
+                    {$_("profileDialog.recovery_description")}
+                </div>
+                <Button
+                    className="recovery-logout-btn"
+                    variant="danger"
+                    shape="rounded"
+                    disabled={isLoggingOut || isSwitchingAccount}
+                    onClick={() => handleLogout(currentPubkeyHex)}
+                    ariaLabel={$_("profileDialog.recovery_logout_current")}
+                >
+                    <div class="logout-icon svg-icon" aria-hidden="true"></div>
+                    <span>{$_("profileDialog.recovery_logout_current")}</span>
+                </Button>
+            </div>
+        {/if}
 
         <!-- アカウント一覧 -->
         {#if accounts.length > 0}
@@ -654,12 +694,6 @@
             }
         }
 
-        .logout-icon {
-            mask-image: url("/icons/logout_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            width: 26px;
-            height: 26px;
-        }
-
         :global(button.add-account-btn) {
             display: flex;
             align-items: center;
@@ -726,6 +760,37 @@
             mask-image: url("/icons/network_ping_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             background-color: currentColor;
             flex-shrink: 0;
+        }
+    }
+
+    .logout-icon {
+        mask-image: url("/icons/logout_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 26px;
+        height: 26px;
+    }
+
+    .recovery-section {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--btn-bg), transparent 18%);
+
+        .recovery-description {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        :global(.recovery-logout-btn) {
+            width: 100%;
+            min-height: 42px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
     }
 
