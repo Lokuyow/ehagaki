@@ -165,6 +165,10 @@
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
+  import {
+    createParentClientAuthCoordinator,
+    type ParentClientAuthRequestOptions,
+  } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
@@ -302,6 +306,17 @@
   let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let customEmojiPickerHeight = $state(0);
   let customEmojiPickerOpen = $state(false);
+  const parentClientAuthCoordinator = createParentClientAuthCoordinator({
+    authenticateWithParentClient: (options) =>
+      authService.authenticateWithParentClient(options),
+    syncParentClientAccount,
+    setLoading: (isLoading) => {
+      isLoadingParentClient = isLoading;
+    },
+    onRequestSettled: () => {
+      void flushPendingRemoteParentClientAndEmbedActions();
+    },
+  });
   let postEditorMinHeight = $derived(
     customEmojiPickerOpen
       ? POST_EDITOR_COMPACT_MIN_HEIGHT
@@ -330,7 +345,6 @@
       !!replyQuoteState.value.reply ||
       replyQuoteState.value.quotes.length > 0,
   );
-  let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
 
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
@@ -760,20 +774,7 @@
       timeoutMs?: number;
     } = {},
   ): Promise<AuthResult> {
-    if (parentClientAuthPromise) {
-      return parentClientAuthPromise;
-    }
-
-    isLoadingParentClient = true;
-    parentClientAuthPromise = authService
-      .authenticateWithParentClient(options)
-      .finally(() => {
-        isLoadingParentClient = false;
-        parentClientAuthPromise = null;
-        void flushPendingRemoteParentClientAndEmbedActions();
-      });
-
-    return parentClientAuthPromise;
+    return parentClientAuthCoordinator.requestParentClientAuth(options);
   }
 
   async function synchronizeParentClientAuth(
@@ -782,12 +783,7 @@
       timeoutMs?: number;
     } = {},
   ): Promise<AuthResult> {
-    const result = await requestParentClientAuth(options);
-    if (result.success && result.pubkeyHex) {
-      syncParentClientAccount(result.pubkeyHex);
-    }
-
-    return result;
+    return parentClientAuthCoordinator.synchronizeParentClientAuth(options);
   }
 
   async function activateParentClientAuth(
@@ -796,7 +792,8 @@
       timeoutMs?: number;
     } = {},
   ): Promise<string | undefined> {
-    const result = await synchronizeParentClientAuth(options);
+    const result =
+      await parentClientAuthCoordinator.synchronizeParentClientAuth(options);
     if (!result.success || !result.pubkeyHex) {
       return result.error ?? "parent_client_auth_error";
     }
@@ -914,7 +911,8 @@
     },
     runtime: {
       isBootstrappingApp: () => isBootstrappingApp,
-      hasPendingParentAuth: () => parentClientAuthPromise !== null,
+      hasPendingParentAuth: () =>
+        parentClientAuthCoordinator.hasPendingRequest(),
       getReplyQuoteState: () => replyQuoteState.value,
       getChannelContextState: () => channelContextState.value,
       getRuntimeSnapshot: () => ({
@@ -950,7 +948,7 @@
 
   // Parent client login/logout の保留処理と embed action の flush をまとめる coordinator.
   async function flushPendingRemoteParentClientAndEmbedActions(): Promise<void> {
-    if (isBootstrappingApp || parentClientAuthPromise) {
+    if (isBootstrappingApp || parentClientAuthCoordinator.hasPendingRequest()) {
       return;
     }
 
