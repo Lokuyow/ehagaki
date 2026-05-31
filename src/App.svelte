@@ -156,6 +156,7 @@
   } from "./lib/appAuthUtils";
   import { createAppAccountSessionController } from "./lib/appAccountSessionController";
   import { createAppAuthLoginController } from "./lib/appAuthLoginController";
+  import { createAppParentClientSyncController } from "./lib/appParentClientSyncController";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -418,9 +419,6 @@
       !!replyQuoteState.value.reply ||
       replyQuoteState.value.quotes.length > 0,
   );
-  let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
-
-  const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
 
   // AccountManager初期化
   const accountManager = new AccountManager({ localStorage });
@@ -958,44 +956,27 @@
       },
     },
   });
+  const appParentClientSyncController = createAppParentClientSyncController({
+    isBootstrappingApp: () => isBootstrappingApp,
+    hasPendingParentAuth: () => parentClientAuthCoordinator.hasPendingRequest(),
+    isCurrentParentClientRuntime,
+    activateParentClientAuth,
+    flushPendingComposerAction: () =>
+      appEmbedController.flushPendingComposerAction(),
+    logger: console,
+  });
 
   // Parent client login/logout の保留処理と embed action の flush をまとめる coordinator.
   async function flushPendingRemoteParentClientAndEmbedActions(): Promise<void> {
-    if (isBootstrappingApp || parentClientAuthCoordinator.hasPendingRequest()) {
-      return;
-    }
-
-    if (pendingRemoteParentLoginPubkey !== undefined) {
-      const queuedPubkey = pendingRemoteParentLoginPubkey;
-      pendingRemoteParentLoginPubkey = undefined;
-      await handleRemoteParentClientLogin(queuedPubkey);
-    }
-
-    await appEmbedController.flushPendingComposerAction();
+    await appParentClientSyncController.flushPendingRemoteParentClientAndEmbedActions();
   }
 
   async function handleRemoteParentClientLogin(
     pubkeyHex: string | null,
   ): Promise<void> {
-    if (isBootstrappingApp) {
-      pendingRemoteParentLoginPubkey = pubkeyHex;
-      return;
-    }
-
-    if (isCurrentParentClientRuntime(pubkeyHex)) {
-      return;
-    }
-
-    const error = await activateParentClientAuth({
-      silent: true,
-      timeoutMs: PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS,
-    });
-
-    if (error) {
-      console.error("親クライアント連携の自動同期に失敗:", error);
-    }
-
-    await flushPendingRemoteParentClientAndEmbedActions();
+    await appParentClientSyncController.handleRemoteParentClientLogin(
+      pubkeyHex,
+    );
   }
 
   async function handleRemoteParentClientLogout(
