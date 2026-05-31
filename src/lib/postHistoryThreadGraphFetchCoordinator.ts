@@ -1,4 +1,16 @@
-import { isThreadGraphRevalidateStale } from "./postHistoryThreadGraphLoadDecision";
+import {
+    decideThreadGraphCachedRevalidate,
+    isThreadGraphRevalidateStale,
+    type ThreadGraphCachedRevalidateDecision,
+    type ThreadGraphCachedRevalidateDecisionOptions,
+} from "./postHistoryThreadGraphLoadDecision";
+
+export interface ThreadGraphInFlightLoadOptions {
+    loading: boolean;
+    revalidating: boolean;
+    onInFlight: () => void;
+    onLoadingInFlight?: () => void;
+}
 
 export interface ThreadGraphLoadedStateRevalidateOptions {
     hasVisibleData: boolean;
@@ -12,6 +24,26 @@ export interface ThreadGraphRevalidateExecutionOptions {
     shouldShowInitialLoading: boolean;
     awaitWhenInitialLoading: boolean;
     runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void>;
+}
+
+export interface ThreadGraphCachedRevalidateFlowOptions
+    extends ThreadGraphCachedRevalidateDecisionOptions {
+    awaitWhenInitialLoading: boolean;
+    onSkipPrefetchReplyCounts?: () => void;
+    runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void>;
+}
+
+export function handleThreadGraphInFlightLoad(options: ThreadGraphInFlightLoadOptions): boolean {
+    if (!options.loading && !options.revalidating) {
+        return false;
+    }
+
+    options.onInFlight();
+    if (options.loading) {
+        options.onLoadingInFlight?.();
+    }
+
+    return true;
 }
 
 export function shouldRunThreadGraphBackgroundRevalidate(
@@ -41,4 +73,22 @@ export async function coordinateThreadGraphRevalidateExecution(
     if (options.awaitWhenInitialLoading && options.shouldShowInitialLoading) {
         await revalidatePromise;
     }
+}
+
+export async function coordinateThreadGraphCachedRevalidateFlow(
+    options: ThreadGraphCachedRevalidateFlowOptions,
+): Promise<ThreadGraphCachedRevalidateDecision> {
+    const decision = decideThreadGraphCachedRevalidate(options);
+    if (decision.shouldPrefetchReplyCountsOnSkip) {
+        options.onSkipPrefetchReplyCounts?.();
+    }
+
+    await coordinateThreadGraphRevalidateExecution({
+        skipRevalidate: decision.skipRevalidate,
+        shouldShowInitialLoading: decision.shouldShowInitialLoading,
+        awaitWhenInitialLoading: options.awaitWhenInitialLoading,
+        runRevalidate: options.runRevalidate,
+    });
+
+    return decision;
 }

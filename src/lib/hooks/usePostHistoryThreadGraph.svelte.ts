@@ -75,10 +75,8 @@ import {
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
 import {
-    decideThreadGraphCachedRevalidate,
-} from "../postHistoryThreadGraphLoadDecision";
-import {
-    coordinateThreadGraphRevalidateExecution,
+    coordinateThreadGraphCachedRevalidateFlow,
+    handleThreadGraphInFlightLoad,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../postHistoryThreadGraphFetchCoordinator";
 
@@ -1256,15 +1254,20 @@ export function usePostHistoryThreadGraph({
         }
 
         const currentExpansion = getExpansion(post.eventId, nodeEventId);
-        if (currentExpansion.loadingParent || currentExpansion.revalidatingParent) {
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                visibleParent: true,
-                showParentLoadingIndicator: false,
-            }));
-            if (currentExpansion.loadingParent) {
+        if (handleThreadGraphInFlightLoad({
+            loading: currentExpansion.loadingParent,
+            revalidating: currentExpansion.revalidatingParent,
+            onInFlight: () => {
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...state,
+                    visibleParent: true,
+                    showParentLoadingIndicator: false,
+                }));
+            },
+            onLoadingInFlight: () => {
                 scheduleParentLoadingIndicator(post.eventId, nodeEventId);
-            }
+            },
+        })) {
             return;
         }
 
@@ -1302,15 +1305,11 @@ export function usePostHistoryThreadGraph({
         scheduleParentLoadingIndicator(post.eventId, nodeEventId);
         const displayedCachedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        const parentRevalidateDecision = decideThreadGraphCachedRevalidate({
+        await coordinateThreadGraphCachedRevalidateFlow({
             displayedCached: displayedCachedParent,
             force: !!options.force,
             lastFetchedAt: latestExpansion.lastFetchedParentAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
-        });
-        await coordinateThreadGraphRevalidateExecution({
-            skipRevalidate: parentRevalidateDecision.skipRevalidate,
-            shouldShowInitialLoading: parentRevalidateDecision.shouldShowInitialLoading,
             awaitWhenInitialLoading: true,
             runRevalidate: ({ showInitialLoading }) => revalidateParentForNodeInBackground(
                 post,
@@ -1537,13 +1536,18 @@ export function usePostHistoryThreadGraph({
         }
 
         const currentExpansion = getExpansion(post.eventId, nodeEventId);
-        if (currentExpansion.loadingChildren || currentExpansion.revalidatingChildren) {
-            if (!options.prefetchOnly) {
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...state,
-                    visibleChildren: true,
-                }));
-            }
+        if (handleThreadGraphInFlightLoad({
+            loading: currentExpansion.loadingChildren,
+            revalidating: currentExpansion.revalidatingChildren,
+            onInFlight: options.prefetchOnly
+                ? () => undefined
+                : () => {
+                    updateExpansion(post.eventId, nodeEventId, (state) => ({
+                        ...state,
+                        visibleChildren: true,
+                    }));
+                },
+        })) {
             return;
         }
 
@@ -1572,21 +1576,16 @@ export function usePostHistoryThreadGraph({
 
         const displayedCachedChildren = await displayCachedChildrenForNode(post, nodeEventId, currentNode, options);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        const childrenRevalidateDecision = decideThreadGraphCachedRevalidate({
+        await coordinateThreadGraphCachedRevalidateFlow({
             displayedCached: displayedCachedChildren,
             force: !!options.force,
             lastFetchedAt: latestExpansion.lastFetchedChildrenAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
             prefetchOnly: !!options.prefetchOnly,
-        });
-        if (childrenRevalidateDecision.shouldPrefetchReplyCountsOnSkip) {
-            void prefetchChildReplyCounts(post, nodeEventId);
-        }
-
-        await coordinateThreadGraphRevalidateExecution({
-            skipRevalidate: childrenRevalidateDecision.skipRevalidate,
-            shouldShowInitialLoading: childrenRevalidateDecision.shouldShowInitialLoading,
             awaitWhenInitialLoading: false,
+            onSkipPrefetchReplyCounts: () => {
+                void prefetchChildReplyCounts(post, nodeEventId);
+            },
             runRevalidate: ({ showInitialLoading }) => revalidateChildrenForNodeInBackground(
                 post,
                 nodeEventId,
