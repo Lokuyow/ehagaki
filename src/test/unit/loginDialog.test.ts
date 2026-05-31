@@ -517,7 +517,7 @@ describe('LoginDialog', () => {
         expect(screen.getAllByText('接続中...').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('待受準備中でも bunker タブ切替は cancel cleanup を要求する', async () => {
+    it('待受準備中でも bunker タブ切替で待受は cancel しない', async () => {
         const onNostrConnectCancel = vi.fn();
 
         render(LoginDialog, {
@@ -530,7 +530,7 @@ describe('LoginDialog', () => {
 
         await fireEvent.click(screen.getByText('bunker:// を入力'));
 
-        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
+        expect(onNostrConnectCancel).toHaveBeenCalledTimes(0);
     });
 
     it('QR / 表示 URI / コピー / direct-open が同じ URI を使う', async () => {
@@ -888,17 +888,21 @@ describe('LoginDialog', () => {
         expect(onNostrConnectCancel).toHaveBeenCalledTimes(0);
     });
 
-    it('QR タブから bunker タブへ切り替えると待機を cancel し、戻っても自動再生成しない', async () => {
+    it('QR タブから bunker タブへ切り替えても待機を cancel せず、戻ると URI 表示を維持する', async () => {
         const onNostrConnectStart = vi
             .fn<(relays: string[]) => Promise<string | undefined>>()
             .mockResolvedValue(undefined);
         const onNostrConnectCancel = vi.fn();
+        const uri =
+            'nostrconnect://client?relay=wss%3A%2F%2Frelay.example.com%2F&name=eHagaki';
 
-        render(LoginDialog, {
+        const { rerender } = render(LoginDialog, {
             props: {
                 ...defaultProps,
                 onNostrConnectStart,
                 onNostrConnectCancel,
+                isWaitingNip46NostrConnect: true,
+                nip46NostrConnectUri: uri,
             },
         });
 
@@ -906,13 +910,23 @@ describe('LoginDialog', () => {
             expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
         });
 
+        const cancelCallCountBeforeTabSwitch = onNostrConnectCancel.mock.calls.length;
         await fireEvent.click(screen.getByText('bunker:// を入力'));
-        expect(onNostrConnectCancel).toHaveBeenCalledTimes(1);
+        expect(onNostrConnectCancel).toHaveBeenCalledTimes(cancelCallCountBeforeTabSwitch);
         expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy();
+
+        await rerender({
+            ...defaultProps,
+            onNostrConnectStart,
+            onNostrConnectCancel,
+            isWaitingNip46NostrConnect: true,
+            nip46NostrConnectUri: uri,
+        });
 
         await fireEvent.click(screen.getByText('QRコード'));
 
         expect(onNostrConnectStart).toHaveBeenCalledTimes(1);
+        expect(screen.getByDisplayValue(uri)).toBeTruthy();
         expect(screen.queryByPlaceholderText('bunker://...')).toBeNull();
 
         await fireEvent.click(screen.getByTestId('nostrconnect-regenerate'));

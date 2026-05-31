@@ -462,12 +462,6 @@
         activeRemoteSignerTab = tab;
         cleanupNostrConnectDirectOpenState();
 
-        if (tab === "bunker") {
-            lastRequestedNostrConnectSignature = null;
-            onNostrConnectCancel?.();
-            return;
-        }
-
         lastRequestedNostrConnectSignature = null;
     }
 
