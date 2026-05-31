@@ -11,6 +11,7 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostHistoryQuoteLifecycleStatusBadge from "./PostHistoryQuoteLifecycleStatusBadge.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
@@ -1748,6 +1749,8 @@
                                         {/if}
                                     </div>
                                     {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
+                                        {@const quotePreviewStates =
+                                            getQuotePreviewStates(post)}
                                         {@const repliesActionLabel =
                                             getRepliesActionLabel(post)}
                                         {@const showRepliesBadge =
@@ -1823,24 +1826,31 @@
                                                     </div>
                                                 </div>
                                                 {#if onQuotePost}
-                                                    <Button
-                                                        type="button"
-                                                        class="post-preview-action-button post-history-action-button"
-                                                        ariaLabel={$_(
-                                                            "replyQuote.quote_label",
-                                                        )}
-                                                        contentLayout="icon"
-                                                        shape="circle"
-                                                        onClick={() =>
-                                                            handleQuotePost(
-                                                                post,
-                                                            )}
+                                                    <div
+                                                        class="post-preview-quote-action-group"
                                                     >
-                                                        <div
-                                                            class="quote-icon svg-icon"
-                                                            aria-hidden="true"
-                                                        ></div>
-                                                    </Button>
+                                                        <Button
+                                                            type="button"
+                                                            class="post-preview-action-button post-history-action-button"
+                                                            ariaLabel={$_(
+                                                                "replyQuote.quote_label",
+                                                            )}
+                                                            contentLayout="icon"
+                                                            shape="circle"
+                                                            onClick={() =>
+                                                                handleQuotePost(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="quote-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                        </Button>
+                                                        <PostHistoryQuoteLifecycleStatusBadge
+                                                            states={quotePreviewStates}
+                                                        />
+                                                    </div>
                                                 {/if}
                                                 <div
                                                     class="post-preview-footer-reaction-slot"
@@ -3229,6 +3239,12 @@
         .post-preview-action-buttons-group {
             display: flex;
             align-items: stretch;
+        }
+
+        .post-preview-quote-action-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .post-preview-footer-replies-slot {
