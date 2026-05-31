@@ -174,6 +174,20 @@ const Utilities = {
         });
     },
 
+    // カスタム絵文字はクエリ依存URL（例: ?raw=true）を保持してキャッシュキー化する
+    getCustomEmojiBaseUrl(url) {
+        const normalizedUrl = normalizeProfilePictureUrl(url, {
+            currentOrigin: ServiceWorkerDependencies.location.origin
+        });
+        if (!normalizedUrl) {
+            return null;
+        }
+
+        const parsed = new URL(normalizedUrl);
+        parsed.hash = '';
+        return parsed.toString();
+    },
+
     // リダイレクトレスポンス
     createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location, { shared = true } = {}) {
         return createServiceWorkerRedirectResponse({
@@ -375,7 +389,7 @@ class CacheManager {
             return await resolveCustomEmojiImageRequestResponse({
                 request,
                 cache,
-                getBaseUrl: Utilities.getBaseUrl,
+                getBaseUrl: Utilities.getCustomEmojiBaseUrl,
                 createRequest: Utilities.createCorsRequest,
                 fetchRequest: (targetRequest) => this.fetch(targetRequest),
             });
@@ -402,7 +416,7 @@ class CacheManager {
             cacheName: CUSTOM_EMOJI_CACHE_NAME,
             fetchRequest: (request) => this.fetch(request),
             createRequest: Utilities.createCorsRequest,
-            getBaseUrl: Utilities.getBaseUrl,
+            getBaseUrl: Utilities.getCustomEmojiBaseUrl,
             isCacheableCustomEmojiResponse: (response) =>
                 Utilities.isCacheableCustomEmojiResponse(response),
             cacheOpaqueImage: (cache, baseUrl) => this.cacheOpaqueCustomEmojiImage(cache, baseUrl),
