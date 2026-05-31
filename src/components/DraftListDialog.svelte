@@ -327,7 +327,7 @@
             flex: 1;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             gap: 8px;
             padding: 10px;
             --btn-bg: var(--dialog-bg);
@@ -403,12 +403,12 @@
     }
 
     .context-name {
-        flex: 0 1 auto;
+        flex: 1 0 auto;
         min-width: 3em;
     }
 
     .context-detail {
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         min-width: 0;
         color: var(--text-muted);
     }
