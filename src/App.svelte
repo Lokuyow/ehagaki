@@ -165,10 +165,7 @@
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
-  import {
-    createParentClientAuthCoordinator,
-    type ParentClientAuthRequestOptions,
-  } from "./lib/parentClientAuthCoordinator";
+  import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
@@ -766,24 +763,6 @@
     }
 
     return currentPubkey === pubkeyHex && connectedPubkey === pubkeyHex;
-  }
-
-  async function requestParentClientAuth(
-    options: {
-      silent?: boolean;
-      timeoutMs?: number;
-    } = {},
-  ): Promise<AuthResult> {
-    return parentClientAuthCoordinator.requestParentClientAuth(options);
-  }
-
-  async function synchronizeParentClientAuth(
-    options: {
-      silent?: boolean;
-      timeoutMs?: number;
-    } = {},
-  ): Promise<AuthResult> {
-    return parentClientAuthCoordinator.synchronizeParentClientAuth(options);
   }
 
   async function activateParentClientAuth(
