@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    decideThreadGraphCachedRevalidate,
     isThreadGraphRevalidateStale,
     shouldSkipRevalidateAfterDisplayingCache,
 } from "../../lib/postHistoryThreadGraphLoadDecision";
@@ -55,5 +56,39 @@ describe("postHistoryThreadGraphLoadDecision", () => {
             ttlMs: 1_000,
             now: 10_000,
         })).toBe(false);
+    });
+
+    it("prefetchOnly なしで skip されると reply count prefetch を許可する", () => {
+        const decision = decideThreadGraphCachedRevalidate({
+            displayedCached: true,
+            force: false,
+            lastFetchedAt: 9_500,
+            ttlMs: 1_000,
+            prefetchOnly: false,
+            now: 10_000,
+        });
+
+        expect(decision).toEqual({
+            skipRevalidate: true,
+            shouldShowInitialLoading: false,
+            shouldPrefetchReplyCountsOnSkip: true,
+        });
+    });
+
+    it("prefetchOnly の場合は skip されても reply count prefetch しない", () => {
+        const decision = decideThreadGraphCachedRevalidate({
+            displayedCached: true,
+            force: false,
+            lastFetchedAt: 9_500,
+            ttlMs: 1_000,
+            prefetchOnly: true,
+            now: 10_000,
+        });
+
+        expect(decision).toEqual({
+            skipRevalidate: true,
+            shouldShowInitialLoading: false,
+            shouldPrefetchReplyCountsOnSkip: false,
+        });
     });
 });

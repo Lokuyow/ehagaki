@@ -75,9 +75,12 @@ import {
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
 import {
-    isThreadGraphRevalidateStale,
-    shouldSkipRevalidateAfterDisplayingCache,
+    decideThreadGraphCachedRevalidate,
 } from "../postHistoryThreadGraphLoadDecision";
+import {
+    coordinateThreadGraphRevalidateExecution,
+    shouldRunThreadGraphBackgroundRevalidate,
+} from "../postHistoryThreadGraphFetchCoordinator";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -1277,7 +1280,8 @@ export function usePostHistoryThreadGraph({
                 showParentLoadingIndicator: false,
             }));
             const displayedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
-            if (displayedParent && isThreadGraphRevalidateStale({
+            if (shouldRunThreadGraphBackgroundRevalidate({
+                hasVisibleData: displayedParent,
                 lastFetchedAt: currentExpansion.lastFetchedParentAt,
                 ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
             })) {
@@ -1298,21 +1302,23 @@ export function usePostHistoryThreadGraph({
         scheduleParentLoadingIndicator(post.eventId, nodeEventId);
         const displayedCachedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        if (shouldSkipRevalidateAfterDisplayingCache({
+        const parentRevalidateDecision = decideThreadGraphCachedRevalidate({
             displayedCached: displayedCachedParent,
             force: !!options.force,
             lastFetchedAt: latestExpansion.lastFetchedParentAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
-        })) {
-            return;
-        }
-
-        const revalidatePromise = revalidateParentForNodeInBackground(post, nodeEventId, currentNode, {
-            showInitialLoading: !displayedCachedParent,
         });
-        if (!displayedCachedParent) {
-            await revalidatePromise;
-        }
+        await coordinateThreadGraphRevalidateExecution({
+            skipRevalidate: parentRevalidateDecision.skipRevalidate,
+            shouldShowInitialLoading: parentRevalidateDecision.shouldShowInitialLoading,
+            awaitWhenInitialLoading: true,
+            runRevalidate: ({ showInitialLoading }) => revalidateParentForNodeInBackground(
+                post,
+                nodeEventId,
+                currentNode,
+                { showInitialLoading },
+            ),
+        });
     }
 
     async function loadParent(post: PostHistoryRecord, options: { force?: boolean } = {}): Promise<void> {
@@ -1554,7 +1560,8 @@ export function usePostHistoryThreadGraph({
             if (hasReplies) {
                 void prefetchChildReplyCounts(post, nodeEventId);
             }
-            if (hasReplies && isThreadGraphRevalidateStale({
+            if (shouldRunThreadGraphBackgroundRevalidate({
+                hasVisibleData: hasReplies,
                 lastFetchedAt: currentExpansion.lastFetchedChildrenAt,
                 ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
             })) {
@@ -1565,21 +1572,30 @@ export function usePostHistoryThreadGraph({
 
         const displayedCachedChildren = await displayCachedChildrenForNode(post, nodeEventId, currentNode, options);
         const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        if (shouldSkipRevalidateAfterDisplayingCache({
+        const childrenRevalidateDecision = decideThreadGraphCachedRevalidate({
             displayedCached: displayedCachedChildren,
             force: !!options.force,
             lastFetchedAt: latestExpansion.lastFetchedChildrenAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
-        })) {
-            if (!options.prefetchOnly) {
-                void prefetchChildReplyCounts(post, nodeEventId);
-            }
-            return;
+            prefetchOnly: !!options.prefetchOnly,
+        });
+        if (childrenRevalidateDecision.shouldPrefetchReplyCountsOnSkip) {
+            void prefetchChildReplyCounts(post, nodeEventId);
         }
 
-        void revalidateChildrenForNodeInBackground(post, nodeEventId, currentNode, {
-            prefetchOnly: options.prefetchOnly,
-            showInitialLoading: !displayedCachedChildren,
+        await coordinateThreadGraphRevalidateExecution({
+            skipRevalidate: childrenRevalidateDecision.skipRevalidate,
+            shouldShowInitialLoading: childrenRevalidateDecision.shouldShowInitialLoading,
+            awaitWhenInitialLoading: false,
+            runRevalidate: ({ showInitialLoading }) => revalidateChildrenForNodeInBackground(
+                post,
+                nodeEventId,
+                currentNode,
+                {
+                    prefetchOnly: options.prefetchOnly,
+                    showInitialLoading,
+                },
+            ),
         });
     }
 
