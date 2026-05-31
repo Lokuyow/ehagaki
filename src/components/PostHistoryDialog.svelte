@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { DateValue } from "@internationalized/date";
+    import { parseDate, type DateValue } from "@internationalized/date";
     import type { RxNostr } from "rx-nostr";
     import { onDestroy, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
@@ -178,11 +178,21 @@
         usePostHistoryPostActionUiController<PostHistoryRecord>();
     const copyNeventUi = usePostHistoryCopyNevent();
 
+    function createTodayDateValue(): DateValue {
+        const now = new Date();
+        const year = `${now.getFullYear()}`;
+        const month = `${now.getMonth() + 1}`.padStart(2, "0");
+        const day = `${now.getDate()}`.padStart(2, "0");
+        return parseDate(`${year}-${month}-${day}`);
+    }
+
     let localHistoryDeleteConfirmOpen = $state(false);
     let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
-    let jumpDateValue = $state<DateValue | undefined>(undefined);
-    let jumpDatePlaceholder = $state<DateValue | undefined>(undefined);
+    let jumpDateValue = $state<DateValue | undefined>(createTodayDateValue());
+    let jumpDatePlaceholder = $state<DateValue | undefined>(
+        createTodayDateValue(),
+    );
     let jumpDatePickerOpen = $state(false);
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
@@ -336,8 +346,8 @@
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
-        jumpDateValue = undefined;
-        jumpDatePlaceholder = undefined;
+        jumpDateValue = createTodayDateValue();
+        jumpDatePlaceholder = createTodayDateValue();
         jumpDatePickerOpen = false;
         headingMenuOpen = false;
         deleteRequestState = {};
