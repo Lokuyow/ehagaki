@@ -1,19 +1,19 @@
-export type PostHistoryReactionLifecycleSource =
-    | "dialog-inbound-save"
-    | "dialog-inbound-sync"
-    | "inbound-realtime"
-    | "listing-current-view"
-    | "listing-older-reveal";
+import {
+    buildPostHistoryRelationLifecycleRequestKey,
+    isActivePostHistoryRelationLifecycleStateStatus,
+    parsePostHistoryRelationLifecycleRequestKey,
+    type PostHistoryRelationLifecycleSource,
+    type PostHistoryRelationLifecycleStateStatus,
+} from "./postHistoryRelationLifecycleTypes";
 
-export type PostHistoryReactionLifecycleStateStatus =
-    | "pending"
-    | "processing"
-    | "success"
-    | "failed";
+export type PostHistoryReactionLifecycleSource = PostHistoryRelationLifecycleSource;
+
+export type PostHistoryReactionLifecycleStateStatus = PostHistoryRelationLifecycleStateStatus;
 
 export const POST_HISTORY_REACTION_LIFECYCLE_KIND = 7;
 export const POST_HISTORY_REACTION_LIFECYCLE_MAX_RETRY_COUNT = 3;
 export const POST_HISTORY_REACTION_LIFECYCLE_RETRY_COOLDOWN_MS = 5_000;
+const POST_HISTORY_REACTION_RELATION_KIND = "reaction";
 
 export interface PostHistoryReactionLifecycleKeyCandidate {
     requestKey: string;
@@ -45,26 +45,29 @@ export function buildPostHistoryReactionLifecycleRequestKey(
     reactionEventId: string,
     kind = POST_HISTORY_REACTION_LIFECYCLE_KIND,
 ): string {
-    return `${parentEventId}:${reactionEventId}:${kind}`;
+    return buildPostHistoryRelationLifecycleRequestKey(
+        parentEventId,
+        reactionEventId,
+        kind,
+    );
 }
 
 export function parsePostHistoryReactionLifecycleRequestKey(
     requestKey: string,
 ): PostHistoryReactionLifecycleKeyCandidate | null {
-    const [parentEventId, reactionEventId, kindText] = requestKey.split(":");
-    const kind = Number.parseInt(kindText ?? "", 10);
-    if (
-        !parentEventId
-        || !reactionEventId
-        || kind !== POST_HISTORY_REACTION_LIFECYCLE_KIND
-    ) {
+    const parsed = parsePostHistoryRelationLifecycleRequestKey(
+        requestKey,
+        POST_HISTORY_REACTION_LIFECYCLE_KIND,
+        POST_HISTORY_REACTION_RELATION_KIND,
+    );
+    if (!parsed) {
         return null;
     }
 
     return {
-        requestKey,
-        parentEventId,
-        reactionEventId,
+        requestKey: parsed.requestKey,
+        parentEventId: parsed.parentEventId,
+        reactionEventId: parsed.targetEventId,
         kind: POST_HISTORY_REACTION_LIFECYCLE_KIND,
     };
 }
@@ -72,7 +75,7 @@ export function parsePostHistoryReactionLifecycleRequestKey(
 export function isActivePostHistoryReactionLifecycleStateStatus(
     status: PostHistoryReactionLifecycleStateStatus,
 ): boolean {
-    return status === "pending" || status === "processing";
+    return isActivePostHistoryRelationLifecycleStateStatus(status);
 }
 
 export function canRetryPostHistoryReactionLifecycle(
