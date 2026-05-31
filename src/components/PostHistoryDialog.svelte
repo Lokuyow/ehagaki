@@ -1947,9 +1947,6 @@
                                                                         </span>
                                                                     </DropdownMenu.Item>
                                                                 {/if}
-                                                                <DropdownMenu.Separator
-                                                                    class="post-history-menu-separator"
-                                                                />
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
                                                                     onpointerdown={(
@@ -1987,6 +1984,9 @@
                                                                     </span>
                                                                 </DropdownMenu.Item>
                                                                 {#if canDeletePost(post)}
+                                                                    <DropdownMenu.Separator
+                                                                        class="post-history-menu-separator"
+                                                                    />
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button menu-action-button-danger"
                                                                         disabled={isDeletionSending(

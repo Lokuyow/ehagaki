@@ -270,9 +270,6 @@
                                         ></div>
                                         <span>{getRepliesActionLabel()}</span>
                                     </DropdownMenu.Item>
-                                    <DropdownMenu.Separator
-                                        class="post-history-menu-separator"
-                                    />
                                     <DropdownMenu.Item
                                         class="menu-action-button"
                                         onpointerdown={handleCopyPointerDown}
@@ -289,6 +286,9 @@
                                         </span>
                                     </DropdownMenu.Item>
                                     {#if canDelete}
+                                        <DropdownMenu.Separator
+                                            class="post-history-menu-separator"
+                                        />
                                         <DropdownMenu.Item
                                             class="menu-action-button menu-action-button-danger"
                                             disabled={deletionSending}
