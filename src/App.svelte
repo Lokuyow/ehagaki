@@ -154,6 +154,7 @@
     runNip07Login,
     runNip46Login,
   } from "./lib/appAuthUtils";
+  import { createAppAccountSessionController } from "./lib/appAccountSessionController";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor } from "./lib/utils/appDomUtils";
@@ -415,6 +416,52 @@
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
   );
+  const appAccountSessionController = createAppAccountSessionController({
+    getIsSwitchingAccount: () => isSwitchingAccount,
+    setIsSwitchingAccount: (next) => {
+      isSwitchingAccount = next;
+    },
+    getIsLoggingOut: () => isLoggingOut,
+    setIsLoggingOut: (next) => {
+      isLoggingOut = next;
+    },
+    getAuthStateSnapshot: () => authState.value,
+    getCurrentRxNostr: () => rxNostr,
+    setCurrentRxNostr: (next) => {
+      rxNostr = next;
+    },
+    disposeNostrSession,
+    clearNip46RuntimeForAuthChange,
+    nip46Service,
+    accountManager,
+    restoreManagedAccountSession,
+    restoreAccount: (pubkeyHex, type) =>
+      authService.restoreAccount(pubkeyHex, type),
+    handlePostAuth,
+    resetUploadDisplayState,
+    logoutAccountFromAuthService: (pubkeyHex, options) =>
+      authService.logoutAccount(pubkeyHex, {
+        notifyParentClient: options.notifyParentClient,
+      }),
+    resolveLogoutAccountAction,
+    clearAuthState,
+    setGuestProfile: (profile) => {
+      profileDataStore.set(profile);
+    },
+    setProfileLoaded: (next) => {
+      profileLoadedStore.set(next);
+    },
+    initializeNostr: () => initializeNostr(),
+    setSecretKey: (next) => {
+      secretKey = next;
+    },
+    setErrorMessage: (next) => {
+      errorMessage = next;
+    },
+    refreshAccountList,
+    closeLogoutDialog: logoutDialog.close,
+    logger: console,
+  });
   function getInitialNip46ConnectRelayCandidates(): string[] {
     return resolveInitialNip46ConnectionRelayCandidates(
       typeof localStorage === "undefined" ? undefined : localStorage,
@@ -944,24 +991,7 @@
   async function handleRemoteParentClientLogout(
     pubkeyHex: string | null,
   ): Promise<void> {
-    const targetPubkey = pubkeyHex || authState.value?.pubkey;
-    if (!targetPubkey) return;
-    if (authState.value?.type !== "parentClient") return;
-    if (authState.value?.pubkey !== targetPubkey) return;
-
-    const storedType = accountManager.getAccountType(targetPubkey);
-    if (storedType && storedType !== "parentClient") {
-      const restored = await switchAccount(targetPubkey);
-      if (restored) {
-        refreshAccountList();
-        return;
-      }
-    }
-
-    await logoutAccount(targetPubkey, {
-      closeDialog: false,
-      notifyParentClient: false,
-    });
+    await appAccountSessionController.handleRemoteParentClientLogout(pubkeyHex);
   }
 
   // --- 秘密鍵認証・保存処理 ---
@@ -996,43 +1026,7 @@
     pubkeyHex: string,
     options: { closeDialog?: boolean; notifyParentClient?: boolean } = {},
   ) {
-    isLoggingOut = true;
-    try {
-      resetUploadDisplayState();
-      const nextAction = resolveLogoutAccountAction(
-        authService.logoutAccount(pubkeyHex, {
-          notifyParentClient: options.notifyParentClient,
-        }),
-      );
-
-      if (nextAction.kind === "switch") {
-        rxNostr = disposeNostrSession(rxNostr);
-        await switchAccount(nextAction.pubkeyHex);
-      } else if (nextAction.kind === "guest") {
-        rxNostr = disposeNostrSession(rxNostr);
-        clearAuthState();
-        profileDataStore.set({
-          name: "",
-          displayName: "",
-          picture: "",
-          npub: "",
-          nprofile: "",
-        });
-        profileLoadedStore.set(false);
-        await initializeNostr(); // pubkeyなしでブートストラップリレーのみ
-        secretKey = "";
-        errorMessage = "";
-      }
-
-      refreshAccountList();
-      if (options.closeDialog !== false && nextAction.kind !== "keep-current") {
-        logoutDialog.close();
-      }
-    } catch (error) {
-      console.error("ログアウト処理中にエラー:", error);
-    } finally {
-      isLoggingOut = false;
-    }
+    await appAccountSessionController.logoutAccount(pubkeyHex, options);
   }
 
   function requestLogoutAccount(pubkeyHex: string) {
@@ -1087,43 +1081,7 @@
    * アカウント切替
    */
   async function switchAccount(pubkeyHex: string): Promise<boolean> {
-    if (isSwitchingAccount) return false;
-    isSwitchingAccount = true;
-    try {
-      const nextAccountType = accountManager.getAccountType(pubkeyHex);
-      if (nextAccountType) {
-        await clearNip46RuntimeForAuthChange({
-          currentAuthType: authState.value?.type,
-          currentPubkeyHex: authState.value?.pubkey,
-          nextAuthType: nextAccountType,
-          nextPubkeyHex: pubkeyHex,
-          nip46Service,
-        });
-      }
-
-      rxNostr = disposeNostrSession(rxNostr);
-
-      return await restoreManagedAccountSession({
-        pubkeyHex,
-        accountManager,
-        restoreAccount: (
-          nextPubkeyHex: string,
-          type: "nsec" | "nip07" | "nip46" | "parentClient",
-        ) => authService.restoreAccount(nextPubkeyHex, type),
-        handlePostAuth,
-        onMissingAccountType: () => {
-          console.error("アカウントタイプが見つかりません:", pubkeyHex);
-        },
-        onRestoreFailure: () => {
-          console.error("アカウント復元に失敗:", pubkeyHex);
-        },
-      });
-    } catch (error) {
-      console.error("アカウント切替中にエラー:", error);
-      return false;
-    } finally {
-      isSwitchingAccount = false;
-    }
+    return appAccountSessionController.switchAccount(pubkeyHex);
   }
 
   /**
