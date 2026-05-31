@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
     coordinateThreadGraphCachedRevalidateFlow,
+    coordinateThreadGraphNodeLoadExecution,
     coordinateThreadGraphRevalidateExecution,
+    coordinateThreadGraphRevalidateTemplate,
     handleThreadGraphInFlightLoad,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../../lib/postHistoryThreadGraphFetchCoordinator";
@@ -179,6 +181,162 @@ describe("postHistoryThreadGraphFetchCoordinator", () => {
             shouldShowInitialLoading: true,
             shouldPrefetchReplyCountsOnSkip: false,
         });
+        expect(runRevalidate).toHaveBeenCalledWith({ showInitialLoading: true });
+    });
+
+    it("template は inactive 時に onInactive を一度だけ呼び cleanup する", async () => {
+        const onInactive = vi.fn();
+        const cleanup = vi.fn();
+        const run = vi.fn(async (context: { ensureActive: () => boolean }) => {
+            context.ensureActive();
+            context.ensureActive();
+        });
+
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: () => false,
+            onInactive,
+            cleanup,
+            run,
+        });
+
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(onInactive).toHaveBeenCalledTimes(1);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("template は active 状態で例外発生時に onError を呼ぶ", async () => {
+        const onError = vi.fn();
+        const cleanup = vi.fn();
+
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: () => true,
+            onError,
+            cleanup,
+            run: async () => {
+                throw new Error("boom");
+            },
+        });
+
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("node load は in-flight のとき loaded/fresh 実行へ進まない", async () => {
+        const onInFlight = vi.fn();
+        const handleLoadedState = vi.fn(async () => true);
+        const prepareFreshLoadState = vi.fn();
+        const displayCachedForFreshLoad = vi.fn(async () => ({
+            displayedCached: false,
+            lastFetchedAt: null,
+        }));
+        const runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void> = vi.fn(
+            async () => undefined,
+        );
+
+        await coordinateThreadGraphNodeLoadExecution({
+            loading: true,
+            revalidating: false,
+            onInFlight,
+            shouldHandleLoadedState: true,
+            handleLoadedState,
+            prepareFreshLoadState,
+            displayCachedForFreshLoad,
+            force: false,
+            ttlMs: 1_000,
+            awaitWhenInitialLoading: false,
+            runRevalidate,
+        });
+
+        expect(onInFlight).toHaveBeenCalledTimes(1);
+        expect(handleLoadedState).not.toHaveBeenCalled();
+        expect(prepareFreshLoadState).not.toHaveBeenCalled();
+        expect(displayCachedForFreshLoad).not.toHaveBeenCalled();
+        expect(runRevalidate).not.toHaveBeenCalled();
+    });
+
+    it("node load は loaded state が handled なら fresh load へ進まない", async () => {
+        const handleLoadedState = vi.fn(async () => true);
+        const prepareFreshLoadState = vi.fn();
+        const displayCachedForFreshLoad = vi.fn(async () => ({
+            displayedCached: false,
+            lastFetchedAt: null,
+        }));
+        const runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void> = vi.fn(
+            async () => undefined,
+        );
+
+        await coordinateThreadGraphNodeLoadExecution({
+            loading: false,
+            revalidating: false,
+            onInFlight: () => undefined,
+            shouldHandleLoadedState: true,
+            handleLoadedState,
+            prepareFreshLoadState,
+            displayCachedForFreshLoad,
+            force: false,
+            ttlMs: 1_000,
+            awaitWhenInitialLoading: false,
+            runRevalidate,
+        });
+
+        expect(handleLoadedState).toHaveBeenCalledTimes(1);
+        expect(prepareFreshLoadState).not.toHaveBeenCalled();
+        expect(displayCachedForFreshLoad).not.toHaveBeenCalled();
+        expect(runRevalidate).not.toHaveBeenCalled();
+    });
+
+    it("node load は fresh cache skip 時に prefetch callback を呼ぶ", async () => {
+        const onSkipPrefetchReplyCounts = vi.fn();
+        const runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void> = vi.fn(
+            async () => undefined,
+        );
+
+        await coordinateThreadGraphNodeLoadExecution({
+            loading: false,
+            revalidating: false,
+            onInFlight: () => undefined,
+            shouldHandleLoadedState: false,
+            handleLoadedState: async () => false,
+            prepareFreshLoadState: () => undefined,
+            displayCachedForFreshLoad: async () => ({
+                displayedCached: true,
+                lastFetchedAt: 9_500,
+            }),
+            force: false,
+            ttlMs: 1_000,
+            prefetchOnly: false,
+            now: 10_000,
+            awaitWhenInitialLoading: false,
+            onSkipPrefetchReplyCounts,
+            runRevalidate,
+        });
+
+        expect(onSkipPrefetchReplyCounts).toHaveBeenCalledTimes(1);
+        expect(runRevalidate).not.toHaveBeenCalled();
+    });
+
+    it("node load は fresh cache miss で initial loading 再検証を起動する", async () => {
+        const runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void> = vi.fn(
+            async () => undefined,
+        );
+
+        await coordinateThreadGraphNodeLoadExecution({
+            loading: false,
+            revalidating: false,
+            onInFlight: () => undefined,
+            shouldHandleLoadedState: false,
+            handleLoadedState: async () => false,
+            prepareFreshLoadState: () => undefined,
+            displayCachedForFreshLoad: async () => ({
+                displayedCached: false,
+                lastFetchedAt: null,
+            }),
+            force: false,
+            ttlMs: 1_000,
+            awaitWhenInitialLoading: false,
+            runRevalidate,
+        });
+
         expect(runRevalidate).toHaveBeenCalledWith({ showInitialLoading: true });
     });
 });

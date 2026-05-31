@@ -75,8 +75,8 @@ import {
     buildChildrenLoadingExpansionState,
 } from "../postHistoryThreadGraphChildrenExpansionState";
 import {
-    coordinateThreadGraphCachedRevalidateFlow,
-    handleThreadGraphInFlightLoad,
+    coordinateThreadGraphNodeLoadExecution,
+    coordinateThreadGraphRevalidateTemplate,
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../postHistoryThreadGraphFetchCoordinator";
 
@@ -1157,88 +1157,103 @@ export function usePostHistoryThreadGraph({
             scheduleParentLoadingIndicator(post.eventId, nodeEventId);
         }
 
-        try {
-            const descriptor = buildParentTargetDescriptor(post, nodeEventId, currentNode);
-            if (!descriptor) {
-                return;
-            }
-
-            const snapshot = await resolver.ensureTarget(descriptor, {
-                force: true,
-                background: !options.showInitialLoading,
-            });
-            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
+            cleanup: () => {
                 clearParentLoadingDelayTimer(key);
-                return;
-            }
-
-            clearParentLoadingDelayTimer(key);
-            if (!snapshot) {
-                return;
-            }
-
-            if (snapshot.status === "deleted") {
-                if (snapshot.authorPubkey) {
-                    hideEvent(snapshot.authorPubkey, parentEventId);
-                    markParentDeletedForEvent(parentEventId, snapshot.authorPubkey, {
-                        revealKnownParent: true,
-                    });
-                }
-                setParentDeleted(post.eventId, nodeEventId);
-                return;
-            }
-
-            if (snapshot.status === "not-found") {
+            },
+            onError: () => {
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...buildParentLoadedExpansionState(state, {
-                        revalidatingParent: false,
-                        parentMissing: options.showInitialLoading
-                            ? true
-                            : state.parentMissing,
-                        parentDeleted: false,
-                        lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                    }),
+                    ...state,
+                    loadingParent: false,
+                    revalidatingParent: false,
+                    visibleParent: state.visibleParent,
+                    parentError: options.showInitialLoading
+                        ? "fetch_failed"
+                        : state.parentError,
+                    showParentLoadingIndicator: false,
                 }));
-                return;
-            }
+            },
+            run: async ({ ensureActive }) => {
+                const descriptor = buildParentTargetDescriptor(post, nodeEventId, currentNode);
+                if (!descriptor) {
+                    return;
+                }
 
-            if (snapshot.status === "resolved" && snapshot.event) {
-                if (snapshot.authorPubkey && isDeletedEvent(snapshot.authorPubkey, parentEventId)) {
+                const snapshot = await resolver.ensureTarget(descriptor, {
+                    force: true,
+                    background: !options.showInitialLoading,
+                });
+                if (!ensureActive()) {
+                    return;
+                }
+
+                clearParentLoadingDelayTimer(key);
+                if (!snapshot) {
+                    return;
+                }
+
+                if (snapshot.status === "deleted") {
+                    if (snapshot.authorPubkey) {
+                        hideEvent(snapshot.authorPubkey, parentEventId);
+                        markParentDeletedForEvent(parentEventId, snapshot.authorPubkey, {
+                            revealKnownParent: true,
+                        });
+                    }
                     setParentDeleted(post.eventId, nodeEventId);
                     return;
                 }
 
-                const node = upsertNode({
-                    event: snapshot.event,
-                    relayUrls: snapshot.relayHints,
-                    sources: ["fetched-parent"],
-                    profile: snapshot.profile,
-                });
-                upsertParentEdge(node.eventId, node.parentEventId);
-                updateExpansion(post.eventId, nodeEventId, (state) => ({
-                    ...buildParentLoadedExpansionState(state, {
-                        revalidatingParent: false,
-                        parentMissing: false,
-                        parentDeleted: false,
-                        lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
-                    }),
-                }));
-                return;
-            }
+                if (snapshot.status === "not-found") {
+                    updateExpansion(post.eventId, nodeEventId, (state) => ({
+                        ...buildParentLoadedExpansionState(state, {
+                            revalidatingParent: false,
+                            parentMissing: options.showInitialLoading
+                                ? true
+                                : state.parentMissing,
+                            parentDeleted: false,
+                            lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                        }),
+                    }));
+                    return;
+                }
 
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                loadingParent: false,
-                revalidatingParent: false,
-                visibleParent: state.visibleParent,
-                parentError: options.showInitialLoading
-                    ? snapshot.errorCode ?? "fetch_failed"
-                    : state.parentError,
-                showParentLoadingIndicator: false,
-            }));
-        } finally {
-            clearParentLoadingDelayTimer(key);
-        }
+                if (snapshot.status === "resolved" && snapshot.event) {
+                    if (snapshot.authorPubkey && isDeletedEvent(snapshot.authorPubkey, parentEventId)) {
+                        setParentDeleted(post.eventId, nodeEventId);
+                        return;
+                    }
+
+                    const node = upsertNode({
+                        event: snapshot.event,
+                        relayUrls: snapshot.relayHints,
+                        sources: ["fetched-parent"],
+                        profile: snapshot.profile,
+                    });
+                    upsertParentEdge(node.eventId, node.parentEventId);
+                    updateExpansion(post.eventId, nodeEventId, (state) => ({
+                        ...buildParentLoadedExpansionState(state, {
+                            revalidatingParent: false,
+                            parentMissing: false,
+                            parentDeleted: false,
+                            lastFetchedParentAt: snapshot.updatedAt ?? Date.now(),
+                        }),
+                    }));
+                    return;
+                }
+
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...state,
+                    loadingParent: false,
+                    revalidatingParent: false,
+                    visibleParent: state.visibleParent,
+                    parentError: options.showInitialLoading
+                        ? snapshot.errorCode ?? "fetch_failed"
+                        : state.parentError,
+                    showParentLoadingIndicator: false,
+                }));
+            },
+        });
     }
 
     async function loadParentForNode(
@@ -1254,7 +1269,7 @@ export function usePostHistoryThreadGraph({
         }
 
         const currentExpansion = getExpansion(post.eventId, nodeEventId);
-        if (handleThreadGraphInFlightLoad({
+        await coordinateThreadGraphNodeLoadExecution({
             loading: currentExpansion.loadingParent,
             revalidating: currentExpansion.revalidatingParent,
             onInFlight: () => {
@@ -1267,48 +1282,49 @@ export function usePostHistoryThreadGraph({
             onLoadingInFlight: () => {
                 scheduleParentLoadingIndicator(post.eventId, nodeEventId);
             },
-        })) {
-            return;
-        }
+            shouldHandleLoadedState: !options.force && currentExpansion.loadedParent,
+            handleLoadedState: async () => {
+                if (currentExpansion.parentDeleted) {
+                    setParentDeleted(post.eventId, nodeEventId);
+                    return true;
+                }
 
-        if (!options.force && currentExpansion.loadedParent) {
-            if (currentExpansion.parentDeleted) {
-                setParentDeleted(post.eventId, nodeEventId);
-                return;
-            }
-
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                visibleParent: true,
-                showParentLoadingIndicator: false,
-            }));
-            const displayedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
-            if (shouldRunThreadGraphBackgroundRevalidate({
-                hasVisibleData: displayedParent,
-                lastFetchedAt: currentExpansion.lastFetchedParentAt,
-                ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
-            })) {
-                void revalidateParentForNodeInBackground(post, nodeEventId, currentNode);
-            }
-            return;
-        }
-
-        updateExpansion(post.eventId, nodeEventId, (state) => ({
-            ...state,
-            visibleParent: true,
-            loadingParent: true,
-            parentError: null,
-            parentMissing: false,
-            parentDeleted: false,
-            showParentLoadingIndicator: false,
-        }));
-        scheduleParentLoadingIndicator(post.eventId, nodeEventId);
-        const displayedCachedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
-        const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        await coordinateThreadGraphCachedRevalidateFlow({
-            displayedCached: displayedCachedParent,
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...state,
+                    visibleParent: true,
+                    showParentLoadingIndicator: false,
+                }));
+                const displayedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
+                if (shouldRunThreadGraphBackgroundRevalidate({
+                    hasVisibleData: displayedParent,
+                    lastFetchedAt: currentExpansion.lastFetchedParentAt,
+                    ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+                })) {
+                    void revalidateParentForNodeInBackground(post, nodeEventId, currentNode);
+                }
+                return true;
+            },
+            prepareFreshLoadState: () => {
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...state,
+                    visibleParent: true,
+                    loadingParent: true,
+                    parentError: null,
+                    parentMissing: false,
+                    parentDeleted: false,
+                    showParentLoadingIndicator: false,
+                }));
+                scheduleParentLoadingIndicator(post.eventId, nodeEventId);
+            },
+            displayCachedForFreshLoad: async () => {
+                const displayedCachedParent = await displayCachedParentForNode(post, nodeEventId, currentNode);
+                const latestExpansion = getExpansion(post.eventId, nodeEventId);
+                return {
+                    displayedCached: displayedCachedParent,
+                    lastFetchedAt: latestExpansion.lastFetchedParentAt,
+                };
+            },
             force: !!options.force,
-            lastFetchedAt: latestExpansion.lastFetchedParentAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
             awaitWhenInitialLoading: true,
             runRevalidate: ({ showInitialLoading }) => revalidateParentForNodeInBackground(
@@ -1426,101 +1442,94 @@ export function usePostHistoryThreadGraph({
             }),
         }));
 
-        try {
-            const rxNostr = getRxNostr();
-            if (!rxNostr) {
+        await coordinateThreadGraphRevalidateTemplate({
+            isActive: () => (
+                activeGraphRequestId === taskTracker.getRequestId() &&
+                taskTracker.getChildRequestToken(key) === activeChildRequestId &&
+                getShow()
+            ),
+            cleanup: () => {
+                taskTracker.deleteChildrenFetchTask(key);
+                taskTracker.deleteChildRequestToken(key);
+            },
+            onError: () => {
                 updateExpansion(post.eventId, nodeEventId, (state) => ({
                     ...buildChildrenFailedExpansionState(state, {
                         nextError:
                             options.showInitialLoading && !options.prefetchOnly
-                                ? "nostr_not_ready"
-                                : null,
+                                ? "fetch_failed"
+                                : state.childrenError,
                     }),
                 }));
-                return;
-            }
+            },
+            run: async ({ ensureActive }) => {
+                const rxNostr = getRxNostr();
+                if (!rxNostr) {
+                    updateExpansion(post.eventId, nodeEventId, (state) => ({
+                        ...buildChildrenFailedExpansionState(state, {
+                            nextError:
+                                options.showInitialLoading && !options.prefetchOnly
+                                    ? "nostr_not_ready"
+                                    : null,
+                        }),
+                    }));
+                    return;
+                }
 
-            const task = replyFetchService.fetchDirectReplies(rxNostr, {
-                eventId: nodeEventId,
-                createdAt: currentNode.event.created_at,
-                relayHints: getChildrenRelayHints(post, currentNode),
-                relayConfig: getRelayConfig(),
-            });
-            taskTracker.replaceChildrenFetchTask(key, task);
-
-            const result = await task.promise;
-            taskTracker.deleteChildrenFetchTask(key);
-            if (
-                activeGraphRequestId !== taskTracker.getRequestId() ||
-                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
-                !getShow()
-            ) {
-                return;
-            }
-
-            void fetchAndStoreDeletionRequests(
-                post.eventId,
-                result.events.map((item) => item.event),
-                [
-                    ...getChildrenRelayHints(post, currentNode),
-                    ...result.relayUrls,
-                ],
-            );
-            const fetchedEvents = await filterVisibleReplyItems(result.events);
-            if (result.events.length > 0) {
-                await childInteractionsRepositoryImpl.upsertChildInteractions({
-                    parentEventId: nodeEventId,
-                    events: fetchedEvents,
-                    fetchedAt: result.fetchedAt,
+                const task = replyFetchService.fetchDirectReplies(rxNostr, {
+                    eventId: nodeEventId,
+                    createdAt: currentNode.event.created_at,
+                    relayHints: getChildrenRelayHints(post, currentNode),
+                    relayConfig: getRelayConfig(),
                 });
-            }
+                taskTracker.replaceChildrenFetchTask(key, task);
 
-            const nextRecords = await filterVisibleReplyRecords(
-                await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
-            );
-            if (
-                activeGraphRequestId !== taskTracker.getRequestId() ||
-                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
-                !getShow()
-            ) {
-                return;
-            }
+                const result = await task.promise;
+                taskTracker.deleteChildrenFetchTask(key);
+                if (!ensureActive()) {
+                    return;
+                }
 
-            if (nextRecords.length > 0) {
-                await upsertReplyRecords(nodeEventId, nextRecords, ["reply-db", "fetched-child"], {
-                    resolveProfiles: !options.prefetchOnly,
-                });
-            }
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...buildChildrenLoadedExpansionState(state, {
-                    revalidatingChildren: false,
-                    lastFetchedChildrenAt: result.fetchedAt,
-                }),
-            }));
-            if (!options.prefetchOnly) {
-                void prefetchChildReplyCounts(post, nodeEventId);
-            }
-        } catch {
-            if (
-                activeGraphRequestId !== taskTracker.getRequestId() ||
-                taskTracker.getChildRequestToken(key) !== activeChildRequestId ||
-                !getShow()
-            ) {
-                return;
-            }
+                void fetchAndStoreDeletionRequests(
+                    post.eventId,
+                    result.events.map((item) => item.event),
+                    [
+                        ...getChildrenRelayHints(post, currentNode),
+                        ...result.relayUrls,
+                    ],
+                );
+                const fetchedEvents = await filterVisibleReplyItems(result.events);
+                if (result.events.length > 0) {
+                    await childInteractionsRepositoryImpl.upsertChildInteractions({
+                        parentEventId: nodeEventId,
+                        events: fetchedEvents,
+                        fetchedAt: result.fetchedAt,
+                    });
+                }
 
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...buildChildrenFailedExpansionState(state, {
-                    nextError:
-                        options.showInitialLoading && !options.prefetchOnly
-                            ? "fetch_failed"
-                            : state.childrenError,
-                }),
-            }));
-        } finally {
-            taskTracker.deleteChildrenFetchTask(key);
-            taskTracker.deleteChildRequestToken(key);
-        }
+                const nextRecords = await filterVisibleReplyRecords(
+                    await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
+                );
+                if (!ensureActive()) {
+                    return;
+                }
+
+                if (nextRecords.length > 0) {
+                    await upsertReplyRecords(nodeEventId, nextRecords, ["reply-db", "fetched-child"], {
+                        resolveProfiles: !options.prefetchOnly,
+                    });
+                }
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...buildChildrenLoadedExpansionState(state, {
+                        revalidatingChildren: false,
+                        lastFetchedChildrenAt: result.fetchedAt,
+                    }),
+                }));
+                if (!options.prefetchOnly) {
+                    void prefetchChildReplyCounts(post, nodeEventId);
+                }
+            },
+        });
     }
 
     async function loadChildrenForNode(
@@ -1536,7 +1545,7 @@ export function usePostHistoryThreadGraph({
         }
 
         const currentExpansion = getExpansion(post.eventId, nodeEventId);
-        if (handleThreadGraphInFlightLoad({
+        await coordinateThreadGraphNodeLoadExecution({
             loading: currentExpansion.loadingChildren,
             revalidating: currentExpansion.revalidatingChildren,
             onInFlight: options.prefetchOnly
@@ -1547,39 +1556,39 @@ export function usePostHistoryThreadGraph({
                         visibleChildren: true,
                     }));
                 },
-        })) {
-            return;
-        }
+            shouldHandleLoadedState: !options.force && currentExpansion.loadedChildren,
+            handleLoadedState: async () => {
+                if (options.prefetchOnly) {
+                    return true;
+                }
 
-        if (!options.force && currentExpansion.loadedChildren) {
-            if (options.prefetchOnly) {
-                return;
-            }
-
-            const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
-            updateExpansion(post.eventId, nodeEventId, (state) => ({
-                ...state,
-                visibleChildren: hasReplies,
-            }));
-            if (hasReplies) {
-                void prefetchChildReplyCounts(post, nodeEventId);
-            }
-            if (shouldRunThreadGraphBackgroundRevalidate({
-                hasVisibleData: hasReplies,
-                lastFetchedAt: currentExpansion.lastFetchedChildrenAt,
-                ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
-            })) {
-                void revalidateChildrenForNodeInBackground(post, nodeEventId, currentNode);
-            }
-            return;
-        }
-
-        const displayedCachedChildren = await displayCachedChildrenForNode(post, nodeEventId, currentNode, options);
-        const latestExpansion = getExpansion(post.eventId, nodeEventId);
-        await coordinateThreadGraphCachedRevalidateFlow({
-            displayedCached: displayedCachedChildren,
+                const hasReplies = toVisibleChildEventIds(nodeEventId).length > 0;
+                updateExpansion(post.eventId, nodeEventId, (state) => ({
+                    ...state,
+                    visibleChildren: hasReplies,
+                }));
+                if (hasReplies) {
+                    void prefetchChildReplyCounts(post, nodeEventId);
+                }
+                if (shouldRunThreadGraphBackgroundRevalidate({
+                    hasVisibleData: hasReplies,
+                    lastFetchedAt: currentExpansion.lastFetchedChildrenAt,
+                    ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
+                })) {
+                    void revalidateChildrenForNodeInBackground(post, nodeEventId, currentNode);
+                }
+                return true;
+            },
+            prepareFreshLoadState: () => undefined,
+            displayCachedForFreshLoad: async () => {
+                const displayedCachedChildren = await displayCachedChildrenForNode(post, nodeEventId, currentNode, options);
+                const latestExpansion = getExpansion(post.eventId, nodeEventId);
+                return {
+                    displayedCached: displayedCachedChildren,
+                    lastFetchedAt: latestExpansion.lastFetchedChildrenAt,
+                };
+            },
             force: !!options.force,
-            lastFetchedAt: latestExpansion.lastFetchedChildrenAt,
             ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
             prefetchOnly: !!options.prefetchOnly,
             awaitWhenInitialLoading: false,

@@ -33,6 +33,36 @@ export interface ThreadGraphCachedRevalidateFlowOptions
     runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void>;
 }
 
+export interface ThreadGraphRevalidateTemplateContext {
+    ensureActive: () => boolean;
+}
+
+export interface ThreadGraphRevalidateTemplateOptions {
+    isActive: () => boolean;
+    run: (context: ThreadGraphRevalidateTemplateContext) => Promise<void>;
+    onInactive?: () => void;
+    onError?: (error: unknown) => void | Promise<void>;
+    cleanup?: () => void;
+}
+
+export interface ThreadGraphNodeLoadExecutionOptions {
+    loading: boolean;
+    revalidating: boolean;
+    onInFlight: () => void;
+    onLoadingInFlight?: () => void;
+    shouldHandleLoadedState: boolean;
+    handleLoadedState: () => Promise<boolean>;
+    prepareFreshLoadState: () => void;
+    displayCachedForFreshLoad: () => Promise<{ displayedCached: boolean; lastFetchedAt: number | null }>;
+    force: boolean;
+    ttlMs: number;
+    prefetchOnly?: boolean;
+    now?: number;
+    awaitWhenInitialLoading: boolean;
+    onSkipPrefetchReplyCounts?: () => void;
+    runRevalidate: (input: { showInitialLoading: boolean }) => Promise<void>;
+}
+
 export function handleThreadGraphInFlightLoad(options: ThreadGraphInFlightLoadOptions): boolean {
     if (!options.loading && !options.revalidating) {
         return false;
@@ -58,6 +88,30 @@ export function shouldRunThreadGraphBackgroundRevalidate(
         ttlMs: options.ttlMs,
         now: options.now,
     });
+}
+
+export async function coordinateThreadGraphRevalidateTemplate(
+    options: ThreadGraphRevalidateTemplateOptions,
+): Promise<void> {
+    let inactiveNotified = false;
+    const ensureActive = (): boolean => {
+        const active = options.isActive();
+        if (!active && !inactiveNotified) {
+            inactiveNotified = true;
+            options.onInactive?.();
+        }
+        return active;
+    };
+
+    try {
+        await options.run({ ensureActive });
+    } catch (error) {
+        if (ensureActive()) {
+            await options.onError?.(error);
+        }
+    } finally {
+        options.cleanup?.();
+    }
 }
 
 export async function coordinateThreadGraphRevalidateExecution(
@@ -91,4 +145,38 @@ export async function coordinateThreadGraphCachedRevalidateFlow(
     });
 
     return decision;
+}
+
+export async function coordinateThreadGraphNodeLoadExecution(
+    options: ThreadGraphNodeLoadExecutionOptions,
+): Promise<void> {
+    if (handleThreadGraphInFlightLoad({
+        loading: options.loading,
+        revalidating: options.revalidating,
+        onInFlight: options.onInFlight,
+        onLoadingInFlight: options.onLoadingInFlight,
+    })) {
+        return;
+    }
+
+    if (options.shouldHandleLoadedState) {
+        const handledLoadedState = await options.handleLoadedState();
+        if (handledLoadedState) {
+            return;
+        }
+    }
+
+    options.prepareFreshLoadState();
+    const cached = await options.displayCachedForFreshLoad();
+    await coordinateThreadGraphCachedRevalidateFlow({
+        displayedCached: cached.displayedCached,
+        force: options.force,
+        lastFetchedAt: cached.lastFetchedAt,
+        ttlMs: options.ttlMs,
+        prefetchOnly: options.prefetchOnly,
+        now: options.now,
+        awaitWhenInitialLoading: options.awaitWhenInitialLoading,
+        onSkipPrefetchReplyCounts: options.onSkipPrefetchReplyCounts,
+        runRevalidate: options.runRevalidate,
+    });
 }
