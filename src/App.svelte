@@ -153,7 +153,7 @@
     createAppEmbedController,
     type AppEmbedAppliedSettingKey,
   } from "./lib/appEmbedController";
-  import { createComponentLoader } from "./lib/appComponentLoader";
+  import { createAppComponentLoaders } from "./lib/appComponentLoaders";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -209,67 +209,41 @@
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
     $state(null);
 
-  const loadPostComponentModule = createComponentLoader<PostComponent>(
-    () => import("./components/PostComponent.svelte"),
-    { eager: true },
-  );
-  const loadLoginDialogModule = createComponentLoader<LoginDialogComponent>(
-    () => import("./components/LoginDialog.svelte"),
-  );
-  const loadProfileComponentModule = createComponentLoader<ProfileComponent>(
-    () => import("./components/ProfileComponent.svelte"),
-  );
-  const loadSettingsDialogModule =
-    createComponentLoader<SettingsDialogComponent>(
-      () => import("./components/SettingsDialog.svelte"),
-    );
-  const loadWelcomeDialogModule = createComponentLoader<WelcomeDialogComponent>(
-    () => import("./components/WelcomeDialog.svelte"),
-  );
-  const loadDraftListDialogModule =
-    createComponentLoader<DraftListDialogComponent>(
-      () => import("./components/DraftListDialog.svelte"),
-    );
-  const loadPostHistoryDialogModule =
-    createComponentLoader<PostHistoryDialogComponent>(
-      () => import("./components/PostHistoryDialog.svelte"),
-    );
-  const loadCustomEmojiPickerModule =
-    createComponentLoader<CustomEmojiPickerComponent>(
-      () => import("./components/CustomEmojiPicker.svelte"),
-    );
-
-  async function loadPostComponent(): Promise<void> {
-    PostComponent = await loadPostComponentModule();
-  }
-
-  async function loadLoginDialog(): Promise<void> {
-    LoginDialogComponent = await loadLoginDialogModule();
-  }
-
-  async function loadProfileDialog(): Promise<void> {
-    ProfileComponent = await loadProfileComponentModule();
-  }
-
-  async function loadSettingsDialog(): Promise<void> {
-    SettingsDialogComponent = await loadSettingsDialogModule();
-  }
-
-  async function loadWelcomeDialog(): Promise<void> {
-    WelcomeDialogComponent = await loadWelcomeDialogModule();
-  }
-
-  async function loadDraftListDialog(): Promise<void> {
-    DraftListDialogComponent = await loadDraftListDialogModule();
-  }
-
-  async function loadPostHistoryDialog(): Promise<void> {
-    PostHistoryDialogComponent = await loadPostHistoryDialogModule();
-  }
-
-  async function loadCustomEmojiPicker(): Promise<void> {
-    CustomEmojiPickerComponent = await loadCustomEmojiPickerModule();
-  }
+  const {
+    loadPostComponent,
+    loadLoginDialog,
+    loadProfileDialog,
+    loadSettingsDialog,
+    loadWelcomeDialog,
+    loadDraftListDialog,
+    loadPostHistoryDialog,
+    loadCustomEmojiPicker,
+  } = createAppComponentLoaders({
+    setPostComponent: (component) => {
+      PostComponent = component;
+    },
+    setLoginDialogComponent: (component) => {
+      LoginDialogComponent = component;
+    },
+    setProfileComponent: (component) => {
+      ProfileComponent = component;
+    },
+    setSettingsDialogComponent: (component) => {
+      SettingsDialogComponent = component;
+    },
+    setWelcomeDialogComponent: (component) => {
+      WelcomeDialogComponent = component;
+    },
+    setDraftListDialogComponent: (component) => {
+      DraftListDialogComponent = component;
+    },
+    setPostHistoryDialogComponent: (component) => {
+      PostHistoryDialogComponent = component;
+    },
+    setCustomEmojiPickerComponent: (component) => {
+      CustomEmojiPickerComponent = component;
+    },
+  });
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
