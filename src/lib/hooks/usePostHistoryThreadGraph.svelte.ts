@@ -255,6 +255,7 @@ export function usePostHistoryThreadGraph({
     let parentResolverRevision = $state(0);
     const parentLoadingIndicator = createPostHistoryThreadGraphParentLoadingIndicator();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
+    const profileSubscriptionsByPubkey = new Map<string, () => void>();
     const replyBadgePreloadKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
@@ -426,11 +427,29 @@ export function usePostHistoryThreadGraph({
         }
     }
 
+    function ensureProfileSubscription(pubkey: string): void {
+        if (!pubkey || profileSubscriptionsByPubkey.has(pubkey)) {
+            return;
+        }
+
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
+            if (!getShow() || !profile) {
+                return;
+            }
+
+            mergeProfileForPubkey(pubkey, profile);
+            setReactionProfile(pubkey, profile);
+        });
+        profileSubscriptionsByPubkey.set(pubkey, unsubscribe);
+    }
+
     function refreshProfileForPubkeyInBackground(
         pubkey: string,
         additionalRelays: string[] = [],
         onProfileResolved?: (profile: ProfileData | null) => void,
     ): void {
+        ensureProfileSubscription(pubkey);
+
         if (!pubkey || profileRefreshTasksByPubkey.has(pubkey)) {
             return;
         }
@@ -2246,6 +2265,8 @@ export function usePostHistoryThreadGraph({
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
         profileRefreshTasksByPubkey.clear();
+        profileSubscriptionsByPubkey.forEach((unsubscribe) => unsubscribe());
+        profileSubscriptionsByPubkey.clear();
         parentLoadingIndicator.clearAll();
     }
 

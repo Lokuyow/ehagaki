@@ -365,6 +365,7 @@ vi.mock('../../lib/profileMetadataCache.svelte', () => ({
             }));
             return Object.fromEntries(entries);
         }),
+        subscribe: vi.fn(() => vi.fn()),
     },
 }));
 

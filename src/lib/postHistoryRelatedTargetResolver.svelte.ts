@@ -154,6 +154,7 @@ export function createPostHistoryRelatedTargetResolver({
     const pendingDeletionChecksByTargetId = new Map<string, Promise<boolean>>();
     const deletionTasksByTargetId = new Map<string, PostHistoryDeletionFetchTask>();
     const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
+    const profileSubscriptionsByPubkey = new Map<string, () => void>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
 
@@ -303,11 +304,28 @@ export function createPostHistoryRelatedTargetResolver({
         }
     }
 
+    function ensureProfileSubscription(pubkey: string): void {
+        if (!pubkey || profileSubscriptionsByPubkey.has(pubkey)) {
+            return;
+        }
+
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
+            if (!getShow() || !profile) {
+                return;
+            }
+
+            mergeProfileForPubkey(pubkey, profile);
+        });
+        profileSubscriptionsByPubkey.set(pubkey, unsubscribe);
+    }
+
     function ensureProfileForTarget(
         targetEventId: string,
         pubkey: string,
         relayHints: string[],
     ): void {
+        ensureProfileSubscription(pubkey);
+
         if (!pubkey || profileRefreshTasksByPubkey.has(pubkey)) {
             return;
         }
@@ -441,6 +459,14 @@ export function createPostHistoryRelatedTargetResolver({
                 existingBeforeMerge.status === "resolved"
                 || existingBeforeMerge.status === "deleted"
             ) {
+                if (existingBeforeMerge.status === "resolved" && existingBeforeMerge.authorPubkey) {
+                    ensureProfileForTarget(
+                        descriptor.targetEventId,
+                        existingBeforeMerge.authorPubkey,
+                        snapshotsByTargetId[descriptor.targetEventId]?.relayHints
+                            ?? existingBeforeMerge.relayHints,
+                    );
+                }
                 return snapshotsByTargetId[descriptor.targetEventId] ?? existingBeforeMerge;
             }
 
@@ -721,10 +747,12 @@ export function createPostHistoryRelatedTargetResolver({
     function reset(): void {
         loadTasksByTargetId.forEach((task) => task.cancel());
         deletionTasksByTargetId.forEach((task) => task.cancel());
+        profileSubscriptionsByPubkey.forEach((unsubscribe) => unsubscribe());
         loadTasksByTargetId.clear();
         deletionTasksByTargetId.clear();
         pendingLoadsByTargetId.clear();
         pendingDeletionChecksByTargetId.clear();
+        profileSubscriptionsByPubkey.clear();
         targetIdsByScopeKey.clear();
         scopeKeysByTargetId.clear();
         profileRefreshTasksByPubkey.clear();

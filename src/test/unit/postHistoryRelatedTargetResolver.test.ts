@@ -12,6 +12,7 @@ const getProfileMock = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/profileMetadataCache.svelte", () => ({
     profileMetadataCache: {
         getProfile: getProfileMock,
+        subscribe: vi.fn(() => vi.fn()),
     },
 }));
 

@@ -122,6 +122,27 @@ function isNegativeEntryActive(entry: ProfileMetadataCacheEntry, now: number): b
     return entry.status === "negative" && !!entry.negativeUntilMs && entry.negativeUntilMs > now;
 }
 
+function resolveProfileFetchedAtMs(profile: ProfileData, fallback: number): number {
+    return typeof profile.fetchedAt === "number" && Number.isFinite(profile.fetchedAt)
+        ? profile.fetchedAt
+        : fallback;
+}
+
+function shouldAcceptProfileEvent(
+    pubkey: string,
+    sourceEventCreatedAtSec: number | null,
+): boolean {
+    if (sourceEventCreatedAtSec === null) {
+        return true;
+    }
+
+    const currentSourceEventCreatedAtSec = entriesByPubkey[pubkey]?.sourceEventCreatedAtSec;
+    return (
+        typeof currentSourceEventCreatedAtSec !== "number"
+        || sourceEventCreatedAtSec >= currentSourceEventCreatedAtSec
+    );
+}
+
 function setEntry(pubkey: string, entry: ProfileMetadataCacheEntry): void {
     entriesByPubkey = {
         ...entriesByPubkey,
@@ -162,11 +183,13 @@ function setProfileEntry(params: {
     metadataRaw: string | null;
     sourceEventCreatedAtSec: number | null;
     sourceRelay: string | null;
+    fetchedAtMs?: number;
 }): void {
     const now = nowMs();
+    const fetchedAtMs = params.fetchedAtMs ?? now;
     const normalizedProfile: ProfileData = {
         ...params.profile,
-        fetchedAt: params.profile.fetchedAt ?? now,
+        fetchedAt: params.profile.fetchedAt ?? fetchedAtMs,
         updatedAtFromEvent: params.sourceEventCreatedAtSec ?? params.profile.updatedAtFromEvent,
     };
 
@@ -176,13 +199,13 @@ function setProfileEntry(params: {
         profile: normalizedProfile,
         profileSummary: toProfileSummary(normalizedProfile),
         metadataRaw: params.metadataRaw,
-        fetchedAtMs: now,
+        fetchedAtMs,
         sourceEventCreatedAtSec: params.sourceEventCreatedAtSec,
-        staleAtMs: now + PROFILE_CACHE_STALE_MS,
-        expireAtMs: now + PROFILE_CACHE_GC_MS,
+        staleAtMs: fetchedAtMs + PROFILE_CACHE_STALE_MS,
+        expireAtMs: fetchedAtMs + PROFILE_CACHE_GC_MS,
         negativeUntilMs: null,
         sourceRelay: params.sourceRelay,
-        lastValidatedAtMs: now,
+        lastValidatedAtMs: fetchedAtMs,
     });
 }
 
@@ -445,6 +468,13 @@ async function flushPendingBatch(): Promise<void> {
                 const requests = groupedByPubkey.get(pubkey) ?? [];
 
                 if (result?.profile) {
+                    if (!shouldAcceptProfileEvent(pubkey, result.sourceEventCreatedAtSec)) {
+                        for (const request of requests) {
+                            request.resolve(entriesByPubkey[pubkey]?.profile ?? null);
+                        }
+                        continue;
+                    }
+
                     setProfileEntry({
                         pubkey,
                         profile: result.profile,
@@ -557,16 +587,33 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
     if (!options.forceRefresh) {
         const cachedProfile = await profilesRepository.get(pubkey);
         if (cachedProfile) {
+            const cachedProfileRelays = sanitizeRelays(cachedProfile.profileRelays ?? []);
+            const refreshOptions: GetProfileOptions = {
+                ...options,
+                additionalRelays: sanitizeRelays([
+                    ...(options.additionalRelays ?? []),
+                    ...cachedProfileRelays,
+                ]),
+            };
+            const cachedFetchedAtMs = resolveProfileFetchedAtMs(cachedProfile, now);
+
             setProfileEntry({
                 pubkey,
                 profile: cachedProfile,
                 metadataRaw: null,
                 sourceEventCreatedAtSec: cachedProfile.updatedAtFromEvent ?? null,
                 sourceRelay: null,
+                fetchedAtMs: cachedFetchedAtMs,
             });
 
-            if (options.allowBackgroundRefresh !== false && options.rxNostr) {
-                void ensureFreshProfile(pubkey, options);
+            const restoredEntry = entriesByPubkey[pubkey];
+            if (
+                restoredEntry
+                && isEntryStale(restoredEntry, now)
+                && options.allowBackgroundRefresh !== false
+                && options.rxNostr
+            ) {
+                void ensureFreshProfile(pubkey, refreshOptions);
                 markEntryStatus(pubkey, "stale");
             }
             return cachedProfile;
@@ -628,6 +675,18 @@ function getReactiveEntry(pubkey: string): ProfileMetadataCacheEntry | null {
     return entriesByPubkey[pubkey] ?? null;
 }
 
+function resetForTests(): void {
+    if (pendingBatchTimer) {
+        clearTimeout(pendingBatchTimer);
+        pendingBatchTimer = null;
+    }
+
+    entriesByPubkey = {};
+    pendingByPubkey.clear();
+    subscribersByPubkey.clear();
+    pendingBatchRequests = [];
+}
+
 export const profileMetadataCache = {
     getProfile,
     getProfiles,
@@ -640,4 +699,5 @@ export const profileMetadataCacheInternals = {
     PROFILE_CACHE_NEGATIVE_TTL_MS,
     PROFILE_CACHE_STALE_MS,
     PROFILE_CACHE_GC_MS,
+    resetForTests,
 };
