@@ -3415,7 +3415,7 @@
         align-items: center;
         gap: 6px;
         min-height: 32px;
-        padding: 4px 10px;
+        padding: 4px 8px;
         border-radius: 18px;
         background: color-mix(in srgb, var(--btn-bg), transparent 40%);
         color: var(--text);
