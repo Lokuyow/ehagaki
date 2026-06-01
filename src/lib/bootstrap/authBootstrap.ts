@@ -1,6 +1,6 @@
 import { createRxNostr } from "rx-nostr";
 import { verifier } from "@rx-nostr/crypto";
-import { ProfileManager, ProfileUrlUtils } from "../profileManager";
+import { ProfileUrlUtils } from "../profileManager";
 import { RelayManager } from "../relayManager";
 import { RelayProfileService } from "../relayProfileService";
 import type { AccountManager } from "../accountManager";
@@ -85,7 +85,6 @@ export async function initializeNostrSession({
     onRelayConfigSaved,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
     const rxNostr = createRxNostr({ verifier });
-    const profileManager = new ProfileManager(rxNostr);
     const relayManager = new RelayManager(rxNostr, {
         relayListUpdatedStore: {
             value: relayListUpdatedStore.value,
@@ -96,7 +95,6 @@ export async function initializeNostrSession({
     const relayProfileService = new RelayProfileService(
         rxNostr,
         relayManager,
-        profileManager,
     );
 
     setRelayManager(relayManager);

@@ -355,6 +355,19 @@ vi.mock('../../lib/profileManager', () => ({
     }),
 }));
 
+vi.mock('../../lib/profileMetadataCache.svelte', () => ({
+    profileMetadataCache: {
+        getProfile: profileFetchDataMock,
+        getProfiles: vi.fn(async (pubkeys: string[]) => {
+            const entries = await Promise.all(pubkeys.map(async (pubkey) => {
+                const profile = await profileFetchDataMock(pubkey, {});
+                return [pubkey, profile ?? null] as const;
+            }));
+            return Object.fromEntries(entries);
+        }),
+    },
+}));
+
 vi.mock('../../lib/postHistoryReplyFetchService', () => ({
     POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT: 100,
     POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS: 86_400,
@@ -847,7 +860,9 @@ describe('PostHistoryDialog', () => {
             ignoredCount: 0,
         });
         profilesRepositoryMock.get.mockResolvedValue(null);
-        profileFetchDataMock.mockResolvedValue(null);
+        profileFetchDataMock.mockImplementation(async (pubkeyHex: string) =>
+            profilesRepositoryMock.get(pubkeyHex),
+        );
         replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
             promise: Promise.resolve({
                 events: [],
@@ -2543,7 +2558,8 @@ describe('PostHistoryDialog', () => {
                 'e'.repeat(64),
                 expect.objectContaining({
                     additionalRelays: ['wss://relay.example.com/'],
-                    forceRemote: false,
+                    forceRefresh: false,
+                    allowBackgroundRefresh: true,
                 }),
             );
         });

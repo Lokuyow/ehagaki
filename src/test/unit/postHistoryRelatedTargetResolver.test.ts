@@ -7,12 +7,12 @@ import {
 import type { NostrEvent } from "../../lib/types";
 import { createMockRxNostr } from "../helpers";
 
-const profileFetchDataMock = vi.hoisted(() => vi.fn());
+const getProfileMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../lib/profileManager", () => ({
-    ProfileManager: vi.fn().mockImplementation(() => ({
-        fetchProfileData: profileFetchDataMock,
-    })),
+vi.mock("../../lib/profileMetadataCache.svelte", () => ({
+    profileMetadataCache: {
+        getProfile: getProfileMock,
+    },
 }));
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
@@ -141,8 +141,8 @@ function createResolver() {
 
 describe("createPostHistoryRelatedTargetResolver", () => {
     beforeEach(() => {
-        profileFetchDataMock.mockReset();
-        profileFetchDataMock.mockResolvedValue(null);
+        getProfileMock.mockReset();
+        getProfileMock.mockResolvedValue(null);
     });
 
     it("exposes a normalized loading snapshot shape while a target is pending", async () => {

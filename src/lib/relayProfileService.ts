@@ -1,13 +1,13 @@
 import type { createRxNostr } from 'rx-nostr';
 import { RelayManager } from './relayManager';
-import { ProfileManager } from './profileManager';
 import type { RelayConfig, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
+import { profileMetadataCache } from './profileMetadataCache.svelte';
 
 /**
  * リレー取得とプロフィール取得を統合管理するサービスクラス
  * 
- * 責務: RelayManagerとProfileManagerの調整役として機能し、
+ * 責務: RelayManagerとprofileMetadataCacheの調整役として機能し、
  *      ログインフローや再取得フローを提供する
  * 
  * 処理フロー:
@@ -15,16 +15,15 @@ import { RelayConfigUtils } from './relayConfigUtils';
  * 2. プロフィール取得: BOOTSTRAP_RELAYS + 保存済みリレー → kind 0 → Store, IndexedDB に保存
  */
 export class RelayProfileService {
+    private rxNostr: ReturnType<typeof createRxNostr>;
     private relayManager: RelayManager;
-    private profileManager: ProfileManager;
 
     constructor(
         rxNostr: ReturnType<typeof createRxNostr>,
         relayManager: RelayManager,
-        profileManager: ProfileManager
     ) {
+        this.rxNostr = rxNostr;
         this.relayManager = relayManager;
-        this.profileManager = profileManager;
     }
 
     /**
@@ -78,22 +77,16 @@ export class RelayProfileService {
     async fetchProfile(pubkeyHex: string, forceRemote: boolean = false): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        // forceRemoteの場合はプロフィールキャッシュを削除
-        if (forceRemote) {
-            await this.profileManager.saveToLocalStorage(pubkeyHex, null);
-        }
-
         // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
         const { writeRelays, additionalRelays } = await this.relayManager.getRelayListsForProfile(pubkeyHex);
 
-        // プロフィール取得（自動的にIndexedDBに保存される）
-        const profile = await this.profileManager.fetchProfileData(pubkeyHex, {
-            forceRemote,
+        return profileMetadataCache.getProfile(pubkeyHex, {
+            rxNostr: this.rxNostr as never,
+            forceRefresh: forceRemote,
+            allowBackgroundRefresh: false,
             writeRelays,
-            additionalRelays
+            additionalRelays,
         });
-
-        return profile;
     }
 
     /**
@@ -116,7 +109,10 @@ export class RelayProfileService {
             ? RelayConfigUtils.mergeRelayConfigs(additionalRelays, sanitizedOptionRelays)
             : additionalRelays;
 
-        return this.profileManager.fetchProfileDataNetworkOnly(pubkeyHex, {
+        return profileMetadataCache.getProfile(pubkeyHex, {
+            rxNostr: this.rxNostr as never,
+            forceRefresh: true,
+            allowBackgroundRefresh: false,
             writeRelays,
             additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
         });
@@ -170,10 +166,4 @@ export class RelayProfileService {
         return this.relayManager;
     }
 
-    /**
-     * ProfileManagerへの参照を取得（既存コードとの互換性のため）
-     */
-    getProfileManager(): ProfileManager {
-        return this.profileManager;
-    }
 }

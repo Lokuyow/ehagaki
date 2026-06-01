@@ -1,6 +1,5 @@
 import { onDestroy } from "svelte";
 import type { RxNostr } from "rx-nostr";
-import { ProfileManager } from "../profileManager";
 import {
     createPostHistoryRelatedTargetResolver,
     type PostHistoryRelatedTargetResolver,
@@ -439,24 +438,16 @@ export function usePostHistoryThreadGraph({
         const activeRequestId = taskTracker.getRequestId();
 
         const task = (async () => {
-            const cachedProfile = await profileMetadataCache.getProfile(pubkey, {
-                allowBackgroundRefresh: false,
-            });
-
-            if (cachedProfile && activeRequestId === taskTracker.getRequestId() && getShow()) {
-                mergeProfileForPubkey(pubkey, cachedProfile);
-                onProfileResolved?.(cachedProfile);
-            }
-
             const rxNostr = getRxNostr();
-            if (!rxNostr || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
+            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 return;
             }
 
-            const profileManager = new ProfileManager(rxNostr as never);
-            const profile = await profileManager.fetchProfileData(pubkey, {
+            const profile = await profileMetadataCache.getProfile(pubkey, {
+                rxNostr,
                 additionalRelays,
-                forceRemote: false,
+                forceRefresh: false,
+                allowBackgroundRefresh: true,
             });
             if (!profile || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
                 return;

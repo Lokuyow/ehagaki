@@ -1,5 +1,4 @@
 import type { RxNostr } from "rx-nostr";
-import { ProfileManager } from "./profileManager";
 import {
     postHistoryContextFetchService,
     type PostHistoryContextFetchService,
@@ -314,27 +313,21 @@ export function createPostHistoryRelatedTargetResolver({
         }
 
         const task = (async () => {
-            const cachedProfile = await profileMetadataCache.getProfile(pubkey, {
-                allowBackgroundRefresh: false,
-            });
-            if (cachedProfile) {
-                mergeProfileForPubkey(pubkey, cachedProfile);
-            }
-
             const currentSnapshot = snapshotsByTargetId[targetEventId];
             if (currentSnapshot?.status !== "resolved" || currentSnapshot.authorPubkey !== pubkey) {
                 return;
             }
 
             const rxNostr = getRxNostr();
-            if (!rxNostr || !getShow()) {
+            if (!getShow()) {
                 return;
             }
 
-            const profileManager = new ProfileManager(rxNostr as never);
-            const profile = await profileManager.fetchProfileData(pubkey, {
+            const profile = await profileMetadataCache.getProfile(pubkey, {
+                rxNostr,
                 additionalRelays: relayHints,
-                forceRemote: false,
+                forceRefresh: false,
+                allowBackgroundRefresh: true,
             });
             if (!profile) {
                 return;
