@@ -143,7 +143,7 @@ export function createPostHistoryRelatedTargetResolver({
     deletionFetchService = postHistoryDeletionFetchService,
     profilesRepositoryImpl = profilesRepository,
 }: CreatePostHistoryRelatedTargetResolverParams) {
-    let snapshotsByTargetId = $state<Record<string, PostHistoryRelatedTargetSnapshot>>({});
+    let snapshotsByTargetId = $state.raw<Record<string, PostHistoryRelatedTargetSnapshot>>({});
     let scopeRevisionByKey = $state<Record<string, number>>({});
     let scopeGenerationByKey = $state<Record<string, number>>({});
 
