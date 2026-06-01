@@ -10,6 +10,7 @@
         swVersionStore,
         fetchSwVersion,
         swNeedRefresh,
+        swUpdateStatus,
         handleSwUpdate,
     } from "../stores/swStore.svelte";
     import {
@@ -75,6 +76,8 @@
     let relayConfig = $derived(relayConfigStore.value);
     let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
+    let isSwInstalling = $derived($swUpdateStatus === "installing");
+    let canApplySwUpdate = $derived($swUpdateStatus === "ready");
 
     $effect(() => {
         if (themeMode !== themeModeStore.value) {
@@ -240,27 +243,36 @@
             <div class="setting-section sw-update-section">
                 <div class="setting-row">
                     <span class="setting-label sw-update-label">
-                        {$_("settingsDialog.sw_update_available") ||
-                            "アプリの更新があります"}
+                        {#if isSwInstalling}
+                            {$_("settingsDialog.sw_update_installing") ||
+                                "アプリの更新をインストール中です"}
+                        {:else}
+                            {$_("settingsDialog.sw_update_available") ||
+                                "アプリの更新があります"}
+                        {/if}
                     </span>
                     <div class="setting-control">
                         <Button
                             variant="primary"
                             shape="rounded"
                             contentLayout="iconText"
-                            className="sw-update-btn {isUpdating
+                            className="sw-update-btn {isUpdating || isSwInstalling
                                 ? 'loading'
                                 : ''}"
                             onClick={handleSwRefresh}
-                            disabled={isUpdating}
+                            disabled={isUpdating || !canApplySwUpdate}
                             ariaLabel={$_("settingsDialog.update_app") ||
                                 "アプリを更新"}
                         >
-                            {#if isUpdating}
+                            {#if isUpdating || isSwInstalling}
                                 <LoadingPlaceholder
                                     showLoader={true}
-                                    text={$_("settingsDialog.updating") ||
-                                        "更新中..."}
+                                    text={isSwInstalling
+                                        ? $_(
+                                              "settingsDialog.sw_update_installing_short",
+                                          ) || "インストール中..."
+                                        : $_("settingsDialog.updating") ||
+                                          "更新中..."}
                                 />
                             {:else}
                                 <div

@@ -139,6 +139,9 @@ export const mockSwStoreModule = {
     swNeedRefresh: {
         subscribe: vi.fn(() => () => { }),
     },
+    swUpdateStatus: {
+        subscribe: vi.fn(() => () => { }),
+    },
     swUpdateServiceWorker: vi.fn(),
     swVersionStore: {
         value: null,

@@ -281,6 +281,8 @@
     "refresh_relays_and_profile": "Refresh\nrelay list & profile",
     "refresh": "Refresh",
     "sw_update_available": "A new update is available",
+    "sw_update_installing": "Installing app update",
+    "sw_update_installing_short": "Installing...",
     "update_app": "Update app",
     "updating": "Updating...",
     "author_info": "Author by:",
