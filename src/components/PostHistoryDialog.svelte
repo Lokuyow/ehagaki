@@ -2059,50 +2059,60 @@
                                                     <div
                                                         class="post-preview-reaction-chip"
                                                     >
-                                                        {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
-                                                            <div
-                                                                class="favorite-icon svg-icon post-preview-reaction-symbol"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                        {:else if reactionGroup.emojiUrl}
-                                                            {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
+                                                        <div
+                                                            class="post-preview-reaction-summary"
+                                                        >
+                                                            {#if isPostHistoryFavoriteReactionContent(reactionGroup.content)}
+                                                                <div
+                                                                    class="favorite-icon svg-icon post-preview-reaction-symbol"
+                                                                    aria-hidden="true"
+                                                                ></div>
+                                                            {:else if reactionGroup.emojiUrl}
+                                                                {#if hasReactionEmojiFailed(reactionGroup.emojiUrl)}
+                                                                    <span
+                                                                        class="post-preview-reaction-content"
+                                                                    >
+                                                                        {reactionGroup.content}
+                                                                    </span>
+                                                                {:else}
+                                                                    <span
+                                                                        class="post-preview-reaction-emoji-slot"
+                                                                        style={getReactionEmojiSlotStyle(
+                                                                            reactionGroup.emojiUrl,
+                                                                        )}
+                                                                    >
+                                                                        {#if isReactionEmojiReady(reactionGroup.emojiUrl)}
+                                                                            <img
+                                                                                src={reactionGroup.emojiUrl}
+                                                                                alt={reactionGroup.content}
+                                                                                title={reactionGroup.content}
+                                                                                class="post-preview-reaction-emoji"
+                                                                                draggable="false"
+                                                                                loading="lazy"
+                                                                                decoding="async"
+                                                                            />
+                                                                        {:else}
+                                                                            <span
+                                                                                class="post-preview-reaction-emoji-placeholder"
+                                                                                aria-hidden="true"
+
+                                                                            ></span>
+                                                                        {/if}
+                                                                    </span>
+                                                                {/if}
+                                                            {:else}
                                                                 <span
                                                                     class="post-preview-reaction-content"
                                                                 >
                                                                     {reactionGroup.content}
                                                                 </span>
-                                                            {:else}
-                                                                <span
-                                                                    class="post-preview-reaction-emoji-slot"
-                                                                    style={getReactionEmojiSlotStyle(
-                                                                        reactionGroup.emojiUrl,
-                                                                    )}
-                                                                >
-                                                                    {#if isReactionEmojiReady(reactionGroup.emojiUrl)}
-                                                                        <img
-                                                                            src={reactionGroup.emojiUrl}
-                                                                            alt={reactionGroup.content}
-                                                                            title={reactionGroup.content}
-                                                                            class="post-preview-reaction-emoji"
-                                                                            draggable="false"
-                                                                            loading="lazy"
-                                                                            decoding="async"
-                                                                        />
-                                                                    {:else}
-                                                                        <span
-                                                                            class="post-preview-reaction-emoji-placeholder"
-                                                                            aria-hidden="true"
-                                                                        ></span>
-                                                                    {/if}
-                                                                </span>
                                                             {/if}
-                                                        {:else}
                                                             <span
-                                                                class="post-preview-reaction-content"
+                                                                class="post-preview-reaction-count"
                                                             >
-                                                                {reactionGroup.content}
+                                                                {reactionGroup.count}
                                                             </span>
-                                                        {/if}
+                                                        </div>
                                                         <div
                                                             class="post-preview-reaction-actors"
                                                         >
@@ -2131,11 +2141,6 @@
                                                                 </span>
                                                             {/each}
                                                         </div>
-                                                        <span
-                                                            class="post-preview-reaction-count"
-                                                        >
-                                                            {reactionGroup.count}
-                                                        </span>
                                                     </div>
                                                 {/each}
                                             </div>
@@ -3401,8 +3406,8 @@
     :global(.post-preview-reactions-panel) {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        padding: 0 16px 14px;
+        gap: 4px;
+        padding: 0 16px;
     }
 
     :global(.post-preview-reaction-chip) {
@@ -3411,15 +3416,26 @@
         gap: 6px;
         min-height: 32px;
         padding: 4px 10px;
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--theme), var(--dialog-bg) 92%);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--btn-bg), transparent 40%);
         color: var(--text);
+    }
+
+    :global(.post-preview-reaction-summary) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        row-gap: 4px;
         flex-wrap: wrap;
     }
 
-    :global(.post-preview-reaction-content),
+    :global(.post-preview-reaction-content) {
+        font-size: 20px;
+        line-height: 1;
+    }
     :global(.post-preview-reaction-count) {
-        font-size: 0.92rem;
+        font-size: 1rem;
         line-height: 1;
     }
 
@@ -3457,7 +3473,7 @@
     :global(.post-preview-reaction-actors) {
         display: inline-flex;
         flex-wrap: wrap;
-        gap: 4px;
+        gap: 2px;
         align-items: center;
     }
 
@@ -3465,8 +3481,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 20px;
-        height: 20px;
+        width: 26px;
+        height: 26px;
         border-radius: 999px;
         overflow: hidden;
         flex: 0 0 auto;
@@ -3550,8 +3566,8 @@
     .post-preview-reaction-symbol {
         mask-image: url("/icons/favorite_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         background-color: rgb(249, 24, 128);
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     .search-icon {
