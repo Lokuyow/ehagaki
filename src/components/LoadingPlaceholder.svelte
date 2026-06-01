@@ -59,7 +59,7 @@
         flex-wrap: wrap;
         align-items: center;
         justify-content: center;
-        column-gap: 8px;
+        column-gap: 4px;
         position: relative;
         width: 100%;
     }

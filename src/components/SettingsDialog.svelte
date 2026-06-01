@@ -256,7 +256,8 @@
                             variant="primary"
                             shape="rounded"
                             contentLayout="iconText"
-                            className="sw-update-btn {isUpdating || isSwInstalling
+                            className="sw-update-btn {isUpdating ||
+                            isSwInstalling
                                 ? 'loading'
                                 : ''}"
                             onClick={handleSwRefresh}
@@ -267,6 +268,7 @@
                             {#if isUpdating || isSwInstalling}
                                 <LoadingPlaceholder
                                     showLoader={true}
+                                    loaderSize={32}
                                     text={isSwInstalling
                                         ? $_(
                                               "settingsDialog.sw_update_installing_short",
