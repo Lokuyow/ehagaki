@@ -1,4 +1,4 @@
-import { swNeedRefresh } from "../stores/swStore.svelte";
+import { swNeedRefresh, swUpdateStatus } from "../stores/swStore.svelte";
 import { editorState } from "../stores/editorStore.svelte";
 import { copyToClipboard } from "./utils/clipboardUtils";
 import { writable, type Writable } from "svelte/store";
@@ -106,12 +106,27 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
 declare global {
     interface Window {
         showSwUpdateModalDebug?: () => void;
+        showSwUpdateInstallingDebug?: () => void;
+        showSwUpdateReadyDebug?: () => void;
+        resetSwUpdateDebug?: () => void;
     }
 }
 if (typeof window !== "undefined") {
     window.showSwUpdateModalDebug = () => {
         swNeedRefresh.set(true);
         console.log("SW更新ボタンを強制表示しました（設定ボタンランプ＋SettingsDialog内）");
+    };
+    window.showSwUpdateInstallingDebug = () => {
+        swUpdateStatus.set("installing");
+        console.log("SW更新の installing 状態を強制表示しました");
+    };
+    window.showSwUpdateReadyDebug = () => {
+        swUpdateStatus.set("ready");
+        console.log("SW更新の ready 状態を強制表示しました");
+    };
+    window.resetSwUpdateDebug = () => {
+        swUpdateStatus.set("idle");
+        console.log("SW更新デバッグ状態をリセットしました");
     };
 }
 
