@@ -83,11 +83,20 @@
         >
             <LoadingPlaceholder showLoader={true} />
         </Button>
-    {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
+    {:else if isAuthenticated && isLoadingProfile}
         <Button
             variant="default"
             shape="circle"
-            className={`profile-display${isLoadingProfile ? " loading" : ""}`}
+            className="profile-display loading"
+            onClick={onOpenLogoutDialog}
+        >
+            <LoadingPlaceholder showLoader={true} />
+        </Button>
+    {:else if isAuthenticated && profileLoaded}
+        <Button
+            variant="default"
+            shape="circle"
+            className="profile-display"
             onClick={onOpenLogoutDialog}
         >
             <ProfileAvatar
@@ -238,10 +247,9 @@
             opacity: 1;
         }
     }
-    :global(.profile-display.loading) {
-        opacity: 0.7;
+    /* :global(.profile-display.loading) {
         gap: 2px;
-    }
+    } */
 
     /* プロフィール表示のスタイル */
     :global(button.profile-display.default) {

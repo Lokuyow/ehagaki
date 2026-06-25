@@ -151,14 +151,14 @@ describe('FooterComponent', () => {
         expect(onOpenLogoutDialog).toHaveBeenCalledOnce();
     });
 
-    it('プロフィール読込中でも profile-display はローダーではなくアバター表示を維持する', () => {
+    it('プロフィール読込中の profile-display はアバターではなくローダーを表示する', () => {
         isLoadingProfileStore.set(true);
         profileLoadedStore.set(true);
 
         const { container } = renderFooter();
 
-        expect(container.querySelector('.loading-placeholder')).toBeNull();
-        expect(container.querySelector('.profile-picture')).toBeTruthy();
+        expect(container.querySelector('.loading-placeholder')).toBeTruthy();
+        expect(container.querySelector('.profile-picture')).toBeNull();
     });
 
     it('初期化中でも認証済みなら profile-display ボタン押下でログアウトダイアログを開ける', async () => {
