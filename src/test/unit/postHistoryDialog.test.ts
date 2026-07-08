@@ -45,6 +45,9 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
+        'postHistory.broadcast': 'ブロードキャスト',
+        'postHistory.broadcastSent': 'ブロードキャストしました',
+        'postHistory.broadcastFailed': 'ブロードキャストに失敗しました',
         'postHistory.expand': 'もっと見る',
         'postHistory.collapse': '折りたたむ',
         'postHistory.delete': '削除',
@@ -1088,6 +1091,37 @@ describe('PostHistoryDialog', () => {
         });
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[broadcast-menu-related-other-author] 他人の関連投稿にもブロードキャストメニューを表示する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? parentRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        const relatedText = await screen.findByText('返信先の投稿');
+        const relatedNode = relatedText.closest('.post-history-thread-node-anchor');
+        expect(relatedNode).toBeTruthy();
+
+        await fireEvent.click(
+            within(relatedNode as HTMLElement).getByRole('button', {
+                name: 'アクションを表示',
+            }),
+        );
+
+        expect(await screen.findByRole('menuitem', { name: 'ブロードキャスト' })).toBeTruthy();
     });
 
     it('[quote-preview-cache-first] qタグ付き投稿の下に引用プレビューを自動表示し、履歴DBを優先する', async () => {

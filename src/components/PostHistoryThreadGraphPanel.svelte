@@ -33,6 +33,15 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
+        onBroadcastPointerDown?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: PointerEvent,
+        ) => void;
+        onBroadcastPost?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: Event,
+        ) => void;
+        isBroadcastSending?: (nodeEventId: string) => boolean;
         canDeleteNodePost?: (nodeState: PostHistoryThreadGraphNodeState) => boolean;
         isDeletionSending?: (nodeEventId: string) => boolean;
         onOpenDeleteConfirm?: (nodeState: PostHistoryThreadGraphNodeState) => void;
@@ -52,6 +61,9 @@
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
         isCopyFailed = undefined,
+        onBroadcastPointerDown = undefined,
+        onBroadcastPost = undefined,
+        isBroadcastSending = undefined,
         canDeleteNodePost = undefined,
         isDeletionSending = undefined,
         onOpenDeleteConfirm = undefined,
@@ -119,6 +131,9 @@
                 {onCopyPointerDown}
                 {onCopyNevent}
                 {isCopyFailed}
+                {onBroadcastPointerDown}
+                {onBroadcastPost}
+                {isBroadcastSending}
                 {canDeleteNodePost}
                 {isDeletionSending}
                 {onOpenDeleteConfirm}
@@ -135,6 +150,9 @@
                 {onCopyPointerDown}
                 {onCopyNevent}
                 {isCopyFailed}
+                {onBroadcastPointerDown}
+                {onBroadcastPost}
+                {isBroadcastSending}
                 {canDeleteNodePost}
                 {isDeletionSending}
                 {onOpenDeleteConfirm}
@@ -198,6 +216,9 @@
                     {onCopyPointerDown}
                     {onCopyNevent}
                     {isCopyFailed}
+                    {onBroadcastPointerDown}
+                    {onBroadcastPost}
+                    {isBroadcastSending}
                     {canDeleteNodePost}
                     {isDeletionSending}
                     {onOpenDeleteConfirm}

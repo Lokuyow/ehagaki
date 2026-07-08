@@ -34,6 +34,15 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
+        onBroadcastPointerDown?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: PointerEvent,
+        ) => void;
+        onBroadcastPost?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+            event: Event,
+        ) => void;
+        isBroadcastSending?: (nodeEventId: string) => boolean;
         canDeleteNodePost?: (
             nodeState: PostHistoryThreadGraphNodeState,
         ) => boolean;
@@ -54,6 +63,9 @@
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
         isCopyFailed = undefined,
+        onBroadcastPointerDown = undefined,
+        onBroadcastPost = undefined,
+        isBroadcastSending = undefined,
         canDeleteNodePost = undefined,
         isDeletionSending = undefined,
         onOpenDeleteConfirm = undefined,
@@ -71,6 +83,9 @@
             state.repliesActionState.replyCount > 0,
     );
     let copyFailed = $derived(isCopyFailed?.(state.node.eventId) ?? false);
+    let broadcastSending = $derived(
+        isBroadcastSending?.(state.node.eventId) ?? false,
+    );
     let canDelete = $derived(canDeleteNodePost?.(state) ?? false);
     let deletionSending = $derived(
         isDeletionSending?.(state.node.eventId) ?? false,
@@ -125,6 +140,14 @@
         onCopyNevent?.(state, event);
     }
 
+    function handleBroadcastPointerDown(event: PointerEvent): void {
+        onBroadcastPointerDown?.(state, event);
+    }
+
+    function handleBroadcastPost(event: Event): void {
+        onBroadcastPost?.(state, event);
+    }
+
     function openDeleteConfirm(): void {
         onOpenDeleteConfirm?.(state);
     }
@@ -145,6 +168,15 @@
                     {onRetryParent}
                     {onToggleChildren}
                     {onRetryChildren}
+                    {onCopyPointerDown}
+                    {onCopyNevent}
+                    {isCopyFailed}
+                    {onBroadcastPointerDown}
+                    {onBroadcastPost}
+                    {isBroadcastSending}
+                    {canDeleteNodePost}
+                    {isDeletionSending}
+                    {onOpenDeleteConfirm}
                 />
             {:else if state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted}
                 <span class="post-history-context-deleted-label">
@@ -289,6 +321,18 @@
                                                 : $_("postHistory.copyNevent")}
                                         </span>
                                     </DropdownMenu.Item>
+                                    <DropdownMenu.Item
+                                        class="menu-action-button"
+                                        disabled={broadcastSending}
+                                        onpointerdown={handleBroadcastPointerDown}
+                                        onSelect={handleBroadcastPost}
+                                    >
+                                        <div
+                                            class="broadcast-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>{$_("postHistory.broadcast")}</span>
+                                    </DropdownMenu.Item>
                                     {#if canDelete}
                                         <DropdownMenu.Separator
                                             class="post-history-menu-separator"
@@ -331,6 +375,15 @@
                     {onRetryParent}
                     {onToggleChildren}
                     {onRetryChildren}
+                    {onCopyPointerDown}
+                    {onCopyNevent}
+                    {isCopyFailed}
+                    {onBroadcastPointerDown}
+                    {onBroadcastPost}
+                    {isBroadcastSending}
+                    {canDeleteNodePost}
+                    {isDeletionSending}
+                    {onOpenDeleteConfirm}
                 />
             {/each}
         </div>

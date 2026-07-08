@@ -58,7 +58,10 @@
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
-    import { postBroadcastService } from "../lib/postBroadcastService";
+    import {
+        postBroadcastService,
+        resolveBroadcastEvent,
+    } from "../lib/postBroadcastService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
@@ -722,6 +725,10 @@
         return $_("postHistory.broadcast");
     }
 
+    function canBroadcastPost(post: PostHistoryRecord): boolean {
+        return resolveBroadcastEvent(post) !== null;
+    }
+
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
@@ -916,6 +923,10 @@
         return copyNeventUi.copyState[nodeEventId] === "failed";
     }
 
+    function isNodeBroadcastSending(nodeEventId: string): boolean {
+        return broadcastRequestState[nodeEventId] === "sending";
+    }
+
     function handleNodeCopyPointerPosition(
         nodeState: PostHistoryThreadGraphNodeState,
         event: PointerEvent,
@@ -934,6 +945,23 @@
             buildPostRecordFromNodeState(nodeState),
             event,
         );
+    }
+
+    function handleNodeBroadcastPointerPosition(
+        nodeState: PostHistoryThreadGraphNodeState,
+        event: PointerEvent,
+    ): void {
+        captureBroadcastPointerPosition(
+            buildPostRecordFromNodeState(nodeState),
+            event,
+        );
+    }
+
+    function handleNodeBroadcastPost(
+        nodeState: PostHistoryThreadGraphNodeState,
+        event: Event,
+    ): void {
+        void handleBroadcastPost(buildPostRecordFromNodeState(nodeState), event);
     }
 
     function canDeleteNodePost(
@@ -1699,34 +1727,36 @@
                                                                               )}
                                                                         </span>
                                                                     </DropdownMenu.Item>
-                                                                <DropdownMenu.Item
-                                                                    class="menu-action-button"
-                                                                    disabled={isBroadcastSending(
-                                                                        post,
-                                                                    )}
-                                                                    onpointerdown={(
-                                                                        event,
-                                                                    ) =>
-                                                                        captureBroadcastPointerPosition(
+                                                                {#if canBroadcastPost(post)}
+                                                                    <DropdownMenu.Item
+                                                                        class="menu-action-button"
+                                                                        disabled={isBroadcastSending(
                                                                             post,
-                                                                            event,
                                                                         )}
-                                                                    onSelect={(
-                                                                        event,
-                                                                    ) =>
-                                                                        void handleBroadcastPost(
-                                                                            post,
+                                                                        onpointerdown={(
                                                                             event,
-                                                                        )}
-                                                                >
-                                                                    <div
-                                                                        class="broadcast-icon svg-icon"
-                                                                        aria-hidden="true"
-                                                                    ></div>
-                                                                    <span>
-                                                                        {getBroadcastLabel()}
-                                                                    </span>
-                                                                </DropdownMenu.Item>
+                                                                        ) =>
+                                                                            captureBroadcastPointerPosition(
+                                                                                post,
+                                                                                event,
+                                                                            )}
+                                                                        onSelect={(
+                                                                            event,
+                                                                        ) =>
+                                                                            void handleBroadcastPost(
+                                                                                post,
+                                                                                event,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="broadcast-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {getBroadcastLabel()}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                {/if}
                                                                 {#if canDeletePost(post)}
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button menu-action-button-danger"
@@ -1809,6 +1839,9 @@
                                     onCopyPointerDown={handleNodeCopyPointerPosition}
                                     onCopyNevent={handleNodeCopyNevent}
                                     isCopyFailed={isNodeCopyFailed}
+                                    onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
+                                    onBroadcastPost={handleNodeBroadcastPost}
+                                    isBroadcastSending={isNodeBroadcastSending}
                                     {canDeleteNodePost}
                                     isDeletionSending={isNodeDeletionSending}
                                     onOpenDeleteConfirm={openNodeDeleteConfirm}
@@ -1894,7 +1927,7 @@
                                             </div>
                                         {/if}
                                     </div>
-                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
+                                    {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || canBroadcastPost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
                                         {@const quotePreviewStates =
                                             getQuotePreviewStates(post)}
                                         {@const repliesActionLabel =
@@ -2167,34 +2200,36 @@
                                                                               )}
                                                                         </span>
                                                                     </DropdownMenu.Item>
-                                                                <DropdownMenu.Item
-                                                                    class="menu-action-button"
-                                                                    disabled={isBroadcastSending(
-                                                                        post,
-                                                                    )}
-                                                                    onpointerdown={(
-                                                                        event,
-                                                                    ) =>
-                                                                        captureBroadcastPointerPosition(
+                                                                {#if canBroadcastPost(post)}
+                                                                    <DropdownMenu.Item
+                                                                        class="menu-action-button"
+                                                                        disabled={isBroadcastSending(
                                                                             post,
-                                                                            event,
                                                                         )}
-                                                                    onSelect={(
-                                                                        event,
-                                                                    ) =>
-                                                                        void handleBroadcastPost(
-                                                                            post,
+                                                                        onpointerdown={(
                                                                             event,
-                                                                        )}
-                                                                >
-                                                                    <div
-                                                                        class="broadcast-icon svg-icon"
-                                                                        aria-hidden="true"
-                                                                    ></div>
-                                                                    <span>
-                                                                        {getBroadcastLabel()}
-                                                                    </span>
-                                                                </DropdownMenu.Item>
+                                                                        ) =>
+                                                                            captureBroadcastPointerPosition(
+                                                                                post,
+                                                                                event,
+                                                                            )}
+                                                                        onSelect={(
+                                                                            event,
+                                                                        ) =>
+                                                                            void handleBroadcastPost(
+                                                                                post,
+                                                                                event,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="broadcast-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {getBroadcastLabel()}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                {/if}
                                                                 {#if canDeletePost(post)}
                                                                     <DropdownMenu.Separator
                                                                         class="post-history-menu-separator"
@@ -2360,6 +2395,9 @@
                                         onCopyPointerDown={handleNodeCopyPointerPosition}
                                         onCopyNevent={handleNodeCopyNevent}
                                         isCopyFailed={isNodeCopyFailed}
+                                        onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
+                                        onBroadcastPost={handleNodeBroadcastPost}
+                                        isBroadcastSending={isNodeBroadcastSending}
                                         {canDeleteNodePost}
                                         isDeletionSending={isNodeDeletionSending}
                                         onOpenDeleteConfirm={openNodeDeleteConfirm}
