@@ -58,7 +58,9 @@
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
+    import { postBroadcastService } from "../lib/postBroadcastService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
     import type {
         FullscreenMediaItem,
@@ -68,6 +70,11 @@
     } from "../lib/types";
 
     type PostHistoryUtilityPanel = "none" | "search" | "jump-date";
+    type BroadcastPointerPosition = {
+        eventId: string;
+        x: number;
+        y: number;
+    };
 
     const POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE = 18;
 
@@ -225,6 +232,21 @@
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
+    let broadcastRequestState = $state<
+        Record<string, "sending" | undefined>
+    >({});
+    let showBroadcastFloatingMessage = $state(false);
+    let broadcastFloatingMessageX = $state(0);
+    let broadcastFloatingMessageY = $state(0);
+    let broadcastFloatingMessageKey = $state<
+        "postHistory.broadcastSent" | "postHistory.broadcastFailed"
+    >("postHistory.broadcastSent");
+    let broadcastFloatingMessageTimeout:
+        | ReturnType<typeof setTimeout>
+        | undefined;
+    let lastBroadcastPointerPosition = $state<
+        BroadcastPointerPosition | undefined
+    >(undefined);
     let reactionsExpandedByEventId = $state<Record<string, boolean>>({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
@@ -354,6 +376,7 @@
 
     function resetDialogState(): void {
         copyNeventUi.resetState();
+        hideBroadcastFloatingMessage();
         postActionUi.resetDeleteConfirmation();
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
@@ -363,6 +386,7 @@
         jumpDatePickerOpen = false;
         headingMenuOpen = false;
         deleteRequestState = {};
+        broadcastRequestState = {};
         resetPendingDeletionRequests();
         reactionsExpandedByEventId = {};
         emojiState.resetState();
@@ -381,6 +405,7 @@
         localHistoryDeleteConfirmOpen = false;
         headingMenuOpen = false;
         copyNeventUi.hideCopyFloatingMessage();
+        hideBroadcastFloatingMessage();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -689,6 +714,14 @@
         return deleteRequestState[post.eventId] === "failed";
     }
 
+    function isBroadcastSending(post: PostHistoryRecord): boolean {
+        return broadcastRequestState[post.eventId] === "sending";
+    }
+
+    function getBroadcastLabel(): string {
+        return $_("postHistory.broadcast");
+    }
+
     function getRepliesActionLabel(post: PostHistoryRecord): string {
         const state =
             postHistoryThreadGraph.getAnchorState(post).repliesActionState;
@@ -760,6 +793,98 @@
         }
 
         postActionUi.openDeleteConfirm(post);
+    }
+
+    async function handleBroadcastPost(
+        post: PostHistoryRecord,
+        event: Event,
+    ): Promise<void> {
+        if (isBroadcastSending(post)) {
+            return;
+        }
+
+        const messagePosition = getBroadcastFloatingMessagePosition(
+            post,
+            event,
+        );
+        broadcastRequestState = {
+            ...broadcastRequestState,
+            [post.eventId]: "sending",
+        };
+
+        const result = await postBroadcastService.broadcast({
+            post,
+            rxNostr,
+        });
+
+        broadcastRequestState = {
+            ...broadcastRequestState,
+            [post.eventId]: undefined,
+        };
+        showBroadcastResultMessage(messagePosition, result.success);
+    }
+
+    function hideBroadcastFloatingMessage(): void {
+        if (broadcastFloatingMessageTimeout) {
+            clearTimeout(broadcastFloatingMessageTimeout);
+            broadcastFloatingMessageTimeout = undefined;
+        }
+
+        showBroadcastFloatingMessage = false;
+        lastBroadcastPointerPosition = undefined;
+    }
+
+    function captureBroadcastPointerPosition(
+        post: PostHistoryRecord,
+        event: PointerEvent,
+    ): void {
+        lastBroadcastPointerPosition = {
+            eventId: post.eventId,
+            ...calculateContextMenuPosition(event.clientX, event.clientY),
+        };
+    }
+
+    function getBroadcastFloatingMessagePosition(
+        post: PostHistoryRecord,
+        event: Event,
+    ): { x: number; y: number } {
+        if (lastBroadcastPointerPosition?.eventId === post.eventId) {
+            return {
+                x: lastBroadcastPointerPosition.x,
+                y: lastBroadcastPointerPosition.y,
+            };
+        }
+
+        const target = event.currentTarget;
+        const rect =
+            target instanceof HTMLElement
+                ? target.getBoundingClientRect()
+                : null;
+
+        return calculateContextMenuPosition(
+            rect ? rect.left + rect.width / 2 : 0,
+            rect ? rect.bottom + 8 : 0,
+        );
+    }
+
+    function showBroadcastResultMessage(
+        position: { x: number; y: number },
+        success: boolean,
+    ): void {
+        if (broadcastFloatingMessageTimeout) {
+            clearTimeout(broadcastFloatingMessageTimeout);
+        }
+
+        broadcastFloatingMessageX = position.x;
+        broadcastFloatingMessageY = position.y;
+        broadcastFloatingMessageKey = success
+            ? "postHistory.broadcastSent"
+            : "postHistory.broadcastFailed";
+        showBroadcastFloatingMessage = true;
+        broadcastFloatingMessageTimeout = setTimeout(() => {
+            showBroadcastFloatingMessage = false;
+            broadcastFloatingMessageTimeout = undefined;
+        }, 1800);
     }
 
     function buildPostRecordFromNodeState(
@@ -1572,6 +1697,34 @@
                                                                             : $_(
                                                                                   "postHistory.copyNevent",
                                                                               )}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                <DropdownMenu.Item
+                                                                    class="menu-action-button"
+                                                                    disabled={isBroadcastSending(
+                                                                        post,
+                                                                    )}
+                                                                    onpointerdown={(
+                                                                        event,
+                                                                    ) =>
+                                                                        captureBroadcastPointerPosition(
+                                                                            post,
+                                                                            event,
+                                                                        )}
+                                                                    onSelect={(
+                                                                        event,
+                                                                    ) =>
+                                                                        void handleBroadcastPost(
+                                                                            post,
+                                                                            event,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class="broadcast-icon svg-icon"
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {getBroadcastLabel()}
                                                                     </span>
                                                                 </DropdownMenu.Item>
                                                                 {#if canDeletePost(post)}
@@ -2012,6 +2165,34 @@
                                                                             : $_(
                                                                                   "postHistory.copyNevent",
                                                                               )}
+                                                                        </span>
+                                                                    </DropdownMenu.Item>
+                                                                <DropdownMenu.Item
+                                                                    class="menu-action-button"
+                                                                    disabled={isBroadcastSending(
+                                                                        post,
+                                                                    )}
+                                                                    onpointerdown={(
+                                                                        event,
+                                                                    ) =>
+                                                                        captureBroadcastPointerPosition(
+                                                                            post,
+                                                                            event,
+                                                                        )}
+                                                                    onSelect={(
+                                                                        event,
+                                                                    ) =>
+                                                                        void handleBroadcastPost(
+                                                                            post,
+                                                                            event,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class="broadcast-icon svg-icon"
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {getBroadcastLabel()}
                                                                     </span>
                                                                 </DropdownMenu.Item>
                                                                 {#if canDeletePost(post)}
@@ -2366,6 +2547,14 @@
     y={copyNeventUi.copyFloatingMessageY}
 >
     <div>{$_("postHistory.copied")}</div>
+</FloatingMessage>
+
+<FloatingMessage
+    show={showBroadcastFloatingMessage}
+    x={broadcastFloatingMessageX}
+    y={broadcastFloatingMessageY}
+>
+    <div>{$_(broadcastFloatingMessageKey)}</div>
 </FloatingMessage>
 
 <style>
@@ -3062,6 +3251,11 @@
 
     :global(.post-history-menu-content .menu-action-button .find_in_page-icon) {
         mask-image: url("/icons/find_in_page_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .broadcast-icon) {
+        mask-image: url("/icons/cell_tower_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
