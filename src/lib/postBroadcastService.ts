@@ -43,16 +43,6 @@ export function resolveBroadcastEvent(
     return candidate as NostrEvent;
 }
 
-function isDuplicateOkNotice(notice: unknown): boolean {
-    if (typeof notice !== "string") {
-        return false;
-    }
-
-    const normalized = notice.toLowerCase();
-    return normalized.includes("duplicate")
-        || normalized.includes("already");
-}
-
 export class PostBroadcastService {
     private readonly deps: Required<PostBroadcastServiceDeps>;
 
@@ -90,8 +80,6 @@ export class PostBroadcastService {
 
         return new Promise((resolve) => {
             let resolved = false;
-            let rejectedCount = 0;
-            let totalCount = 0;
             let subscription: { unsubscribe?: () => void } | null = null;
 
             const safeUnsubscribe = () => {
@@ -113,29 +101,12 @@ export class PostBroadcastService {
 
             subscription = rxNostr
                 .send(event, {
-                    completeOn: "all-ok",
+                    completeOn: "sent",
                     signer: noopSigner(),
                     on: { relays: writeRelays },
                 })
                 .subscribe({
-                    next: (packet: any) => {
-                        totalCount++;
-                        if (packet.ok || isDuplicateOkNotice(packet.notice)) {
-                            safeResolve({
-                                success: true,
-                                eventId:
-                                    packet.event?.id ??
-                                    packet.eventId ??
-                                    event.id,
-                                acceptedRelays: packet.from
-                                    ? [packet.from]
-                                    : undefined,
-                            });
-                            return;
-                        }
-
-                        rejectedCount++;
-                    },
+                    next: () => undefined,
                     error: (error: unknown) => {
                         this.deps.console.error(
                             "post_broadcast_send_failed",
@@ -147,17 +118,10 @@ export class PostBroadcastService {
                         });
                     },
                     complete: () => {
-                        if (totalCount > 0 && rejectedCount === totalCount) {
-                            safeResolve({
-                                success: false,
-                                error: "post_rejected",
-                            });
-                            return;
-                        }
-
                         safeResolve({
-                            success: false,
-                            error: "post_timeout",
+                            success: true,
+                            eventId: event.id,
+                            acceptedRelays: writeRelays,
                         });
                     },
                 });

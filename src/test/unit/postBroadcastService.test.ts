@@ -38,11 +38,20 @@ function createRecord(
     };
 }
 
-function createObservable(packets: any[]) {
+function createObservable(packets: any[] = []) {
     return {
         subscribe(observer: any) {
             packets.forEach((packet) => observer.next(packet));
             observer.complete();
+            return { unsubscribe: vi.fn() };
+        },
+    };
+}
+
+function createErrorObservable(error: unknown) {
+    return {
+        subscribe(observer: any) {
+            observer.error(error);
             return { unsubscribe: vi.fn() };
         },
     };
@@ -67,15 +76,7 @@ describe("postBroadcastService helpers", () => {
 describe("PostBroadcastService", () => {
     it("投稿者に関係なく自身の write relay に raw event をブロードキャストする", async () => {
         const post = createRecord({ pubkeyHex: "b".repeat(64) });
-        const send = vi.fn().mockReturnValue(
-            createObservable([
-                {
-                    ok: true,
-                    from: "wss://write.example.com/",
-                    event: post.rawEvent,
-                },
-            ]),
-        );
+        const send = vi.fn().mockReturnValue(createObservable());
         const service = new PostBroadcastService({
             writeRelaysStore: {
                 value: [
@@ -99,10 +100,13 @@ describe("PostBroadcastService", () => {
         expect(result).toEqual({
             success: true,
             eventId: "e".repeat(64),
-            acceptedRelays: ["wss://write.example.com/"],
+            acceptedRelays: [
+                "wss://write.example.com/",
+                "wss://second.example.com/",
+            ],
         });
         expect(send).toHaveBeenCalledWith(post.rawEvent, {
-            completeOn: "all-ok",
+            completeOn: "sent",
             signer: expect.objectContaining({
                 signEvent: expect.any(Function),
             }),
@@ -115,18 +119,9 @@ describe("PostBroadcastService", () => {
         });
     });
 
-    it("relay が duplicate を返した場合は既に保持済みとして成功扱いにする", async () => {
+    it("OK が返らなくても EVENT 送信試行完了で成功扱いにする", async () => {
         const post = createRecord();
-        const send = vi.fn().mockReturnValue(
-            createObservable([
-                {
-                    ok: false,
-                    from: "wss://write.example.com/",
-                    eventId: post.eventId,
-                    notice: "duplicate: already have this event",
-                },
-            ]),
-        );
+        const send = vi.fn().mockReturnValue(createObservable());
         const service = new PostBroadcastService({
             writeRelaysStore: { value: ["wss://write.example.com/"] },
         });
@@ -140,6 +135,30 @@ describe("PostBroadcastService", () => {
             success: true,
             eventId: post.eventId,
             acceptedRelays: ["wss://write.example.com/"],
+        });
+    });
+
+    it("send observable が error を返した場合は失敗にする", async () => {
+        const send = vi.fn().mockReturnValue(
+            createErrorObservable(new Error("network failed")),
+        );
+        const service = new PostBroadcastService({
+            writeRelaysStore: { value: ["wss://write.example.com/"] },
+            console: {
+                log: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+            } as unknown as Console,
+        });
+
+        const result = await service.broadcast({
+            post: createRecord(),
+            rxNostr: { send } as any,
+        });
+
+        expect(result).toEqual({
+            success: false,
+            error: "post_network_error",
         });
     });
 
