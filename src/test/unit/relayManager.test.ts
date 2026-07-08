@@ -603,7 +603,6 @@ describe('RelayManager統合テスト', () => {
                 "wss://relay-jp.nostr.wirednet.jp/",
                 "wss://yabu.me/",
                 "wss://r.kojira.io/",
-                "wss://nrelay-jp.c-stellar.net/",
             ]);
             // フォールバックリレーが設定されたことを確認
             expect((mockDeps.console?.log as any).mock.calls.some(
