@@ -103,12 +103,43 @@ describe("PostBroadcastService", () => {
         });
         expect(send).toHaveBeenCalledWith(post.rawEvent, {
             completeOn: "all-ok",
+            signer: expect.objectContaining({
+                signEvent: expect.any(Function),
+            }),
             on: {
                 relays: [
                     "wss://write.example.com/",
                     "wss://second.example.com/",
                 ],
             },
+        });
+    });
+
+    it("relay が duplicate を返した場合は既に保持済みとして成功扱いにする", async () => {
+        const post = createRecord();
+        const send = vi.fn().mockReturnValue(
+            createObservable([
+                {
+                    ok: false,
+                    from: "wss://write.example.com/",
+                    eventId: post.eventId,
+                    notice: "duplicate: already have this event",
+                },
+            ]),
+        );
+        const service = new PostBroadcastService({
+            writeRelaysStore: { value: ["wss://write.example.com/"] },
+        });
+
+        const result = await service.broadcast({
+            post,
+            rxNostr: { send } as any,
+        });
+
+        expect(result).toEqual({
+            success: true,
+            eventId: post.eventId,
+            acceptedRelays: ["wss://write.example.com/"],
         });
     });
 

@@ -1,4 +1,4 @@
-import type { RxNostr } from "rx-nostr";
+import { noopSigner, type RxNostr } from "rx-nostr";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
@@ -41,6 +41,16 @@ export function resolveBroadcastEvent(
     }
 
     return candidate as NostrEvent;
+}
+
+function isDuplicateOkNotice(notice: unknown): boolean {
+    if (typeof notice !== "string") {
+        return false;
+    }
+
+    const normalized = notice.toLowerCase();
+    return normalized.includes("duplicate")
+        || normalized.includes("already");
 }
 
 export class PostBroadcastService {
@@ -104,12 +114,13 @@ export class PostBroadcastService {
             subscription = rxNostr
                 .send(event, {
                     completeOn: "all-ok",
+                    signer: noopSigner(),
                     on: { relays: writeRelays },
                 })
                 .subscribe({
                     next: (packet: any) => {
                         totalCount++;
-                        if (packet.ok) {
+                        if (packet.ok || isDuplicateOkNotice(packet.notice)) {
                             safeResolve({
                                 success: true,
                                 eventId:
