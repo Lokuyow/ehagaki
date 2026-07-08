@@ -1235,6 +1235,60 @@ describe('PostHistoryDialog', () => {
         expect(await screen.findByRole('menuitem', { name: '削除' })).toBeTruthy();
     });
 
+    it('[quote-preview-menu-isolated] 引用元が履歴にも表示されている場合、押した側のメニューだけを開く', async () => {
+        const quoteId = '6'.repeat(64);
+        const { quotedRecord, post } = createQuoteContextRecords({
+            quoteId,
+            postId: '5'.repeat(64),
+            quoteAuthorPubkey: 'a'.repeat(64),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post, quotedRecord]);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const quotingHistoryItem = await findHistoryItem(post.eventId);
+        const quotedHistoryItem = await findHistoryItem(quoteId);
+        const relatedCard = (await within(quotingHistoryItem).findByText('引用元の投稿'))
+            .closest('.post-history-related-card');
+        expect(relatedCard).toBeTruthy();
+
+        const quotePreviewMenuButton = within(relatedCard as HTMLElement).getByRole('button', {
+            name: 'アクションを表示',
+        });
+        const quotedHistoryMenuContainer = quotedHistoryItem.querySelector(
+            '.post-preview-footer-right',
+        );
+        expect(quotedHistoryMenuContainer).toBeTruthy();
+        const quotedHistoryMenuButton = within(quotedHistoryMenuContainer as HTMLElement).getByRole('button', {
+            name: 'アクションを表示',
+        });
+
+        await fireEvent.click(quotePreviewMenuButton);
+
+        await waitFor(() => {
+            expect(quotePreviewMenuButton.getAttribute('aria-expanded')).toBe('true');
+            expect(quotedHistoryMenuButton.getAttribute('aria-expanded')).toBe('false');
+        });
+
+        await fireEvent.click(quotedHistoryMenuButton);
+
+        await waitFor(() => {
+            expect(quotePreviewMenuButton.getAttribute('aria-expanded')).toBe('false');
+            expect(quotedHistoryMenuButton.getAttribute('aria-expanded')).toBe('true');
+        });
+    });
+
     it('[quote-preview-dedupe] 同じ引用先を複数投稿が参照しても1回だけ取得する', async () => {
         const quoteId = '6'.repeat(64);
         const { quotedRecord, post: firstPost } = createQuoteContextRecords({

@@ -942,6 +942,21 @@
         };
     }
 
+    function buildQuotePreviewMenuKey(
+        parentEventId: string,
+        quoteEventId: string,
+    ): string {
+        return `quote-preview:${parentEventId}:${quoteEventId}`;
+    }
+
+    function setExclusivePostMenuOpen(menuKey: string, open: boolean): void {
+        if (open) {
+            postActionUi.closeAllPostItemMenus();
+        }
+
+        postActionUi.setPostMenuOpen(menuKey, open);
+    }
+
     function isNodeCopyFailed(nodeEventId: string): boolean {
         return copyNeventUi.copyState[nodeEventId] === "failed";
     }
@@ -1652,7 +1667,7 @@
                                                     onOpenChange={(
                                                         open: boolean,
                                                     ) =>
-                                                        postActionUi.setPostMenuOpen(
+                                                        setExclusivePostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
@@ -1952,25 +1967,30 @@
                                                                     buildPostRecordFromQuoteEvent(
                                                                         quotePreview.event,
                                                                     )}
+                                                                {@const quotePreviewMenuKey =
+                                                                    buildQuotePreviewMenuKey(
+                                                                        post.eventId,
+                                                                        quotePreviewPost.eventId,
+                                                                    )}
                                                                 <div
                                                                     class="post-history-related-card-actions"
                                                                 >
                                                                     <DropdownMenu.Root
                                                                         open={postActionUi.isPostMenuOpen(
-                                                                            quotePreviewPost.eventId,
+                                                                            quotePreviewMenuKey,
                                                                         )}
                                                                         onOpenChange={(
                                                                             open: boolean,
                                                                         ) =>
-                                                                            postActionUi.setPostMenuOpen(
-                                                                                quotePreviewPost.eventId,
+                                                                            setExclusivePostMenuOpen(
+                                                                                quotePreviewMenuKey,
                                                                                 open,
                                                                             )}
                                                                     >
                                                                         <DropdownMenu.Trigger
                                                                             class={`menu-trigger post-history-menu-trigger ${
                                                                                 postActionUi.isPostMenuOpen(
-                                                                                    quotePreviewPost.eventId,
+                                                                                    quotePreviewMenuKey,
                                                                                 )
                                                                                     ? "is-open"
                                                                                     : ""
@@ -2264,7 +2284,7 @@
                                                     onOpenChange={(
                                                         open: boolean,
                                                     ) =>
-                                                        postActionUi.setPostMenuOpen(
+                                                        setExclusivePostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
