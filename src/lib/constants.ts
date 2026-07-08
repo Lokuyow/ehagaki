@@ -8,9 +8,9 @@ export const BOOTSTRAP_RELAYS = [
 export const FALLBACK_RELAYS = [
     "wss://nos.lol/",
     "wss://relay.damus.io/",
-    "wss://relay-jp.nostr.wirednet.jp/",
+    "wss://relay.nostr.wirednet.jp/",
     "wss://yabu.me/",
-    "wss://r.kojira.io/",
+    "wss://x.kojira.io/",
 ];
 
 // --- fileUploadManager用定数 ---
