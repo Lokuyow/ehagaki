@@ -1164,6 +1164,77 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
     });
 
+    it('[quote-preview-menu] 引用プレビューにメニューを表示し、他人の投稿では削除を出さない', async () => {
+        const quoteId = '6'.repeat(64);
+        const { quotedRecord, post } = createQuoteContextRecords({
+            quoteId,
+            quoteAuthorPubkey: 'e'.repeat(64),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const relatedCard = (await within(historyItem).findByText('引用元の投稿'))
+            .closest('.post-history-related-card');
+        expect(relatedCard).toBeTruthy();
+
+        await fireEvent.click(
+            within(relatedCard as HTMLElement).getByRole('button', {
+                name: 'アクションを表示',
+            }),
+        );
+
+        expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
+        expect(screen.queryByRole('menuitem', { name: '削除' })).toBeNull();
+    });
+
+    it('[quote-preview-menu-own-post] 自分の引用元投稿では削除メニューを表示する', async () => {
+        const quoteId = '6'.repeat(64);
+        const { quotedRecord, post } = createQuoteContextRecords({
+            quoteId,
+            quoteAuthorPubkey: 'a'.repeat(64),
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const relatedCard = (await within(historyItem).findByText('引用元の投稿'))
+            .closest('.post-history-related-card');
+        expect(relatedCard).toBeTruthy();
+
+        await fireEvent.click(
+            within(relatedCard as HTMLElement).getByRole('button', {
+                name: 'アクションを表示',
+            }),
+        );
+
+        expect(await screen.findByRole('menuitem', { name: '削除' })).toBeTruthy();
+    });
+
     it('[quote-preview-dedupe] 同じ引用先を複数投稿が参照しても1回だけ取得する', async () => {
         const quoteId = '6'.repeat(64);
         const { quotedRecord, post: firstPost } = createQuoteContextRecords({
@@ -1339,11 +1410,11 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockResolvedValue([post]);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getByEventId.mockResolvedValue(null);
+        const failedFetchPromise = Promise.reject(new Error('fetch failed'));
+        void failedFetchPromise.catch(() => undefined);
         contextFetchServiceMock.fetchEventById
             .mockReturnValueOnce({
-                promise: new Promise((_resolve, reject) => {
-                    setTimeout(() => reject(new Error('fetch failed')), 0);
-                }),
+                promise: failedFetchPromise,
                 cancel: vi.fn(),
             })
             .mockReturnValueOnce({

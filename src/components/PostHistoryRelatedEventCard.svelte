@@ -72,7 +72,9 @@
 </script>
 
 <article class="post-history-related-card">
-    {@render topActions?.()}
+    {#if !showHeaderDate}
+        {@render topActions?.()}
+    {/if}
     <div class="post-history-related-card-body">
         <div class="post-history-related-author">
             {#if profile?.picture}
@@ -100,6 +102,7 @@
         {#if showHeaderDate}
             <header class="post-history-related-card-footer">
                 <span class="post-history-related-date">{postedAt}</span>
+                {@render topActions?.()}
             </header>
         {/if}
         {@render children?.()}
@@ -125,6 +128,12 @@
         display: grid;
         gap: 2px;
         padding: 2px 10px 0 8px;
+    }
+
+    .post-history-related-card :global(.post-history-related-card-actions) {
+        display: inline-flex;
+        align-items: center;
+        flex: 0 0 auto;
     }
 
     .post-history-related-card-footer,

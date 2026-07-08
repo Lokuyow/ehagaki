@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import type { Snippet } from "svelte";
     import Button from "./Button.svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
     import { extractPostHistoryMedia } from "../lib/postHistoryMediaUtils";
@@ -15,6 +16,7 @@
             mediaList: FullscreenMediaItem[];
         }) => void;
         onRetry?: (eventId: string) => void;
+        topActions?: Snippet;
     }
 
     let {
@@ -22,6 +24,7 @@
         scrollRoot = null,
         onImageOpen = undefined,
         onRetry = undefined,
+        topActions = undefined,
     }: Props = $props();
 
     function getMedia(): PostHistoryMediaRecord[] {
@@ -51,6 +54,7 @@
         media={getMedia()}
         {scrollRoot}
         {onImageOpen}
+        {topActions}
     />
 {:else}
     <article class="post-history-quote-status-card">

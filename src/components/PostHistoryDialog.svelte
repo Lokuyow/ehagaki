@@ -919,6 +919,29 @@
         };
     }
 
+    function buildPostRecordFromQuoteEvent(event: NostrEvent): PostHistoryRecord {
+        const now = Date.now();
+        const postedAt = event.created_at * 1000;
+
+        return {
+            id: event.id,
+            eventId: event.id,
+            pubkeyHex: event.pubkey,
+            kind: event.kind,
+            content: event.content,
+            tags: event.tags.map((tag) => [...tag]),
+            createdAt: postedAt,
+            postedAt,
+            relayHints: [],
+            acceptedRelays: [],
+            fetchedRelays: [],
+            media: [],
+            rawEvent: event,
+            updatedAt: now,
+            schemaVersion: 1,
+        };
+    }
+
     function isNodeCopyFailed(nodeEventId: string): boolean {
         return copyNeventUi.copyState[nodeEventId] === "failed";
     }
@@ -1922,7 +1945,174 @@
                                                             quotePreviews.retryQuotePreview(
                                                                 quotePreview.eventId,
                                                             )}
-                                                    />
+                                                    >
+                                                        {#snippet topActions()}
+                                                            {#if quotePreview.status === "resolved"}
+                                                                {@const quotePreviewPost =
+                                                                    buildPostRecordFromQuoteEvent(
+                                                                        quotePreview.event,
+                                                                    )}
+                                                                <div
+                                                                    class="post-history-related-card-actions"
+                                                                >
+                                                                    <DropdownMenu.Root
+                                                                        open={postActionUi.isPostMenuOpen(
+                                                                            quotePreviewPost.eventId,
+                                                                        )}
+                                                                        onOpenChange={(
+                                                                            open: boolean,
+                                                                        ) =>
+                                                                            postActionUi.setPostMenuOpen(
+                                                                                quotePreviewPost.eventId,
+                                                                                open,
+                                                                            )}
+                                                                    >
+                                                                        <DropdownMenu.Trigger
+                                                                            class={`menu-trigger post-history-menu-trigger ${
+                                                                                postActionUi.isPostMenuOpen(
+                                                                                    quotePreviewPost.eventId,
+                                                                                )
+                                                                                    ? "is-open"
+                                                                                    : ""
+                                                                            }`.trim()}
+                                                                            aria-label="アクションを表示"
+                                                                        >
+                                                                            <div
+                                                                                class="more-icon svg-icon"
+                                                                            ></div>
+                                                                        </DropdownMenu.Trigger>
+                                                                        <DropdownMenu.Portal>
+                                                                            <DropdownMenu.Content
+                                                                                side="bottom"
+                                                                                align="start"
+                                                                                sideOffset={8}
+                                                                                class="post-history-menu-content"
+                                                                                trapFocus={false}
+                                                                                preventScroll={false}
+                                                                                onCloseAutoFocus={(
+                                                                                    event: Event,
+                                                                                ) =>
+                                                                                    event.preventDefault()}
+                                                                            >
+                                                                                <div
+                                                                                    class="post-history-menu-body"
+                                                                                >
+                                                                                    <div
+                                                                                        class="post-history-menu-timestamp"
+                                                                                    >
+                                                                                        {formatPostedAtExact(
+                                                                                            quotePreviewPost.postedAt,
+                                                                                            $locale,
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <DropdownMenu.Separator
+                                                                                        class="post-history-menu-separator"
+                                                                                    />
+                                                                                    <DropdownMenu.Item
+                                                                                        class="menu-action-button"
+                                                                                        onpointerdown={(
+                                                                                            event,
+                                                                                        ) =>
+                                                                                            copyNeventUi.captureCopyPointerPosition(
+                                                                                                quotePreviewPost,
+                                                                                                event,
+                                                                                            )}
+                                                                                        onSelect={(
+                                                                                            event,
+                                                                                        ) =>
+                                                                                            void copyNeventUi.handleCopyNevent(
+                                                                                                quotePreviewPost,
+                                                                                                event,
+                                                                                            )}
+                                                                                    >
+                                                                                        <div
+                                                                                            class="copy-icon svg-icon"
+                                                                                            aria-hidden="true"
+                                                                                        ></div>
+                                                                                        <span>
+                                                                                            {copyNeventUi
+                                                                                                .copyState[
+                                                                                                quotePreviewPost
+                                                                                                    .eventId
+                                                                                            ] ===
+                                                                                            "failed"
+                                                                                                ? $_(
+                                                                                                      "postHistory.copyFailed",
+                                                                                                  )
+                                                                                                : $_(
+                                                                                                      "postHistory.copyNevent",
+                                                                                                  )}
+                                                                                        </span>
+                                                                                    </DropdownMenu.Item>
+                                                                                    {#if canBroadcastPost(quotePreviewPost)}
+                                                                                        <DropdownMenu.Item
+                                                                                            class="menu-action-button"
+                                                                                            disabled={isBroadcastSending(
+                                                                                                quotePreviewPost,
+                                                                                            )}
+                                                                                            onpointerdown={(
+                                                                                                event,
+                                                                                            ) =>
+                                                                                                captureBroadcastPointerPosition(
+                                                                                                    quotePreviewPost,
+                                                                                                    event,
+                                                                                                )}
+                                                                                            onSelect={(
+                                                                                                event,
+                                                                                            ) =>
+                                                                                                void handleBroadcastPost(
+                                                                                                    quotePreviewPost,
+                                                                                                    event,
+                                                                                                )}
+                                                                                        >
+                                                                                            <div
+                                                                                                class="broadcast-icon svg-icon"
+                                                                                                aria-hidden="true"
+                                                                                            ></div>
+                                                                                            <span>
+                                                                                                {getBroadcastLabel()}
+                                                                                            </span>
+                                                                                        </DropdownMenu.Item>
+                                                                                    {/if}
+                                                                                    {#if canDeletePost(quotePreviewPost)}
+                                                                                        <DropdownMenu.Separator
+                                                                                            class="post-history-menu-separator"
+                                                                                        />
+                                                                                        <DropdownMenu.Item
+                                                                                            class="menu-action-button menu-action-button-danger"
+                                                                                            disabled={isDeletionSending(
+                                                                                                quotePreviewPost,
+                                                                                            )}
+                                                                                            onSelect={() =>
+                                                                                                openDeleteConfirm(
+                                                                                                    quotePreviewPost,
+                                                                                                )}
+                                                                                        >
+                                                                                            <div
+                                                                                                class="trash-icon svg-icon"
+                                                                                                aria-hidden="true"
+                                                                                            ></div>
+                                                                                            <span>
+                                                                                                {isDeletionSending(
+                                                                                                    quotePreviewPost,
+                                                                                                )
+                                                                                                    ? $_(
+                                                                                                          "postHistory.deleteSending",
+                                                                                                      )
+                                                                                                    : $_(
+                                                                                                          "postHistory.delete",
+                                                                                                      )}
+                                                                                            </span>
+                                                                                        </DropdownMenu.Item>
+                                                                                    {/if}
+                                                                                </div>
+                                                                            </DropdownMenu.Content>
+                                                                        </DropdownMenu.Portal>
+                                                                    </DropdownMenu.Root>
+                                                                </div>
+                                                            {/if}
+                                                        {/snippet}
+                                                    </PostHistoryQuotePreview>
                                                 {/each}
                                             </div>
                                         {/if}
