@@ -86,6 +86,21 @@ export class RelayStorage {
     async clear(pubkeyHex: string): Promise<void> {
         await this.save(pubkeyHex, null);
     }
+
+    async reflectLoadedConfig(
+        pubkeyHex: string,
+        relays: RelayConfig,
+    ): Promise<void> {
+        if (!this.onRelayConfigSaved) {
+            return;
+        }
+
+        try {
+            await this.onRelayConfigSaved(pubkeyHex, relays);
+        } catch (e) {
+            this.console.warn('ストアの更新に失敗:', e);
+        }
+    }
 }
 
 // --- ネットワーク取得の分離 ---
@@ -320,6 +335,7 @@ export class RelayManager {
         if (savedRelays) {
             try {
                 this.rxNostr.setDefaultRelays(savedRelays);
+                await this.storage.reflectLoadedConfig(pubkeyHex, savedRelays);
                 this.console.log("保存済みリレーリストを使用:", savedRelays);
                 return true;
             } catch (error) {

@@ -514,6 +514,26 @@ describe('RelayManager統合テスト', () => {
             expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(config);
         });
 
+        it('保存されたリレーを使用した場合もUI側ストア更新コールバックへ反映する', async () => {
+            const pubkey = 'cached-relay-ui-pubkey';
+            const config: RelayConfig = {
+                'wss://read.example.com/': { read: true, write: false },
+                'wss://write.example.com/': { read: false, write: true },
+            };
+            const onRelayConfigSaved = vi.fn();
+            manager = new RelayManager(mockRxNostr, {
+                ...mockDeps,
+                onRelayConfigSaved,
+            });
+            mockStorage.setItem(`nostr-relays-${pubkey}`, JSON.stringify(config));
+
+            const result = await manager.useRelaysFromLocalStorageIfExists(pubkey);
+
+            expect(result).toBe(true);
+            expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(config);
+            expect(onRelayConfigSaved).toHaveBeenCalledWith(pubkey, config);
+        });
+
         it('保存されたリレーがない場合はfalseを返す', async () => {
             const result = await manager.useRelaysFromLocalStorageIfExists('nonexistent');
 
