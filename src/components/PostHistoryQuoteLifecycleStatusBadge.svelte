@@ -5,6 +5,7 @@
         type PostHistoryQuoteLifecycleStatus,
     } from "../lib/postHistoryQuoteLifecycleState";
     import type { PostHistoryQuotePreviewState } from "../lib/hooks/usePostHistoryQuotePreviews.svelte";
+    import PostHistoryStatusPill from "./PostHistoryStatusPill.svelte";
 
     interface Props {
         states: PostHistoryQuotePreviewState[];
@@ -35,37 +36,9 @@
 </script>
 
 {#if statusLabel}
-    <span
-        class={`post-history-quote-lifecycle-status ${status ?? ""}`.trim()}
-        aria-label={statusLabel}
-        title={statusLabel}
-    >
-        {statusLabel}
-    </span>
+    <PostHistoryStatusPill
+        label={statusLabel}
+        tone={status === "deleted" || status === "error" ? "danger" : "muted"}
+        className={`post-history-quote-lifecycle-status ${status ?? ""}`.trim()}
+    />
 {/if}
-
-<style>
-    .post-history-quote-lifecycle-status {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 18px;
-        padding: 0 8px;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        line-height: 1;
-        white-space: nowrap;
-        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-        background: color-mix(in srgb, currentColor 8%, transparent);
-    }
-
-    .post-history-quote-lifecycle-status.loading,
-    .post-history-quote-lifecycle-status.not-found {
-        color: var(--text-muted, currentColor);
-    }
-
-    .post-history-quote-lifecycle-status.deleted,
-    .post-history-quote-lifecycle-status.error {
-        color: var(--destructive-fg, currentColor);
-    }
-</style>

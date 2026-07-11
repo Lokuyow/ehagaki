@@ -16,7 +16,7 @@
             mediaList: FullscreenMediaItem[];
         }) => void;
         onRetry?: (eventId: string) => void;
-        topActions?: Snippet;
+        footerMenu?: Snippet;
     }
 
     let {
@@ -24,7 +24,7 @@
         scrollRoot = null,
         onImageOpen = undefined,
         onRetry = undefined,
-        topActions = undefined,
+        footerMenu = undefined,
     }: Props = $props();
 
     function getMedia(): PostHistoryMediaRecord[] {
@@ -54,7 +54,7 @@
         media={getMedia()}
         {scrollRoot}
         {onImageOpen}
-        {topActions}
+        {footerMenu}
     />
 {:else}
     <article class="post-history-quote-status-card">

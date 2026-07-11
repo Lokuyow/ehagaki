@@ -12,6 +12,8 @@ type HarnessState = {
     plainPostEventId: string;
     scrolledReactionPostEventId: string;
     scrolledPlainPostEventId: string;
+    quotePostEventId: string;
+    quoteContent: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -236,6 +238,41 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(Math.abs(scrolledReactionPositions.repliesX - scrolledPlainPositions.repliesX)).toBeLessThanOrEqual(1);
         expect(Math.abs(scrolledReactionPositions.quoteX - scrolledPlainPositions.quoteX)).toBeLessThanOrEqual(1);
         expect(Math.abs(scrolledReactionPositions.menuX - scrolledPlainPositions.menuX)).toBeLessThanOrEqual(1);
+    });
+
+    test('quote preview uses the compact three-region footer without horizontal overflow', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const historyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const relatedCard = historyItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const footer = relatedCard.locator('.post-preview-footer');
+
+        await expect(relatedCard).toBeVisible();
+        await expect(footer).toHaveCount(1);
+        await expect(footer.locator(':scope > .post-preview-footer-left')).toHaveCount(1);
+        await expect(footer.locator(':scope > .post-preview-footer-actions')).toHaveCount(1);
+        await expect(footer.locator(':scope > .post-preview-footer-right')).toHaveCount(1);
+
+        const [cardBox, footerBox, menuBox, width] = await Promise.all([
+            relatedCard.boundingBox(),
+            footer.boundingBox(),
+            footer.getByRole('button', { name: 'アクションを表示' }).boundingBox(),
+            relatedCard.evaluate((element) => ({
+                clientWidth: (element as HTMLElement).clientWidth,
+                scrollWidth: (element as HTMLElement).scrollWidth,
+            })),
+        ]);
+
+        expect(cardBox).not.toBeNull();
+        expect(footerBox).not.toBeNull();
+        expect(menuBox).not.toBeNull();
+        expect(footerBox!.height).toBeGreaterThanOrEqual(27);
+        expect(footerBox!.height).toBeLessThanOrEqual(29);
+        expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
+        expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
     });
 
     test('mobile timeline controls stay usable and fit the viewport', async ({ page, isMobile }) => {

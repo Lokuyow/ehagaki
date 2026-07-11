@@ -2,6 +2,7 @@
     import { nip19 } from "nostr-tools";
     import type { Snippet } from "svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import {
         buildPreviewContent,
         formatPostedAt,
@@ -23,9 +24,10 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
-        showHeaderDate?: boolean;
         topActions?: Snippet;
-        children?: Snippet;
+        footerLeftExtras?: Snippet;
+        footerActions?: Snippet;
+        footerMenu?: Snippet;
     }
 
     let {
@@ -34,9 +36,10 @@
         media = [],
         scrollRoot = null,
         onImageOpen = undefined,
-        showHeaderDate = true,
         topActions = undefined,
-        children = undefined,
+        footerLeftExtras = undefined,
+        footerActions = undefined,
+        footerMenu = undefined,
     }: Props = $props();
 
     let authorName = $derived.by(() => {
@@ -72,9 +75,7 @@
 </script>
 
 <article class="post-history-related-card">
-    {#if !showHeaderDate}
-        {@render topActions?.()}
-    {/if}
+    {@render topActions?.()}
     <div class="post-history-related-card-body">
         <div class="post-history-related-author">
             {#if profile?.picture}
@@ -99,13 +100,13 @@
                 <PostHistoryMediaList {media} {scrollRoot} {onImageOpen} />
             </div>
         {/if}
-        {#if showHeaderDate}
-            <header class="post-history-related-card-footer">
-                <span class="post-history-related-date">{postedAt}</span>
-                {@render topActions?.()}
-            </header>
-        {/if}
-        {@render children?.()}
+        <PostHistoryPreviewFooter
+            formattedDate={postedAt}
+            density="compact"
+            leftExtras={footerLeftExtras}
+            actions={footerActions}
+            trailing={footerMenu}
+        />
     </div>
 </article>
 
@@ -130,32 +131,11 @@
         padding: 2px 10px 0 8px;
     }
 
-    .post-history-related-card :global(.post-history-related-card-actions) {
-        display: inline-flex;
-        align-items: center;
-        flex: 0 0 auto;
-    }
-
-    .post-history-related-card-footer,
     .post-history-related-author {
         display: flex;
         align-items: center;
         min-width: 0;
         gap: 8px;
-    }
-
-    .post-history-related-card-footer {
-        justify-content: space-between;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        height: 26px;
-    }
-
-    .post-history-related-date {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     .post-history-related-avatar,

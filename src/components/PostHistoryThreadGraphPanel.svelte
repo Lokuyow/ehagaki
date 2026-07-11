@@ -268,14 +268,6 @@
         }
     }
 
-    :global(.post-history-context-loading) {
-        justify-content: flex-start;
-        width: auto;
-        padding: 0;
-        color: var(--text-muted);
-        font-size: 0.82rem;
-    }
-
     .post-history-context-message {
         margin: 0;
         color: var(--text-muted);

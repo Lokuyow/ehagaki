@@ -10,9 +10,12 @@
     import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuoteLifecycleStatusBadge from "./PostHistoryQuoteLifecycleStatusBadge.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
+    import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
@@ -235,9 +238,9 @@
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
-    let broadcastRequestState = $state<
-        Record<string, "sending" | undefined>
-    >({});
+    let broadcastRequestState = $state<Record<string, "sending" | undefined>>(
+        {},
+    );
     let showBroadcastFloatingMessage = $state(false);
     let broadcastFloatingMessageX = $state(0);
     let broadcastFloatingMessageY = $state(0);
@@ -919,7 +922,9 @@
         };
     }
 
-    function buildPostRecordFromQuoteEvent(event: NostrEvent): PostHistoryRecord {
+    function buildPostRecordFromQuoteEvent(
+        event: NostrEvent,
+    ): PostHistoryRecord {
         const now = Date.now();
         const postedAt = event.created_at * 1000;
 
@@ -999,7 +1004,10 @@
         nodeState: PostHistoryThreadGraphNodeState,
         event: Event,
     ): void {
-        void handleBroadcastPost(buildPostRecordFromNodeState(nodeState), event);
+        void handleBroadcastPost(
+            buildPostRecordFromNodeState(nodeState),
+            event,
+        );
     }
 
     function canDeleteNodePost(
@@ -1673,7 +1681,7 @@
                                                         )}
                                                 >
                                                     <DropdownMenu.Trigger
-                                                        class="menu-trigger"
+                                                        class="menu-trigger post-history-menu-trigger"
                                                         aria-label="アクションを表示"
                                                     >
                                                         <div
@@ -1763,8 +1771,8 @@
                                                                             : $_(
                                                                                   "postHistory.copyNevent",
                                                                               )}
-                                                                        </span>
-                                                                    </DropdownMenu.Item>
+                                                                    </span>
+                                                                </DropdownMenu.Item>
                                                                 {#if canBroadcastPost(post)}
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
@@ -1961,7 +1969,7 @@
                                                                 quotePreview.eventId,
                                                             )}
                                                     >
-                                                        {#snippet topActions()}
+                                                        {#snippet footerMenu()}
                                                             {#if quotePreview.status === "resolved"}
                                                                 {@const quotePreviewPost =
                                                                     buildPostRecordFromQuoteEvent(
@@ -1972,62 +1980,22 @@
                                                                         post.eventId,
                                                                         quotePreviewPost.eventId,
                                                                     )}
-                                                                <div
-                                                                    class="post-history-related-card-actions"
-                                                                >
-                                                                    <DropdownMenu.Root
-                                                                        open={postActionUi.isPostMenuOpen(
+                                                                <PostHistoryActionMenu
+                                                                    open={postActionUi.isPostMenuOpen(
+                                                                        quotePreviewMenuKey,
+                                                                    )}
+                                                                    onOpenChange={(open: boolean) =>
+                                                                        setExclusivePostMenuOpen(
                                                                             quotePreviewMenuKey,
+                                                                            open,
                                                                         )}
-                                                                        onOpenChange={(
-                                                                            open: boolean,
-                                                                        ) =>
-                                                                            setExclusivePostMenuOpen(
-                                                                                quotePreviewMenuKey,
-                                                                                open,
-                                                                            )}
-                                                                    >
-                                                                        <DropdownMenu.Trigger
-                                                                            class={`menu-trigger post-history-menu-trigger ${
-                                                                                postActionUi.isPostMenuOpen(
-                                                                                    quotePreviewMenuKey,
-                                                                                )
-                                                                                    ? "is-open"
-                                                                                    : ""
-                                                                            }`.trim()}
-                                                                            aria-label="アクションを表示"
-                                                                        >
-                                                                            <div
-                                                                                class="more-icon svg-icon"
-                                                                            ></div>
-                                                                        </DropdownMenu.Trigger>
-                                                                        <DropdownMenu.Portal>
-                                                                            <DropdownMenu.Content
-                                                                                side="bottom"
-                                                                                align="start"
-                                                                                sideOffset={8}
-                                                                                class="post-history-menu-content"
-                                                                                trapFocus={false}
-                                                                                preventScroll={false}
-                                                                                onCloseAutoFocus={(
-                                                                                    event: Event,
-                                                                                ) =>
-                                                                                    event.preventDefault()}
-                                                                            >
-                                                                                <div
-                                                                                    class="post-history-menu-body"
-                                                                                >
-                                                                                    <div
-                                                                                        class="post-history-menu-timestamp"
-                                                                                    >
-                                                                                        {formatPostedAtExact(
-                                                                                            quotePreviewPost.postedAt,
-                                                                                            $locale,
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <DropdownMenu.Separator
-                                                                                        class="post-history-menu-separator"
-                                                                                    />
+                                                                    triggerAriaLabel="アクションを表示"
+                                                                    timestamp={formatPostedAtExact(
+                                                                        quotePreviewPost.postedAt,
+                                                                        $locale,
+                                                                    )}
+                                                                >
+                                                                    {#snippet items()}
                                                                                     <DropdownMenu.Item
                                                                                         class="menu-action-button"
                                                                                         onpointerdown={(
@@ -2049,7 +2017,8 @@
                                                                                             class="copy-icon svg-icon"
                                                                                             aria-hidden="true"
                                                                                         ></div>
-                                                                                        <span>
+                                                                                        <span
+                                                                                        >
                                                                                             {copyNeventUi
                                                                                                 .copyState[
                                                                                                 quotePreviewPost
@@ -2089,7 +2058,8 @@
                                                                                                 class="broadcast-icon svg-icon"
                                                                                                 aria-hidden="true"
                                                                                             ></div>
-                                                                                            <span>
+                                                                                            <span
+                                                                                            >
                                                                                                 {getBroadcastLabel()}
                                                                                             </span>
                                                                                         </DropdownMenu.Item>
@@ -2112,7 +2082,8 @@
                                                                                                 class="trash-icon svg-icon"
                                                                                                 aria-hidden="true"
                                                                                             ></div>
-                                                                                            <span>
+                                                                                            <span
+                                                                                            >
                                                                                                 {isDeletionSending(
                                                                                                     quotePreviewPost,
                                                                                                 )
@@ -2125,11 +2096,8 @@
                                                                                             </span>
                                                                                         </DropdownMenu.Item>
                                                                                     {/if}
-                                                                                </div>
-                                                                            </DropdownMenu.Content>
-                                                                        </DropdownMenu.Portal>
-                                                                    </DropdownMenu.Root>
-                                                                </div>
+                                                                    {/snippet}
+                                                                </PostHistoryActionMenu>
                                                             {/if}
                                                         {/snippet}
                                                     </PostHistoryQuotePreview>
@@ -2147,19 +2115,11 @@
                                                 .status === "loaded" &&
                                             graphState.repliesActionState
                                                 .replyCount > 0}
-                                        <div class="post-preview-footer">
-                                            <div
-                                                class="post-preview-footer-left"
-                                            >
-                                                <span class="post-preview-date">
-                                                    {formatPostedAt(
-                                                        post.postedAt,
-                                                    )}
-                                                </span>
-                                            </div>
-                                            <div
-                                                class="post-preview-footer-actions"
-                                            >
+                                        <PostHistoryPreviewFooter
+                                            formattedDate={formatPostedAt(post.postedAt)}
+                                            dimmed={!!post.deletedAt}
+                                        >
+                                            {#snippet actions()}
                                                 <div
                                                     class="post-preview-action-buttons-group"
                                                 >
@@ -2187,30 +2147,19 @@
                                                         class="post-preview-footer-replies-slot"
                                                     >
                                                         {#if showRepliesBadge}
-                                                            <Button
-                                                                type="button"
-                                                                class="post-preview-replies-badge-button"
-                                                                ariaLabel={repliesActionLabel}
-                                                                title={repliesActionLabel}
-                                                                contentLayout="icon"
-                                                                shape="circle"
+                                                            <PostHistoryRepliesBadgeButton
+                                                                count={graphState
+                                                                    .repliesActionState
+                                                                    .replyCount}
                                                                 selected={graphState
                                                                     .repliesActionState
                                                                     .visible}
+                                                                ariaLabel={repliesActionLabel}
                                                                 onClick={() =>
                                                                     handleRepliesAction(
                                                                         post,
                                                                     )}
-                                                            >
-                                                                <span
-                                                                    class="post-preview-replies-badge"
-                                                                    aria-hidden="true"
-                                                                >
-                                                                    {graphState
-                                                                        .repliesActionState
-                                                                        .replyCount}
-                                                                </span>
-                                                            </Button>
+                                                            />
                                                         {/if}
                                                     </div>
                                                 </div>
@@ -2273,63 +2222,24 @@
                                                         </Button>
                                                     {/if}
                                                 </div>
-                                            </div>
-                                            <div
-                                                class="post-preview-footer-right"
-                                            >
-                                                <DropdownMenu.Root
+                                            {/snippet}
+                                            {#snippet trailing()}
+                                                <PostHistoryActionMenu
                                                     open={postActionUi.isPostMenuOpen(
                                                         post.eventId,
                                                     )}
-                                                    onOpenChange={(
-                                                        open: boolean,
-                                                    ) =>
+                                                    onOpenChange={(open: boolean) =>
                                                         setExclusivePostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
+                                                    triggerAriaLabel="アクションを表示"
+                                                    timestamp={formatPostedAtExact(
+                                                        post.postedAt,
+                                                        $locale,
+                                                    )}
                                                 >
-                                                    <DropdownMenu.Trigger
-                                                        class={`menu-trigger post-history-menu-trigger ${
-                                                            postActionUi.isPostMenuOpen(
-                                                                post.eventId,
-                                                            )
-                                                                ? "is-open"
-                                                                : ""
-                                                        }`.trim()}
-                                                        aria-label="アクションを表示"
-                                                    >
-                                                        <div
-                                                            class="more-icon svg-icon"
-                                                        ></div>
-                                                    </DropdownMenu.Trigger>
-                                                    <DropdownMenu.Portal>
-                                                        <DropdownMenu.Content
-                                                            side="bottom"
-                                                            align="start"
-                                                            sideOffset={8}
-                                                            class="post-history-menu-content"
-                                                            trapFocus={false}
-                                                            preventScroll={false}
-                                                            onCloseAutoFocus={(
-                                                                event: Event,
-                                                            ) =>
-                                                                event.preventDefault()}
-                                                        >
-                                                            <div
-                                                                class="post-history-menu-body"
-                                                            >
-                                                                <div
-                                                                    class="post-history-menu-timestamp"
-                                                                >
-                                                                    {formatPostedAtExact(
-                                                                        post.postedAt,
-                                                                        $locale,
-                                                                    )}
-                                                                </div>
-                                                                <DropdownMenu.Separator
-                                                                    class="post-history-menu-separator"
-                                                                />
+                                                    {#snippet items()}
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
                                                                     disabled={graphState
@@ -2408,8 +2318,8 @@
                                                                             : $_(
                                                                                   "postHistory.copyNevent",
                                                                               )}
-                                                                        </span>
-                                                                    </DropdownMenu.Item>
+                                                                    </span>
+                                                                </DropdownMenu.Item>
                                                                 {#if canBroadcastPost(post)}
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
@@ -2471,12 +2381,10 @@
                                                                         </span>
                                                                     </DropdownMenu.Item>
                                                                 {/if}
-                                                            </div>
-                                                        </DropdownMenu.Content>
-                                                    </DropdownMenu.Portal>
-                                                </DropdownMenu.Root>
-                                            </div>
-                                        </div>
+                                                    {/snippet}
+                                                </PostHistoryActionMenu>
+                                            {/snippet}
+                                        </PostHistoryPreviewFooter>
                                         {#if graphState.reactionSummary.totalCount > 0 && isReactionsExpanded(post)}
                                             <div
                                                 class="post-preview-reactions-panel"
@@ -2870,11 +2778,8 @@
 
     :global(
             .post-history-action-button,
-            .post-preview-replies-badge-button,
             .post-preview-reactions-button,
-            .post-history-replies-toggle-button,
-            .post-history-thread-toggle-button,
-            .post-history-menu-trigger
+            .post-history-thread-toggle-button
         ) {
         color: var(--btn-post-preview-action);
     }
@@ -2882,41 +2787,9 @@
     :global(
             .post-history-action-button .svg-icon,
             .post-preview-reactions-button .svg-icon,
-            .post-history-replies-toggle-button .svg-icon,
-            .post-history-thread-toggle-button .svg-icon,
-            .post-history-menu-trigger .more-icon
+            .post-history-thread-toggle-button .svg-icon
         ) {
         --svg: currentColor;
-    }
-
-    :global(.menu-trigger) {
-        aspect-ratio: 1;
-        border-radius: 50%;
-        --btn-bg: var(--dialog-bg);
-        background-color: var(--dialog-bg);
-    }
-
-    :global(.post-history-menu-trigger) {
-        color: var(--btn-post-preview-action);
-    }
-
-    :global(.post-history-menu-trigger .more-icon) {
-        mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 22px;
-        height: 22px;
-    }
-
-    :global(.menu-trigger.post-history-heading-menu-trigger) {
-        min-height: 50px;
-        padding: 0;
-        background-color: var(--dialog-bg);
-        color: var(--text-muted);
-        border-radius: 0;
-    }
-
-    :global(.menu-trigger.post-history-heading-menu-trigger .more-icon) {
-        width: 28px;
-        height: 28px;
     }
 
     .post-history-heading-summary {
@@ -3311,8 +3184,7 @@
     }
 
     .post-history-item-deleted .post-meta-inline > :not(.deleted-badge),
-    .post-history-item-deleted .post-preview-body,
-    .post-history-item-deleted .post-preview-footer {
+    .post-history-item-deleted .post-preview-body {
         opacity: 0.65;
     }
 
@@ -3344,152 +3216,6 @@
 
     .post-preview-header-right > span {
         white-space: nowrap;
-    }
-
-    :global(.post-history-menu-content) {
-        background: var(--dialog-bg, #fff);
-        color: var(--text, #000);
-        border: 1px solid var(--border, #ccc);
-        border-radius: 10px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-        padding: 8px;
-        min-width: 180px;
-        z-index: 102;
-        outline: none;
-
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            var(--border) 12%
-        );
-        --post-history-menu-action-hover-color: var(--text);
-        --post-history-menu-action-danger-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            var(--danger) 12%
-        );
-    }
-
-    :global(:root.light .post-history-menu-content) {
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            black 6%
-        );
-        --post-history-menu-action-hover-color: color-mix(
-            in srgb,
-            var(--text),
-            black 6%
-        );
-    }
-
-    :global(:root.dark .post-history-menu-content) {
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            white 10%
-        );
-        --post-history-menu-action-hover-color: color-mix(
-            in srgb,
-            var(--text),
-            white 10%
-        );
-    }
-
-    .post-history-menu-body {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        align-items: stretch;
-    }
-
-    .post-history-menu-timestamp {
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        line-height: 1.35;
-        user-select: text;
-        white-space: nowrap;
-        margin-inline: auto;
-        width: fit-content;
-    }
-
-    :global(.post-history-menu-content[data-state="open"]) {
-        animation: popover-in 150ms ease-out;
-    }
-
-    :global(.post-history-menu-content[data-state="closed"]) {
-        animation: popover-out 100ms ease-in;
-    }
-
-    :global(.post-history-menu-content .post-history-menu-separator) {
-        height: 1px;
-        margin: 4px 0;
-        background: var(--border-hr);
-    }
-
-    :global(.post-history-menu-content .menu-action-button) {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 10px;
-        width: 100%;
-        min-height: 40px;
-        border: none;
-        border-radius: 6px;
-        background-color: transparent;
-        color: inherit;
-        text-align: left;
-        padding: 10px 12px;
-        font: inherit;
-        cursor: pointer;
-    }
-
-    :global(.post-history-menu-content .menu-action-button-danger) {
-        color: var(--danger);
-        --svg: currentColor;
-    }
-
-    @media (min-width: 601px) {
-        :global(
-                .post-history-menu-content
-                    .menu-action-button:hover:not([data-disabled])
-            ),
-        :global(
-                .post-history-menu-content
-                    .menu-action-button[data-highlighted]:not([data-disabled])
-            ) {
-            background-color: var(--post-history-menu-action-hover-bg);
-            color: var(--post-history-menu-action-hover-color);
-            --svg: currentColor;
-        }
-
-        :global(
-                .post-history-menu-content
-                    .menu-action-button-danger:hover:not([data-disabled])
-            ),
-        :global(
-                .post-history-menu-content
-                    .menu-action-button-danger[data-highlighted]:not(
-                        [data-disabled]
-                    )
-            ) {
-            background-color: var(--post-history-menu-action-danger-hover-bg);
-            color: var(--danger);
-            --svg: currentColor;
-        }
-    }
-
-    :global(.post-history-menu-content .menu-action-button[data-disabled]) {
-        opacity: 0.55;
-        cursor: not-allowed;
-    }
-
-    :global(.post-history-menu-content .menu-action-button .svg-icon) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 20px;
-        height: 20px;
     }
 
     :global(.post-history-menu-content .menu-action-button .calendar-icon) {
@@ -3554,28 +3280,6 @@
 
     :global(.post-history-nav-loading-placeholder .loader-container .square) {
         background-color: currentColor;
-    }
-
-    @keyframes popover-in {
-        from {
-            opacity: 0;
-            transform: translateY(-4px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    @keyframes popover-out {
-        from {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        to {
-            opacity: 0;
-            transform: translateY(-4px);
-        }
     }
 
     .post-preview {
@@ -3666,123 +3370,45 @@
         }
     }
 
-    :global(.post-preview-date),
-    :global(.post-history-related-date) {
-        color: var(--text-muted);
-    }
-
-    .post-preview-footer {
+    :global(.post-preview-action-buttons-group) {
         display: flex;
         align-items: stretch;
-        justify-content: space-between;
-        height: 36px;
-        padding-left: 1rem;
-        color: var(--btn-post-preview-action);
+    }
 
-        .post-preview-footer-left {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            min-width: 80px;
+    :global(.post-preview-quote-action-group) {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
 
-            .post-preview-date {
-                font-size: 0.9375rem;
-                white-space: nowrap;
-            }
+    :global(.post-preview-footer-reaction-slot) {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        flex: 0 0 70px;
+        min-width: 70px;
+    }
+
+    :global(:where(.post-preview-action-button)) {
+        position: relative;
+    }
+
+    :global(:where(.post-preview-reactions-button)) {
+        display: flex;
+        align-items: stretch;
+        gap: 4px;
+        padding: 0;
+        padding-inline: 6px;
+
+        .favorite-icon {
+            height: auto;
+            mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
-        .post-preview-footer-actions {
-            display: flex;
-            align-items: stretch;
-            justify-content: space-around;
-            flex: 1 0 auto;
-        }
-
-        .post-preview-footer-right {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-        }
-
-        .post-preview-action-buttons-group {
-            display: flex;
-            align-items: stretch;
-        }
-
-        .post-preview-quote-action-group {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .post-preview-footer-replies-slot {
-            display: flex;
-            align-items: stretch;
-            justify-content: center;
-            flex: 0 0 36px;
-            min-width: 36px;
-        }
-
-        .post-preview-footer-reaction-slot {
-            display: flex;
-            align-items: stretch;
-            justify-content: center;
-            flex: 0 0 70px;
-            min-width: 70px;
-        }
-
-        :global(:where(.post-preview-action-button)) {
-            min-height: auto;
-            --btn-bg: var(--dialog-bg);
-            background-color: var(--dialog-bg);
-            position: relative;
-        }
-
-        :global(.post-preview-replies-badge-button) {
-            width: 36px;
-            min-width: 36px;
-            min-height: auto;
-            --btn-bg: var(--dialog-bg);
-            color: var(--btn-post-preview-action);
-        }
-
-        .post-preview-replies-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            aspect-ratio: 1;
-            width: 20px;
-            height: 20px;
-            line-height: 20px;
-            border-radius: 999px;
-            background: var(--btn-post-preview-action);
-            color: var(--dialog-bg);
-            font-size: 0.6875rem;
-            font-weight: 700;
-            text-align: center;
-        }
-
-        :global(:where(.post-preview-reactions-button)) {
-            min-height: auto;
-            gap: 4px;
-            padding: 0;
-            padding-inline: 6px;
-            --btn-bg: var(--dialog-bg);
-            background-color: var(--dialog-bg);
-            color: var(--btn-post-preview-action);
-            display: flex;
-            align-items: stretch;
-
-            .favorite-icon {
-                mask-image: url("/icons/favorite_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-                height: auto;
-            }
-
-            span {
-                flex: 0 0 auto;
-                line-height: 36px;
-                height: auto;
-            }
+        span {
+            flex: 0 0 auto;
+            height: auto;
+            line-height: 36px;
         }
     }
 
@@ -3793,37 +3419,13 @@
 
     :global(
             .post-history-thread-toggle-button.selected,
-            .post-history-replies-toggle-button.selected,
-            .post-preview-replies-badge-button.selected,
             .post-preview-reactions-button.selected
         ) {
-        --btn-bg: var(--dialog-bg);
+        --btn-bg: var(--post-history-preview-footer-surface, var(--dialog-bg));
         color: var(--text-light);
     }
 
-    :global(
-            .post-history-replies-toggle-button.selected
-                .post-history-replies-toggle-badge,
-            .post-preview-replies-badge-button.selected
-                .post-preview-replies-badge
-        ) {
-        background-color: var(--text-light);
-    }
-
     @media (min-width: 601px) {
-        :global(.post-history-replies-toggle-button:hover:not(:disabled)) {
-            color: color-mix(in srgb, var(--text), white 50%);
-        }
-
-        :global(
-                .post-history-replies-toggle-button:hover:not(:disabled)
-                    .post-history-replies-toggle-badge,
-                .post-preview-replies-badge-button:hover:not(:disabled)
-                    .post-preview-replies-badge
-            ) {
-            background-color: var(--text);
-        }
-
         :global(
                 :root.light
                     .post-history-thread-toggle-button.selected:hover:not(

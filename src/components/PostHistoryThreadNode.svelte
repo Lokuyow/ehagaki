@@ -12,18 +12,20 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
-        showHeaderDate?: boolean;
         topActions?: Snippet;
-        children?: Snippet;
+        footerLeftExtras?: Snippet;
+        footerActions?: Snippet;
+        footerMenu?: Snippet;
     }
 
     let {
         node,
         scrollRoot = null,
         onImageOpen = undefined,
-        showHeaderDate = true,
         topActions = undefined,
-        children = undefined,
+        footerLeftExtras = undefined,
+        footerActions = undefined,
+        footerMenu = undefined,
     }: Props = $props();
 
     let media = $derived.by(() => extractPostHistoryMedia(node.event));
@@ -35,8 +37,8 @@
     {media}
     {scrollRoot}
     {onImageOpen}
-    {showHeaderDate}
     {topActions}
->
-    {@render children?.()}
-</PostHistoryRelatedEventCard>
+    {footerLeftExtras}
+    {footerActions}
+    {footerMenu}
+/>

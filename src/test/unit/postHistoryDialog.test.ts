@@ -1289,6 +1289,60 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[related-card-footer-structure] 返信先・引用は同じ3区画フッターを使う', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const { quotedRecord, post: quotePost } = createQuoteContextRecords({
+            postId: post.eventId,
+            quoteId: '7'.repeat(64),
+        });
+        post.tags = [...post.tags, ...quotePost.tags];
+        post.rawEvent = { ...post.rawEvent, tags: post.tags };
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) => {
+            if (eventId === replyId) {
+                return parentRecord;
+            }
+
+            return eventId === quotedRecord.eventId ? quotedRecord : null;
+        });
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await screen.findByText('返信先の投稿');
+        await screen.findByText('引用元の投稿');
+
+        for (const content of ['返信先の投稿', '引用元の投稿']) {
+            const card = screen.getByText(content).closest('.post-history-related-card');
+            expect(card).toBeTruthy();
+
+            const footer = (card as HTMLElement).querySelector('.post-preview-footer');
+            expect(footer).toBeTruthy();
+            expect(Array.from(footer!.children).map((element) => {
+                if (element.classList.contains('post-preview-footer-left')) {
+                    return 'left';
+                }
+                if (element.classList.contains('post-preview-footer-actions')) {
+                    return 'actions';
+                }
+                return element.classList.contains('post-preview-footer-right') ? 'right' : 'unknown';
+            })).toEqual(['left', 'actions', 'right']);
+            expect(footer!.querySelector('.post-preview-footer-left .post-preview-date')).toBeTruthy();
+            expect(within(footer!.querySelector('.post-preview-footer-right') as HTMLElement).getByRole('button', {
+                name: 'アクションを表示',
+            })).toBeTruthy();
+        }
+
+        expect(document.querySelector('.post-history-related-card-footer')).toBeNull();
+    });
+
     it('[quote-preview-dedupe] 同じ引用先を複数投稿が参照しても1回だけ取得する', async () => {
         const quoteId = '6'.repeat(64);
         const { quotedRecord, post: firstPost } = createQuoteContextRecords({

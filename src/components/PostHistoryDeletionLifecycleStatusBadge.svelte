@@ -4,6 +4,7 @@
         pendingDeletionRequestsState,
         type PendingDeletionRequestStatus,
     } from "../stores/postHistoryDeletionLifecycleStore.svelte";
+    import PostHistoryStatusPill from "./PostHistoryStatusPill.svelte";
 
     interface Props {
         eventId: string;
@@ -37,36 +38,9 @@
 </script>
 
 {#if statusLabel}
-    <span
-        class={`post-history-deletion-lifecycle-status ${pendingStatus ?? ""}`.trim()}
-        aria-label={statusLabel}
-        title={statusLabel}
-    >
-        {statusLabel}
-    </span>
+    <PostHistoryStatusPill
+        label={statusLabel}
+        tone={pendingStatus === "failed" ? "danger" : "muted"}
+        className={`post-history-deletion-lifecycle-status ${pendingStatus ?? ""}`.trim()}
+    />
 {/if}
-
-<style>
-    .post-history-deletion-lifecycle-status {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 18px;
-        padding: 0 8px;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        line-height: 1;
-        white-space: nowrap;
-        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-        background: color-mix(in srgb, currentColor 8%, transparent);
-    }
-
-    .post-history-deletion-lifecycle-status.pending,
-    .post-history-deletion-lifecycle-status.processing {
-        color: var(--text-muted, currentColor);
-    }
-
-    .post-history-deletion-lifecycle-status.failed {
-        color: var(--destructive-fg, currentColor);
-    }
-</style>

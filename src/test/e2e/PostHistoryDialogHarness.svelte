@@ -32,6 +32,8 @@
         plainPostEventId: string;
         scrolledReactionPostEventId: string;
         scrolledPlainPostEventId: string;
+        quotePostEventId: string;
+        quoteContent: string;
     };
 
     type HarnessWindow = Window &
@@ -116,6 +118,45 @@
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) =>
         buildPost(index),
     );
+    const quoteEventId = "9".repeat(64);
+    const quoteContent = "playwright quote source";
+    const quoteParentPost = posts[2];
+    const quoteRecord: PostHistoryRecord = {
+        id: quoteEventId,
+        eventId: quoteEventId,
+        pubkeyHex: "e".repeat(64),
+        kind: 1,
+        content: quoteContent,
+        tags: [],
+        createdAt: quoteParentPost.createdAt - 60,
+        postedAt: quoteParentPost.postedAt - 60_000,
+        relayHints: [],
+        acceptedRelays: [],
+        media: [],
+        rawEvent: {
+            id: quoteEventId,
+            pubkey: "e".repeat(64),
+            kind: 1,
+            content: quoteContent,
+            tags: [],
+            created_at: quoteParentPost.createdAt - 60,
+            sig: "a".repeat(128),
+        },
+        fetchedAt: quoteParentPost.postedAt,
+        lastSeenAt: quoteParentPost.postedAt,
+        updatedAt: quoteParentPost.postedAt,
+        schemaVersion: 2,
+    };
+    quoteParentPost.tags = [["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex]];
+    quoteParentPost.rawEvent = {
+        id: quoteParentPost.eventId,
+        pubkey: HARNESS_PUBKEY,
+        kind: 1,
+        content: quoteParentPost.content,
+        tags: quoteParentPost.tags,
+        created_at: quoteParentPost.createdAt,
+        sig: "b".repeat(128),
+    };
     const reactionRecords = [buildReactionRecord(0), buildReactionRecord(20)];
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
@@ -141,6 +182,8 @@
         plainPostEventId: posts[1].eventId,
         scrolledReactionPostEventId: posts[20].eventId,
         scrolledPlainPostEventId: posts[21].eventId,
+        quotePostEventId: quoteParentPost.eventId,
+        quoteContent,
     };
 
     onMount(async () => {
@@ -152,7 +195,7 @@
             .equals(HARNESS_PUBKEY)
             .delete();
         await ehagakiDb.postHistoryChildInteractions.clear();
-        await ehagakiDb.postHistory.bulkPut(posts);
+        await ehagakiDb.postHistory.bulkPut([...posts, quoteRecord]);
         await ehagakiDb.postHistoryChildInteractions.bulkPut(reactionRecords);
 
         ready = true;
@@ -169,6 +212,8 @@
             plainPostEventId: posts[1].eventId,
             scrolledReactionPostEventId: posts[20].eventId,
             scrolledPlainPostEventId: posts[21].eventId,
+            quotePostEventId: quoteParentPost.eventId,
+            quoteContent,
         };
     });
 </script>
