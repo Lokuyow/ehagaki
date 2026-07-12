@@ -10,7 +10,7 @@ import {
 } from "../postHistoryVisibilityResumeSyncService";
 import type { RelayConfig } from "../types";
 
-export const POST_HISTORY_VISIBILITY_RESUME_MIN_HIDDEN_SECONDS = 30;
+export const POST_HISTORY_VISIBILITY_RESUME_MIN_HIDDEN_SECONDS = 10;
 
 interface UsePostHistoryVisibilityResumeSyncParams {
     getIsAuthenticated: () => boolean;

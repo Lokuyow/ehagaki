@@ -80,11 +80,11 @@ describe("usePostHistoryVisibilityResumeSync", () => {
         };
     }
 
-    it("does not run resume sync after a 29 second hidden interval", async () => {
+    it("does not run resume sync after a 9 second hidden interval", async () => {
         const { onSavedSelfPosts } = renderHarness();
 
         setVisibilityState("hidden");
-        nowMs += 29_000;
+        nowMs += 9_000;
         setVisibilityState("visible");
         await Promise.resolve();
 
@@ -92,11 +92,11 @@ describe("usePostHistoryVisibilityResumeSync", () => {
         expect(onSavedSelfPosts).not.toHaveBeenCalled();
     });
 
-    it("runs resume sync after a 30 second hidden interval", async () => {
+    it("runs resume sync after a 10 second hidden interval", async () => {
         renderHarness();
 
         setVisibilityState("hidden");
-        nowMs += 30_000;
+        nowMs += 10_000;
         setVisibilityState("visible");
 
         await waitFor(() => expect(syncAfterVisibilityResume).toHaveBeenCalledOnce());
@@ -106,7 +106,7 @@ describe("usePostHistoryVisibilityResumeSync", () => {
         }));
     });
 
-    it("keeps realtime recovery for a reply and self post missed during a 29 second hidden gap", async () => {
+    it("keeps realtime recovery for a reply and self post missed during a 9 second hidden gap", async () => {
         const rxNostr = createRxNostr();
         render(PostHistoryShortHiddenRealtimeRecoveryHarness, {
             props: {
@@ -123,7 +123,7 @@ describe("usePostHistoryVisibilityResumeSync", () => {
 
         setVisibilityState("hidden");
         // A self post and a reply may arrive while Forward subscriptions are stopped here.
-        nowMs += 29_000;
+        nowMs += 9_000;
         setVisibilityState("visible");
 
         await waitFor(() => {
