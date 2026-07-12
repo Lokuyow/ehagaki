@@ -169,7 +169,7 @@
     "deletedBadge": "削除リクエスト済み",
     "copyNevent": "イベントIDをコピー",
     "rawJson": "生JSONを表示",
-    "rawJsonTitle": "生JSON",
+    "rawJsonTitle": "Raw JSON",
     "rawJsonDescription": "投稿イベントの生JSONを表示します。",
     "copied": "コピーしました",
     "copyFailed": "コピーに失敗しました",

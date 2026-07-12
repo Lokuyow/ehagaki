@@ -44,7 +44,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.rawJson': '生JSONを表示',
-        'postHistory.rawJsonTitle': '生JSON',
+        'postHistory.rawJsonTitle': 'Raw JSON',
         'postHistory.rawJsonDescription': '投稿イベントの生JSONを表示します。',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
@@ -1166,7 +1166,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(rawJsonMenuItem as HTMLElement);
 
         const rawJsonDialog = await screen.findByRole('dialog', {
-            name: '生JSON',
+            name: 'Raw JSON',
         });
         expect(rawJsonDialog.textContent).toContain('"content": "生JSONを確認する投稿"');
         expect(rawJsonDialog.textContent).toContain('"tags": [');
@@ -1176,7 +1176,7 @@ describe('PostHistoryDialog', () => {
         }));
 
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: '生JSON' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'Raw JSON' })).toBeNull();
         });
         expect(await screen.findByRole('dialog', { name: '投稿履歴' })).toBeTruthy();
     });

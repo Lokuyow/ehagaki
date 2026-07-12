@@ -54,6 +54,9 @@
 </DialogWrapper>
 
 <style>
+    :global(.post-history-raw-json-dialog .dialog-content) {
+        padding: 8px;
+    }
     .raw-json-heading {
         width: 100%;
     }
@@ -74,7 +77,8 @@
         border-radius: 8px;
         background: color-mix(in srgb, var(--dialog-bg), var(--text) 4%);
         color: var(--text);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            "Liberation Mono", monospace;
         font-size: 0.82rem;
         line-height: 1.45;
         text-align: left;
@@ -82,6 +86,6 @@
     }
 
     :global(.post-history-raw-json-dialog) {
-        max-width: min(760px, calc(100% - 32px));
+        max-width: min(760px, calc(100% - 10px));
     }
 </style>

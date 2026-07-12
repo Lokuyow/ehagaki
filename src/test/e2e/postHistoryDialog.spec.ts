@@ -330,7 +330,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.getByRole('button', { name: 'アクションを表示' }).first().click();
         await page.getByRole('menuitem', { name: '生JSONを表示' }).click();
 
-        const rawJsonDialog = page.getByRole('dialog', { name: '生JSON' });
+        const rawJsonDialog = page.getByRole('dialog', { name: 'Raw JSON' });
         await expect(rawJsonDialog).toBeVisible();
         await expect(rawJsonDialog.locator('.raw-json-content')).toHaveText('null');
         await expect(page.locator('.post-history-dialog')).toBeVisible();
