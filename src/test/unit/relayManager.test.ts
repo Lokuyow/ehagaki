@@ -10,6 +10,7 @@ import type { RxNostr } from 'rx-nostr';
 import { MockStorage, createMockRxNostr } from '../helpers';
 import { EHagakiDB } from '../../lib/storage/ehagakiDb';
 import { DexieRelayConfigsRepository } from '../../lib/storage/relayConfigsRepository';
+import { FALLBACK_RELAYS } from '../../lib/constants';
 
 describe('RelayConfigParser', () => {
     describe('parseKind10002Tags', () => {
@@ -617,13 +618,7 @@ describe('RelayManager統合テスト', () => {
 
             expect(result.success).toBe(false); // 取得失敗
             expect(result.source).toBe('fallback');
-            expect(result.relayConfig).toEqual([
-                "wss://nos.lol/",
-                "wss://relay.damus.io/",
-                "wss://relay-jp.nostr.wirednet.jp/",
-                "wss://yabu.me/",
-                "wss://r.kojira.io/",
-            ]);
+            expect(result.relayConfig).toEqual(FALLBACK_RELAYS);
             // フォールバックリレーが設定されたことを確認
             expect((mockDeps.console?.log as any).mock.calls.some(
                 (call: any[]) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
