@@ -33,6 +33,9 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
+        onShowRawJson?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
         onBroadcastPointerDown?: (
             nodeState: PostHistoryThreadGraphNodeState,
             event: PointerEvent,
@@ -61,6 +64,7 @@
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
         isCopyFailed = undefined,
+        onShowRawJson = undefined,
         onBroadcastPointerDown = undefined,
         onBroadcastPost = undefined,
         isBroadcastSending = undefined,
@@ -131,6 +135,7 @@
                 {onCopyPointerDown}
                 {onCopyNevent}
                 {isCopyFailed}
+                {onShowRawJson}
                 {onBroadcastPointerDown}
                 {onBroadcastPost}
                 {isBroadcastSending}
@@ -150,6 +155,7 @@
                 {onCopyPointerDown}
                 {onCopyNevent}
                 {isCopyFailed}
+                {onShowRawJson}
                 {onBroadcastPointerDown}
                 {onBroadcastPost}
                 {isBroadcastSending}
@@ -216,6 +222,7 @@
                     {onCopyPointerDown}
                     {onCopyNevent}
                     {isCopyFailed}
+                    {onShowRawJson}
                     {onBroadcastPointerDown}
                     {onBroadcastPost}
                     {isBroadcastSending}

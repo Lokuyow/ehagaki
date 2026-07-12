@@ -15,6 +15,7 @@
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuoteLifecycleStatusBadge from "./PostHistoryQuoteLifecycleStatusBadge.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
+    import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
@@ -235,6 +236,8 @@
     let jumpDatePickerOpen = $state(false);
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
+    let rawJsonDialogOpen = $state(false);
+    let selectedRawEvent = $state<unknown>(null);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -384,6 +387,8 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         postActionUi.resetDeleteConfirmation();
+        rawJsonDialogOpen = false;
+        selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
@@ -408,6 +413,8 @@
         channelDisplay.cancelCurrentChannelResolution();
         postHistoryThreadGraph.cancelCurrentGraphFetches();
         postActionUi.resetDeleteConfirmation();
+        rawJsonDialogOpen = false;
+        selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
         headingMenuOpen = false;
         copyNeventUi.hideCopyFloatingMessage();
@@ -960,6 +967,17 @@
         }
 
         postActionUi.setPostMenuOpen(menuKey, open);
+    }
+
+    function openRawJson(rawEvent: unknown): void {
+        selectedRawEvent = rawEvent;
+        rawJsonDialogOpen = true;
+    }
+
+    function handleNodeShowRawJson(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): void {
+        openRawJson(nodeState.node.event);
     }
 
     function isNodeCopyFailed(nodeEventId: string): boolean {
@@ -1773,6 +1791,23 @@
                                                                               )}
                                                                     </span>
                                                                 </DropdownMenu.Item>
+                                                                <DropdownMenu.Item
+                                                                    class="menu-action-button"
+                                                                    onSelect={() =>
+                                                                        openRawJson(
+                                                                            post.rawEvent,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class="raw-json-icon svg-icon"
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {$_(
+                                                                            "postHistory.rawJson",
+                                                                        )}
+                                                                    </span>
+                                                                </DropdownMenu.Item>
                                                                 {#if canBroadcastPost(post)}
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
@@ -1885,6 +1920,7 @@
                                     onCopyPointerDown={handleNodeCopyPointerPosition}
                                     onCopyNevent={handleNodeCopyNevent}
                                     isCopyFailed={isNodeCopyFailed}
+                                    onShowRawJson={handleNodeShowRawJson}
                                     onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
                                     onBroadcastPost={handleNodeBroadcastPost}
                                     isBroadcastSending={isNodeBroadcastSending}
@@ -2033,6 +2069,23 @@
                                                                                     : $_(
                                                                                           "postHistory.copyNevent",
                                                                                       )}
+                                                                            </span>
+                                                                        </DropdownMenu.Item>
+                                                                        <DropdownMenu.Item
+                                                                            class="menu-action-button"
+                                                                            onSelect={() =>
+                                                                                openRawJson(
+                                                                                    quotePreviewPost.rawEvent,
+                                                                                )}
+                                                                        >
+                                                                            <div
+                                                                                class="raw-json-icon svg-icon"
+                                                                                aria-hidden="true"
+                                                                            ></div>
+                                                                            <span>
+                                                                                {$_(
+                                                                                    "postHistory.rawJson",
+                                                                                )}
                                                                             </span>
                                                                         </DropdownMenu.Item>
                                                                         {#if canBroadcastPost(quotePreviewPost)}
@@ -2321,6 +2374,23 @@
                                                                       )}
                                                             </span>
                                                         </DropdownMenu.Item>
+                                                        <DropdownMenu.Item
+                                                            class="menu-action-button"
+                                                            onSelect={() =>
+                                                                openRawJson(
+                                                                    post.rawEvent,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="raw-json-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                            <span>
+                                                                {$_(
+                                                                    "postHistory.rawJson",
+                                                                )}
+                                                            </span>
+                                                        </DropdownMenu.Item>
                                                         {#if canBroadcastPost(post)}
                                                             <DropdownMenu.Item
                                                                 class="menu-action-button"
@@ -2514,6 +2584,7 @@
                                         onCopyPointerDown={handleNodeCopyPointerPosition}
                                         onCopyNevent={handleNodeCopyNevent}
                                         isCopyFailed={isNodeCopyFailed}
+                                        onShowRawJson={handleNodeShowRawJson}
                                         onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
                                         onBroadcastPost={handleNodeBroadcastPost}
                                         isBroadcastSending={isNodeBroadcastSending}
@@ -2616,6 +2687,12 @@
             </Button>
         </div>
     {/if}
+
+    <PostHistoryRawJsonDialog
+        open={rawJsonDialogOpen}
+        rawEvent={selectedRawEvent}
+        onOpenChange={(open) => (rawJsonDialogOpen = open)}
+    />
 
     {#snippet footer()}
         <Dialog.Close>
@@ -3231,6 +3308,11 @@
 
     :global(.post-history-menu-content .menu-action-button .broadcast-icon) {
         mask-image: url("/icons/cell_tower_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .raw-json-icon) {
+        mask-image: url("/icons/data_object_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 

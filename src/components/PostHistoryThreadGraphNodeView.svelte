@@ -36,6 +36,9 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
+        onShowRawJson?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
         onBroadcastPointerDown?: (
             nodeState: PostHistoryThreadGraphNodeState,
             event: PointerEvent,
@@ -65,6 +68,7 @@
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
         isCopyFailed = undefined,
+        onShowRawJson = undefined,
         onBroadcastPointerDown = undefined,
         onBroadcastPost = undefined,
         isBroadcastSending = undefined,
@@ -141,6 +145,10 @@
         onCopyNevent?.(state, event);
     }
 
+    function handleShowRawJson(): void {
+        onShowRawJson?.(state);
+    }
+
     function handleBroadcastPointerDown(event: PointerEvent): void {
         onBroadcastPointerDown?.(state, event);
     }
@@ -172,6 +180,7 @@
                     {onCopyPointerDown}
                     {onCopyNevent}
                     {isCopyFailed}
+                    {onShowRawJson}
                     {onBroadcastPointerDown}
                     {onBroadcastPost}
                     {isBroadcastSending}
@@ -275,6 +284,16 @@
                                     </DropdownMenu.Item>
                                     <DropdownMenu.Item
                                         class="menu-action-button"
+                                        onSelect={handleShowRawJson}
+                                    >
+                                        <div
+                                            class="raw-json-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>{$_("postHistory.rawJson")}</span>
+                                    </DropdownMenu.Item>
+                                    <DropdownMenu.Item
+                                        class="menu-action-button"
                                         onpointerdown={handleCopyPointerDown}
                                         onSelect={handleCopyNevent}
                                     >
@@ -344,6 +363,7 @@
                     {onCopyPointerDown}
                     {onCopyNevent}
                     {isCopyFailed}
+                    {onShowRawJson}
                     {onBroadcastPointerDown}
                     {onBroadcastPost}
                     {isBroadcastSending}

@@ -245,7 +245,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 100;
+        z-index: calc(100 + var(--bits-dialog-depth, 0) * 2);
     }
 
     :global(.dialog) {
@@ -260,7 +260,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        z-index: 101;
+        z-index: calc(101 + var(--bits-dialog-depth, 0) * 2);
     }
 
     :global(.dialog:focus) {

@@ -322,4 +322,21 @@ test.describe('PostHistoryDialog Playwright', () => {
         ).toBeVisible();
         await expect(page.getByRole('menuitem', { name: '削除' })).toHaveCount(0);
     });
+
+    test('raw JSON opens above post history and closes from its overlay only', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        await gotoHarness(page);
+        await page.getByRole('button', { name: 'アクションを表示' }).first().click();
+        await page.getByRole('menuitem', { name: '生JSONを表示' }).click();
+
+        const rawJsonDialog = page.getByRole('dialog', { name: '生JSON' });
+        await expect(rawJsonDialog).toBeVisible();
+        await expect(rawJsonDialog.locator('.raw-json-content')).toHaveText('null');
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+
+        await page.locator('.dialog-overlay').last().click({ position: { x: 8, y: 8 } });
+        await expect(rawJsonDialog).toHaveCount(0);
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+    });
 });
