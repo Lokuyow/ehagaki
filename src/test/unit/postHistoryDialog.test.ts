@@ -43,9 +43,9 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
-        'postHistory.rawJson': '生JSONを表示',
-        'postHistory.rawJsonTitle': 'Raw JSON',
-        'postHistory.rawJsonDescription': '投稿イベントの生JSONを表示します。',
+        'postHistory.rawJson': 'イベントJSONを表示',
+        'postHistory.rawJsonTitle': 'イベントJSON',
+        'postHistory.rawJsonDescription': '投稿イベントのイベントJSONを表示します。',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
         'postHistory.broadcast': 'ブロードキャスト',
@@ -1125,7 +1125,7 @@ describe('PostHistoryDialog', () => {
         );
 
         expect(await screen.findByRole('menuitem', { name: 'ブロードキャスト' })).toBeTruthy();
-        expect(await screen.findByText('生JSONを表示')).toBeTruthy();
+        expect(await screen.findByText('イベントJSONを表示')).toBeTruthy();
     });
 
     it('[raw-json-dialog] 投稿メニューから生JSONを開閉しても投稿履歴は閉じない', async () => {
@@ -1160,13 +1160,13 @@ describe('PostHistoryDialog', () => {
         );
         const menuItems = screen.getAllByRole('menuitem', { hidden: true });
         const rawJsonMenuItem = menuItems.find((item) =>
-            item.textContent?.includes('生JSONを表示'),
+            item.textContent?.includes('イベントJSONを表示'),
         );
         expect(rawJsonMenuItem).toBeTruthy();
         await fireEvent.click(rawJsonMenuItem as HTMLElement);
 
         const rawJsonDialog = await screen.findByRole('dialog', {
-            name: 'Raw JSON',
+            name: 'イベントJSON',
         });
         expect(rawJsonDialog.textContent).toContain('"content": "生JSONを確認する投稿"');
         expect(rawJsonDialog.textContent).toContain('"tags": [');
@@ -1176,7 +1176,7 @@ describe('PostHistoryDialog', () => {
         }));
 
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: 'Raw JSON' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'イベントJSON' })).toBeNull();
         });
         expect(await screen.findByRole('dialog', { name: '投稿履歴' })).toBeTruthy();
     });
@@ -1254,7 +1254,7 @@ describe('PostHistoryDialog', () => {
         );
 
         expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
-        expect(await screen.findByText('生JSONを表示')).toBeTruthy();
+        expect(await screen.findByText('イベントJSONを表示')).toBeTruthy();
         expect(screen.queryByRole('menuitem', { name: '削除' })).toBeNull();
     });
 
