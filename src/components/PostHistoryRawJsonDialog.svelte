@@ -68,7 +68,7 @@
 
     .raw-json-content {
         width: 100%;
-        max-height: min(60svh, 560px);
+        height: 100%;
         margin: 12px 0 0;
         padding: 12px;
         box-sizing: border-box;
