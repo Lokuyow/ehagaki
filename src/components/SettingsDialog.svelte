@@ -487,37 +487,39 @@
             </div>
         </div>
 
-        <!-- 引用通知設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.quote_notification_label") ||
-                        "引用投稿時に相手に通知"}</span
-                >
-                <div class="setting-control">
-                    <Switch.Root
-                        class="bui-switch"
-                        bind:checked={quoteNotificationEnabled}
+        <div class="notification-group">
+            <!-- 引用通知設定セクション -->
+            <div class="setting-section">
+                <div class="setting-row">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.quote_notification_label") ||
+                            "引用投稿時に相手に通知"}</span
                     >
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
+                    <div class="setting-control">
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={quoteNotificationEnabled}
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.reply_notification_label") ||
-                        "リプライ投稿時に直接のリプライ先以外の相手に通知"}</span
-                >
-                <div class="setting-control">
-                    <Switch.Root
-                        class="bui-switch"
-                        bind:checked={replyNotificationEnabled}
+            <div class="setting-section">
+                <div class="setting-row">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.reply_notification_label") ||
+                            "リプライ投稿時に直接のリプライ先以外の相手に通知"}</span
                     >
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
+                    <div class="setting-control">
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={replyNotificationEnabled}
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    </div>
                 </div>
             </div>
         </div>
@@ -765,6 +767,12 @@
     }
 
     .hide-mascot-flavor-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .notification-group {
         display: flex;
         flex-direction: column;
         gap: 4px;
