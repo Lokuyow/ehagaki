@@ -191,7 +191,7 @@ describe('ReplyQuotePreview', () => {
         expect(container.querySelector('.quote-notification-button')).toBeNull();
     });
 
-    it('reply の継承通知先は名前とベル型トグルを折り返し領域に表示する', async () => {
+    it('reply の継承通知先は名前を含むベル型トグル全体を押せる', async () => {
         const onToggleReplyNotification = vi.fn();
         const recipient = '66'.repeat(32);
         const { container } = render(ReplyQuotePreview, {
@@ -211,8 +211,10 @@ describe('ReplyQuotePreview', () => {
         });
 
         expect(container.querySelector('.reply-notification-recipients')).toBeTruthy();
-        expect(screen.getByText('Bob')).toBeTruthy();
-        await fireEvent.click(screen.getByRole('button', { name: 'Bob: リプライ通知をオン' }));
+        const button = screen.getByRole('button', { name: 'Bob: リプライ通知をオン' });
+        expect(button.classList.contains('reply-notification-recipient')).toBe(true);
+        expect(button.textContent).toContain('Bob');
+        await fireEvent.click(button);
         expect(onToggleReplyNotification).toHaveBeenCalledWith(recipient, true);
     });
 
