@@ -490,11 +490,25 @@
         <div class="notification-group">
             <!-- 引用通知設定セクション -->
             <div class="setting-section">
-                <div class="setting-row">
-                    <span class="setting-label"
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <span class="setting-label"
                         >{$_("settingsDialog.quote_notification_label") ||
-                            "引用投稿時に相手に通知"}</span
-                    >
+                            "引用元の投稿者に通知"}</span
+                            >
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={($_(
+                                    "settingsDialog.quote_notification_label",
+                                ) || "引用元の投稿者に通知") + "の説明"}
+                            >
+                                {$_("settingsDialog.quote_notification_note") ||
+                                    "引用投稿時、引用元の投稿者への通知をデフォルトで有効にします"}
+                            </InfoPopoverButton>
+                        </div>
+                    </div>
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
@@ -507,11 +521,25 @@
             </div>
 
             <div class="setting-section">
-                <div class="setting-row">
-                    <span class="setting-label"
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <span class="setting-label"
                         >{$_("settingsDialog.reply_notification_label") ||
-                            "リプライ投稿時に直接のリプライ先以外の相手に通知"}</span
-                    >
+                            "返信先以外にも通知"}</span
+                            >
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={($_(
+                                    "settingsDialog.reply_notification_label",
+                                ) || "返信先以外にも通知") + "の説明"}
+                            >
+                                {$_("settingsDialog.reply_notification_note") ||
+                                    "リプライ時にリプライツリー内のほかの参加者をデフォルトで通知対象に含めます"}
+                            </InfoPopoverButton>
+                        </div>
+                    </div>
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
