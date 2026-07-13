@@ -227,7 +227,10 @@
                                                 recipient.pubkey,
                                                 !recipient.enabled,
                                             );
-                                            if (typeof tooltipOnclick === "function") {
+                                            if (
+                                                typeof tooltipOnclick ===
+                                                "function"
+                                            ) {
                                                 tooltipOnclick(e);
                                             }
                                         }}
@@ -237,7 +240,9 @@
                                         )}
                                         {...restProps}
                                     >
-                                        <span class="reply-notification-recipient-name">
+                                        <span
+                                            class="reply-notification-recipient-name"
+                                        >
                                             {getRecipientDisplay(recipient)}
                                         </span>
                                         <div
@@ -254,8 +259,12 @@
                                     class="tooltip-content reply-quote-tooltip-content"
                                 >
                                     {recipient.enabled
-                                        ? $_("replyQuote.reply_notification_on_tooltip")
-                                        : $_("replyQuote.reply_notification_off_tooltip")}
+                                        ? $_(
+                                              "replyQuote.reply_notification_on_tooltip",
+                                          )
+                                        : $_(
+                                              "replyQuote.reply_notification_off_tooltip",
+                                          )}
                                 </Tooltip.Content>
                             </Tooltip.Portal>
                         </Tooltip.Root>
@@ -352,9 +361,14 @@
         color: var(--text-light);
     }
 
-    :global(.reply-notification-recipient[aria-pressed="true"]) {
-        color: var(--theme);
-        background: color-mix(in srgb, var(--bg-input) 68%, var(--theme));
+    :global(:root.light .reply-notification-recipient[aria-pressed="true"]) {
+        background-color: color-mix(in srgb, var(--btn-bg), black 18%);
+        color: var(--text);
+    }
+
+    :global(:root.dark .reply-notification-recipient[aria-pressed="true"]) {
+        background-color: color-mix(in srgb, var(--btn-bg), white 22%);
+        color: var(--text);
     }
 
     .reply-notification-recipient-name {
@@ -391,7 +405,7 @@
         max-width: 240px;
         border-radius: 6px;
         padding: 6px 8px;
-        background: var(--bg-modal);
+        background: var(--dialog-bg);
         color: var(--text);
         border: 1px solid var(--border);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
