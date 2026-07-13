@@ -107,12 +107,19 @@
         onToggleQuoteNotification?.(!effectiveQuoteNotificationEnabled);
     }
 
-    function getRecipientDisplay(recipient: { pubkey: string; displayName: string | null }): string {
+    function getRecipientDisplay(recipient: {
+        pubkey: string;
+        displayName: string | null;
+    }): string {
         if (recipient.displayName) return recipient.displayName;
         return shortenMiddle(nip19.npubEncode(recipient.pubkey), 12, 4);
     }
 
-    function getReplyNotificationAriaLabel(recipient: { pubkey: string; displayName: string | null; enabled: boolean }): string {
+    function getReplyNotificationAriaLabel(recipient: {
+        pubkey: string;
+        displayName: string | null;
+        enabled: boolean;
+    }): string {
         const display = getRecipientDisplay(recipient);
         return recipient.enabled
             ? `${display}: ${$_("replyQuote.disable_reply_notification")}`
@@ -212,17 +219,29 @@
                             <Tooltip.Root delayDuration={500}>
                                 <Tooltip.Trigger>
                                     {#snippet child({ props })}
-                                        {@const { onclick: tooltipOnclick, ...restProps } = props}
+                                        {@const {
+                                            onclick: tooltipOnclick,
+                                            ...restProps
+                                        } = props}
                                         <Button
                                             className="reply-notification-button"
                                             variant="default"
                                             shape="square"
                                             onClick={(e) => {
-                                                onToggleReplyNotification?.(recipient.pubkey, !recipient.enabled);
-                                                if (typeof tooltipOnclick === "function") tooltipOnclick(e);
+                                                onToggleReplyNotification?.(
+                                                    recipient.pubkey,
+                                                    !recipient.enabled,
+                                                );
+                                                if (
+                                                    typeof tooltipOnclick ===
+                                                    "function"
+                                                )
+                                                    tooltipOnclick(e);
                                             }}
                                             aria-pressed={recipient.enabled}
-                                            ariaLabel={getReplyNotificationAriaLabel(recipient)}
+                                            ariaLabel={getReplyNotificationAriaLabel(
+                                                recipient,
+                                            )}
                                             {...restProps}
                                         >
                                             <div
@@ -234,10 +253,17 @@
                                     {/snippet}
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
-                                    <Tooltip.Content sideOffset={8} class="tooltip-content reply-quote-tooltip-content">
+                                    <Tooltip.Content
+                                        sideOffset={8}
+                                        class="tooltip-content reply-quote-tooltip-content"
+                                    >
                                         {recipient.enabled
-                                            ? $_("replyQuote.reply_notification_on_tooltip")
-                                            : $_("replyQuote.reply_notification_off_tooltip")}
+                                            ? $_(
+                                                  "replyQuote.reply_notification_on_tooltip",
+                                              )
+                                            : $_(
+                                                  "replyQuote.reply_notification_off_tooltip",
+                                              )}
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
                             </Tooltip.Root>
@@ -318,8 +344,8 @@
     .reply-notification-recipients {
         display: flex;
         flex-wrap: wrap;
-        gap: 4px 10px;
-        padding: 0 10px 8px;
+        gap: 4px 6px;
+        padding: 4px 10px;
     }
 
     .reply-notification-recipient {
@@ -336,6 +362,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         padding-left: 8px;
+        padding-right: 4px;
         color: var(--text-light);
         font-size: 0.85rem;
     }
