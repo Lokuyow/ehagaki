@@ -505,6 +505,14 @@
                             <option value="dark">dark</option>
                         </select>
                     </div>
+                    <div class="field">
+                        <label for="initial-reply-notification">reply notification</label>
+                        <select id="initial-reply-notification">
+                            <option value="" selected>未指定</option>
+                            <option value="true">ON</option>
+                            <option value="false">OFF</option>
+                        </select>
+                    </div>
                 </div>
 
                 <label class="checkbox-field" for="initial-hide-mascot">
@@ -512,7 +520,7 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同じ設定へ同期できます。</p>
+                <p class="small">`embedReplyNotification=true` は毎回強制、`defaultReplyNotification=false` は未保存時だけ適用します。常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。設定変更は親ストレージにも保存されます。</p>
 
                 <div class="buttons">
                     <button id="sync-runtime-settings" type="button" class="secondary button-full">現在の設定を postMessage

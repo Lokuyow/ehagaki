@@ -46,6 +46,7 @@ export type AppEmbedAppliedSettingKey =
     | "videoQualityLevel"
     | "clientTagEnabled"
     | "quoteNotificationEnabled"
+    | "replyNotificationEnabled"
     | "mediaFreePlacement"
     | "showMascot"
     | "showFlavorText"

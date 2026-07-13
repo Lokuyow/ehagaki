@@ -81,6 +81,7 @@ export interface EmbedSettingsSetPayload {
     videoCompressionLevel?: "none" | "low" | "medium" | "high";
     clientTagEnabled?: boolean;
     quoteNotificationEnabled?: boolean;
+    replyNotificationEnabled?: boolean;
     mediaFreePlacement?: boolean;
     showMascot?: boolean;
     showFlavorText?: boolean;

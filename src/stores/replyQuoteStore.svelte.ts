@@ -7,6 +7,7 @@ import type {
     ReplyQuoteQueryResult,
     ReplyQuoteQueryTarget,
     DraftReplyQuoteEntryData,
+    ReplyNotificationRecipient,
 } from '../lib/types';
 import { settingsStore } from './settingsStore.svelte';
 
@@ -35,6 +36,7 @@ function createReplyQuoteState(params: {
             params.mode === 'quote'
                 ? settingsStore.quoteNotificationEnabled
                 : false,
+        replyNotificationRecipients: [],
         authorDisplayName: null,
         referencedEvent: null,
         rootEventId: null,
@@ -49,9 +51,31 @@ function createDraftEntryState(data: DraftReplyQuoteEntryData): ReplyQuoteState 
     return {
         ...data,
         quoteNotificationEnabled: data.quoteNotificationEnabled === true,
+        replyNotificationRecipients: data.replyNotificationRecipients
+            ? data.replyNotificationRecipients.map((recipient) => ({ ...recipient }))
+            : createLegacyReplyNotificationRecipients(data),
         loading: false,
         error: null,
     };
+}
+
+function createLegacyReplyNotificationRecipients(
+    data: DraftReplyQuoteEntryData,
+): ReplyNotificationRecipient[] {
+    if (data.mode !== 'reply' || !data.referencedEvent) {
+        return [];
+    }
+
+    const directPubkey = data.referencedEvent.pubkey || data.authorPubkey;
+    const seen = new Set<string>();
+    return data.referencedEvent.tags.flatMap((tag) => {
+        const pubkey = tag[0] === 'p' ? tag[1] : undefined;
+        if (!pubkey || pubkey === directPubkey || seen.has(pubkey)) {
+            return [];
+        }
+        seen.add(pubkey);
+        return [{ pubkey, displayName: null, enabled: false }];
+    });
 }
 
 function isLegacyDraftReplyQuoteData(
@@ -133,6 +157,68 @@ export function updateReferencedEvent(
         }
     });
     notifyReplyQuoteChanged();
+}
+
+export function initializeReplyNotificationRecipients(
+    eventId: string,
+    event: NostrEvent,
+): void {
+    updateMatchingReferences(eventId, (reference) => {
+        if (reference.mode !== 'reply') {
+            return;
+        }
+
+        const seen = new Set<string>();
+        reference.replyNotificationRecipients = event.tags.flatMap((tag) => {
+            const pubkey = tag[0] === 'p' ? tag[1] : undefined;
+            if (!pubkey || pubkey === event.pubkey || seen.has(pubkey)) {
+                return [];
+            }
+            seen.add(pubkey);
+            return [{
+                pubkey,
+                displayName: null,
+                enabled: settingsStore.replyNotificationEnabled,
+            }];
+        });
+    });
+    notifyReplyQuoteChanged();
+}
+
+export function updateReplyNotificationRecipientDisplayName(
+    eventId: string,
+    pubkey: string,
+    name: string,
+): void {
+    updateMatchingReferences(eventId, (reference) => {
+        const recipient = reference.replyNotificationRecipients?.find(
+            (item) => item.pubkey === pubkey,
+        );
+        if (recipient) {
+            recipient.displayName = name;
+        }
+    });
+    notifyReplyQuoteChanged();
+}
+
+export function setReplyNotificationRecipientEnabled(
+    eventId: string,
+    pubkey: string,
+    enabled: boolean,
+): void {
+    let changed = false;
+    updateMatchingReferences(eventId, (reference) => {
+        const recipient = reference.replyNotificationRecipients?.find(
+            (item) => item.pubkey === pubkey,
+        );
+        if (recipient && recipient.enabled !== enabled) {
+            recipient.enabled = enabled;
+            changed = true;
+        }
+    });
+    if (changed) {
+        notifyReplyQuoteChanged();
+    }
 }
 
 export function setReplyQuoteError(eventId: string, error: string): void {

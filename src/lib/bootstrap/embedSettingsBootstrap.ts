@@ -10,6 +10,7 @@ import {
     setLocalePreference,
     setMediaFreePlacementPreference,
     setQuoteNotificationEnabledPreference,
+    setReplyNotificationEnabledPreference,
     setShowFlavorTextPreference,
     setShowMascotPreference,
     setThemeModePreference,
@@ -28,6 +29,7 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedVideoCompression",
     "embedClientTag",
     "embedQuoteNotification",
+    "embedReplyNotification",
     "embedMediaFreePlacement",
     "embedShowMascot",
     "embedShowFlavorText",
@@ -40,6 +42,7 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "defaultVideoCompression",
     "defaultClientTag",
     "defaultQuoteNotification",
+    "defaultReplyNotification",
     "defaultMediaFreePlacement",
     "defaultShowMascot",
     "defaultShowFlavorText",
@@ -83,6 +86,7 @@ export interface ParsedEmbedSettings {
     videoQualityLevel?: string;
     clientTagEnabled?: boolean;
     quoteNotificationEnabled?: boolean;
+    replyNotificationEnabled?: boolean;
     mediaFreePlacement?: boolean;
     showMascot?: boolean;
     showFlavorText?: boolean;
@@ -112,6 +116,7 @@ const PERSISTED_PARSED_SETTINGS_KEYS: PersistedParsedSettingsKey[] = [
     "videoQualityLevel",
     "clientTagEnabled",
     "quoteNotificationEnabled",
+    "replyNotificationEnabled",
     "mediaFreePlacement",
     "showMascot",
     "showFlavorText",
@@ -188,6 +193,9 @@ function parseSettingsFromParams(
         clientTagEnabled: parseBooleanParam(params.get(`${prefix}ClientTag`)),
         quoteNotificationEnabled: parseBooleanParam(
             params.get(`${prefix}QuoteNotification`),
+        ),
+        replyNotificationEnabled: parseBooleanParam(
+            params.get(`${prefix}ReplyNotification`),
         ),
         mediaFreePlacement: parseBooleanParam(
             params.get(`${prefix}MediaFreePlacement`),
@@ -268,6 +276,8 @@ function isPreferenceStored(storage: Storage, key: PersistedParsedSettingsKey): 
             return storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED) !== null;
         case "quoteNotificationEnabled":
             return storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED) !== null;
+        case "replyNotificationEnabled":
+            return storage.getItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED) !== null;
         case "mediaFreePlacement":
             return storage.getItem(STORAGE_KEYS.MEDIA_FREE_PLACEMENT) !== null;
         case "showMascot":
@@ -305,6 +315,9 @@ function applySetting(
             return true;
         case "quoteNotificationEnabled":
             setQuoteNotificationEnabledPreference(storage, value as boolean, source);
+            return true;
+        case "replyNotificationEnabled":
+            setReplyNotificationEnabledPreference(storage, value as boolean, source);
             return true;
         case "mediaFreePlacement":
             setMediaFreePlacementPreference(storage, value as boolean, source);

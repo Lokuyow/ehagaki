@@ -274,6 +274,7 @@
     "no_relay_info": "リレー情報なし",
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
     "quote_notification_label": "引用投稿時に相手に通知",
+    "reply_notification_label": "リプライ投稿時に直接のリプライ先以外の相手に通知",
     "theme_mode": "モード",
     "theme_system": "システム",
     "theme_light": "ライト",
@@ -497,6 +498,10 @@
     "quote_notification_off_tooltip": "引用先に通知しません",
     "enable_quote_notification": "引用先への通知をオン",
     "disable_quote_notification": "引用先への通知をオフ",
+    "reply_notification_on_tooltip": "この相手に通知します",
+    "reply_notification_off_tooltip": "この相手に通知しません",
+    "enable_reply_notification": "リプライ通知をオン",
+    "disable_reply_notification": "リプライ通知をオフ",
     "collapse": "折りたたむ",
     "expand": "展開する"
   }

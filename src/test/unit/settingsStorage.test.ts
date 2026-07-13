@@ -4,6 +4,7 @@ import {
     clearDarkModePreference,
     getStoredThemeModePreference,
     getQuoteNotificationEnabledPreference,
+    getReplyNotificationEnabledPreference,
     getPreferenceSource,
     getImageCompressionLevelPreference,
     hasAppliedEmbedBootstrap,
@@ -13,6 +14,7 @@ import {
     setLocalePreference,
     setImageCompressionLevelPreference,
     setQuoteNotificationEnabledPreference,
+    setReplyNotificationEnabledPreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
 
@@ -118,6 +120,18 @@ describe('settingsStorage preference metadata', () => {
 
         expect(storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED)).toBe('false');
         expect(getPreferenceSource(storage, 'quoteNotificationEnabled')).toBe('user');
+    });
+
+    it('リプライ通知設定はデフォルトfalseで、setter呼び出し時にsourceを記録する', () => {
+        expect(getReplyNotificationEnabledPreference(storage)).toBe(false);
+        expect(storage.getItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED)).toBe('false');
+
+        setReplyNotificationEnabledPreference(storage, true, 'parentBootstrap');
+
+        expect(storage.getItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED)).toBe('true');
+        expect(getPreferenceSource(storage, 'replyNotificationEnabled')).toBe(
+            'parentBootstrap',
+        );
     });
 
     it('画像品質設定は新キーへ保存して source を記録する', () => {

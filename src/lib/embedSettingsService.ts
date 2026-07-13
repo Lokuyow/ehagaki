@@ -69,6 +69,7 @@ function isSettingsSetPayload(value: unknown): value is EmbedSettingsSetPayload 
     for (const key of [
         "clientTagEnabled",
         "quoteNotificationEnabled",
+        "replyNotificationEnabled",
         "mediaFreePlacement",
         "showMascot",
         "showFlavorText",

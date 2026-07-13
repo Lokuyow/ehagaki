@@ -45,6 +45,8 @@ export interface RunExternalInputBootstrapParams {
     setReplyQuote: (value: any) => void;
     updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
     updateAuthorDisplayName: (eventId: string, name: string) => void;
+    initializeReplyNotificationRecipients?: (eventId: string, event: NostrEvent) => void;
+    updateReplyNotificationRecipientDisplayName?: (eventId: string, pubkey: string, name: string) => void;
     setReplyQuoteError: (eventId: string, message: string) => void;
     relayProfileService?: RelayProfileService;
     rxNostr?: any;
@@ -126,6 +128,8 @@ async function bootstrapReplyQuote({
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorDisplayName,
+    initializeReplyNotificationRecipients,
+    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: Pick<
     RunExternalInputBootstrapParams,
@@ -135,6 +139,8 @@ async function bootstrapReplyQuote({
     | "setReplyQuote"
     | "updateReferencedEvent"
     | "updateAuthorDisplayName"
+    | "initializeReplyNotificationRecipients"
+    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 >): Promise<void> {
     if (!hasReplyQuoteQueryParam()) {
@@ -154,6 +160,8 @@ async function bootstrapReplyQuote({
         setReplyQuote,
         updateReferencedEvent,
         updateAuthorDisplayName,
+        initializeReplyNotificationRecipients,
+        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 }
@@ -236,6 +244,8 @@ export interface ApplyReplyQuoteQueryParams extends Pick<
     | "setReplyQuote"
     | "updateReferencedEvent"
     | "updateAuthorDisplayName"
+    | "initializeReplyNotificationRecipients"
+    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 > {
     replyQuoteQuery: ReplyQuoteQueryResult;
@@ -285,6 +295,8 @@ export interface HydrateReplyQuoteReferencesParams extends Pick<
     | "relayConfig"
     | "updateReferencedEvent"
     | "updateAuthorDisplayName"
+    | "initializeReplyNotificationRecipients"
+    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 > {
     references: ReplyQuoteQueryTarget[];
@@ -299,6 +311,8 @@ export async function hydrateReplyQuoteReferences({
     relayConfig,
     updateReferencedEvent,
     updateAuthorDisplayName,
+    initializeReplyNotificationRecipients,
+    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: HydrateReplyQuoteReferencesParams): Promise<void> {
     const sanitizedReferences = sanitizeReplyQuoteReferences(references);
@@ -322,6 +336,8 @@ export async function hydrateReplyQuoteReferences({
                 relayConfig,
                 updateReferencedEvent,
                 updateAuthorDisplayName,
+                initializeReplyNotificationRecipients,
+                updateReplyNotificationRecipientDisplayName,
                 setReplyQuoteError,
             }),
         ),
@@ -337,6 +353,8 @@ export async function applyReplyQuoteQuery({
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorDisplayName,
+    initializeReplyNotificationRecipients,
+    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: ApplyReplyQuoteQueryParams): Promise<void> {
     const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
@@ -360,6 +378,8 @@ export async function applyReplyQuoteQuery({
         relayConfig,
         updateReferencedEvent,
         updateAuthorDisplayName,
+        initializeReplyNotificationRecipients,
+        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 }
@@ -377,6 +397,8 @@ export async function runExternalInputBootstrap({
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorDisplayName,
+    initializeReplyNotificationRecipients,
+    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
     relayProfileService,
     rxNostr,
@@ -428,6 +450,8 @@ export async function runExternalInputBootstrap({
         setReplyQuote,
         updateReferencedEvent,
         updateAuthorDisplayName,
+        initializeReplyNotificationRecipients,
+        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 

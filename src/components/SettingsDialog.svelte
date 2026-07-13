@@ -66,6 +66,9 @@
     let quoteNotificationEnabled = $state(
         settingsStore.quoteNotificationEnabled,
     );
+    let replyNotificationEnabled = $state(
+        settingsStore.replyNotificationEnabled,
+    );
     let themeMode = $state<ThemeMode>(themeModeStore.value);
     let hideMascot = $state(!settingsStore.showMascot);
     let hideFlavorText = $state(!settingsStore.showFlavorText);
@@ -99,6 +102,7 @@
         settingsStore.reload();
         clientTagEnabled = settingsStore.clientTagEnabled;
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
+        replyNotificationEnabled = settingsStore.replyNotificationEnabled;
         themeMode = themeModeStore.value;
         hideMascot = !settingsStore.showMascot;
         hideFlavorText = !settingsStore.showFlavorText;
@@ -117,8 +121,18 @@
     });
 
     $effect(() => {
+        replyNotificationEnabled = settingsStore.replyNotificationEnabled;
+    });
+
+    $effect(() => {
         if (clientTagEnabled !== settingsStore.clientTagEnabled) {
             settingsStore.clientTagEnabled = clientTagEnabled;
+        }
+    });
+
+    $effect(() => {
+        if (replyNotificationEnabled !== settingsStore.replyNotificationEnabled) {
+            settingsStore.replyNotificationEnabled = replyNotificationEnabled;
         }
     });
 
@@ -484,6 +498,23 @@
                     <Switch.Root
                         class="bui-switch"
                         bind:checked={quoteNotificationEnabled}
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.reply_notification_label") ||
+                        "リプライ投稿時に直接のリプライ先以外の相手に通知"}</span
+                >
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        bind:checked={replyNotificationEnabled}
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>

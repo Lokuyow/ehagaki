@@ -119,6 +119,7 @@ export interface DraftReplyQuoteEntryData {
     relayHints: string[];
     authorPubkey: string | null;
     quoteNotificationEnabled?: boolean;
+    replyNotificationRecipients?: import('./nostr').ReplyNotificationRecipient[];
     authorDisplayName: string | null;
     referencedEvent: import('./nostr').NostrEvent | null;
     rootEventId: string | null;

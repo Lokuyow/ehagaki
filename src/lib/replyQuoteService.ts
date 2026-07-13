@@ -170,16 +170,19 @@ export class ReplyQuoteService {
             tags.push(['e', state.eventId, relayHint, 'root', ...(state.authorPubkey ? [state.authorPubkey] : [])]);
         }
 
-        // pタグの構築: 参照イベントの著者 + 参照イベント内の既存pタグ（重複排除）
+        // pタグの構築: 直接のリプライ先は必須、継承先は個別設定を尊重する。
         const pubkeys = new Set<string>();
         if (state.authorPubkey) {
             pubkeys.add(state.authorPubkey);
         }
-        if (referencedEvent) {
-            referencedEvent.tags
-                .filter(tag => tag[0] === 'p' && tag[1])
-                .forEach(tag => pubkeys.add(tag[1]));
-        }
+        const recipients = state.replyNotificationRecipients
+            ?? referencedEvent?.tags
+                .filter((tag) => tag[0] === 'p' && !!tag[1] && tag[1] !== state.authorPubkey)
+                .map((tag) => ({ pubkey: tag[1], enabled: true }))
+            ?? [];
+        recipients
+            .filter((recipient) => recipient.enabled)
+            .forEach((recipient) => pubkeys.add(recipient.pubkey));
         pubkeys.forEach(pk => tags.push(['p', pk]));
 
         return tags;

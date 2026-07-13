@@ -4,6 +4,7 @@ import {
     DEFAULT_COMPRESSION_LEVEL,
     DEFAULT_MEDIA_FREE_PLACEMENT,
     DEFAULT_QUOTE_NOTIFICATION_ENABLED,
+    DEFAULT_REPLY_NOTIFICATION_ENABLED,
     DEFAULT_SHOW_FLAVOR_TEXT,
     DEFAULT_SHOW_MASCOT,
     STORAGE_KEYS,
@@ -23,6 +24,7 @@ export type ManagedPreferenceKey =
     | "locale"
     | "clientTagEnabled"
     | "quoteNotificationEnabled"
+    | "replyNotificationEnabled"
     | "imageQualityLevel"
     | "videoQualityLevel"
     | "mediaFreePlacement"
@@ -242,6 +244,14 @@ export function getQuoteNotificationEnabledPreference(storage: ReadWriteStorage)
     );
 }
 
+export function getReplyNotificationEnabledPreference(storage: ReadWriteStorage): boolean {
+    return getStoredBooleanPreference(
+        storage,
+        STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED,
+        DEFAULT_REPLY_NOTIFICATION_ENABLED,
+    );
+}
+
 export function getImageCompressionLevelPreference(
     storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
     selectedCompression?: string,
@@ -404,6 +414,16 @@ export function setQuoteNotificationEnabledPreference(
 ): boolean {
     storage.setItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED, enabled ? "true" : "false");
     setPreferenceSource(storage, "quoteNotificationEnabled", source);
+    return enabled;
+}
+
+export function setReplyNotificationEnabledPreference(
+    storage: ReadWriteStorage,
+    enabled: boolean,
+    source: PreferenceSource = "user",
+): boolean {
+    storage.setItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED, enabled ? "true" : "false");
+    setPreferenceSource(storage, "replyNotificationEnabled", source);
     return enabled;
 }
 

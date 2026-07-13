@@ -14,6 +14,7 @@
         onClear: () => void;
         quoteNotificationEnabled?: boolean;
         onToggleQuoteNotification?: (enabled: boolean) => void;
+        onToggleReplyNotification?: (pubkey: string, enabled: boolean) => void;
     }
 
     const LOADING_INDICATOR_DELAY_MS = 300;
@@ -24,6 +25,7 @@
         onClear,
         quoteNotificationEnabled = undefined,
         onToggleQuoteNotification = undefined,
+        onToggleReplyNotification = undefined,
     }: Props = $props();
 
     let expanded = $state(false);
@@ -60,6 +62,10 @@
 
     let effectiveQuoteNotificationEnabled = $derived(
         quoteNotificationEnabled ?? reference.quoteNotificationEnabled,
+    );
+
+    let replyNotificationRecipients = $derived(
+        isReply ? (reference.replyNotificationRecipients ?? []) : [],
     );
 
     let quoteNotificationAriaLabel = $derived(
@@ -99,6 +105,18 @@
 
     function toggleQuoteNotification() {
         onToggleQuoteNotification?.(!effectiveQuoteNotificationEnabled);
+    }
+
+    function getRecipientDisplay(recipient: { pubkey: string; displayName: string | null }): string {
+        if (recipient.displayName) return recipient.displayName;
+        return shortenMiddle(nip19.npubEncode(recipient.pubkey), 12, 4);
+    }
+
+    function getReplyNotificationAriaLabel(recipient: { pubkey: string; displayName: string | null; enabled: boolean }): string {
+        const display = getRecipientDisplay(recipient);
+        return recipient.enabled
+            ? `${display}: ${$_("replyQuote.disable_reply_notification")}`
+            : `${display}: ${$_("replyQuote.enable_reply_notification")}`;
     }
 
     $effect(() => {
@@ -182,6 +200,54 @@
         {/if}
     {/snippet}
 
+    {#snippet headerExtra()}
+        {#if replyNotificationRecipients.length > 0}
+            <Tooltip.Provider>
+                <div class="reply-notification-recipients">
+                    {#each replyNotificationRecipients as recipient (recipient.pubkey)}
+                        <div class="reply-notification-recipient">
+                            <span class="reply-notification-recipient-name">
+                                {getRecipientDisplay(recipient)}
+                            </span>
+                            <Tooltip.Root delayDuration={500}>
+                                <Tooltip.Trigger>
+                                    {#snippet child({ props })}
+                                        {@const { onclick: tooltipOnclick, ...restProps } = props}
+                                        <Button
+                                            className="reply-notification-button"
+                                            variant="default"
+                                            shape="square"
+                                            onClick={(e) => {
+                                                onToggleReplyNotification?.(recipient.pubkey, !recipient.enabled);
+                                                if (typeof tooltipOnclick === "function") tooltipOnclick(e);
+                                            }}
+                                            aria-pressed={recipient.enabled}
+                                            ariaLabel={getReplyNotificationAriaLabel(recipient)}
+                                            {...restProps}
+                                        >
+                                            <div
+                                                class="reply-notification-icon svg-icon"
+                                                class:bell-solid-icon={recipient.enabled}
+                                                class:bell-regular-icon={!recipient.enabled}
+                                            ></div>
+                                        </Button>
+                                    {/snippet}
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content sideOffset={8} class="tooltip-content reply-quote-tooltip-content">
+                                        {recipient.enabled
+                                            ? $_("replyQuote.reply_notification_on_tooltip")
+                                            : $_("replyQuote.reply_notification_off_tooltip")}
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+                        </div>
+                    {/each}
+                </div>
+            </Tooltip.Provider>
+        {/if}
+    {/snippet}
+
     {#snippet status()}
         {#if showHeaderStatus}
             <div
@@ -247,6 +313,42 @@
     .quote-notification-icon {
         width: 24px;
         height: 24px;
+    }
+
+    .reply-notification-recipients {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        padding: 0 10px 8px;
+    }
+
+    .reply-notification-recipient {
+        display: inline-flex;
+        align-items: center;
+        min-width: 0;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--bg-input) 82%, var(--theme));
+    }
+
+    .reply-notification-recipient-name {
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding-left: 8px;
+        color: var(--text-light);
+        font-size: 0.85rem;
+    }
+
+    :global(.reply-quote-preview .reply-notification-button) {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+    }
+
+    .reply-notification-icon {
+        width: 20px;
+        height: 20px;
     }
 
     .bell-regular-icon {

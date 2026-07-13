@@ -8,6 +8,8 @@ import {
     replyQuoteState,
     restoreReplyQuote,
     setQuoteNotificationEnabled,
+    initializeReplyNotificationRecipients,
+    setReplyNotificationRecipientEnabled,
     setReplyQuote,
 } from '../../stores/replyQuoteStore.svelte';
 
@@ -136,6 +138,31 @@ describe('replyQuoteStore', () => {
         expect(replyQuoteState.value.quotes[0].quoteNotificationEnabled).toBe(true);
         expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
         cleanup();
+    });
+
+    it('リプライの継承pタグだけを通知候補にして個別に切り替える', () => {
+        const eventId = '11'.repeat(32);
+        const directPubkey = '22'.repeat(32);
+        const recipientPubkey = '33'.repeat(32);
+        setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: directPubkey },
+            quotes: [],
+        });
+
+        initializeReplyNotificationRecipients(eventId, {
+            id: eventId,
+            pubkey: directPubkey,
+            created_at: 1,
+            kind: 1,
+            tags: [['p', directPubkey], ['p', recipientPubkey], ['p', recipientPubkey]],
+            content: '',
+            sig: '',
+        });
+        setReplyNotificationRecipientEnabled(eventId, recipientPubkey, true);
+
+        expect(replyQuoteState.value.reply?.replyNotificationRecipients).toEqual([
+            { pubkey: recipientPubkey, displayName: null, enabled: true },
+        ]);
     });
 
     it('addQuoteReference は既存 state を保持したまま quote を追加し、重複は無視する', () => {

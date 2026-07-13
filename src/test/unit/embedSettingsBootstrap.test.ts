@@ -5,6 +5,7 @@ import {
     getPreferenceSource,
     setLocalePreference,
     setQuoteNotificationEnabledPreference,
+    setReplyNotificationEnabledPreference,
     setThemeModePreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
@@ -115,6 +116,23 @@ describe('embedSettingsBootstrap', () => {
         expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('light');
         expect(getPreferenceSource(storage, 'locale')).toBe('parentForced');
         expect(getPreferenceSource(storage, 'darkMode')).toBe('parentForced');
+    });
+
+    it('リプライ通知の embed/default は既存設定と同じ優先順位で適用する', () => {
+        setReplyNotificationEnabledPreference(storage, true, 'user');
+        const context = createBootstrapContext(
+            '?defaultReplyNotification=false&embedReplyNotification=false',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.appliedSettings).toEqual(['replyNotificationEnabled']);
+        expect(storage.getItem(STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED)).toBe('false');
+        expect(getPreferenceSource(storage, 'replyNotificationEnabled')).toBe('parentForced');
     });
 
     it('uploadEndpoint query は localStorage に書かず IndexedDB bootstrap 用に返す', () => {

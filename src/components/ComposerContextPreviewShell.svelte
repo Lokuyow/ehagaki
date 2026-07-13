@@ -17,6 +17,7 @@
         meta?: Snippet;
         status?: Snippet;
         content?: Snippet;
+        headerExtra?: Snippet;
     }
 
     let {
@@ -33,6 +34,7 @@
         meta,
         status,
         content,
+        headerExtra,
     }: Props = $props();
 </script>
 
@@ -43,33 +45,36 @@
         onmousedown={preventKeyboardFocusChange}
         ontouchstart={preventKeyboardFocusChange}
     >
-        <div class="preview-meta">
+        <div class="preview-header-main">
+            <div class="preview-meta">
+                <Button
+                    className="preview-label"
+                    variant="default"
+                    shape="square"
+                    onClick={canToggleExpand ? onToggle : undefined}
+                    aria-expanded={canToggleExpand ? expanded : undefined}
+                    ariaLabel={toggleAriaLabel}
+                >
+                    <div
+                        class={`preview-mode-icon ${modeIconClass} svg-icon`}
+                    ></div>
+                    <span class="mode-text">{modeLabel}</span>
+                </Button>
+                {@render meta?.()}
+            </div>
+            {@render status?.()}
             <Button
-                className="preview-label"
+                className="cancel-button"
                 variant="default"
                 shape="square"
-                onClick={canToggleExpand ? onToggle : undefined}
-                aria-expanded={canToggleExpand ? expanded : undefined}
-                ariaLabel={toggleAriaLabel}
+                onClick={onClear}
+                title={clearTitle}
+                ariaLabel={clearAriaLabel}
             >
-                <div
-                    class={`preview-mode-icon ${modeIconClass} svg-icon`}
-                ></div>
-                <span class="mode-text">{modeLabel}</span>
+                <div class="close-icon svg-icon"></div>
             </Button>
-            {@render meta?.()}
         </div>
-        {@render status?.()}
-        <Button
-            className="cancel-button"
-            variant="default"
-            shape="square"
-            onClick={onClear}
-            title={clearTitle}
-            ariaLabel={clearAriaLabel}
-        >
-            <div class="close-icon svg-icon"></div>
-        </Button>
+        {@render headerExtra?.()}
     </div>
 
     {#if expanded}
@@ -97,6 +102,11 @@
     }
 
     .preview-header {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .preview-header-main {
         display: flex;
         align-items: stretch;
         gap: 12px;

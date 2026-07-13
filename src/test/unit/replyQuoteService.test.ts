@@ -223,6 +223,32 @@ describe("ReplyQuoteService", () => {
             expect(tags).toHaveLength(1);
         });
 
+        it("直接のリプライ先は常に残し、継承通知先は個別設定を尊重する", () => {
+            const state: ReplyQuoteState = {
+                mode: "reply",
+                eventId: "target-id",
+                relayHints: [],
+                authorPubkey: "direct-pubkey",
+                quoteNotificationEnabled: false,
+                replyNotificationRecipients: [
+                    { pubkey: "enabled-pubkey", displayName: null, enabled: true },
+                    { pubkey: "disabled-pubkey", displayName: null, enabled: false },
+                ],
+                authorDisplayName: null,
+                referencedEvent: null,
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+                loading: false,
+                error: null,
+            };
+
+            const pTags = service.buildReplyTags(state).filter((tag) => tag[0] === "p");
+            expect(pTags).toContainEqual(["p", "direct-pubkey"]);
+            expect(pTags).toContainEqual(["p", "enabled-pubkey"]);
+            expect(pTags).not.toContainEqual(["p", "disabled-pubkey"]);
+        });
+
         it("includePTagsがtrueの場合はpタグも生成する", () => {
             const state: ReplyQuoteState = {
                 mode: "quote",

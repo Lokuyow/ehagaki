@@ -6,6 +6,7 @@ import {
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
     getQuoteNotificationEnabledPreference,
+    getReplyNotificationEnabledPreference,
     getShowFlavorTextPreference,
     getShowMascotPreference,
     getVideoCompressionLevelPreference,
@@ -15,6 +16,7 @@ import {
     setLocalePreference,
     setMediaFreePlacementPreference,
     setQuoteNotificationEnabledPreference,
+    setReplyNotificationEnabledPreference,
     setShowFlavorTextPreference,
     setShowMascotPreference,
     setVideoCompressionLevelPreference,
@@ -38,6 +40,7 @@ interface SettingsState {
     locale: SupportedLocale;
     clientTagEnabled: boolean;
     quoteNotificationEnabled: boolean;
+    replyNotificationEnabled: boolean;
     imageQualityLevel: string;
     videoQualityLevel: string;
     mediaFreePlacement: boolean;
@@ -60,6 +63,7 @@ function readSettingsState(): SettingsState {
         locale: effectiveLocale,
         clientTagEnabled: getClientTagEnabledPreference(localStorage),
         quoteNotificationEnabled: getQuoteNotificationEnabledPreference(localStorage),
+        replyNotificationEnabled: getReplyNotificationEnabledPreference(localStorage),
         imageQualityLevel: getImageCompressionLevelPreference(localStorage),
         videoQualityLevel: getVideoCompressionLevelPreference(localStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
@@ -88,6 +92,11 @@ const directSettingDescriptors: {
         storageKeys: [STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED],
         apply: (value: boolean, source: PreferenceSource) =>
             setQuoteNotificationEnabledPreference(localStorage, value, source),
+    },
+    replyNotificationEnabled: {
+        storageKeys: [STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setReplyNotificationEnabledPreference(localStorage, value, source),
     },
     imageQualityLevel: {
         storageKeys: [
@@ -128,6 +137,7 @@ const parentDirectSettingKeys: DirectSettingKey[] = [
     "videoQualityLevel",
     "clientTagEnabled",
     "quoteNotificationEnabled",
+    "replyNotificationEnabled",
     "mediaFreePlacement",
     "showMascot",
     "showFlavorText",
@@ -222,6 +232,15 @@ export const settingsStore = {
 
     get quoteNotificationEnabled(): boolean {
         return settingsState.quoteNotificationEnabled;
+    },
+
+    get replyNotificationEnabled(): boolean {
+        return settingsState.replyNotificationEnabled;
+    },
+
+    set replyNotificationEnabled(value: boolean) {
+        applyDirectSetting("replyNotificationEnabled", value);
+        persistDirectSettingKey("replyNotificationEnabled");
     },
 
     set quoteNotificationEnabled(value: boolean) {

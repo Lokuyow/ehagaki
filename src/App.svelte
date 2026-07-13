@@ -92,6 +92,9 @@
     clearReplyReference,
     removeQuoteReference,
     setQuoteNotificationEnabled,
+    initializeReplyNotificationRecipients,
+    updateReplyNotificationRecipientDisplayName,
+    setReplyNotificationRecipientEnabled,
   } from "./stores/replyQuoteStore.svelte";
   import {
     channelContextState,
@@ -847,6 +850,8 @@
       setReplyQuote,
       updateReferencedEvent,
       updateAuthorDisplayName,
+      initializeReplyNotificationRecipients,
+      updateReplyNotificationRecipientDisplayName,
       setReplyQuoteError,
     };
   }
@@ -884,6 +889,8 @@
           setReplyQuote,
           updateReferencedEvent,
           updateAuthorDisplayName,
+          initializeReplyNotificationRecipients,
+          updateReplyNotificationRecipientDisplayName,
           setReplyQuoteError,
         }),
       clearReplyQuote,
@@ -1187,6 +1194,8 @@
       setReplyQuote,
       updateReferencedEvent,
       updateAuthorDisplayName,
+      initializeReplyNotificationRecipients,
+      updateReplyNotificationRecipientDisplayName,
       setReplyQuoteError,
       relayProfileService,
       rxNostr,
@@ -1302,6 +1311,33 @@
   const showHeaderBalloonMessage = $derived(
     settingsStore.showMascot && settingsStore.showFlavorText,
   );
+  const replyNotificationProfileFetches = new Set<string>();
+
+  $effect(() => {
+    const reply = replyQuoteState.value.reply;
+    const recipients = reply?.replyNotificationRecipients ?? [];
+    if (!reply || !relayProfileService) return;
+
+    recipients.forEach((recipient) => {
+      if (recipient.displayName) return;
+      const key = `${reply.eventId}:${recipient.pubkey}`;
+      if (replyNotificationProfileFetches.has(key)) return;
+      replyNotificationProfileFetches.add(key);
+
+      void relayProfileService.fetchProfileRealtime(recipient.pubkey, {
+        additionalRelays: reply.relayHints,
+      }).then((profile) => {
+        const displayName = profile?.displayName || profile?.name;
+        if (displayName) {
+          updateReplyNotificationRecipientDisplayName(
+            reply.eventId,
+            recipient.pubkey,
+            displayName,
+          );
+        }
+      });
+    });
+  });
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
@@ -1378,6 +1414,12 @@
                 <ReplyQuotePreview
                   reference={replyQuoteState.value.reply}
                   mode="reply"
+                  onToggleReplyNotification={(pubkey, enabled) =>
+                    setReplyNotificationRecipientEnabled(
+                      replyQuoteState.value.reply!.eventId,
+                      pubkey,
+                      enabled,
+                    )}
                   onClear={clearReplyReference}
                 />
               </div>

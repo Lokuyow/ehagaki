@@ -217,6 +217,7 @@ export interface PostManagerDeps {
     settingsStore?: {
         clientTagEnabled?: boolean;
         quoteNotificationEnabled: boolean;
+        replyNotificationEnabled?: boolean;
     };
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
@@ -264,6 +265,7 @@ export interface ReplyQuoteState {
     relayHints: string[];
     authorPubkey: string | null;
     quoteNotificationEnabled: boolean;
+    replyNotificationRecipients?: ReplyNotificationRecipient[];
     authorDisplayName: string | null;
     referencedEvent: NostrEvent | null;
     rootEventId: string | null;
@@ -271,6 +273,12 @@ export interface ReplyQuoteState {
     rootPubkey: string | null;
     loading: boolean;
     error: string | null;
+}
+
+export interface ReplyNotificationRecipient {
+    pubkey: string;
+    displayName: string | null;
+    enabled: boolean;
 }
 
 export interface ReplyQuoteComposerState {

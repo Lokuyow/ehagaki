@@ -16,6 +16,10 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'replyQuote.quote_notification_off_tooltip': '引用先に通知しません',
         'replyQuote.enable_quote_notification': '引用先への通知をオン',
         'replyQuote.disable_quote_notification': '引用先への通知をオフ',
+        'replyQuote.reply_notification_on_tooltip': 'この相手に通知します',
+        'replyQuote.reply_notification_off_tooltip': 'この相手に通知しません',
+        'replyQuote.enable_reply_notification': 'リプライ通知をオン',
+        'replyQuote.disable_reply_notification': 'リプライ通知をオフ',
     };
 
     return translations[key] || key;
@@ -185,6 +189,31 @@ describe('ReplyQuotePreview', () => {
         });
 
         expect(container.querySelector('.quote-notification-button')).toBeNull();
+    });
+
+    it('reply の継承通知先は名前とベル型トグルを折り返し領域に表示する', async () => {
+        const onToggleReplyNotification = vi.fn();
+        const recipient = '66'.repeat(32);
+        const { container } = render(ReplyQuotePreview, {
+            props: {
+                reference: createReference({
+                    mode: 'reply',
+                    replyNotificationRecipients: [{
+                        pubkey: recipient,
+                        displayName: 'Bob',
+                        enabled: false,
+                    }],
+                }),
+                mode: 'reply',
+                onToggleReplyNotification,
+                onClear: vi.fn(),
+            },
+        });
+
+        expect(container.querySelector('.reply-notification-recipients')).toBeTruthy();
+        expect(screen.getByText('Bob')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Bob: リプライ通知をオン' }));
+        expect(onToggleReplyNotification).toHaveBeenCalledWith(recipient, true);
     });
 
     it('button 押下前に focus 移動を抑止し、キーボード表示中の activeElement を維持する', () => {
