@@ -264,13 +264,14 @@ async function flushProfileBatch(): Promise<void> {
 async function createTemporaryEntry(input: {
     name?: string;
     createdAt?: number;
+    relay?: string;
 } = {}): Promise<ProfileData> {
     repositoryMock.get.mockRejectedValue(new Error("read failed"));
     repositoryMock.upsertCandidate.mockRejectedValueOnce(new Error("write failed"));
     const rxNostr = createRxNostrReturningProfile({
         content: { name: input.name ?? "Temporary" },
         createdAt: input.createdAt ?? 100,
-        relay: "wss://temporary.example.com/",
+        relay: input.relay ?? "wss://temporary.example.com/",
     });
 
     const pending = profileMetadataCache.getProfile(pubkey, {
@@ -823,7 +824,7 @@ describe("profileMetadataCache", () => {
         expect(rxNostr.calls.map((call) => call.relays)).toEqual([
             BOOTSTRAP_RELAYS,
             [contextRelay],
-            [...FALLBACK_RELAYS].sort(),
+            FALLBACK_RELAYS,
         ]);
         expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
     });
@@ -973,6 +974,155 @@ describe("profileMetadataCache", () => {
         expect(rxNostr.calls[2].relays).toHaveLength(12);
     });
 
+    it("merges explicit relays before memory profileRelays during force refresh", async () => {
+        const explicitRelay = "wss://explicit.example.com/";
+        const observedRelay = "wss://observed.example.com/";
+        const memoryProfile = createProfile({
+            fetchedAt: 1_000_000,
+            profileRelays: [observedRelay],
+        });
+        repositoryMock.get.mockResolvedValue(memoryProfile);
+        await profileMetadataCache.getProfile(pubkey);
+        repositoryMock.get.mockResolvedValue(null);
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(explicitRelay)
+                ? [{ content: { name: "Refreshed" }, createdAt: 100 }]
+                : []
+        ));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [explicitRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [explicitRelay, observedRelay],
+        ]);
+    });
+
+    it("uses memory profileRelays for stale background refresh", async () => {
+        const observedRelay = "wss://memory-observed.example.com/";
+        const staleProfile = createProfile({
+            fetchedAt: 500_000,
+            profileRelays: [observedRelay],
+        });
+        repositoryMock.get.mockResolvedValue(staleProfile);
+        await profileMetadataCache.getProfile(pubkey);
+        repositoryMock.get.mockResolvedValue(createProfile({
+            fetchedAt: 500_000,
+            profileRelays: ["wss://repository-only.example.com/"],
+        }));
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(observedRelay)
+                ? [{ content: { name: "Refreshed" }, createdAt: 100 }]
+                : []
+        ));
+
+        await profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never });
+        await flushProfileBatch();
+
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [observedRelay],
+        ]);
+    });
+
+    it("uses Repository snapshot profileRelays for cold-start background refresh", async () => {
+        const observedRelay = "wss://repository-observed.example.com/";
+        repositoryMock.get.mockResolvedValue(createProfile({
+            fetchedAt: 500_000,
+            profileRelays: [observedRelay],
+        }));
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(observedRelay)
+                ? [{ content: { name: "Refreshed" }, createdAt: 100 }]
+                : []
+        ));
+
+        await profileMetadataCache.getProfile(pubkey, { rxNostr: rxNostr as never });
+        await flushProfileBatch();
+
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [observedRelay],
+        ]);
+    });
+
+    it("uses temporary snapshot profileRelays on the next refresh", async () => {
+        const observedRelay = "wss://temporary-observed.example.com/";
+        await createTemporaryEntry({ relay: observedRelay });
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(observedRelay)
+                ? [{ content: { name: "Refreshed" }, createdAt: 200 }]
+                : []
+        ));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [observedRelay],
+        ]);
+    });
+
+    it("deduplicates explicit relays and snapshot profileRelays", async () => {
+        const sameRelay = "wss://same.example.com/";
+        repositoryMock.get.mockResolvedValue(createProfile({
+            fetchedAt: 1_000_000,
+            profileRelays: [sameRelay],
+        }));
+        await profileMetadataCache.getProfile(pubkey);
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(sameRelay)
+                ? [{ content: { name: "Refreshed" }, createdAt: 100 }]
+                : []
+        ));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [sameRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(rxNostr.calls[1]).toEqual({
+            relays: [sameRelay],
+            authors: [pubkey],
+        });
+    });
+
+    it("applies tier priority to bootstrap and fallback URLs from profileRelays", async () => {
+        repositoryMock.get.mockResolvedValue(createProfile({
+            fetchedAt: 1_000_000,
+            profileRelays: [BOOTSTRAP_RELAYS[0], FALLBACK_RELAYS[0]],
+        }));
+        await profileMetadataCache.getProfile(pubkey);
+        const rxNostr = createTieredRxNostr(() => []);
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [FALLBACK_RELAYS[0]],
+            FALLBACK_RELAYS.slice(1),
+        ]);
+    });
+
     it("stops after a persistence failure and preserves an existing snapshot", async () => {
         const contextRelay = "wss://context.example.com/";
         const snapshot = createProfile({ name: "Snapshot", updatedAtFromEvent: 90 });
@@ -1074,7 +1224,7 @@ describe("profileMetadataCache", () => {
         expect(rxNostr.calls.map((call) => call.relays)).toEqual([
             BOOTSTRAP_RELAYS,
             [contextRelay],
-            [...FALLBACK_RELAYS].sort(),
+            FALLBACK_RELAYS,
         ]);
         expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
             status: "negative",
@@ -1100,8 +1250,8 @@ describe("profileMetadataCache", () => {
         await expect(pending).resolves.toBeNull();
         expect(rxNostr.calls.map((call) => call.relays)).toEqual([
             BOOTSTRAP_RELAYS,
-            [contextRelay, FALLBACK_RELAYS[0]].sort(),
-            FALLBACK_RELAYS.slice(1).sort(),
+            [FALLBACK_RELAYS[0], contextRelay],
+            FALLBACK_RELAYS.slice(1),
         ]);
         expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
             status: "negative",

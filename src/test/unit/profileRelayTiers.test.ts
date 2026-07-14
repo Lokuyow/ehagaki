@@ -18,9 +18,9 @@ describe("buildProfileRelayTiers", () => {
 
         expect(tiers.bootstrap).toEqual(BOOTSTRAP_RELAYS);
         expect(tiers.contextual).toEqual([
-            "wss://context.example.com/",
             FALLBACK_RELAYS[0],
-        ].sort());
+            "wss://context.example.com/",
+        ]);
         expect(tiers.fallback).toEqual(FALLBACK_RELAYS.slice(1));
     });
 
@@ -39,8 +39,25 @@ describe("buildProfileRelayTiers", () => {
         expect(tiers.bootstrap).toHaveLength(BOOTSTRAP_RELAYS.length);
         expect(tiers.contextual).toEqual([
             "wss://one.example.com/",
-            "wss://three.example.com/",
+            "wss://two.example.com/",
         ]);
+    });
+
+    it("applies the contextual relay limit in input order", () => {
+        const contextualRelays = [
+            "wss://z-preferred.example.com/",
+            ...Array.from({ length: 11 }, (_, index) => `wss://m${index}.example.com/`),
+            "wss://a-dropped.example.com/",
+        ];
+
+        const tiers = buildProfileRelayTiers({
+            contextualRelays,
+            contextualRelayLimit: 12,
+        });
+
+        expect(tiers.contextual).toEqual(contextualRelays.slice(0, 12));
+        expect(tiers.contextual[0]).toBe("wss://z-preferred.example.com/");
+        expect(tiers.contextual).not.toContain("wss://a-dropped.example.com/");
     });
 
     it("places source=fallback relays in fallback even when they are not constants", () => {

@@ -121,10 +121,12 @@ function toProfileSummary(profile: ProfileData | null): ProfileMetadataSummary |
     };
 }
 
+function normalizeRelaysPreservingOrder(relays: string[] = []): string[] {
+    return RelayConfigUtils.sanitizeExternalRelayUrls(relays);
+}
+
 function sanitizeRelays(relays: string[] = []): string[] {
-    return RelayConfigUtils.sanitizeExternalRelayUrls(relays, {
-        limit: PROFILE_CACHE_MAX_RELAYS,
-    });
+    return normalizeRelaysPreservingOrder(relays).slice(0, PROFILE_CACHE_MAX_RELAYS);
 }
 
 function isEntryExpired(entry: ProfileMetadataCacheEntry, now: number): boolean {
@@ -753,7 +755,7 @@ async function flushPendingBatch(): Promise<void> {
             current.push(request);
             groupedByPubkey.set(request.pubkey, current);
 
-            contextualRelaysByPubkey[request.pubkey] = sanitizeRelays([
+            contextualRelaysByPubkey[request.pubkey] = normalizeRelaysPreservingOrder([
                 ...(contextualRelaysByPubkey[request.pubkey] ?? []),
                 ...request.relays,
             ]);
@@ -946,10 +948,14 @@ async function ensureFreshProfile(
         const existingSnapshot = temporaryPersistence.profile
             ?? entriesByPubkey[pubkey]?.profile
             ?? persistedProfile;
+        const contextualRelays = normalizeRelaysPreservingOrder([
+            ...(options.additionalRelays ?? []),
+            ...(existingSnapshot?.profileRelays ?? []),
+        ]);
         return enqueueBatchRequest(
             pubkey,
             options.rxNostr!,
-            sanitizeRelays(options.additionalRelays ?? []),
+            contextualRelays,
             sanitizeRelays(options.fallbackRelays ?? []),
             sanitizeRelays(options.writeRelays ?? []),
             existingSnapshot,
@@ -994,15 +1000,6 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
     if (!options.forceRefresh) {
         const cachedProfile = await profilesRepository.get(pubkey);
         if (cachedProfile) {
-            const cachedProfileRelays = sanitizeRelays(cachedProfile.profileRelays ?? []);
-            const refreshOptions: GetProfileOptions = {
-                ...options,
-                additionalRelays: sanitizeRelays([
-                    ...(options.additionalRelays ?? []),
-                    ...cachedProfileRelays,
-                ]),
-                fallbackRelays: options.fallbackRelays,
-            };
             const cachedFetchedAtMs = resolveProfileFetchedAtMs(cachedProfile, now);
 
             setProfileEntry({
@@ -1021,7 +1018,7 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
                 && options.allowBackgroundRefresh !== false
                 && options.rxNostr
             ) {
-                void ensureFreshProfile(pubkey, refreshOptions);
+                void ensureFreshProfile(pubkey, options);
                 markEntryStatus(pubkey, "stale");
             }
             return cachedProfile;

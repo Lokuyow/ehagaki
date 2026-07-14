@@ -25,7 +25,6 @@ export function buildProfileRelayTiers(
     const bootstrapSet = new Set(bootstrap);
     const contextual = RelayConfigUtils.sanitizeExternalRelayUrls(input.contextualRelays)
         .filter((relay) => !bootstrapSet.has(relay))
-        .sort((left, right) => left.localeCompare(right))
         .slice(0, input.contextualRelayLimit);
     const contextualSet = new Set(contextual);
     const fallback = RelayConfigUtils.sanitizeExternalRelayUrls([
@@ -43,19 +42,20 @@ export function groupPubkeysByRelaySet(
     const groups = new Map<string, ProfileRelayRequestGroup>();
 
     for (const pubkey of pubkeys) {
-        const relays = RelayConfigUtils.sanitizeExternalRelayUrls(relaysByPubkey[pubkey])
-            .sort((left, right) => left.localeCompare(right));
-        if (relays.length === 0) {
+        const requestRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relaysByPubkey[pubkey]);
+        if (requestRelays.length === 0) {
             continue;
         }
 
-        const key = JSON.stringify(relays);
+        const key = JSON.stringify(
+            [...requestRelays].sort((left, right) => left.localeCompare(right)),
+        );
         const group = groups.get(key);
         if (group) {
             group.pubkeys.push(pubkey);
         } else {
             groups.set(key, {
-                relays: [...relays],
+                relays: requestRelays,
                 pubkeys: [pubkey],
             });
         }
