@@ -57,6 +57,7 @@
     } from "../lib/postHistoryDialogPresentation";
     import { stripPostHistoryInlineQuoteUrisForDisplay } from "../lib/postHistoryQuoteUtils";
     import { createPostHistoryRelatedTargetResolver } from "../lib/postHistoryRelatedTargetResolver.svelte";
+    import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
@@ -125,10 +126,15 @@
         notifySavedAuthoredPosts = undefined,
     }: Props = $props();
 
+    const profileSyncCoordinator = createPostHistoryProfileSyncCoordinator({
+        getShow: () => show,
+        getRxNostr: () => rxNostr,
+    });
     const relatedTargetResolver = createPostHistoryRelatedTargetResolver({
         getShow: () => show,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+        profileSyncCoordinator,
     });
     const history = usePostHistoryListing({
         getShow: () => show,
@@ -174,6 +180,7 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         relatedTargetResolver,
+        profileSyncCoordinator,
     });
 
     function collectQuoteRelatedTargetDescriptors(posts: PostHistoryRecord[]) {
@@ -192,6 +199,7 @@
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
         relatedTargetResolver,
+        profileSyncCoordinator,
     });
     usePostHistoryInboundInteractionsSync({
         getShow: () => show,
@@ -384,6 +392,7 @@
     });
 
     function resetDialogState(): void {
+        profileSyncCoordinator.reset();
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         postActionUi.resetDeleteConfirmation();
@@ -451,6 +460,7 @@
 
     onDestroy(() => {
         resetPendingDeletionRequests();
+        profileSyncCoordinator.dispose();
     });
 
     $effect(() => {

@@ -18,13 +18,12 @@ import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
-import {
-    profilesRepository,
-    type ProfilesRepository,
-} from "./storage/profilesRepository";
 import { toEventFromPostHistoryRecord } from "./postHistoryThreadGraphUtils";
 import type { NostrEvent, ProfileData, RelayConfig } from "./types";
-import { profileMetadataCache } from "./profileMetadataCache.svelte";
+import {
+    createPostHistoryProfileSyncCoordinator,
+    type PostHistoryProfileSyncCoordinator,
+} from "./postHistoryProfileSync";
 
 const POST_HISTORY_RELATED_TARGET_RELAY_LIMIT = 8;
 
@@ -71,7 +70,7 @@ interface CreatePostHistoryRelatedTargetResolverParams {
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
-    profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
+    profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
 }
 
 interface EnsureRelatedTargetOptions {
@@ -141,8 +140,11 @@ export function createPostHistoryRelatedTargetResolver({
     contextFetchService = postHistoryContextFetchService,
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     deletionFetchService = postHistoryDeletionFetchService,
-    profilesRepositoryImpl = profilesRepository,
+    profileSyncCoordinator = undefined,
 }: CreatePostHistoryRelatedTargetResolverParams) {
+    const profileSync = profileSyncCoordinator
+        ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
+    const ownsProfileSync = !profileSyncCoordinator;
     let snapshotsByTargetId = $state.raw<Record<string, PostHistoryRelatedTargetSnapshot>>({});
     let scopeRevisionByKey = $state<Record<string, number>>({});
     let scopeGenerationByKey = $state<Record<string, number>>({});
@@ -153,8 +155,6 @@ export function createPostHistoryRelatedTargetResolver({
     const loadTasksByTargetId = new Map<string, PostHistoryContextFetchTask>();
     const pendingDeletionChecksByTargetId = new Map<string, Promise<boolean>>();
     const deletionTasksByTargetId = new Map<string, PostHistoryDeletionFetchTask>();
-    const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
-    const profileSubscriptionsByPubkey = new Map<string, () => void>();
     const loadRequestIdsByTargetId = new Map<string, number>();
     let nextLoadRequestId = 0;
 
@@ -304,62 +304,18 @@ export function createPostHistoryRelatedTargetResolver({
         }
     }
 
-    function ensureProfileSubscription(pubkey: string): void {
-        if (!pubkey || profileSubscriptionsByPubkey.has(pubkey)) {
-            return;
-        }
-
-        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
-            if (!getShow() || !profile) {
-                return;
-            }
-
-            mergeProfileForPubkey(pubkey, profile);
-        });
-        profileSubscriptionsByPubkey.set(pubkey, unsubscribe);
-    }
-
     function ensureProfileForTarget(
-        targetEventId: string,
         pubkey: string,
         relayHints: string[],
     ): void {
-        ensureProfileSubscription(pubkey);
-
-        if (!pubkey || profileRefreshTasksByPubkey.has(pubkey)) {
-            return;
-        }
-
-        const task = (async () => {
-            const currentSnapshot = snapshotsByTargetId[targetEventId];
-            if (currentSnapshot?.status !== "resolved" || currentSnapshot.authorPubkey !== pubkey) {
-                return;
-            }
-
-            const rxNostr = getRxNostr();
-            if (!getShow()) {
-                return;
-            }
-
-            const profile = await profileMetadataCache.getProfile(pubkey, {
-                rxNostr,
-                additionalRelays: relayHints,
-                forceRefresh: false,
-                allowBackgroundRefresh: true,
-            });
-            if (!profile) {
-                return;
-            }
-
-            mergeProfileForPubkey(pubkey, profile);
-        })()
-            .catch(() => undefined)
-            .finally(() => {
-                profileRefreshTasksByPubkey.delete(pubkey);
-            });
-
-        profileRefreshTasksByPubkey.set(pubkey, task);
+        profileSync.ensureProfile(pubkey, relayHints);
     }
+
+    profileSync.subscribe((pubkey, profile) => {
+        if (getShow()) {
+            mergeProfileForPubkey(pubkey, profile);
+        }
+    });
 
     async function runDeletionCheck(
         targetEvent: NostrEvent,
@@ -461,7 +417,6 @@ export function createPostHistoryRelatedTargetResolver({
             ) {
                 if (existingBeforeMerge.status === "resolved" && existingBeforeMerge.authorPubkey) {
                     ensureProfileForTarget(
-                        descriptor.targetEventId,
                         existingBeforeMerge.authorPubkey,
                         snapshotsByTargetId[descriptor.targetEventId]?.relayHints
                             ?? existingBeforeMerge.relayHints,
@@ -544,7 +499,7 @@ export function createPostHistoryRelatedTargetResolver({
                         errorCode: null,
                         updatedAt: Date.now(),
                     });
-                    ensureProfileForTarget(descriptor.targetEventId, event.pubkey, recordRelayHints);
+                    ensureProfileForTarget(event.pubkey, recordRelayHints);
                     void runDeletionCheck(event, recordRelayHints, { background: true });
                     return snapshot;
                 }
@@ -652,7 +607,6 @@ export function createPostHistoryRelatedTargetResolver({
                     updatedAt: Date.now(),
                 });
                 ensureProfileForTarget(
-                    descriptor.targetEventId,
                     result.event.pubkey,
                     resolvedRelayHints,
                 );
@@ -747,15 +701,15 @@ export function createPostHistoryRelatedTargetResolver({
     function reset(): void {
         loadTasksByTargetId.forEach((task) => task.cancel());
         deletionTasksByTargetId.forEach((task) => task.cancel());
-        profileSubscriptionsByPubkey.forEach((unsubscribe) => unsubscribe());
         loadTasksByTargetId.clear();
         deletionTasksByTargetId.clear();
         pendingLoadsByTargetId.clear();
         pendingDeletionChecksByTargetId.clear();
-        profileSubscriptionsByPubkey.clear();
         targetIdsByScopeKey.clear();
         scopeKeysByTargetId.clear();
-        profileRefreshTasksByPubkey.clear();
+        if (ownsProfileSync) {
+            profileSync.reset();
+        }
         loadRequestIdsByTargetId.clear();
         snapshotsByTargetId = {};
         scopeRevisionByKey = {};

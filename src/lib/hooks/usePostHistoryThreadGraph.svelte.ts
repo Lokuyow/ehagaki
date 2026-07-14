@@ -40,10 +40,6 @@ import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
 } from "../storage/postHistoryDeletionRequestsRepository";
-import {
-    profilesRepository,
-    type ProfilesRepository,
-} from "../storage/profilesRepository";
 import { parseKind1ThreadReferences } from "../postHistoryNip10Utils";
 import {
     EMPTY_POST_HISTORY_REACTION_SUMMARY,
@@ -95,6 +91,10 @@ import {
     shouldRunThreadGraphBackgroundRevalidate,
 } from "../postHistoryThreadGraphFetchCoordinator";
 import { profileMetadataCache } from "../profileMetadataCache.svelte";
+import {
+    createPostHistoryProfileSyncCoordinator,
+    type PostHistoryProfileSyncCoordinator,
+} from "../postHistoryProfileSync";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -160,7 +160,7 @@ interface UsePostHistoryThreadGraphParams {
         PostHistoryDeletionRequestsRepository,
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
-    profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
+    profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
     contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
@@ -225,12 +225,15 @@ export function usePostHistoryThreadGraph({
     reactionRecordsAdapterImpl = postHistoryReactionRecordsAdapter,
     childInteractionsRepositoryImpl = postHistoryChildInteractionsRepository,
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
-    profilesRepositoryImpl = profilesRepository,
+    profileSyncCoordinator = undefined,
     contextFetchService = postHistoryContextFetchService,
     replyFetchService = postHistoryReplyFetchService,
     deletionFetchService = postHistoryDeletionFetchService,
     relatedTargetResolver = undefined,
 }: UsePostHistoryThreadGraphParams) {
+    const profileSync = profileSyncCoordinator
+        ?? createPostHistoryProfileSyncCoordinator({ getShow, getRxNostr });
+    const ownsProfileSync = !profileSyncCoordinator;
     const resolver = relatedTargetResolver
         ?? createPostHistoryRelatedTargetResolver({
             getShow,
@@ -240,7 +243,7 @@ export function usePostHistoryThreadGraph({
             contextFetchService,
             deletionRequestsRepositoryImpl,
             deletionFetchService,
-            profilesRepositoryImpl,
+            profileSyncCoordinator: profileSync,
         });
     const ownsResolver = !relatedTargetResolver;
     const parentResolverScopeKey =
@@ -254,8 +257,6 @@ export function usePostHistoryThreadGraph({
     let deletedEventIdsByPubkey = $state.raw<Record<string, Record<string, true>>>({});
     let parentResolverRevision = $state(0);
     const parentLoadingIndicator = createPostHistoryThreadGraphParentLoadingIndicator();
-    const profileRefreshTasksByPubkey = new Map<string, Promise<void>>();
-    const profileSubscriptionsByPubkey = new Map<string, () => void>();
     const replyBadgePreloadKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
@@ -427,60 +428,20 @@ export function usePostHistoryThreadGraph({
         }
     }
 
-    function ensureProfileSubscription(pubkey: string): void {
-        if (!pubkey || profileSubscriptionsByPubkey.has(pubkey)) {
-            return;
-        }
-
-        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
-            if (!getShow() || !profile) {
-                return;
-            }
-
-            mergeProfileForPubkey(pubkey, profile);
-            setReactionProfile(pubkey, profile);
-        });
-        profileSubscriptionsByPubkey.set(pubkey, unsubscribe);
-    }
-
     function refreshProfileForPubkeyInBackground(
         pubkey: string,
         additionalRelays: string[] = [],
-        onProfileResolved?: (profile: ProfileData | null) => void,
     ): void {
-        ensureProfileSubscription(pubkey);
+        profileSync.ensureProfile(pubkey, additionalRelays);
+    }
 
-        if (!pubkey || profileRefreshTasksByPubkey.has(pubkey)) {
+    const unsubscribeProfileUpdates = profileSync.subscribe((pubkey, profile) => {
+        if (!getShow()) {
             return;
         }
-
-        const activeRequestId = taskTracker.getRequestId();
-
-        const task = (async () => {
-            const rxNostr = getRxNostr();
-            if (activeRequestId !== taskTracker.getRequestId() || !getShow()) {
-                return;
-            }
-
-            const profile = await profileMetadataCache.getProfile(pubkey, {
-                rxNostr,
-                additionalRelays,
-                forceRefresh: false,
-                allowBackgroundRefresh: true,
-            });
-            if (!profile || activeRequestId !== taskTracker.getRequestId() || !getShow()) {
-                return;
-            }
-
-            mergeProfileForPubkey(pubkey, profile);
-            onProfileResolved?.(profile);
-        })()
-            .catch(() => undefined)
-            .finally(() => {
-                profileRefreshTasksByPubkey.delete(pubkey);
-            });
-        profileRefreshTasksByPubkey.set(pubkey, task);
-    }
+        mergeProfileForPubkey(pubkey, profile);
+        setReactionProfile(pubkey, profile);
+    });
 
     async function upsertNodeWithProfile(input: {
         event: NostrEvent;
@@ -1864,7 +1825,6 @@ export function usePostHistoryThreadGraph({
                             refreshProfileForPubkeyInBackground(
                                 pubkey,
                                 anchorNode.relayUrls,
-                                (nextProfile) => setReactionProfile(pubkey, nextProfile),
                             );
                         }
                     }
@@ -2264,9 +2224,9 @@ export function usePostHistoryThreadGraph({
     function cancelCurrentGraphFetches(): void {
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
-        profileRefreshTasksByPubkey.clear();
-        profileSubscriptionsByPubkey.forEach((unsubscribe) => unsubscribe());
-        profileSubscriptionsByPubkey.clear();
+        if (ownsProfileSync) {
+            profileSync.reset();
+        }
         parentLoadingIndicator.clearAll();
     }
 
@@ -2306,8 +2266,12 @@ export function usePostHistoryThreadGraph({
     onDestroy(() => {
         resolver.invalidateScope(parentResolverScopeKey);
         cancelCurrentGraphFetches();
+        unsubscribeProfileUpdates();
         if (ownsResolver) {
             resolver.reset();
+        }
+        if (ownsProfileSync) {
+            profileSync.dispose();
         }
     });
 

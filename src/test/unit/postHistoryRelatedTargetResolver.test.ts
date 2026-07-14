@@ -115,10 +115,6 @@ function createResolver() {
             cancel: vi.fn(),
         }),
     };
-    const profilesRepositoryImpl = {
-        get: vi.fn().mockResolvedValue(null),
-    };
-
     const resolver = createPostHistoryRelatedTargetResolver({
         getShow: () => true,
         getRxNostr: () => rxNostr,
@@ -127,7 +123,6 @@ function createResolver() {
         contextFetchService,
         deletionRequestsRepositoryImpl,
         deletionFetchService,
-        profilesRepositoryImpl,
     });
 
     return {
@@ -136,7 +131,6 @@ function createResolver() {
         contextFetchService,
         deletionRequestsRepositoryImpl,
         deletionFetchService,
-        profilesRepositoryImpl,
     };
 }
 

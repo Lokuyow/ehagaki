@@ -29,12 +29,9 @@ import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "../storage/postHistoryRepository";
-import {
-    profilesRepository,
-    type ProfilesRepository,
-} from "../storage/profilesRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
+import type { PostHistoryProfileSyncCoordinator } from "../postHistoryProfileSync";
 
 let nextQuotePreviewResolverScopeId = 0;
 
@@ -99,7 +96,7 @@ interface UsePostHistoryQuotePreviewsParams {
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
     deletionFetchService?: Pick<PostHistoryDeletionFetchService, "fetchDeletionRequests">;
-    profilesRepositoryImpl?: Pick<ProfilesRepository, "get">;
+    profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
     relatedTargetResolver?: PostHistoryRelatedTargetResolver;
 }
 
@@ -178,7 +175,7 @@ export function usePostHistoryQuotePreviews({
     contextFetchService = postHistoryContextFetchService,
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
     deletionFetchService = postHistoryDeletionFetchService,
-    profilesRepositoryImpl = profilesRepository,
+    profileSyncCoordinator = undefined,
     relatedTargetResolver = undefined,
 }: UsePostHistoryQuotePreviewsParams) {
     const resolver = relatedTargetResolver
@@ -190,7 +187,7 @@ export function usePostHistoryQuotePreviews({
             contextFetchService,
             deletionRequestsRepositoryImpl,
             deletionFetchService,
-            profilesRepositoryImpl,
+            profileSyncCoordinator,
         });
     const ownsResolver = !relatedTargetResolver;
     const scopeKey = `post-history-quote-preview:${++nextQuotePreviewResolverScopeId}`;
