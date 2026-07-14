@@ -65,6 +65,7 @@ export interface ProfileRecord {
     profileRelays?: string[];
     fetchedAt: number;
     updatedAtFromEvent?: number;
+    sourceEventId?: string;
     updatedAt: number;
     schemaVersion: number;
 }
