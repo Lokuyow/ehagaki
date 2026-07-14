@@ -2,7 +2,10 @@ import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { filter } from "rxjs";
 import { addProfilePictureMarker } from "./profilePictureUrlUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { profilesRepository } from "./storage/profilesRepository";
+import {
+    profilesRepository,
+    type ProfileUpsertResult,
+} from "./storage/profilesRepository";
 import type { ProfileData } from "./types";
 import { toNprofile, toNpub } from "./utils/nostrUtils";
 
@@ -36,11 +39,13 @@ export interface ProfileMetadataCacheEntry {
     metadataRaw: string | null;
     fetchedAtMs: number;
     sourceEventCreatedAtSec: number | null;
+    sourceEventId: string | null;
     staleAtMs: number;
     expireAtMs: number;
     negativeUntilMs: number | null;
     sourceRelay: string | null;
     lastValidatedAtMs: number;
+    persistence: "persisted" | "temporary";
 }
 
 interface GetProfileOptions {
@@ -64,6 +69,7 @@ interface PendingBatchRequest {
     pubkey: string;
     relays: string[];
     writeRelays: string[];
+    existingSnapshot: ProfileData | null;
     resolve: (profile: ProfileData | null) => void;
     reject: (error: unknown) => void;
 }
@@ -72,7 +78,9 @@ interface BatchNetworkResult {
     profile: ProfileData | null;
     metadataRaw: string | null;
     sourceEventCreatedAtSec: number | null;
+    sourceEventId: string | null;
     sourceRelay: string | null;
+    observedRelays: string[];
     rejectedFutureTimestamp: boolean;
     parseError: boolean;
 }
@@ -128,21 +136,6 @@ function resolveProfileFetchedAtMs(profile: ProfileData, fallback: number): numb
         : fallback;
 }
 
-function shouldAcceptProfileEvent(
-    pubkey: string,
-    sourceEventCreatedAtSec: number | null,
-): boolean {
-    if (sourceEventCreatedAtSec === null) {
-        return true;
-    }
-
-    const currentSourceEventCreatedAtSec = entriesByPubkey[pubkey]?.sourceEventCreatedAtSec;
-    return (
-        typeof currentSourceEventCreatedAtSec !== "number"
-        || sourceEventCreatedAtSec >= currentSourceEventCreatedAtSec
-    );
-}
-
 function setEntry(pubkey: string, entry: ProfileMetadataCacheEntry): void {
     entriesByPubkey = {
         ...entriesByPubkey,
@@ -169,11 +162,13 @@ function setNegativeEntry(pubkey: string): void {
         metadataRaw: null,
         fetchedAtMs: now,
         sourceEventCreatedAtSec: null,
+        sourceEventId: null,
         staleAtMs: now + PROFILE_CACHE_NEGATIVE_TTL_MS,
         expireAtMs: now + PROFILE_CACHE_NEGATIVE_TTL_MS,
         negativeUntilMs: now + PROFILE_CACHE_NEGATIVE_TTL_MS,
         sourceRelay: null,
         lastValidatedAtMs: now,
+        persistence: "persisted",
     });
 }
 
@@ -182,8 +177,10 @@ function setProfileEntry(params: {
     profile: ProfileData;
     metadataRaw: string | null;
     sourceEventCreatedAtSec: number | null;
+    sourceEventId?: string | null;
     sourceRelay: string | null;
     fetchedAtMs?: number;
+    persistence?: "persisted" | "temporary";
 }): void {
     const now = nowMs();
     const fetchedAtMs = params.fetchedAtMs ?? now;
@@ -201,12 +198,107 @@ function setProfileEntry(params: {
         metadataRaw: params.metadataRaw,
         fetchedAtMs,
         sourceEventCreatedAtSec: params.sourceEventCreatedAtSec,
-        staleAtMs: fetchedAtMs + PROFILE_CACHE_STALE_MS,
+        sourceEventId: params.sourceEventId ?? null,
+        staleAtMs: params.persistence === "temporary"
+            ? now
+            : fetchedAtMs + PROFILE_CACHE_STALE_MS,
         expireAtMs: fetchedAtMs + PROFILE_CACHE_GC_MS,
         negativeUntilMs: null,
         sourceRelay: params.sourceRelay,
         lastValidatedAtMs: fetchedAtMs,
+        persistence: params.persistence ?? "persisted",
     });
+}
+
+function resolveExistingSnapshot(
+    pubkey: string,
+    requests: PendingBatchRequest[],
+): ProfileData | null {
+    return entriesByPubkey[pubkey]?.profile
+        ?? requests.find((request) => request.existingSnapshot)?.existingSnapshot
+        ?? null;
+}
+
+function restoreSnapshotEntry(pubkey: string, snapshot: ProfileData): ProfileData {
+    const current = entriesByPubkey[pubkey];
+    if (current?.profile) {
+        return current.profile;
+    }
+
+    const fetchedAtMs = resolveProfileFetchedAtMs(snapshot, nowMs());
+    setProfileEntry({
+        pubkey,
+        profile: snapshot,
+        metadataRaw: null,
+        sourceEventCreatedAtSec: snapshot.updatedAtFromEvent ?? null,
+        sourceEventId: null,
+        sourceRelay: null,
+        fetchedAtMs,
+    });
+    return entriesByPubkey[pubkey]?.profile ?? snapshot;
+}
+
+function applyAcceptedProfile(
+    pubkey: string,
+    networkResult: BatchNetworkResult,
+    upsertResult: ProfileUpsertResult,
+): ProfileData | null {
+    const acceptedProfile = upsertResult.acceptedProfile;
+    if (!acceptedProfile) {
+        return null;
+    }
+
+    const current = entriesByPubkey[pubkey];
+    const acceptedRecord = upsertResult.acceptedRecord;
+    const reusesCurrentObservation = !upsertResult.currentEventConfirmed
+        && !!current?.sourceEventId
+        && current.sourceEventId === acceptedRecord?.sourceEventId;
+
+    setProfileEntry({
+        pubkey,
+        profile: acceptedProfile,
+        metadataRaw: upsertResult.currentEventConfirmed
+            ? networkResult.metadataRaw
+            : reusesCurrentObservation ? current?.metadataRaw ?? null : null,
+        sourceEventCreatedAtSec: acceptedRecord?.updatedAtFromEvent
+            ?? acceptedProfile.updatedAtFromEvent
+            ?? null,
+        sourceEventId: acceptedRecord?.sourceEventId
+            ?? (upsertResult.currentEventConfirmed ? networkResult.sourceEventId : null),
+        sourceRelay: upsertResult.currentEventConfirmed
+            ? networkResult.sourceRelay
+            : reusesCurrentObservation ? current?.sourceRelay ?? null : null,
+        fetchedAtMs: acceptedRecord?.fetchedAt
+            ?? resolveProfileFetchedAtMs(acceptedProfile, nowMs()),
+    });
+
+    return entriesByPubkey[pubkey]?.profile ?? acceptedProfile;
+}
+
+function setTemporaryNetworkProfile(
+    pubkey: string,
+    networkResult: BatchNetworkResult,
+): ProfileData {
+    const profileRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...(networkResult.profile?.profileRelays ?? []),
+        ...networkResult.observedRelays,
+    ]);
+    const temporaryProfile: ProfileData = {
+        ...networkResult.profile!,
+        profileRelays: profileRelays.length > 0 ? profileRelays : undefined,
+    };
+
+    setProfileEntry({
+        pubkey,
+        profile: temporaryProfile,
+        metadataRaw: networkResult.metadataRaw,
+        sourceEventCreatedAtSec: networkResult.sourceEventCreatedAtSec,
+        sourceEventId: networkResult.sourceEventId,
+        sourceRelay: networkResult.sourceRelay,
+        persistence: "temporary",
+    });
+
+    return entriesByPubkey[pubkey]?.profile ?? temporaryProfile;
 }
 
 function markEntryStatus(pubkey: string, status: ProfileMetadataCacheStatus): void {
@@ -285,7 +377,9 @@ async function fetchBatchFromNetwork(
             profile: null,
             metadataRaw: null,
             sourceEventCreatedAtSec: null,
+            sourceEventId: null,
             sourceRelay: null,
+            observedRelays: [],
             rejectedFutureTimestamp: false,
             parseError: false,
         };
@@ -346,7 +440,7 @@ async function fetchBatchFromNetwork(
             : source;
 
         subscription = stream.subscribe({
-                next: (packet: { event?: { pubkey?: string; kind?: number; content?: string; created_at?: number }; from?: string }) => {
+                next: (packet: { event?: { id?: string; pubkey?: string; kind?: number; content?: string; created_at?: number }; from?: string }) => {
                     if (!isValidTimestampPacket(packet)) {
                         return;
                     }
@@ -357,23 +451,43 @@ async function fetchBatchFromNetwork(
                     }
 
                     const existing = results[event.pubkey];
-                    if (
-                        existing.sourceEventCreatedAtSec !== null
-                        && typeof event.created_at === "number"
-                        && event.created_at <= existing.sourceEventCreatedAtSec
-                    ) {
+                    if (typeof event.created_at !== "number" || typeof event.id !== "string") {
                         return;
                     }
 
-                    if (typeof event.created_at !== "number") {
+                    const relay = typeof packet.from === "string" ? packet.from : null;
+                    if (
+                        existing.sourceEventCreatedAtSec === event.created_at
+                        && existing.sourceEventId === event.id
+                    ) {
+                        results[event.pubkey] = {
+                            ...existing,
+                            observedRelays: relay
+                                ? [...existing.observedRelays, relay]
+                                : existing.observedRelays,
+                        };
                         return;
+                    }
+
+                    if (existing.sourceEventCreatedAtSec !== null) {
+                        if (event.created_at < existing.sourceEventCreatedAtSec) {
+                            return;
+                        }
+
+                        if (
+                            event.created_at === existing.sourceEventCreatedAtSec
+                            && existing.sourceEventId !== null
+                            && event.id > existing.sourceEventId
+                        ) {
+                            return;
+                        }
                     }
 
                     const profile = toProfileFromEvent({
                         pubkey: event.pubkey,
                         content: event.content ?? "",
                         createdAtSec: event.created_at,
-                        relay: typeof packet.from === "string" ? packet.from : null,
+                        relay,
                         writeRelays: writeRelaysByPubkey[event.pubkey] ?? [],
                     });
 
@@ -389,7 +503,9 @@ async function fetchBatchFromNetwork(
                         profile,
                         metadataRaw: event.content ?? null,
                         sourceEventCreatedAtSec: event.created_at,
-                        sourceRelay: typeof packet.from === "string" ? packet.from : null,
+                        sourceEventId: event.id,
+                        sourceRelay: relay,
+                        observedRelays: relay ? [relay] : [],
                         rejectedFutureTimestamp: false,
                         parseError: false,
                     };
@@ -467,44 +583,59 @@ async function flushPendingBatch(): Promise<void> {
                 const result = results[pubkey];
                 const requests = groupedByPubkey.get(pubkey) ?? [];
 
-                if (result?.profile) {
-                    if (!shouldAcceptProfileEvent(pubkey, result.sourceEventCreatedAtSec)) {
+                if (
+                    result?.profile
+                    && result.sourceEventId !== null
+                    && result.sourceEventCreatedAtSec !== null
+                ) {
+                    try {
+                        const upsertResult = await profilesRepository.upsertCandidate(pubkey, {
+                            pubkeyHex: pubkey,
+                            profile: result.profile,
+                            sourceEventId: result.sourceEventId,
+                            updatedAtFromEvent: result.sourceEventCreatedAtSec,
+                            observedRelays: result.observedRelays,
+                            fetchedAt: resolveProfileFetchedAtMs(result.profile, nowMs()),
+                        });
+                        const acceptedProfile = applyAcceptedProfile(pubkey, result, upsertResult);
                         for (const request of requests) {
-                            request.resolve(entriesByPubkey[pubkey]?.profile ?? null);
+                            request.resolve(acceptedProfile);
                         }
-                        continue;
-                    }
-
-                    setProfileEntry({
-                        pubkey,
-                        profile: result.profile,
-                        metadataRaw: result.metadataRaw,
-                        sourceEventCreatedAtSec: result.sourceEventCreatedAtSec,
-                        sourceRelay: result.sourceRelay,
-                    });
-                    await profilesRepository.put(pubkey, result.profile);
-                    for (const request of requests) {
-                        request.resolve(result.profile);
+                    } catch {
+                        const snapshot = resolveExistingSnapshot(pubkey, requests);
+                        const profile = snapshot
+                            ? restoreSnapshotEntry(pubkey, snapshot)
+                            : setTemporaryNetworkProfile(pubkey, result);
+                        for (const request of requests) {
+                            request.resolve(profile);
+                        }
                     }
                     continue;
                 }
 
+                const snapshot = resolveExistingSnapshot(pubkey, requests);
                 if (result?.parseError) {
                     markEntryStatus(pubkey, "parse-error");
                 } else if (result?.rejectedFutureTimestamp) {
                     markEntryStatus(pubkey, "invalid-future-ts");
-                } else {
+                } else if (!snapshot) {
                     setNegativeEntry(pubkey);
                 }
 
+                const profile = snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null;
                 for (const request of requests) {
-                    request.resolve(null);
+                    request.resolve(profile);
                 }
             }
         } catch (error) {
-            for (const requests of groupedByPubkey.values()) {
+            for (const [pubkey, requests] of groupedByPubkey.entries()) {
+                const snapshot = resolveExistingSnapshot(pubkey, requests);
                 for (const request of requests) {
-                    request.reject(error);
+                    if (snapshot) {
+                        request.resolve(restoreSnapshotEntry(pubkey, snapshot));
+                    } else {
+                        request.reject(error);
+                    }
                 }
             }
         }
@@ -516,6 +647,7 @@ function enqueueBatchRequest(
     rxNostr: RxNostr,
     relays: string[],
     writeRelays: string[],
+    existingSnapshot: ProfileData | null,
 ): Promise<ProfileData | null> {
     return new Promise<ProfileData | null>((resolve, reject) => {
         pendingBatchRequests.push({
@@ -523,6 +655,7 @@ function enqueueBatchRequest(
             pubkey,
             relays: [...relays],
             writeRelays: [...writeRelays],
+            existingSnapshot,
             resolve,
             reject,
         });
@@ -550,12 +683,23 @@ async function ensureFreshProfile(
         return pending;
     }
 
-    const task = enqueueBatchRequest(
-        pubkey,
-        options.rxNostr,
-        sanitizeRelays(options.additionalRelays ?? []),
-        sanitizeRelays(options.writeRelays ?? []),
-    ).finally(() => {
+    const task = (async () => {
+        let persistedProfile: ProfileData | null = null;
+        try {
+            persistedProfile = await profilesRepository.get(pubkey);
+        } catch {
+            // A network candidate can still be exposed temporarily when no snapshot exists.
+        }
+
+        const existingSnapshot = entriesByPubkey[pubkey]?.profile ?? persistedProfile;
+        return enqueueBatchRequest(
+            pubkey,
+            options.rxNostr!,
+            sanitizeRelays(options.additionalRelays ?? []),
+            sanitizeRelays(options.writeRelays ?? []),
+            existingSnapshot,
+        );
+    })().finally(() => {
         pendingByPubkey.delete(pubkey);
         gcExpiredEntries();
     });
@@ -571,6 +715,14 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
     if (!options.forceRefresh && entry && !isEntryExpired(entry, now)) {
         if (isNegativeEntryActive(entry, now)) {
             return null;
+        }
+
+        if (entry.profile && entry.persistence === "temporary") {
+            if (options.allowBackgroundRefresh !== false && options.rxNostr) {
+                void ensureFreshProfile(pubkey, options);
+                markEntryStatus(pubkey, "stale");
+            }
+            return entry.profile;
         }
 
         if (entry.profile && !isEntryStale(entry, now)) {

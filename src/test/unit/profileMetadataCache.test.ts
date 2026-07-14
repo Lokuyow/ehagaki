@@ -4,11 +4,17 @@ import {
     profileMetadataCacheInternals,
 } from "../../lib/profileMetadataCache.svelte";
 import { profilesRepository } from "../../lib/storage/profilesRepository";
+import type {
+    ProfileEventCandidate,
+    ProfileUpsertDecision,
+    ProfileUpsertResult,
+} from "../../lib/storage/profilesRepository";
 import type { ProfileData } from "../../lib/types";
 
 const repositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
     put: vi.fn(),
+    upsertCandidate: vi.fn(),
     delete: vi.fn(),
 }));
 
@@ -17,6 +23,7 @@ vi.mock("../../lib/storage/profilesRepository", () => ({
 }));
 
 const pubkey = "a".repeat(64);
+const eventId = "1".repeat(64);
 
 function createProfile(overrides: Partial<ProfileData> = {}): ProfileData {
     return {
@@ -32,6 +39,7 @@ function createProfile(overrides: Partial<ProfileData> = {}): ProfileData {
 function createRxNostrReturningProfile(input: {
     content: Record<string, unknown>;
     createdAt: number;
+    eventId?: string;
     relay?: string;
 }) {
     const subscribe = vi.fn((observer: {
@@ -40,6 +48,7 @@ function createRxNostrReturningProfile(input: {
     }) => {
         observer.next?.({
             event: {
+                id: input.eventId ?? eventId,
                 kind: 0,
                 pubkey,
                 content: JSON.stringify(input.content),
@@ -60,7 +69,91 @@ function createRxNostrReturningProfile(input: {
     };
 }
 
+function createRxNostrFromPackets(packets: Array<{
+    content: Record<string, unknown>;
+    createdAt: number;
+    eventId?: string;
+    relay?: string;
+}>) {
+    const subscribe = vi.fn((observer: {
+        next?: (packet: unknown) => void;
+        complete?: () => void;
+    }) => {
+        for (const packet of packets) {
+            observer.next?.({
+                event: {
+                    id: packet.eventId ?? eventId,
+                    kind: 0,
+                    pubkey,
+                    content: JSON.stringify(packet.content),
+                    created_at: packet.createdAt,
+                },
+                from: packet.relay ?? "wss://relay.example.com/",
+            });
+        }
+        observer.complete?.();
+        return { unsubscribe: vi.fn() };
+    });
+    const use = vi.fn(() => ({ subscribe }));
+    return { use, subscribe };
+}
+
+function createRxNostrWithoutProfile() {
+    const subscribe = vi.fn((observer: { complete?: () => void }) => {
+        observer.complete?.();
+        return { unsubscribe: vi.fn() };
+    });
+    const use = vi.fn(() => ({ subscribe }));
+    return { use, subscribe };
+}
+
+function createUpsertResult(
+    candidate: ProfileEventCandidate,
+    decision: ProfileUpsertDecision = "replaced",
+    profile: ProfileData = candidate.profile,
+): ProfileUpsertResult {
+    const currentEventConfirmed = decision === "inserted"
+        || decision === "replaced"
+        || decision === "kept-existing"
+        || decision === "merged-same-event";
+    const acceptedProfile = {
+        ...profile,
+        fetchedAt: profile.fetchedAt ?? candidate.fetchedAt,
+        updatedAtFromEvent: profile.updatedAtFromEvent ?? candidate.updatedAtFromEvent,
+    };
+    return {
+        decision,
+        acceptedRecord: {
+            pubkeyHex: candidate.pubkeyHex,
+            name: acceptedProfile.name,
+            displayName: acceptedProfile.displayName,
+            pictureUrl: acceptedProfile.picture,
+            npub: acceptedProfile.npub,
+            nprofile: acceptedProfile.nprofile,
+            profileRelays: acceptedProfile.profileRelays,
+            fetchedAt: acceptedProfile.fetchedAt!,
+            updatedAtFromEvent: acceptedProfile.updatedAtFromEvent,
+            sourceEventId: currentEventConfirmed ? candidate.sourceEventId : "0".repeat(64),
+            updatedAt: Date.now(),
+            schemaVersion: 2,
+        },
+        acceptedProfile,
+        currentEventConfirmed,
+    };
+}
+
+function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
 async function flushProfileBatch(): Promise<void> {
+    await Promise.resolve();
     await vi.advanceTimersByTimeAsync(31);
     await Promise.resolve();
 }
@@ -72,7 +165,12 @@ describe("profileMetadataCache", () => {
         profileMetadataCacheInternals.resetForTests();
         repositoryMock.get.mockReset();
         repositoryMock.put.mockReset();
+        repositoryMock.upsertCandidate.mockReset();
         repositoryMock.delete.mockReset();
+        repositoryMock.get.mockResolvedValue(null);
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => createUpsertResult(candidate),
+        );
     });
 
     it("revalidates stale Dexie profiles after reload using the persisted fetchedAt", async () => {
@@ -108,12 +206,17 @@ describe("profileMetadataCache", () => {
         expect(rxNostr.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: ["wss://profile-relay.example.com/"] },
         });
-        expect(profilesRepository.put).toHaveBeenCalledWith(
+        expect(profilesRepository.upsertCandidate).toHaveBeenCalledWith(
             pubkey,
             expect.objectContaining({
-                name: "Fresh",
-                displayName: "Fresh User",
+                pubkeyHex: pubkey,
+                profile: expect.objectContaining({
+                    name: "Fresh",
+                    displayName: "Fresh User",
+                }),
+                sourceEventId: eventId,
                 updatedAtFromEvent: 20,
+                observedRelays: ["wss://profile-relay.example.com/"],
             }),
         );
         expect(seen.map((profile) => profile?.name)).toEqual(["Cached", "Cached", "Fresh"]);
@@ -127,7 +230,17 @@ describe("profileMetadataCache", () => {
             fetchedAt: Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1,
             updatedAtFromEvent: 30,
         }));
-        repositoryMock.put.mockResolvedValue(undefined);
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => createUpsertResult(
+                candidate,
+                "rejected-older",
+                createProfile({
+                    name: "Current",
+                    fetchedAt: Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1,
+                    updatedAtFromEvent: 30,
+                }),
+            ),
+        );
         const rxNostr = createRxNostrReturningProfile({
             content: {
                 name: "Older",
@@ -143,7 +256,179 @@ describe("profileMetadataCache", () => {
         await flushProfileBatch();
 
         expect(result?.name).toBe("Current");
-        expect(profilesRepository.put).not.toHaveBeenCalled();
+        expect(profilesRepository.upsertCandidate).toHaveBeenCalledOnce();
         expect((await profileMetadataCache.getProfile(pubkey))?.name).toBe("Current");
+    });
+
+    it("does not publish a network candidate before the repository accepts it", async () => {
+        const deferred = createDeferred<ProfileUpsertResult>();
+        let receivedCandidate: ProfileEventCandidate | null = null;
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => {
+                receivedCandidate = candidate;
+                return deferred.promise;
+            },
+        );
+        const rxNostr = createRxNostrReturningProfile({
+            content: { name: "Network" },
+            createdAt: 20,
+        });
+        const seen: Array<ProfileData | null> = [];
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => seen.push(profile));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        expect(receivedCandidate).not.toBeNull();
+        expect(seen).toEqual([]);
+        deferred.resolve(createUpsertResult(receivedCandidate!));
+
+        await expect(pending).resolves.toMatchObject({ name: "Network" });
+        expect(seen.map((profile) => profile?.name)).toEqual(["Network"]);
+        unsubscribe();
+    });
+
+    it("runs the legacy-compatible repository read before force-refresh network access", async () => {
+        const deferredGet = createDeferred<ProfileData | null>();
+        repositoryMock.get.mockReturnValue(deferredGet.promise);
+        const rxNostr = createRxNostrReturningProfile({
+            content: { name: "Network" },
+            createdAt: 20,
+        });
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await Promise.resolve();
+        expect(profilesRepository.get).toHaveBeenCalledWith(pubkey);
+        expect(rxNostr.use).not.toHaveBeenCalled();
+
+        deferredGet.resolve(createProfile({ name: "Legacy" }));
+        await flushProfileBatch();
+        await expect(pending).resolves.toMatchObject({ name: "Network" });
+        expect(repositoryMock.get.mock.invocationCallOrder[0]).toBeLessThan(
+            rxNostr.use.mock.invocationCallOrder[0],
+        );
+    });
+
+    it("keeps a persisted snapshot when force-refresh finds no network event", async () => {
+        const snapshot = createProfile({
+            name: "Persisted",
+            fetchedAt: Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1,
+            updatedAtFromEvent: 30,
+        });
+        repositoryMock.get.mockResolvedValue(snapshot);
+        const rxNostr = createRxNostrWithoutProfile();
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject({ name: "Persisted" });
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "hit",
+            persistence: "persisted",
+            profile: expect.objectContaining({ name: "Persisted" }),
+        });
+        expect(profilesRepository.upsertCandidate).not.toHaveBeenCalled();
+    });
+
+    it("keeps an existing snapshot when repository commit fails", async () => {
+        repositoryMock.get.mockResolvedValue(createProfile({
+            name: "Existing",
+            updatedAtFromEvent: 30,
+        }));
+        repositoryMock.upsertCandidate.mockRejectedValue(new Error("write failed"));
+        const rxNostr = createRxNostrReturningProfile({
+            content: { name: "Uncommitted" },
+            createdAt: 40,
+        });
+        const seen: Array<ProfileData | null> = [];
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => seen.push(profile));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject({ name: "Existing" });
+        expect(seen.map((profile) => profile?.name)).toEqual(["Existing"]);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("persisted");
+        unsubscribe();
+    });
+
+    it("shows a temporary profile after DB failure without a snapshot and retries on the next fetch", async () => {
+        repositoryMock.get.mockRejectedValue(new Error("read failed"));
+        repositoryMock.upsertCandidate.mockRejectedValueOnce(new Error("write failed"));
+        const rxNostr = createRxNostrReturningProfile({
+            content: { name: "Temporary" },
+            createdAt: 40,
+            relay: "wss://temporary.example.com/",
+        });
+
+        const firstPending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(firstPending).resolves.toMatchObject({ name: "Temporary" });
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "hit",
+            persistence: "temporary",
+            profile: expect.objectContaining({
+                name: "Temporary",
+                profileRelays: ["wss://temporary.example.com/"],
+            }),
+        });
+
+        const second = await profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+        });
+        expect(second?.name).toBe("Temporary");
+        await flushProfileBatch();
+
+        expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("persisted");
+    });
+
+    it("passes all relays that observed the selected event to the repository", async () => {
+        const rxNostr = createRxNostrFromPackets([
+            {
+                content: { name: "Observed" },
+                createdAt: 20,
+                relay: "wss://one.example.com/",
+            },
+            {
+                content: { name: "Observed" },
+                createdAt: 20,
+                relay: "wss://two.example.com/",
+            },
+        ]);
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(profilesRepository.upsertCandidate).toHaveBeenCalledWith(
+            pubkey,
+            expect.objectContaining({
+                sourceEventId: eventId,
+                observedRelays: [
+                    "wss://one.example.com/",
+                    "wss://two.example.com/",
+                ],
+            }),
+        );
     });
 });
