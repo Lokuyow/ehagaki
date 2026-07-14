@@ -1,6 +1,7 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { filter } from "rxjs";
 import { addProfilePictureMarker } from "./profilePictureUrlUtils";
+import { buildProfileRelayTiers } from "./profileRelayTiers";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     profilesRepository,
@@ -532,9 +533,7 @@ async function fetchBatchFromNetwork(
 
         const source = rxNostr.use(
             rxReq,
-            relayHints.length > 0
-                ? { on: { relays: relayHints } }
-                : { on: { defaultReadRelays: true } },
+            { on: { relays: relayHints } },
         ) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
         const stream = typeof source.pipe === "function"
@@ -635,6 +634,60 @@ async function fetchBatchFromNetwork(
     return results;
 }
 
+interface ProfileTierResolution {
+    profile: ProfileData | null;
+    terminal: boolean;
+    parseError: boolean;
+    rejectedFutureTimestamp: boolean;
+}
+
+async function applyTierNetworkResult(
+    pubkey: string,
+    result: BatchNetworkResult,
+    requests: PendingBatchRequest[],
+): Promise<ProfileTierResolution> {
+    if (
+        result.profile
+        && result.sourceEventId !== null
+        && result.sourceEventCreatedAtSec !== null
+    ) {
+        try {
+            const upsertResult = await profilesRepository.upsertCandidate(pubkey, {
+                pubkeyHex: pubkey,
+                profile: result.profile,
+                sourceEventId: result.sourceEventId,
+                updatedAtFromEvent: result.sourceEventCreatedAtSec,
+                observedRelays: result.observedRelays,
+                fetchedAt: resolveProfileFetchedAtMs(result.profile, nowMs()),
+            });
+            const acceptedProfile = applyAcceptedProfile(pubkey, upsertResult, result);
+            return {
+                profile: acceptedProfile,
+                terminal: upsertResult.currentEventConfirmed && acceptedProfile !== null,
+                parseError: false,
+                rejectedFutureTimestamp: false,
+            };
+        } catch {
+            const snapshot = resolveExistingSnapshot(pubkey, requests);
+            return {
+                profile: snapshot
+                    ? restoreSnapshotEntry(pubkey, snapshot)
+                    : setTemporaryNetworkProfile(pubkey, result),
+                terminal: true,
+                parseError: false,
+                rejectedFutureTimestamp: false,
+            };
+        }
+    }
+
+    return {
+        profile: resolveExistingSnapshot(pubkey, requests),
+        terminal: false,
+        parseError: result.parseError,
+        rejectedFutureTimestamp: result.rejectedFutureTimestamp,
+    };
+}
+
 async function flushPendingBatch(): Promise<void> {
     const batch = pendingBatchRequests;
     pendingBatchRequests = [];
@@ -653,17 +706,18 @@ async function flushPendingBatch(): Promise<void> {
 
     for (const rxBatch of groupedByRx.values()) {
         const groupedByPubkey = new Map<string, PendingBatchRequest[]>();
-        const relaySet = new Set<string>();
         const writeRelaysByPubkey: Record<string, string[]> = {};
+        const contextualRelaysByPubkey: Record<string, string[]> = {};
 
         for (const request of rxBatch) {
             const current = groupedByPubkey.get(request.pubkey) ?? [];
             current.push(request);
             groupedByPubkey.set(request.pubkey, current);
 
-            for (const relay of request.relays) {
-                relaySet.add(relay);
-            }
+            contextualRelaysByPubkey[request.pubkey] = sanitizeRelays([
+                ...(contextualRelaysByPubkey[request.pubkey] ?? []),
+                ...request.relays,
+            ]);
 
             const mergedWriteRelays = new Set([
                 ...(writeRelaysByPubkey[request.pubkey] ?? []),
@@ -673,61 +727,103 @@ async function flushPendingBatch(): Promise<void> {
         }
 
         const pubkeys = Array.from(groupedByPubkey.keys());
+        const tiersByPubkey = Object.fromEntries(pubkeys.map((pubkey) => [
+            pubkey,
+            buildProfileRelayTiers(
+                contextualRelaysByPubkey[pubkey] ?? [],
+                PROFILE_CACHE_MAX_RELAYS,
+            ),
+        ]));
+        const commonTiers = buildProfileRelayTiers([], PROFILE_CACHE_MAX_RELAYS);
+        const unresolvedPubkeys = new Set(pubkeys);
+        const resolvedProfiles: Record<string, ProfileData | null> = {};
+        const parseErrors = new Set<string>();
+        const rejectedFutureTimestamps = new Set<string>();
+        const tiers: Array<{
+            name: "bootstrap" | "contextual" | "fallback";
+            relaysFor: (targets: string[]) => string[];
+        }> = [
+            {
+                name: "bootstrap",
+                relaysFor: () => commonTiers.bootstrap,
+            },
+            {
+                name: "contextual",
+                relaysFor: (targets) => sanitizeRelays(targets.flatMap(
+                    (pubkey) => tiersByPubkey[pubkey].contextual,
+                )),
+            },
+            {
+                name: "fallback",
+                relaysFor: () => commonTiers.fallback,
+            },
+        ];
 
         try {
-            const results = await fetchBatchFromNetwork(
-                rxBatch[0].rxNostr,
-                pubkeys,
-                sanitizeRelays(Array.from(relaySet)),
-                writeRelaysByPubkey,
-            );
-
-            for (const pubkey of pubkeys) {
-                const result = results[pubkey];
-                const requests = groupedByPubkey.get(pubkey) ?? [];
-
-                if (
-                    result?.profile
-                    && result.sourceEventId !== null
-                    && result.sourceEventCreatedAtSec !== null
-                ) {
-                    try {
-                        const upsertResult = await profilesRepository.upsertCandidate(pubkey, {
-                            pubkeyHex: pubkey,
-                            profile: result.profile,
-                            sourceEventId: result.sourceEventId,
-                            updatedAtFromEvent: result.sourceEventCreatedAtSec,
-                            observedRelays: result.observedRelays,
-                            fetchedAt: resolveProfileFetchedAtMs(result.profile, nowMs()),
-                        });
-                        const acceptedProfile = applyAcceptedProfile(pubkey, upsertResult, result);
-                        for (const request of requests) {
-                            request.resolve(acceptedProfile);
-                        }
-                    } catch {
-                        const snapshot = resolveExistingSnapshot(pubkey, requests);
-                        const profile = snapshot
-                            ? restoreSnapshotEntry(pubkey, snapshot)
-                            : setTemporaryNetworkProfile(pubkey, result);
-                        for (const request of requests) {
-                            request.resolve(profile);
-                        }
-                    }
+            for (const tier of tiers) {
+                const targets = Array.from(unresolvedPubkeys).filter((pubkey) => (
+                    tier.name !== "contextual"
+                    || tiersByPubkey[pubkey].contextual.length > 0
+                ));
+                if (targets.length === 0) {
                     continue;
                 }
 
+                const relays = tier.relaysFor(targets);
+                if (relays.length === 0) {
+                    continue;
+                }
+
+                let results: Record<string, BatchNetworkResult>;
+                try {
+                    results = await fetchBatchFromNetwork(
+                        rxBatch[0].rxNostr,
+                        targets,
+                        relays,
+                        writeRelaysByPubkey,
+                    );
+                } catch {
+                    continue;
+                }
+
+                for (const pubkey of targets) {
+                    const requests = groupedByPubkey.get(pubkey) ?? [];
+                    const resolution = await applyTierNetworkResult(
+                        pubkey,
+                        results[pubkey],
+                        requests,
+                    );
+                    resolvedProfiles[pubkey] = resolution.profile;
+                    if (resolution.parseError) {
+                        parseErrors.add(pubkey);
+                    }
+                    if (resolution.rejectedFutureTimestamp) {
+                        rejectedFutureTimestamps.add(pubkey);
+                    }
+                    if (resolution.terminal) {
+                        unresolvedPubkeys.delete(pubkey);
+                    }
+                }
+            }
+
+            for (const pubkey of unresolvedPubkeys) {
+                const requests = groupedByPubkey.get(pubkey) ?? [];
                 const snapshot = resolveExistingSnapshot(pubkey, requests);
-                if (result?.parseError) {
+                if (parseErrors.has(pubkey)) {
                     markEntryStatus(pubkey, "parse-error");
-                } else if (result?.rejectedFutureTimestamp) {
+                } else if (rejectedFutureTimestamps.has(pubkey)) {
                     markEntryStatus(pubkey, "invalid-future-ts");
                 } else if (!snapshot) {
                     setNegativeEntry(pubkey);
                 }
+                resolvedProfiles[pubkey] = snapshot
+                    ? restoreSnapshotEntry(pubkey, snapshot)
+                    : null;
+            }
 
-                const profile = snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null;
+            for (const [pubkey, requests] of groupedByPubkey.entries()) {
                 for (const request of requests) {
-                    request.resolve(profile);
+                    request.resolve(resolvedProfiles[pubkey] ?? null);
                 }
             }
         } catch (error) {
