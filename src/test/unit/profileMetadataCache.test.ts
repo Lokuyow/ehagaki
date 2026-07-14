@@ -158,6 +158,31 @@ async function flushProfileBatch(): Promise<void> {
     await Promise.resolve();
 }
 
+async function createTemporaryEntry(input: {
+    name?: string;
+    createdAt?: number;
+} = {}): Promise<ProfileData> {
+    repositoryMock.get.mockRejectedValue(new Error("read failed"));
+    repositoryMock.upsertCandidate.mockRejectedValueOnce(new Error("write failed"));
+    const rxNostr = createRxNostrReturningProfile({
+        content: { name: input.name ?? "Temporary" },
+        createdAt: input.createdAt ?? 100,
+        relay: "wss://temporary.example.com/",
+    });
+
+    const pending = profileMetadataCache.getProfile(pubkey, {
+        rxNostr: rxNostr as never,
+        forceRefresh: true,
+    });
+    await flushProfileBatch();
+    const profile = await pending;
+    if (!profile) {
+        throw new Error("Temporary profile fixture was not created");
+    }
+    expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("temporary");
+    return profile;
+}
+
 describe("profileMetadataCache", () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -389,14 +414,168 @@ describe("profileMetadataCache", () => {
             }),
         });
 
+        const seen: string[] = [];
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
+            if (profile) seen.push(profile.name);
+        });
         const second = await profileMetadataCache.getProfile(pubkey, {
             rxNostr: rxNostr as never,
         });
         expect(second?.name).toBe("Temporary");
+        expect(seen).toEqual(["Temporary"]);
         await flushProfileBatch();
 
-        expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
+        expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(3);
         expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("persisted");
+        expect(seen).toEqual(["Temporary"]);
+        unsubscribe();
+    });
+
+    it("persists a temporary profile into an empty DB before a network miss", async () => {
+        const temporaryProfile = await createTemporaryEntry({
+            name: "Temporary to persist",
+            createdAt: 100,
+        });
+        let storedProfile: ProfileData | null = null;
+        repositoryMock.get.mockResolvedValue(null);
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => {
+                storedProfile = candidate.profile;
+                return createUpsertResult(candidate, "inserted");
+            },
+        );
+        const rxNostr = createRxNostrWithoutProfile();
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toEqual(temporaryProfile);
+        expect(storedProfile).toEqual(temporaryProfile);
+        expect(profilesRepository.upsertCandidate).toHaveBeenLastCalledWith(
+            pubkey,
+            expect.objectContaining({
+                pubkeyHex: pubkey,
+                profile: temporaryProfile,
+                sourceEventId: eventId,
+                updatedAtFromEvent: 100,
+                observedRelays: ["wss://temporary.example.com/"],
+                fetchedAt: profileMetadataCache.getReactiveEntry(pubkey)?.fetchedAtMs,
+            }),
+        );
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "hit",
+            persistence: "persisted",
+            profile: expect.objectContaining({ name: "Temporary to persist" }),
+        });
+    });
+
+    it("converges a temporary profile to a newer DB profile before a network miss", async () => {
+        await createTemporaryEntry({ name: "Temporary 100", createdAt: 100 });
+        const dbProfile = createProfile({
+            name: "Database 200",
+            fetchedAt: 900_000,
+            updatedAtFromEvent: 200,
+            profileRelays: ["wss://database.example.com/"],
+        });
+        repositoryMock.get.mockResolvedValue(dbProfile);
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => createUpsertResult(
+                candidate,
+                "rejected-older",
+                dbProfile,
+            ),
+        );
+        const rxNostr = createRxNostrWithoutProfile();
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toEqual(dbProfile);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "hit",
+            persistence: "persisted",
+            profile: expect.objectContaining({
+                name: "Database 200",
+                updatedAtFromEvent: 200,
+            }),
+        });
+        await expect(profileMetadataCache.getProfile(pubkey)).resolves.toMatchObject({
+            name: "Database 200",
+        });
+    });
+
+    it("keeps a temporary profile when DB recovery still fails and network misses", async () => {
+        const temporaryProfile = await createTemporaryEntry({
+            name: "Still temporary",
+            createdAt: 100,
+        });
+        repositoryMock.get.mockRejectedValue(new Error("read still failed"));
+        repositoryMock.upsertCandidate.mockRejectedValue(new Error("write still failed"));
+        const rxNostr = createRxNostrWithoutProfile();
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toEqual(temporaryProfile);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "hit",
+            persistence: "temporary",
+            profile: expect.objectContaining({ name: "Still temporary" }),
+        });
+    });
+
+    it("does not notify a newer DB profile before temporary re-upsert commits", async () => {
+        await createTemporaryEntry({ name: "Temporary 100", createdAt: 100 });
+        const dbProfile = createProfile({
+            name: "Database 200",
+            fetchedAt: 900_000,
+            updatedAtFromEvent: 200,
+        });
+        const deferred = createDeferred<ProfileUpsertResult>();
+        let receivedCandidate: ProfileEventCandidate | null = null;
+        repositoryMock.get.mockResolvedValue(dbProfile);
+        repositoryMock.upsertCandidate.mockImplementation(
+            async (_pubkey: string, candidate: ProfileEventCandidate) => {
+                receivedCandidate = candidate;
+                return deferred.promise;
+            },
+        );
+        const rxNostr = createRxNostrWithoutProfile();
+        const seen: string[] = [];
+        const unsubscribe = profileMetadataCache.subscribe(pubkey, (profile) => {
+            if (profile) seen.push(profile.name);
+        });
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(receivedCandidate).not.toBeNull();
+        expect(seen).toEqual(["Temporary 100"]);
+        expect(rxNostr.use).not.toHaveBeenCalled();
+
+        deferred.resolve(createUpsertResult(
+            receivedCandidate!,
+            "rejected-older",
+            dbProfile,
+        ));
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toEqual(dbProfile);
+        expect(seen).toEqual(["Temporary 100", "Database 200"]);
+        unsubscribe();
     });
 
     it("passes all relays that observed the selected event to the repository", async () => {

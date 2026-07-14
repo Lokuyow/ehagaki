@@ -136,11 +136,19 @@ function resolveProfileFetchedAtMs(profile: ProfileData, fallback: number): numb
         : fallback;
 }
 
-function setEntry(pubkey: string, entry: ProfileMetadataCacheEntry): void {
+function setEntry(
+    pubkey: string,
+    entry: ProfileMetadataCacheEntry,
+    notifySubscribers = true,
+): void {
     entriesByPubkey = {
         ...entriesByPubkey,
         [pubkey]: entry,
     };
+
+    if (!notifySubscribers) {
+        return;
+    }
 
     const subscribers = subscribersByPubkey.get(pubkey);
     if (!subscribers || subscribers.size === 0) {
@@ -181,6 +189,7 @@ function setProfileEntry(params: {
     sourceRelay: string | null;
     fetchedAtMs?: number;
     persistence?: "persisted" | "temporary";
+    notifySubscribers?: boolean;
 }): void {
     const now = nowMs();
     const fetchedAtMs = params.fetchedAtMs ?? now;
@@ -207,7 +216,23 @@ function setProfileEntry(params: {
         sourceRelay: params.sourceRelay,
         lastValidatedAtMs: fetchedAtMs,
         persistence: params.persistence ?? "persisted",
-    });
+    }, params.notifySubscribers ?? true);
+}
+
+function areDisplayedProfilesEqual(left: ProfileData | null, right: ProfileData): boolean {
+    if (!left) {
+        return false;
+    }
+
+    const leftRelays = left.profileRelays ?? [];
+    const rightRelays = right.profileRelays ?? [];
+    return left.name === right.name
+        && left.displayName === right.displayName
+        && left.picture === right.picture
+        && left.npub === right.npub
+        && left.nprofile === right.nprofile
+        && leftRelays.length === rightRelays.length
+        && leftRelays.every((relay, index) => relay === rightRelays[index]);
 }
 
 function resolveExistingSnapshot(
@@ -240,8 +265,11 @@ function restoreSnapshotEntry(pubkey: string, snapshot: ProfileData): ProfileDat
 
 function applyAcceptedProfile(
     pubkey: string,
-    networkResult: BatchNetworkResult,
     upsertResult: ProfileUpsertResult,
+    observation: Pick<
+        ProfileMetadataCacheEntry,
+        "metadataRaw" | "sourceEventId" | "sourceRelay"
+    >,
 ): ProfileData | null {
     const acceptedProfile = upsertResult.acceptedProfile;
     if (!acceptedProfile) {
@@ -250,29 +278,100 @@ function applyAcceptedProfile(
 
     const current = entriesByPubkey[pubkey];
     const acceptedRecord = upsertResult.acceptedRecord;
-    const reusesCurrentObservation = !upsertResult.currentEventConfirmed
-        && !!current?.sourceEventId
-        && current.sourceEventId === acceptedRecord?.sourceEventId;
+    const observationMatchesAccepted = !!observation.sourceEventId
+        && observation.sourceEventId === acceptedRecord?.sourceEventId;
+    const canReuseObservation = upsertResult.currentEventConfirmed
+        || observationMatchesAccepted;
+    const fetchedAtMs = acceptedRecord?.fetchedAt
+        ?? resolveProfileFetchedAtMs(acceptedProfile, nowMs());
+    const normalizedAcceptedProfile: ProfileData = {
+        ...acceptedProfile,
+        fetchedAt: acceptedProfile.fetchedAt ?? fetchedAtMs,
+        updatedAtFromEvent: acceptedRecord?.updatedAtFromEvent
+            ?? acceptedProfile.updatedAtFromEvent,
+    };
 
     setProfileEntry({
         pubkey,
-        profile: acceptedProfile,
-        metadataRaw: upsertResult.currentEventConfirmed
-            ? networkResult.metadataRaw
-            : reusesCurrentObservation ? current?.metadataRaw ?? null : null,
+        profile: normalizedAcceptedProfile,
+        metadataRaw: canReuseObservation ? observation.metadataRaw : null,
         sourceEventCreatedAtSec: acceptedRecord?.updatedAtFromEvent
             ?? acceptedProfile.updatedAtFromEvent
             ?? null,
         sourceEventId: acceptedRecord?.sourceEventId
-            ?? (upsertResult.currentEventConfirmed ? networkResult.sourceEventId : null),
-        sourceRelay: upsertResult.currentEventConfirmed
-            ? networkResult.sourceRelay
-            : reusesCurrentObservation ? current?.sourceRelay ?? null : null,
-        fetchedAtMs: acceptedRecord?.fetchedAt
-            ?? resolveProfileFetchedAtMs(acceptedProfile, nowMs()),
+            ?? (canReuseObservation ? observation.sourceEventId : null),
+        sourceRelay: canReuseObservation ? observation.sourceRelay : null,
+        fetchedAtMs,
+        persistence: "persisted",
+        notifySubscribers: !areDisplayedProfilesEqual(current?.profile ?? null, normalizedAcceptedProfile),
     });
 
     return entriesByPubkey[pubkey]?.profile ?? acceptedProfile;
+}
+
+interface TemporaryEntryPersistenceResult {
+    profile: ProfileData | null;
+    acceptedRecord: ProfileUpsertResult["acceptedRecord"];
+    persistence: "persisted" | "temporary" | null;
+    dbError: boolean;
+}
+
+async function persistTemporaryEntryIfPossible(
+    pubkey: string,
+): Promise<TemporaryEntryPersistenceResult> {
+    const entry = entriesByPubkey[pubkey];
+    if (
+        entry?.persistence !== "temporary"
+        || !entry.profile
+        || !entry.sourceEventId
+        || entry.sourceEventCreatedAtSec === null
+    ) {
+        return {
+            profile: entry?.profile ?? null,
+            acceptedRecord: null,
+            persistence: entry?.persistence ?? null,
+            dbError: false,
+        };
+    }
+
+    try {
+        const observedRelays = sanitizeRelays([
+            ...(entry.profile.profileRelays ?? []),
+            ...(entry.sourceRelay ? [entry.sourceRelay] : []),
+        ]);
+        const upsertResult = await profilesRepository.upsertCandidate(pubkey, {
+            pubkeyHex: pubkey,
+            profile: entry.profile,
+            sourceEventId: entry.sourceEventId,
+            updatedAtFromEvent: entry.sourceEventCreatedAtSec,
+            observedRelays,
+            fetchedAt: entry.fetchedAtMs,
+        });
+
+        if (upsertResult.acceptedProfile && upsertResult.acceptedRecord) {
+            const profile = applyAcceptedProfile(pubkey, upsertResult, entry);
+            return {
+                profile,
+                acceptedRecord: upsertResult.acceptedRecord,
+                persistence: "persisted",
+                dbError: false,
+            };
+        }
+
+        return {
+            profile: entry.profile,
+            acceptedRecord: null,
+            persistence: "temporary",
+            dbError: false,
+        };
+    } catch {
+        return {
+            profile: entry.profile,
+            acceptedRecord: null,
+            persistence: "temporary",
+            dbError: true,
+        };
+    }
 }
 
 function setTemporaryNetworkProfile(
@@ -301,7 +400,11 @@ function setTemporaryNetworkProfile(
     return entriesByPubkey[pubkey]?.profile ?? temporaryProfile;
 }
 
-function markEntryStatus(pubkey: string, status: ProfileMetadataCacheStatus): void {
+function markEntryStatus(
+    pubkey: string,
+    status: ProfileMetadataCacheStatus,
+    notifySubscribers = true,
+): void {
     const current = entriesByPubkey[pubkey];
     if (!current) {
         return;
@@ -312,7 +415,7 @@ function markEntryStatus(pubkey: string, status: ProfileMetadataCacheStatus): vo
         ...current,
         status,
         lastValidatedAtMs: now,
-    });
+    }, notifySubscribers);
 }
 
 function gcExpiredEntries(): void {
@@ -597,7 +700,7 @@ async function flushPendingBatch(): Promise<void> {
                             observedRelays: result.observedRelays,
                             fetchedAt: resolveProfileFetchedAtMs(result.profile, nowMs()),
                         });
-                        const acceptedProfile = applyAcceptedProfile(pubkey, result, upsertResult);
+                        const acceptedProfile = applyAcceptedProfile(pubkey, upsertResult, result);
                         for (const request of requests) {
                             request.resolve(acceptedProfile);
                         }
@@ -691,7 +794,10 @@ async function ensureFreshProfile(
             // A network candidate can still be exposed temporarily when no snapshot exists.
         }
 
-        const existingSnapshot = entriesByPubkey[pubkey]?.profile ?? persistedProfile;
+        const temporaryPersistence = await persistTemporaryEntryIfPossible(pubkey);
+        const existingSnapshot = temporaryPersistence.profile
+            ?? entriesByPubkey[pubkey]?.profile
+            ?? persistedProfile;
         return enqueueBatchRequest(
             pubkey,
             options.rxNostr!,
@@ -720,7 +826,7 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
         if (entry.profile && entry.persistence === "temporary") {
             if (options.allowBackgroundRefresh !== false && options.rxNostr) {
                 void ensureFreshProfile(pubkey, options);
-                markEntryStatus(pubkey, "stale");
+                markEntryStatus(pubkey, "stale", false);
             }
             return entry.profile;
         }
