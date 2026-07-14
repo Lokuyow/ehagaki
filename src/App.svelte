@@ -4,6 +4,7 @@
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
   import type { RelayProfileService } from "./lib/relayProfileService";
+  import { createReplyQuoteProfileSyncController } from "./lib/replyQuoteProfileSync";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService, type PendingNip46AuthSession } from "./lib/authService";
   import { iframeMessageService } from "./lib/iframeMessageService";
@@ -1311,32 +1312,24 @@
   const showHeaderBalloonMessage = $derived(
     settingsStore.showMascot && settingsStore.showFlavorText,
   );
-  const replyNotificationProfileFetches = new Set<string>();
-
   $effect(() => {
-    const reply = replyQuoteState.value.reply;
-    const recipients = reply?.replyNotificationRecipients ?? [];
-    if (!reply || !relayProfileService) return;
+    const service = relayProfileService;
+    if (!service) return;
 
-    recipients.forEach((recipient) => {
-      if (recipient.displayName) return;
-      const key = `${reply.eventId}:${recipient.pubkey}`;
-      if (replyNotificationProfileFetches.has(key)) return;
-      replyNotificationProfileFetches.add(key);
-
-      void relayProfileService.fetchProfileRealtime(recipient.pubkey, {
-        additionalRelays: reply.relayHints,
-      }).then((profile) => {
-        const displayName = profile?.displayName || profile?.name;
-        if (displayName) {
-          updateReplyNotificationRecipientDisplayName(
-            reply.eventId,
-            recipient.pubkey,
-            displayName,
-          );
-        }
-      });
+    const controller = createReplyQuoteProfileSyncController({
+      relayProfileService: service,
+      updateAuthorDisplayName,
+      updateReplyNotificationRecipientDisplayName,
+      logger: console,
     });
+    const sync = () => controller.sync(replyQuoteState.value);
+    const unsubscribeReplyQuoteChanges = onReplyQuoteChanged(sync);
+    sync();
+
+    return () => {
+      unsubscribeReplyQuoteChanges();
+      controller.dispose();
+    };
   });
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---

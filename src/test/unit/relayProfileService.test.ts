@@ -201,7 +201,7 @@ describe('RelayProfileService', () => {
     });
 
     describe('fetchProfileRealtime', () => {
-        it('relay hint を既存のプロフィール取得リレーにマージして network-only 取得する', async () => {
+        it('relay hint を既存のプロフィール取得リレーにマージしてSWR取得する', async () => {
             getProfileSpy.mockResolvedValue({
                 name: 'Realtime User',
                 displayName: 'Realtime User',
@@ -220,8 +220,8 @@ describe('RelayProfileService', () => {
 
             expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
                 rxNostr: mockRxNostr,
-                forceRefresh: true,
-                allowBackgroundRefresh: false,
+                forceRefresh: false,
+                allowBackgroundRefresh: true,
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
             });
@@ -250,11 +250,24 @@ describe('RelayProfileService', () => {
 
             expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
                 rxNostr: mockRxNostr,
-                forceRefresh: true,
-                allowBackgroundRefresh: false,
+                forceRefresh: false,
+                allowBackgroundRefresh: true,
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
             });
+        });
+
+        it('共通プロフィールキャッシュの更新を購読する', () => {
+            const callback = vi.fn();
+            const unsubscribe = vi.fn();
+            const subscribeSpy = vi.spyOn(profileMetadataCache, 'subscribe')
+                .mockReturnValue(unsubscribe);
+
+            const result = service.subscribeProfile('pubkey123', callback);
+
+            expect(subscribeSpy).toHaveBeenCalledWith('pubkey123', callback);
+            expect(result).toBe(unsubscribe);
+            subscribeSpy.mockRestore();
         });
     });
 

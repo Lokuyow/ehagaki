@@ -94,8 +94,8 @@ export class RelayProfileService {
     }
 
     /**
-     * プロフィールを逐次取得（キャッシュ参照・保存なし）
-     * リプライ/引用プレビュー用
+     * リプライ/引用プレビュー用のstale-while-revalidate取得。
+     * 保存済みプロフィールを即時返し、staleなら共通キャッシュで更新する。
      */
     async fetchProfileRealtime(
         pubkeyHex: string,
@@ -116,14 +116,21 @@ export class RelayProfileService {
 
         return profileMetadataCache.getProfile(pubkeyHex, {
             rxNostr: this.rxNostr as never,
-            forceRefresh: true,
-            allowBackgroundRefresh: false,
+            forceRefresh: false,
+            allowBackgroundRefresh: true,
             writeRelays: relayLists.writeRelays,
             additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
             ...(relayLists.fallbackRelays?.length
                 ? { fallbackRelays: relayLists.fallbackRelays }
                 : {}),
         });
+    }
+
+    subscribeProfile(
+        pubkeyHex: string,
+        callback: (profile: ProfileData | null) => void,
+    ): () => void {
+        return profileMetadataCache.subscribe(pubkeyHex, callback);
     }
 
     /**
