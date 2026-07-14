@@ -78,14 +78,18 @@ export class RelayProfileService {
         if (!pubkeyHex) return null;
 
         // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
-        const { writeRelays, additionalRelays } = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
 
         return profileMetadataCache.getProfile(pubkeyHex, {
             rxNostr: this.rxNostr as never,
             forceRefresh: forceRemote,
             allowBackgroundRefresh: false,
-            writeRelays,
-            additionalRelays,
+            writeRelays: relayLists.writeRelays,
+            additionalRelays: contextualRelays,
+            ...(relayLists.fallbackRelays?.length
+                ? { fallbackRelays: relayLists.fallbackRelays }
+                : {}),
         });
     }
 
@@ -101,20 +105,24 @@ export class RelayProfileService {
     ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        const { writeRelays, additionalRelays } = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const relayLists = await this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
         const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
             limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
         });
         const mergedAdditionalRelays = sanitizedOptionRelays.length
-            ? RelayConfigUtils.mergeRelayConfigs(additionalRelays, sanitizedOptionRelays)
-            : additionalRelays;
+            ? RelayConfigUtils.mergeRelayConfigs(contextualRelays, sanitizedOptionRelays)
+            : contextualRelays;
 
         return profileMetadataCache.getProfile(pubkeyHex, {
             rxNostr: this.rxNostr as never,
             forceRefresh: true,
             allowBackgroundRefresh: false,
-            writeRelays,
+            writeRelays: relayLists.writeRelays,
             additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
+            ...(relayLists.fallbackRelays?.length
+                ? { fallbackRelays: relayLists.fallbackRelays }
+                : {}),
         });
     }
 

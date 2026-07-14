@@ -178,6 +178,26 @@ describe('RelayProfileService', () => {
                 additionalRelays: ['wss://write.relay.com/', 'wss://read.relay.com/']
             });
         });
+
+        it('source付き分類をcontextualとfallbackのままcacheへ渡す', async () => {
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://legacy-merged.example.com/'],
+                contextualRelays: ['wss://context.example.com/'],
+                fallbackRelays: ['wss://source-fallback.example.com/'],
+            });
+
+            await service.fetchProfile('pubkey123');
+
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
+                rxNostr: mockRxNostr,
+                forceRefresh: false,
+                allowBackgroundRefresh: false,
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://context.example.com/'],
+                fallbackRelays: ['wss://source-fallback.example.com/'],
+            });
+        });
     });
 
     describe('fetchProfileRealtime', () => {

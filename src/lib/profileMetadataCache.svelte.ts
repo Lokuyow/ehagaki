@@ -1,7 +1,11 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { filter } from "rxjs";
 import { addProfilePictureMarker } from "./profilePictureUrlUtils";
-import { buildProfileRelayTiers } from "./profileRelayTiers";
+import {
+    buildProfileRelayTiers,
+    groupPubkeysByRelaySet,
+    type ProfileRelayRequestGroup,
+} from "./profileRelayTiers";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     profilesRepository,
@@ -52,6 +56,7 @@ export interface ProfileMetadataCacheEntry {
 interface GetProfileOptions {
     rxNostr?: RxNostr;
     additionalRelays?: string[];
+    fallbackRelays?: string[];
     writeRelays?: string[];
     forceRefresh?: boolean;
     allowBackgroundRefresh?: boolean;
@@ -60,6 +65,7 @@ interface GetProfileOptions {
 interface GetProfilesOptions {
     rxNostr?: RxNostr;
     additionalRelays?: string[];
+    fallbackRelays?: string[];
     writeRelays?: string[];
     forceRefresh?: boolean;
     allowBackgroundRefresh?: boolean;
@@ -69,6 +75,7 @@ interface PendingBatchRequest {
     rxNostr: RxNostr;
     pubkey: string;
     relays: string[];
+    fallbackRelays: string[];
     writeRelays: string[];
     existingSnapshot: ProfileData | null;
     resolve: (profile: ProfileData | null) => void;
@@ -84,6 +91,7 @@ interface BatchNetworkResult {
     observedRelays: string[];
     rejectedFutureTimestamp: boolean;
     parseError: boolean;
+    networkError: boolean;
 }
 
 let entriesByPubkey = $state.raw<Record<string, ProfileMetadataCacheEntry>>({});
@@ -472,6 +480,7 @@ async function fetchBatchFromNetwork(
     pubkeys: string[],
     relayHints: string[],
     writeRelaysByPubkey: Record<string, string[]>,
+    timeoutMs: number,
 ): Promise<Record<string, BatchNetworkResult>> {
     const authors = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     const results: Record<string, BatchNetworkResult> = {};
@@ -486,6 +495,7 @@ async function fetchBatchFromNetwork(
             observedRelays: [],
             rejectedFutureTimestamp: false,
             parseError: false,
+            networkError: false,
         };
     }
 
@@ -509,7 +519,16 @@ async function fetchBatchFromNetwork(
 
         const timeoutId = setTimeout(() => {
             done();
-        }, PROFILE_CACHE_BATCH_TIMEOUT_MS);
+        }, Math.max(1, timeoutMs));
+
+        const markNetworkError = () => {
+            for (const pubkey of authors) {
+                results[pubkey] = {
+                    ...results[pubkey],
+                    networkError: true,
+                };
+            }
+        };
 
         const isValidTimestampPacket = (packet: { event?: { created_at?: number; pubkey?: string } }): boolean => {
             const createdAt = packet.event?.created_at;
@@ -531,17 +550,18 @@ async function fetchBatchFromNetwork(
             return allow;
         };
 
-        const source = rxNostr.use(
-            rxReq,
-            { on: { relays: relayHints } },
-        ) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
+        try {
+            const source = rxNostr.use(
+                rxReq,
+                { on: { relays: relayHints } },
+            ) as { pipe?: (op: unknown) => { subscribe: (observer: unknown) => { unsubscribe: () => void } }; subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
-        const stream = typeof source.pipe === "function"
-            // Upstream guard: reject bogus future kind:0 events before latest-selection.
-            ? source.pipe(filter(isValidTimestampPacket))
-            : source;
+            const stream = typeof source.pipe === "function"
+                // Upstream guard: reject bogus future kind:0 events before latest-selection.
+                ? source.pipe(filter(isValidTimestampPacket))
+                : source;
 
-        subscription = stream.subscribe({
+            subscription = stream.subscribe({
                 next: (packet: { event?: { id?: string; pubkey?: string; kind?: number; content?: string; created_at?: number }; from?: string }) => {
                     if (!isValidTimestampPacket(packet)) {
                         return;
@@ -610,6 +630,7 @@ async function fetchBatchFromNetwork(
                         observedRelays: relay ? [relay] : [],
                         rejectedFutureTimestamp: false,
                         parseError: false,
+                        networkError: false,
                     };
                 },
                 complete: () => {
@@ -617,28 +638,40 @@ async function fetchBatchFromNetwork(
                     done();
                 },
                 error: () => {
+                    markNetworkError();
                     clearTimeout(timeoutId);
                     done();
                 },
             });
 
-        rxReq.emit({
-            kinds: [0],
-            authors,
-            until: nowSec() + ALLOWED_FUTURE_MARGIN_SEC,
-            limit: Math.max(24, authors.length * 4),
-        } as never);
-        rxReq.over();
+            rxReq.emit({
+                kinds: [0],
+                authors,
+                until: nowSec() + ALLOWED_FUTURE_MARGIN_SEC,
+                limit: Math.max(24, authors.length * 4),
+            } as never);
+            rxReq.over();
+        } catch {
+            markNetworkError();
+            clearTimeout(timeoutId);
+            done();
+        }
     });
 
     return results;
 }
 
-interface ProfileTierResolution {
+export type ProfileTierStopReason =
+    | "current-event-confirmed"
+    | "persistence-unavailable"
+    | null;
+
+export interface ProfileTierResolution {
     profile: ProfileData | null;
-    terminal: boolean;
+    stopReason: ProfileTierStopReason;
     parseError: boolean;
     rejectedFutureTimestamp: boolean;
+    networkError: boolean;
 }
 
 async function applyTierNetworkResult(
@@ -663,9 +696,12 @@ async function applyTierNetworkResult(
             const acceptedProfile = applyAcceptedProfile(pubkey, upsertResult, result);
             return {
                 profile: acceptedProfile,
-                terminal: upsertResult.currentEventConfirmed && acceptedProfile !== null,
+                stopReason: upsertResult.currentEventConfirmed && acceptedProfile !== null
+                    ? "current-event-confirmed"
+                    : null,
                 parseError: false,
                 rejectedFutureTimestamp: false,
+                networkError: false,
             };
         } catch {
             const snapshot = resolveExistingSnapshot(pubkey, requests);
@@ -673,18 +709,20 @@ async function applyTierNetworkResult(
                 profile: snapshot
                     ? restoreSnapshotEntry(pubkey, snapshot)
                     : setTemporaryNetworkProfile(pubkey, result),
-                terminal: true,
+                stopReason: "persistence-unavailable",
                 parseError: false,
                 rejectedFutureTimestamp: false,
+                networkError: false,
             };
         }
     }
 
     return {
         profile: resolveExistingSnapshot(pubkey, requests),
-        terminal: false,
+        stopReason: null,
         parseError: result.parseError,
         rejectedFutureTimestamp: result.rejectedFutureTimestamp,
+        networkError: result.networkError,
     };
 }
 
@@ -708,6 +746,7 @@ async function flushPendingBatch(): Promise<void> {
         const groupedByPubkey = new Map<string, PendingBatchRequest[]>();
         const writeRelaysByPubkey: Record<string, string[]> = {};
         const contextualRelaysByPubkey: Record<string, string[]> = {};
+        const fallbackRelaysByPubkey: Record<string, string[]> = {};
 
         for (const request of rxBatch) {
             const current = groupedByPubkey.get(request.pubkey) ?? [];
@@ -717,6 +756,10 @@ async function flushPendingBatch(): Promise<void> {
             contextualRelaysByPubkey[request.pubkey] = sanitizeRelays([
                 ...(contextualRelaysByPubkey[request.pubkey] ?? []),
                 ...request.relays,
+            ]);
+            fallbackRelaysByPubkey[request.pubkey] = sanitizeRelays([
+                ...(fallbackRelaysByPubkey[request.pubkey] ?? []),
+                ...request.fallbackRelays,
             ]);
 
             const mergedWriteRelays = new Set([
@@ -729,79 +772,85 @@ async function flushPendingBatch(): Promise<void> {
         const pubkeys = Array.from(groupedByPubkey.keys());
         const tiersByPubkey = Object.fromEntries(pubkeys.map((pubkey) => [
             pubkey,
-            buildProfileRelayTiers(
-                contextualRelaysByPubkey[pubkey] ?? [],
-                PROFILE_CACHE_MAX_RELAYS,
-            ),
+            buildProfileRelayTiers({
+                contextualRelays: contextualRelaysByPubkey[pubkey] ?? [],
+                fallbackRelays: fallbackRelaysByPubkey[pubkey] ?? [],
+                contextualRelayLimit: PROFILE_CACHE_MAX_RELAYS,
+            }),
         ]));
-        const commonTiers = buildProfileRelayTiers([], PROFILE_CACHE_MAX_RELAYS);
+        const commonTiers = buildProfileRelayTiers({
+            contextualRelays: [],
+            contextualRelayLimit: PROFILE_CACHE_MAX_RELAYS,
+        });
         const unresolvedPubkeys = new Set(pubkeys);
         const resolvedProfiles: Record<string, ProfileData | null> = {};
         const parseErrors = new Set<string>();
         const rejectedFutureTimestamps = new Set<string>();
-        const tiers: Array<{
-            name: "bootstrap" | "contextual" | "fallback";
-            relaysFor: (targets: string[]) => string[];
-        }> = [
-            {
-                name: "bootstrap",
-                relaysFor: () => commonTiers.bootstrap,
-            },
-            {
-                name: "contextual",
-                relaysFor: (targets) => sanitizeRelays(targets.flatMap(
-                    (pubkey) => tiersByPubkey[pubkey].contextual,
-                )),
-            },
-            {
-                name: "fallback",
-                relaysFor: () => commonTiers.fallback,
-            },
-        ];
+        const networkErrors = new Set<string>();
+        const deadlineAtMs = nowMs() + PROFILE_CACHE_BATCH_TIMEOUT_MS;
+        const tierNames = ["bootstrap", "contextual", "fallback"] as const;
+
+        const getRelayGroups = (
+            tierName: typeof tierNames[number],
+            targets: string[],
+        ): ProfileRelayRequestGroup[] => {
+            if (tierName === "bootstrap") {
+                return commonTiers.bootstrap.length > 0
+                    ? [{ relays: commonTiers.bootstrap, pubkeys: targets }]
+                    : [];
+            }
+
+            const relaysByPubkey = Object.fromEntries(targets.map((pubkey) => [
+                pubkey,
+                tiersByPubkey[pubkey][tierName],
+            ]));
+            return groupPubkeysByRelaySet(targets, relaysByPubkey);
+        };
 
         try {
-            for (const tier of tiers) {
-                const targets = Array.from(unresolvedPubkeys).filter((pubkey) => (
-                    tier.name !== "contextual"
-                    || tiersByPubkey[pubkey].contextual.length > 0
-                ));
-                if (targets.length === 0) {
-                    continue;
-                }
+            tierLoop: for (const tierName of tierNames) {
+                const targets = Array.from(unresolvedPubkeys);
+                const groups = getRelayGroups(tierName, targets);
 
-                const relays = tier.relaysFor(targets);
-                if (relays.length === 0) {
-                    continue;
-                }
+                for (const group of groups) {
+                    const remainingMs = deadlineAtMs - nowMs();
+                    if (remainingMs <= 0) {
+                        break tierLoop;
+                    }
 
-                let results: Record<string, BatchNetworkResult>;
-                try {
-                    results = await fetchBatchFromNetwork(
+                    const activeTargets = group.pubkeys.filter((pubkey) => unresolvedPubkeys.has(pubkey));
+                    if (activeTargets.length === 0) {
+                        continue;
+                    }
+
+                    const results = await fetchBatchFromNetwork(
                         rxBatch[0].rxNostr,
-                        targets,
-                        relays,
+                        activeTargets,
+                        group.relays,
                         writeRelaysByPubkey,
+                        remainingMs,
                     );
-                } catch {
-                    continue;
-                }
 
-                for (const pubkey of targets) {
-                    const requests = groupedByPubkey.get(pubkey) ?? [];
-                    const resolution = await applyTierNetworkResult(
-                        pubkey,
-                        results[pubkey],
-                        requests,
-                    );
-                    resolvedProfiles[pubkey] = resolution.profile;
-                    if (resolution.parseError) {
-                        parseErrors.add(pubkey);
-                    }
-                    if (resolution.rejectedFutureTimestamp) {
-                        rejectedFutureTimestamps.add(pubkey);
-                    }
-                    if (resolution.terminal) {
-                        unresolvedPubkeys.delete(pubkey);
+                    for (const pubkey of activeTargets) {
+                        const requests = groupedByPubkey.get(pubkey) ?? [];
+                        const resolution = await applyTierNetworkResult(
+                            pubkey,
+                            results[pubkey],
+                            requests,
+                        );
+                        resolvedProfiles[pubkey] = resolution.profile;
+                        if (resolution.parseError) {
+                            parseErrors.add(pubkey);
+                        }
+                        if (resolution.rejectedFutureTimestamp) {
+                            rejectedFutureTimestamps.add(pubkey);
+                        }
+                        if (resolution.networkError) {
+                            networkErrors.add(pubkey);
+                        }
+                        if (resolution.stopReason !== null) {
+                            unresolvedPubkeys.delete(pubkey);
+                        }
                     }
                 }
             }
@@ -813,6 +862,8 @@ async function flushPendingBatch(): Promise<void> {
                     markEntryStatus(pubkey, "parse-error");
                 } else if (rejectedFutureTimestamps.has(pubkey)) {
                     markEntryStatus(pubkey, "invalid-future-ts");
+                } else if (!snapshot && networkErrors.has(pubkey)) {
+                    setNegativeEntry(pubkey);
                 } else if (!snapshot) {
                     setNegativeEntry(pubkey);
                 }
@@ -826,15 +877,14 @@ async function flushPendingBatch(): Promise<void> {
                     request.resolve(resolvedProfiles[pubkey] ?? null);
                 }
             }
-        } catch (error) {
+        } catch {
             for (const [pubkey, requests] of groupedByPubkey.entries()) {
                 const snapshot = resolveExistingSnapshot(pubkey, requests);
+                if (!snapshot) {
+                    setNegativeEntry(pubkey);
+                }
                 for (const request of requests) {
-                    if (snapshot) {
-                        request.resolve(restoreSnapshotEntry(pubkey, snapshot));
-                    } else {
-                        request.reject(error);
-                    }
+                    request.resolve(snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null);
                 }
             }
         }
@@ -845,6 +895,7 @@ function enqueueBatchRequest(
     pubkey: string,
     rxNostr: RxNostr,
     relays: string[],
+    fallbackRelays: string[],
     writeRelays: string[],
     existingSnapshot: ProfileData | null,
 ): Promise<ProfileData | null> {
@@ -853,6 +904,7 @@ function enqueueBatchRequest(
             rxNostr,
             pubkey,
             relays: [...relays],
+            fallbackRelays: [...fallbackRelays],
             writeRelays: [...writeRelays],
             existingSnapshot,
             resolve,
@@ -898,6 +950,7 @@ async function ensureFreshProfile(
             pubkey,
             options.rxNostr!,
             sanitizeRelays(options.additionalRelays ?? []),
+            sanitizeRelays(options.fallbackRelays ?? []),
             sanitizeRelays(options.writeRelays ?? []),
             existingSnapshot,
         );
@@ -948,6 +1001,7 @@ async function getProfile(pubkey: string, options: GetProfileOptions = {}): Prom
                     ...(options.additionalRelays ?? []),
                     ...cachedProfileRelays,
                 ]),
+                fallbackRelays: options.fallbackRelays,
             };
             const cachedFetchedAtMs = resolveProfileFetchedAtMs(cachedProfile, now);
 
@@ -991,6 +1045,7 @@ async function getProfiles(
             const profile = await getProfile(pubkey, {
                 rxNostr: options.rxNostr,
                 additionalRelays: options.additionalRelays,
+                fallbackRelays: options.fallbackRelays,
                 writeRelays: options.writeRelays,
                 forceRefresh: options.forceRefresh,
                 allowBackgroundRefresh: options.allowBackgroundRefresh,
@@ -1050,8 +1105,10 @@ export const profileMetadataCache = {
 
 export const profileMetadataCacheInternals = {
     ALLOWED_FUTURE_MARGIN_SEC,
+    PROFILE_CACHE_BATCH_TIMEOUT_MS,
     PROFILE_CACHE_NEGATIVE_TTL_MS,
     PROFILE_CACHE_STALE_MS,
     PROFILE_CACHE_GC_MS,
+    applyTierNetworkResult,
     resetForTests,
 };

@@ -7,18 +7,59 @@ export interface ProfileRelayTiers {
     fallback: string[];
 }
 
+export interface ProfileRelayTierInput {
+    contextualRelays: string[];
+    fallbackRelays?: string[];
+    contextualRelayLimit: number;
+}
+
+export interface ProfileRelayRequestGroup {
+    relays: string[];
+    pubkeys: string[];
+}
+
 export function buildProfileRelayTiers(
-    contextualRelays: string[],
-    contextualRelayLimit: number,
+    input: ProfileRelayTierInput,
 ): ProfileRelayTiers {
     const bootstrap = RelayConfigUtils.sanitizeExternalRelayUrls(BOOTSTRAP_RELAYS);
     const bootstrapSet = new Set(bootstrap);
-    const fallback = RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS)
-        .filter((relay) => !bootstrapSet.has(relay));
-    const reservedRelays = new Set([...bootstrap, ...fallback]);
-    const contextual = RelayConfigUtils.sanitizeExternalRelayUrls(contextualRelays)
-        .filter((relay) => !reservedRelays.has(relay))
-        .slice(0, contextualRelayLimit);
+    const contextual = RelayConfigUtils.sanitizeExternalRelayUrls(input.contextualRelays)
+        .filter((relay) => !bootstrapSet.has(relay))
+        .sort((left, right) => left.localeCompare(right))
+        .slice(0, input.contextualRelayLimit);
+    const contextualSet = new Set(contextual);
+    const fallback = RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...FALLBACK_RELAYS,
+        ...(input.fallbackRelays ?? []),
+    ]).filter((relay) => !bootstrapSet.has(relay) && !contextualSet.has(relay));
 
     return { bootstrap, contextual, fallback };
+}
+
+export function groupPubkeysByRelaySet(
+    pubkeys: string[],
+    relaysByPubkey: Readonly<Record<string, string[]>>,
+): ProfileRelayRequestGroup[] {
+    const groups = new Map<string, ProfileRelayRequestGroup>();
+
+    for (const pubkey of pubkeys) {
+        const relays = RelayConfigUtils.sanitizeExternalRelayUrls(relaysByPubkey[pubkey])
+            .sort((left, right) => left.localeCompare(right));
+        if (relays.length === 0) {
+            continue;
+        }
+
+        const key = JSON.stringify(relays);
+        const group = groups.get(key);
+        if (group) {
+            group.pubkeys.push(pubkey);
+        } else {
+            groups.set(key, {
+                relays: [...relays],
+                pubkeys: [pubkey],
+            });
+        }
+    }
+
+    return Array.from(groups.values());
 }

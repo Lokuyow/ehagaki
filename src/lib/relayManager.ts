@@ -3,7 +3,12 @@ import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
-import { DexieRelayConfigsRepository, relayConfigsRepository, type RelayConfigsRepository } from "./storage/relayConfigsRepository";
+import {
+    DexieRelayConfigsRepository,
+    relayConfigsRepository,
+    type RelayConfigCache,
+    type RelayConfigsRepository,
+} from "./storage/relayConfigsRepository";
 
 // 後方互換性のためre-export
 export { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
@@ -74,9 +79,13 @@ export class RelayStorage {
     }
 
     async get(pubkeyHex: string): Promise<RelayConfig | null> {
+        const cache = await this.getCache(pubkeyHex);
+        return cache?.config ?? null;
+    }
+
+    async getCache(pubkeyHex: string): Promise<RelayConfigCache | null> {
         try {
-            const relays = await this.repository.get(pubkeyHex);
-            return relays?.config ?? null;
+            return await this.repository.get(pubkeyHex);
         } catch (e) {
             this.console.error("リレーリストの取得に失敗:", e);
             return null;
@@ -437,10 +446,15 @@ export class RelayManager {
     ): Promise<{
         writeRelays: string[];
         additionalRelays: string[];
+        contextualRelays?: string[];
+        fallbackRelays?: string[];
     }> {
-        const relayConfig = await this.storage.get(pubkeyHex);
+        const relayCache = await this.storage.getCache(pubkeyHex);
+        const relayConfig = relayCache?.config ?? null;
         let writeRelays: string[] = [];
         let additionalRelays: string[] = [];
+        let contextualRelays: string[] = [];
+        let fallbackRelays: string[] = [];
 
         if (relayConfig) {
             // writeリレーのみ抽出
@@ -448,12 +462,23 @@ export class RelayManager {
 
             // リレーリストとBOOTSTRAP_RELAYSをマージしてkind:0取得用リレーリストを作成
             additionalRelays = RelayConfigUtils.mergeRelayConfigs(relayConfig, bootstrapRelays);
+            const storedRelays = RelayConfigUtils.mergeRelayConfigs(relayConfig);
+            if (relayCache?.source === 'fallback') {
+                fallbackRelays = storedRelays;
+            } else {
+                contextualRelays = storedRelays;
+            }
         } else {
             // リレーデータがない場合はBOOTSTRAP_RELAYSのみ使用
             additionalRelays = bootstrapRelays.map(url => RelayConfigUtils.normalizeRelayUrl(url));
         }
 
-        return { writeRelays, additionalRelays };
+        return {
+            writeRelays,
+            additionalRelays,
+            contextualRelays,
+            fallbackRelays,
+        };
     }
 
     // テスト用の内部コンポーネントへのアクセス

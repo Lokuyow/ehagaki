@@ -240,6 +240,17 @@ describe('RelayStorage', () => {
             expect(result).toBeNull();
         });
 
+        it('内部向けgetCacheでは設定のsourceも返す', async () => {
+            const config: RelayConfig = ['wss://relay.example.com'];
+            await storage.save('source-pubkey', config, { source: 'kind10002' });
+
+            await expect(storage.getCache('source-pubkey')).resolves.toMatchObject({
+                config,
+                source: 'kind10002',
+            });
+            await expect(storage.get('source-pubkey')).resolves.toEqual(config);
+        });
+
         it('無効なJSONに対してnullを返す', async () => {
             mockLocalStorage.setItem('nostr-relays-pubkey123', 'invalid json');
 
@@ -623,6 +634,32 @@ describe('RelayManager統合テスト', () => {
             expect((mockDeps.console?.log as any).mock.calls.some(
                 (call: any[]) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
             )).toBe(true);
+        });
+    });
+
+    describe('プロフィール取得用relay分類', () => {
+        it('kind10002由来は既知fallback URLでもcontextualとして返す', async () => {
+            const pubkey = 'profile-kind10002-pubkey';
+            await manager.getStorage().save(pubkey, [FALLBACK_RELAYS[0]], {
+                source: 'kind10002',
+            });
+
+            const result = await manager.getRelayListsForProfile(pubkey);
+
+            expect(result.contextualRelays).toEqual([FALLBACK_RELAYS[0]]);
+            expect(result.fallbackRelays).toEqual([]);
+        });
+
+        it('fallback由来は定数外URLでもfallbackとして返す', async () => {
+            const pubkey = 'profile-fallback-source-pubkey';
+            await manager.getStorage().save(pubkey, ['wss://custom-fallback.example.com'], {
+                source: 'fallback',
+            });
+
+            const result = await manager.getRelayListsForProfile(pubkey);
+
+            expect(result.contextualRelays).toEqual([]);
+            expect(result.fallbackRelays).toEqual(['wss://custom-fallback.example.com/']);
         });
     });
 

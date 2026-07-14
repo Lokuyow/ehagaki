@@ -163,6 +163,53 @@ function createTieredRxNostr(
     return { use, calls };
 }
 
+function createNonCompletingRxNostr() {
+    const calls: Array<{ relays: string[]; authors: string[] }> = [];
+    const use = vi.fn((rxReq: { emit: (filter: { authors?: string[] }) => void }, options: {
+        on: { relays: string[] };
+    }) => {
+        const call = {
+            relays: [...options.on.relays],
+            authors: [] as string[],
+        };
+        calls.push(call);
+        const originalEmit = rxReq.emit.bind(rxReq);
+        rxReq.emit = (filter) => {
+            call.authors = [...(filter.authors ?? [])];
+            originalEmit(filter);
+        };
+        return {
+            subscribe: () => ({ unsubscribe: vi.fn() }),
+        };
+    });
+    return { use, calls };
+}
+
+function createErroringRxNostr() {
+    const calls: Array<{ relays: string[]; authors: string[] }> = [];
+    const use = vi.fn((rxReq: { emit: (filter: { authors?: string[] }) => void }, options: {
+        on: { relays: string[] };
+    }) => {
+        const call = {
+            relays: [...options.on.relays],
+            authors: [] as string[],
+        };
+        calls.push(call);
+        const originalEmit = rxReq.emit.bind(rxReq);
+        rxReq.emit = (filter) => {
+            call.authors = [...(filter.authors ?? [])];
+            originalEmit(filter);
+        };
+        return {
+            subscribe: (observer: { error?: (error: Error) => void }) => {
+                queueMicrotask(() => observer.error?.(new Error("network failed")));
+                return { unsubscribe: vi.fn() };
+            },
+        };
+    });
+    return { use, calls };
+}
+
 function createUpsertResult(
     candidate: ProfileEventCandidate,
     decision: ProfileUpsertDecision = "replaced",
@@ -776,7 +823,7 @@ describe("profileMetadataCache", () => {
         expect(rxNostr.calls.map((call) => call.relays)).toEqual([
             BOOTSTRAP_RELAYS,
             [contextRelay],
-            FALLBACK_RELAYS,
+            [...FALLBACK_RELAYS].sort(),
         ]);
         expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
     });
@@ -828,6 +875,213 @@ describe("profileMetadataCache", () => {
         expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
     });
 
+    it("queries different contextual relay sets without leaking authors between them", async () => {
+        const relayA = "wss://a-context.example.com/";
+        const relayB = "wss://b-context.example.com/";
+        const rxNostr = createTieredRxNostr((relays) => {
+            if (relays.includes(relayA)) {
+                return [{ pubkey, content: { name: "A" }, createdAt: 100 }];
+            }
+            if (relays.includes(relayB)) {
+                return [{ pubkey: otherPubkey, content: { name: "B" }, createdAt: 100 }];
+            }
+            return [];
+        });
+
+        const pendingA = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [relayA],
+            forceRefresh: true,
+        });
+        const pendingB = profileMetadataCache.getProfile(otherPubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [relayB],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(Promise.all([pendingA, pendingB])).resolves.toMatchObject([
+            { name: "A" },
+            { name: "B" },
+        ]);
+        expect(rxNostr.calls).toEqual([
+            { relays: BOOTSTRAP_RELAYS, authors: [pubkey, otherPubkey] },
+            { relays: [relayA], authors: [pubkey] },
+            { relays: [relayB], authors: [otherPubkey] },
+        ]);
+    });
+
+    it("batches pubkeys that have the same contextual relay set", async () => {
+        const sharedRelay = "wss://shared-context.example.com/";
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(sharedRelay)
+                ? [
+                    { pubkey, content: { name: "A" }, createdAt: 100 },
+                    { pubkey: otherPubkey, content: { name: "B" }, createdAt: 100 },
+                ]
+                : []
+        ));
+
+        const pendingA = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [sharedRelay],
+            forceRefresh: true,
+        });
+        const pendingB = profileMetadataCache.getProfile(otherPubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [sharedRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await Promise.all([pendingA, pendingB]);
+
+        expect(rxNostr.calls).toEqual([
+            { relays: BOOTSTRAP_RELAYS, authors: [pubkey, otherPubkey] },
+            { relays: [sharedRelay], authors: [pubkey, otherPubkey] },
+        ]);
+    });
+
+    it("applies the contextual relay limit per pubkey instead of across the batch", async () => {
+        const relaysA = Array.from({ length: 12 }, (_, index) => `wss://a${index}.example.com/`);
+        const relaysB = Array.from({ length: 12 }, (_, index) => `wss://b${index}.example.com/`);
+        const rxNostr = createTieredRxNostr((relays) => {
+            if (relays.includes(relaysA[0])) {
+                return [{ pubkey, content: { name: "A" }, createdAt: 100 }];
+            }
+            if (relays.includes(relaysB[0])) {
+                return [{ pubkey: otherPubkey, content: { name: "B" }, createdAt: 100 }];
+            }
+            return [];
+        });
+
+        const pendingA = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: relaysA,
+            forceRefresh: true,
+        });
+        const pendingB = profileMetadataCache.getProfile(otherPubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: relaysB,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await Promise.all([pendingA, pendingB]);
+
+        expect(rxNostr.calls[1]).toMatchObject({ authors: [pubkey] });
+        expect(rxNostr.calls[1].relays).toHaveLength(12);
+        expect(rxNostr.calls[2]).toMatchObject({ authors: [otherPubkey] });
+        expect(rxNostr.calls[2].relays).toHaveLength(12);
+    });
+
+    it("stops after a persistence failure and preserves an existing snapshot", async () => {
+        const contextRelay = "wss://context.example.com/";
+        const snapshot = createProfile({ name: "Snapshot", updatedAtFromEvent: 90 });
+        repositoryMock.get.mockResolvedValue(snapshot);
+        repositoryMock.upsertCandidate.mockRejectedValue(new Error("db unavailable"));
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(BOOTSTRAP_RELAYS[0])
+                ? [{ content: { name: "Network" }, createdAt: 100 }]
+                : []
+        ));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [contextRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject(snapshot);
+        expect(rxNostr.calls).toHaveLength(1);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("persisted");
+    });
+
+    it("stops after a persistence failure and exposes a temporary profile without a snapshot", async () => {
+        const contextRelay = "wss://context.example.com/";
+        repositoryMock.upsertCandidate.mockRejectedValue(new Error("db unavailable"));
+        const rxNostr = createTieredRxNostr((relays) => (
+            relays.includes(BOOTSTRAP_RELAYS[0])
+                ? [{ content: { name: "Temporary" }, createdAt: 100 }]
+                : []
+        ));
+
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [contextRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toMatchObject({ name: "Temporary" });
+        expect(rxNostr.calls).toHaveLength(1);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)?.persistence).toBe("temporary");
+    });
+
+    it("returns persistence-unavailable as the explicit DB failure stop reason", async () => {
+        repositoryMock.upsertCandidate.mockRejectedValue(new Error("db unavailable"));
+        const profile = createProfile({ name: "Temporary" });
+
+        const resolution = await profileMetadataCacheInternals.applyTierNetworkResult(pubkey, {
+            profile,
+            metadataRaw: JSON.stringify({ name: "Temporary" }),
+            sourceEventCreatedAtSec: 100,
+            sourceEventId: eventId,
+            sourceRelay: BOOTSTRAP_RELAYS[0],
+            observedRelays: [BOOTSTRAP_RELAYS[0]],
+            rejectedFutureTimestamp: false,
+            parseError: false,
+            networkError: false,
+        }, []);
+
+        expect(resolution.stopReason).toBe("persistence-unavailable");
+    });
+
+    it("uses one four-second deadline for the whole tier search", async () => {
+        const contextRelay = "wss://context.example.com/";
+        const rxNostr = createNonCompletingRxNostr();
+        const startedAt = Date.now();
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [contextRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+
+        await expect(pending).resolves.toBeNull();
+        expect(Date.now() - startedAt).toBeLessThanOrEqual(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS + 31,
+        );
+        expect(rxNostr.calls).toEqual([{
+            relays: BOOTSTRAP_RELAYS,
+            authors: [pubkey],
+        }]);
+    });
+
+    it("fails soft after network errors in every tier", async () => {
+        const contextRelay = "wss://context.example.com/";
+        const rxNostr = createErroringRxNostr();
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            additionalRelays: [contextRelay],
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toBeNull();
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [contextRelay],
+            [...FALLBACK_RELAYS].sort(),
+        ]);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
+            status: "negative",
+            profile: null,
+        });
+    });
+
     it("creates a negative entry only after all available tiers miss", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createTieredRxNostr(() => []);
@@ -846,8 +1100,8 @@ describe("profileMetadataCache", () => {
         await expect(pending).resolves.toBeNull();
         expect(rxNostr.calls.map((call) => call.relays)).toEqual([
             BOOTSTRAP_RELAYS,
-            [contextRelay],
-            FALLBACK_RELAYS,
+            [contextRelay, FALLBACK_RELAYS[0]].sort(),
+            FALLBACK_RELAYS.slice(1).sort(),
         ]);
         expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
             status: "negative",
