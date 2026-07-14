@@ -18,7 +18,6 @@ import {
 } from "../utils/swCommunication";
 import { processExternalChannelContextQuery } from './externalChannelContextBootstrapUtils';
 import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
-import type { RelayProfileService } from "../relayProfileService";
 import type {
     ChannelContextQueryTarget,
     NostrEvent,
@@ -44,11 +43,8 @@ export interface RunExternalInputBootstrapParams {
     setChannelContext: (value: any) => void;
     setReplyQuote: (value: any) => void;
     updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
-    updateAuthorDisplayName: (eventId: string, name: string) => void;
     initializeReplyNotificationRecipients?: (eventId: string, event: NostrEvent) => void;
-    updateReplyNotificationRecipientDisplayName?: (eventId: string, pubkey: string, name: string) => void;
     setReplyQuoteError: (eventId: string, message: string) => void;
-    relayProfileService?: RelayProfileService;
     rxNostr?: any;
     relayConfig: any;
     locationHref: string;
@@ -122,25 +118,19 @@ async function bootstrapSharedMedia({
 }
 
 async function bootstrapReplyQuote({
-    relayProfileService,
     rxNostr,
     relayConfig,
     setReplyQuote,
     updateReferencedEvent,
-    updateAuthorDisplayName,
     initializeReplyNotificationRecipients,
-    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: Pick<
     RunExternalInputBootstrapParams,
-    | "relayProfileService"
     | "rxNostr"
     | "relayConfig"
     | "setReplyQuote"
     | "updateReferencedEvent"
-    | "updateAuthorDisplayName"
     | "initializeReplyNotificationRecipients"
-    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 >): Promise<void> {
     if (!hasReplyQuoteQueryParam()) {
@@ -154,14 +144,11 @@ async function bootstrapReplyQuote({
 
     await applyReplyQuoteQuery({
         replyQuoteQuery,
-        relayProfileService,
         rxNostr,
         relayConfig,
         setReplyQuote,
         updateReferencedEvent,
-        updateAuthorDisplayName,
         initializeReplyNotificationRecipients,
-        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 }
@@ -238,14 +225,11 @@ async function bootstrapChannelContext({
 
 export interface ApplyReplyQuoteQueryParams extends Pick<
     RunExternalInputBootstrapParams,
-    | "relayProfileService"
     | "rxNostr"
     | "relayConfig"
     | "setReplyQuote"
     | "updateReferencedEvent"
-    | "updateAuthorDisplayName"
     | "initializeReplyNotificationRecipients"
-    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 > {
     replyQuoteQuery: ReplyQuoteQueryResult;
@@ -290,13 +274,10 @@ function sanitizeReplyQuoteReferences(
 
 export interface HydrateReplyQuoteReferencesParams extends Pick<
     RunExternalInputBootstrapParams,
-    | "relayProfileService"
     | "rxNostr"
     | "relayConfig"
     | "updateReferencedEvent"
-    | "updateAuthorDisplayName"
     | "initializeReplyNotificationRecipients"
-    | "updateReplyNotificationRecipientDisplayName"
     | "setReplyQuoteError"
 > {
     references: ReplyQuoteQueryTarget[];
@@ -306,13 +287,10 @@ export interface HydrateReplyQuoteReferencesParams extends Pick<
 export async function hydrateReplyQuoteReferences({
     references,
     preloadedEvents = {},
-    relayProfileService,
     rxNostr,
     relayConfig,
     updateReferencedEvent,
-    updateAuthorDisplayName,
     initializeReplyNotificationRecipients,
-    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: HydrateReplyQuoteReferencesParams): Promise<void> {
     const sanitizedReferences = sanitizeReplyQuoteReferences(references);
@@ -331,13 +309,10 @@ export async function hydrateReplyQuoteReferences({
                 reference,
                 replyQuoteService: rqService,
                 initialEvent: preloadedEvents[reference.eventId],
-                relayProfileService,
                 rxNostr,
                 relayConfig,
                 updateReferencedEvent,
-                updateAuthorDisplayName,
                 initializeReplyNotificationRecipients,
-                updateReplyNotificationRecipientDisplayName,
                 setReplyQuoteError,
             }),
         ),
@@ -347,14 +322,11 @@ export async function hydrateReplyQuoteReferences({
 export async function applyReplyQuoteQuery({
     replyQuoteQuery,
     preloadedEvents = {},
-    relayProfileService,
     rxNostr,
     relayConfig,
     setReplyQuote,
     updateReferencedEvent,
-    updateAuthorDisplayName,
     initializeReplyNotificationRecipients,
-    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
 }: ApplyReplyQuoteQueryParams): Promise<void> {
     const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
@@ -373,13 +345,10 @@ export async function applyReplyQuoteQuery({
     await hydrateReplyQuoteReferences({
         references,
         preloadedEvents,
-        relayProfileService,
         rxNostr,
         relayConfig,
         updateReferencedEvent,
-        updateAuthorDisplayName,
         initializeReplyNotificationRecipients,
-        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 }
@@ -396,11 +365,8 @@ export async function runExternalInputBootstrap({
     setChannelContext,
     setReplyQuote,
     updateReferencedEvent,
-    updateAuthorDisplayName,
     initializeReplyNotificationRecipients,
-    updateReplyNotificationRecipientDisplayName,
     setReplyQuoteError,
-    relayProfileService,
     rxNostr,
     relayConfig,
     locationHref,
@@ -444,14 +410,11 @@ export async function runExternalInputBootstrap({
     });
 
     await bootstrapReplyQuote({
-        relayProfileService,
         rxNostr,
         relayConfig,
         setReplyQuote,
         updateReferencedEvent,
-        updateAuthorDisplayName,
         initializeReplyNotificationRecipients,
-        updateReplyNotificationRecipientDisplayName,
         setReplyQuoteError,
     });
 

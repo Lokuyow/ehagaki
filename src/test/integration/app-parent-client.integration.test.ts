@@ -399,7 +399,7 @@ describe('App parentClient integration', () => {
         expect(mockState.accountManager.setActiveAccount).not.toHaveBeenCalled();
     });
 
-    it('external input bootstrap params は認証後の最新 rxNostr と relayProfileService を返す', async () => {
+    it('external input bootstrap params は認証後の最新 rxNostr を返す', async () => {
         const latestSession = {
             rxNostr: { tag: 'latest-rxnostr' },
             relayProfileService: {
@@ -420,7 +420,7 @@ describe('App parentClient integration', () => {
         const externalInputParams = mockState.bootstrapParams?.getExternalInputBootstrapParams();
 
         expect(externalInputParams?.rxNostr).toEqual(latestSession.rxNostr);
-        expect(externalInputParams?.relayProfileService).toEqual(latestSession.relayProfileService);
+        expect(externalInputParams).not.toHaveProperty('relayProfileService');
     });
 
     it('remote login を受け取ると silent parentClient 認証を行って post-auth bootstrap する', async () => {
@@ -598,7 +598,6 @@ describe('App parentClient integration', () => {
                 expect.objectContaining({
                     replyQuoteQuery,
                     rxNostr: latestSession.rxNostr,
-                    relayProfileService: latestSession.relayProfileService,
                 }),
             );
         });
@@ -669,7 +668,6 @@ describe('App parentClient integration', () => {
             expect.objectContaining({
                 replyQuoteQuery,
                 rxNostr: latestSession.rxNostr,
-                relayProfileService: latestSession.relayProfileService,
             }),
         );
         expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(requestId);

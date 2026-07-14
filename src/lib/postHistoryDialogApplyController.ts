@@ -22,15 +22,13 @@ export interface PostHistoryDialogApplyControllerDependencies {
         ApplyChannelContextQueryParams,
         'rxNostr' | 'relayConfig' | 'setChannelContext'
     >;
-    getReplyQuoteApplyParams(): Pick<
-        ApplyReplyQuoteQueryParams,
-        | 'relayProfileService'
-        | 'rxNostr'
+      getReplyQuoteApplyParams(): Pick<
+          ApplyReplyQuoteQueryParams,
+          | 'rxNostr'
         | 'relayConfig'
         | 'setReplyQuote'
         | 'updateReferencedEvent'
-        | 'updateAuthorDisplayName'
-        | 'setReplyQuoteError'
+          | 'setReplyQuoteError'
     >;
     clearChannelContext(): void;
     hasReplyOrQuotes(): boolean;

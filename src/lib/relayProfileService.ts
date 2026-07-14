@@ -111,7 +111,7 @@ export class RelayProfileService {
             limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
         });
         const mergedAdditionalRelays = sanitizedOptionRelays.length
-            ? RelayConfigUtils.mergeRelayConfigs(contextualRelays, sanitizedOptionRelays)
+            ? RelayConfigUtils.mergeRelayConfigs(sanitizedOptionRelays, contextualRelays)
             : contextualRelays;
 
         return profileMetadataCache.getProfile(pubkeyHex, {

@@ -190,4 +190,121 @@ describe("replyQuoteProfileSync", () => {
             expect.any(Error),
         );
     });
+
+    it("starts profile sync when the referenced event later supplies an author", async () => {
+        const subscribeProfile = vi.fn(() => vi.fn());
+        const fetchProfileRealtime = vi.fn(async () => createProfile("Alice"));
+        const updateAuthorDisplayName = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: { fetchProfileRealtime, subscribeProfile },
+            updateAuthorDisplayName,
+            updateReplyNotificationRecipientDisplayName: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event"),
+            quotes: [],
+        });
+        expect(subscribeProfile).not.toHaveBeenCalled();
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(subscribeProfile).toHaveBeenCalledWith("author-a", expect.any(Function));
+        expect(fetchProfileRealtime).toHaveBeenCalledWith("author-a", {
+            additionalRelays: [],
+        });
+        expect(updateAuthorDisplayName).toHaveBeenCalledWith("reply-event", "Alice");
+    });
+
+    it("adds recipients while reusing an existing pubkey subscription and cached profile", async () => {
+        const subscribeProfile = vi.fn(() => vi.fn());
+        const fetchProfileRealtime = vi.fn(async (pubkey: string) =>
+            createProfile(pubkey === "shared" ? "Shared" : "New"),
+        );
+        const updateReplyNotificationRecipientDisplayName = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: { fetchProfileRealtime, subscribeProfile },
+            updateAuthorDisplayName: vi.fn(),
+            updateReplyNotificationRecipientDisplayName,
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "shared",
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "shared",
+                authorDisplayName: "Shared",
+            }),
+            quotes: [createReference("quote", "quote-event", {
+                replyNotificationRecipients: [
+                    { pubkey: "shared", displayName: null, enabled: true },
+                    { pubkey: "new", displayName: null, enabled: true },
+                ],
+            })],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(subscribeProfile).toHaveBeenCalledTimes(2);
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+        expect(updateReplyNotificationRecipientDisplayName).toHaveBeenCalledWith(
+            "quote-event",
+            "shared",
+            "Shared",
+        );
+        expect(updateReplyNotificationRecipientDisplayName).toHaveBeenCalledWith(
+            "quote-event",
+            "new",
+            "New",
+        );
+    });
+
+    it("does not resubscribe or refetch when a display-name update is synced back", () => {
+        let profileCallback: (profile: ProfileData | null) => void = () => undefined;
+        let authorDisplayName: string | null = null;
+        const subscribeProfile = vi.fn((_pubkey, callback) => {
+            profileCallback = callback;
+            return vi.fn();
+        });
+        const fetchProfileRealtime = vi.fn(async () => null);
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: { fetchProfileRealtime, subscribeProfile },
+            updateAuthorDisplayName: (_eventId, name) => {
+                authorDisplayName = name;
+            },
+            updateReplyNotificationRecipientDisplayName: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+            }),
+            quotes: [],
+        });
+        profileCallback(createProfile("Alice"));
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+                authorDisplayName,
+            }),
+            quotes: [],
+        });
+
+        expect(subscribeProfile).toHaveBeenCalledOnce();
+        expect(fetchProfileRealtime).toHaveBeenCalledOnce();
+    });
 });

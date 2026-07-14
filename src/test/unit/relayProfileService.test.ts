@@ -223,7 +223,7 @@ describe('RelayProfileService', () => {
                 forceRefresh: false,
                 allowBackgroundRefresh: true,
                 writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
+                additionalRelays: ['wss://hint-relay.example.com/', 'wss://bootstrap.example.com/']
             });
             expect(result).toEqual({
                 name: 'Realtime User',
@@ -253,8 +253,53 @@ describe('RelayProfileService', () => {
                 forceRefresh: false,
                 allowBackgroundRefresh: true,
                 writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
+                additionalRelays: ['wss://hint-relay.example.com/', 'wss://bootstrap.example.com/']
             });
+        });
+
+        it('保存済みcontextual relayが12件あってもevent hintを先頭に維持する', async () => {
+            const storedRelays = Array.from(
+                { length: 12 },
+                (_, index) => `wss://stored-${index + 1}.example.com/`,
+            );
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
+                writeRelays: [],
+                additionalRelays: [],
+                contextualRelays: storedRelays,
+            });
+
+            await service.fetchProfileRealtime('pubkey123', {
+                additionalRelays: ['wss://event-hint.example.com/'],
+            });
+
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', expect.objectContaining({
+                additionalRelays: [
+                    'wss://event-hint.example.com/',
+                    ...storedRelays,
+                ],
+            }));
+        });
+
+        it('event hintと保存済みrelayの重複はhint側の先頭位置で1件にする', async () => {
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
+                writeRelays: [],
+                additionalRelays: [],
+                contextualRelays: [
+                    'wss://same.example.com/',
+                    'wss://other.example.com/',
+                ],
+            });
+
+            await service.fetchProfileRealtime('pubkey123', {
+                additionalRelays: ['wss://same.example.com'],
+            });
+
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', expect.objectContaining({
+                additionalRelays: [
+                    'wss://same.example.com/',
+                    'wss://other.example.com/',
+                ],
+            }));
         });
 
         it('共通プロフィールキャッシュの更新を購読する', () => {

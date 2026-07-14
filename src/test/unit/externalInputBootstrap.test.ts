@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockState = vi.hoisted(() => {
     const state = {
         resolveReferencedEvent: null as ((value: any) => void) | null,
-        resolveProfile: null as ((value: any) => void) | null,
         hasChannelQueryParam: vi.fn(() => false),
         getChannelFromUrlQuery: vi.fn(() => null),
         hasReplyQuoteQueryParam: vi.fn(() => true),
@@ -40,7 +39,6 @@ const mockState = vi.hoisted(() => {
         }),
         testServiceWorkerCommunication: vi.fn().mockResolvedValue(true),
         getSharedMediaWithFallback: vi.fn().mockResolvedValue(null),
-        fetchProfileRealtime: vi.fn().mockResolvedValue(null),
     };
 
     return state;
@@ -105,11 +103,8 @@ function createParams() {
         setChannelContext: vi.fn(),
         setReplyQuote: vi.fn(),
         updateReferencedEvent: vi.fn(),
-        updateAuthorDisplayName: vi.fn(),
+        initializeReplyNotificationRecipients: vi.fn(),
         setReplyQuoteError: vi.fn(),
-        relayProfileService: {
-            fetchProfileRealtime: mockState.fetchProfileRealtime,
-        },
         rxNostr: { tag: 'rxnostr' },
         relayConfig: null,
         locationHref: 'http://localhost/?reply=test',
@@ -120,7 +115,6 @@ describe('runExternalInputBootstrap', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockState.resolveReferencedEvent = null;
-        mockState.resolveProfile = null;
         mockState.hasChannelQueryParam.mockReturnValue(false);
         mockState.getChannelFromUrlQuery.mockReturnValue(null);
         mockState.resolveChannelContext.mockResolvedValue({
@@ -142,7 +136,6 @@ describe('runExternalInputBootstrap', () => {
         mockState.hasContentQueryParam.mockReturnValue(false);
         mockState.getContentFromUrlQuery.mockReturnValue(null);
         mockState.checkIfOpenedFromShare.mockReturnValue(false);
-        mockState.fetchProfileRealtime.mockResolvedValue(null);
     });
 
     it('reply/quote の参照イベント取得が完了するまで完了しない', async () => {
@@ -198,16 +191,9 @@ describe('runExternalInputBootstrap', () => {
         expect(resolved).toBe(true);
     });
 
-    it('プロフィール取得に relay hint を渡し、displayName 更新まで待つ', async () => {
+    it('参照イベントと通知受信者の初期化だけを待ち、プロフィール取得を行わない', async () => {
         const params = createParams();
-        let resolved = false;
-        mockState.fetchProfileRealtime.mockImplementationOnce(() => new Promise((resolve) => {
-            mockState.resolveProfile = resolve;
-        }));
-
-        const bootstrapPromise = runExternalInputBootstrap(params as never).then(() => {
-            resolved = true;
-        });
+        const bootstrapPromise = runExternalInputBootstrap(params as never);
 
         await Promise.resolve();
         await Promise.resolve();
@@ -217,33 +203,23 @@ describe('runExternalInputBootstrap', () => {
             pubkey: 'author-pubkey',
             created_at: 1,
             kind: 1,
-            tags: [],
+            tags: [['p', 'recipient-pubkey']],
             content: 'hello',
             sig: 'sig',
         };
         mockState.resolveReferencedEvent?.(event);
 
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(mockState.fetchProfileRealtime).toHaveBeenCalledWith('author-pubkey', {
-            additionalRelays: ['wss://hint-relay.example.com/'],
-        });
-        expect(params.updateAuthorDisplayName).not.toHaveBeenCalled();
-        expect(resolved).toBe(false);
-
-        mockState.resolveProfile?.({
-            name: 'Author Name',
-            displayName: '',
-            picture: '',
-            npub: 'npub1author',
-            nprofile: 'nprofile1author',
-        });
-
         await bootstrapPromise;
 
-        expect(params.updateAuthorDisplayName).toHaveBeenCalledWith('event-1', 'Author Name');
-        expect(resolved).toBe(true);
+        expect(params.updateReferencedEvent).toHaveBeenCalledWith(
+            'event-1',
+            event,
+            expect.any(Object),
+        );
+        expect(params.initializeReplyNotificationRecipients).toHaveBeenCalledWith(
+            'event-1',
+            event,
+        );
     });
 
     it('無効な relay hint は参照イベント取得とプロフィール取得へ渡さない', async () => {
@@ -306,12 +282,10 @@ describe('runExternalInputBootstrap', () => {
                 },
                 quotes: [],
             },
-            relayProfileService: undefined,
             rxNostr: undefined,
             relayConfig: null,
             setReplyQuote: params.setReplyQuote,
             updateReferencedEvent: params.updateReferencedEvent,
-            updateAuthorDisplayName: params.updateAuthorDisplayName,
             setReplyQuoteError: params.setReplyQuoteError,
             preloadedEvents: {
                 'event-1': event,

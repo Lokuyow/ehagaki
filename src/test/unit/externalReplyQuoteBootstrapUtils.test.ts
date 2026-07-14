@@ -18,14 +18,13 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             },
             relayConfig: null,
             updateReferencedEvent: vi.fn(),
-            updateAuthorDisplayName: vi.fn(),
             setReplyQuoteError,
         });
 
         expect(setReplyQuoteError).toHaveBeenCalledWith('event-1', 'Event not found');
     });
 
-    it('参照イベント取得後に thread info と displayName を反映する', async () => {
+    it('参照イベント取得後に thread info と通知受信者を初期化する', async () => {
         const event = {
             id: 'event-1',
             pubkey: 'author-pubkey',
@@ -41,7 +40,7 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             rootPubkey: 'root-pubkey',
         };
         const updateReferencedEvent = vi.fn();
-        const updateAuthorDisplayName = vi.fn();
+        const initializeReplyNotificationRecipients = vi.fn();
 
         await processReplyQuoteReference({
             reference: {
@@ -53,19 +52,13 @@ describe('externalReplyQuoteBootstrapUtils', () => {
                 fetchReferencedEvent: vi.fn(async () => event),
                 extractThreadInfo: vi.fn(() => threadInfo),
             },
-            relayProfileService: {
-                fetchProfileRealtime: vi.fn(async () => ({
-                    name: 'Author Name',
-                    displayName: '',
-                })),
-            } as never,
             relayConfig: null,
             updateReferencedEvent,
-            updateAuthorDisplayName,
+            initializeReplyNotificationRecipients,
             setReplyQuoteError: vi.fn(),
         });
 
         expect(updateReferencedEvent).toHaveBeenCalledWith('event-1', event, threadInfo);
-        expect(updateAuthorDisplayName).toHaveBeenCalledWith('event-1', 'Author Name');
+        expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith('event-1', event);
     });
 });

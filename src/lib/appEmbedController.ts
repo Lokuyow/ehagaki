@@ -1,5 +1,4 @@
 import type { RxNostr } from "rx-nostr";
-import type { RelayProfileService } from "./relayProfileService";
 import type {
     ChannelContextQueryTarget,
     ChannelContextState,
@@ -101,7 +100,6 @@ export interface AppEmbedParentFramePort {
 
 export interface AppEmbedRuntimeSnapshot {
     rxNostr: RxNostr | undefined;
-    relayProfileService: RelayProfileService | undefined;
     relayConfig: RelayConfig | null | undefined;
 }
 

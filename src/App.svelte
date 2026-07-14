@@ -5,6 +5,7 @@
   import { Tooltip } from "bits-ui";
   import type { RelayProfileService } from "./lib/relayProfileService";
   import { createReplyQuoteProfileSyncController } from "./lib/replyQuoteProfileSync";
+  import { useReplyQuoteProfileSync } from "./lib/hooks/useReplyQuoteProfileSync.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService, type PendingNip46AuthSession } from "./lib/authService";
   import { iframeMessageService } from "./lib/iframeMessageService";
@@ -253,7 +254,7 @@
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
-  let relayProfileService: RelayProfileService;
+  let relayProfileService = $state<RelayProfileService | undefined>();
   let isLoadingParentClient = $state(false);
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
@@ -845,14 +846,11 @@
 
   function getReplyQuoteApplyParams() {
     return {
-      relayProfileService,
       rxNostr,
       relayConfig: relayConfigStore.value,
       setReplyQuote,
       updateReferencedEvent,
-      updateAuthorDisplayName,
       initializeReplyNotificationRecipients,
-      updateReplyNotificationRecipientDisplayName,
       setReplyQuoteError,
     };
   }
@@ -884,14 +882,11 @@
       applyReplyQuoteQuery: (query, runtime) =>
         applyReplyQuoteQuery({
           replyQuoteQuery: query,
-          relayProfileService: runtime.relayProfileService,
           rxNostr: runtime.rxNostr,
           relayConfig: runtime.relayConfig,
           setReplyQuote,
           updateReferencedEvent,
-          updateAuthorDisplayName,
           initializeReplyNotificationRecipients,
-          updateReplyNotificationRecipientDisplayName,
           setReplyQuoteError,
         }),
       clearReplyQuote,
@@ -954,7 +949,6 @@
       getChannelContextState: () => channelContextState.value,
       getRuntimeSnapshot: () => ({
         rxNostr,
-        relayProfileService,
         relayConfig: relayConfigStore.value,
       }),
     },
@@ -1194,11 +1188,8 @@
       setChannelContext,
       setReplyQuote,
       updateReferencedEvent,
-      updateAuthorDisplayName,
       initializeReplyNotificationRecipients,
-      updateReplyNotificationRecipientDisplayName,
       setReplyQuoteError,
-      relayProfileService,
       rxNostr,
       relayConfig: relayConfigStore.value,
       locationHref: window.location.href,
@@ -1312,24 +1303,17 @@
   const showHeaderBalloonMessage = $derived(
     settingsStore.showMascot && settingsStore.showFlavorText,
   );
-  $effect(() => {
-    const service = relayProfileService;
-    if (!service) return;
-
-    const controller = createReplyQuoteProfileSyncController({
-      relayProfileService: service,
-      updateAuthorDisplayName,
-      updateReplyNotificationRecipientDisplayName,
-      logger: console,
-    });
-    const sync = () => controller.sync(replyQuoteState.value);
-    const unsubscribeReplyQuoteChanges = onReplyQuoteChanged(sync);
-    sync();
-
-    return () => {
-      unsubscribeReplyQuoteChanges();
-      controller.dispose();
-    };
+  useReplyQuoteProfileSync({
+    getRelayProfileService: () => relayProfileService,
+    getReplyQuoteState: () => replyQuoteState.value,
+    onReplyQuoteChanged,
+    createController: (service) =>
+      createReplyQuoteProfileSyncController({
+        relayProfileService: service,
+        updateAuthorDisplayName,
+        updateReplyNotificationRecipientDisplayName,
+        logger: console,
+      }),
   });
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---

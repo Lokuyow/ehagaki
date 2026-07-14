@@ -6,7 +6,6 @@ import type { ReplyQuoteComposerState } from '../../lib/types';
 function createRuntimeSnapshot() {
     return {
         rxNostr: undefined,
-        relayProfileService: undefined,
         relayConfig: null,
     };
 }
