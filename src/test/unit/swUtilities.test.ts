@@ -56,7 +56,7 @@ describe('swUtilities', () => {
             () => '2026-05-05T00:00:00.000Z',
         );
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             images: [expect.any(File)],
             metadata: [
                 {
@@ -66,6 +66,26 @@ describe('swUtilities', () => {
                     timestamp: '2026-05-05T00:00:00.000Z',
                 },
             ],
+            title: '',
+            text: '',
+            url: '',
+            bodyStatus: 'not-applicable',
+            shareId: expect.any(String),
+        });
+    });
+
+    it('extractSharedMediaFromFormData はテキストだけの共有を受け取る', async () => {
+        const formData = new FormData();
+        formData.append('title', 'Example');
+        formData.append('text', ' shared text ');
+        formData.append('url', ' https://example.com/ ');
+
+        await expect(extractSharedMediaFromFormData(formData)).resolves.toMatchObject({
+            images: [],
+            title: 'Example',
+            text: 'shared text',
+            url: 'https://example.com/',
+            bodyStatus: 'pending',
         });
     });
 });

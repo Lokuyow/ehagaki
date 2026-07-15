@@ -539,11 +539,7 @@ class MessageHandler {
 
     // 共有メディアリクエスト応答
     respondSharedMedia(event) {
-        this.postSharedMediaResponse(event, {
-            clearAfterSend: true,
-        });
-
-        // メディア送信後すぐキャッシュと永続化レコードをクリア
+        this.postSharedMediaResponse(event);
     }
 
     // 強制的な共有メディア取得リクエスト（フォールバック用）

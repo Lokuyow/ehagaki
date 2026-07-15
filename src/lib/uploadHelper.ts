@@ -551,7 +551,7 @@ export interface PerformFileUploadParams {
     getUploadFailedText: (key: string) => string;
 }
 
-export async function performFileUpload(params: PerformFileUploadParams): Promise<void> {
+export async function performFileUpload(params: PerformFileUploadParams): Promise<UploadHelperResult | null> {
     const {
         files,
         currentEditor,
@@ -565,7 +565,7 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
         getUploadFailedText,
     } = params;
 
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0) return null;
 
     const result: UploadHelperResult = await uploadHelper({
         files,
@@ -593,6 +593,7 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
         );
     }
     if (fileInput) fileInput.value = "";
+    return result;
 }
 
 export interface UploadFilesParams {
@@ -606,7 +607,7 @@ export interface UploadFilesParams {
     dependencies?: UploadHelperDependencies;
 }
 
-export async function uploadFiles(params: UploadFilesParams): Promise<void> {
+export async function uploadFiles(params: UploadFilesParams): Promise<UploadHelperResult | null> {
     const {
         files,
         currentEditor,
@@ -618,7 +619,7 @@ export async function uploadFiles(params: UploadFilesParams): Promise<void> {
         dependencies,
     } = params;
 
-    await performFileUpload({
+    return await performFileUpload({
         files,
         currentEditor,
         fileInput,

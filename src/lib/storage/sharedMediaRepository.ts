@@ -9,6 +9,10 @@ import {
 
 const SHARED_MEDIA_SCHEMA_VERSION = 1;
 
+function createShareId(): string {
+    return crypto.randomUUID();
+}
+
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
     if (typeof file.arrayBuffer === "function") {
         return file.arrayBuffer();
@@ -51,11 +55,20 @@ function toFile(record: SharedMediaFileRecord): File {
 
 function toSharedMediaData(record: SharedMediaRecord): SharedMediaData | null {
     const images = record.images.map(toFile);
-    if (images.length === 0) return null;
+    const title = record.title ?? "";
+    const text = record.text ?? "";
+    const url = record.url ?? "";
+    if (images.length === 0 && !title && !text && !url) return null;
 
     return {
         images,
         metadata: record.metadata,
+        title,
+        text,
+        url,
+        shareId: record.shareId,
+        bodyStatus: record.bodyStatus ?? "not-applicable",
+        automaticRetryCount: record.automaticRetryCount ?? 0,
     };
 }
 
@@ -64,6 +77,11 @@ export interface SharedMediaRepository {
     putLatest(data: SharedMediaData): Promise<void>;
     deleteLatest(): Promise<void>;
     getAndClearLatest(): Promise<SharedMediaData | null>;
+    updateLatestForShare(
+        shareId: string,
+        update: Pick<SharedMediaData, "images" | "metadata" | "bodyStatus" | "automaticRetryCount">,
+    ): Promise<"updated" | "stale">;
+    deleteLatestForShare(shareId: string): Promise<"deleted" | "stale">;
 }
 
 export class DexieSharedMediaRepository implements SharedMediaRepository {
@@ -73,8 +91,23 @@ export class DexieSharedMediaRepository implements SharedMediaRepository {
     ) { }
 
     async getLatest(): Promise<SharedMediaData | null> {
-        const record = await this.db.sharedMedia.get(SHARED_MEDIA_RECORD_ID);
-        return record ? toSharedMediaData(record) : null;
+        return await this.db.transaction("rw", this.db.sharedMedia, async () => {
+            const record = await this.db.sharedMedia.get(SHARED_MEDIA_RECORD_ID);
+            if (!record) return null;
+
+            if (!record.shareId) {
+                record.shareId = createShareId();
+                record.title ??= "";
+                record.text ??= "";
+                record.url ??= "";
+                record.bodyStatus ??= "not-applicable";
+                record.automaticRetryCount ??= 0;
+                record.updatedAt = this.now();
+                await this.db.sharedMedia.put(record);
+            }
+
+            return toSharedMediaData(record);
+        });
     }
 
     async putLatest(data: SharedMediaData): Promise<void> {
@@ -86,6 +119,12 @@ export class DexieSharedMediaRepository implements SharedMediaRepository {
             id: SHARED_MEDIA_RECORD_ID,
             images,
             metadata,
+            title: data.title ?? "",
+            text: data.text ?? "",
+            url: data.url ?? "",
+            shareId: data.shareId ?? createShareId(),
+            bodyStatus: data.bodyStatus ?? "not-applicable",
+            automaticRetryCount: data.automaticRetryCount ?? 0,
             createdAt: timestamp,
             updatedAt: timestamp,
             schemaVersion: SHARED_MEDIA_SCHEMA_VERSION,
@@ -102,6 +141,33 @@ export class DexieSharedMediaRepository implements SharedMediaRepository {
             await this.deleteLatest();
         }
         return data;
+    }
+
+    async updateLatestForShare(
+        shareId: string,
+        update: Pick<SharedMediaData, "images" | "metadata" | "bodyStatus" | "automaticRetryCount">,
+    ): Promise<"updated" | "stale"> {
+        return await this.db.transaction("rw", this.db.sharedMedia, async () => {
+            const record = await this.db.sharedMedia.get(SHARED_MEDIA_RECORD_ID);
+            if (!record || record.shareId !== shareId) return "stale";
+
+            record.images = await Promise.all(update.images.map(toFileRecord));
+            record.metadata = update.metadata?.map((item): SharedMediaMetadata => ({ ...item }));
+            record.bodyStatus = update.bodyStatus;
+            record.automaticRetryCount = update.automaticRetryCount;
+            record.updatedAt = this.now();
+            await this.db.sharedMedia.put(record);
+            return "updated";
+        });
+    }
+
+    async deleteLatestForShare(shareId: string): Promise<"deleted" | "stale"> {
+        return await this.db.transaction("rw", this.db.sharedMedia, async () => {
+            const record = await this.db.sharedMedia.get(SHARED_MEDIA_RECORD_ID);
+            if (!record || record.shareId !== shareId) return "stale";
+            await this.db.sharedMedia.delete(SHARED_MEDIA_RECORD_ID);
+            return "deleted";
+        });
     }
 }
 

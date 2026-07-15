@@ -28,14 +28,18 @@ import type {
 interface SharedMediaStoreLike {
     files: File[];
     metadata?: any;
+    title: string;
+    text: string;
+    url: string;
+    shareId: string | null;
+    bodyStatus: 'pending' | 'applied' | 'not-applicable';
+    automaticRetryCount: number;
     received: boolean;
 }
 
 export interface RunExternalInputBootstrapParams {
     sharedError: string | null;
     sharedMediaStore: SharedMediaStoreLike;
-    isSharedMediaProcessed: () => boolean;
-    markSharedMediaProcessed: () => void;
     setSharedMediaError: (message: string | null, durationMs?: number) => void;
     consumeFirstVisitFlag: () => boolean;
     showWelcomeDialog: () => void;
@@ -70,30 +74,31 @@ function getSharedMediaErrorMessage(errorCode: string | null): string | null {
 async function bootstrapSharedMedia({
     sharedError,
     sharedMediaStore,
-    isSharedMediaProcessed,
-    markSharedMediaProcessed,
     setSharedMediaError,
     locationHref,
 }: Pick<
     RunExternalInputBootstrapParams,
     | "sharedError"
     | "sharedMediaStore"
-    | "isSharedMediaProcessed"
-    | "markSharedMediaProcessed"
     | "setSharedMediaError"
     | "locationHref"
 >): Promise<void> {
-    if (!checkIfOpenedFromShare() || isSharedMediaProcessed()) {
+    if (!checkIfOpenedFromShare()) {
         return;
     }
 
     try {
         const shared = await getSharedMediaWithFallback();
-        if (shared?.images?.length) {
+        if (shared && (shared.images.length || shared.title || shared.text || shared.url)) {
             sharedMediaStore.files = shared.images;
             sharedMediaStore.metadata = shared.metadata;
+            sharedMediaStore.title = shared.title ?? "";
+            sharedMediaStore.text = shared.text ?? "";
+            sharedMediaStore.url = shared.url ?? "";
+            sharedMediaStore.shareId = shared.shareId ?? null;
+            sharedMediaStore.bodyStatus = shared.bodyStatus ?? "not-applicable";
+            sharedMediaStore.automaticRetryCount = shared.automaticRetryCount ?? 0;
             sharedMediaStore.received = true;
-            markSharedMediaProcessed();
             return;
         }
 
@@ -356,8 +361,6 @@ export async function applyReplyQuoteQuery({
 export async function runExternalInputBootstrap({
     sharedError,
     sharedMediaStore,
-    isSharedMediaProcessed,
-    markSharedMediaProcessed,
     setSharedMediaError,
     consumeFirstVisitFlag,
     showWelcomeDialog,
@@ -386,8 +389,6 @@ export async function runExternalInputBootstrap({
     await bootstrapSharedMedia({
         sharedError,
         sharedMediaStore,
-        isSharedMediaProcessed,
-        markSharedMediaProcessed,
         setSharedMediaError,
         locationHref,
     });

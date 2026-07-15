@@ -32,9 +32,8 @@ export class ShareHandler {
     const { data, type } = event.data || {};
     if (type !== 'SHARED_MEDIA') return;
 
-    if (data?.images?.length) {
-      updateSharedMediaStore(data.images, data.metadata);
-      void sharedMediaRepository.deleteLatest();
+    if (data && (data.images?.length || data.title || data.text || data.url)) {
+      updateSharedMediaStore(data);
     }
   }
 
@@ -55,7 +54,7 @@ export class ShareHandler {
       const result = await this.fileUploadManager.processSharedMediaOnLaunch();
 
       if (result.success && result.data) {
-        updateSharedMediaStore(result.data.images, result.data.metadata);
+        updateSharedMediaStore(result.data);
       }
 
       return result;

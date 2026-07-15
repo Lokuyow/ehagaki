@@ -671,12 +671,17 @@ describe('Service Worker Tests', () => {
             formData.append('media', file);
 
             const result = await swModule.Utilities.extractMediaFromFormData(formData);
-            expect(result).toEqual({
+            expect(result).toMatchObject({
                 images: [file],
                 metadata: [expect.objectContaining({
                     name: 'test.jpg',
                     type: 'image/jpeg'
-                })]
+                })],
+                title: '',
+                text: '',
+                url: '',
+                bodyStatus: 'not-applicable',
+                shareId: expect.any(String),
             });
         });
     });

@@ -74,8 +74,11 @@ describe("ShareHandler", () => {
         const event = { data: { type: "SHARED_MEDIA", data: { images: [file], metadata: [metadata] } } };
         // @ts-ignore
         handler["handleServiceWorkerMessage"](event);
-        expect(mockSharedContentStore.updateSharedMediaStore).toHaveBeenCalledWith([file], [metadata]);
-        expect(mockSharedMediaRepository.sharedMediaRepository.deleteLatest).toHaveBeenCalled();
+        expect(mockSharedContentStore.updateSharedMediaStore).toHaveBeenCalledWith(expect.objectContaining({
+            images: [file],
+            metadata: [metadata],
+        }));
+        expect(mockSharedMediaRepository.sharedMediaRepository.deleteLatest).not.toHaveBeenCalled();
     });
 
     it("ServiceWorkerコントローラーが無い場合getSharedMediaFromServiceWorkerはnullを返す", async () => {
@@ -116,7 +119,10 @@ describe("ShareHandler", () => {
         });
         const result = await handler.checkForSharedMediaOnLaunch();
         expect(result.success).toBe(true);
-        expect(mockSharedContentStore.updateSharedMediaStore).toHaveBeenCalledWith([file], [{ name: "test.jpg" }]);
+        expect(mockSharedContentStore.updateSharedMediaStore).toHaveBeenCalledWith(expect.objectContaining({
+            images: [file],
+            metadata: [{ name: "test.jpg" }],
+        }));
     });
 
     it("isProcessingは初期状態でfalseを返す", () => {

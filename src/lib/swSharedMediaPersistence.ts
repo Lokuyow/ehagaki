@@ -2,6 +2,12 @@ export interface SharedMediaInput {
     image?: File;
     images?: File[];
     metadata?: unknown;
+    title?: string;
+    text?: string;
+    url?: string;
+    shareId?: string;
+    bodyStatus?: 'pending' | 'applied' | 'not-applicable';
+    automaticRetryCount?: number;
 }
 
 export interface SharedMediaIndexedDbRecord {
@@ -14,6 +20,12 @@ export interface SharedMediaIndexedDbRecord {
         arrayBuffer: ArrayBuffer;
     }>;
     metadata?: unknown;
+    title?: string;
+    text?: string;
+    url?: string;
+    shareId?: string;
+    bodyStatus?: 'pending' | 'applied' | 'not-applicable';
+    automaticRetryCount?: number;
     createdAt: number;
     updatedAt: number;
     schemaVersion: number;
@@ -62,6 +74,12 @@ export async function buildSharedMediaIndexedDbRecord({
         id: recordId,
         images: mediaDataList,
         metadata: sharedData.metadata,
+        title: sharedData.title ?? '',
+        text: sharedData.text ?? '',
+        url: sharedData.url ?? '',
+        shareId: sharedData.shareId ?? crypto.randomUUID(),
+        bodyStatus: sharedData.bodyStatus ?? 'not-applicable',
+        automaticRetryCount: sharedData.automaticRetryCount ?? 0,
         createdAt: timestamp,
         updatedAt: timestamp,
         schemaVersion,

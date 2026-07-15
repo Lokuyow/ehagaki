@@ -4,10 +4,11 @@ import {
     uploadFiles as uploadFilesHelper,
     type UploadFilesParams,
 } from './uploadHelper';
+import type { UploadHelperResult } from './types';
 
 type UploadableFiles = File[] | FileList | null | undefined;
 
-type UploadFilesExecutor = (params: UploadFilesParams) => Promise<void>;
+type UploadFilesExecutor = (params: UploadFilesParams) => Promise<UploadHelperResult | null | void>;
 
 interface UploadStateTarget {
     isUploading: boolean;
@@ -51,12 +52,12 @@ export function createPostUploadHandlers({
     updateUploadState,
     uploadFiles = uploadFilesHelper,
 }: CreatePostUploadHandlersParams) {
-    const performUpload = async (files: UploadableFiles): Promise<void> => {
+    const performUpload = async (files: UploadableFiles): Promise<UploadHelperResult | null> => {
         if (!hasFiles(files)) {
-            return;
+            return null;
         }
 
-        await uploadFiles({
+        return (await uploadFiles({
             files,
             currentEditor: getCurrentEditor(),
             fileInput: getFileInput(),
@@ -64,7 +65,7 @@ export function createPostUploadHandlers({
             imageOxMap: getImageOxMap(),
             imageXMap: getImageXMap(),
             getUploadFailedText,
-        });
+        })) ?? null;
     };
 
     const handleFileSelect = (event: Event): void => {

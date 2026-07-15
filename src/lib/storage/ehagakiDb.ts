@@ -99,6 +99,12 @@ export interface SharedMediaRecord {
         size?: number;
         timestamp?: string;
     }>;
+    title?: string;
+    text?: string;
+    url?: string;
+    shareId?: string;
+    bodyStatus?: 'pending' | 'applied' | 'not-applicable';
+    automaticRetryCount?: number;
     createdAt: number;
     updatedAt: number;
     schemaVersion: number;

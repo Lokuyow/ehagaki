@@ -45,12 +45,26 @@ export interface SharedMediaMetadata {
 export interface SharedMediaStoreState {
     files: File[];
     metadata?: SharedMediaMetadata[];
+    title: string;
+    text: string;
+    url: string;
+    shareId: string | null;
+    bodyStatus: SharedBodyStatus;
+    automaticRetryCount: number;
     received: boolean;
 }
+
+export type SharedBodyStatus = 'pending' | 'applied' | 'not-applicable';
 
 export interface SharedMediaData {
     images: File[];
     metadata?: SharedMediaMetadata[];
+    title?: string;
+    text?: string;
+    url?: string;
+    shareId?: string;
+    bodyStatus?: SharedBodyStatus;
+    automaticRetryCount?: number;
 }
 
 export interface SharedMediaProcessingResult {

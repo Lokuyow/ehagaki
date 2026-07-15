@@ -1,3 +1,5 @@
+import { getSharedFormDataString } from './sharedContentUtils';
+
 const TRANSPARENT_PNG_DATA = new Uint8Array([
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
     0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
@@ -6,6 +8,7 @@ const TRANSPARENT_PNG_DATA = new Uint8Array([
     0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
     0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
 ]);
+
 
 export function createTransparentImageResponse(statusCode = 200): Response {
     return new Response(TRANSPARENT_PNG_DATA, {
@@ -73,16 +76,20 @@ export async function extractSharedMediaFromFormData(
         size: number;
         timestamp: string;
     }>;
+    title: string;
+    text: string;
+    url: string;
+    shareId: string;
+    bodyStatus: 'pending' | 'not-applicable';
 } | null> {
     const mediaFiles = formData.getAll('media');
-    if (!mediaFiles || mediaFiles.length === 0) {
-        return null;
-    }
-
     const validFiles = mediaFiles.filter(
         (entry): entry is File => entry instanceof File && entry.size > 0,
     );
-    if (validFiles.length === 0) {
+    const title = getSharedFormDataString(formData, 'title');
+    const text = getSharedFormDataString(formData, 'text');
+    const url = getSharedFormDataString(formData, 'url');
+    if (validFiles.length === 0 && !title && !text && !url) {
         return null;
     }
 
@@ -94,5 +101,10 @@ export async function extractSharedMediaFromFormData(
             size: file.size,
             timestamp: getTimestamp(),
         })),
+        title,
+        text,
+        url,
+        shareId: crypto.randomUUID(),
+        bodyStatus: text || url || title ? 'pending' : 'not-applicable',
     };
 }

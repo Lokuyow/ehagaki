@@ -63,6 +63,7 @@
     urlQueryContentStore,
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,
+    clearSharedMediaStore,
   } from "./stores/sharedContentStore.svelte";
   import {
     mediaFreePlacementStore,
@@ -73,10 +74,9 @@
   import {
     settingsStore,
     consumeFirstVisitFlag,
-    isSharedMediaProcessed,
-    markSharedMediaProcessed,
-    clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
+  import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
+  import { composeSharedText } from "./lib/sharedContentUtils";
   import type { AuthResult, Draft, NostrEvent, PostResult } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
@@ -1179,8 +1179,6 @@
       "sharedError"
     > => ({
       sharedMediaStore,
-      isSharedMediaProcessed,
-      markSharedMediaProcessed,
       setSharedMediaError,
       consumeFirstVisitFlag,
       showWelcomeDialog: welcomeDialog.open,
@@ -1231,21 +1229,87 @@
     };
   });
 
-  $effect(() => {
+  let isProcessingSharedContent = false;
+
+  async function consumeSharedContent(): Promise<void> {
     if (
-      sharedMediaStore.received &&
-      sharedMediaStore.files.length > 0 &&
-      postComponentRef
+      isProcessingSharedContent ||
+      !sharedMediaStore.received ||
+      !sharedMediaStore.shareId ||
+      !postComponentRef
     ) {
-      postComponentRef.uploadFiles(sharedMediaStore.files);
-      sharedMediaStore.files = [];
-      sharedMediaStore.metadata = undefined;
-      sharedMediaStore.received = false;
-      // 取得済みフラグをセット
-      markSharedMediaProcessed();
-      // 受信直後に一度クリア（次回共有のため）
-      setTimeout(() => clearSharedMediaProcessed(), 500);
+      return;
     }
+
+    isProcessingSharedContent = true;
+    const shareId = sharedMediaStore.shareId;
+    const mediaFiles = [...sharedMediaStore.files];
+    const metadata = sharedMediaStore.metadata;
+    let bodyStatus = sharedMediaStore.bodyStatus;
+
+    try {
+      if (bodyStatus === "pending") {
+        const content = composeSharedText(sharedMediaStore);
+        if (content && !postComponentRef.appendSharedTextContent(content)) {
+          throw new Error("Failed to apply shared text to the editor");
+        }
+
+        bodyStatus = "applied";
+        const updateResult = await sharedMediaRepository.updateLatestForShare(
+          shareId,
+          {
+            images: mediaFiles,
+            metadata,
+            bodyStatus,
+            automaticRetryCount: sharedMediaStore.automaticRetryCount,
+          },
+        );
+        if (updateResult === "stale") {
+          clearSharedMediaStore();
+          return;
+        }
+      }
+
+      if (mediaFiles.length === 0) {
+        await sharedMediaRepository.deleteLatestForShare(shareId);
+        clearSharedMediaStore();
+        return;
+      }
+
+      const uploadResult = await postComponentRef.uploadFiles(mediaFiles);
+      const uploadedAllFiles =
+        uploadResult !== null &&
+        uploadResult.failedResults.length === 0 &&
+        uploadResult.results !== null;
+
+      if (uploadedAllFiles) {
+        await sharedMediaRepository.deleteLatestForShare(shareId);
+      } else if (sharedMediaStore.automaticRetryCount < 1) {
+        await sharedMediaRepository.updateLatestForShare(shareId, {
+          images: mediaFiles,
+          metadata,
+          bodyStatus,
+          automaticRetryCount: sharedMediaStore.automaticRetryCount + 1,
+        });
+        setSharedMediaError("共有メディアのアップロードに失敗しました。次回起動時に一度だけ再試行します。", 5000);
+      } else {
+        await sharedMediaRepository.deleteLatestForShare(shareId);
+        setSharedMediaError("共有メディアのアップロードに失敗しました。元のアプリからもう一度共有してください。", 5000);
+      }
+
+      clearSharedMediaStore();
+    } catch (error) {
+      console.error("Failed to consume shared content:", error);
+      setSharedMediaError("共有コンテンツの取り込みに失敗しました", 5000);
+      // Keep the persistent record unchanged so a later startup can recover it.
+      clearSharedMediaStore();
+    } finally {
+      isProcessingSharedContent = false;
+    }
+  }
+
+  $effect(() => {
+    void consumeSharedContent();
   });
 
   // URLクエリコンテンツをエディターに挿入
@@ -1263,8 +1327,6 @@
   function handlePostSuccess(result?: PostResult) {
     // 投稿成功時にfooter情報を全て削除
     resetUploadDisplayState();
-    // 共有メディアフラグをクリア
-    clearSharedMediaProcessed();
     latestPostedEvent = result?.event ?? null;
   }
 

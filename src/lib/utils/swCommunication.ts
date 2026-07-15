@@ -91,7 +91,7 @@ async function waitForServiceWorkerController(): Promise<void> {
 async function requestSharedMediaWithMessageChannel(): Promise<SharedMediaData | null> {
     try {
         const data = await sendMessageToServiceWorker({ action: 'getSharedMedia' });
-        return data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
+        return data && Array.isArray(data.images) && (data.images.length > 0 || data.title || data.text || data.url) ? data : null;
     } catch (error) {
         console.error('Failed to send message to ServiceWorker:', error);
         return null;
@@ -103,6 +103,18 @@ async function requestSharedMediaWithMessageChannel(): Promise<SharedMediaData |
  */
 export async function getSharedMediaWithFallback(): Promise<SharedMediaData | null> {
     try {
+        // IndexedDB is the source of truth. The service-worker memory cache can
+        // still contain a pre-progress version of the same fixed `latest` entry.
+        try {
+            const dbResult = await sharedMediaRepository.getLatest();
+            if (dbResult) {
+                console.log('Shared media retrieved via IndexedDB');
+                return dbResult;
+            }
+        } catch (dbError) {
+            console.warn('IndexedDB shared media lookup failed:', dbError);
+        }
+
         try {
             await Promise.race([
                 waitForServiceWorkerController(),
@@ -123,18 +135,8 @@ export async function getSharedMediaWithFallback(): Promise<SharedMediaData | nu
         }
 
         try {
-            const dbResult = await sharedMediaRepository.getAndClearLatest();
-            if (dbResult) {
-                console.log('Shared media retrieved via IndexedDB fallback');
-                return dbResult;
-            }
-        } catch (dbError) {
-            console.warn('IndexedDB fallback failed:', dbError);
-        }
-
-        try {
             const data = await sendMessageToServiceWorker({ action: 'getSharedMediaForce' }, 1000);
-            const result = data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
+            const result = data && Array.isArray(data.images) && (data.images.length > 0 || data.title || data.text || data.url) ? data : null;
             if (result) {
                 console.log('Shared media retrieved via forced Service Worker request');
                 return result;

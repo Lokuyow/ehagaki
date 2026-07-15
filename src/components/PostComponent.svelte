@@ -6,7 +6,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import { Selection } from "@tiptap/pm/state";
   import type { RxNostr } from "rx-nostr";
-  import type { FullscreenMediaItem, PostResult } from "../lib/types";
+  import type { FullscreenMediaItem, PostResult, UploadHelperResult } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
@@ -340,8 +340,8 @@
 
   const handleFileSelect = uploadHandlers.handleFileSelect;
 
-  export async function uploadFiles(files: File[] | FileList): Promise<void> {
-    await uploadHandlers.performUpload(files);
+  export async function uploadFiles(files: File[] | FileList): Promise<UploadHelperResult | null> {
+    return await uploadHandlers.performUpload(files);
   }
 
   export function insertTextContent(content: string): void {
@@ -366,6 +366,28 @@
 
     // カーソルを末尾に移動
     editor.commands.focus("end");
+  }
+
+  export function appendSharedTextContent(content: string): boolean {
+    if (!currentEditor || !content) return false;
+
+    const lines = content.split("\n");
+    const paragraphs = lines.map((line) => ({
+      type: "paragraph",
+      content: line ? [{ type: "text", text: line }] : undefined,
+    }));
+
+    if (currentEditor.isEmpty) {
+      currentEditor.commands.setContent({ type: "doc", content: paragraphs });
+    } else {
+      currentEditor.commands.insertContent([
+        { type: "paragraph" },
+        ...paragraphs,
+      ]);
+    }
+
+    currentEditor.commands.focus("end");
+    return true;
   }
 
   export function loadDraftContent(htmlContent: string): void {
