@@ -523,6 +523,7 @@ async function fetchBatchFromNetwork(
     relayHints: string[],
     writeRelaysByPubkey: Record<string, string[]>,
     timeoutMs: number,
+    onRequestStarted?: (authors: string[]) => void,
 ): Promise<Record<string, BatchNetworkResult>> {
     const authors = Array.from(new Set(pubkeys.filter((pubkey) => !!pubkey)));
     const results: Record<string, BatchNetworkResult> = {};
@@ -693,6 +694,7 @@ async function fetchBatchFromNetwork(
                 limit: Math.max(24, authors.length * 4),
             } as never);
             rxReq.over();
+            onRequestStarted?.(authors);
         } catch {
             markNetworkError();
             clearTimeout(timeoutId);
@@ -828,8 +830,7 @@ async function flushPendingBatch(): Promise<void> {
         const resolvedProfiles: Record<string, ProfileData | null> = {};
         const parseErrors = new Set<string>();
         const rejectedFutureTimestamps = new Set<string>();
-        const networkErrors = new Set<string>();
-        const deadlineAtMs = nowMs() + PROFILE_CACHE_BATCH_TIMEOUT_MS;
+        const queriedPubkeys = new Set<string>();
         const tierNames = ["bootstrap", "contextual", "fallback"] as const;
 
         const getRelayGroups = (
@@ -850,20 +851,16 @@ async function flushPendingBatch(): Promise<void> {
         };
 
         try {
-            tierLoop: for (const tierName of tierNames) {
+            for (const tierName of tierNames) {
                 const targets = Array.from(unresolvedPubkeys);
                 const groups = chunkProfileRelayGroups(getRelayGroups(tierName, targets));
-                if (deadlineAtMs - nowMs() <= 0) {
-                    break tierLoop;
-                }
 
                 const fetchedGroups = await mapWithConcurrency(
                     groups,
                     PROFILE_CACHE_NETWORK_CONCURRENCY,
                     async (group) => {
                         const activeTargets = group.pubkeys.filter((pubkey) => unresolvedPubkeys.has(pubkey));
-                        const remainingMs = deadlineAtMs - nowMs();
-                        if (activeTargets.length === 0 || remainingMs <= 0) {
+                        if (activeTargets.length === 0) {
                             return null;
                         }
                         const results = await fetchBatchFromNetwork(
@@ -871,7 +868,12 @@ async function flushPendingBatch(): Promise<void> {
                             activeTargets,
                             group.relays,
                             writeRelaysByPubkey,
-                            remainingMs,
+                            PROFILE_CACHE_BATCH_TIMEOUT_MS,
+                            (authors) => {
+                                for (const pubkey of authors) {
+                                    queriedPubkeys.add(pubkey);
+                                }
+                            },
                         );
                         return { activeTargets, results };
                     },
@@ -895,9 +897,6 @@ async function flushPendingBatch(): Promise<void> {
                         if (resolution.rejectedFutureTimestamp) {
                             rejectedFutureTimestamps.add(pubkey);
                         }
-                        if (resolution.networkError) {
-                            networkErrors.add(pubkey);
-                        }
                         if (resolution.stopReason !== null) {
                             unresolvedPubkeys.delete(pubkey);
                         }
@@ -912,9 +911,7 @@ async function flushPendingBatch(): Promise<void> {
                     markEntryStatus(pubkey, "parse-error");
                 } else if (rejectedFutureTimestamps.has(pubkey)) {
                     markEntryStatus(pubkey, "invalid-future-ts");
-                } else if (!snapshot && networkErrors.has(pubkey)) {
-                    setNegativeEntry(pubkey);
-                } else if (!snapshot) {
+                } else if (!snapshot && queriedPubkeys.has(pubkey)) {
                     setNegativeEntry(pubkey);
                 }
                 resolvedProfiles[pubkey] = snapshot
@@ -930,9 +927,6 @@ async function flushPendingBatch(): Promise<void> {
         } catch {
             for (const [pubkey, requests] of groupedByPubkey.entries()) {
                 const snapshot = resolveExistingSnapshot(pubkey, requests);
-                if (!snapshot) {
-                    setNegativeEntry(pubkey);
-                }
                 for (const request of requests) {
                     request.resolve(snapshot ? restoreSnapshotEntry(pubkey, snapshot) : null);
                 }
@@ -1050,13 +1044,15 @@ async function getProfileInternal(
             return entry.profile;
         }
 
-        if (entry.profile && options.allowBackgroundRefresh !== false && options.rxNostr) {
-            void ensureFreshProfile(
-                pubkey,
-                options,
-                repositoryLookupCompleted ? entry.profile : undefined,
-            );
-            markEntryStatus(pubkey, "stale");
+        if (entry.profile) {
+            if (options.allowBackgroundRefresh !== false && options.rxNostr) {
+                void ensureFreshProfile(
+                    pubkey,
+                    options,
+                    repositoryLookupCompleted ? entry.profile : undefined,
+                );
+                markEntryStatus(pubkey, "stale");
+            }
             return entry.profile;
         }
     }

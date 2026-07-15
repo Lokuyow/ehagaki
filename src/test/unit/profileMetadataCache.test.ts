@@ -215,6 +215,74 @@ function createNonCompletingRxNostr() {
     return { use, calls };
 }
 
+function createChunkFairnessRxNostr() {
+    const calls: Array<{ relays: string[]; authors: string[] }> = [];
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    const use = vi.fn((rxReq: { emit: (filter: { authors?: string[] }) => void }, options: {
+        on: { relays: string[] };
+    }) => {
+        const call = {
+            relays: [...options.on.relays],
+            authors: [] as string[],
+        };
+        const callIndex = calls.push(call) - 1;
+        const originalEmit = rxReq.emit.bind(rxReq);
+        rxReq.emit = (filter) => {
+            call.authors = [...(filter.authors ?? [])];
+            originalEmit(filter);
+        };
+
+        return {
+            subscribe: (observer: {
+                next?: (packet: unknown) => void;
+                complete?: () => void;
+            }) => {
+                let active = true;
+                activeRequests += 1;
+                maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+
+                if (callIndex >= 2) {
+                    queueMicrotask(() => {
+                        if (callIndex === 2) {
+                            call.authors.forEach((author, index) => {
+                                observer.next?.({
+                                    event: {
+                                        id: (101 + index).toString(16).padStart(64, "0"),
+                                        kind: 0,
+                                        pubkey: author,
+                                        content: JSON.stringify({ name: `Later ${index}` }),
+                                        created_at: 100,
+                                    },
+                                    from: call.relays[0],
+                                });
+                            });
+                        }
+                        observer.complete?.();
+                    });
+                }
+
+                return {
+                    unsubscribe: vi.fn(() => {
+                        if (!active) {
+                            return;
+                        }
+                        active = false;
+                        activeRequests -= 1;
+                    }),
+                };
+            },
+        };
+    });
+
+    return {
+        use,
+        calls,
+        getActiveRequests: () => activeRequests,
+        getMaxActiveRequests: () => maxActiveRequests,
+    };
+}
+
 function createErroringRxNostr() {
     const calls: Array<{ relays: string[]; authors: string[] }> = [];
     const use = vi.fn((rxReq: { emit: (filter: { authors?: string[] }) => void }, options: {
@@ -931,6 +999,43 @@ describe("profileMetadataCache", () => {
         });
     });
 
+    it("returns stale bulk snapshots without a repository fallback or network refresh", async () => {
+        const staleFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1;
+        repositoryMock.bulkGetRecords.mockResolvedValue([
+            createProfileRecord(pubkey, { name: "Stale A", fetchedAt: staleFetchedAt }),
+            createProfileRecord(otherPubkey, { name: "Stale B", fetchedAt: staleFetchedAt }),
+        ]);
+
+        await expect(profileMetadataCache.getProfiles([pubkey, otherPubkey], {
+            allowBackgroundRefresh: false,
+        })).resolves.toMatchObject({
+            [pubkey]: { name: "Stale A" },
+            [otherPubkey]: { name: "Stale B" },
+        });
+
+        expect(repositoryMock.bulkGetRecords).toHaveBeenCalledOnce();
+        expect(repositoryMock.get).not.toHaveBeenCalled();
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
+    });
+
+    it("returns a stale single profile when background refresh is disabled", async () => {
+        const staleFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1;
+        repositoryMock.get.mockResolvedValue(createProfile({
+            name: "Stale single",
+            fetchedAt: staleFetchedAt,
+        }));
+        const rxNostr = createTieredRxNostr(() => []);
+
+        await expect(profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            allowBackgroundRefresh: false,
+        })).resolves.toMatchObject({ name: "Stale single" });
+
+        expect(repositoryMock.get).toHaveBeenCalledOnce();
+        expect(rxNostr.use).not.toHaveBeenCalled();
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
+    });
+
     it("returns bulk snapshots immediately and revalidates only stale pubkeys", async () => {
         const staleFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1;
         repositoryMock.bulkGetRecords.mockResolvedValue([
@@ -1020,6 +1125,40 @@ describe("profileMetadataCache", () => {
             BOOTSTRAP_RELAYS,
             BOOTSTRAP_RELAYS,
         ]);
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
+    });
+
+    it("starts every chunk after earlier chunks time out without exceeding two concurrent REQs", async () => {
+        const pubkeys = Array.from(
+            { length: 120 },
+            (_, index) => index.toString(16).padStart(64, "0"),
+        );
+        repositoryMock.bulkGetRecords.mockResolvedValue(pubkeys.map(() => null));
+        const rxNostr = createChunkFairnessRxNostr();
+
+        const pending = profileMetadataCache.getProfiles(pubkeys, {
+            rxNostr: rxNostr as never,
+        });
+        await flushProfileBatch();
+
+        expect(rxNostr.calls.slice(0, 2).map((call) => call.authors.length)).toEqual([50, 50]);
+        expect(rxNostr.getMaxActiveRequests()).toBe(2);
+
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+        const result = await pending;
+        const bootstrapCalls = rxNostr.calls.filter((call) => call.relays.includes(BOOTSTRAP_RELAYS[0]));
+        const queriedBootstrapPubkeys = new Set(bootstrapCalls.flatMap((call) => call.authors));
+
+        expect(bootstrapCalls.map((call) => call.authors.length)).toEqual([50, 50, 20]);
+        expect(queriedBootstrapPubkeys).toEqual(new Set(pubkeys));
+        expect(rxNostr.getMaxActiveRequests()).toBe(2);
+        expect(rxNostr.getActiveRequests()).toBe(0);
+        expect(result[pubkeys[119]]).toMatchObject({ name: "Later 19" });
+        expect(profileMetadataCache.getReactiveEntry(pubkeys[119])).not.toMatchObject({
+            status: "negative",
+        });
         expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
     });
 
@@ -1357,7 +1496,7 @@ describe("profileMetadataCache", () => {
         expect(resolution.stopReason).toBe("persistence-unavailable");
     });
 
-    it("uses one four-second deadline for the whole tier search", async () => {
+    it("gives each relay tier its own four-second timeout budget", async () => {
         const contextRelay = "wss://context.example.com/";
         const rxNostr = createNonCompletingRxNostr();
         const startedAt = Date.now();
@@ -1370,15 +1509,31 @@ describe("profileMetadataCache", () => {
         await vi.advanceTimersByTimeAsync(
             profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
         );
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [contextRelay],
+        ]);
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            [contextRelay],
+            FALLBACK_RELAYS,
+        ]);
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
 
         await expect(pending).resolves.toBeNull();
-        expect(Date.now() - startedAt).toBeLessThanOrEqual(
-            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS + 31,
+        expect(Date.now() - startedAt).toBe(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS * 3 + 31,
         );
-        expect(rxNostr.calls).toEqual([{
-            relays: BOOTSTRAP_RELAYS,
-            authors: [pubkey],
-        }]);
+        expect(rxNostr.calls.map((call) => call.authors)).toEqual([
+            [pubkey],
+            [pubkey],
+            [pubkey],
+        ]);
     });
 
     it("fails soft after network errors in every tier", async () => {
@@ -1401,6 +1556,24 @@ describe("profileMetadataCache", () => {
             status: "negative",
             profile: null,
         });
+    });
+
+    it("does not negative-cache a pubkey when no REQ could be started", async () => {
+        const rxNostr = {
+            use: vi.fn(() => {
+                throw new Error("REQ setup failed");
+            }),
+        };
+        const pending = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+            forceRefresh: true,
+        });
+        await flushProfileBatch();
+
+        await expect(pending).resolves.toBeNull();
+        expect(rxNostr.use).toHaveBeenCalledTimes(2);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
     });
 
     it("creates a negative entry only after all available tiers miss", async () => {
