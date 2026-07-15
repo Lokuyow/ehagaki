@@ -20,6 +20,7 @@ function createReference(
         authorPubkey,
         quoteNotificationEnabled: false,
         authorDisplayName: null,
+        authorPicture: null,
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,

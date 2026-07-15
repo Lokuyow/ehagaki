@@ -38,6 +38,7 @@ function createReplyQuoteState(params: {
                 : false,
         replyNotificationRecipients: [],
         authorDisplayName: null,
+        authorPicture: null,
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,
@@ -48,11 +49,20 @@ function createReplyQuoteState(params: {
 }
 
 function createDraftEntryState(data: DraftReplyQuoteEntryData): ReplyQuoteState {
+    const normalizePresentationValue = (value: unknown): string | null =>
+        typeof value === 'string' && value.trim() ? value.trim() : null;
+
     return {
         ...data,
         quoteNotificationEnabled: data.quoteNotificationEnabled === true,
+        authorDisplayName: normalizePresentationValue(data.authorDisplayName),
+        authorPicture: normalizePresentationValue(data.authorPicture),
         replyNotificationRecipients: data.replyNotificationRecipients
-            ? data.replyNotificationRecipients.map((recipient) => ({ ...recipient }))
+            ? data.replyNotificationRecipients.map((recipient) => ({
+                ...recipient,
+                displayName: normalizePresentationValue(recipient.displayName),
+                picture: normalizePresentationValue(recipient.picture),
+            }))
             : createLegacyReplyNotificationRecipients(data),
         loading: false,
         error: null,
@@ -74,7 +84,7 @@ function createLegacyReplyNotificationRecipients(
             return [];
         }
         seen.add(pubkey);
-        return [{ pubkey, displayName: null, enabled: false }];
+        return [{ pubkey, displayName: null, picture: null, enabled: false }];
     });
 }
 
@@ -178,6 +188,7 @@ export function initializeReplyNotificationRecipients(
             return [{
                 pubkey,
                 displayName: null,
+                picture: null,
                 enabled: settingsStore.replyNotificationEnabled,
             }];
         });
@@ -185,20 +196,36 @@ export function initializeReplyNotificationRecipients(
     notifyReplyQuoteChanged();
 }
 
-export function updateReplyNotificationRecipientDisplayName(
+export function updateReplyNotificationRecipientProfile(
     eventId: string,
     pubkey: string,
-    name: string,
+    profile: {
+        displayName: string | null;
+        picture: string | null;
+    },
 ): void {
+    const displayName = profile.displayName?.trim() || null;
+    const picture = profile.picture?.trim() || null;
+    let changed = false;
     updateMatchingReferences(eventId, (reference) => {
-        const recipient = reference.replyNotificationRecipients?.find(
-            (item) => item.pubkey === pubkey,
-        );
-        if (recipient) {
-            recipient.displayName = name;
+        for (const recipient of reference.replyNotificationRecipients ?? []) {
+            if (
+                recipient.pubkey !== pubkey
+                || (
+                    recipient.displayName === displayName
+                    && recipient.picture === picture
+                )
+            ) {
+                continue;
+            }
+            recipient.displayName = displayName;
+            recipient.picture = picture;
+            changed = true;
         }
     });
-    notifyReplyQuoteChanged();
+    if (changed) {
+        notifyReplyQuoteChanged();
+    }
 }
 
 export function setReplyNotificationRecipientEnabled(
@@ -229,11 +256,34 @@ export function setReplyQuoteError(eventId: string, error: string): void {
     notifyReplyQuoteChanged();
 }
 
-export function updateAuthorDisplayName(eventId: string, name: string): void {
+export function updateAuthorProfile(
+    eventId: string,
+    pubkey: string,
+    profile: {
+        displayName: string | null;
+        picture: string | null;
+    },
+): void {
+    const displayName = profile.displayName?.trim() || null;
+    const picture = profile.picture?.trim() || null;
+    let changed = false;
     updateMatchingReferences(eventId, (reference) => {
-        reference.authorDisplayName = name;
+        if (
+            reference.authorPubkey !== pubkey
+            || (
+                reference.authorDisplayName === displayName
+                && reference.authorPicture === picture
+            )
+        ) {
+            return;
+        }
+        reference.authorDisplayName = displayName;
+        reference.authorPicture = picture;
+        changed = true;
     });
-    notifyReplyQuoteChanged();
+    if (changed) {
+        notifyReplyQuoteChanged();
+    }
 }
 
 export function restoreReplyQuote(data: DraftReplyQuoteData): void {

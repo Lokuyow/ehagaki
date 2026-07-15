@@ -114,6 +114,7 @@ describe('embedComposerContextApply', () => {
                     authorPubkey: null,
                     quoteNotificationEnabled: false,
                     authorDisplayName: null,
+                    authorPicture: null,
                     referencedEvent: null,
                     rootEventId: null,
                     rootRelayHint: null,

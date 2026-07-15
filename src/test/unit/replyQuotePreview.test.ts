@@ -51,6 +51,7 @@ function createReference(overrides: Partial<ReplyQuoteState> = {}): ReplyQuoteSt
         authorPubkey: '55'.repeat(32),
         quoteNotificationEnabled: false,
         authorDisplayName: null,
+        authorPicture: null,
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,
@@ -144,7 +145,7 @@ describe('ReplyQuotePreview', () => {
             element.classList.contains('quote-notification-button'),
         );
         const authorIndex = metaChildren.findIndex((element) =>
-            element.classList.contains('author-name'),
+            element.classList.contains('author-profile'),
         );
 
         expect(labelIndex).toBeGreaterThanOrEqual(0);
@@ -152,6 +153,57 @@ describe('ReplyQuotePreview', () => {
         expect(authorIndex).toBe(buttonIndex + 1);
         expect(container.querySelector('.bell-regular-icon')).toBeTruthy();
         expect(container.querySelector('.bell-solid-icon')).toBeNull();
+    });
+
+    it('引用と返信の作者名左に装飾avatarを表示しpicture変更へ追従する', async () => {
+        const initialReference = createReference({
+            authorDisplayName: 'Alice',
+            authorPicture: 'https://example.com/alice.png',
+        });
+        const { container, rerender } = render(ReplyQuotePreview, {
+            props: {
+                reference: initialReference,
+                mode: 'quote',
+                onClear: vi.fn(),
+            },
+        });
+
+        const author = container.querySelector('.author-profile')!;
+        const image = author.querySelector('img')!;
+        expect(Array.from(author.children)[0].classList).toContain('reply-quote-profile-avatar');
+        expect(image.getAttribute('src')).toBe('https://example.com/alice.png?profile=true');
+        expect(image.getAttribute('alt')).toBe('');
+        expect(author.querySelector('.profile-avatar-fallback-icon')?.getAttribute('aria-label')).toBe('');
+
+        await rerender({
+            reference: createReference({
+                mode: 'reply',
+                authorDisplayName: 'Alice',
+                authorPicture: 'https://example.com/alice.png?profile=true',
+            }),
+            mode: 'reply',
+            onClear: vi.fn(),
+        });
+        expect(container.querySelector('.author-profile img')?.getAttribute('src')).toBe(
+            'https://example.com/alice.png?profile=true',
+        );
+    });
+
+    it('pictureなしでも作者fallback領域と短縮npubを表示する', () => {
+        const { container } = render(ReplyQuotePreview, {
+            props: {
+                reference: createReference({
+                    authorDisplayName: null,
+                    authorPicture: null,
+                }),
+                mode: 'reply',
+                onClear: vi.fn(),
+            },
+        });
+
+        expect(container.querySelector('.author-profile img')).toBeNull();
+        expect(container.querySelector('.author-profile .profile-avatar-fallback')).toBeTruthy();
+        expect(container.querySelector('.author-name')?.textContent).toMatch(/^npub1/);
     });
 
     it('通知ON状態ではsolid bellを表示し、クリックで反転値を返す', async () => {
@@ -201,6 +253,7 @@ describe('ReplyQuotePreview', () => {
                     replyNotificationRecipients: [{
                         pubkey: recipient,
                         displayName: 'Bob',
+                        picture: 'https://example.com/bob.png',
                         enabled: false,
                     }],
                 }),
@@ -214,6 +267,14 @@ describe('ReplyQuotePreview', () => {
         const button = screen.getByRole('button', { name: 'Bob: リプライ通知をオン' });
         expect(button.classList.contains('reply-notification-recipient')).toBe(true);
         expect(button.textContent).toContain('Bob');
+        const children = Array.from(button.children);
+        expect(children[0].classList).toContain('reply-quote-profile-avatar');
+        expect(children[1].classList).toContain('reply-notification-recipient-name');
+        expect(children[2].classList).toContain('reply-notification-icon');
+        expect(button.querySelector('img')?.getAttribute('src')).toBe(
+            'https://example.com/bob.png?profile=true',
+        );
+        expect(button.querySelector('img')?.getAttribute('alt')).toBe('');
         await fireEvent.click(button);
         expect(onToggleReplyNotification).toHaveBeenCalledWith(recipient, true);
     });

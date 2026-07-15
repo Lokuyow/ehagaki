@@ -26,7 +26,6 @@ function createExternalInputParams() {
         updateUrlQueryContentStore: vi.fn(),
         setReplyQuote: vi.fn(),
         updateReferencedEvent: vi.fn(),
-        updateAuthorDisplayName: vi.fn(),
         setReplyQuoteError: vi.fn(),
         relayProfileService: undefined,
         rxNostr: undefined,

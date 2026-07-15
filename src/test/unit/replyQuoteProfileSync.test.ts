@@ -19,6 +19,7 @@ function createReference(
         quoteNotificationEnabled: false,
         replyNotificationRecipients: [],
         authorDisplayName: null,
+        authorPicture: null,
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,
@@ -29,11 +30,11 @@ function createReference(
     };
 }
 
-function createProfile(name: string): ProfileData {
+function createProfile(name: string, picture = `https://example.com/${name}.png`): ProfileData {
     return {
         name,
         displayName: name,
-        picture: "",
+        picture,
         npub: `npub-${name}`,
         nprofile: `nprofile-${name}`,
     };
@@ -52,12 +53,12 @@ describe("replyQuoteProfileSync", () => {
             callbacks.set(pubkey, callback);
             return vi.fn();
         });
-        const updateAuthorDisplayName = vi.fn();
-        const updateReplyNotificationRecipientDisplayName = vi.fn();
+        const updateAuthorProfile = vi.fn();
+        const updateReplyNotificationRecipientProfile = vi.fn();
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: { fetchProfileRealtime, subscribeProfile },
-            updateAuthorDisplayName,
-            updateReplyNotificationRecipientDisplayName,
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile,
         });
         const state: ReplyQuoteComposerState = {
             reply: createReference("reply", "reply-event", {
@@ -66,6 +67,7 @@ describe("replyQuoteProfileSync", () => {
                 replyNotificationRecipients: [{
                     pubkey: "shared-b",
                     displayName: null,
+                    picture: null,
                     enabled: true,
                 }],
             }),
@@ -87,19 +89,115 @@ describe("replyQuoteProfileSync", () => {
                 "wss://quote.example.com/",
             ],
         });
-        expect(updateAuthorDisplayName).toHaveBeenCalledWith("reply-event", "Alice");
-        expect(updateAuthorDisplayName).toHaveBeenCalledWith("quote-event", "Bob");
-        expect(updateReplyNotificationRecipientDisplayName).toHaveBeenCalledWith(
+        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+            displayName: "Alice",
+            picture: "https://example.com/Alice.png",
+        });
+        expect(updateAuthorProfile).toHaveBeenCalledWith("quote-event", "shared-b", {
+            displayName: "Bob",
+            picture: "https://example.com/Bob.png",
+        });
+        expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
             "reply-event",
             "shared-b",
-            "Bob",
+            {
+                displayName: "Bob",
+                picture: "https://example.com/Bob.png",
+            },
         );
+    });
+
+    it("normalizes name-only and picture-only profiles independently", async () => {
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime: vi.fn(async (pubkey: string) => pubkey === "name-only"
+                    ? {
+                        ...createProfile("ignored", "   "),
+                        name: " Name only ",
+                        displayName: "   ",
+                    }
+                    : {
+                        ...createProfile("ignored", " https://example.com/picture.png "),
+                        name: "   ",
+                        displayName: "   ",
+                    }),
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "name-event", {
+                authorPubkey: "name-only",
+            }),
+            quotes: [createReference("quote", "picture-event", {
+                authorPubkey: "picture-only",
+            })],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(updateAuthorProfile).toHaveBeenCalledWith("name-event", "name-only", {
+            displayName: "Name only",
+            picture: null,
+        });
+        expect(updateAuthorProfile).toHaveBeenCalledWith("picture-event", "picture-only", {
+            displayName: null,
+            picture: "https://example.com/picture.png",
+        });
+    });
+
+    it("keeps known profile values for null results and relay-hint refreshes", async () => {
+        let callback: (profile: ProfileData | null) => void = () => undefined;
+        const fetchProfileRealtime = vi.fn(async () => createProfile("Alice"));
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime,
+                subscribeProfile: vi.fn((_pubkey, next) => {
+                    callback = next;
+                    return vi.fn();
+                }),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        callback(null);
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+                authorDisplayName: "Alice",
+                authorPicture: "https://example.com/Alice.png",
+                relayHints: ["wss://new.example.com/"],
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+        expect(updateAuthorProfile).toHaveBeenCalledOnce();
+        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+            displayName: "Alice",
+            picture: "https://example.com/Alice.png",
+        });
     });
 
     it("applies later subscription updates and stops UI updates after dispose", async () => {
         let callback: (profile: ProfileData | null) => void = () => undefined;
         const unsubscribe = vi.fn();
-        const updateAuthorDisplayName = vi.fn();
+        const updateAuthorProfile = vi.fn();
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: {
                 fetchProfileRealtime: vi.fn(async () => createProfile("Cached")),
@@ -108,8 +206,8 @@ describe("replyQuoteProfileSync", () => {
                     return unsubscribe;
                 }),
             },
-            updateAuthorDisplayName,
-            updateReplyNotificationRecipientDisplayName: vi.fn(),
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
         });
 
         controller.sync({
@@ -122,18 +220,23 @@ describe("replyQuoteProfileSync", () => {
         await Promise.resolve();
         callback(createProfile("Updated"));
 
-        expect(updateAuthorDisplayName).toHaveBeenLastCalledWith(
+        expect(updateAuthorProfile).toHaveBeenLastCalledWith(
             "reply-event",
-            "Updated",
+            "author-a",
+            {
+                displayName: "Updated",
+                picture: "https://example.com/Updated.png",
+            },
         );
 
         controller.dispose();
         callback(createProfile("After dispose"));
 
         expect(unsubscribe).toHaveBeenCalledOnce();
-        expect(updateAuthorDisplayName).not.toHaveBeenCalledWith(
+        expect(updateAuthorProfile).not.toHaveBeenCalledWith(
             "reply-event",
-            "After dispose",
+            "author-a",
+            expect.objectContaining({ displayName: "After dispose" }),
         );
     });
 
@@ -144,8 +247,8 @@ describe("replyQuoteProfileSync", () => {
                 fetchProfileRealtime: vi.fn(async () => null),
                 subscribeProfile: vi.fn(() => unsubscribe),
             },
-            updateAuthorDisplayName: vi.fn(),
-            updateReplyNotificationRecipientDisplayName: vi.fn(),
+            updateAuthorProfile: vi.fn(),
+            updateReplyNotificationRecipientProfile: vi.fn(),
         });
 
         controller.sync({
@@ -161,7 +264,7 @@ describe("replyQuoteProfileSync", () => {
 
     it("keeps the existing display name when refresh fails", async () => {
         const logger = { error: vi.fn() };
-        const updateAuthorDisplayName = vi.fn();
+        const updateAuthorProfile = vi.fn();
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: {
                 fetchProfileRealtime: vi.fn(async () => {
@@ -169,8 +272,8 @@ describe("replyQuoteProfileSync", () => {
                 }),
                 subscribeProfile: vi.fn(() => vi.fn()),
             },
-            updateAuthorDisplayName,
-            updateReplyNotificationRecipientDisplayName: vi.fn(),
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
             logger,
         });
 
@@ -178,13 +281,14 @@ describe("replyQuoteProfileSync", () => {
             reply: createReference("reply", "reply-event", {
                 authorPubkey: "author-a",
                 authorDisplayName: "Existing",
+                authorPicture: "https://example.com/existing.png",
             }),
             quotes: [],
         });
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(updateAuthorDisplayName).not.toHaveBeenCalled();
+        expect(updateAuthorProfile).not.toHaveBeenCalled();
         expect(logger.error).toHaveBeenCalledWith(
             "返信・引用プロフィールの取得に失敗:",
             expect.any(Error),
@@ -194,11 +298,11 @@ describe("replyQuoteProfileSync", () => {
     it("starts profile sync when the referenced event later supplies an author", async () => {
         const subscribeProfile = vi.fn(() => vi.fn());
         const fetchProfileRealtime = vi.fn(async () => createProfile("Alice"));
-        const updateAuthorDisplayName = vi.fn();
+        const updateAuthorProfile = vi.fn();
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: { fetchProfileRealtime, subscribeProfile },
-            updateAuthorDisplayName,
-            updateReplyNotificationRecipientDisplayName: vi.fn(),
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
         });
 
         controller.sync({
@@ -220,7 +324,10 @@ describe("replyQuoteProfileSync", () => {
         expect(fetchProfileRealtime).toHaveBeenCalledWith("author-a", {
             additionalRelays: [],
         });
-        expect(updateAuthorDisplayName).toHaveBeenCalledWith("reply-event", "Alice");
+        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+            displayName: "Alice",
+            picture: "https://example.com/Alice.png",
+        });
     });
 
     it("adds recipients while reusing an existing pubkey subscription and cached profile", async () => {
@@ -228,11 +335,11 @@ describe("replyQuoteProfileSync", () => {
         const fetchProfileRealtime = vi.fn(async (pubkey: string) =>
             createProfile(pubkey === "shared" ? "Shared" : "New"),
         );
-        const updateReplyNotificationRecipientDisplayName = vi.fn();
+        const updateReplyNotificationRecipientProfile = vi.fn();
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: { fetchProfileRealtime, subscribeProfile },
-            updateAuthorDisplayName: vi.fn(),
-            updateReplyNotificationRecipientDisplayName,
+            updateAuthorProfile: vi.fn(),
+            updateReplyNotificationRecipientProfile,
         });
 
         controller.sync({
@@ -248,11 +355,12 @@ describe("replyQuoteProfileSync", () => {
             reply: createReference("reply", "reply-event", {
                 authorPubkey: "shared",
                 authorDisplayName: "Shared",
+                authorPicture: "https://example.com/Shared.png",
             }),
             quotes: [createReference("quote", "quote-event", {
                 replyNotificationRecipients: [
-                    { pubkey: "shared", displayName: null, enabled: true },
-                    { pubkey: "new", displayName: null, enabled: true },
+                    { pubkey: "shared", displayName: null, picture: null, enabled: true },
+                    { pubkey: "new", displayName: null, picture: null, enabled: true },
                 ],
             })],
         });
@@ -261,21 +369,28 @@ describe("replyQuoteProfileSync", () => {
 
         expect(subscribeProfile).toHaveBeenCalledTimes(2);
         expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
-        expect(updateReplyNotificationRecipientDisplayName).toHaveBeenCalledWith(
+        expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
             "quote-event",
             "shared",
-            "Shared",
+            {
+                displayName: "Shared",
+                picture: "https://example.com/Shared.png",
+            },
         );
-        expect(updateReplyNotificationRecipientDisplayName).toHaveBeenCalledWith(
+        expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
             "quote-event",
             "new",
-            "New",
+            {
+                displayName: "New",
+                picture: "https://example.com/New.png",
+            },
         );
     });
 
     it("does not resubscribe or refetch when a display-name update is synced back", () => {
         let profileCallback: (profile: ProfileData | null) => void = () => undefined;
         let authorDisplayName: string | null = null;
+        let authorPicture: string | null = null;
         const subscribeProfile = vi.fn((_pubkey, callback) => {
             profileCallback = callback;
             return vi.fn();
@@ -283,10 +398,11 @@ describe("replyQuoteProfileSync", () => {
         const fetchProfileRealtime = vi.fn(async () => null);
         const controller = createReplyQuoteProfileSyncController({
             relayProfileService: { fetchProfileRealtime, subscribeProfile },
-            updateAuthorDisplayName: (_eventId, name) => {
-                authorDisplayName = name;
+            updateAuthorProfile: (_eventId, _pubkey, profile) => {
+                authorDisplayName = profile.displayName;
+                authorPicture = profile.picture;
             },
-            updateReplyNotificationRecipientDisplayName: vi.fn(),
+            updateReplyNotificationRecipientProfile: vi.fn(),
         });
 
         controller.sync({
@@ -300,6 +416,7 @@ describe("replyQuoteProfileSync", () => {
             reply: createReference("reply", "reply-event", {
                 authorPubkey: "author-a",
                 authorDisplayName,
+                authorPicture,
             }),
             quotes: [],
         });

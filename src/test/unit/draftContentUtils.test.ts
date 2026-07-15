@@ -16,6 +16,7 @@ function createReplyState() {
         authorPubkey: 'author',
         quoteNotificationEnabled: false,
         authorDisplayName: 'author-name',
+        authorPicture: null,
         referencedEvent: null,
         rootEventId: 'root-event',
         rootRelayHint: 'wss://root-relay',
@@ -122,6 +123,53 @@ describe('buildDraftReplyQuoteData', () => {
         expect(data && 'reply' in data ? data.reply?.referencedEvent : undefined).not.toBe(referencedEvent);
         expect(data && 'reply' in data ? data.reply?.referencedEvent?.tags : undefined).not.toBe(referencedEvent.tags);
         expect(data && 'reply' in data ? data.reply?.referencedEvent?.tags[0] : undefined).not.toBe(referencedEvent.tags[0]);
+        expect(() => structuredClone(data)).not.toThrow();
+    });
+
+    it('作者画像と通知対象一覧を正規化して保存する', () => {
+        const data = buildDraftReplyQuoteData({
+            reply: {
+                ...createReplyState(),
+                authorPicture: ' https://example.com/author.png ',
+                replyNotificationRecipients: [
+                    {
+                        pubkey: 'recipient-1',
+                        displayName: ' Bob ',
+                        picture: ' https://example.com/bob.png ',
+                        enabled: true,
+                    },
+                    {
+                        pubkey: 'recipient-2',
+                        displayName: null,
+                        picture: '   ',
+                        enabled: false,
+                    },
+                ],
+            },
+            quotes: [],
+        });
+
+        expect(data && 'reply' in data ? data.reply : null).toMatchObject({
+            authorPicture: 'https://example.com/author.png',
+            replyNotificationRecipients: [
+                {
+                    pubkey: 'recipient-1',
+                    displayName: 'Bob',
+                    picture: 'https://example.com/bob.png',
+                    enabled: true,
+                },
+                {
+                    pubkey: 'recipient-2',
+                    displayName: null,
+                    enabled: false,
+                },
+            ],
+        });
+        expect(
+            data && 'reply' in data
+                ? data.reply?.replyNotificationRecipients?.[1]
+                : undefined,
+        ).not.toHaveProperty('picture');
         expect(() => structuredClone(data)).not.toThrow();
     });
 });

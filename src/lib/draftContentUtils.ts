@@ -7,6 +7,7 @@ import type {
     ReplyQuoteComposerState,
     ReplyQuoteState,
     DraftReplyQuoteEntryData,
+    DraftReplyNotificationRecipientData,
     NostrEvent,
 } from './types';
 import { createSanitizedDraftContainer, sanitizeDraftHtml } from './draftHtmlSanitizer';
@@ -18,7 +19,9 @@ type DraftReplyQuoteStateLike = Pick<
     | 'relayHints'
     | 'authorPubkey'
     | 'quoteNotificationEnabled'
+    | 'replyNotificationRecipients'
     | 'authorDisplayName'
+    | 'authorPicture'
     | 'referencedEvent'
     | 'rootEventId'
     | 'rootRelayHint'
@@ -71,6 +74,22 @@ function cloneStringArray(value: string[] | null | undefined): string[] {
     return Array.from(value ?? []);
 }
 
+function normalizePresentationValue(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function buildDraftReplyNotificationRecipient(
+    recipient: NonNullable<ReplyQuoteState['replyNotificationRecipients']>[number],
+): DraftReplyNotificationRecipientData {
+    const picture = normalizePresentationValue(recipient.picture);
+    return {
+        pubkey: recipient.pubkey,
+        displayName: normalizePresentationValue(recipient.displayName),
+        ...(picture ? { picture } : {}),
+        enabled: recipient.enabled,
+    };
+}
+
 function cloneReferencedEvent(event: NostrEvent | null): NostrEvent | null {
     if (!event) {
         return null;
@@ -90,13 +109,19 @@ function cloneReferencedEvent(event: NostrEvent | null): NostrEvent | null {
 function buildDraftReplyQuoteEntry(
     replyQuoteState: DraftReplyQuoteStateLike,
 ): DraftReplyQuoteEntryData {
+    const authorPicture = normalizePresentationValue(replyQuoteState.authorPicture);
+    const replyNotificationRecipients = replyQuoteState.replyNotificationRecipients?.map(
+        buildDraftReplyNotificationRecipient,
+    );
     return {
         mode: replyQuoteState.mode,
         eventId: replyQuoteState.eventId,
         relayHints: cloneStringArray(replyQuoteState.relayHints),
         authorPubkey: replyQuoteState.authorPubkey,
         quoteNotificationEnabled: replyQuoteState.quoteNotificationEnabled,
-        authorDisplayName: replyQuoteState.authorDisplayName,
+        ...(replyNotificationRecipients ? { replyNotificationRecipients } : {}),
+        authorDisplayName: normalizePresentationValue(replyQuoteState.authorDisplayName),
+        ...(authorPicture ? { authorPicture } : {}),
         referencedEvent: cloneReferencedEvent(replyQuoteState.referencedEvent),
         rootEventId: replyQuoteState.rootEventId,
         rootRelayHint: replyQuoteState.rootRelayHint,

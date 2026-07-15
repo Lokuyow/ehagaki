@@ -4,6 +4,7 @@
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
@@ -203,7 +204,17 @@
             </Tooltip.Provider>
         {/if}
         {#if authorDisplay}
-            <span class="author-name">{authorDisplay}</span>
+            <span class="author-profile">
+                <ProfileAvatar
+                    src={reference.authorPicture ?? ""}
+                    alt=""
+                    rootClassName="reply-quote-profile-avatar"
+                    imageClassName="reply-quote-profile-avatar-image"
+                    fallbackClassName="reply-quote-profile-avatar-fallback"
+                    fallbackAriaLabel=""
+                />
+                <span class="author-name">{authorDisplay}</span>
+            </span>
         {/if}
     {/snippet}
 
@@ -240,6 +251,14 @@
                                         )}
                                         {...restProps}
                                     >
+                                        <ProfileAvatar
+                                            src={recipient.picture ?? ""}
+                                            alt=""
+                                            rootClassName="reply-quote-profile-avatar"
+                                            imageClassName="reply-quote-profile-avatar-image"
+                                            fallbackClassName="reply-quote-profile-avatar-fallback"
+                                            fallbackAriaLabel=""
+                                        />
                                         <span
                                             class="reply-notification-recipient-name"
                                         >
@@ -361,6 +380,26 @@
         color: var(--text-light);
     }
 
+    :global(.reply-quote-profile-avatar) {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 auto;
+        overflow: hidden;
+        border-radius: 50%;
+    }
+
+    :global(.reply-quote-profile-avatar-image),
+    :global(.reply-quote-profile-avatar-fallback) {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+    }
+
+    :global(.reply-quote-profile-avatar-image) {
+        display: block;
+        object-fit: cover;
+    }
+
     :global(:root.light .reply-notification-recipient[aria-pressed="true"]) {
         background-color: color-mix(in srgb, var(--btn-bg), black 18%);
         color: var(--text);
@@ -372,6 +411,7 @@
     }
 
     .reply-notification-recipient-name {
+        min-width: 0;
         max-width: 160px;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -382,6 +422,7 @@
     .reply-notification-icon {
         width: 20px;
         height: 20px;
+        flex-shrink: 0;
     }
 
     .bell-regular-icon {
@@ -390,6 +431,14 @@
 
     .bell-solid-icon {
         mask-image: url("/icons/notifications_active_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .author-profile {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        overflow: hidden;
     }
 
     .author-name {

@@ -267,6 +267,7 @@ export interface ReplyQuoteState {
     quoteNotificationEnabled: boolean;
     replyNotificationRecipients?: ReplyNotificationRecipient[];
     authorDisplayName: string | null;
+    authorPicture: string | null;
     referencedEvent: NostrEvent | null;
     rootEventId: string | null;
     rootRelayHint: string | null;
@@ -278,6 +279,7 @@ export interface ReplyQuoteState {
 export interface ReplyNotificationRecipient {
     pubkey: string;
     displayName: string | null;
+    picture: string | null;
     enabled: boolean;
 }
 

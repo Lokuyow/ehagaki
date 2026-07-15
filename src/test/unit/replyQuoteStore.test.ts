@@ -9,6 +9,8 @@ import {
     restoreReplyQuote,
     setQuoteNotificationEnabled,
     initializeReplyNotificationRecipients,
+    updateAuthorProfile,
+    updateReplyNotificationRecipientProfile,
     setReplyNotificationRecipientEnabled,
     setReplyQuote,
 } from '../../stores/replyQuoteStore.svelte';
@@ -32,6 +34,7 @@ describe('replyQuoteStore', () => {
         });
 
         expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
+        expect(replyQuoteState.value.reply?.authorPicture).toBeNull();
         cleanup();
     });
 
@@ -161,8 +164,130 @@ describe('replyQuoteStore', () => {
         setReplyNotificationRecipientEnabled(eventId, recipientPubkey, true);
 
         expect(replyQuoteState.value.reply?.replyNotificationRecipients).toEqual([
-            { pubkey: recipientPubkey, displayName: null, enabled: true },
+            { pubkey: recipientPubkey, displayName: null, picture: null, enabled: true },
         ]);
+    });
+
+    it('作者プロフィールをevent IDとpubkeyが一致する場合だけ一括更新する', () => {
+        const eventId = '11'.repeat(32);
+        const authorPubkey = '22'.repeat(32);
+        const listener = vi.fn();
+        setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey },
+            quotes: [{
+                eventId: '33'.repeat(32),
+                relayHints: [],
+                authorPubkey,
+            }],
+        });
+        const cleanup = onReplyQuoteChanged(listener);
+
+        updateAuthorProfile(eventId, authorPubkey, {
+            displayName: ' Alice ',
+            picture: ' https://example.com/alice.png ',
+        });
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: 'Alice',
+            authorPicture: 'https://example.com/alice.png',
+        });
+        expect(replyQuoteState.value.quotes[0]).toMatchObject({
+            authorDisplayName: null,
+            authorPicture: null,
+        });
+        expect(listener).toHaveBeenCalledOnce();
+
+        listener.mockClear();
+        updateAuthorProfile(eventId, authorPubkey, {
+            displayName: 'Alice',
+            picture: 'https://example.com/alice.png',
+        });
+        updateAuthorProfile(eventId, 'wrong-pubkey', {
+            displayName: 'Wrong',
+            picture: null,
+        });
+        expect(listener).not.toHaveBeenCalled();
+        cleanup();
+    });
+
+    it('通知対象プロフィールを一括更新しenabledを維持する', () => {
+        const eventId = '11'.repeat(32);
+        const directPubkey = '22'.repeat(32);
+        const recipientPubkey = '33'.repeat(32);
+        setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: directPubkey },
+            quotes: [],
+        });
+        initializeReplyNotificationRecipients(eventId, {
+            id: eventId,
+            pubkey: directPubkey,
+            created_at: 1,
+            kind: 1,
+            tags: [['p', recipientPubkey]],
+            content: '',
+            sig: '',
+        });
+        const listener = vi.fn();
+        const cleanup = onReplyQuoteChanged(listener);
+
+        updateReplyNotificationRecipientProfile(eventId, recipientPubkey, {
+            displayName: '   ',
+            picture: ' https://example.com/recipient.png ',
+        });
+
+        expect(replyQuoteState.value.reply?.replyNotificationRecipients).toEqual([{
+            pubkey: recipientPubkey,
+            displayName: null,
+            picture: 'https://example.com/recipient.png',
+            enabled: false,
+        }]);
+        expect(listener).toHaveBeenCalledOnce();
+
+        listener.mockClear();
+        updateReplyNotificationRecipientProfile(eventId, recipientPubkey, {
+            displayName: null,
+            picture: 'https://example.com/recipient.png',
+        });
+        updateReplyNotificationRecipientProfile('wrong-event', recipientPubkey, {
+            displayName: 'Wrong',
+            picture: null,
+        });
+        expect(listener).not.toHaveBeenCalled();
+        cleanup();
+    });
+
+    it('下書きのpicture欠落と空白をnullへ正規化する', () => {
+        restoreReplyQuote({
+            reply: {
+                mode: 'reply',
+                eventId: '11'.repeat(32),
+                relayHints: [],
+                authorPubkey: '22'.repeat(32),
+                authorDisplayName: '   ',
+                authorPicture: '   ',
+                replyNotificationRecipients: [{
+                    pubkey: '33'.repeat(32),
+                    displayName: ' Bob ',
+                    enabled: true,
+                }],
+                referencedEvent: null,
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+            },
+            quotes: [],
+        });
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: null,
+            authorPicture: null,
+            replyNotificationRecipients: [{
+                pubkey: '33'.repeat(32),
+                displayName: 'Bob',
+                picture: null,
+                enabled: true,
+            }],
+        });
     });
 
     it('addQuoteReference は既存 state を保持したまま quote を追加し、重複は無視する', () => {

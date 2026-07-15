@@ -85,7 +85,7 @@
     addQuoteReference,
     setReplyQuote,
     updateReferencedEvent,
-    updateAuthorDisplayName,
+    updateAuthorProfile,
     setReplyQuoteError,
     onReplyQuoteChanged,
     replyQuoteState,
@@ -95,7 +95,7 @@
     removeQuoteReference,
     setQuoteNotificationEnabled,
     initializeReplyNotificationRecipients,
-    updateReplyNotificationRecipientDisplayName,
+    updateReplyNotificationRecipientProfile,
     setReplyNotificationRecipientEnabled,
   } from "./stores/replyQuoteStore.svelte";
   import {
@@ -1310,8 +1310,8 @@
     createController: (service) =>
       createReplyQuoteProfileSyncController({
         relayProfileService: service,
-        updateAuthorDisplayName,
-        updateReplyNotificationRecipientDisplayName,
+        updateAuthorProfile,
+        updateReplyNotificationRecipientProfile,
         logger: console,
       }),
   });

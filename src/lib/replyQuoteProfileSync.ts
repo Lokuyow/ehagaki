@@ -8,8 +8,13 @@ import type {
 
 interface ReplyQuoteProfileTarget {
     key: string;
+    presentation: ProfilePresentation;
+    applyProfile: (profile: ProfilePresentation) => void;
+}
+
+interface ProfilePresentation {
     displayName: string | null;
-    applyDisplayName: (name: string) => void;
+    picture: string | null;
 }
 
 interface DesiredProfileSync {
@@ -29,11 +34,21 @@ export interface ReplyQuoteProfileSyncDependencies {
         RelayProfileService,
         "fetchProfileRealtime" | "subscribeProfile"
     >;
-    updateAuthorDisplayName: (eventId: string, name: string) => void;
-    updateReplyNotificationRecipientDisplayName: (
+    updateAuthorProfile: (
         eventId: string,
         pubkey: string,
-        name: string,
+        profile: {
+            displayName: string | null;
+            picture: string | null;
+        },
+    ) => void;
+    updateReplyNotificationRecipientProfile: (
+        eventId: string,
+        pubkey: string,
+        profile: {
+            displayName: string | null;
+            picture: string | null;
+        },
     ) => void;
     logger?: Pick<Console, "error">;
 }
@@ -43,8 +58,19 @@ export interface ReplyQuoteProfileSyncController {
     dispose(): void;
 }
 
-function toDisplayName(profile: ProfileData | null): string | null {
-    return profile?.displayName?.trim() || profile?.name?.trim() || null;
+function toProfilePresentation(profile: ProfileData): ProfilePresentation {
+    return {
+        displayName: profile.displayName.trim() || profile.name.trim() || null,
+        picture: profile.picture.trim() || null,
+    };
+}
+
+function areProfilePresentationsEqual(
+    left: ProfilePresentation,
+    right: ProfilePresentation,
+): boolean {
+    return left.displayName === right.displayName
+        && left.picture === right.picture;
 }
 
 function appendReferenceTargets(
@@ -78,9 +104,16 @@ function appendReferenceTargets(
     if (reference.authorPubkey) {
         appendTarget(reference.authorPubkey, {
             key: `${reference.mode}:author:${reference.eventId}:${reference.authorPubkey}`,
-            displayName: reference.authorDisplayName,
-            applyDisplayName: (name) => {
-                deps.updateAuthorDisplayName(reference.eventId, name);
+            presentation: {
+                displayName: reference.authorDisplayName,
+                picture: reference.authorPicture,
+            },
+            applyProfile: (profile) => {
+                deps.updateAuthorProfile(
+                    reference.eventId,
+                    reference.authorPubkey!,
+                    profile,
+                );
             },
         });
     }
@@ -88,12 +121,15 @@ function appendReferenceTargets(
     for (const recipient of reference.replyNotificationRecipients ?? []) {
         appendTarget(recipient.pubkey, {
             key: `${reference.mode}:recipient:${reference.eventId}:${recipient.pubkey}`,
-            displayName: recipient.displayName,
-            applyDisplayName: (name) => {
-                deps.updateReplyNotificationRecipientDisplayName(
+            presentation: {
+                displayName: recipient.displayName,
+                picture: recipient.picture,
+            },
+            applyProfile: (profile) => {
+                deps.updateReplyNotificationRecipientProfile(
                     reference.eventId,
                     recipient.pubkey,
-                    name,
+                    profile,
                 );
             },
         });
@@ -126,17 +162,14 @@ export function createReplyQuoteProfileSyncController(
         }
 
         active.lastProfile = profile;
-        const displayName = toDisplayName(profile);
-        if (!displayName) {
-            return;
-        }
+        const presentation = toProfilePresentation(profile);
 
         for (const target of active.targets.values()) {
-            if (target.displayName === displayName) {
+            if (areProfilePresentationsEqual(target.presentation, presentation)) {
                 continue;
             }
-            target.displayName = displayName;
-            target.applyDisplayName(displayName);
+            target.presentation = presentation;
+            target.applyProfile(presentation);
         }
     };
 

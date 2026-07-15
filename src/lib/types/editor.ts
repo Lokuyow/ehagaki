@@ -113,14 +113,22 @@ export interface CleanupEditorParams {
 }
 
 // Draft types
+export interface DraftReplyNotificationRecipientData {
+    pubkey: string;
+    displayName: string | null;
+    picture?: string | null;
+    enabled: boolean;
+}
+
 export interface DraftReplyQuoteEntryData {
     mode: import('./nostr').ReplyQuoteMode;
     eventId: string;
     relayHints: string[];
     authorPubkey: string | null;
     quoteNotificationEnabled?: boolean;
-    replyNotificationRecipients?: import('./nostr').ReplyNotificationRecipient[];
+    replyNotificationRecipients?: DraftReplyNotificationRecipientData[];
     authorDisplayName: string | null;
+    authorPicture?: string | null;
     referencedEvent: import('./nostr').NostrEvent | null;
     rootEventId: string | null;
     rootRelayHint: string | null;
