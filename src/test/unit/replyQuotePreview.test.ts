@@ -268,9 +268,9 @@ describe('ReplyQuotePreview', () => {
         expect(button.classList.contains('reply-notification-recipient')).toBe(true);
         expect(button.textContent).toContain('Bob');
         const children = Array.from(button.children);
-        expect(children[0].classList).toContain('reply-notification-icon');
-        expect(children[1].classList).toContain('reply-quote-profile-avatar');
-        expect(children[2].classList).toContain('reply-notification-recipient-name');
+        expect(children[0].classList).toContain('reply-quote-profile-avatar');
+        expect(children[1].classList).toContain('reply-notification-recipient-name');
+        expect(children[2].classList).toContain('reply-notification-icon');
         expect(button.querySelector('img')?.getAttribute('src')).toBe(
             'https://example.com/bob.png?profile=true',
         );
