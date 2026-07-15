@@ -308,7 +308,8 @@ export function createPostHistoryRelatedTargetResolver({
         pubkey: string,
         relayHints: string[],
     ): void {
-        profileSync.ensureProfile(pubkey, relayHints);
+        const knownProfile = profileSync.ensureProfile(pubkey, relayHints);
+        mergeProfileForPubkey(pubkey, knownProfile);
     }
 
     profileSync.subscribe((pubkey, profile) => {
@@ -501,7 +502,7 @@ export function createPostHistoryRelatedTargetResolver({
                     });
                     ensureProfileForTarget(event.pubkey, recordRelayHints);
                     void runDeletionCheck(event, recordRelayHints, { background: true });
-                    return snapshot;
+                    return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
                 }
 
                 if (descriptor.authorHint) {
@@ -610,7 +611,7 @@ export function createPostHistoryRelatedTargetResolver({
                     result.event.pubkey,
                     resolvedRelayHints,
                 );
-                return snapshot;
+                return snapshotsByTargetId[descriptor.targetEventId] ?? snapshot;
             } catch {
                 if (!isCurrentLoadRequest(descriptor.targetEventId, requestId)) {
                     return snapshotsByTargetId[descriptor.targetEventId] ?? null;

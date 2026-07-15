@@ -4,7 +4,11 @@ import {
     createPostHistoryRelatedTargetResolver,
     type RelatedTargetDescriptor,
 } from "../../lib/postHistoryRelatedTargetResolver.svelte";
-import type { NostrEvent } from "../../lib/types";
+import {
+    createPostHistoryProfileSyncCoordinator,
+    type PostHistoryProfileSyncCoordinator,
+} from "../../lib/postHistoryProfileSync";
+import type { NostrEvent, ProfileData } from "../../lib/types";
 import { createMockRxNostr } from "../helpers";
 
 const getProfileMock = vi.hoisted(() => vi.fn());
@@ -82,7 +86,9 @@ function createDescriptor(
     };
 }
 
-function createResolver() {
+function createResolver(options: {
+    profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
+} = {}) {
     const rxNostr = createMockRxNostr();
     const postHistoryRepositoryImpl = {
         getByEventId: vi.fn().mockResolvedValue(null as PostHistoryRecord | null),
@@ -123,6 +129,7 @@ function createResolver() {
         contextFetchService,
         deletionRequestsRepositoryImpl,
         deletionFetchService,
+        profileSyncCoordinator: options.profileSyncCoordinator,
     });
 
     return {
@@ -132,6 +139,32 @@ function createResolver() {
         deletionRequestsRepositoryImpl,
         deletionFetchService,
     };
+}
+
+function createKnownProfileCoordinator(
+    pubkey: string,
+    profile: ProfileData,
+    relayHints: string[] = ["wss://relay.example.com/"],
+) {
+    const getProfile = vi.fn((requestedPubkey: string) =>
+        Promise.resolve(requestedPubkey === pubkey ? profile : null),
+    );
+    const coordinator = createPostHistoryProfileSyncCoordinator({
+        getShow: () => true,
+        getRxNostr: () => undefined,
+        profileCache: {
+            getProfile,
+            subscribe: vi.fn((subscribedPubkey, callback) => {
+                if (subscribedPubkey === pubkey) {
+                    callback(profile);
+                }
+                return vi.fn();
+            }),
+        },
+    });
+    coordinator.ensureProfile(pubkey, relayHints);
+
+    return { coordinator, getProfile };
 }
 
 describe("createPostHistoryRelatedTargetResolver", () => {
@@ -222,6 +255,140 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(snapshot?.event?.id).toBe(event.id);
         expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
+    });
+
+    it("applies a profile held before a cached target snapshot is created", async () => {
+        const event = createEvent();
+        const profile: ProfileData = {
+            name: "known",
+            displayName: "Known profile",
+            picture: "https://example.com/known.png",
+            npub: "npub1known",
+            nprofile: "nprofile1known",
+        };
+        const { coordinator, getProfile } = createKnownProfileCoordinator(
+            event.pubkey,
+            profile,
+        );
+        const { resolver, postHistoryRepositoryImpl, contextFetchService } = createResolver({
+            profileSyncCoordinator: coordinator,
+        });
+        postHistoryRepositoryImpl.getByEventId.mockResolvedValue(createRecord(event));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: event.id,
+            authorHint: event.pubkey,
+        }));
+
+        expect(snapshot?.profile).toBe(profile);
+        expect(resolver.getTargetSnapshot(event.id)?.profile).toBe(profile);
+        expect(getProfile).toHaveBeenCalledOnce();
+        expect(contextFetchService.fetchEventById).not.toHaveBeenCalled();
+    });
+
+    it("applies a previously held profile after resolving a target from the network", async () => {
+        const event = createEvent();
+        const profile: ProfileData = {
+            name: "network-known",
+            displayName: "Network known profile",
+            picture: "https://example.com/network-known.png",
+            npub: "npub1networkknown",
+            nprofile: "nprofile1networkknown",
+        };
+        const { coordinator, getProfile } = createKnownProfileCoordinator(
+            event.pubkey,
+            profile,
+            [
+                "wss://relay.example.com/",
+                "wss://fetched.example.com/",
+            ],
+        );
+        const { resolver, contextFetchService } = createResolver({
+            profileSyncCoordinator: coordinator,
+        });
+        contextFetchService.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event,
+                relayUrl: "wss://fetched.example.com/",
+            }),
+            cancel: vi.fn(),
+        });
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: event.id,
+            authorHint: event.pubkey,
+        }));
+
+        expect(snapshot?.profile).toBe(profile);
+        expect(resolver.getTargetSnapshot(event.id)?.profile).toBe(profile);
+        expect(getProfile).toHaveBeenCalledOnce();
+    });
+
+    it("keeps a known profile while added relay hints trigger a refresh", async () => {
+        const event = createEvent();
+        const profile: ProfileData = {
+            name: "known-before-refresh",
+            displayName: "Known before refresh",
+            picture: "https://example.com/known-before-refresh.png",
+            npub: "npub1knownbeforerefresh",
+            nprofile: "nprofile1knownbeforerefresh",
+        };
+        const { coordinator, getProfile } = createKnownProfileCoordinator(
+            event.pubkey,
+            profile,
+        );
+        const { resolver, contextFetchService } = createResolver({
+            profileSyncCoordinator: coordinator,
+        });
+        contextFetchService.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event,
+                relayUrl: "wss://additional.example.com/",
+            }),
+            cancel: vi.fn(),
+        });
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: event.id,
+            authorHint: event.pubkey,
+        }));
+
+        expect(snapshot?.profile).toBe(profile);
+        expect(getProfile).toHaveBeenCalledTimes(2);
+        expect(getProfile).toHaveBeenLastCalledWith(event.pubkey, expect.objectContaining({
+            forceRefresh: true,
+            additionalRelays: [
+                "wss://relay.example.com/",
+                "wss://additional.example.com/",
+            ],
+        }));
+    });
+
+    it("does not apply a known profile to a resolved target with another author", async () => {
+        const knownProfile: ProfileData = {
+            name: "known-a",
+            displayName: "Known A",
+            picture: "https://example.com/a.png",
+            npub: "npub1a",
+            nprofile: "nprofile1a",
+        };
+        const { coordinator } = createKnownProfileCoordinator("a".repeat(64), knownProfile);
+        const event = createEvent({
+            id: "2".repeat(64),
+            pubkey: "b".repeat(64),
+        });
+        const { resolver, postHistoryRepositoryImpl } = createResolver({
+            profileSyncCoordinator: coordinator,
+        });
+        postHistoryRepositoryImpl.getByEventId.mockResolvedValue(createRecord(event));
+
+        const snapshot = await resolver.ensureTarget(createDescriptor({
+            targetEventId: event.id,
+            authorHint: event.pubkey,
+        }));
+
+        expect(snapshot?.profile).toBeNull();
+        expect(resolver.getTargetSnapshot(event.id)?.profile).toBeNull();
     });
 
     it("dedupes in-flight fetches for the same target across scopes", async () => {
