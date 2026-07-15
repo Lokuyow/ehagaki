@@ -14,11 +14,6 @@
         ProfileData,
     } from "../lib/types";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
-    import { authState } from "../stores/authStore.svelte";
-    import {
-        profileDataStore,
-        profileLoadedStore,
-    } from "../stores/profileStore.svelte";
 
     interface Props {
         event: NostrEvent;
@@ -47,15 +42,10 @@
         footerMenu = undefined,
     }: Props = $props();
 
-    let displayedProfile = $derived(
-        profileLoadedStore.value && event.pubkey === authState.value.pubkey
-            ? profileDataStore.value
-            : profile,
-    );
     let authorName = $derived.by(() => {
         const displayName =
-            displayedProfile?.displayName?.trim() ||
-            displayedProfile?.name?.trim();
+            profile?.displayName?.trim() ||
+            profile?.name?.trim();
         if (displayName) {
             return displayName;
         }
@@ -89,10 +79,10 @@
     {@render topActions?.()}
     <div class="post-history-related-card-body">
         <div class="post-history-related-author">
-            {#if displayedProfile?.picture}
+            {#if profile?.picture}
                 <img
                     class="post-history-related-avatar"
-                    src={displayedProfile.picture}
+                    src={profile.picture}
                     alt={authorName}
                 />
             {:else}

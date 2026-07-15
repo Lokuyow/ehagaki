@@ -401,6 +401,7 @@ export function usePostHistoryThreadGraph({
             sources: anchorNode.sources,
         });
         upsertParentEdge(node.eventId, node.parentEventId);
+        refreshProfileForPubkeyInBackground(node.authorPubkey, node.relayUrls);
         return node;
     }
 
@@ -432,7 +433,8 @@ export function usePostHistoryThreadGraph({
         pubkey: string,
         additionalRelays: string[] = [],
     ): void {
-        profileSync.ensureProfile(pubkey, additionalRelays);
+        const knownProfile = profileSync.ensureProfile(pubkey, additionalRelays);
+        mergeProfileForPubkey(pubkey, knownProfile);
     }
 
     const unsubscribeProfileUpdates = profileSync.subscribe((pubkey, profile) => {

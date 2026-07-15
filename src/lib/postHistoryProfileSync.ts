@@ -31,7 +31,7 @@ interface ActivePostHistoryProfileSync {
 }
 
 export interface PostHistoryProfileSyncCoordinator {
-    ensureProfile(pubkey: string, relayHints?: string[]): void;
+    ensureProfile(pubkey: string, relayHints?: string[]): ProfileData | null;
     subscribe(
         listener: (pubkey: string, profile: ProfileData) => void,
     ): () => void;
@@ -113,9 +113,12 @@ export function createPostHistoryProfileSyncCoordinator({
         });
     };
 
-    const ensureProfile = (pubkey: string, relayHints: string[] = []): void => {
+    const ensureProfile = (
+        pubkey: string,
+        relayHints: string[] = [],
+    ): ProfileData | null => {
         if (!pubkey || disposed) {
-            return;
+            return null;
         }
 
         const sanitizedRelayHints = RelayConfigUtils.sanitizeExternalRelayUrls(relayHints);
@@ -126,7 +129,7 @@ export function createPostHistoryProfileSyncCoordinator({
                 sanitizedRelayHints,
             );
             if (areRelayHintsEqual(current.relayHints, mergedRelayHints)) {
-                return;
+                return current.lastProfile;
             }
 
             current.relayHints = mergedRelayHints;
@@ -135,7 +138,7 @@ export function createPostHistoryProfileSyncCoordinator({
             } else {
                 requestProfile(current, true);
             }
-            return;
+            return current.lastProfile;
         }
 
         const active: ActivePostHistoryProfileSync = {
@@ -152,6 +155,7 @@ export function createPostHistoryProfileSyncCoordinator({
             publish(active, profile);
         });
         requestProfile(active, false);
+        return null;
     };
 
     const subscribe = (

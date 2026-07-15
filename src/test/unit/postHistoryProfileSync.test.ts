@@ -89,6 +89,32 @@ describe("postHistoryProfileSync", () => {
         expect(listener).toHaveBeenCalledWith("pubkey-a", cachedProfile);
     });
 
+    it("returns a known profile when an existing pubkey is ensured again", () => {
+        const cachedProfile = createProfile("Known");
+        const listener = vi.fn();
+        const getProfile = vi.fn().mockResolvedValue(cachedProfile);
+        const coordinator = createPostHistoryProfileSyncCoordinator({
+            getShow: () => true,
+            getRxNostr: () => undefined,
+            profileCache: {
+                getProfile,
+                subscribe: vi.fn((_pubkey, callback) => {
+                    callback(cachedProfile);
+                    return vi.fn();
+                }),
+            },
+        });
+        coordinator.subscribe(listener);
+
+        coordinator.ensureProfile("pubkey-a");
+        listener.mockClear();
+        const knownProfile = coordinator.ensureProfile("pubkey-a");
+
+        expect(knownProfile).toBe(cachedProfile);
+        expect(listener).not.toHaveBeenCalled();
+        expect(getProfile).toHaveBeenCalledOnce();
+    });
+
     it("unsubscribes on reset and ignores cache updates and late requests after close", async () => {
         const deferred = createDeferred<ProfileData | null>();
         const unsubscribe = vi.fn();
