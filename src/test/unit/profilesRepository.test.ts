@@ -391,6 +391,40 @@ describe("DexieProfilesRepository compatibility APIs", () => {
         expect(getItem).not.toHaveBeenCalled();
     });
 
+    it("bulkGetRecords preserves input order, duplicates, and missing entries", async () => {
+        const db = createTestDb();
+        const repository = new DexieProfilesRepository(db);
+        const first = createRecord({ pubkeyHex: PUBKEY, name: "first" });
+        const second = createRecord({ pubkeyHex: OTHER_PUBKEY, name: "second" });
+        await db.profiles.bulkPut([first, second]);
+
+        await expect(repository.bulkGetRecords([
+            OTHER_PUBKEY,
+            "3".repeat(64),
+            PUBKEY,
+            OTHER_PUBKEY,
+        ])).resolves.toEqual([
+            second,
+            null,
+            first,
+            second,
+        ]);
+    });
+
+    it("bulkGetRecords propagates IndexedDB failures without reading legacy storage", async () => {
+        const db = createTestDb();
+        const getItem = vi.fn(() => JSON.stringify(createProfile()));
+        const repository = new DexieProfilesRepository(db, Date.now, () => ({
+            getItem,
+            removeItem: vi.fn(),
+        }));
+        const failure = new Error("bulk read failed");
+        vi.spyOn(db.profiles, "bulkGet").mockRejectedValueOnce(failure);
+
+        await expect(repository.bulkGetRecords([PUBKEY])).rejects.toBe(failure);
+        expect(getItem).not.toHaveBeenCalled();
+    });
+
     it("propagates IndexedDB access failures from getRecord without reading legacy storage", async () => {
         const db = createTestDb();
         const getItem = vi.fn(() => JSON.stringify(createProfile()));

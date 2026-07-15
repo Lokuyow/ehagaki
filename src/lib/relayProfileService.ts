@@ -4,6 +4,11 @@ import type { RelayConfig, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { profileMetadataCache } from './profileMetadataCache.svelte';
 
+export interface ProfileBatchTarget {
+    pubkeyHex: string;
+    additionalRelays?: string[];
+}
+
 /**
  * リレー取得とプロフィール取得を統合管理するサービスクラス
  * 
@@ -126,11 +131,69 @@ export class RelayProfileService {
         });
     }
 
+    /**
+     * 通知一覧など、多数のプロフィールを共通cache/tier処理でまとめて取得する。
+     */
+    async fetchProfilesRealtime(
+        targets: ProfileBatchTarget[],
+    ): Promise<Record<string, ProfileData | null>> {
+        const relayHintsByPubkey = new Map<string, string[]>();
+        for (const target of targets) {
+            if (!target.pubkeyHex) {
+                continue;
+            }
+            relayHintsByPubkey.set(
+                target.pubkeyHex,
+                RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(relayHintsByPubkey.get(target.pubkeyHex) ?? []),
+                    ...(target.additionalRelays ?? []),
+                ], {
+                    limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+                }),
+            );
+        }
+
+        const pubkeys = Array.from(relayHintsByPubkey.keys());
+        const relayListEntries = await Promise.all(pubkeys.map(async (pubkey) => [
+            pubkey,
+            await this.relayManager.getRelayListsForProfile(pubkey),
+        ] as const));
+        const relayOptionsByPubkey = Object.fromEntries(relayListEntries.map(([
+            pubkey,
+            relayLists,
+        ]) => {
+            const contextualRelays = relayLists.contextualRelays ?? relayLists.additionalRelays;
+            return [pubkey, {
+                additionalRelays: RelayConfigUtils.mergeRelayConfigs(
+                    relayHintsByPubkey.get(pubkey) ?? [],
+                    contextualRelays,
+                ),
+                writeRelays: relayLists.writeRelays,
+                ...(relayLists.fallbackRelays?.length
+                    ? { fallbackRelays: relayLists.fallbackRelays }
+                    : {}),
+            }];
+        }));
+
+        return profileMetadataCache.getProfiles(pubkeys, {
+            rxNostr: this.rxNostr as never,
+            allowBackgroundRefresh: true,
+            relayOptionsByPubkey,
+        });
+    }
+
     subscribeProfile(
         pubkeyHex: string,
         callback: (profile: ProfileData | null) => void,
     ): () => void {
         return profileMetadataCache.subscribe(pubkeyHex, callback);
+    }
+
+    subscribeProfiles(
+        pubkeys: string[],
+        callback: (pubkeyHex: string, profile: ProfileData | null) => void,
+    ): () => void {
+        return profileMetadataCache.subscribeProfiles(pubkeys, callback);
     }
 
     /**

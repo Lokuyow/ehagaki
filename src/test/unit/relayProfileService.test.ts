@@ -302,6 +302,51 @@ describe('RelayProfileService', () => {
             }));
         });
 
+        it('複数pubkeyを重複排除し、pubkey別relay contextで一括取得する', async () => {
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockImplementation(async (targetPubkey) => ({
+                writeRelays: [`wss://${targetPubkey}-write.example.com/`],
+                additionalRelays: [],
+                contextualRelays: [`wss://${targetPubkey}-stored.example.com/`],
+                fallbackRelays: [`wss://${targetPubkey}-fallback.example.com/`],
+            }));
+            const getProfilesSpy = vi.spyOn(profileMetadataCache, 'getProfiles').mockResolvedValue({
+                'pubkey-a': null,
+                'pubkey-b': null,
+            });
+
+            await service.fetchProfilesRealtime([
+                { pubkeyHex: 'pubkey-a', additionalRelays: ['wss://event-a.example.com'] },
+                { pubkeyHex: 'pubkey-b', additionalRelays: ['wss://event-b.example.com'] },
+                { pubkeyHex: 'pubkey-a', additionalRelays: ['wss://event-a-2.example.com'] },
+            ]);
+
+            expect(mockRelayManager.getRelayListsForProfile).toHaveBeenCalledTimes(2);
+            expect(getProfilesSpy).toHaveBeenCalledWith(['pubkey-a', 'pubkey-b'], {
+                rxNostr: mockRxNostr,
+                allowBackgroundRefresh: true,
+                relayOptionsByPubkey: {
+                    'pubkey-a': {
+                        additionalRelays: [
+                            'wss://event-a.example.com/',
+                            'wss://event-a-2.example.com/',
+                            'wss://pubkey-a-stored.example.com/',
+                        ],
+                        writeRelays: ['wss://pubkey-a-write.example.com/'],
+                        fallbackRelays: ['wss://pubkey-a-fallback.example.com/'],
+                    },
+                    'pubkey-b': {
+                        additionalRelays: [
+                            'wss://event-b.example.com/',
+                            'wss://pubkey-b-stored.example.com/',
+                        ],
+                        writeRelays: ['wss://pubkey-b-write.example.com/'],
+                        fallbackRelays: ['wss://pubkey-b-fallback.example.com/'],
+                    },
+                },
+            });
+            getProfilesSpy.mockRestore();
+        });
+
         it('共通プロフィールキャッシュの更新を購読する', () => {
             const callback = vi.fn();
             const unsubscribe = vi.fn();
@@ -311,6 +356,19 @@ describe('RelayProfileService', () => {
             const result = service.subscribeProfile('pubkey123', callback);
 
             expect(subscribeSpy).toHaveBeenCalledWith('pubkey123', callback);
+            expect(result).toBe(unsubscribe);
+            subscribeSpy.mockRestore();
+        });
+
+        it('複数プロフィールのpubkey単位更新購読を共通cacheへ委譲する', () => {
+            const callback = vi.fn();
+            const unsubscribe = vi.fn();
+            const subscribeSpy = vi.spyOn(profileMetadataCache, 'subscribeProfiles')
+                .mockReturnValue(unsubscribe);
+
+            const result = service.subscribeProfiles(['pubkey-a', 'pubkey-b'], callback);
+
+            expect(subscribeSpy).toHaveBeenCalledWith(['pubkey-a', 'pubkey-b'], callback);
             expect(result).toBe(unsubscribe);
             subscribeSpy.mockRestore();
         });

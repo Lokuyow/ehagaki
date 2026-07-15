@@ -10,10 +10,12 @@ import type {
     ProfileUpsertDecision,
     ProfileUpsertResult,
 } from "../../lib/storage/profilesRepository";
+import type { ProfileRecord } from "../../lib/storage/ehagakiDb";
 import type { ProfileData } from "../../lib/types";
 
 const repositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
+    bulkGetRecords: vi.fn(),
     put: vi.fn(),
     upsertCandidate: vi.fn(),
     delete: vi.fn(),
@@ -21,6 +23,16 @@ const repositoryMock = vi.hoisted(() => ({
 
 vi.mock("../../lib/storage/profilesRepository", () => ({
     profilesRepository: repositoryMock,
+    profileRecordToProfileData: (record: ProfileRecord): ProfileData => ({
+        name: record.name,
+        displayName: record.displayName,
+        picture: record.pictureUrl,
+        npub: record.npub,
+        nprofile: record.nprofile,
+        profileRelays: record.profileRelays,
+        fetchedAt: record.fetchedAt,
+        updatedAtFromEvent: record.updatedAtFromEvent,
+    }),
 }));
 
 const pubkey = "a".repeat(64);
@@ -34,6 +46,24 @@ function createProfile(overrides: Partial<ProfileData> = {}): ProfileData {
         picture: "https://example.com/cached.png?profile=true",
         npub: "npub1cached",
         nprofile: "nprofile1cached",
+        ...overrides,
+    };
+}
+
+function createProfileRecord(
+    pubkeyHex: string,
+    overrides: Partial<ProfileRecord> = {},
+): ProfileRecord {
+    return {
+        pubkeyHex,
+        name: "Stored",
+        displayName: "Stored User",
+        pictureUrl: "https://example.com/stored.png?profile=true",
+        npub: `npub-${pubkeyHex.slice(0, 8)}`,
+        nprofile: `nprofile-${pubkeyHex.slice(0, 8)}`,
+        fetchedAt: Date.now(),
+        updatedAt: Date.now(),
+        schemaVersion: 2,
         ...overrides,
     };
 }
@@ -293,10 +323,12 @@ describe("profileMetadataCache", () => {
         vi.setSystemTime(1_000_000);
         profileMetadataCacheInternals.resetForTests();
         repositoryMock.get.mockReset();
+        repositoryMock.bulkGetRecords.mockReset();
         repositoryMock.put.mockReset();
         repositoryMock.upsertCandidate.mockReset();
         repositoryMock.delete.mockReset();
         repositoryMock.get.mockResolvedValue(null);
+        repositoryMock.bulkGetRecords.mockResolvedValue([]);
         repositoryMock.upsertCandidate.mockImplementation(
             async (_pubkey: string, candidate: ProfileEventCandidate) => createUpsertResult(candidate),
         );
@@ -874,6 +906,145 @@ describe("profileMetadataCache", () => {
             [otherPubkey],
         ]);
         expect(profilesRepository.upsertCandidate).toHaveBeenCalledTimes(2);
+    });
+
+    it("hydrates deduplicated profiles with one ordered IndexedDB bulk read", async () => {
+        const recordA = createProfileRecord(pubkey, { name: "Stored A" });
+        const recordB = createProfileRecord(otherPubkey, { name: "Stored B" });
+        repositoryMock.bulkGetRecords.mockResolvedValue([recordA, recordB]);
+
+        const result = await profileMetadataCache.getProfiles([
+            pubkey,
+            otherPubkey,
+            pubkey,
+            "",
+        ], {
+            allowBackgroundRefresh: false,
+        });
+
+        expect(repositoryMock.bulkGetRecords).toHaveBeenCalledOnce();
+        expect(repositoryMock.bulkGetRecords).toHaveBeenCalledWith([pubkey, otherPubkey]);
+        expect(repositoryMock.get).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+            [pubkey]: { name: "Stored A" },
+            [otherPubkey]: { name: "Stored B" },
+        });
+    });
+
+    it("returns bulk snapshots immediately and revalidates only stale pubkeys", async () => {
+        const staleFetchedAt = Date.now() - profileMetadataCacheInternals.PROFILE_CACHE_STALE_MS - 1;
+        repositoryMock.bulkGetRecords.mockResolvedValue([
+            createProfileRecord(pubkey, { name: "Fresh A", fetchedAt: Date.now() }),
+            createProfileRecord(otherPubkey, { name: "Stale B", fetchedAt: staleFetchedAt }),
+        ]);
+        const rxNostr = createTieredRxNostr(() => [{
+            pubkey: otherPubkey,
+            content: { name: "Updated B" },
+            createdAt: 100,
+        }]);
+
+        await expect(profileMetadataCache.getProfiles([pubkey, otherPubkey], {
+            rxNostr: rxNostr as never,
+        })).resolves.toMatchObject({
+            [pubkey]: { name: "Fresh A" },
+            [otherPubkey]: { name: "Stale B" },
+        });
+        await flushProfileBatch();
+
+        expect(rxNostr.calls).toEqual([{
+            relays: BOOTSTRAP_RELAYS,
+            authors: [otherPubkey],
+        }]);
+    });
+
+    it("uses pubkey-specific relay context without leaking it to other profiles", async () => {
+        const relayA = "wss://notification-a.example.com/";
+        const relayB = "wss://notification-b.example.com/";
+        const rxNostr = createTieredRxNostr((relays) => {
+            if (relays.includes(relayA)) {
+                return [{ pubkey, content: { name: "A" }, createdAt: 100 }];
+            }
+            if (relays.includes(relayB)) {
+                return [{ pubkey: otherPubkey, content: { name: "B" }, createdAt: 100 }];
+            }
+            return [];
+        });
+        repositoryMock.bulkGetRecords.mockResolvedValue([null, null]);
+
+        const pending = profileMetadataCache.getProfiles([pubkey, otherPubkey], {
+            rxNostr: rxNostr as never,
+            relayOptionsByPubkey: {
+                [pubkey]: { additionalRelays: [relayA] },
+                [otherPubkey]: { additionalRelays: [relayB] },
+            },
+        });
+        await flushProfileBatch();
+        await pending;
+
+        expect(rxNostr.calls).toEqual([
+            { relays: BOOTSTRAP_RELAYS, authors: [pubkey, otherPubkey] },
+            { relays: [relayA], authors: [pubkey] },
+            { relays: [relayB], authors: [otherPubkey] },
+        ]);
+    });
+
+    it("chunks hundreds of notification pubkeys and releases all pending entries", async () => {
+        const pubkeys = Array.from(
+            { length: 120 },
+            (_, index) => index.toString(16).padStart(64, "0"),
+        );
+        repositoryMock.bulkGetRecords.mockResolvedValue(pubkeys.map(() => null));
+        const rxNostr = createTieredRxNostr((_relays, callIndex) =>
+            rxNostr.calls[callIndex].authors.map((author, index) => ({
+                pubkey: author,
+                content: { name: `User ${index}` },
+                createdAt: 100,
+                eventId: (callIndex + 1).toString(16).padStart(64, "0"),
+            })),
+        );
+
+        const pending = profileMetadataCache.getProfiles([
+            ...pubkeys,
+            ...pubkeys.slice(0, 10),
+        ], {
+            rxNostr: rxNostr as never,
+        });
+        await flushProfileBatch();
+        const result = await pending;
+
+        expect(Object.keys(result)).toHaveLength(120);
+        expect(rxNostr.calls).toHaveLength(3);
+        expect(rxNostr.calls.map((call) => call.authors.length)).toEqual([50, 50, 20]);
+        expect(rxNostr.calls.map((call) => call.relays)).toEqual([
+            BOOTSTRAP_RELAYS,
+            BOOTSTRAP_RELAYS,
+            BOOTSTRAP_RELAYS,
+        ]);
+        expect(profileMetadataCacheInternals.getPendingProfileCountForTests()).toBe(0);
+    });
+
+    it("subscribes to duplicate pubkeys once and releases the whole list", async () => {
+        repositoryMock.bulkGetRecords.mockResolvedValue([
+            createProfileRecord(pubkey, { name: "Stored A" }),
+            createProfileRecord(otherPubkey, { name: "Stored B" }),
+        ]);
+        await profileMetadataCache.getProfiles([pubkey, otherPubkey], {
+            allowBackgroundRefresh: false,
+        });
+        const callback = vi.fn();
+
+        const unsubscribe = profileMetadataCache.subscribeProfiles(
+            [pubkey, pubkey, otherPubkey],
+            callback,
+        );
+
+        expect(callback).toHaveBeenCalledTimes(2);
+        expect(callback).toHaveBeenCalledWith(pubkey, expect.objectContaining({ name: "Stored A" }));
+        expect(callback).toHaveBeenCalledWith(otherPubkey, expect.objectContaining({ name: "Stored B" }));
+        expect(profileMetadataCacheInternals.getSubscriberCountForTests()).toBe(2);
+
+        unsubscribe();
+        expect(profileMetadataCacheInternals.getSubscriberCountForTests()).toBe(0);
     });
 
     it("queries different contextual relay sets without leaking authors between them", async () => {

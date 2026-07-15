@@ -38,6 +38,7 @@ export interface ProfileUpsertResult {
 export interface ProfilesRepository {
     get(pubkeyHex: string): Promise<ProfileData | null>;
     getRecord(pubkeyHex: string): Promise<ProfileRecord | null>;
+    bulkGetRecords(pubkeys: string[]): Promise<Array<ProfileRecord | null>>;
     put(pubkeyHex: string, profile: ProfileData): Promise<void>;
     upsertCandidate(
         pubkeyHex: string,
@@ -46,7 +47,7 @@ export interface ProfilesRepository {
     delete(pubkeyHex: string): Promise<void>;
 }
 
-function toProfile(record: ProfileRecord): ProfileData {
+export function profileRecordToProfileData(record: ProfileRecord): ProfileData {
     return {
         name: record.name,
         displayName: record.displayName,
@@ -139,7 +140,7 @@ function toUpsertResult(
     return {
         decision,
         acceptedRecord,
-        acceptedProfile: acceptedRecord ? toProfile(acceptedRecord) : null,
+        acceptedProfile: acceptedRecord ? profileRecordToProfileData(acceptedRecord) : null,
         currentEventConfirmed: decision === "inserted"
             || decision === "replaced"
             || decision === "kept-existing"
@@ -189,7 +190,7 @@ export class DexieProfilesRepository implements ProfilesRepository {
 
         try {
             const record = await this.db.profiles.get(pubkeyHex);
-            if (record) return toProfile(record);
+            if (record) return profileRecordToProfileData(record);
         } catch {
             return readLegacyProfile(pubkeyHex, this.getStorage());
         }
@@ -208,6 +209,14 @@ export class DexieProfilesRepository implements ProfilesRepository {
 
     async getRecord(pubkeyHex: string): Promise<ProfileRecord | null> {
         return (await this.db.profiles.get(pubkeyHex)) ?? null;
+    }
+
+    async bulkGetRecords(pubkeys: string[]): Promise<Array<ProfileRecord | null>> {
+        if (pubkeys.length === 0) {
+            return [];
+        }
+        const records = await this.db.profiles.bulkGet(pubkeys);
+        return records.map((record) => record ?? null);
     }
 
     async put(pubkeyHex: string, profile: ProfileData): Promise<void> {
