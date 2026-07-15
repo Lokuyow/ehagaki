@@ -16,6 +16,7 @@ import {
     testServiceWorkerCommunication,
     getSharedMediaWithFallback,
 } from "../utils/swCommunication";
+import { sharedMediaRepository } from "../storage/sharedMediaRepository";
 import { processExternalChannelContextQuery } from './externalChannelContextBootstrapUtils';
 import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type {
@@ -52,6 +53,7 @@ export interface RunExternalInputBootstrapParams {
     rxNostr?: any;
     relayConfig: any;
     locationHref: string;
+    allowSharedMediaRecovery?: boolean;
 }
 
 function getSharedMediaErrorMessage(errorCode: string | null): string | null {
@@ -76,19 +78,28 @@ async function bootstrapSharedMedia({
     sharedMediaStore,
     setSharedMediaError,
     locationHref,
+    allowSharedMediaRecovery = false,
 }: Pick<
     RunExternalInputBootstrapParams,
     | "sharedError"
     | "sharedMediaStore"
     | "setSharedMediaError"
     | "locationHref"
+    | "allowSharedMediaRecovery"
 >): Promise<void> {
-    if (!checkIfOpenedFromShare()) {
-        return;
-    }
+    const openedFromShare = checkIfOpenedFromShare();
 
     try {
-        const shared = await getSharedMediaWithFallback();
+        if (!openedFromShare && !allowSharedMediaRecovery) {
+            return;
+        }
+
+        const shared = openedFromShare
+            ? await getSharedMediaWithFallback()
+            : await sharedMediaRepository.getLatest();
+        if (!openedFromShare && (!shared || (shared.automaticRetryCount ?? 0) < 1)) {
+            return;
+        }
         if (shared && (shared.images.length || shared.title || shared.text || shared.url)) {
             sharedMediaStore.files = shared.images;
             sharedMediaStore.metadata = shared.metadata;

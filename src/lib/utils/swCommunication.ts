@@ -63,6 +63,16 @@ async function sendMessageToServiceWorker(
     });
 }
 
+export async function acknowledgeSharedMedia(shareId: string): Promise<boolean> {
+    try {
+        const response = await sendMessageToServiceWorker({ action: 'acknowledgeSharedMedia', shareId }, 1000);
+        return response?.cleared === true;
+    } catch (error) {
+        console.warn('Failed to acknowledge shared media in Service Worker:', error);
+        return false;
+    }
+}
+
 /**
  * ServiceWorkerの準備を待つ
  */

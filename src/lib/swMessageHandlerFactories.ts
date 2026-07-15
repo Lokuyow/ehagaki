@@ -12,12 +12,14 @@ type MessageLogger = Pick<Console, 'log' | 'warn' | 'error'>;
 export interface ServiceWorkerActionEvent extends EventResponseTarget {
     data?: {
         urls?: string[];
+        shareId?: string;
     } | null;
 }
 
 export interface SharedMediaActionHandler {
     respondSharedMedia: (event: ServiceWorkerActionEvent) => void | Promise<void>;
     respondSharedMediaForce: (event: ServiceWorkerActionEvent) => void | Promise<void>;
+    acknowledgeSharedMedia?: (event: ServiceWorkerActionEvent) => void | Promise<void>;
 }
 
 export interface CacheActionHandler {
@@ -86,6 +88,7 @@ export function createServiceWorkerActionHandlers({
     return {
         getSharedMedia: () => messageHandler.respondSharedMedia(event),
         getSharedMediaForce: () => messageHandler.respondSharedMediaForce(event),
+        acknowledgeSharedMedia: () => messageHandler.acknowledgeSharedMedia?.(event),
         clearProfileCache: async () => {
             const result = await cacheManager.clearProfileCache();
             postPortResponse(event, result);

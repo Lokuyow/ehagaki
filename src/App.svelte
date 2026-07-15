@@ -77,6 +77,7 @@
   } from "./stores/settingsStore.svelte";
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
+  import { acknowledgeSharedMedia } from "./lib/utils/swCommunication";
   import type { AuthResult, Draft, NostrEvent, PostResult } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
@@ -1191,6 +1192,7 @@
       rxNostr,
       relayConfig: relayConfigStore.value,
       locationHref: window.location.href,
+      allowSharedMediaRecovery: true,
     });
 
     void runAppInitializationBootstrap({
@@ -1231,6 +1233,21 @@
 
   let isProcessingSharedContent = false;
 
+  function clearSharedMediaStoreForShare(shareId: string): void {
+    if (sharedMediaStore.shareId === shareId) {
+      clearSharedMediaStore();
+    }
+  }
+
+  async function deleteSharedMediaForShare(shareId: string): Promise<void> {
+    // Clear the mirror first. If that acknowledgement fails, retain the
+    // authoritative IndexedDB record to prevent the stale mirror being used.
+    if (!await acknowledgeSharedMedia(shareId)) {
+      return;
+    }
+    await sharedMediaRepository.deleteLatestForShare(shareId);
+  }
+
   async function consumeSharedContent(): Promise<void> {
     if (
       isProcessingSharedContent ||
@@ -1265,14 +1282,14 @@
           },
         );
         if (updateResult === "stale") {
-          clearSharedMediaStore();
+          clearSharedMediaStoreForShare(shareId);
           return;
         }
       }
 
       if (mediaFiles.length === 0) {
-        await sharedMediaRepository.deleteLatestForShare(shareId);
-        clearSharedMediaStore();
+        await deleteSharedMediaForShare(shareId);
+        clearSharedMediaStoreForShare(shareId);
         return;
       }
 
@@ -1283,7 +1300,7 @@
         uploadResult.results !== null;
 
       if (uploadedAllFiles) {
-        await sharedMediaRepository.deleteLatestForShare(shareId);
+        await deleteSharedMediaForShare(shareId);
       } else if (sharedMediaStore.automaticRetryCount < 1) {
         await sharedMediaRepository.updateLatestForShare(shareId, {
           images: mediaFiles,
@@ -1293,16 +1310,16 @@
         });
         setSharedMediaError("共有メディアのアップロードに失敗しました。次回起動時に一度だけ再試行します。", 5000);
       } else {
-        await sharedMediaRepository.deleteLatestForShare(shareId);
+        await deleteSharedMediaForShare(shareId);
         setSharedMediaError("共有メディアのアップロードに失敗しました。元のアプリからもう一度共有してください。", 5000);
       }
 
-      clearSharedMediaStore();
+      clearSharedMediaStoreForShare(shareId);
     } catch (error) {
       console.error("Failed to consume shared content:", error);
       setSharedMediaError("共有コンテンツの取り込みに失敗しました", 5000);
       // Keep the persistent record unchanged so a later startup can recover it.
-      clearSharedMediaStore();
+      clearSharedMediaStoreForShare(shareId);
     } finally {
       isProcessingSharedContent = false;
     }

@@ -147,12 +147,15 @@ export class DexieSharedMediaRepository implements SharedMediaRepository {
         shareId: string,
         update: Pick<SharedMediaData, "images" | "metadata" | "bodyStatus" | "automaticRetryCount">,
     ): Promise<"updated" | "stale"> {
+        const images = await Promise.all(update.images.map(toFileRecord));
+        const metadata = update.metadata?.map((item): SharedMediaMetadata => ({ ...item }));
+
         return await this.db.transaction("rw", this.db.sharedMedia, async () => {
             const record = await this.db.sharedMedia.get(SHARED_MEDIA_RECORD_ID);
             if (!record || record.shareId !== shareId) return "stale";
 
-            record.images = await Promise.all(update.images.map(toFileRecord));
-            record.metadata = update.metadata?.map((item): SharedMediaMetadata => ({ ...item }));
+            record.images = images;
+            record.metadata = metadata;
             record.bodyStatus = update.bodyStatus;
             record.automaticRetryCount = update.automaticRetryCount;
             record.updatedAt = this.now();

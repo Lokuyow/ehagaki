@@ -380,10 +380,10 @@
     if (currentEditor.isEmpty) {
       currentEditor.commands.setContent({ type: "doc", content: paragraphs });
     } else {
-      currentEditor.commands.insertContent([
+      currentEditor.chain().focus("end").insertContent([
         { type: "paragraph" },
         ...paragraphs,
-      ]);
+      ]).run();
     }
 
     currentEditor.commands.focus("end");

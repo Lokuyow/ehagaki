@@ -558,6 +558,18 @@ class MessageHandler {
         // 強制取得ではメディア送信後もキャッシュをクリアしない
         // （複数回の取得試行に対応）
     }
+
+    acknowledgeSharedMedia(event) {
+        const shareId = event.data?.shareId;
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
+        const cleared = !!shareId && (!sharedCache || sharedCache.shareId === shareId);
+
+        if (cleared) {
+            ServiceWorkerState.clearSharedMediaCache();
+        }
+
+        event.ports?.[0]?.postMessage({ data: { cleared } });
+    }
 }
 
 // =============================================================================
