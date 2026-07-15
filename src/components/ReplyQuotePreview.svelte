@@ -251,6 +251,11 @@
                                         )}
                                         {...restProps}
                                     >
+                                        <div
+                                            class="reply-notification-icon svg-icon"
+                                            class:bell-solid-icon={recipient.enabled}
+                                            class:bell-regular-icon={!recipient.enabled}
+                                        ></div>
                                         <ProfileAvatar
                                             src={recipient.picture ?? ""}
                                             alt=""
@@ -264,11 +269,6 @@
                                         >
                                             {getRecipientDisplay(recipient)}
                                         </span>
-                                        <div
-                                            class="reply-notification-icon svg-icon"
-                                            class:bell-solid-icon={recipient.enabled}
-                                            class:bell-regular-icon={!recipient.enabled}
-                                        ></div>
                                     </Button>
                                 {/snippet}
                             </Tooltip.Trigger>
