@@ -1322,6 +1322,19 @@
       clearSharedMediaStoreForShare(shareId);
     } finally {
       isProcessingSharedContent = false;
+
+      // A newer share can arrive while the current one is awaiting upload.
+      // Its effect run returns while this guard is true, so explicitly resume
+      // consumption after the current share has released the guard.
+      if (
+        sharedMediaStore.received &&
+        sharedMediaStore.shareId &&
+        sharedMediaStore.shareId !== shareId
+      ) {
+        queueMicrotask(() => {
+          void consumeSharedContent();
+        });
+      }
     }
   }
 
