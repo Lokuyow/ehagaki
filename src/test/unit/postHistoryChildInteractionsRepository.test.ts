@@ -369,4 +369,71 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
 
         db.close();
     });
+
+    it("partial取得の新規replyはeventとrelayを保存するがfreshにはしない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
+        const parentEventId = "1".repeat(64);
+        const reply = createSignedEvent({
+            id: "2".repeat(64),
+            tags: [["e", parentEventId, "", "reply"]],
+        });
+
+        await repository.upsertChildInteractions({
+            parentEventId,
+            events: [{
+                event: reply,
+                relayUrls: ["wss://partial.example.com"],
+            }],
+            fetchedAt: null,
+        });
+
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toMatchObject([{
+            eventId: reply.id,
+            fetchedAt: 0,
+            relayUrls: ["wss://partial.example.com/"],
+        }]);
+
+        db.close();
+    });
+
+    it("partial取得は既存success freshnessを更新せずrelayだけを統合する", async () => {
+        const db = createTestDb();
+        let now = 1000;
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => now);
+        const parentEventId = "1".repeat(64);
+        const reply = createSignedEvent({
+            id: "2".repeat(64),
+            tags: [["e", parentEventId, "", "reply"]],
+        });
+
+        await repository.upsertChildInteractions({
+            parentEventId,
+            events: [{
+                event: reply,
+                relayUrls: ["wss://success.example.com"],
+            }],
+            fetchedAt: 900,
+        });
+        now = 1100;
+        await repository.upsertChildInteractions({
+            parentEventId,
+            events: [{
+                event: reply,
+                relayUrls: ["wss://partial.example.com"],
+            }],
+            fetchedAt: null,
+        });
+
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toMatchObject([{
+            eventId: reply.id,
+            fetchedAt: 900,
+            relayUrls: [
+                "wss://success.example.com/",
+                "wss://partial.example.com/",
+            ],
+        }]);
+
+        db.close();
+    });
 });

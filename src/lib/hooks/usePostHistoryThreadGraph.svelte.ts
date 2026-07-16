@@ -240,6 +240,27 @@ export function isValidPostHistoryCachedDirectReply(input: {
         }).valid;
 }
 
+export function resolveValidPostHistoryParentNode(input: {
+    childNode: PostHistoryThreadGraphNode;
+    parentNode: PostHistoryThreadGraphNode | null | undefined;
+}): PostHistoryThreadGraphNode | null {
+    if (!input.parentNode) {
+        return null;
+    }
+
+    const parentContext = buildPostHistoryDirectReplyParentContext({
+        event: input.parentNode.event,
+        relayHints: input.parentNode.relayUrls,
+    });
+    return parentContext
+        && validatePostHistoryDirectReplyRelation({
+            child: input.childNode.event,
+            parent: parentContext,
+        }).valid
+        ? input.parentNode
+        : null;
+}
+
 export function usePostHistoryThreadGraph({
     getShow,
     getPubkeyHex,
@@ -651,13 +672,19 @@ export function usePostHistoryThreadGraph({
         const parentAlreadyInPath = parentTargetId
             ? pathEventIds.includes(parentTargetId)
             : false;
+        const parentNode = parentTargetId
+            ? resolveValidPostHistoryParentNode({
+                childNode: node,
+                parentNode: resolveNodeWithParentTargetSnapshot(nodesById[parentTargetId] ?? null),
+            })
+            : null;
         const parentNodeState = expansion.visibleParent
-            && parentTargetId
+            && parentNode
             && !parentAlreadyInPath
             && depthFromAnchor > -POST_HISTORY_THREAD_GRAPH_MAX_PARENT_DEPTH
             ? getNodeState(
                 anchorEventId,
-                parentTargetId,
+                parentNode.eventId,
                 currentPubkey,
                 nextPath,
                 depthFromAnchor - 1,
@@ -724,12 +751,15 @@ export function usePostHistoryThreadGraph({
         const parentNodeCandidate = parentTargetId
             ? resolveNodeWithParentTargetSnapshot(nodesById[parentTargetId] ?? null)
             : null;
-        const parentNode = parentNodeCandidate
+        const visibleParentNode = parentNodeCandidate
             && !isDeletedEvent(parentNodeCandidate.authorPubkey, parentNodeCandidate.eventId)
-            ? parentNodeCandidate
+            ? resolveValidPostHistoryParentNode({
+                childNode: anchorNode,
+                parentNode: parentNodeCandidate,
+            })
             : null;
-        const parentNodeState = parentNode && expansion.visibleParent
-            ? getNodeState(post.eventId, parentNode.eventId, currentPubkey, [post.eventId], -1, renderedEventIds)
+        const parentNodeState = visibleParentNode && expansion.visibleParent
+            ? getNodeState(post.eventId, visibleParentNode.eventId, currentPubkey, [post.eventId], -1, renderedEventIds)
             : null;
         const renderableChildEventIds = toRenderableChildEventIds(
             post.eventId,
@@ -753,7 +783,7 @@ export function usePostHistoryThreadGraph({
         return {
             anchorEventId: post.eventId,
             parentTargetId,
-            parentNode,
+            parentNode: visibleParentNode,
             parentNodeState,
             parentExpansion: expansion,
             repliesActionState: {
@@ -1105,6 +1135,22 @@ export function usePostHistoryThreadGraph({
         }));
     }
 
+    function hideInvalidParentForNode(anchorEventId: string, nodeEventId: string): void {
+        clearParentLoadingDelayTimer(buildAnchorNodeKey(anchorEventId, nodeEventId));
+        updateExpansion(anchorEventId, nodeEventId, (state) => ({
+            ...state,
+            loadedParent: false,
+            visibleParent: false,
+            loadingParent: false,
+            revalidatingParent: false,
+            parentError: null,
+            parentMissing: false,
+            parentDeleted: false,
+            showParentLoadingIndicator: false,
+            lastFetchedParentAt: null,
+        }));
+
+    }
     async function displayCachedParentForNode(
         post: PostHistoryRecord,
         nodeEventId: string,
@@ -1140,6 +1186,7 @@ export function usePostHistoryThreadGraph({
                     parent: parentContext,
                 }).valid
             ) {
+                hideInvalidParentForNode(post.eventId, nodeEventId);
                 return false;
             }
             const relayHints = sanitizeRelayUrls([
@@ -1192,6 +1239,7 @@ export function usePostHistoryThreadGraph({
                     parent: parentContext,
                 }).valid
             ) {
+                hideInvalidParentForNode(post.eventId, nodeEventId);
                 return false;
             }
             const node = upsertNode({
@@ -1291,7 +1339,8 @@ export function usePostHistoryThreadGraph({
                             parent: parentContext,
                         }).valid
                     ) {
-                        throw new Error("post_history_parent_relation_mismatch");
+                        hideInvalidParentForNode(post.eventId, nodeEventId);
+                        return;
                     }
                 }
 
@@ -1577,7 +1626,7 @@ export function usePostHistoryThreadGraph({
                     await childInteractionsRepositoryImpl.upsertChildInteractions({
                         parentEventId: nodeEventId,
                         events: fetchedEvents,
-                        fetchedAt: result.fetchedAt,
+                        fetchedAt: result.status === "partial" ? null : result.fetchedAt,
                     });
                 }
 
@@ -1628,7 +1677,7 @@ export function usePostHistoryThreadGraph({
         if (!prefetchOnly) {
             updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
-                visibleChildren: toVisibleChildEventIds(nodeEventId).length > 0,
+                visibleChildren: true,
             }));
         }
         return true;
@@ -1829,7 +1878,8 @@ export function usePostHistoryThreadGraph({
 
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...buildChildrenLoadedExpansionState(state, {
-                lastFetchedChildrenAt: Date.now(),
+                lastFetchedChildrenAt:
+                    resolveCachedReplyFetchedAt(acceptedRecords) ?? state.lastFetchedChildrenAt,
             }),
         }));
         return true;
@@ -2144,7 +2194,7 @@ export function usePostHistoryThreadGraph({
                         await childInteractionsRepositoryImpl.upsertChildInteractions({
                             parentEventId: eventId,
                             events: items,
-                            fetchedAt: result.fetchedAt,
+                            fetchedAt: result.status === "partial" ? null : result.fetchedAt,
                         });
                     }
 

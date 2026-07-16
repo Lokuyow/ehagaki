@@ -22,7 +22,7 @@ export interface PostHistoryChildInteractionItem {
 export interface UpsertPostHistoryChildInteractionsInput {
     parentEventId: string;
     events: PostHistoryChildInteractionItem[];
-    fetchedAt?: number;
+    fetchedAt?: number | null;
 }
 
 export interface UpsertPostHistoryChildInteractionsResult {
@@ -172,7 +172,7 @@ export class DexiePostHistoryChildInteractionsRepository
             };
         }
 
-        const fetchedAt = input.fetchedAt ?? this.now();
+        const fetchedAt = input.fetchedAt === undefined ? this.now() : input.fetchedAt;
         let ignoredCount = 0;
         const normalizedItems = new Map<string, PostHistoryChildInteractionItem>();
 
@@ -255,7 +255,7 @@ export class DexiePostHistoryChildInteractionsRepository
                     relayUrls,
                     discoveredAs,
                     rawEvent: cloneNostrEvent(item.event),
-                    fetchedAt,
+                    fetchedAt: fetchedAt ?? existingRecord?.fetchedAt ?? 0,
                     updatedAt: this.now(),
                     schemaVersion: POST_HISTORY_REPLY_EVENT_SCHEMA_VERSION,
                 } satisfies PostHistoryChildInteractionRecord;
