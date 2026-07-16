@@ -906,6 +906,63 @@ describe('PostEventSender', () => {
         expect(result.rejectedRelays).toBeUndefined();
     });
 
+    it('AUTH後の最終拒否では、成功済み投稿のsettle期限へ戻す', async () => {
+        vi.useFakeTimers();
+        const event = { id: 'event-id', kind: 1, content: 'test' };
+        const authAwareSender = new PostEventSender(mockRxNostr, mockConsole, {
+            initialMs: 1_000,
+            successMs: 10,
+            authMs: 30_000,
+        });
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                observer.next({
+                    from: 'wss://relay-a.example/',
+                    ok: true,
+                    done: true,
+                    eventId: event.id,
+                });
+                observer.next({
+                    from: 'wss://relay-b.example/',
+                    ok: false,
+                    done: false,
+                    eventId: event.id,
+                    notice: 'auth-required: login required',
+                });
+                observer.next({
+                    from: 'wss://relay-b.example/',
+                    ok: false,
+                    done: true,
+                    eventId: event.id,
+                    notice: 'restricted: not registered',
+                });
+                return mockSubscription;
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const resultPromise = authAwareSender.sendEvent(event, {
+            targetRelays: [
+                'wss://relay-a.example/',
+                'wss://relay-b.example/',
+                'wss://relay-c.example/',
+            ],
+            includeDefaultWriteRelays: false,
+        });
+        await vi.advanceTimersByTimeAsync(10);
+
+        await expect(resultPromise).resolves.toEqual(expect.objectContaining({
+            success: true,
+            acceptedRelays: ['wss://relay-a.example/'],
+            timedOutRelays: ['wss://relay-c.example/'],
+            rejectedRelays: [expect.objectContaining({
+                relay: 'wss://relay-b.example/',
+                category: 'restricted',
+            })],
+        }));
+        vi.useRealTimers();
+    });
+
     it('署名者付きでイベントを送信する', async () => {
         const event = { kind: 1, content: 'test' };
         const signer = { sign: vi.fn() };

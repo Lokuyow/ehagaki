@@ -258,6 +258,10 @@ export class PostEventSender {
                             ...(packet.notice ? { reason: packet.notice } : {}),
                             category: getRejectionCategory(packet.notice),
                         });
+                        if (acceptedRelays.size > 0 && pendingAuthRelays.size === 0 && !successSettleScheduled) {
+                            successSettleScheduled = true;
+                            scheduleSettle(this.settleTimeouts.successMs);
+                        }
                     }
                 },
                 error: (error: any) => {

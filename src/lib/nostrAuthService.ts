@@ -6,6 +6,7 @@ import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { authState } from "../stores/authStore.svelte";
+import { RelayConfigUtils } from "./relayConfigUtils";
 import type { AuthService } from "./types";
 
 function base64Encode(value: string): string {
@@ -208,9 +209,9 @@ function validateAuthEvent(
  * challenge, supplies the canonical timestamped template required by NIP-07,
  * and resolves the active application signer lazily.
  */
-export function createNip42Authenticator(sessionPubkey: string): (_relayUrl: string) => Authenticator {
+export function createNip42Authenticator(sessionPubkey: string): (boundRelayUrl: string) => Authenticator {
     const authService = new NostrAuthService();
-    return (_relayUrl) => ({
+    return (boundRelayUrl) => ({
         signer: {
             getPublicKey: async () => {
                 assertCurrentSession(sessionPubkey);
@@ -219,10 +220,16 @@ export function createNip42Authenticator(sessionPubkey: string): (_relayUrl: str
             signEvent: async (params: any) => {
                 assertCurrentSession(sessionPubkey);
                 const challenge = getAuthTagValue(params.tags, 'challenge');
-                // rx-nostr creates this tag from RelayConnection.url. Its
-                // authenticator factory, however, receives the pre-normalized URL.
-                // Use the rx-nostr-created tag to avoid a trailing-slash mismatch.
                 const relayUrl = getAuthTagValue(params.tags, 'relay');
+                // rx-nostr passes the pre-normalized URL to its authenticator
+                // factory but constructs this tag from RelayConnection.url.
+                // Normalize both values so a trailing-slash difference remains
+                // valid, while keeping the AUTH event bound to this connection.
+                const normalizedBoundRelayUrl = RelayConfigUtils.normalizeExternalRelayUrl(boundRelayUrl);
+                const normalizedTaggedRelayUrl = RelayConfigUtils.normalizeExternalRelayUrl(relayUrl);
+                if (!normalizedBoundRelayUrl || normalizedTaggedRelayUrl !== normalizedBoundRelayUrl) {
+                    throw new Error('Invalid NIP-42 authentication event');
+                }
                 validateAuthEvent(params, relayUrl, challenge);
                 const authEvent = makeAuthEvent(relayUrl, challenge);
 

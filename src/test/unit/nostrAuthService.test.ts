@@ -392,4 +392,23 @@ describe('createNip42Authenticator', () => {
             pubkey: 'testpubkey123',
         };
     });
+
+    it('別リレー用のAUTHイベントへの署名を拒否する', async () => {
+        const pubkey = 'a'.repeat(64);
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: true,
+            type: 'nip07',
+            pubkey,
+        };
+        const authenticator = createNip42Authenticator(pubkey)('wss://relay-a.example/');
+
+        await expect(authenticator.signer!.signEvent({
+            kind: 22242,
+            content: '',
+            tags: [
+                ['relay', 'wss://relay-b.example/'],
+                ['challenge', 'challenge-1'],
+            ],
+        } as any)).rejects.toThrow('Invalid NIP-42 authentication event');
+    });
 });
