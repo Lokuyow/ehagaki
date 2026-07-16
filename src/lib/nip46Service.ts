@@ -250,6 +250,7 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
  * - sign_event:10063 — BUD-03 Blossom server list（アップロード先 publish）
+ * - sign_event:22242 — NIP-42 Relay Authentication（リレー認証）
  * - sign_event:27235 — NIP-98 HTTP認証（ファイルアップロード）
  * - sign_event:24242 — Blossom / BUD-11 HTTP認証（ファイルアップロード）
  */
@@ -260,6 +261,7 @@ export const NIP46_REQUESTED_PERMISSIONS = [
     'sign_event:5',
     'sign_event:42',
     'sign_event:10063',
+    'sign_event:22242',
     'sign_event:27235',
     'sign_event:24242',
 ] as const;

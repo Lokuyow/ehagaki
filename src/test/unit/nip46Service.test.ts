@@ -12,6 +12,13 @@ import {
 } from '../../lib/nip46Service';
 import { MockStorage } from '../helpers';
 
+describe('NIP46_REQUESTED_PERMISSIONS', () => {
+    it('NIP-42 AUTHイベントの署名許可を要求する', () => {
+        expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:22242');
+        expect(NIP46_REQUESTED_PERMS).toContain('sign_event:22242');
+    });
+});
+
 vi.mock('nostr-tools', () => ({
     kinds: {
         NostrConnect: 24133,
