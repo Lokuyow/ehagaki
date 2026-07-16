@@ -91,7 +91,13 @@ describe("bud03ServerList", () => {
         const rxNostr = {
             send: vi.fn().mockReturnValue({
                 subscribe: vi.fn((observer) => {
-                    observer.next({ ok: true, eventId: "event-id" });
+                    observer.next({
+                        from: "wss://write.example.com/",
+                        ok: true,
+                        done: true,
+                        eventId: "event-id",
+                    });
+                    observer.complete();
                     return { unsubscribe: vi.fn() };
                 }),
             }),
@@ -103,7 +109,11 @@ describe("bud03ServerList", () => {
             servers: ["https://blossom.example.com"],
         });
 
-        expect(result).toEqual({ success: true, eventId: "event-id" });
+        expect(result).toEqual({
+            success: true,
+            eventId: "event-id",
+            acceptedRelays: ["wss://write.example.com/"],
+        });
         expect(signer.signEvent).toHaveBeenCalledWith(expect.objectContaining({
             kind: BUD03_KIND,
             content: "",

@@ -73,6 +73,7 @@
     import type {
         FullscreenMediaItem,
         NostrEvent,
+        PostResult,
         RelayConfig,
         ProfileData,
     } from "../lib/types";
@@ -256,7 +257,9 @@
     let broadcastFloatingMessageX = $state(0);
     let broadcastFloatingMessageY = $state(0);
     let broadcastFloatingMessageKey = $state<
-        "postHistory.broadcastSent" | "postHistory.broadcastFailed"
+        "postHistory.broadcastSent"
+        | "postHistory.broadcastPartial"
+        | "postHistory.broadcastFailed"
     >("postHistory.broadcastSent");
     let broadcastFloatingMessageTimeout:
         | ReturnType<typeof setTimeout>
@@ -848,7 +851,7 @@
             ...broadcastRequestState,
             [post.eventId]: undefined,
         };
-        showBroadcastResultMessage(messagePosition, result.success);
+        showBroadcastResultMessage(messagePosition, result);
     }
 
     function hideBroadcastFloatingMessage(): void {
@@ -896,7 +899,7 @@
 
     function showBroadcastResultMessage(
         position: { x: number; y: number },
-        success: boolean,
+        result: PostResult,
     ): void {
         if (broadcastFloatingMessageTimeout) {
             clearTimeout(broadcastFloatingMessageTimeout);
@@ -904,9 +907,12 @@
 
         broadcastFloatingMessageX = position.x;
         broadcastFloatingMessageY = position.y;
-        broadcastFloatingMessageKey = success
-            ? "postHistory.broadcastSent"
-            : "postHistory.broadcastFailed";
+        broadcastFloatingMessageKey = !result.success
+            ? "postHistory.broadcastFailed"
+            : ((result.rejectedRelays?.length ?? 0) > 0
+                || (result.timedOutRelays?.length ?? 0) > 0)
+                ? "postHistory.broadcastPartial"
+                : "postHistory.broadcastSent";
         showBroadcastFloatingMessage = true;
         broadcastFloatingMessageTimeout = setTimeout(() => {
             showBroadcastFloatingMessage = false;

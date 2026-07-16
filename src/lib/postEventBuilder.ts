@@ -1,7 +1,12 @@
-import type { RxNostr } from "rx-nostr";
+import { noopSigner, type EventSigner, type RxNostr } from "rx-nostr";
 import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import type { ChannelContextState, PostResult } from "./types";
+import type {
+    ChannelContextState,
+    PostResult,
+    RelayRejection,
+    RelayRejectionCategory,
+} from "./types";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -131,20 +136,35 @@ export class PostEventBuilder {
 
 // --- RxNostr送信処理の分離 ---
 export class PostEventSender {
+    static readonly DEFAULT_SETTLE_TIMEOUTS = {
+        initialMs: 12_000,
+        successMs: 1_500,
+        authMs: 30_000,
+    } as const;
+
     constructor(
         private rxNostr: RxNostr,
-        private console: Console
+        private console: Console,
+        private settleTimeouts: PostEventSenderSettleTimeouts = PostEventSender.DEFAULT_SETTLE_TIMEOUTS,
     ) { }
 
     sendEvent(
         event: any,
-        signerOrOptions?: any | { signer?: any; additionalWriteRelays?: string[] },
+        signerOrOptions?: any | SendEventOptions,
     ): Promise<PostResult> {
         return new Promise((resolve) => {
             let resolved = false;
-            let rejectedCount = 0;
-            let totalCount = 0;
             let subscription: any = null;
+            let settleTimer: ReturnType<typeof setTimeout> | undefined;
+            let resultEventId = event.id;
+            let successSettleScheduled = false;
+            const acceptedRelays = new Set<string>();
+            const rejectedByRelay = new Map<string, RelayRejection>();
+            const authRequiredRelays = new Set<string>();
+            const pendingAuthRelays = new Set<string>();
+
+            const options = normalizeSendEventOptions(signerOrOptions);
+            const targetRelays = resolveTargetRelays(this.rxNostr, options);
 
             const safeUnsubscribe = () => {
                 try {
@@ -154,9 +174,53 @@ export class PostEventSender {
                 }
             };
 
+            const clearSettleTimer = () => {
+                if (settleTimer) {
+                    clearTimeout(settleTimer);
+                    settleTimer = undefined;
+                }
+            };
+
+            const getResult = (): PostResult => {
+                const accepted = [...acceptedRelays];
+                const rejected = [...rejectedByRelay.values()];
+                const finalRelays = new Set([
+                    ...acceptedRelays,
+                    ...rejectedByRelay.keys(),
+                ]);
+                const timedOutRelays = targetRelays.filter(
+                    (relay) => !finalRelays.has(relay),
+                );
+                const success = accepted.length > 0;
+
+                const hasUnresolvedRelays = timedOutRelays.length > 0
+                    || (!success && rejected.length === 0);
+
+                return {
+                    success,
+                    ...(success ? { eventId: resultEventId } : {
+                        error: hasUnresolvedRelays
+                            ? "post_timeout"
+                            : "post_rejected",
+                    }),
+                    acceptedRelays: accepted,
+                    ...(rejected.length ? { rejectedRelays: rejected } : {}),
+                    ...(timedOutRelays.length ? { timedOutRelays } : {}),
+                    ...(authRequiredRelays.size
+                        ? { authRequiredRelays: [...authRequiredRelays] }
+                        : {}),
+                };
+            };
+
+            const scheduleSettle = (delayMs: number) => {
+                clearSettleTimer();
+                settleTimer = setTimeout(() => safeResolve(getResult()), delayMs);
+            };
+
             const safeResolve = (result: PostResult) => {
                 if (!resolved) {
                     resolved = true;
+                    clearSettleTimer();
                     safeUnsubscribe();
                     resolve(result);
                 }
@@ -165,20 +229,35 @@ export class PostEventSender {
             const observer = {
                 next: (packet: any) => {
                     this.console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗", packet.notice ? `(${packet.notice})` : "");
-                    totalCount++;
-                    if (packet.ok) {
-                        // completeOn: "all-ok" でも、ok:true を受信した時点で
-                        // next 内で即座に成功として resolve する
-                        const result: PostResult = {
-                            success: true,
-                            eventId: packet.event?.id || packet.eventId || event.id,
-                        };
-                        if (packet.from) {
-                            result.acceptedRelays = [packet.from];
+                    const relay = typeof packet.from === "string" ? packet.from : "";
+                    if (!relay) return;
+                    resultEventId = packet.event?.id || packet.eventId || resultEventId;
+
+                    if (!packet.done) {
+                        if (!packet.ok && getRejectionCategory(packet.notice) === "auth-required") {
+                            authRequiredRelays.add(relay);
+                            pendingAuthRelays.add(relay);
+                            successSettleScheduled = false;
+                            scheduleSettle(this.settleTimeouts.authMs);
                         }
-                        safeResolve(result);
+                        return;
+                    }
+
+                    if (packet.ok) {
+                        acceptedRelays.add(relay);
+                        rejectedByRelay.delete(relay);
+                        pendingAuthRelays.delete(relay);
+                        if (pendingAuthRelays.size === 0 && !successSettleScheduled) {
+                            successSettleScheduled = true;
+                            scheduleSettle(this.settleTimeouts.successMs);
+                        }
                     } else {
-                        rejectedCount++;
+                        pendingAuthRelays.delete(relay);
+                        rejectedByRelay.set(relay, {
+                            relay,
+                            ...(packet.notice ? { reason: packet.notice } : {}),
+                            category: getRejectionCategory(packet.notice),
+                        });
                     }
                 },
                 error: (error: any) => {
@@ -187,39 +266,92 @@ export class PostEventSender {
                 },
                 complete: () => {
                     if (!resolved) {
-                        // completeOn: "all-ok" で ok:true がなく complete した場合
-                        // → 全リレーが ok:false を返したか、rx-nostr の okTimeout が経過した
-                        if (totalCount > 0 && rejectedCount === totalCount) {
-                            // すべてのリレーが明示的に拒否した
-                            safeResolve({ success: false, error: "post_rejected" });
-                        } else {
-                            // 応答なしでタイムアウト（投稿が届いた可能性あり）
-                            safeResolve({ success: false, error: "post_timeout" });
-                        }
+                        safeResolve(getResult());
                     }
                 }
             };
 
-            const options = signerOrOptions
-                && typeof signerOrOptions === "object"
-                && ("signer" in signerOrOptions || "additionalWriteRelays" in signerOrOptions)
-                ? signerOrOptions
-                : { signer: signerOrOptions };
-
             const sendOptions: any = { completeOn: "all-ok" as const };
-            if (options.signer) sendOptions.signer = options.signer;
-
-            const additionalWriteRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-                options.additionalWriteRelays,
-            );
-            if (additionalWriteRelays.length > 0) {
+            sendOptions.signer = options.signer ?? noopSigner();
+            if ((options.targetRelays?.length ?? 0) > 0 || options.includeDefaultWriteRelays) {
                 sendOptions.on = {
-                    relays: additionalWriteRelays,
-                    defaultWriteRelays: true,
+                    ...((options.targetRelays?.length ?? 0) > 0
+                        ? { relays: options.targetRelays }
+                        : {}),
+                    ...(options.includeDefaultWriteRelays
+                        ? { defaultWriteRelays: true }
+                        : {}),
                 };
             }
 
+            scheduleSettle(this.settleTimeouts.initialMs);
             subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
         });
+    }
+}
+
+export interface SendEventOptions {
+    signer?: EventSigner;
+    targetRelays?: string[];
+    includeDefaultWriteRelays?: boolean;
+}
+
+export interface PostEventSenderSettleTimeouts {
+    initialMs: number;
+    successMs: number;
+    authMs: number;
+}
+
+function normalizeSendEventOptions(
+    signerOrOptions?: any | SendEventOptions,
+): Required<Pick<SendEventOptions, "includeDefaultWriteRelays">> & SendEventOptions {
+    if (signerOrOptions && typeof signerOrOptions === "object" && (
+        "signer" in signerOrOptions
+        || "targetRelays" in signerOrOptions
+        || "includeDefaultWriteRelays" in signerOrOptions
+    )) {
+        return {
+            ...signerOrOptions,
+            targetRelays: RelayConfigUtils.sanitizeExternalRelayUrls(signerOrOptions.targetRelays),
+            includeDefaultWriteRelays: signerOrOptions.includeDefaultWriteRelays ?? true,
+        };
+    }
+
+    return {
+        signer: signerOrOptions as EventSigner | undefined,
+        targetRelays: [],
+        includeDefaultWriteRelays: true,
+    };
+}
+
+function resolveTargetRelays(rxNostr: RxNostr, options: SendEventOptions): string[] {
+    const defaultRelays = options.includeDefaultWriteRelays
+        && typeof rxNostr.getDefaultRelays === "function"
+        ? Object.values(rxNostr.getDefaultRelays()).filter((relay) => relay.write).map((relay) => relay.url)
+        : [];
+    return RelayConfigUtils.sanitizeExternalRelayUrls([
+        ...defaultRelays,
+        ...(options.targetRelays ?? []),
+    ]);
+}
+
+function getRejectionCategory(notice: unknown): RelayRejectionCategory {
+    const prefix = typeof notice === "string"
+        ? notice.split(":", 1)[0].trim().toLowerCase()
+        : "";
+    switch (prefix) {
+        case "auth-required":
+        case "restricted":
+        case "blocked":
+        case "rate-limited":
+        case "duplicate":
+        case "invalid":
+        case "pow":
+        case "error":
+        case "mute":
+        case "unsupported":
+            return prefix;
+        default:
+            return "unknown";
     }
 }

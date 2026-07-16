@@ -37,12 +37,16 @@ function createSendingStatus(): PostStatus {
     };
 }
 
-function createSuccessStatus(): PostStatus {
+function createSuccessStatus(result?: PostResult): PostStatus {
+    const isPartial = (result?.rejectedRelays?.length ?? 0) > 0
+        || (result?.timedOutRelays?.length ?? 0) > 0;
     return {
         sending: false,
         success: true,
         error: false,
-        message: 'postComponent.post_success',
+        message: isPartial
+            ? 'postComponent.post_partial_success'
+            : 'postComponent.post_success',
         completed: true,
     };
 }
@@ -67,7 +71,7 @@ export function createPostStatusHandlers({
             updatePostStatus(createSendingStatus());
         },
         markSuccess: (result?: PostResult) => {
-            updatePostStatus(createSuccessStatus());
+            updatePostStatus(createSuccessStatus(result));
             clearContentAfterSuccess();
             onPostSuccess?.(result);
         },

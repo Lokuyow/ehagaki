@@ -175,6 +175,7 @@
     "copyFailed": "コピーに失敗しました",
     "broadcast": "ブロードキャスト",
     "broadcastSent": "ブロードキャストしました",
+    "broadcastPartial": "一部のリレーへブロードキャストしました",
     "broadcastFailed": "ブロードキャストに失敗しました",
     "eventId": "event id",
     "media": "メディア",
@@ -410,6 +411,7 @@
     "success": {
       "compact_post_success": "投稿完了",
       "post_success": "投稿した",
+      "post_partial_success": "一部のリレーへ投稿した",
       "sent": "送った",
       "to_everyone": "みんなに届け"
     },

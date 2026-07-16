@@ -76,7 +76,20 @@ describe("postBroadcastService helpers", () => {
 describe("PostBroadcastService", () => {
     it("投稿者に関係なく自身の write relay に raw event をブロードキャストする", async () => {
         const post = createRecord({ pubkeyHex: "b".repeat(64) });
-        const send = vi.fn().mockReturnValue(createObservable());
+        const send = vi.fn().mockReturnValue(createObservable([
+            {
+                from: "wss://write.example.com/",
+                ok: true,
+                done: true,
+                eventId: "e".repeat(64),
+            },
+            {
+                from: "wss://second.example.com/",
+                ok: true,
+                done: true,
+                eventId: "e".repeat(64),
+            },
+        ]));
         const service = new PostBroadcastService({
             writeRelaysStore: {
                 value: [
@@ -106,7 +119,7 @@ describe("PostBroadcastService", () => {
             ],
         });
         expect(send).toHaveBeenCalledWith(post.rawEvent, {
-            completeOn: "sent",
+            completeOn: "all-ok",
             signer: expect.objectContaining({
                 signEvent: expect.any(Function),
             }),
@@ -119,7 +132,7 @@ describe("PostBroadcastService", () => {
         });
     });
 
-    it("OK が返らなくても EVENT 送信試行完了で成功扱いにする", async () => {
+    it("OK が返らないリレーはタイムアウトとして扱う", async () => {
         const post = createRecord();
         const send = vi.fn().mockReturnValue(createObservable());
         const service = new PostBroadcastService({
@@ -132,9 +145,10 @@ describe("PostBroadcastService", () => {
         });
 
         expect(result).toEqual({
-            success: true,
-            eventId: post.eventId,
-            acceptedRelays: ["wss://write.example.com/"],
+            success: false,
+            error: "post_timeout",
+            acceptedRelays: [],
+            timedOutRelays: ["wss://write.example.com/"],
         });
     });
 

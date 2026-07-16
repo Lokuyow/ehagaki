@@ -238,7 +238,8 @@ export class PostManager {
     }
 
     const result = await this.eventSender!.sendEvent(eventToSend, {
-      additionalWriteRelays: params.additionalWriteRelays,
+      targetRelays: params.additionalWriteRelays,
+      includeDefaultWriteRelays: true,
     });
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish result', result);
     const resultWithEvent: PostResult = result.success

@@ -175,6 +175,7 @@
     "copyFailed": "Copy failed",
     "broadcast": "Broadcast",
     "broadcastSent": "Broadcast complete",
+    "broadcastPartial": "Broadcast to some relays complete",
     "broadcastFailed": "Broadcast failed",
     "eventId": "event id",
     "media": "Media",
@@ -410,6 +411,7 @@
     "success": {
       "compact_post_success": "Post complete",
       "post_success": "Posted",
+      "post_partial_success": "Posted to some relays",
       "sent": "Sent it.",
       "to_everyone": "Delivered to everyone."
     },

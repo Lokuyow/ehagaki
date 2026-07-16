@@ -7,7 +7,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NostrAuthService } from '../../lib/nostrAuthService';
+import {
+    createNip42Authenticator,
+    NostrAuthService,
+} from '../../lib/nostrAuthService';
+import { mockAuthStoreModule } from '../mocks/storeModules';
 
 // nostr-tools/nip98 をモック（buildAuthHeader のユニットテスト用）
 vi.mock('nostr-tools/nip98', () => ({
@@ -337,5 +341,55 @@ describe('NostrAuthService', () => {
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
+    });
+});
+
+describe('createNip42Authenticator', () => {
+    it('rx-nostrのchallengeを使い、created_atを含むAUTHイベントを現在の署名器で署名する', async () => {
+        const pubkey = 'a'.repeat(64);
+        const relay = 'wss://relay.example.com/';
+        const authTemplate = {
+            kind: 22242,
+            content: '',
+            tags: [['relay', relay], ['challenge', 'challenge-1']],
+        };
+        const signEvent = vi.fn(async (event) => ({
+            ...event,
+            id: 'auth-event-id',
+            pubkey,
+            sig: 'sig',
+        }));
+        const originalNostr = (window as any).nostr;
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkey),
+            signEvent,
+        };
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: true,
+            type: 'nip07',
+            pubkey,
+        };
+
+        const authenticator = createNip42Authenticator(pubkey)(relay.slice(0, -1));
+        const signed = await authenticator.signer!.signEvent(authTemplate as any);
+
+        expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 22242,
+            content: '',
+            created_at: expect.any(Number),
+            tags: authTemplate.tags,
+        }));
+        expect(signed).toEqual(expect.objectContaining({
+            kind: 22242,
+            pubkey,
+            tags: authTemplate.tags,
+        }));
+
+        (window as any).nostr = originalNostr;
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: true,
+            type: 'nsec',
+            pubkey: 'testpubkey123',
+        };
     });
 });

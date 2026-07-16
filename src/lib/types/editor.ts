@@ -27,7 +27,29 @@ export interface PostResult {
     error?: string;
     eventId?: string;
     acceptedRelays?: string[];
+    rejectedRelays?: RelayRejection[];
+    timedOutRelays?: string[];
+    authRequiredRelays?: string[];
     event?: import("./nostr").NostrEvent;
+}
+
+export type RelayRejectionCategory =
+    | "auth-required"
+    | "restricted"
+    | "blocked"
+    | "rate-limited"
+    | "duplicate"
+    | "invalid"
+    | "pow"
+    | "error"
+    | "mute"
+    | "unsupported"
+    | "unknown";
+
+export interface RelayRejection {
+    relay: string;
+    reason?: string;
+    category: RelayRejectionCategory;
 }
 
 // Editor and Utils types

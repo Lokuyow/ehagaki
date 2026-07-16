@@ -1,6 +1,7 @@
-import { noopSigner, type RxNostr } from "rx-nostr";
+import type { RxNostr } from "rx-nostr";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { PostEventSender } from "./postEventBuilder";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import type { NostrEvent, PostResult } from "./types";
 
@@ -78,53 +79,9 @@ export class PostBroadcastService {
             return { success: false, error: "no_write_relays" };
         }
 
-        return new Promise((resolve) => {
-            let resolved = false;
-            let subscription: { unsubscribe?: () => void } | null = null;
-
-            const safeUnsubscribe = () => {
-                try {
-                    subscription?.unsubscribe?.();
-                } catch {
-                    // ignore unsubscribe errors
-                }
-            };
-
-            const safeResolve = (result: PostResult) => {
-                if (resolved) {
-                    return;
-                }
-                resolved = true;
-                safeUnsubscribe();
-                resolve(result);
-            };
-
-            subscription = rxNostr
-                .send(event, {
-                    completeOn: "sent",
-                    signer: noopSigner(),
-                    on: { relays: writeRelays },
-                })
-                .subscribe({
-                    next: () => undefined,
-                    error: (error: unknown) => {
-                        this.deps.console.error(
-                            "post_broadcast_send_failed",
-                            error,
-                        );
-                        safeResolve({
-                            success: false,
-                            error: "post_network_error",
-                        });
-                    },
-                    complete: () => {
-                        safeResolve({
-                            success: true,
-                            eventId: event.id,
-                            acceptedRelays: writeRelays,
-                        });
-                    },
-                });
+        return new PostEventSender(rxNostr, this.deps.console).sendEvent(event, {
+            targetRelays: writeRelays,
+            includeDefaultWriteRelays: false,
         });
     }
 }

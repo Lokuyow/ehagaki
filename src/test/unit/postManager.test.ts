@@ -868,6 +868,44 @@ describe('PostEventSender', () => {
         expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok' }));
     });
 
+    it('AUTH後に成功したリレーを拒否一覧へ残さない', async () => {
+        const event = { id: 'event-id', kind: 1, content: 'test' };
+        const authAwareSender = new PostEventSender(mockRxNostr, mockConsole, {
+            initialMs: 100,
+            successMs: 0,
+            authMs: 100,
+        });
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                observer.next({
+                    from: 'wss://relay.example.com/',
+                    ok: false,
+                    done: false,
+                    eventId: event.id,
+                    notice: 'auth-required: login required',
+                });
+                observer.next({
+                    from: 'wss://relay.example.com/',
+                    ok: true,
+                    done: true,
+                    eventId: event.id,
+                });
+                observer.complete();
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await authAwareSender.sendEvent(event);
+
+        expect(result).toEqual(expect.objectContaining({
+            success: true,
+            acceptedRelays: ['wss://relay.example.com/'],
+            authRequiredRelays: ['wss://relay.example.com/'],
+        }));
+        expect(result.rejectedRelays).toBeUndefined();
+    });
+
     it('署名者付きでイベントを送信する', async () => {
         const event = { kind: 1, content: 'test' };
         const signer = { sign: vi.fn() };
@@ -1069,7 +1107,9 @@ describe('PostManager統合テスト', () => {
             ])
         }));
         expect(sendOptions).toEqual(expect.objectContaining({ completeOn: 'all-ok' }));
-        expect(sendOptions).not.toHaveProperty('signer');
+        expect(sendOptions.signer).toEqual(expect.objectContaining({
+            signEvent: expect.any(Function),
+        }));
     });
 
     it('getClientTagFn 未指定時は settingsStore.clientTagEnabled を使う', async () => {
@@ -1249,7 +1289,9 @@ describe('PostManager統合テスト', () => {
                 defaultWriteRelays: true,
             },
         }));
-        expect(sendOptions).not.toHaveProperty('signer');
+        expect(sendOptions.signer).toEqual(expect.objectContaining({
+            signEvent: expect.any(Function),
+        }));
         expect((mockDeps as any).channelContextState.value).toEqual({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-lookup.example.com'],
@@ -1751,7 +1793,9 @@ describe('PostManager統合テスト', () => {
                 sig: 'parent-signature',
             }));
             expect(sendOptions).toEqual(expect.objectContaining({ completeOn: 'all-ok' }));
-            expect(sendOptions).not.toHaveProperty('signer');
+            expect(sendOptions.signer).toEqual(expect.objectContaining({
+                signEvent: expect.any(Function),
+            }));
         });
 
         it('NIP-46投稿前にpending recovery完了を待つ', async () => {

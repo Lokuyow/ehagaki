@@ -158,7 +158,8 @@ describe("PostDeletionService", () => {
         expect(sendEvent).toHaveBeenCalledWith(
             expect.objectContaining({ id: "delete-event-id", kind: 5 }),
             {
-                additionalWriteRelays: [
+                includeDefaultWriteRelays: true,
+                targetRelays: [
                     "wss://accepted.example.com/",
                     "wss://fetched.example.com/",
                     "wss://hint.example.com/",

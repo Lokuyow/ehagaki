@@ -159,6 +159,7 @@ export async function publishBud03ServerList(params: {
     const event = await params.signer.signEvent(template);
     const sender = new PostEventSender(params.rxNostr, params.console ?? console);
     return sender.sendEvent(event, {
-        additionalWriteRelays: params.relays,
+        targetRelays: params.relays,
+        includeDefaultWriteRelays: true,
     });
 }

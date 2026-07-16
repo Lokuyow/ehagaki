@@ -6,6 +6,7 @@ import { RelayProfileService } from "../relayProfileService";
 import type { AccountManager } from "../accountManager";
 import type { ProfileData, RelayConfig } from "../types";
 import { profilesRepository } from "../storage/profilesRepository";
+import { createNip42Authenticator } from "../nostrAuthService";
 
 export interface NostrSessionBootstrap {
     rxNostr: ReturnType<typeof createRxNostr>;
@@ -84,7 +85,10 @@ export async function initializeNostrSession({
     setRelayManager,
     onRelayConfigSaved,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
-    const rxNostr = createRxNostr({ verifier });
+    const rxNostr = createRxNostr({
+        verifier,
+        ...(pubkeyHex ? { authenticator: createNip42Authenticator(pubkeyHex) } : {}),
+    });
     const relayManager = new RelayManager(rxNostr, {
         relayListUpdatedStore: {
             value: relayListUpdatedStore.value,

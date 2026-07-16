@@ -214,7 +214,10 @@ export class PostDeletionService {
         try {
             result = await this.createEventSender(params.rxNostr).sendEvent(
                 signedEvent,
-                { additionalWriteRelays },
+                {
+                    targetRelays: additionalWriteRelays,
+                    includeDefaultWriteRelays: true,
+                },
             );
         } catch (error) {
             this.deps.console.error("post_deletion_send_failed", error);
