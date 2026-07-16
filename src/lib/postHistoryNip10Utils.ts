@@ -21,7 +21,18 @@ export interface PostHistoryThreadReferences {
     relayHints: string[];
     authorHints: string[];
     isLegacy: boolean;
+    channelEventId: string | null;
+    channelRelayHints: string[];
+    issues: PostHistoryThreadReferenceIssue[];
 }
+
+export type PostHistoryThreadReferenceIssue =
+    | "missing-channel-root"
+    | "invalid-channel-root"
+    | "conflicting-channel-roots"
+    | "invalid-reply-target"
+    | "conflicting-reply-targets"
+    | "reply-target-is-channel";
 
 const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -38,6 +49,9 @@ const EMPTY_REFERENCES: PostHistoryThreadReferences = {
     relayHints: [],
     authorHints: [],
     isLegacy: false,
+    channelEventId: null,
+    channelRelayHints: [],
+    issues: [],
 };
 
 function isValidHexId(value: unknown): value is string {
@@ -87,6 +101,38 @@ function compactUnique(values: Array<string | null | undefined>): string[] {
     }
 
     return result;
+}
+
+function collectReferenceTags(
+    tags: string[][],
+    marker: "root" | "reply",
+): {
+    reference: PostHistoryThreadReferenceTag | null;
+    relayHints: string[];
+    authorHints: string[];
+    hasInvalidId: boolean;
+    hasConflict: boolean;
+} {
+    const rawTags = tags.filter((tag) =>
+        Array.isArray(tag)
+        && tag[0] === "e"
+        && normalizeMarker(tag[3]) === marker
+    );
+    const parsedTags = rawTags
+        .map(parseETag)
+        .filter((tag): tag is PostHistoryThreadReferenceTag => tag !== null);
+    const eventIds = compactUnique(parsedTags.map((tag) => tag.eventId));
+    const selectedTags = eventIds.length === 1
+        ? parsedTags.filter((tag) => tag.eventId === eventIds[0])
+        : [];
+
+    return {
+        reference: selectedTags[0] ?? null,
+        relayHints: compactUnique(selectedTags.map((tag) => tag.relayHint)),
+        authorHints: compactUnique(selectedTags.map((tag) => tag.authorHint)),
+        hasInvalidId: rawTags.length !== parsedTags.length,
+        hasConflict: eventIds.length > 1,
+    };
 }
 
 function normalizeReactionTargetMarker(value: unknown): "reply" | "root" | "unknown" | null {
@@ -188,6 +234,9 @@ export function parseKind1ThreadReferences(
             relayHints,
             authorHints,
             isLegacy: false,
+            channelEventId: null,
+            channelRelayHints: [],
+            issues: [],
         };
     }
 
@@ -218,5 +267,107 @@ export function parseKind1ThreadReferences(
         relayHints,
         authorHints,
         isLegacy: true,
+        channelEventId: null,
+        channelRelayHints: [],
+        issues: [],
     };
+}
+
+export function parseKind42ThreadReferences(
+    event: Pick<NostrEvent, "kind" | "tags"> | null | undefined,
+): PostHistoryThreadReferences {
+    if (!event || event.kind !== 42) {
+        return { ...EMPTY_REFERENCES };
+    }
+
+    const root = collectReferenceTags(event.tags, "root");
+    const reply = collectReferenceTags(event.tags, "reply");
+    const validETags = event.tags
+        .filter((tag) => Array.isArray(tag) && tag[0] === "e")
+        .map(parseETag)
+        .filter((tag): tag is PostHistoryThreadReferenceTag => tag !== null);
+    const mentionTags = validETags.filter((tag) => tag.marker === "mention");
+    const ignoredTags = validETags.filter((tag) =>
+        tag.marker !== null
+        && tag.marker !== "root"
+        && tag.marker !== "reply"
+        && tag.marker !== "mention"
+    );
+    const issues: PostHistoryThreadReferenceIssue[] = [];
+
+    if (!event.tags.some((tag) =>
+        Array.isArray(tag) && tag[0] === "e" && normalizeMarker(tag[3]) === "root"
+    )) {
+        issues.push("missing-channel-root");
+    } else if (!root.reference && !root.hasConflict) {
+        issues.push("invalid-channel-root");
+    } else if (root.hasInvalidId) {
+        issues.push("invalid-channel-root");
+    }
+    if (root.hasConflict) {
+        issues.push("conflicting-channel-roots");
+    }
+    if (reply.hasInvalidId) {
+        issues.push("invalid-reply-target");
+    }
+    if (reply.hasConflict) {
+        issues.push("conflicting-reply-targets");
+    }
+    if (
+        root.reference
+        && reply.reference
+        && root.reference.eventId === reply.reference.eventId
+    ) {
+        issues.push("reply-target-is-channel");
+    }
+
+    const hasUsableChannel = !!root.reference && !root.hasConflict;
+    const hasUsableParent = !!reply.reference
+        && !reply.hasConflict
+        && !issues.includes("reply-target-is-channel");
+    const channelRelayHints = hasUsableChannel ? root.relayHints : [];
+    const replyRelayHints = hasUsableParent ? reply.relayHints : [];
+
+    return {
+        rootId: null,
+        replyId: hasUsableParent ? reply.reference?.eventId ?? null : null,
+        parentId: hasUsableParent ? reply.reference?.eventId ?? null : null,
+        rootRelayHint: channelRelayHints[0] ?? null,
+        replyRelayHint: replyRelayHints[0] ?? null,
+        rootAuthorHint: hasUsableChannel ? root.authorHints[0] ?? null : null,
+        replyAuthorHint: hasUsableParent ? reply.authorHints[0] ?? null : null,
+        mentionEventIds: compactUnique(mentionTags.map((tag) => tag.eventId)),
+        ignoredEventIds: compactUnique(ignoredTags.map((tag) => tag.eventId)),
+        relayHints: compactUnique([...channelRelayHints, ...replyRelayHints]),
+        authorHints: compactUnique([
+            ...(hasUsableChannel ? root.authorHints : []),
+            ...(hasUsableParent ? reply.authorHints : []),
+        ]),
+        isLegacy: false,
+        channelEventId: hasUsableChannel ? root.reference?.eventId ?? null : null,
+        channelRelayHints,
+        issues,
+    };
+}
+
+export function parsePostHistoryThreadReferences(
+    event: Pick<NostrEvent, "kind" | "tags"> | null | undefined,
+): PostHistoryThreadReferences {
+    if (event?.kind === 1) {
+        return parseKind1ThreadReferences(event);
+    }
+
+    if (event?.kind === 42) {
+        return parseKind42ThreadReferences(event);
+    }
+
+    return { ...EMPTY_REFERENCES };
+}
+
+export function hasUnambiguousPostHistoryParentReference(
+    references: PostHistoryThreadReferences,
+): boolean {
+    return !!references.parentId
+        && !references.issues.includes("conflicting-reply-targets")
+        && !references.issues.includes("reply-target-is-channel");
 }

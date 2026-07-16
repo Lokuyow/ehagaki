@@ -9,6 +9,10 @@ import type {
     PostHistoryInboundReplyReconciliationResult,
 } from "./postHistoryInboundReplyReconciliationService";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
+import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "./postHistoryDirectReplyRelationUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
     postHistoryRepository,
@@ -87,7 +91,7 @@ export interface PostHistoryInboundInteractionsSyncTask {
 }
 
 export interface PostHistoryInboundInteractionsSyncServiceDeps {
-    postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
+    postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     syncStateRepository?: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     console?: Pick<Console, "warn" | "error">;
@@ -163,7 +167,7 @@ function toResultEvents(eventsById: Map<string, EventAccumulator>): Array<{
 }
 
 export class PostHistoryInboundInteractionsSyncService {
-    private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
+    private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private syncStateRepository: Pick<PostHistoryInboundInteractionsSyncStateRepository, "get" | "save">;
     private console: Pick<Console, "warn" | "error">;
@@ -253,7 +257,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     });
 
                     rxReq.emit({
-                        kinds: [1, 7],
+                        kinds: [1, 7, 42],
                         "#p": [params.ownerPubkeyHex],
                         since,
                         limit,
@@ -360,6 +364,31 @@ export class PostHistoryInboundInteractionsSyncService {
         if (!input.isActive()) {
             return this.buildCancelledResultFromFetchedEvents(input);
         }
+        const parentContextsById = new Map((await Promise.all(
+            Array.from(ownerPostEventIds).map(async (eventId) => {
+                const record = await this.postHistoryRepository.getByEventId(eventId);
+                if (!record) {
+                    return null;
+                }
+                const context = buildPostHistoryDirectReplyParentContext({
+                    event: {
+                        id: record.eventId,
+                        kind: record.kind,
+                        tags: record.tags,
+                        created_at: record.createdAt,
+                    },
+                    relayHints: [
+                        ...record.relayHints,
+                        ...record.acceptedRelays,
+                        ...(record.fetchedRelays ?? []),
+                    ],
+                });
+                return context ? [eventId, context] as const : null;
+            }),
+        )).filter((entry) => entry !== null));
+        if (!input.isActive()) {
+            return this.buildCancelledResultFromFetchedEvents(input);
+        }
         const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const reactionsByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
         const directReplyCandidates: PostHistoryInboundDirectReplyCandidate[] = [];
@@ -379,6 +408,18 @@ export class PostHistoryInboundInteractionsSyncService {
                 )
                 && classification.parentEventId
             ) {
+                if (classification.type === "direct-reply") {
+                    const parent = parentContextsById.get(classification.parentEventId);
+                    if (
+                        !parent
+                        || !validatePostHistoryDirectReplyRelation({
+                            child: item.event,
+                            parent,
+                        }).valid
+                    ) {
+                        continue;
+                    }
+                }
                 directReplyCandidates.push({
                     classification,
                     event: item.event,

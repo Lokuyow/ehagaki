@@ -3,8 +3,12 @@ import type {
     PostHistoryChildInteractionRecord,
 } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
-import { cloneNostrEvent, isSignedNostrEvent } from "./postHistoryEventUtils";
-import { parseKind1ThreadReferences } from "./postHistoryNip10Utils";
+import {
+    cloneNostrEvent,
+    isPostHistoryRawEventConsistent,
+    isSignedNostrEvent,
+} from "./postHistoryEventUtils";
+import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 
 export type PostHistoryThreadGraphSource =
     | "anchor"
@@ -92,7 +96,7 @@ export function buildInitialExpansionState(): PostHistoryThreadGraphExpansionSta
 }
 
 export function toEventFromPostHistoryRecord(record: PostHistoryRecord): NostrEvent {
-    if (isSignedNostrEvent(record.rawEvent)) {
+    if (isPostHistoryRawEventConsistent(record.rawEvent, record)) {
         return cloneNostrEvent(record.rawEvent);
     }
 
@@ -129,7 +133,7 @@ export function buildThreadGraphNode(input: {
     sources: PostHistoryThreadGraphSource[];
     profile?: import("./types").ProfileData | null;
 }): PostHistoryThreadGraphNode {
-    const references = parseKind1ThreadReferences(input.event);
+    const references = parsePostHistoryThreadReferences(input.event);
 
     return {
         eventId: input.event.id,

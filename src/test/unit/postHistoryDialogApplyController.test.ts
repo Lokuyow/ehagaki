@@ -23,7 +23,7 @@ function createRecord(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createPostHistoryDialogApplyController', () => {
-    it('reply 適用で channel と reply query を実行する', () => {
+    it('reply 適用で channel と reply query を実行する', async () => {
         const applyChannelContextQuery = vi.fn().mockResolvedValue(undefined);
         const applyReplyQuoteQuery = vi.fn().mockResolvedValue(undefined);
         const controller = createPostHistoryDialogApplyController({
@@ -50,13 +50,18 @@ describe('createPostHistoryDialogApplyController', () => {
             logger: { error: vi.fn() },
         });
 
-        controller.applyReply(createRecord({ kind: 42, channelEventId: 'channel-event' }) as never);
+        const channelEventId = 'c'.repeat(64);
+        await controller.applyReply(createRecord({
+            kind: 42,
+            tags: [['e', channelEventId, '', 'root']],
+            channelEventId: 'stale-channel-event',
+        }) as never);
 
         expect(applyChannelContextQuery).toHaveBeenCalledTimes(1);
         expect(applyReplyQuoteQuery).toHaveBeenCalledTimes(1);
     });
 
-    it('reply 適用で channel query が無ければ context をクリアする', () => {
+    it('reply 適用で channel query が無ければ context をクリアする', async () => {
         const clearChannelContext = vi.fn();
         const controller = createPostHistoryDialogApplyController({
             applyChannelContextQuery: vi.fn().mockResolvedValue(undefined),
@@ -82,7 +87,7 @@ describe('createPostHistoryDialogApplyController', () => {
             logger: { error: vi.fn() },
         });
 
-        controller.applyReply(createRecord() as never);
+        await controller.applyReply(createRecord() as never);
 
         expect(clearChannelContext).toHaveBeenCalledTimes(1);
     });

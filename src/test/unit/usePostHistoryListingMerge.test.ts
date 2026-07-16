@@ -152,7 +152,7 @@ describe('mergeOlderVisiblePosts', () => {
         );
     });
 
-    it('newly visible posts から current visible な owner self kind:1 parents だけ残す', () => {
+    it('newly visible posts から current visible な owner self direct-reply parents だけ残す', () => {
         const visibleSelf = createPost(10);
         const hiddenSelf = createPost(11);
         const visibleKind42 = {
@@ -170,7 +170,7 @@ describe('mergeOlderVisiblePosts', () => {
             [visibleSelf, visibleKind42, visibleOther],
         );
 
-        expect(result).toEqual([visibleSelf]);
+        expect(result).toEqual([visibleSelf, visibleKind42]);
     });
 
     it('older reveal network candidates は in-flight と freshness TTL を除外する', () => {

@@ -183,6 +183,30 @@ describe("triggerPostHistoryDirectReplyLifecycle", () => {
         });
     });
 
+    it("kind:42 replyはkindを含む独立したrequest keyで管理する", async () => {
+        getDirectReplyRecordsMock.mockResolvedValue([{
+            eventId: REPLY_ID,
+            authorPubkey: "a".repeat(64),
+            kind: 42,
+        }]);
+
+        await triggerPostHistoryDirectReplyLifecycle({
+            source: "listing-current-view",
+            parentEventIds: [PARENT_ID],
+            rxNostr: { use: vi.fn() } as any,
+        });
+
+        expect(saveManyReplyStateMock).toHaveBeenCalledWith([
+            expect.objectContaining({
+                requestKey: `${PARENT_ID}:${REPLY_ID}:42`,
+                kind: 42,
+            }),
+        ]);
+        expect(deleteManyReplyStateMock).toHaveBeenCalledWith([
+            `${PARENT_ID}:${REPLY_ID}:42`,
+        ]);
+    });
+
     it("partial cleanup は failed 遷移として記録する", async () => {
         cleanupDirectReplyDeletionsMock.mockResolvedValueOnce({
             status: "partial",

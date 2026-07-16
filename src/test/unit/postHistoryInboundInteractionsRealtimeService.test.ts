@@ -43,6 +43,14 @@ function createService() {
         getExistingEventIdsForPubkey: vi.fn(async ({ eventIds }: { eventIds: string[] }) =>
             eventIds.filter((eventId) => eventId === PARENT_ID)
         ),
+        getByEventId: vi.fn(async (eventId: string) => eventId === PARENT_ID ? ({
+            eventId,
+            kind: 1,
+            tags: [],
+            createdAt: 90,
+            relayHints: [],
+            acceptedRelays: [],
+        } as any) : null),
     };
     const upsertChildInteractions = vi.fn(async () => ({
         insertedCount: 1,
@@ -110,7 +118,7 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         await subscription.waitForIdle();
 
         expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1, 7],
+            kinds: [1, 7, 42],
             "#p": [OWNER_PUBKEY],
             since: 1_699_999_940,
         }]);

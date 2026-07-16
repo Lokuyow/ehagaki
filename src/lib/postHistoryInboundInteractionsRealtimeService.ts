@@ -7,6 +7,10 @@ import type {
 } from "./postHistoryInboundReplyReconciliationService";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "./postHistoryDirectReplyRelationUtils";
+import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
@@ -35,7 +39,7 @@ export interface PostHistoryInboundInteractionsRealtimeSubscription {
 }
 
 export interface PostHistoryInboundInteractionsRealtimeServiceDeps {
-    postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
+    postHistoryRepository?: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     console?: Pick<Console, "warn" | "error">;
     now?: () => number;
@@ -52,7 +56,7 @@ function normalizeRelayLimit(relayLimit: number | undefined): number {
 }
 
 export class PostHistoryInboundInteractionsRealtimeService {
-    private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey">;
+    private postHistoryRepository: Pick<PostHistoryRepository, "getExistingEventIdsForPubkey" | "getByEventId">;
     private postHistoryChildInteractionsRepository: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     private console: Pick<Console, "warn" | "error">;
     private now: () => number;
@@ -111,7 +115,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             });
 
             rxReq.emit({
-                kinds: [1, 7],
+                kinds: [1, 7, 42],
                 "#p": [params.ownerPubkeyHex],
                 since: subscribedSince,
             } as never);
@@ -225,6 +229,31 @@ export class PostHistoryInboundInteractionsRealtimeService {
             ownerPostEventIds,
         });
         if (classification.type !== "direct-reply" || !classification.parentEventId) {
+            return;
+        }
+
+        const parentRecord = await this.postHistoryRepository.getByEventId(
+            classification.parentEventId,
+        );
+        const parentContext = parentRecord
+            ? buildPostHistoryDirectReplyParentContext({
+                event: {
+                    id: parentRecord.eventId,
+                    kind: parentRecord.kind,
+                    tags: parentRecord.tags,
+                    created_at: parentRecord.createdAt,
+                },
+                relayHints: [
+                    ...parentRecord.relayHints,
+                    ...parentRecord.acceptedRelays,
+                    ...(parentRecord.fetchedRelays ?? []),
+                ],
+            })
+            : null;
+        if (
+            !parentContext
+            || !validatePostHistoryDirectReplyRelation({ child: event, parent: parentContext }).valid
+        ) {
             return;
         }
 

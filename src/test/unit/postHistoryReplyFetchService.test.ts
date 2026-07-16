@@ -47,6 +47,7 @@ describe("PostHistoryReplyFetchService", () => {
         const reply = createEvent({
             id: "3".repeat(64),
             created_at: 1_700_000_010,
+            tags: [["e", parentEventId, "", "reply"]],
         });
         rxNostrMock.use.mockReturnValue({
             subscribe: ({ next, complete }: Record<string, any>) => {
@@ -96,6 +97,7 @@ describe("PostHistoryReplyFetchService", () => {
         const reply = createEvent({
             id: "5".repeat(64),
             created_at: 1_700_000_010,
+            tags: [["e", parentEventIds[0], "", "reply"]],
         });
         rxNostrMock.use.mockReturnValue({
             subscribe: ({ next, complete }: Record<string, any>) => {
@@ -144,5 +146,98 @@ describe("PostHistoryReplyFetchService", () => {
                 limit: 100,
             },
         ]);
+    });
+
+    it("kind 42 は要求した親ID・kind・channelが一致する返信だけを返す", async () => {
+        const service = new PostHistoryReplyFetchService({
+            now: () => 2000,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        const channelId = "6".repeat(64);
+        const otherChannelId = "7".repeat(64);
+        const parentEventId = "8".repeat(64);
+        const validReply = createEvent({
+            id: "9".repeat(64),
+            kind: 42,
+            tags: [
+                ["e", channelId, "", "root"],
+                ["e", parentEventId, "", "reply"],
+            ],
+        });
+        const wrongChannelReply = createEvent({
+            id: "a".repeat(64),
+            kind: 42,
+            tags: [
+                ["e", otherChannelId, "", "root"],
+                ["e", parentEventId, "", "reply"],
+            ],
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ next, complete }: Record<string, any>) => {
+                next({ event: validReply, from: "wss://relay.example.com" });
+                next({ event: wrongChannelReply, from: "wss://relay.example.com" });
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+
+        const task = service.fetchDirectReplies(rxNostrMock as any, {
+            eventId: parentEventId,
+            createdAt: 100,
+            parents: [{
+                eventId: parentEventId,
+                eventKind: 42,
+                channelEventId: channelId,
+                createdAt: 100,
+                relayHints: ["wss://relay.example.com"],
+            }],
+            relayConfig: null,
+        });
+
+        await expect(task.promise).resolves.toMatchObject({
+            events: [{
+                parentEventId,
+                event: validReply,
+            }],
+        });
+        expect(rxNostrMock.emittedFilters).toEqual([expect.objectContaining({
+            kinds: [42],
+            "#e": [parentEventId],
+        })]);
+    });
+
+    it("errorとcancelを正常な0件取得から区別する", async () => {
+        const service = new PostHistoryReplyFetchService({
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        const parentEventId = "2".repeat(64);
+        rxNostrMock.use.mockReturnValueOnce({
+            subscribe: ({ error }: Record<string, any>) => {
+                error(new Error("failed"));
+                return { unsubscribe: vi.fn() };
+            },
+        });
+
+        await expect(service.fetchDirectReplies(rxNostrMock as any, {
+            eventId: parentEventId,
+            createdAt: 100,
+            relayConfig: null,
+        }).promise).resolves.toMatchObject({ status: "failed", events: [] });
+
+        rxNostrMock.use.mockReturnValueOnce({
+            subscribe: () => ({ unsubscribe: vi.fn() }),
+        });
+        const cancelledTask = service.fetchDirectReplies(rxNostrMock as any, {
+            eventId: parentEventId,
+            createdAt: 100,
+            relayConfig: null,
+        });
+        cancelledTask.cancel();
+        await expect(cancelledTask.promise).resolves.toMatchObject({
+            status: "cancelled",
+            events: [],
+        });
     });
 });

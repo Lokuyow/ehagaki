@@ -117,6 +117,14 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         const reconciliation = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async (eventId: string) => eventId === parentEventId ? ({
+                    eventId,
+                    kind: 1,
+                    tags: [],
+                    createdAt: 90,
+                    relayHints: [],
+                    acceptedRelays: [],
+                } as any) : null),
                 upsertFetchedEvents: vi.fn(),
             },
             postHistoryChildInteractionsRepository: replyEventsRepository,
@@ -136,6 +144,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         const inboundSubscription = new PostHistoryInboundInteractionsRealtimeService({
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async () => null),
             },
             postHistoryChildInteractionsRepository: replyEventsRepository,
             now: () => 1_700_000_000_000,

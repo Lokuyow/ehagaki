@@ -1,4 +1,4 @@
-import { parseKind1ThreadReferences } from "./postHistoryNip10Utils";
+import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 import {
     parsePostHistoryQuoteReferences,
     type PostHistoryQuoteReference,
@@ -110,7 +110,7 @@ export const postHistoryQuoteTargetDiscoveryAdapter = {
 
 export const postHistoryReplyParentTargetDiscoveryAdapter = {
     getRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
-        const references = parseKind1ThreadReferences(node.event);
+        const references = parsePostHistoryThreadReferences(node.event);
         return sanitizeRelayHints([
             ...(references.replyRelayHint ? [references.replyRelayHint] : []),
             ...(references.rootRelayHint ? [references.rootRelayHint] : []),
@@ -123,7 +123,7 @@ export const postHistoryReplyParentTargetDiscoveryAdapter = {
     },
 
     getAuthorHint(node: PostHistoryThreadGraphNode): string | null {
-        const references = parseKind1ThreadReferences(node.event);
+        const references = parsePostHistoryThreadReferences(node.event);
         if (!references.parentId) {
             return null;
         }

@@ -1,5 +1,5 @@
 import {
-    parseKind1ThreadReferences,
+    parsePostHistoryThreadReferences,
     resolveKind7ReactionTargetEventId,
     type PostHistoryThreadReferences,
 } from "./postHistoryNip10Utils";
@@ -67,7 +67,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         };
     }
 
-    if (event.kind !== 1) {
+    if (event.kind !== 1 && event.kind !== 42) {
         return {
             type: "unsupported",
             event,
@@ -80,7 +80,7 @@ export function classifyPostHistoryInboundInteraction(input: {
         };
     }
 
-    const references = parseKind1ThreadReferences(event);
+    const references = parsePostHistoryThreadReferences(event);
     const includesOwnerPTag = eventHasPTag(event, ownerPubkeyHex);
     if (!includesOwnerPTag) {
         return {

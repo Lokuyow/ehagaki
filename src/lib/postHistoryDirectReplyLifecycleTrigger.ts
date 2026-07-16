@@ -18,7 +18,6 @@ import {
 import {
     buildPostHistoryDirectReplyLifecycleRequestKey,
     canRetryPostHistoryDirectReplyLifecycle,
-    POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
     type PostHistoryDirectReplyLifecycleCandidate,
     type PostHistoryDirectReplyLifecycleSource,
     type PostHistoryDirectReplyLifecycleStateRecord,
@@ -72,11 +71,12 @@ async function loadDirectReplyLifecycleCandidates(
                 requestKey: buildPostHistoryDirectReplyLifecycleRequestKey(
                     parentEventId,
                     record.eventId,
+                    record.kind === 42 ? 42 : 1,
                 ),
                 parentEventId,
                 replyEventId: record.eventId,
                 replyAuthorPubkey: record.authorPubkey,
-                kind: POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+                kind: record.kind === 42 ? 42 : 1,
             });
         }
     }
@@ -113,6 +113,7 @@ async function saveLifecycleStateTransitions(
             replyEventId: candidate.replyEventId,
             replyAuthorPubkey: candidate.replyAuthorPubkey,
             source,
+            kind: candidate.kind,
         })),
     );
 }

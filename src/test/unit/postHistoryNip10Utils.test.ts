@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     parseKind1ThreadReferences,
+    parseKind42ThreadReferences,
     resolveKind7ReactionTargetEventId,
 } from "../../lib/postHistoryNip10Utils";
 import type { NostrEvent } from "../../lib/types";
@@ -105,6 +106,81 @@ describe("parseKind1ThreadReferences", () => {
         expect(parseKind1ThreadReferences(createEvent([
             ["e", ROOT_ID, "", "root"],
         ], 42)).parentId).toBeNull();
+    });
+});
+
+describe("parseKind42ThreadReferences", () => {
+    it("channel root と direct reply を分離する", () => {
+        expect(parseKind42ThreadReferences(createEvent([
+            ["e", ROOT_ID, "wss://channel.example.com", "root"],
+            ["e", REPLY_ID, "wss://reply.example.com", "reply", AUTHOR_HINT],
+        ], 42))).toMatchObject({
+            rootId: null,
+            channelEventId: ROOT_ID,
+            parentId: REPLY_ID,
+            replyId: REPLY_ID,
+            channelRelayHints: ["wss://channel.example.com/"],
+            replyRelayHint: "wss://reply.example.com/",
+            replyAuthorHint: AUTHOR_HINT,
+            issues: [],
+        });
+    });
+
+    it("root のみを持つトップレベル投稿を返信として扱わない", () => {
+        const result = parseKind42ThreadReferences(createEvent([
+            ["e", ROOT_ID, "wss://channel.example.com", "root"],
+        ], 42));
+
+        expect(result.channelEventId).toBe(ROOT_ID);
+        expect(result.parentId).toBeNull();
+    });
+
+    it("同値重複を正規化し、競合する reply は採用しない", () => {
+        const duplicated = parseKind42ThreadReferences(createEvent([
+            ["e", ROOT_ID, "wss://one.example.com", "root"],
+            ["e", ROOT_ID, "wss://two.example.com", "root"],
+            ["e", REPLY_ID, "", "reply"],
+            ["e", REPLY_ID, "wss://reply.example.com", "reply"],
+        ], 42));
+        expect(duplicated.channelEventId).toBe(ROOT_ID);
+        expect(duplicated.channelRelayHints).toEqual([
+            "wss://one.example.com/",
+            "wss://two.example.com/",
+        ]);
+        expect(duplicated.parentId).toBe(REPLY_ID);
+
+        const conflicted = parseKind42ThreadReferences(createEvent([
+            ["e", ROOT_ID, "", "root"],
+            ["e", REPLY_ID, "", "reply"],
+            ["e", MENTION_ID, "wss://mention.example.com", "reply"],
+        ], 42));
+        expect(conflicted.parentId).toBeNull();
+        expect(conflicted.replyRelayHint).toBeNull();
+        expect(conflicted.issues).toContain("conflicting-reply-targets");
+    });
+
+    it("missing と invalid marked tag を区別し、mentionへfallbackしない", () => {
+        const missing = parseKind42ThreadReferences(createEvent([
+            ["e", MENTION_ID, "wss://mention.example.com", "mention"],
+        ], 42));
+        expect(missing.channelEventId).toBeNull();
+        expect(missing.issues).toContain("missing-channel-root");
+
+        const invalid = parseKind42ThreadReferences(createEvent([
+            ["e", "invalid", "wss://invalid.example.com", "root"],
+            ["e", REPLY_ID, "", "reply"],
+        ], 42));
+        expect(invalid.channelEventId).toBeNull();
+        expect(invalid.issues).toContain("invalid-channel-root");
+    });
+
+    it("channel ID を reply target にしたイベントを親edgeにしない", () => {
+        const result = parseKind42ThreadReferences(createEvent([
+            ["e", ROOT_ID, "", "root"],
+            ["e", ROOT_ID, "", "reply"],
+        ], 42));
+        expect(result.parentId).toBeNull();
+        expect(result.issues).toContain("reply-target-is-channel");
     });
 });
 

@@ -48,6 +48,14 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         const parentFetch = createDeferred<{ event: NostrEvent | null; relayUrl: string | null }>();
         const postHistoryRepository = {
             getExistingEventIdsForPubkey: vi.fn(async () => []),
+            getByEventId: vi.fn(async (eventId: string) => eventId === PARENT_ID ? ({
+                eventId,
+                kind: 1,
+                tags: [],
+                createdAt: 90,
+                relayHints: [],
+                acceptedRelays: [],
+            } as any) : null),
             upsertFetchedEvents: vi.fn(async () => ({
                 insertedCount: 1,
                 updatedCount: 0,
@@ -107,10 +115,12 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
             }],
             fetchedAt: 1_700_000_000_000,
         });
-        expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
-            parentEventId: PARENT_ID,
-            events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
-            fetchedAt: 1_700_000_000_000,
+        await vi.waitFor(() => {
+            expect(postHistoryChildInteractionsRepository.upsertDirectReplies).toHaveBeenCalledWith({
+                parentEventId: PARENT_ID,
+                events: [{ event: candidate.event, relayUrls: candidate.relayUrls }],
+                fetchedAt: 1_700_000_000_000,
+            });
         });
         expect(onSavedInboundInteractions).toHaveBeenCalledWith([PARENT_ID]);
     });
@@ -124,6 +134,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async () => null),
                 upsertFetchedEvents: vi.fn(),
             },
             postHistoryChildInteractionsRepository,
@@ -149,6 +160,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         const parentFetch = createDeferred<{ event: NostrEvent | null; relayUrl: string | null }>();
         const postHistoryRepository = {
             getExistingEventIdsForPubkey: vi.fn(async () => []),
+            getByEventId: vi.fn(async () => null),
             upsertFetchedEvents: vi.fn(),
         };
         const upsertChildInteractions = vi.fn();
@@ -202,6 +214,14 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async (eventId: string) => eventId === PARENT_ID ? ({
+                    eventId,
+                    kind: 1,
+                    tags: [],
+                    createdAt: 90,
+                    relayHints: [],
+                    acceptedRelays: [],
+                } as any) : null),
                 upsertFetchedEvents: vi.fn(),
             },
             postHistoryChildInteractionsRepository,

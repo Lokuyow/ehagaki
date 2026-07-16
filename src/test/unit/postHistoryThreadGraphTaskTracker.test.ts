@@ -40,6 +40,7 @@ describe("postHistoryThreadGraphTaskTracker", () => {
                 firstChildrenCancel.called = true;
             },
             promise: Promise.resolve({
+                status: "success",
                 events: [],
                 relayUrls: [],
                 fetchedAt: Date.now(),
@@ -50,6 +51,7 @@ describe("postHistoryThreadGraphTaskTracker", () => {
                 secondChildrenCancel.called = true;
             },
             promise: Promise.resolve({
+                status: "success",
                 events: [],
                 relayUrls: [],
                 fetchedAt: Date.now(),
@@ -92,6 +94,7 @@ describe("postHistoryThreadGraphTaskTracker", () => {
                 childrenCancel.called = true;
             },
             promise: Promise.resolve({
+                status: "success",
                 events: [],
                 relayUrls: [],
                 fetchedAt: Date.now(),

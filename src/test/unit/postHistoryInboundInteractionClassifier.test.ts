@@ -118,6 +118,28 @@ describe("classifyPostHistoryInboundInteraction", () => {
         });
     });
 
+    it("channel rootとreplyを持つkind:42をdirect-replyに分類する", () => {
+        const event = createEvent({
+            kind: 42,
+            tags: [
+                ["e", ROOT_ID, "", "root"],
+                ["e", PARENT_ID, "", "reply"],
+                ["p", OWNER_PUBKEY],
+            ],
+        });
+
+        expect(classifyPostHistoryInboundInteraction({
+            event,
+            ownerPubkeyHex: OWNER_PUBKEY,
+            ownerPostEventIds: new Set([PARENT_ID]),
+        })).toMatchObject({
+            type: "direct-reply",
+            parentEventId: PARENT_ID,
+            rootEventId: null,
+            references: { channelEventId: ROOT_ID },
+        });
+    });
+
     it("kind:7 reactionはroot付きでも末尾の返信対象を優先する", () => {
         const reaction = createEvent({
             kind: 7,

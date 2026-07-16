@@ -2670,11 +2670,11 @@ describe('PostHistoryDialog', () => {
             promise: Promise.resolve({
                 events: params.eventId === parentEventId
                     ? [
-                        { event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
-                        { event: replyD.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { parentEventId, event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { parentEventId, event: replyD.rawEvent, relayUrls: ['wss://relay.example.com/'] },
                     ]
                     : params.eventId === replyBEventId
-                        ? [{ event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
+                        ? [{ parentEventId: replyBEventId, event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
                         : [],
                 fetchedAt: 1_700_000_030,
                 relayUrls: ['wss://relay.example.com/'],
@@ -3888,6 +3888,7 @@ describe('PostHistoryDialog', () => {
                 return {
                     promise: Promise.resolve({
                         events: [{
+                            parentEventId,
                             event: childReply.rawEvent,
                             relayUrls: ['wss://relay.example.com/'],
                         }],
@@ -3903,6 +3904,7 @@ describe('PostHistoryDialog', () => {
                 return {
                     promise: Promise.resolve({
                         events: [{
+                            parentEventId: childEventId,
                             event: grandchildReply.rawEvent,
                             relayUrls: ['wss://remote.example/'],
                         }],
@@ -4034,7 +4036,7 @@ describe('PostHistoryDialog', () => {
                 return {
                     promise: Promise.resolve({
                         events: canDiscoverGrandchild
-                            ? [{ event: grandchildReply.rawEvent, relayUrls: ['wss://remote.example/'] }]
+                            ? [{ parentEventId: childEventId, event: grandchildReply.rawEvent, relayUrls: ['wss://remote.example/'] }]
                             : [],
                         fetchedAt: 1_700_000_040,
                         relayUrls: ['wss://remote.example/'],
@@ -4145,7 +4147,7 @@ describe('PostHistoryDialog', () => {
         replyFetchServiceMock.fetchDirectReplies.mockImplementation((_rxNostr: any, params: any) => ({
             promise: Promise.resolve({
                 events: params.eventId === parentEventId
-                    ? [{ event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
+                    ? [{ parentEventId, event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
                     : [{ event: anchorAsReplyToB.rawEvent, relayUrls: ['wss://relay.example.com/'] }],
                 fetchedAt: 1_700_000_030,
                 relayUrls: ['wss://relay.example.com/'],
@@ -4279,8 +4281,8 @@ describe('PostHistoryDialog', () => {
                 events: params.eventId === parentEventId
                     ? [{ event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
                     : [
-                        { event: anchorAsReplyToB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
-                        { event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { parentEventId: replyBEventId, event: anchorAsReplyToB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        { parentEventId: replyBEventId, event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] },
                     ],
                 fetchedAt: 1_700_000_030,
                 relayUrls: ['wss://relay.example.com/'],

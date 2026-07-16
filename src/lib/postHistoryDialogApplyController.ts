@@ -41,7 +41,7 @@ export interface PostHistoryDialogApplyControllerDependencies {
 }
 
 export interface PostHistoryDialogApplyController {
-    applyReply(post: PostHistoryRecord): void;
+    applyReply(post: PostHistoryRecord): Promise<boolean>;
     applyQuote(post: PostHistoryRecord): void;
 }
 
@@ -52,48 +52,58 @@ export function createPostHistoryDialogApplyController(
 ): PostHistoryDialogApplyController {
     const logger = deps.logger ?? FALLBACK_LOGGER;
 
-    function applyChannelContext(post: PostHistoryRecord): void {
+    async function applyChannelContext(post: PostHistoryRecord): Promise<boolean> {
         const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
 
         if (channelContextQuery) {
-            void deps.applyChannelContextQuery({
-                channelContextQuery,
-                ...deps.getChannelContextApplyParams(),
-            }).catch((error) => {
+            try {
+                await deps.applyChannelContextQuery({
+                    channelContextQuery,
+                    ...deps.getChannelContextApplyParams(),
+                });
+                return true;
+            } catch (error) {
                 logger.error('投稿履歴からのチャンネル適用に失敗:', error);
-            });
-            return;
+                return false;
+            }
         }
 
         deps.clearChannelContext();
+        return post.kind !== 42;
     }
 
-    function applyReply(post: PostHistoryRecord): void {
+    async function applyReply(post: PostHistoryRecord): Promise<boolean> {
         const preloadedEvents = buildPostHistoryReplySeedEvents(post);
         const referenceTarget = buildPostHistoryReferenceTarget(post);
 
-        applyChannelContext(post);
+        if (!await applyChannelContext(post)) {
+            return false;
+        }
 
-        void deps.applyReplyQuoteQuery({
-            replyQuoteQuery: {
-                reply: {
-                    ...referenceTarget,
+        try {
+            await deps.applyReplyQuoteQuery({
+                replyQuoteQuery: {
+                    reply: {
+                        ...referenceTarget,
+                    },
+                    quotes: [],
                 },
-                quotes: [],
-            },
-            ...deps.getReplyQuoteApplyParams(),
-            ...(preloadedEvents ? { preloadedEvents } : {}),
-        }).catch((error) => {
+                ...deps.getReplyQuoteApplyParams(),
+                ...(preloadedEvents ? { preloadedEvents } : {}),
+            });
+        } catch (error) {
             logger.error('投稿履歴からのリプライ適用に失敗:', error);
-        });
+            return false;
+        }
 
         deps.focusEditor();
+        return true;
     }
 
     function applyQuote(post: PostHistoryRecord): void {
         const referenceTarget = buildPostHistoryReferenceTarget(post);
 
-        applyChannelContext(post);
+        void applyChannelContext(post);
 
         if (deps.hasReplyOrQuotes()) {
             deps.clearReplyQuote();

@@ -513,6 +513,7 @@ describe("DexiePostHistoryRepository", () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 9000);
         const pubkey = "b".repeat(64);
+        const channelEventId = "c".repeat(64);
 
         const result = await repository.upsertFetchedEvents({
             events: [
@@ -522,8 +523,8 @@ describe("DexiePostHistoryRepository", () => {
                         pubkey,
                         kind: 42,
                         tags: [
-                            ["e", "channel-id", "wss://channel.example.com", "root"],
-                            ["e", "reply-id", "wss://reply.example.com", "reply"],
+                            ["e", channelEventId, "wss://channel.example.com", "root"],
+                            ["e", "d".repeat(64), "wss://reply.example.com", "reply"],
                         ],
                         created_at: 321,
                     }),
@@ -541,7 +542,7 @@ describe("DexiePostHistoryRepository", () => {
             unchangedCount: 0,
         });
         expect(record.kind).toBe(42);
-        expect(record.channelEventId).toBe("channel-id");
+        expect(record.channelEventId).toBe(channelEventId);
         expect(record.channelRelayHints).toEqual(["wss://channel.example.com/"]);
         expect(record).not.toHaveProperty("channelName");
         expect(record.postedAt).toBe(321000);

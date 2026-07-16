@@ -6,14 +6,14 @@ import type {
 } from "./types";
 import {
     extractPostHistoryChannelReference,
-    isSignedNostrEvent,
+    isPostHistoryRawEventConsistent,
 } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 
 export function buildPostHistoryReplySeedEvents(
     post: PostHistoryRecord,
 ): Record<string, NostrEvent> | undefined {
-    if (!isSignedNostrEvent(post.rawEvent)) {
+    if (!isPostHistoryRawEventConsistent(post.rawEvent, post)) {
         return undefined;
     }
 
@@ -42,14 +42,9 @@ export function buildPostHistoryReplyChannelContextQuery(
         return null;
     }
 
-    const derivedReference = post.channelEventId
-        ? {
-            channelEventId: post.channelEventId,
-            channelRelayHints: post.channelRelayHints,
-        }
-        : isSignedNostrEvent(post.rawEvent)
-            ? extractPostHistoryChannelReference(post.rawEvent)
-            : {};
+    const derivedReference = isPostHistoryRawEventConsistent(post.rawEvent, post)
+        ? extractPostHistoryChannelReference(post.rawEvent)
+        : extractPostHistoryChannelReference({ kind: post.kind, tags: post.tags });
 
     if (!derivedReference.channelEventId) {
         return null;

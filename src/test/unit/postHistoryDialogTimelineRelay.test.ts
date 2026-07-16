@@ -88,6 +88,14 @@ describe('PostHistoryDialog timeline relay flows', () => {
         const session = new PostHistoryInboundReplyReconciliationService({
             postHistoryRepository: {
                 getExistingEventIdsForPubkey: vi.fn(async () => []),
+                getByEventId: vi.fn(async (eventId: string) => eventId === parentEventId ? ({
+                    eventId,
+                    kind: 1,
+                    tags: [],
+                    createdAt: 90,
+                    relayHints: [],
+                    acceptedRelays: [],
+                } as any) : null),
                 upsertFetchedEvents: vi.fn(),
             },
             postHistoryChildInteractionsRepository: replyEventsRepository,
@@ -739,7 +747,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('normal local older reveal は newly visible self kind:1 だけ reply repair し、表示は repair 完了を待たない', async () => {
+    it('normal local older reveal は newly visible self reply parent だけ repair し、表示は repair 完了を待たない', async () => {
         const visiblePost = createRecord({
             eventId: 'local-older-visible',
             content: '表示中の投稿',
@@ -821,7 +829,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 expect.anything(),
                 expect.objectContaining({
                     ownerPubkeyHex: PUBKEY_HEX,
-                    visiblePosts: [olderSelfKind1],
+                    visiblePosts: [olderSelfKind1, olderSelfKind42],
                 }),
             );
         });

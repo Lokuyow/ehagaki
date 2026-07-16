@@ -1,4 +1,4 @@
-import { RelayConfigUtils } from "./relayConfigUtils";
+import { parseKind42ThreadReferences } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
 
 export interface PostHistoryChannelReference {
@@ -72,25 +72,35 @@ export function extractPostHistoryChannelReference(
         return {};
     }
 
-    const eTags = event.tags.filter((tag) =>
-        Array.isArray(tag)
-        && tag[0] === "e"
-        && typeof tag[1] === "string"
-        && tag[1].trim().length > 0,
-    );
-    const rootTag = eTags.find((tag) => tag[3] === "root") ?? eTags[0];
-
-    if (!rootTag) {
+    const references = parseKind42ThreadReferences(event);
+    if (!references.channelEventId) {
         return {};
     }
 
-    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
-        typeof rootTag[2] === "string" ? [rootTag[2]] : [],
-        { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-    );
-
     return {
-        channelEventId: rootTag[1],
-        ...(relayHints.length > 0 ? { channelRelayHints: relayHints } : {}),
+        channelEventId: references.channelEventId,
+        ...(references.channelRelayHints.length > 0
+            ? { channelRelayHints: references.channelRelayHints }
+            : {}),
     };
+}
+
+export function isPostHistoryRawEventConsistent(
+    rawEvent: unknown,
+    record: {
+        eventId: string;
+        pubkeyHex: string;
+        kind: number;
+        content: string;
+        tags: string[][];
+        createdAt: number;
+    },
+): rawEvent is NostrEvent {
+    return isSignedNostrEvent(rawEvent)
+        && rawEvent.id === record.eventId
+        && rawEvent.pubkey === record.pubkeyHex
+        && rawEvent.kind === record.kind
+        && rawEvent.content === record.content
+        && rawEvent.created_at === record.createdAt
+        && isSameTagList(rawEvent.tags, record.tags);
 }

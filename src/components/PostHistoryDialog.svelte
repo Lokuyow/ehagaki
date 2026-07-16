@@ -90,7 +90,7 @@
     interface Props {
         show: boolean;
         onClose: () => void;
-        onReplyPost?: (post: PostHistoryRecord) => void;
+        onReplyPost?: (post: PostHistoryRecord) => void | boolean | Promise<boolean>;
         onQuotePost?: (post: PostHistoryRecord) => void;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
@@ -1068,13 +1068,14 @@
         postActionUi.openDeleteConfirm(post);
     }
 
-    function handleReplyPost(post: PostHistoryRecord): void {
+    async function handleReplyPost(post: PostHistoryRecord): Promise<void> {
         if (!onReplyPost) {
             return;
         }
 
-        onReplyPost(post);
-        handleClose();
+        if (await onReplyPost(post) !== false) {
+            handleClose();
+        }
     }
 
     function handleQuotePost(post: PostHistoryRecord): void {

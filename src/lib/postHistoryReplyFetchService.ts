@@ -3,6 +3,11 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
+import {
+    validatePostHistoryDirectReplyRelation,
+    type PostHistoryDirectReplyParentContext,
+} from "./postHistoryDirectReplyRelationUtils";
+import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
@@ -21,14 +26,17 @@ export interface PostHistoryReplyFetchRequest {
     limit?: number;
     timeoutMs?: number;
     relayLimit?: number;
+    parents?: PostHistoryDirectReplyParentContext[];
 }
 
 export interface PostHistoryReplyFetchedEvent {
+    parentEventId: string;
     event: NostrEvent;
     relayUrls: string[];
 }
 
 export interface PostHistoryReplyFetchResult {
+    status: "success" | "partial" | "failed" | "cancelled";
     events: PostHistoryReplyFetchedEvent[];
     fetchedAt: number;
     relayUrls: string[];
@@ -47,6 +55,7 @@ export interface PostHistoryReplyFetchServiceDeps {
 }
 
 type EventAccumulator = {
+    parentEventId: string;
     event: NostrEvent;
     relayUrls: Set<string>;
 };
@@ -60,6 +69,7 @@ function resolveLimit(limit: number | undefined): number {
 function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryReplyFetchedEvent[] {
     return Array.from(eventsById.values())
         .map((item) => ({
+            parentEventId: item.parentEventId,
             event: item.event,
             relayUrls: Array.from(item.relayUrls).sort((left, right) => left.localeCompare(right)),
         }))
@@ -72,12 +82,57 @@ function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryR
         });
 }
 
-function resolveEventIds(params: PostHistoryReplyFetchRequest): string[] {
+function resolveParentContexts(
+    params: PostHistoryReplyFetchRequest,
+): PostHistoryDirectReplyParentContext[] {
+    if (params.parents) {
+        const contextsById = new Map<string, PostHistoryDirectReplyParentContext>();
+        const conflictedEventIds = new Set<string>();
+        for (const context of params.parents) {
+            if (!context.eventId || conflictedEventIds.has(context.eventId)) {
+                continue;
+            }
+
+            const existing = contextsById.get(context.eventId);
+            if (
+                existing
+                && (
+                    existing.eventKind !== context.eventKind
+                    || existing.createdAt !== context.createdAt
+                    || (
+                        !!existing.channelEventId
+                        && !!context.channelEventId
+                        && existing.channelEventId !== context.channelEventId
+                    )
+                )
+            ) {
+                contextsById.delete(context.eventId);
+                conflictedEventIds.add(context.eventId);
+                continue;
+            }
+
+            contextsById.set(context.eventId, {
+                ...context,
+                channelEventId: context.channelEventId ?? existing?.channelEventId ?? null,
+                relayHints: Array.from(new Set([
+                    ...(existing?.relayHints ?? []),
+                    ...context.relayHints,
+                ])),
+            });
+        }
+        return Array.from(contextsById.values());
+    }
+
     const eventIds = params.eventIds && params.eventIds.length > 0
         ? params.eventIds
         : [params.eventId];
-
-    return Array.from(new Set(eventIds.filter((eventId) => !!eventId)));
+    return Array.from(new Set(eventIds.filter((eventId) => !!eventId))).map((eventId) => ({
+        eventId,
+        eventKind: 1,
+        channelEventId: null,
+        createdAt: params.createdAt,
+        relayHints: params.relayHints ?? [],
+    }));
 }
 
 export class PostHistoryReplyFetchService {
@@ -102,18 +157,28 @@ export class PostHistoryReplyFetchService {
         params: PostHistoryReplyFetchRequest,
     ): PostHistoryReplyFetchTask {
         const rxReq = createRxBackwardReq();
-        const relayUrls = this.resolveRelayUrls(params.relayHints, params.relayConfig, params.relayLimit);
-        const eventIds = resolveEventIds(params);
+        const parentContexts = resolveParentContexts(params);
+        const parentContextsById = new Map(parentContexts.map((context) => [context.eventId, context]));
+        const eventIds = parentContexts.map((context) => context.eventId);
+        const relayUrls = this.resolveRelayUrls(
+            [
+                ...(params.relayHints ?? []),
+                ...parentContexts.flatMap((context) => context.relayHints),
+            ],
+            params.relayConfig,
+            params.relayLimit,
+        );
         const limit = resolveLimit(params.limit);
         const since = Math.max(
             0,
-            Math.trunc(params.createdAt) - POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS,
+            Math.trunc(Math.min(...parentContexts.map((context) => context.createdAt)))
+                - POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS,
         );
         const eventsById = new Map<string, EventAccumulator>();
         let resolved = false;
         let subscription: { unsubscribe?: () => void } | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let resolveTask: ((result: PostHistoryReplyFetchResult) => void) | undefined;
+        let resolveTask: ((status: PostHistoryReplyFetchResult["status"]) => void) | undefined;
 
         const cleanup = () => {
             if (timeoutId !== undefined) {
@@ -124,7 +189,10 @@ export class PostHistoryReplyFetchService {
             subscription = undefined;
         };
 
-        const buildResult = (): PostHistoryReplyFetchResult => ({
+        const buildResult = (
+            status: PostHistoryReplyFetchResult["status"],
+        ): PostHistoryReplyFetchResult => ({
+            status: status === "failed" && eventsById.size > 0 ? "partial" : status,
             events: toResultEvents(eventsById),
             fetchedAt: this.now(),
             relayUrls,
@@ -132,14 +200,14 @@ export class PostHistoryReplyFetchService {
 
         const safeResolveFactory = (
             resolve: (result: PostHistoryReplyFetchResult) => void,
-        ) => () => {
+        ) => (status: PostHistoryReplyFetchResult["status"]) => {
             if (resolved) {
                 return;
             }
 
             resolved = true;
             cleanup();
-            resolve(buildResult());
+            resolve(buildResult(status));
         };
 
         const promise = new Promise<PostHistoryReplyFetchResult>((resolve) => {
@@ -148,7 +216,7 @@ export class PostHistoryReplyFetchService {
 
             try {
                 if (eventIds.length === 0) {
-                    safeResolve();
+                    safeResolve("success");
                     return;
                 }
 
@@ -158,17 +226,17 @@ export class PostHistoryReplyFetchService {
                         : { defaultReadRelays: true },
                 }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
-                        this.handlePacket(eventsById, packet);
+                        this.handlePacket(eventsById, parentContextsById, packet);
                     },
-                    complete: safeResolve,
+                    complete: () => safeResolve("success"),
                     error: (error: unknown) => {
                         this.console.error("post_history_reply_fetch_error", error);
-                        safeResolve();
+                        safeResolve("failed");
                     },
                 });
 
                 rxReq.emit({
-                    kinds: [1],
+                    kinds: Array.from(new Set(parentContexts.map((context) => context.eventKind))).sort(),
                     "#e": eventIds,
                     since,
                     limit,
@@ -177,28 +245,38 @@ export class PostHistoryReplyFetchService {
 
                 timeoutId = this.setTimeoutFn(() => {
                     this.console.warn("post_history_reply_fetch_timeout", eventIds.join(","));
-                    safeResolve();
+                    safeResolve("failed");
                 }, params.timeoutMs ?? POST_HISTORY_DIRECT_REPLY_FETCH_TIMEOUT_MS);
             } catch (error) {
                 this.console.error("post_history_reply_fetch_request_error", error);
-                safeResolve();
+                safeResolve("failed");
             }
         });
 
         return {
             promise,
             cancel: () => {
-                resolveTask?.(buildResult());
+                resolveTask?.("cancelled");
             },
         };
     }
 
     private handlePacket(
         eventsById: Map<string, EventAccumulator>,
+        parentContextsById: Map<string, PostHistoryDirectReplyParentContext>,
         packet: { event?: NostrEvent; from?: string },
     ): void {
         const event = packet.event;
-        if (!event?.id || event.kind !== 1) {
+        if (!event?.id || (event.kind !== 1 && event.kind !== 42)) {
+            return;
+        }
+
+        const parentEventId = parsePostHistoryThreadReferences(event).parentId;
+        const parentContext = parentEventId ? parentContextsById.get(parentEventId) : null;
+        if (
+            !parentContext
+            || !validatePostHistoryDirectReplyRelation({ child: event, parent: parentContext }).valid
+        ) {
             return;
         }
 
@@ -210,6 +288,7 @@ export class PostHistoryReplyFetchService {
 
         if (!existing) {
             eventsById.set(event.id, {
+                parentEventId: parentContext.eventId,
                 event,
                 relayUrls: new Set(relayUrl ? [relayUrl] : []),
             });

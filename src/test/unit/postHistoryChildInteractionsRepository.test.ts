@@ -157,6 +157,38 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
         db.close();
     });
 
+    it("kind:42 direct replyをchannel rootではなくreply targetへ保存する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
+        const channelEventId = "8".repeat(64);
+        const parentEventId = "1".repeat(64);
+        const reply = createSignedEvent({
+            id: "2".repeat(64),
+            kind: 42,
+            tags: [
+                ["e", channelEventId, "wss://channel.example.com", "root"],
+                ["e", parentEventId, "wss://parent.example.com", "reply"],
+            ],
+        });
+
+        const result = await repository.upsertChildInteractions({
+            parentEventId,
+            events: [{ event: reply }],
+        });
+
+        expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
+        await expect(repository.getDirectReplyInteractions(parentEventId)).resolves.toMatchObject([{
+            eventId: reply.id,
+            parentEventId,
+            kind: 42,
+        }]);
+        expect((await repository.getDirectReplyInteractions(parentEventId))[0])
+            .not.toHaveProperty("rootEventId");
+        await expect(repository.getDirectReplyInteractions(channelEventId)).resolves.toEqual([]);
+
+        db.close();
+    });
+
     it("root付きkind:7 reactionは末尾の対象e tagに紐づけて保存する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);

@@ -2,6 +2,7 @@ import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+    type PostHistoryDirectReplyLifecycleKind,
     type PostHistoryDirectReplyLifecycleSource,
     type PostHistoryDirectReplyLifecycleStateRecord,
     type PostHistoryDirectReplyLifecycleStateStatus,
@@ -25,6 +26,7 @@ export interface SavePostHistoryDirectReplyLifecycleStateInput {
     source?: PostHistoryDirectReplyLifecycleSource;
     status?: PostHistoryDirectReplyLifecycleStateStatus;
     attemptCount?: number;
+    kind?: PostHistoryDirectReplyLifecycleKind;
 }
 
 export interface PostHistoryDirectReplyDeletionStateRepository {
@@ -73,7 +75,7 @@ function isValidStateValue(value: unknown): value is PostHistoryDirectReplyLifec
         && typeof state.parentEventId === "string"
         && typeof state.replyEventId === "string"
         && typeof state.replyAuthorPubkey === "string"
-        && state.kind === POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND
+        && (state.kind === 1 || state.kind === 42)
         && isDirectReplyLifecycleSource(state.source)
         && isDirectReplyLifecycleStatus(state.status)
         && typeof state.attemptCount === "number"
@@ -83,7 +85,7 @@ function isValidStateValue(value: unknown): value is PostHistoryDirectReplyLifec
 function buildDefaultStateValue(
     input: Pick<
         SavePostHistoryDirectReplyLifecycleStateInput,
-        "requestKey" | "parentEventId" | "replyEventId"
+        "requestKey" | "parentEventId" | "replyEventId" | "kind"
     >,
 ): PostHistoryDirectReplyLifecycleStateValue {
     return {
@@ -91,7 +93,7 @@ function buildDefaultStateValue(
         parentEventId: input.parentEventId,
         replyEventId: input.replyEventId,
         replyAuthorPubkey: "",
-        kind: POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+        kind: input.kind ?? POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
         source: "listing-current-view",
         status: "pending",
         attemptCount: 0,
@@ -214,6 +216,7 @@ implements PostHistoryDirectReplyDeletionStateRepository {
                 ...(input.source !== undefined ? { source: input.source } : {}),
                 ...(input.status !== undefined ? { status: input.status } : {}),
                 ...(input.attemptCount !== undefined ? { attemptCount: input.attemptCount } : {}),
+                ...(input.kind !== undefined ? { kind: input.kind } : {}),
                 schemaVersion: POST_HISTORY_DIRECT_REPLY_DELETION_STATE_SCHEMA_VERSION,
             };
         });

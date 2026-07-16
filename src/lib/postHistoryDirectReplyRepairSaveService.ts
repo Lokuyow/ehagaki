@@ -65,7 +65,12 @@ function compactItems(items: PostHistoryDirectReplyRepairItem[]): PostHistoryDir
     const itemsByEventId = new Map<string, PostHistoryDirectReplyRepairItem>();
 
     for (const item of items) {
-        if (!item.parentEventId || !item.event?.id || !item.event.pubkey || item.event.kind !== 1) {
+        if (
+            !item.parentEventId
+            || !item.event?.id
+            || !item.event.pubkey
+            || (item.event.kind !== 1 && item.event.kind !== 42)
+        ) {
             continue;
         }
 

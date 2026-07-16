@@ -40,7 +40,11 @@ import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
 } from "../storage/postHistoryDeletionRequestsRepository";
-import { parseKind1ThreadReferences } from "../postHistoryNip10Utils";
+import { parsePostHistoryThreadReferences } from "../postHistoryNip10Utils";
+import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "../postHistoryDirectReplyRelationUtils";
 import {
     EMPTY_POST_HISTORY_REACTION_SUMMARY,
     type PostHistoryReactionSummary,
@@ -200,6 +204,12 @@ const POST_HISTORY_CHILD_REPLY_PREFETCH_CONCURRENCY = 2;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS = 5 * 60 * 1_000;
+
+function assertPostHistoryReplyFetchDidNotFail(status: string): void {
+    if (status === "failed") {
+        throw new Error("post_history_reply_fetch_failed");
+    }
+}
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
 let nextThreadGraphParentResolverScopeId = 0;
 
@@ -521,7 +531,7 @@ export function usePostHistoryThreadGraph({
     }
 
     function getChildrenRelayHints(post: PostHistoryRecord, node: PostHistoryThreadGraphNode): string[] {
-        const references = parseKind1ThreadReferences(node.event);
+        const references = parsePostHistoryThreadReferences(node.event);
         return sanitizeRelayUrls([
             ...node.relayUrls,
             ...references.relayHints,
@@ -534,7 +544,7 @@ export function usePostHistoryThreadGraph({
     function getChildrenPrefetchRelayHints(post: PostHistoryRecord, nodes: PostHistoryThreadGraphNode[]): string[] {
         return RelayConfigUtils.sanitizeExternalRelayUrls([
             ...nodes.flatMap((node) => {
-                const references = parseKind1ThreadReferences(node.event);
+                const references = parsePostHistoryThreadReferences(node.event);
                 return [
                     ...node.relayUrls,
                     ...references.relayHints,
@@ -1142,6 +1152,19 @@ export function usePostHistoryThreadGraph({
         }
 
         if (parentSnapshot.status === "resolved" && parentSnapshot.event) {
+            const parentContext = buildPostHistoryDirectReplyParentContext({
+                event: parentSnapshot.event,
+                relayHints: parentSnapshot.relayHints,
+            });
+            if (
+                !parentContext
+                || !validatePostHistoryDirectReplyRelation({
+                    child: currentNode.event,
+                    parent: parentContext,
+                }).valid
+            ) {
+                return false;
+            }
             const node = upsertNode({
                 event: parentSnapshot.event,
                 relayUrls: parentSnapshot.relayHints,
@@ -1225,6 +1248,22 @@ export function usePostHistoryThreadGraph({
                 clearParentLoadingDelayTimer(key);
                 if (!snapshot) {
                     return;
+                }
+
+                if (snapshot.status === "resolved" && snapshot.event) {
+                    const parentContext = buildPostHistoryDirectReplyParentContext({
+                        event: snapshot.event,
+                        relayHints: snapshot.relayHints,
+                    });
+                    if (
+                        !parentContext
+                        || !validatePostHistoryDirectReplyRelation({
+                            child: currentNode.event,
+                            parent: parentContext,
+                        }).valid
+                    ) {
+                        throw new Error("post_history_parent_relation_mismatch");
+                    }
                 }
 
                 const parentStatus = resolveParentRevalidateStatus(snapshot);
@@ -1478,6 +1517,10 @@ export function usePostHistoryThreadGraph({
                     eventId: nodeEventId,
                     createdAt: currentNode.event.created_at,
                     relayHints: getChildrenRelayHints(post, currentNode),
+                    parents: [buildPostHistoryDirectReplyParentContext({
+                        event: currentNode.event,
+                        relayHints: getChildrenRelayHints(post, currentNode),
+                    })].filter((context) => context !== null),
                     relayConfig: getRelayConfig(),
                 });
                 taskTracker.replaceChildrenFetchTask(key, task);
@@ -1487,6 +1530,7 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
+                assertPostHistoryReplyFetchDidNotFail(result.status);
 
                 void fetchAndStoreDeletionRequests(
                     post.eventId,
@@ -1720,7 +1764,9 @@ export function usePostHistoryThreadGraph({
         anchorNode: PostHistoryThreadGraphNode;
         ensureActive: () => boolean;
     }): Promise<void> {
-        const cachedDirectReplies = input.cachedRecords.filter((record) => record.kind === 1);
+        const cachedDirectReplies = input.cachedRecords.filter(
+            (record) => record.kind === 1 || record.kind === 42,
+        );
         if (cachedDirectReplies.length === 0) {
             return;
         }
@@ -1938,6 +1984,15 @@ export function usePostHistoryThreadGraph({
                     eventIds: batchEventIds,
                     createdAt: Math.min(...batchNodes.map((node) => node.event.created_at)),
                     relayHints,
+                    parents: batchNodes
+                        .map((node) => buildPostHistoryDirectReplyParentContext({
+                            event: node.event,
+                            relayHints: [
+                                ...node.relayUrls,
+                                ...parsePostHistoryThreadReferences(node.event).relayHints,
+                            ],
+                        }))
+                        .filter((context) => context !== null),
                     relayConfig: getRelayConfig(),
                 });
                 taskTracker.replaceChildrenFetchTask(taskKey, task);
@@ -1947,11 +2002,12 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
+                assertPostHistoryReplyFetchDidNotFail(result.status);
 
                 const batchEventIdSet = new Set(batchEventIds);
                 const directReplyItems = result.events.filter((item) => {
-                    const parentId = parseKind1ThreadReferences(item.event).parentId;
-                    return !!parentId && batchEventIdSet.has(parentId) && item.event.id !== parentId;
+                    return batchEventIdSet.has(item.parentEventId)
+                        && item.event.id !== item.parentEventId;
                 });
                 if (directReplyItems.length > 0) {
                     await fetchAndStoreDeletionRequests(
@@ -1967,8 +2023,11 @@ export function usePostHistoryThreadGraph({
                 }
 
                 const itemsByParentId = new Map<string, typeof visibleItems>();
+                const parentIdByEventId = new Map(
+                    directReplyItems.map((item) => [item.event.id, item.parentEventId]),
+                );
                 for (const item of visibleItems) {
-                    const parentId = parseKind1ThreadReferences(item.event).parentId;
+                    const parentId = parentIdByEventId.get(item.event.id);
                     if (!parentId || !batchEventIdSet.has(parentId)) {
                         continue;
                     }
@@ -2086,11 +2145,11 @@ export function usePostHistoryThreadGraph({
         event: NostrEvent | null | undefined,
         posts: PostHistoryRecord[] = [],
     ): Promise<boolean> {
-        if (!event?.id || event.kind !== 1) {
+        if (!event?.id || (event.kind !== 1 && event.kind !== 42)) {
             return true;
         }
 
-        const references = parseKind1ThreadReferences(event);
+        const references = parsePostHistoryThreadReferences(event);
         const parentEventId = references.parentId;
         if (!parentEventId) {
             return true;

@@ -11,9 +11,13 @@ import {
 } from "./postHistoryDirectReplyRepairSaveService";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import {
-    parseKind1ThreadReferences,
+    parsePostHistoryThreadReferences,
     resolveKind7ReactionTargetEventId,
 } from "./postHistoryNip10Utils";
+import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "./postHistoryDirectReplyRelationUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import {
@@ -145,14 +149,14 @@ const EMPTY_RESULT: PostHistoryVisibleRangeChildInteractionRepairResult = {
     deletionConfirmationIncomplete: false,
 };
 
-function toUniqueKind1OwnerPosts(
+function toUniqueDirectReplyOwnerPosts(
     ownerPubkeyHex: string,
     posts: PostHistoryRecord[],
 ): PostHistoryRecord[] {
     const postsByEventId = new Map<string, PostHistoryRecord>();
     for (const post of posts) {
         if (
-            post.kind !== 1
+            (post.kind !== 1 && post.kind !== 42)
             || post.pubkeyHex !== ownerPubkeyHex
             || !post.eventId
             || postsByEventId.has(post.eventId)
@@ -175,6 +179,25 @@ function chunkPosts(posts: PostHistoryRecord[], chunkSize: number): PostHistoryR
         chunks.push(posts.slice(index, index + chunkSize));
     }
     return chunks;
+}
+
+function buildInitialParentChunks(
+    posts: PostHistoryRecord[],
+    options: VisibleRangeRepairInclusionOptions,
+): ParentChunk[] {
+    if (!options.includeDirectReplies) {
+        return chunkPosts(
+            posts,
+            POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE,
+        ).map((chunk) => ({ posts: chunk, depth: 0 }));
+    }
+
+    return ([1, 42] as const).flatMap((kind) =>
+        chunkPosts(
+            posts.filter((post) => post.kind === kind),
+            POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE,
+        ).map((chunk) => ({ posts: chunk, depth: 0 as const }))
+    );
 }
 
 function toResultItems(eventsById: Map<string, EventAccumulator>) {
@@ -286,7 +309,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         const candidateFetches = new Set<CandidateFetchTask>();
         const saveTasks = new Set<PostHistoryDirectReplyRepairSaveTask>();
         const isActive = () => active && params.isActive?.() !== false;
-        const targetPosts = toUniqueKind1OwnerPosts(params.ownerPubkeyHex, params.visiblePosts);
+        const targetPosts = toUniqueDirectReplyOwnerPosts(params.ownerPubkeyHex, params.visiblePosts);
         const targetParentEventIds = targetPosts.map((post) => post.eventId);
 
         const promise = (async (): Promise<PostHistoryVisibleRangeChildInteractionRepairResult> => {
@@ -320,7 +343,12 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                         }
 
                         attemptedChunkCount += 1;
-                        const candidateTask = this.fetchCandidates(rxNostr, chunk.posts, params.relayConfig);
+                        const candidateTask = this.fetchCandidates(
+                            rxNostr,
+                            chunk.posts,
+                            params.relayConfig,
+                            options,
+                        );
                         candidateFetches.add(candidateTask);
                         const candidateResult = await candidateTask.promise;
                         candidateFetches.delete(candidateTask);
@@ -417,10 +445,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 return fallbackChunks;
             };
 
-            const fallbackChunks = await processChunks(
-                chunkPosts(targetPosts, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_CHUNK_SIZE)
-                    .map((posts) => ({ posts, depth: 0 as const })),
-            );
+            const fallbackChunks = await processChunks(buildInitialParentChunks(targetPosts, options));
             if (isActive() && fallbackChunks.length > 0) {
                 await processChunks(fallbackChunks);
             }
@@ -466,10 +491,30 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         posts: PostHistoryRecord[],
         items: Array<{ event: NostrEvent; relayUrls: string[] }>,
     ): PostHistoryDirectReplyRepairItem[] {
-        const parentEventIds = new Set(posts.map((post) => post.eventId));
+        const parentContextsById = new Map(posts.flatMap((post) => {
+            const context = buildPostHistoryDirectReplyParentContext({
+                event: {
+                    id: post.eventId,
+                    kind: post.kind,
+                    tags: post.tags,
+                    created_at: post.createdAt,
+                },
+                relayHints: [
+                    ...post.relayHints,
+                    ...post.acceptedRelays,
+                    ...(post.fetchedRelays ?? []),
+                ],
+            });
+            return context ? [[post.eventId, context] as const] : [];
+        }));
         return items.flatMap((item) => {
-            const parentEventId = parseKind1ThreadReferences(item.event).parentId;
-            if (!parentEventId || !parentEventIds.has(parentEventId) || item.event.id === parentEventId) {
+            const parentEventId = parsePostHistoryThreadReferences(item.event).parentId;
+            const parent = parentEventId ? parentContextsById.get(parentEventId) : null;
+            if (
+                !parentEventId
+                || !parent
+                || !validatePostHistoryDirectReplyRelation({ child: item.event, parent }).valid
+            ) {
                 return [];
             }
 
@@ -545,6 +590,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         rxNostr: RxNostr,
         posts: PostHistoryRecord[],
         relayConfig: RelayConfig | null | undefined,
+        options: VisibleRangeRepairInclusionOptions,
     ): CandidateFetchTask {
         const relayUrls = this.resolveRelayUrls(posts, relayConfig);
         const parentEventIds = posts.map((post) => post.eventId);
@@ -612,8 +658,12 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                     },
                 });
 
+                const kinds = Array.from(new Set([
+                    ...(options.includeDirectReplies ? posts.map((post) => post.kind) : []),
+                    ...(options.includeReactions ? [7] : []),
+                ])).filter((kind) => kind === 1 || kind === 7 || kind === 42);
                 rxReq.emit({
-                    kinds: [1, 7],
+                    kinds,
                     "#e": parentEventIds,
                     limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
                 } as never);
@@ -652,7 +702,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         packet: { event?: NostrEvent; from?: string },
     ): void {
         const event = packet.event;
-        if (!event?.id || (event.kind !== 1 && event.kind !== 7)) {
+        if (!event?.id || (event.kind !== 1 && event.kind !== 7 && event.kind !== 42)) {
             return;
         }
 

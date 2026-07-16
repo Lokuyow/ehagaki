@@ -11,6 +11,7 @@ export type PostHistoryDirectReplyLifecycleSource = PostHistoryRelationLifecycle
 export type PostHistoryDirectReplyLifecycleStateStatus = PostHistoryRelationLifecycleStateStatus;
 
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND = 1;
+export type PostHistoryDirectReplyLifecycleKind = 1 | 42;
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_MAX_RETRY_COUNT = 3;
 export const POST_HISTORY_DIRECT_REPLY_LIFECYCLE_RETRY_COOLDOWN_MS = 5_000;
 const POST_HISTORY_DIRECT_REPLY_RELATION_KIND = "reply";
@@ -19,7 +20,7 @@ export interface PostHistoryDirectReplyLifecycleKeyCandidate {
     requestKey: string;
     parentEventId: string;
     replyEventId: string;
-    kind: typeof POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND;
+    kind: PostHistoryDirectReplyLifecycleKind;
 }
 
 export interface PostHistoryDirectReplyLifecycleCandidate
@@ -32,7 +33,7 @@ export interface PostHistoryDirectReplyLifecycleStateRecord {
     parentEventId: string;
     replyEventId: string;
     replyAuthorPubkey: string;
-    kind: typeof POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND;
+    kind: PostHistoryDirectReplyLifecycleKind;
     source: PostHistoryDirectReplyLifecycleSource;
     status: PostHistoryDirectReplyLifecycleStateStatus;
     attemptCount: number;
@@ -43,7 +44,7 @@ export interface PostHistoryDirectReplyLifecycleStateRecord {
 export function buildPostHistoryDirectReplyLifecycleRequestKey(
     parentEventId: string,
     replyEventId: string,
-    kind = POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+    kind: PostHistoryDirectReplyLifecycleKind = POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
 ): string {
     return buildPostHistoryRelationLifecycleRequestKey(
         parentEventId,
@@ -55,11 +56,13 @@ export function buildPostHistoryDirectReplyLifecycleRequestKey(
 export function parsePostHistoryDirectReplyLifecycleRequestKey(
     requestKey: string,
 ): PostHistoryDirectReplyLifecycleKeyCandidate | null {
-    const parsed = parsePostHistoryRelationLifecycleRequestKey(
-        requestKey,
-        POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
-        POST_HISTORY_DIRECT_REPLY_RELATION_KIND,
-    );
+    const parsed = ([1, 42] as const)
+        .map((kind) => parsePostHistoryRelationLifecycleRequestKey(
+            requestKey,
+            kind,
+            POST_HISTORY_DIRECT_REPLY_RELATION_KIND,
+        ))
+        .find((candidate) => candidate !== null) ?? null;
     if (!parsed) {
         return null;
     }
@@ -68,7 +71,7 @@ export function parsePostHistoryDirectReplyLifecycleRequestKey(
         requestKey: parsed.requestKey,
         parentEventId: parsed.parentEventId,
         replyEventId: parsed.targetEventId,
-        kind: POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+        kind: parsed.kind as PostHistoryDirectReplyLifecycleKind,
     };
 }
 

@@ -31,7 +31,7 @@ function createPost(eventId: string, kind = 1) {
         pubkeyHex: OWNER,
         kind,
         content: "post",
-        tags: [],
+        tags: kind === 42 ? [["e", "9".repeat(64), "", "root"]] : [],
         createdAt: 100,
         postedAt: 100_000,
         relayHints: [],
@@ -143,11 +143,18 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             relayConfig: null,
         }).promise;
 
-        expect(rxNostrMock.emittedFilters).toEqual([{
-            kinds: [1, 7],
-            "#e": [kind1Parent],
-            limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
-        }]);
+        expect(rxNostrMock.emittedFilters).toEqual([
+            {
+                kinds: [1, 7],
+                "#e": [kind1Parent],
+                limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+            },
+            {
+                kinds: [42, 7],
+                "#e": [kind42Parent],
+                limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+            },
+        ]);
         expect(rxNostrMock.emittedFilters[0]).not.toHaveProperty("since");
         expect(rxNostrMock.emittedFilters[0]).not.toHaveProperty("until");
         expect(rxNostrMock.emittedFilters[0]).not.toHaveProperty("#p");
@@ -167,9 +174,12 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             }],
             fetchedAt: 500,
         });
-        expect(result).toMatchObject({
-            targetParentEventIds: [kind1Parent],
-            checkedParentEventIds: [kind1Parent],
+        expect({
+            ...result,
+            checkedParentEventIds: [...result.checkedParentEventIds].sort(),
+        }).toMatchObject({
+            targetParentEventIds: [kind1Parent, kind42Parent],
+            checkedParentEventIds: [kind1Parent, kind42Parent].sort(),
             savedParentEventIds: [kind1Parent],
             savedDirectReplyCount: 1,
             incompleteParentEventIds: [],

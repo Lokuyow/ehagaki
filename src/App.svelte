@@ -1375,8 +1375,8 @@
     draftComposerController.applyDraftToComposer(draft);
   }
 
-  function handlePostHistoryReply(post: PostHistoryRecord): void {
-    postHistoryDialogApplyController.applyReply(post);
+  function handlePostHistoryReply(post: PostHistoryRecord): Promise<boolean> {
+    return postHistoryDialogApplyController.applyReply(post);
   }
 
   function handlePostHistoryQuote(post: PostHistoryRecord): void {

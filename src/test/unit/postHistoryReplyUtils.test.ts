@@ -27,6 +27,7 @@ function createRecord(overrides: Record<string, unknown> = {}) {
 }
 
 describe('postHistoryReplyUtils', () => {
+    const channelEventId = 'c'.repeat(64);
     it('reply/quote 用の参照ターゲットを正規化して返す', () => {
         const record = createRecord({
             relayHints: [
@@ -52,14 +53,15 @@ describe('postHistoryReplyUtils', () => {
     it('kind42 では channel context query を返す', () => {
         const record = createRecord({
             kind: 42,
-            channelEventId: 'channel-root-event',
+            tags: [['e', channelEventId, 'wss://channel-hint.example.com/', 'root']],
+            channelEventId: 'stale-channel-root-event',
             channelRelayHints: ['wss://channel-hint.example.com/'],
             relayHints: ['wss://history-hint.example.com/'],
             acceptedRelays: ['wss://channel-write.example.com/'],
         });
 
         expect(buildPostHistoryReplyChannelContextQuery(record as never)).toEqual({
-            eventId: 'channel-root-event',
+            eventId: channelEventId,
             relayHints: [
                 'wss://channel-hint.example.com/',
                 'wss://history-hint.example.com/',
@@ -72,19 +74,20 @@ describe('postHistoryReplyUtils', () => {
     it('rawEvent しか無くても kind42 の channel context を導出できる', () => {
         const record = createRecord({
             kind: 42,
+            tags: [['e', channelEventId, 'wss://channel-hint.example.com/', 'root']],
             rawEvent: {
                 id: 'event-1',
                 pubkey: 'a'.repeat(64),
                 created_at: 1,
                 kind: 42,
-                tags: [['e', 'channel-root-event', 'wss://channel-hint.example.com/', 'root']],
+                tags: [['e', channelEventId, 'wss://channel-hint.example.com/', 'root']],
                 content: 'content',
                 sig: 'sig',
             },
         });
 
         expect(buildPostHistoryReplyChannelContextQuery(record as never)).toEqual({
-            eventId: 'channel-root-event',
+            eventId: channelEventId,
             relayHints: [
                 'wss://channel-hint.example.com/',
                 'wss://hint.example.com/',

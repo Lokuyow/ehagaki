@@ -1,7 +1,7 @@
 import Dexie from "dexie";
 import { cloneNostrEvent, isSameSignedNostrEvent } from "../postHistoryEventUtils";
 import {
-    parseKind1ThreadReferences,
+    parsePostHistoryThreadReferences,
     resolveKind7ReactionTargetEventId,
 } from "../postHistoryNip10Utils";
 import { RelayConfigUtils } from "../relayConfigUtils";
@@ -75,13 +75,13 @@ function areTagsEqual(left: string[][], right: string[][]): boolean {
         && left.every((tag, index) => areStringArraysEqual(tag, right[index]));
 }
 
-function isSupportedRelatedEventKind(kind: number): kind is 1 | 7 {
-    return kind === 1 || kind === 7;
+function isSupportedRelatedEventKind(kind: number): kind is 1 | 7 | 42 {
+    return kind === 1 || kind === 7 || kind === 42;
 }
 
 function resolveRelatedEventParentId(event: NostrEvent): string | null {
-    if (event.kind === 1) {
-        return parseKind1ThreadReferences(event).parentId;
+    if (event.kind === 1 || event.kind === 42) {
+        return parsePostHistoryThreadReferences(event).parentId;
     }
 
     if (event.kind === 7) {
@@ -92,11 +92,11 @@ function resolveRelatedEventParentId(event: NostrEvent): string | null {
 }
 
 function resolveRelatedEventRootId(event: NostrEvent): string | undefined {
-    if (event.kind !== 1) {
+    if (event.kind !== 1 && event.kind !== 42) {
         return undefined;
     }
 
-    return parseKind1ThreadReferences(event).rootId ?? undefined;
+    return parsePostHistoryThreadReferences(event).rootId ?? undefined;
 }
 
 function resolveRelatedEventDiscoveryKinds(event: NostrEvent): string[] {
@@ -106,7 +106,7 @@ function resolveRelatedEventDiscoveryKinds(event: NostrEvent): string[] {
 function filterDirectReplyRecords(
     records: PostHistoryChildInteractionRecord[],
 ): PostHistoryChildInteractionRecord[] {
-    return records.filter((record) => record.kind === 1);
+    return records.filter((record) => record.kind === 1 || record.kind === 42);
 }
 
 function filterReactionRecords(

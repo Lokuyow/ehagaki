@@ -9,6 +9,10 @@ import {
     type PostHistorySelfParentFetchTask,
 } from "./postHistorySelfParentFetchService";
 import {
+    buildPostHistoryDirectReplyParentContext,
+    validatePostHistoryDirectReplyRelation,
+} from "./postHistoryDirectReplyRelationUtils";
+import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
@@ -38,7 +42,7 @@ export interface PostHistoryInboundReplyReconciliationSessionParams {
 export interface PostHistoryInboundReplyReconciliationServiceDeps {
     postHistoryRepository?: Pick<
         PostHistoryRepository,
-        "getExistingEventIdsForPubkey" | "upsertFetchedEvents"
+        "getExistingEventIdsForPubkey" | "getByEventId" | "upsertFetchedEvents"
     >;
     postHistoryChildInteractionsRepository?: Pick<PostHistoryChildInteractionsRepository, "upsertChildInteractions">;
     selfParentFetchService?: Pick<PostHistorySelfParentFetchService, "fetchSelfParent">;
@@ -230,6 +234,35 @@ export class PostHistoryInboundReplyReconciliationSession {
         }
 
         const directRepliesByParentId = new Map<string, PostHistoryChildInteractionItem[]>();
+        const parentContextsById = new Map((await Promise.all(
+            Array.from(new Set(candidates.flatMap((candidate) =>
+                candidate.classification.parentEventId
+                    ? [candidate.classification.parentEventId]
+                    : []
+            ))).map(async (parentEventId) => {
+                const record = await this.deps.postHistoryRepository.getByEventId(parentEventId);
+                if (!record) {
+                    return null;
+                }
+                const context = buildPostHistoryDirectReplyParentContext({
+                    event: {
+                        id: record.eventId,
+                        kind: record.kind,
+                        tags: record.tags,
+                        created_at: record.createdAt,
+                    },
+                    relayHints: [
+                        ...record.relayHints,
+                        ...record.acceptedRelays,
+                        ...(record.fetchedRelays ?? []),
+                    ],
+                });
+                return context ? [parentEventId, context] as const : null;
+            }),
+        )).filter((entry) => entry !== null));
+        if (!this.active) {
+            return emptyResult();
+        }
         for (const candidate of candidates) {
             const parentEventId = candidate.classification.parentEventId;
             if (!parentEventId) {
@@ -242,6 +275,16 @@ export class PostHistoryInboundReplyReconciliationSession {
                 ownerPostEventIds: new Set([parentEventId]),
             });
             if (confirmed.type !== "direct-reply") {
+                continue;
+            }
+            const parent = parentContextsById.get(parentEventId);
+            if (
+                !parent
+                || !validatePostHistoryDirectReplyRelation({
+                    child: candidate.event,
+                    parent,
+                }).valid
+            ) {
                 continue;
             }
 
