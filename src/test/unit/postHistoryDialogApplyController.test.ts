@@ -92,6 +92,42 @@ describe('createPostHistoryDialogApplyController', () => {
         expect(clearChannelContext).toHaveBeenCalledTimes(1);
     });
 
+    it('kind42のchannel適用後にreply適用が失敗したらchannelをclearしてfocusしない', async () => {
+        const clearChannelContext = vi.fn();
+        const focusEditor = vi.fn();
+        const controller = createPostHistoryDialogApplyController({
+            applyChannelContextQuery: vi.fn().mockResolvedValue(undefined),
+            applyReplyQuoteQuery: vi.fn().mockRejectedValue(new Error('reply failed')),
+            hydrateReplyQuoteReferences: vi.fn(),
+            getChannelContextApplyParams: () => ({
+                rxNostr: undefined,
+                relayConfig: {},
+                setChannelContext: vi.fn(),
+            }),
+            getReplyQuoteApplyParams: () => ({
+                rxNostr: undefined,
+                relayConfig: {},
+                setReplyQuote: vi.fn(),
+                updateReferencedEvent: vi.fn(),
+                setReplyQuoteError: vi.fn(),
+            }),
+            clearChannelContext,
+            hasReplyOrQuotes: vi.fn().mockReturnValue(false),
+            clearReplyQuote: vi.fn(),
+            addQuoteReference: vi.fn().mockReturnValue(true),
+            focusEditor,
+            logger: { error: vi.fn() },
+        });
+        const channelEventId = 'c'.repeat(64);
+
+        await expect(controller.applyReply(createRecord({
+            kind: 42,
+            tags: [['e', channelEventId, '', 'root']],
+        }) as never)).resolves.toBe(false);
+        expect(clearChannelContext).toHaveBeenCalledTimes(1);
+        expect(focusEditor).not.toHaveBeenCalled();
+    });
+
     it('quote 適用で追加不可なら hydrate せずフォーカスする', () => {
         const focusEditor = vi.fn();
         const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);

@@ -2,6 +2,7 @@ import type { EHagakiDB, MetaRecord } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 import {
     POST_HISTORY_DIRECT_REPLY_LIFECYCLE_KIND,
+    parsePostHistoryDirectReplyLifecycleRequestKey,
     type PostHistoryDirectReplyLifecycleKind,
     type PostHistoryDirectReplyLifecycleSource,
     type PostHistoryDirectReplyLifecycleStateRecord,
@@ -194,8 +195,22 @@ implements PostHistoryDirectReplyDeletionStateRepository {
     ): Promise<PostHistoryDirectReplyLifecycleStateRecord[]> {
         const uniqueInputs = Array.from(new Map(
             inputs
-                .filter((input) => input.requestKey && input.parentEventId && input.replyEventId)
-                .map((input) => [input.requestKey, input]),
+                .flatMap((input) => {
+                    const parsed = parsePostHistoryDirectReplyLifecycleRequestKey(input.requestKey);
+                    if (
+                        !parsed
+                        || parsed.parentEventId !== input.parentEventId
+                        || parsed.replyEventId !== input.replyEventId
+                        || (input.kind !== undefined && input.kind !== parsed.kind)
+                    ) {
+                        return [];
+                    }
+
+                    return [[input.requestKey, {
+                        ...input,
+                        kind: parsed.kind,
+                    }] as const];
+                }),
         ).values());
         if (uniqueInputs.length === 0) {
             return [];
@@ -209,6 +224,9 @@ implements PostHistoryDirectReplyDeletionStateRepository {
         const now = this.now();
         const savedValues: PostHistoryDirectReplyLifecycleStateValue[] = uniqueInputs.map((input) => {
             const existing = existingByRequestKey.get(input.requestKey);
+            if (existing && existing.kind !== input.kind) {
+                return null;
+            }
             const base = existing ?? buildDefaultStateValue(input);
             return {
                 ...base,
@@ -219,7 +237,11 @@ implements PostHistoryDirectReplyDeletionStateRepository {
                 ...(input.kind !== undefined ? { kind: input.kind } : {}),
                 schemaVersion: POST_HISTORY_DIRECT_REPLY_DELETION_STATE_SCHEMA_VERSION,
             };
-        });
+        }).filter((value): value is PostHistoryDirectReplyLifecycleStateValue => value !== null);
+
+        if (savedValues.length === 0) {
+            return [];
+        }
 
         await this.db.meta.bulkPut(
             savedValues.map((value) => ({

@@ -4722,7 +4722,9 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByRole('button', { name: '返信を隠す' }).querySelector('.post-preview-replies-badge')?.textContent).toBe('2');
         });
         expect(screen.getAllByText('既存返信B')).toHaveLength(1);
-        expect(replyFetchServiceMock.fetchDirectReplies).toHaveBeenCalledTimes(2);
+        expect(replyFetchServiceMock.fetchDirectReplies.mock.calls.filter(
+            (call: any[]) => call[1]?.eventId === parentEventId,
+        )).toHaveLength(2);
         expect(screen.queryByText('この範囲では返信が見つかりませんでした')).toBeNull();
         expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
         expect(screen.queryByText('0')).toBeNull();
@@ -5524,14 +5526,19 @@ describe('PostHistoryDialog', () => {
                 ignoredCount: 0,
             };
         });
-        replyFetchServiceMock.fetchDirectReplies.mockImplementation(() => {
-            fetchCount += 1;
+        replyFetchServiceMock.fetchDirectReplies.mockImplementation((_rxNostr: any, params: any) => {
+            const isParentFetch = params.eventId === parentEventId;
+            if (isParentFetch) {
+                fetchCount += 1;
+            }
             return {
                 promise: Promise.resolve({
-                    events: [
-                        { event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
-                        { event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] },
-                    ],
+                    events: isParentFetch
+                        ? [
+                            { event: replyB.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                            { event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] },
+                        ]
+                        : [],
                     fetchedAt: 1_700_000_030 + fetchCount,
                     relayUrls: ['wss://relay.example.com/'],
                 }),

@@ -93,6 +93,9 @@ export function createPostHistoryDialogApplyController(
             });
         } catch (error) {
             logger.error('投稿履歴からのリプライ適用に失敗:', error);
+            if (post.kind === 42) {
+                deps.clearChannelContext();
+            }
             return false;
         }
 

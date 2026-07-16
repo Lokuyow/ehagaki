@@ -13,7 +13,7 @@ const BASELINE_BRANCH_COUNTS = {
     revalidateParentForNodeInBackground: 8,
     loadParentForNode: 3,
     revalidateChildrenForNodeInBackground: 6,
-    loadChildrenForNode: 4,
+    loadChildrenForNode: 5,
 };
 
 const FUNCTION_DECLARATION_REGEX = /^\s*(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/;

@@ -112,11 +112,7 @@ export function toEventFromPostHistoryRecord(record: PostHistoryRecord): NostrEv
 }
 
 export function toEventFromReplyRecord(record: PostHistoryChildInteractionRecord): NostrEvent {
-    if (isSignedNostrEvent(record.rawEvent)) {
-        return cloneNostrEvent(record.rawEvent);
-    }
-
-    return {
+    const recordEvent: NostrEvent = {
         id: record.eventId,
         pubkey: record.authorPubkey,
         kind: record.kind,
@@ -125,6 +121,19 @@ export function toEventFromReplyRecord(record: PostHistoryChildInteractionRecord
         created_at: record.createdAt,
         sig: "",
     };
+    if (
+        isSignedNostrEvent(record.rawEvent)
+        && record.rawEvent.id === recordEvent.id
+        && record.rawEvent.pubkey === recordEvent.pubkey
+        && record.rawEvent.kind === recordEvent.kind
+        && record.rawEvent.content === recordEvent.content
+        && record.rawEvent.created_at === recordEvent.created_at
+        && JSON.stringify(record.rawEvent.tags) === JSON.stringify(recordEvent.tags)
+    ) {
+        return cloneNostrEvent(record.rawEvent);
+    }
+
+    return recordEvent;
 }
 
 export function buildThreadGraphNode(input: {

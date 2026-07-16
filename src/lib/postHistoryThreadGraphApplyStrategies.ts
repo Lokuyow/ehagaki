@@ -128,7 +128,7 @@ export function createParentRevalidateStatusStrategies(
 }
 
 interface ChildrenRevalidateStrategyOptions {
-    fetchedAt: number;
+    fetchedAt: number | null;
     prefetchOnly: boolean;
     updateExpansion: (
         updater: (

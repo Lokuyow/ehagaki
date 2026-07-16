@@ -36,7 +36,9 @@ export function buildChildrenLoadedExpansionState(
             options.revalidatingChildren ?? state.revalidatingChildren,
         childrenError: null,
         lastFetchedChildrenAt:
-            options.lastFetchedChildrenAt ?? state.lastFetchedChildrenAt,
+            options.lastFetchedChildrenAt !== undefined
+                ? options.lastFetchedChildrenAt
+                : state.lastFetchedChildrenAt,
     };
 }
 

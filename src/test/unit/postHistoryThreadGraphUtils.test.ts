@@ -7,6 +7,7 @@ import {
     resolvePostHistoryThreadContextDepth,
     resolvePostHistoryThreadContextIndentRem,
     sortEventIdsByEvent,
+    toEventFromReplyRecord,
 } from "../../lib/postHistoryThreadGraphUtils";
 import type { NostrEvent } from "../../lib/types";
 
@@ -100,5 +101,39 @@ describe("postHistoryThreadGraphUtils", () => {
         expect(resolvePostHistoryThreadContextIndentRem(4)).toBe(2);
         expect(resolvePostHistoryThreadContextIndentRem(5)).toBe(2.5);
         expect(resolvePostHistoryThreadContextIndentRem(20)).toBe(2.5);
+    });
+
+    it("reply cacheのrawEventがrecordと不一致ならrecord fieldsから再構築する", () => {
+        const record = {
+            eventId: "2".repeat(64),
+            parentEventId: "1".repeat(64),
+            authorPubkey: "a".repeat(64),
+            kind: 42,
+            content: "record content",
+            tags: [
+                ["e", "3".repeat(64), "", "root"],
+                ["e", "1".repeat(64), "", "reply"],
+            ],
+            createdAt: 200,
+            relayUrls: [],
+            discoveredAs: ["direct-reply"],
+            rawEvent: createEvent({
+                id: "2".repeat(64),
+                kind: 1,
+                content: "stale raw content",
+                tags: [],
+                created_at: 100,
+            }),
+        } as any;
+
+        expect(toEventFromReplyRecord(record)).toMatchObject({
+            id: record.eventId,
+            pubkey: record.authorPubkey,
+            kind: 42,
+            content: "record content",
+            tags: record.tags,
+            created_at: 200,
+            sig: "",
+        });
     });
 });

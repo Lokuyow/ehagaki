@@ -253,4 +253,23 @@ describe("postHistoryThreadGraphApplyStrategies", () => {
         expect(state.lastFetchedChildrenAt).toBe(444);
         expect(prefetchChildReplyCounts).toHaveBeenCalledTimes(1);
     });
+
+    it("partial相当では既存fresh timestampを更新しない", () => {
+        let state: ReturnType<typeof buildInitialExpansionState> = {
+            ...buildInitialExpansionState(),
+            lastFetchedChildrenAt: 111,
+        };
+        const strategies = createChildrenRevalidateStatusStrategies({
+            fetchedAt: null,
+            prefetchOnly: false,
+            updateExpansion: (updater) => {
+                state = updater(state);
+            },
+            prefetchChildReplyCounts: vi.fn(),
+        });
+
+        strategies.resolved?.();
+        expect(state.loadedChildren).toBe(true);
+        expect(state.lastFetchedChildrenAt).toBeNull();
+    });
 });
