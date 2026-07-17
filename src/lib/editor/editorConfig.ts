@@ -26,6 +26,16 @@ type EditorWithPlaceholderState = Editor & {
     __placeholderState?: PlaceholderState;
 };
 
+// PCで Shift+Enter を Enter（新しいパラグラフ）と同じ挙動にする
+const ShiftEnterToParagraph = Extension.create({
+    name: 'shiftEnterToParagraph',
+    addKeyboardShortcuts() {
+        return {
+            'Shift-Enter': () => this.editor.commands.splitBlock(),
+        };
+    },
+});
+
 const GapCursorFocusReset = Extension.create({
     name: 'gapCursorFocusReset',
 
@@ -265,6 +275,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                 mode: 'all',
             }),
             GapCursorFocusReset,
+            ShiftEnterToParagraph,
             ContentTrackingExtension,
             HashtagSuggestion,
             Video,
