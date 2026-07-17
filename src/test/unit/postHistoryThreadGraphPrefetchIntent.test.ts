@@ -12,15 +12,16 @@ import { createPostHistoryThreadGraphHookHarness } from "../helpers/postHistoryT
 const anchorId = "1".repeat(64);
 const childId = "2".repeat(64);
 const grandchildId = "3".repeat(64);
+const channelId = "4".repeat(64);
 
-function createPost(): PostHistoryRecord {
+function createPost(kind: 1 | 42 = 1): PostHistoryRecord {
     return {
         id: anchorId,
         eventId: anchorId,
         pubkeyHex: "a".repeat(64),
-        kind: 1,
+        kind,
         content: "anchor",
-        tags: [],
+        tags: kind === 42 ? [["e", channelId, "", "root"]] : [],
         createdAt: 100,
         postedAt: 100_000,
         relayHints: [],
@@ -33,13 +34,23 @@ function createPost(): PostHistoryRecord {
     };
 }
 
-function createReplyEvent(eventId: string, parentEventId: string, createdAt: number): NostrEvent {
+function createReplyEvent(
+    eventId: string,
+    parentEventId: string,
+    createdAt: number,
+    kind: 1 | 42 = 1,
+): NostrEvent {
     return {
         id: eventId,
         pubkey: "b".repeat(64),
-        kind: 1,
+        kind,
         content: eventId === childId ? "child" : "grandchild",
-        tags: [["e", parentEventId, "", "reply"]],
+        tags: kind === 42
+            ? [
+                ["e", channelId, "", "root"],
+                ["e", parentEventId, "", "reply"],
+            ]
+            : [["e", parentEventId, "", "reply"]],
         created_at: createdAt,
         sig: "f".repeat(128),
     };
@@ -66,21 +77,60 @@ function toRecord(event: NostrEvent, parentEventId: string, fetchedAt: number): 
 
 function createDeferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((nextResolve) => {
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((nextResolve, nextReject) => {
         resolve = nextResolve;
+        reject = nextReject;
     });
-    return { promise, resolve };
+    return { promise, resolve, reject };
 }
 
-function createGraph(cachedChildFetchedAt = Date.now()) {
-    const post = createPost();
-    const childEvent = createReplyEvent(childId, anchorId, 110);
-    const grandchildEvent = createReplyEvent(grandchildId, childId, 120);
+function createGraph(
+    cachedChildFetchedAt = Date.now(),
+    childCacheProbe?: ReturnType<typeof createDeferred<PostHistoryChildInteractionRecord[]>>,
+    eventKind: 1 | 42 = 1,
+) {
+    const post = createPost(eventKind);
+    const childEvent = createReplyEvent(childId, anchorId, 110, eventKind);
+    const grandchildEvent = createReplyEvent(grandchildId, childId, 120, eventKind);
     const recordsByParent = new Map<string, PostHistoryChildInteractionRecord[]>([
         [anchorId, [toRecord(childEvent, anchorId, cachedChildFetchedAt)]],
     ]);
+    const metadataByParent = new Map<string, {
+        parentEventId: string;
+        completeness: "complete" | "partial";
+        fetchedAt: number;
+        requestStartedAt: number;
+        updatedAt: number;
+        schemaVersion: number;
+    }>();
+    const saveFetchMetadata = vi.fn(async (input: {
+        parentEventId: string;
+        completeness: "complete" | "partial";
+        fetchedAt: number;
+        requestStartedAt: number;
+    }) => {
+        const metadata = {
+            ...input,
+            updatedAt: input.fetchedAt,
+            schemaVersion: 1,
+        };
+        metadataByParent.set(input.parentEventId, metadata);
+        return metadata;
+    });
+    const getFetchMetadata = vi.fn(async (parentEventId: string) =>
+        metadataByParent.get(parentEventId) ?? null);
+    let childCacheProbePending = !!childCacheProbe;
+    const getDirectReplyRecords = vi.fn(async (parentEventId: string) => {
+        if (parentEventId === childId && childCacheProbe && childCacheProbePending) {
+            childCacheProbePending = false;
+            return childCacheProbe.promise;
+        }
+        return recordsByParent.get(parentEventId) ?? [];
+    });
+
     const deferred = createDeferred<{
-        status: "success";
+        status: "success" | "partial" | "failed" | "cancelled";
         events: Array<{ parentEventId: string; event: NostrEvent; relayUrls: string[] }>;
         fetchedAt: number;
         relayUrls: string[];
@@ -118,8 +168,7 @@ function createGraph(cachedChildFetchedAt = Date.now()) {
         getRxNostr: () => ({} as never),
         getRelayConfig: () => null,
         directReplyRecordsAdapterImpl: {
-            getDirectReplyRecords: vi.fn(async (parentEventId: string) =>
-                recordsByParent.get(parentEventId) ?? []),
+            getDirectReplyRecords,
         },
         reactionRecordsAdapterImpl: {
             getReactionRecords: vi.fn().mockResolvedValue([]),
@@ -127,6 +176,10 @@ function createGraph(cachedChildFetchedAt = Date.now()) {
         childInteractionsRepositoryImpl: {
             upsertChildInteractions,
             deleteChildInteractionByEventId: vi.fn().mockResolvedValue(undefined),
+        },
+        directReplyFetchMetadataRepositoryImpl: {
+            get: getFetchMetadata,
+            save: saveFetchMetadata,
         },
         deletionRequestsRepositoryImpl: {
             getDeletedTargets: vi.fn().mockResolvedValue(new Map()),
@@ -164,9 +217,12 @@ function createGraph(cachedChildFetchedAt = Date.now()) {
         } as never,
     });
 
-    const resolvePrefetch = () => deferred.resolve({
-        status: "success",
-        events: [{
+    const resolvePrefetch = (options: {
+        status?: "success" | "partial" | "failed" | "cancelled";
+        events?: Array<{ parentEventId: string; event: NostrEvent; relayUrls: string[] }>;
+    } = {}) => deferred.resolve({
+        status: options.status ?? "success",
+        events: options.events ?? [{
             parentEventId: childId,
             event: grandchildEvent,
             relayUrls: ["wss://relay.example.com"],
@@ -179,8 +235,20 @@ function createGraph(cachedChildFetchedAt = Date.now()) {
         ...harness,
         post,
         fetchDirectReplies,
+        getDirectReplyRecords,
         resolvePrefetch,
+        getFetchMetadata,
+        saveFetchMetadata,
+        metadataByParent,
     };
+}
+
+function countFetchCallsForParent(
+    input: ReturnType<typeof createGraph>,
+    parentEventId: string,
+): number {
+    return input.fetchDirectReplies.mock.calls.filter((call) =>
+        call[1]?.parents?.some((parent) => parent.eventId === parentEventId)).length;
 }
 
 async function startChildPrefetch(input: ReturnType<typeof createGraph>): Promise<void> {
@@ -254,6 +322,255 @@ describe("post history child prefetch reveal intent", () => {
                 .toBe(anchorId);
         });
         expect(harness.graph.getAnchorState(harness.post).repliesActionState.visible).toBe(true);
+        harness.dispose();
+    });
+    it("cache probe中の手動展開を予約へjoinし、probe後に1回だけREQする", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
+        cacheProbe.resolve([]);
+
+        await vi.waitFor(() => {
+            expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1);
+        });
+        harness.resolvePrefetch();
+        await vi.waitFor(() => {
+            const childState = harness.graph.getAnchorState(harness.post).replyNodeStates[0];
+            expect(childState?.repliesActionState.visible).toBe(true);
+            expect(childState?.replyNodeStates[0]?.node.eventId).toBe(grandchildId);
+        });
+        harness.dispose();
+    });
+
+    it("cache probe中に開いて閉じた手動意図を完了後も維持する", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        cacheProbe.resolve([]);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+        harness.resolvePrefetch();
+
+        await vi.waitFor(() => {
+            const childState = harness.graph.getAnchorState(harness.post).replyNodeStates[0];
+            expect(childState?.repliesActionState.visible).toBe(false);
+            expect(childState?.repliesActionState.replyCount).toBe(1);
+        });
+        harness.dispose();
+    });
+
+    it("cache probe hitなら手動展開を保持し、network REQを発行しない", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        cacheProbe.resolve([
+            toRecord(createReplyEvent(grandchildId, childId, 120), childId, Date.now()),
+        ]);
+
+        await vi.waitFor(() => {
+            const childState = harness.graph.getAnchorState(harness.post).replyNodeStates[0];
+            expect(childState?.repliesActionState.visible).toBe(true);
+            expect(childState?.replyNodeStates[0]?.node.eventId).toBe(grandchildId);
+        });
+        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
+        harness.dispose();
+    });
+
+    it("cache probe失敗後は予約を解放し、手動操作で再取得できる", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        cacheProbe.reject(new Error("cache probe failed"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
+
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+        harness.resolvePrefetch();
+        harness.dispose();
+    });
+
+    it("reset中に完了したcache probeからREQを開始しない", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        harness.graph.resetState();
+        cacheProbe.resolve([]);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
+        harness.dispose();
+    });
+
+    it("partial metadataはfreshなreply recordがあっても再検証を要求する", async () => {
+        const harness = createGraph(Date.now());
+        harness.metadataByParent.set(anchorId, {
+            parentEventId: anchorId,
+            completeness: "partial",
+            fetchedAt: Date.now(),
+            requestStartedAt: Date.now(),
+            updatedAt: Date.now(),
+            schemaVersion: 1,
+        });
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+
+        await vi.waitFor(() => {
+            expect(harness.fetchDirectReplies.mock.calls[0]?.[1]?.parents?.[0]?.eventId)
+                .toBe(anchorId);
+        });
+        harness.dispose();
+    });
+
+    it("0件のpartial結果も親metadataへ保存する", async () => {
+        const harness = createGraph(0);
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+
+        harness.resolvePrefetch({ status: "partial", events: [] });
+        await vi.waitFor(() => {
+            expect(harness.saveFetchMetadata).toHaveBeenCalledWith(expect.objectContaining({
+                parentEventId: anchorId,
+                completeness: "partial",
+            }));
+        });
+        harness.dispose();
+    });
+
+    it("0件のsuccess結果をcompleteとして保存する", async () => {
+        const harness = createGraph(0);
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => {
+            expect(harness.saveFetchMetadata).toHaveBeenCalledWith(expect.objectContaining({
+                parentEventId: anchorId,
+                completeness: "complete",
+            }));
+        });
+        harness.dispose();
+    });
+
+    it.each(["failed", "cancelled"] as const)(
+        "%s結果では親metadataを更新しない",
+        async (status) => {
+            const harness = createGraph(0);
+            await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+            harness.graph.toggleChildren(harness.post);
+            await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+
+            harness.resolvePrefetch({ status, events: [] });
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(harness.saveFetchMetadata).not.toHaveBeenCalled();
+            harness.dispose();
+        },
+    );
+    it("eventを含むpartial結果も親metadataへ保存する", async () => {
+        const harness = createGraph();
+        await startChildPrefetch(harness);
+
+        harness.resolvePrefetch({ status: "partial" });
+        await vi.waitFor(() => {
+            expect(harness.saveFetchMetadata).toHaveBeenCalledWith(expect.objectContaining({
+                parentEventId: childId,
+                completeness: "partial",
+            }));
+        });
+        harness.dispose();
+    });
+
+    it("partial metadataはgraph再表示相当のreset後も再取得を許可する", async () => {
+        const harness = createGraph(0);
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+        harness.resolvePrefetch({ status: "partial", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalled());
+
+        harness.graph.resetState();
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(countFetchCallsForParent(harness, anchorId)).toBe(2));
+        harness.dispose();
+    });
+
+    it("complete metadataはgraph再表示相当のreset後にTTLを有効にする", async () => {
+        const harness = createGraph(0);
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalled());
+
+        harness.graph.resetState();
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(countFetchCallsForParent(harness, anchorId)).toBe(1);
+        harness.dispose();
+    });
+
+    it("kind 42 direct replyも同じparent completeness metadataを使用する", async () => {
+        const harness = createGraph(0, undefined, 42);
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+
+        harness.resolvePrefetch({ status: "partial", events: [] });
+        await vi.waitFor(() => {
+            expect(harness.saveFetchMetadata).toHaveBeenCalledWith(expect.objectContaining({
+                parentEventId: anchorId,
+                completeness: "partial",
+            }));
+        });
+        harness.dispose();
+    });
+
+    it("cancelled prefetch完了後は予約を解放して再度手動取得できる", async () => {
+        const harness = createGraph();
+        await startChildPrefetch(harness);
+        harness.resolvePrefetch({ status: "cancelled", events: [] });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(2));
+        expect(harness.saveFetchMetadata).not.toHaveBeenCalled();
         harness.dispose();
     });
 });

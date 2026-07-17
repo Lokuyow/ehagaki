@@ -40,6 +40,10 @@ import {
     postHistoryDeletionRequestsRepository,
     type PostHistoryDeletionRequestsRepository,
 } from "../storage/postHistoryDeletionRequestsRepository";
+import {
+    postHistoryDirectReplyFetchMetadataRepository,
+    type PostHistoryDirectReplyFetchMetadataRepository,
+} from "../storage/postHistoryDirectReplyFetchMetadataRepository";
 import { parsePostHistoryThreadReferences } from "../postHistoryNip10Utils";
 import {
     buildPostHistoryDirectReplyParentContext,
@@ -164,6 +168,10 @@ interface UsePostHistoryThreadGraphParams {
         PostHistoryDeletionRequestsRepository,
         "getDeletedTargets" | "upsertValidDeletionRequests"
     >;
+    directReplyFetchMetadataRepositoryImpl?: Pick<
+        PostHistoryDirectReplyFetchMetadataRepository,
+        "get" | "save"
+    >;
     profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
     contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
@@ -205,10 +213,46 @@ const POST_HISTORY_CHILD_REPLY_PREFETCH_BATCH_SIZE = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_RELAY_LIMIT = 4;
 const POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS = 5 * 60 * 1_000;
 
-function assertPostHistoryReplyFetchDidNotFail(status: string): void {
+class PostHistoryReplyFetchCancelledError extends Error {}
+
+function assertPostHistoryReplyFetchCanApply(status: string): void {
     if (status === "failed") {
         throw new Error("post_history_reply_fetch_failed");
     }
+    if (status === "cancelled") {
+        throw new PostHistoryReplyFetchCancelledError();
+    }
+}
+
+function createChildrenRevalidateErrorHandler(options: {
+    updateExpansion: (
+        updater: (
+            state: PostHistoryThreadGraphExpansionState,
+        ) => PostHistoryThreadGraphExpansionState,
+    ) => void;
+    showInitialLoading: boolean;
+    prefetchOnly: boolean;
+}): (error: unknown) => void {
+    return (error) => {
+        if (error instanceof PostHistoryReplyFetchCancelledError) {
+            options.updateExpansion((state) => ({
+                ...buildChildrenFailedExpansionState(state, {
+                    nextError: state.childrenError,
+                }),
+            }));
+            return;
+        }
+        applyChildrenRevalidateErrorState({
+            ...options,
+            errorCode: "fetch_failed",
+        });
+    };
+}
+
+function resolveDirectReplyFetchCompleteness(
+    status: string,
+): "complete" | "partial" {
+    return status === "partial" ? "partial" : "complete";
 }
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
 let nextThreadGraphParentResolverScopeId = 0;
@@ -271,6 +315,8 @@ export function usePostHistoryThreadGraph({
     reactionRecordsAdapterImpl = postHistoryReactionRecordsAdapter,
     childInteractionsRepositoryImpl = postHistoryChildInteractionsRepository,
     deletionRequestsRepositoryImpl = postHistoryDeletionRequestsRepository,
+    directReplyFetchMetadataRepositoryImpl =
+        postHistoryDirectReplyFetchMetadataRepository,
     profileSyncCoordinator = undefined,
     contextFetchService = postHistoryContextFetchService,
     replyFetchService = postHistoryReplyFetchService,
@@ -305,6 +351,7 @@ export function usePostHistoryThreadGraph({
     const parentLoadingIndicator = createPostHistoryThreadGraphParentLoadingIndicator();
     const replyBadgePreloadKeys = new Set<string>();
     const childReplyCountPrefetchKeys = new Set<string>();
+    const childPrefetchReservationKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
     let reactionRecordsByParentId =
@@ -1507,6 +1554,33 @@ export function usePostHistoryThreadGraph({
             : null;
     }
 
+    async function readDirectReplyFetchMetadata(parentEventId: string) {
+        try {
+            return {
+                metadata: await directReplyFetchMetadataRepositoryImpl.get(parentEventId),
+                readFailed: false,
+            };
+        } catch {
+            return { metadata: null, readFailed: true };
+        }
+    }
+
+    async function resolveCachedParentReplyFetchedAt(
+        parentEventId: string,
+        records: PostHistoryChildInteractionRecord[],
+    ): Promise<number | null> {
+        const { metadata, readFailed } = await readDirectReplyFetchMetadata(parentEventId);
+        if (readFailed) {
+            return null;
+        }
+        if (metadata) {
+            return metadata.completeness === "complete"
+                ? metadata.fetchedAt
+                : null;
+        }
+        return resolveCachedReplyFetchedAt(records);
+    }
+
     async function displayCachedChildrenForNode(
         post: PostHistoryRecord,
         nodeEventId: string,
@@ -1534,13 +1608,18 @@ export function usePostHistoryThreadGraph({
         if (!getShow()) {
             return true;
         }
+        const cachedFetchedAt = await resolveCachedParentReplyFetchedAt(
+            nodeEventId,
+            acceptedRecords,
+        );
+        if (!getShow()) {
+            return true;
+        }
 
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...buildChildrenLoadedExpansionState(state, {
                 visibleChildren: options.prefetchOnly ? state.visibleChildren : true,
-                lastFetchedChildrenAt:
-                    resolveCachedReplyFetchedAt(acceptedRecords)
-                    ?? state.lastFetchedChildrenAt,
+                lastFetchedChildrenAt: cachedFetchedAt,
             }),
         }));
         return true;
@@ -1555,6 +1634,7 @@ export function usePostHistoryThreadGraph({
         const key = buildAnchorNodeKey(post.eventId, nodeEventId);
         const activeGraphRequestId = taskTracker.getRequestId();
         const activeChildRequestId = taskTracker.createChildRequestToken(key);
+        const requestStartedAt = Date.now();
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...buildChildrenLoadingExpansionState(state, {
                 showInitialLoading: !!options.showInitialLoading,
@@ -1572,15 +1652,15 @@ export function usePostHistoryThreadGraph({
                 taskTracker.deleteChildrenFetchTask(key);
                 taskTracker.deleteChildRequestToken(key);
             },
-            onError: () => {
-                applyChildrenRevalidateErrorState({
-                    updateExpansion: (updater) => updateExpansion(post.eventId, nodeEventId, updater),
-                    showInitialLoading: !!options.showInitialLoading,
-                    prefetchOnly: !!options.prefetchOnly,
-                    errorCode: "fetch_failed",
-                });
-            },
+            onError: createChildrenRevalidateErrorHandler({
+                updateExpansion: (updater) => updateExpansion(post.eventId, nodeEventId, updater),
+                showInitialLoading: !!options.showInitialLoading,
+                prefetchOnly: !!options.prefetchOnly,
+            }),
             run: async ({ ensureActive }) => {
+                if (!ensureActive()) {
+                    return;
+                }
                 const rxNostr = getRxNostr();
                 if (!rxNostr) {
                     updateExpansion(post.eventId, nodeEventId, (state) => ({
@@ -1611,7 +1691,7 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
-                assertPostHistoryReplyFetchDidNotFail(result.status);
+                assertPostHistoryReplyFetchCanApply(result.status);
 
                 void fetchAndStoreDeletionRequests(
                     post.eventId,
@@ -1629,6 +1709,12 @@ export function usePostHistoryThreadGraph({
                         fetchedAt: result.status === "partial" ? null : result.fetchedAt,
                     });
                 }
+                await directReplyFetchMetadataRepositoryImpl.save({
+                    parentEventId: nodeEventId,
+                    completeness: resolveDirectReplyFetchCompleteness(result.status),
+                    fetchedAt: result.fetchedAt,
+                    requestStartedAt,
+                });
 
                 const nextRecords = await filterVisibleReplyRecords(
                     await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
@@ -1664,13 +1750,33 @@ export function usePostHistoryThreadGraph({
         });
     }
 
+    function reserveChildPrefetch(anchorEventId: string, nodeEventId: string): void {
+        childPrefetchReservationKeys.add(buildAnchorNodeKey(anchorEventId, nodeEventId));
+    }
+
+    function releaseChildPrefetch(anchorEventId: string, nodeEventId: string): void {
+        childPrefetchReservationKeys.delete(buildAnchorNodeKey(anchorEventId, nodeEventId));
+    }
+
+    function hasChildPrefetchReservation(
+        anchorEventId: string,
+        nodeEventId: string,
+    ): boolean {
+        return childPrefetchReservationKeys.has(
+            buildAnchorNodeKey(anchorEventId, nodeEventId),
+        );
+    }
+
     function handleActiveChildRequest(
         post: PostHistoryRecord,
         nodeEventId: string,
         prefetchOnly: boolean,
     ): boolean {
         const requestKey = buildAnchorNodeKey(post.eventId, nodeEventId);
-        if (taskTracker.getChildRequestToken(requestKey) === undefined) {
+        if (
+            taskTracker.getChildRequestToken(requestKey) === undefined
+            && !hasChildPrefetchReservation(post.eventId, nodeEventId)
+        ) {
             return false;
         }
 
@@ -1795,6 +1901,7 @@ export function usePostHistoryThreadGraph({
         parentNodeEventId: string,
     ): Promise<void> {
         const now = Date.now();
+        const activeGraphRequestId = taskTracker.getRequestId();
         const candidateEventIds = toVisibleChildEventIds(parentNodeEventId)
             .filter((eventId) => {
                 const expansion = getExpansion(post.eventId, eventId);
@@ -1808,20 +1915,54 @@ export function usePostHistoryThreadGraph({
         if (candidateEventIds.length === 0) {
             return;
         }
+        for (const eventId of candidateEventIds) {
+            reserveChildPrefetch(post.eventId, eventId);
+        }
 
         const remainingEventIds: string[] = [];
         await Promise.all(candidateEventIds.map(async (eventId) => {
-            if (!getShow()) {
-                return;
-            }
+            try {
+                if (!getShow()) {
+                    releaseChildPrefetch(post.eventId, eventId);
+                    return;
+                }
 
-            const hasCachedReplies = await prefetchChildrenFromCache(post, eventId);
-            if (!hasCachedReplies) {
-                remainingEventIds.push(eventId);
+                const hasCachedReplies = await prefetchChildrenFromCache(post, eventId);
+                const expansion = getExpansion(post.eventId, eventId);
+                const recentlyChecked =
+                    typeof expansion.lastFetchedChildrenAt === "number"
+                    && Date.now() - expansion.lastFetchedChildrenAt
+                        < POST_HISTORY_CHILD_REPLY_PREFETCH_FRESH_MS;
+                const needsNetwork = !hasCachedReplies
+                    || expansion.lastFetchedChildrenAt === null;
+                if (
+                    needsNetwork
+                    && activeGraphRequestId === taskTracker.getRequestId()
+                    && getShow()
+                    && hasChildPrefetchReservation(post.eventId, eventId)
+                    && taskTracker.getChildRequestToken(
+                        buildAnchorNodeKey(post.eventId, eventId),
+                    ) === undefined
+                    && !expansion.loadingChildren
+                    && !expansion.revalidatingChildren
+                    && (!expansion.loadedChildren
+                        || expansion.lastFetchedChildrenAt === null)
+                    && !recentlyChecked
+                ) {
+                    remainingEventIds.push(eventId);
+                } else {
+                    releaseChildPrefetch(post.eventId, eventId);
+                }
+            } catch {
+                releaseChildPrefetch(post.eventId, eventId);
             }
         }));
-        remainingEventIds.splice(POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT);
+        remainingEventIds
+            .splice(POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT)
+            .forEach((eventId) => releaseChildPrefetch(post.eventId, eventId));
         if (!getShow() || remainingEventIds.length === 0) {
+            remainingEventIds.forEach((eventId) =>
+                releaseChildPrefetch(post.eventId, eventId));
             return;
         }
 
@@ -1845,7 +1986,12 @@ export function usePostHistoryThreadGraph({
             }
         };
 
-        await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+        try {
+            await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+        } finally {
+            candidateEventIds.forEach((eventId) =>
+                releaseChildPrefetch(post.eventId, eventId));
+        }
     }
 
     async function prefetchChildrenFromCache(
@@ -1853,33 +1999,36 @@ export function usePostHistoryThreadGraph({
         nodeEventId: string,
     ): Promise<boolean> {
         const rawCachedRecords = await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId);
+        const { metadata, readFailed } = await readDirectReplyFetchMetadata(nodeEventId);
         if (!getShow()) {
             return false;
         }
 
         const cachedRecords = await filterVisibleReplyRecords(rawCachedRecords);
-        if (!getShow() || cachedRecords.length === 0) {
-            return false;
-        }
-
         const parentNode = nodesById[nodeEventId];
-        if (!parentNode) {
+        if (!getShow() || !parentNode || (cachedRecords.length === 0 && !metadata)) {
             return false;
         }
         const acceptedRecords = await upsertReplyRecords(parentNode, cachedRecords, ["reply-db"], {
             resolveProfiles: false,
         });
-        if (!getShow() || acceptedRecords.length === 0) {
+        if (!getShow() || (acceptedRecords.length === 0 && !metadata)) {
             return false;
         }
+        const cachedFetchedAt = readFailed
+            ? null
+            : metadata
+                ? metadata.completeness === "complete"
+                    ? metadata.fetchedAt
+                    : null
+                : resolveCachedReplyFetchedAt(acceptedRecords);
         if (!getShow()) {
             return true;
         }
 
         updateExpansion(post.eventId, nodeEventId, (state) => ({
             ...buildChildrenLoadedExpansionState(state, {
-                lastFetchedChildrenAt:
-                    resolveCachedReplyFetchedAt(acceptedRecords) ?? state.lastFetchedChildrenAt,
+                lastFetchedChildrenAt: cachedFetchedAt,
             }),
         }));
         return true;
@@ -1900,10 +2049,14 @@ export function usePostHistoryThreadGraph({
         anchorNode: PostHistoryThreadGraphNode;
         ensureActive: () => boolean;
     }): Promise<void> {
+        const { metadata, readFailed } = await readDirectReplyFetchMetadata(
+            input.parentEventId,
+        );
+
         const cachedDirectReplies = input.cachedRecords.filter(
             (record) => record.kind === 1 || record.kind === 42,
         );
-        if (cachedDirectReplies.length === 0) {
+        if (cachedDirectReplies.length === 0 && !metadata) {
             return;
         }
 
@@ -1912,18 +2065,23 @@ export function usePostHistoryThreadGraph({
             cachedDirectReplies,
             ["reply-db", "inbound-sync"],
             {
-            resolveProfiles: false,
+                resolveProfiles: false,
             },
         );
-        if (!input.ensureActive() || acceptedRecords.length === 0) {
+        if (!input.ensureActive() || (acceptedRecords.length === 0 && !metadata)) {
             return;
         }
 
+        const cachedFetchedAt = readFailed
+            ? null
+            : metadata
+                ? metadata.completeness === "complete"
+                    ? metadata.fetchedAt
+                    : null
+                : resolveCachedReplyFetchedAt(acceptedRecords);
         updateExpansion(input.post.eventId, input.parentEventId, (state) => ({
             ...buildChildrenLoadedExpansionState(state, {
-                lastFetchedChildrenAt:
-                    resolveCachedReplyFetchedAt(acceptedRecords)
-                    ?? state.lastFetchedChildrenAt,
+                lastFetchedChildrenAt: cachedFetchedAt,
             }),
         }));
         refreshProfileForPubkeyInBackground(input.anchorNode.authorPubkey, input.anchorNode.relayUrls);
@@ -2042,17 +2200,21 @@ export function usePostHistoryThreadGraph({
         }
 
         const activeGraphRequestId = taskTracker.getRequestId();
+        const requestStartedAt = Date.now();
         const requestTokens = new Map<string, number>();
         let completedFetchAt: number | null = null;
+        let batchCancelled = false;
 
         const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
         const isPrefetchBatchActive = (): boolean => {
-            if (activeGraphRequestId !== taskTracker.getRequestId() || !getShow()) {
+            if (batchCancelled || activeGraphRequestId !== taskTracker.getRequestId() || !getShow()) {
                 return false;
             }
 
             return batchEventIds.every((eventId) =>
-                taskTracker.getChildRequestToken(buildAnchorNodeKey(post.eventId, eventId)) === requestTokens.get(eventId),
+                hasChildPrefetchReservation(post.eventId, eventId)
+                && taskTracker.getChildRequestToken(buildAnchorNodeKey(post.eventId, eventId))
+                    === requestTokens.get(eventId),
             );
         };
 
@@ -2106,6 +2268,7 @@ export function usePostHistoryThreadGraph({
                 if (taskTracker.getChildRequestToken(key) === activeChildRequestId) {
                     taskTracker.deleteChildRequestToken(key);
                 }
+                releaseChildPrefetch(post.eventId, eventId);
             },
             cleanup: () => {
                 taskTracker.deleteChildrenFetchTask(taskKey);
@@ -2114,6 +2277,9 @@ export function usePostHistoryThreadGraph({
                 applyPrefetchBatchErrorState("fetch_failed");
             },
             run: async ({ ensureActive }) => {
+                if (!ensureActive()) {
+                    return;
+                }
                 const rxNostr = getRxNostr();
                 if (!rxNostr) {
                     applyPrefetchBatchErrorState("nostr_not_ready");
@@ -2144,7 +2310,18 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
-                assertPostHistoryReplyFetchDidNotFail(result.status);
+                if (result.status === "cancelled") {
+                    batchCancelled = true;
+                    for (const eventId of batchEventIds) {
+                        updateExpansion(post.eventId, eventId, (state) => ({
+                            ...buildChildrenFailedExpansionState(state, {
+                                nextError: state.childrenError,
+                            }),
+                        }));
+                    }
+                    return;
+                }
+                assertPostHistoryReplyFetchCanApply(result.status);
                 completedFetchAt = result.status === "partial" ? null : result.fetchedAt;
                 for (const eventId of batchEventIds) {
                     updateExpansion(post.eventId, eventId, (state) => ({
@@ -2197,6 +2374,15 @@ export function usePostHistoryThreadGraph({
                             fetchedAt: result.status === "partial" ? null : result.fetchedAt,
                         });
                     }
+                    if (!ensureActive()) {
+                        return;
+                    }
+                    await directReplyFetchMetadataRepositoryImpl.save({
+                        parentEventId: eventId,
+                        completeness: resolveDirectReplyFetchCompleteness(result.status),
+                        fetchedAt: result.fetchedAt,
+                        requestStartedAt,
+                    });
 
                     const nextRecords = await filterVisibleReplyRecords(
                         await directReplyRecordsAdapterImpl.getDirectReplyRecords(eventId),
@@ -2481,6 +2667,7 @@ export function usePostHistoryThreadGraph({
     function cancelCurrentGraphFetches(): void {
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
+        childPrefetchReservationKeys.clear();
         if (ownsProfileSync) {
             profileSync.reset();
         }

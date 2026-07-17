@@ -165,6 +165,11 @@ const replyFetchServiceMock = vi.hoisted(() => ({
     fetchDirectReplies: vi.fn(),
 }));
 
+const directReplyFetchMetadataRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+    save: vi.fn(),
+}));
+
 const contextFetchServiceMock = vi.hoisted(() => ({
     fetchEventById: vi.fn(),
 }));
@@ -335,6 +340,10 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
 
 vi.mock('../../lib/storage/postHistoryChildInteractionsRepository', () => ({
     postHistoryChildInteractionsRepository: replyEventsRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryDirectReplyFetchMetadataRepository', () => ({
+    postHistoryDirectReplyFetchMetadataRepository: directReplyFetchMetadataRepositoryMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryInboundInteractionsSyncStateRepository', () => ({
@@ -859,6 +868,8 @@ describe('PostHistoryDialog', () => {
         });
         replyEventsRepositoryMock.deleteByEventId.mockResolvedValue(undefined);
         replyEventsRepositoryMock.deleteForPostHistoryPubkey.mockResolvedValue(undefined);
+        directReplyFetchMetadataRepositoryMock.get.mockResolvedValue(null);
+        directReplyFetchMetadataRepositoryMock.save.mockImplementation(async (input) => input);
         deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(new Map());
         deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockResolvedValue({
             insertedCount: 0,
