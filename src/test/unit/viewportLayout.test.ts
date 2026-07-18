@@ -100,7 +100,7 @@ describe('viewportLayout', () => {
             { top: 481, bottom: 732, width: 411, height: 251 },
             411,
             732,
-        )).toEqual({ inset: 251, legacyOriginCompensation: 0 });
+        )).toBe(251);
     });
 
     it('旧Chromeの visible frame 原点を含む矩形では top を除外する', () => {
@@ -108,6 +108,6 @@ describe('viewportLayout', () => {
             { top: 40, bottom: 291, width: 411, height: 251 },
             411,
             732,
-        )).toEqual({ inset: 211, legacyOriginCompensation: 40 });
+        )).toBe(211);
     });
 });

@@ -128,7 +128,6 @@ describe('uiStore', () => {
     beforeEach(() => {
         vi.resetModules();
         vi.restoreAllMocks();
-        vi.spyOn(console, 'debug').mockImplementation(() => { });
         document.documentElement.removeAttribute('style');
 
         setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36');
@@ -195,24 +194,6 @@ describe('uiStore', () => {
         virtualKeyboard.setHeight(300);
         virtualKeyboard.emitGeometryChange();
 
-        expect(console.debug).toHaveBeenLastCalledWith(
-            '[ViewportLayout Debug]',
-            expect.objectContaining({
-                source: 'virtualKeyboard.geometrychange',
-                environment: expect.objectContaining({
-                    virtualKeyboard: expect.objectContaining({
-                        supported: true,
-                        overlaysContent: true,
-                        boundingRect: expect.objectContaining({ height: 300 }),
-                    }),
-                }),
-                calculation: expect.objectContaining({
-                    calculatedKeyboardHeight: 0,
-                    isKeyboardOpen: true,
-                    keyboardStoreHeight: 300,
-                }),
-            }),
-        );
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
@@ -242,18 +223,6 @@ describe('uiStore', () => {
         virtualKeyboard.setRect(40, 251);
         virtualKeyboard.emitGeometryChange();
 
-        expect(console.debug).toHaveBeenLastCalledWith(
-            '[ViewportLayout Debug]',
-            expect.objectContaining({
-                source: 'virtualKeyboard.geometrychange',
-                calculation: expect.objectContaining({
-                    virtualKeyboardRawHeight: 251,
-                    virtualKeyboardLayoutInset: 211,
-                    virtualKeyboardLegacyOriginCompensation: 40,
-                    keyboardStoreHeight: 211,
-                }),
-            }),
-        );
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('211px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('211px');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('211px');
@@ -297,50 +266,6 @@ describe('uiStore', () => {
         } = await import('../../stores/uiStore.svelte');
 
         const cleanup = setupViewportListener();
-
-        expect(console.debug).toHaveBeenCalledWith(
-            '[ViewportLayout Debug]',
-            expect.objectContaining({
-                source: 'initial',
-                transition: null,
-                environment: expect.objectContaining({
-                    isSecureContext: false,
-                    viewportMetaContent: null,
-                    virtualKeyboard: { supported: false },
-                }),
-                calculation: expect.objectContaining({
-                    isSafariViewportMode: false,
-                    calculatedKeyboardHeight: 300,
-                    isKeyboardOpen: true,
-                }),
-                layout: expect.objectContaining({
-                    footerButtonBar: null,
-                }),
-            }),
-        );
-
-        const bar = document.createElement('div');
-        bar.className = 'footer-button-bar';
-        document.body.appendChild(bar);
-        const transitionEnd = new Event('transitionend', { bubbles: true });
-        Object.defineProperties(transitionEnd, {
-            propertyName: { value: 'bottom' },
-            elapsedTime: { value: 0.2 },
-        });
-        bar.dispatchEvent(transitionEnd);
-
-        expect(console.debug).toHaveBeenLastCalledWith(
-            '[ViewportLayout Debug]',
-            expect.objectContaining({
-                source: 'footer-button-bar.transitionend',
-                transition: {
-                    type: 'transitionend',
-                    propertyName: 'bottom',
-                    elapsedTime: 0.2,
-                },
-            }),
-        );
-        bar.remove();
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
