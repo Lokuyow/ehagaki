@@ -61,3 +61,32 @@ export function isNonPwaAndroidChrome(): boolean {
 
     return isAndroid && isChrome && !isOtherChromiumBrowser && !isStandalone;
 }
+
+export interface VirtualKeyboardLayoutInsetResult {
+    inset: number;
+    legacyOriginCompensation: number;
+}
+
+export function getVirtualKeyboardLayoutInset(
+    rect: Pick<DOMRectReadOnly, "top" | "bottom" | "width" | "height">,
+    layoutViewportWidth: number,
+    layoutViewportHeight: number,
+): VirtualKeyboardLayoutInsetResult {
+    const height = Math.max(0, rect.height);
+    const top = Math.max(0, rect.top);
+    const spansViewportWidth =
+        layoutViewportWidth > 0 && rect.width >= layoutViewportWidth - 1;
+    const usesLegacyVisibleFrameOrigin =
+        height > 0 &&
+        top > 0 &&
+        spansViewportWidth &&
+        rect.bottom < layoutViewportHeight - 1;
+    const legacyOriginCompensation = usesLegacyVisibleFrameOrigin
+        ? Math.min(top, height)
+        : 0;
+
+    return {
+        inset: height - legacyOriginCompensation,
+        legacyOriginCompensation,
+    };
+}

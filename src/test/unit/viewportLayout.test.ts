@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
+    getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
     isNonPwaIPhoneSafari,
 } from '../../lib/utils/viewportLayout';
@@ -92,5 +93,21 @@ describe('viewportLayout', () => {
         });
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
         expect(isNonPwaAndroidChrome()).toBe(false);
+    });
+
+    it('正常な VirtualKeyboard 矩形では高さをそのままレイアウト inset にする', () => {
+        expect(getVirtualKeyboardLayoutInset(
+            { top: 481, bottom: 732, width: 411, height: 251 },
+            411,
+            732,
+        )).toEqual({ inset: 251, legacyOriginCompensation: 0 });
+    });
+
+    it('旧Chromeの visible frame 原点を含む矩形では top を除外する', () => {
+        expect(getVirtualKeyboardLayoutInset(
+            { top: 40, bottom: 291, width: 411, height: 251 },
+            411,
+            732,
+        )).toEqual({ inset: 211, legacyOriginCompensation: 40 });
     });
 });

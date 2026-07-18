@@ -6,6 +6,7 @@
 import {
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
+    getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
     isNonPwaIPhoneSafari,
 } from "../lib/utils/viewportLayout";
@@ -240,6 +241,9 @@ interface ViewportDebugContext {
     visibleBottom: number;
     calculatedKeyboardHeight: number;
     keyboardViewportReduction: number;
+    virtualKeyboardRawHeight: number;
+    virtualKeyboardLayoutInset: number;
+    virtualKeyboardLegacyOriginCompensation: number;
     isKeyboardOpen: boolean;
     keyboardStoreHeight: number;
 }
@@ -268,6 +272,9 @@ function logViewportDebugSnapshot(
         visibleBottom,
         calculatedKeyboardHeight,
         keyboardViewportReduction,
+        virtualKeyboardRawHeight,
+        virtualKeyboardLayoutInset,
+        virtualKeyboardLegacyOriginCompensation,
         isKeyboardOpen,
         keyboardStoreHeight,
     } = context;
@@ -375,6 +382,9 @@ function logViewportDebugSnapshot(
             visualViewportBottom,
             calculatedKeyboardHeight,
             keyboardViewportReduction,
+            virtualKeyboardRawHeight,
+            virtualKeyboardLayoutInset,
+            virtualKeyboardLegacyOriginCompensation,
             isKeyboardOpen,
             keyboardStoreHeight,
         },
@@ -481,16 +491,26 @@ export function setupViewportListener(): (() => void) | undefined {
             );
 
             // キーボードが開いているかどうかを閾値で判定
-            const virtualKeyboardHeight = usesKeyboardOverlay
-                ? Math.max(0, virtualKeyboard?.boundingRect?.height ?? 0)
+            const virtualKeyboardRect = virtualKeyboard?.boundingRect;
+            const virtualKeyboardRawHeight = usesKeyboardOverlay
+                ? Math.max(0, virtualKeyboardRect?.height ?? 0)
                 : 0;
+            const virtualKeyboardInsetResult =
+                usesKeyboardOverlay && virtualKeyboardRect
+                    ? getVirtualKeyboardLayoutInset(
+                        virtualKeyboardRect,
+                        viewport.width,
+                        layoutViewportHeight,
+                    )
+                    : { inset: 0, legacyOriginCompensation: 0 };
+            const virtualKeyboardLayoutInset = virtualKeyboardInsetResult.inset;
             const isKeyboardOpen = usesKeyboardOverlay
-                ? virtualKeyboardHeight > KEYBOARD_THRESHOLD
+                ? virtualKeyboardLayoutInset > KEYBOARD_THRESHOLD
                 : isSafariViewportMode
                     ? keyboardViewportReduction > KEYBOARD_THRESHOLD
                     : calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
             const keyboardStoreHeight = usesKeyboardOverlay
-                ? virtualKeyboardHeight
+                ? virtualKeyboardLayoutInset
                 : isSafariViewportMode
                     ? keyboardViewportReduction
                     : calculatedKeyboardHeight;
@@ -499,7 +519,7 @@ export function setupViewportListener(): (() => void) | undefined {
             // 閾値を設けて、PWAモードでの小さな差分を無視する
             bottomPosition = isKeyboardOpen
                 ? usesKeyboardOverlay
-                    ? virtualKeyboardHeight
+                    ? virtualKeyboardLayoutInset
                     : calculatedKeyboardHeight
                 : FOOTER_HEIGHT;
 
@@ -523,6 +543,10 @@ export function setupViewportListener(): (() => void) | undefined {
                 visibleBottom,
                 calculatedKeyboardHeight,
                 keyboardViewportReduction,
+                virtualKeyboardRawHeight,
+                virtualKeyboardLayoutInset,
+                virtualKeyboardLegacyOriginCompensation:
+                    virtualKeyboardInsetResult.legacyOriginCompensation,
                 isKeyboardOpen,
                 keyboardStoreHeight,
             };

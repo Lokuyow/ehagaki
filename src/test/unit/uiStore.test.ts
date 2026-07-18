@@ -45,6 +45,7 @@ function createVisualViewportMock(height: number, offsetTop = 0) {
     const listeners = new Map<string, Set<ViewportListener>>();
 
     const visualViewport = {
+        width: 400,
         height,
         offsetTop,
         addEventListener: vi.fn((type: string, listener: ViewportListener) => {
@@ -77,16 +78,16 @@ function createVisualViewportMock(height: number, offsetTop = 0) {
 function createVirtualKeyboardMock(initialHeight = 0) {
     const listeners = new Set<EventListener>();
     let height = initialHeight;
+    let top = 800 - initialHeight;
     const virtualKeyboard = {
         overlaysContent: false,
         get boundingRect() {
-            const y = 800 - height;
             return {
                 x: 0,
-                y,
-                top: y,
+                y: top,
+                top,
                 right: 400,
-                bottom: 800,
+                bottom: top + height,
                 left: 0,
                 width: 400,
                 height,
@@ -109,6 +110,11 @@ function createVirtualKeyboardMock(initialHeight = 0) {
     return {
         virtualKeyboard,
         setHeight(nextHeight: number) {
+            height = nextHeight;
+            top = 800 - nextHeight;
+        },
+        setRect(nextTop: number, nextHeight: number) {
+            top = nextTop;
             height = nextHeight;
         },
         emitGeometryChange() {
@@ -232,6 +238,30 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(keyboardHeightStore.value).toBe(0);
         expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+
+        virtualKeyboard.setRect(40, 251);
+        virtualKeyboard.emitGeometryChange();
+
+        expect(console.debug).toHaveBeenLastCalledWith(
+            '[ViewportLayout Debug]',
+            expect.objectContaining({
+                source: 'virtualKeyboard.geometrychange',
+                calculation: expect.objectContaining({
+                    virtualKeyboardRawHeight: 251,
+                    virtualKeyboardLayoutInset: 211,
+                    virtualKeyboardLegacyOriginCompensation: 40,
+                    keyboardStoreHeight: 211,
+                }),
+            }),
+        );
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('211px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('211px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('211px');
+        expect(keyboardHeightStore.value).toBe(211);
+        expect(bottomPositionStore.value).toBe(211);
+
+        virtualKeyboard.setHeight(0);
+        virtualKeyboard.emitGeometryChange();
 
         cleanup?.();
 
