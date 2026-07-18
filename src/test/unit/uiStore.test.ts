@@ -74,10 +74,55 @@ function createVisualViewportMock(height: number, offsetTop = 0) {
     };
 }
 
+function createVirtualKeyboardMock(initialHeight = 0) {
+    const listeners = new Set<EventListener>();
+    let height = initialHeight;
+    const virtualKeyboard = {
+        overlaysContent: false,
+        get boundingRect() {
+            const y = 800 - height;
+            return {
+                x: 0,
+                y,
+                top: y,
+                right: 400,
+                bottom: 800,
+                left: 0,
+                width: 400,
+                height,
+                toJSON: () => ({}),
+            } as DOMRectReadOnly;
+        },
+        addEventListener: vi.fn((type: string, listener: EventListener) => {
+            if (type === 'geometrychange') listeners.add(listener);
+        }),
+        removeEventListener: vi.fn((type: string, listener: EventListener) => {
+            if (type === 'geometrychange') listeners.delete(listener);
+        }),
+    };
+
+    Object.defineProperty(navigator, 'virtualKeyboard', {
+        configurable: true,
+        value: virtualKeyboard,
+    });
+
+    return {
+        virtualKeyboard,
+        setHeight(nextHeight: number) {
+            height = nextHeight;
+        },
+        emitGeometryChange() {
+            const event = new Event('geometrychange');
+            for (const listener of listeners) listener(event);
+        },
+    };
+}
+
 describe('uiStore', () => {
     beforeEach(() => {
         vi.resetModules();
         vi.restoreAllMocks();
+        vi.spyOn(console, 'debug').mockImplementation(() => { });
         document.documentElement.removeAttribute('style');
 
         setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36');
@@ -105,9 +150,102 @@ describe('uiStore', () => {
             configurable: true,
             value: false,
         });
+
+        Object.defineProperty(navigator, 'virtualKeyboard', {
+            configurable: true,
+            value: undefined,
+        });
     });
 
-    it('Android Chrome ではキーボード表示中も document を固定せず visual viewport 高さへ合わせる', async () => {
+    it('非PWA Android Chrome では VirtualKeyboard の矩形へバーとレイアウトを同期する', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        createVisualViewportMock(800);
+        const virtualKeyboard = createVirtualKeyboardMock();
+        const {
+            FOOTER_HEIGHT,
+            bottomPositionStore,
+            keyboardHeightStore,
+            reasonInputVisibleStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(true);
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+
+        virtualKeyboard.setHeight(300);
+        virtualKeyboard.emitGeometryChange();
+
+        expect(console.debug).toHaveBeenLastCalledWith(
+            '[ViewportLayout Debug]',
+            expect.objectContaining({
+                source: 'virtualKeyboard.geometrychange',
+                environment: expect.objectContaining({
+                    virtualKeyboard: expect.objectContaining({
+                        supported: true,
+                        overlaysContent: true,
+                        boundingRect: expect.objectContaining({ height: 300 }),
+                    }),
+                }),
+                calculation: expect.objectContaining({
+                    calculatedKeyboardHeight: 0,
+                    isKeyboardOpen: true,
+                    keyboardStoreHeight: 300,
+                }),
+            }),
+        );
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(300);
+
+        reasonInputVisibleStore.set(true);
+
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
+
+        virtualKeyboard.setHeight(0);
+        virtualKeyboard.emitGeometryChange();
+
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+
+        cleanup?.();
+
+        expect(virtualKeyboard.virtualKeyboard.removeEventListener).toHaveBeenCalledWith(
+            'geometrychange',
+            expect.any(Function),
+        );
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
+
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('VirtualKeyboard API がない Android Chrome では visual viewport 高さへ合わせる', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
         const requestAnimationFrameSpy = vi
@@ -129,6 +267,50 @@ describe('uiStore', () => {
         } = await import('../../stores/uiStore.svelte');
 
         const cleanup = setupViewportListener();
+
+        expect(console.debug).toHaveBeenCalledWith(
+            '[ViewportLayout Debug]',
+            expect.objectContaining({
+                source: 'initial',
+                transition: null,
+                environment: expect.objectContaining({
+                    isSecureContext: false,
+                    viewportMetaContent: null,
+                    virtualKeyboard: { supported: false },
+                }),
+                calculation: expect.objectContaining({
+                    isSafariViewportMode: false,
+                    calculatedKeyboardHeight: 300,
+                    isKeyboardOpen: true,
+                }),
+                layout: expect.objectContaining({
+                    footerButtonBar: null,
+                }),
+            }),
+        );
+
+        const bar = document.createElement('div');
+        bar.className = 'footer-button-bar';
+        document.body.appendChild(bar);
+        const transitionEnd = new Event('transitionend', { bubbles: true });
+        Object.defineProperties(transitionEnd, {
+            propertyName: { value: 'bottom' },
+            elapsedTime: { value: 0.2 },
+        });
+        bar.dispatchEvent(transitionEnd);
+
+        expect(console.debug).toHaveBeenLastCalledWith(
+            '[ViewportLayout Debug]',
+            expect.objectContaining({
+                source: 'footer-button-bar.transitionend',
+                transition: {
+                    type: 'transitionend',
+                    propertyName: 'bottom',
+                    elapsedTime: 0.2,
+                },
+            }),
+        );
+        bar.remove();
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');

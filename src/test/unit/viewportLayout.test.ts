@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
+    isNonPwaAndroidChrome,
     isNonPwaIPhoneSafari,
 } from '../../lib/utils/viewportLayout';
 
@@ -76,5 +77,20 @@ describe('viewportLayout', () => {
 
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
         expect(isNonPwaIPhoneSafari()).toBe(false);
+    });
+
+    it('非PWA Android Chrome だけを true にする', () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+        expect(isNonPwaAndroidChrome()).toBe(true);
+
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/27.0 Chrome/125.0.0.0 Mobile Safari/537.36');
+        expect(isNonPwaAndroidChrome()).toBe(false);
+
+        Object.defineProperty(window, 'matchMedia', {
+            configurable: true,
+            value: vi.fn().mockReturnValue({ matches: true }),
+        });
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+        expect(isNonPwaAndroidChrome()).toBe(false);
     });
 });

@@ -6,6 +6,7 @@
 import {
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
+    isNonPwaAndroidChrome,
     isNonPwaIPhoneSafari,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
@@ -28,6 +29,7 @@ const KEYBOARD_THRESHOLD = 100;
 
 let lastViewportHeight: number | undefined;
 let lastLayoutViewportHeight: number | undefined;
+let debugSequence = 0;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -45,6 +47,16 @@ function setRootStyleProperty(name: string, value: string): void {
     document.documentElement.style.setProperty(name, value);
 }
 
+function isVirtualKeyboardOverlayActive(): boolean {
+    const virtualKeyboard = (
+        navigator as Navigator & {
+            virtualKeyboard?: { overlaysContent?: boolean };
+        }
+    ).virtualKeyboard;
+
+    return isNonPwaAndroidChrome() && virtualKeyboard?.overlaysContent === true;
+}
+
 function getFooterReservedHeight(isKeyboardOpen: boolean): number {
     return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
 }
@@ -55,6 +67,7 @@ function syncLayoutCssVariables(
         height?: number;
         offsetTop?: number;
         layoutViewportHeight?: number;
+        usesKeyboardOverlay?: boolean;
     } = {},
 ): void {
     if (viewportMetrics.height !== undefined) {
@@ -66,10 +79,17 @@ function syncLayoutCssVariables(
     }
 
     const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
+    const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
     const shouldUseKeyboardViewportHeight =
-        isKeyboardVisible && lastViewportHeight !== undefined;
+        isKeyboardVisible &&
+        !usesKeyboardOverlay &&
+        lastViewportHeight !== undefined;
+    const shouldUseKeyboardOverlay =
+        isKeyboardVisible && usesKeyboardOverlay;
 
-    syncKeyboardTouchScrollLock(shouldUseKeyboardViewportHeight);
+    syncKeyboardTouchScrollLock(
+        shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
+    );
 
     const keyboardButtonBarBottom = `${bottomPosition}px`;
     const reasonInputBottom = `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
@@ -172,6 +192,7 @@ export const reasonInputVisibleStore = {
         syncLayoutCssVariables(
             keyboardHeight > 0 ||
             (isSafariViewportMode && isSafariKeyboardViewportReduced),
+            { usesKeyboardOverlay: isVirtualKeyboardOverlayActive() },
         );
     },
 };
@@ -211,6 +232,197 @@ export const bottomPositionStore = {
     },
 };
 
+interface ViewportDebugContext {
+    viewport: VisualViewport;
+    isSafariViewportMode: boolean;
+    layoutViewportHeight: number;
+    viewportOffsetTop: number;
+    visibleBottom: number;
+    calculatedKeyboardHeight: number;
+    keyboardViewportReduction: number;
+    isKeyboardOpen: boolean;
+    keyboardStoreHeight: number;
+}
+
+interface VirtualKeyboardDebugInfo {
+    overlaysContent?: boolean;
+    boundingRect?: DOMRectReadOnly;
+    addEventListener?: (type: "geometrychange", listener: EventListener) => void;
+    removeEventListener?: (type: "geometrychange", listener: EventListener) => void;
+}
+
+function logViewportDebugSnapshot(
+    source: string,
+    context: ViewportDebugContext,
+    transition?: {
+        type: string;
+        propertyName: string;
+        elapsedTime: number;
+    },
+): void {
+    if (!import.meta.env.DEV) return;
+
+    const {
+        viewport,
+        isSafariViewportMode,
+        layoutViewportHeight,
+        viewportOffsetTop,
+        visibleBottom,
+        calculatedKeyboardHeight,
+        keyboardViewportReduction,
+        isKeyboardOpen,
+        keyboardStoreHeight,
+    } = context;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const readElementLayout = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return null;
+
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const offsetParent = element.offsetParent;
+        return {
+            rect: {
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+            },
+            position: style.position,
+            bottom: style.bottom,
+            offsetParent: offsetParent
+                ? `${offsetParent.tagName.toLowerCase()}${
+                    offsetParent.id ? `#${offsetParent.id}` : ""
+                }${
+                    offsetParent instanceof HTMLElement && offsetParent.className
+                        ? `.${String(offsetParent.className).trim().replace(/\s+/g, ".")}`
+                        : ""
+                }`
+                : null,
+        };
+    };
+    const barLayout = readElementLayout(".footer-button-bar");
+    const visualViewportBottom = viewport.height + viewport.offsetTop;
+    const virtualKeyboard = (
+        navigator as Navigator & { virtualKeyboard?: VirtualKeyboardDebugInfo }
+    ).virtualKeyboard;
+    const virtualKeyboardRect = virtualKeyboard?.boundingRect;
+
+    console.debug("[ViewportLayout Debug]", {
+        sequence: ++debugSequence,
+        timestamp: new Date().toISOString(),
+        source,
+        transition: transition ?? null,
+        environment: {
+            userAgent: navigator.userAgent,
+            origin: window.location.origin,
+            isSecureContext: window.isSecureContext === true,
+            viewportMetaContent:
+                document.querySelector<HTMLMetaElement>('meta[name="viewport"]')?.content ?? null,
+            devicePixelRatio: window.devicePixelRatio,
+            screen: {
+                width: window.screen.width,
+                height: window.screen.height,
+                availWidth: window.screen.availWidth,
+                availHeight: window.screen.availHeight,
+            },
+            displayModeStandalone:
+                window.matchMedia?.("(display-mode: standalone)")?.matches === true,
+            navigatorStandalone:
+                (navigator as Navigator & { standalone?: boolean }).standalone === true,
+            virtualKeyboard: virtualKeyboard
+                ? {
+                    supported: true,
+                    overlaysContent: virtualKeyboard.overlaysContent ?? null,
+                    boundingRect: virtualKeyboardRect
+                        ? {
+                            x: virtualKeyboardRect.x,
+                            y: virtualKeyboardRect.y,
+                            top: virtualKeyboardRect.top,
+                            right: virtualKeyboardRect.right,
+                            bottom: virtualKeyboardRect.bottom,
+                            left: virtualKeyboardRect.left,
+                            width: virtualKeyboardRect.width,
+                            height: virtualKeyboardRect.height,
+                        }
+                        : null,
+                }
+                : { supported: false },
+        },
+        input: {
+            windowInnerWidth: window.innerWidth,
+            windowInnerHeight: window.innerHeight,
+            windowOuterWidth: window.outerWidth,
+            windowOuterHeight: window.outerHeight,
+            windowScrollY: window.scrollY,
+            documentClientHeight: document.documentElement.clientHeight,
+            bodyClientHeight: document.body?.clientHeight ?? null,
+            visualViewport: {
+                width: viewport.width,
+                height: viewport.height,
+                offsetTop: viewport.offsetTop,
+                offsetLeft: viewport.offsetLeft,
+                pageTop: viewport.pageTop,
+                pageLeft: viewport.pageLeft,
+                scale: viewport.scale,
+            },
+        },
+        calculation: {
+            isSafariViewportMode,
+            layoutViewportHeight,
+            viewportOffsetTop,
+            visibleBottom,
+            visualViewportBottom,
+            calculatedKeyboardHeight,
+            keyboardViewportReduction,
+            isKeyboardOpen,
+            keyboardStoreHeight,
+        },
+        state: {
+            bottomPosition,
+            keyboardHeight,
+            lastViewportHeight,
+            lastLayoutViewportHeight,
+        },
+        cssVariables: {
+            appRootHeight: rootStyle.getPropertyValue("--app-root-height"),
+            appMainHeight: rootStyle.getPropertyValue("--app-main-height"),
+            appOverlayPosition: rootStyle.getPropertyValue("--app-overlay-position"),
+            keyboardHeight: rootStyle.getPropertyValue("--keyboard-height"),
+            keyboardButtonBarBottom: rootStyle.getPropertyValue(
+                "--keyboard-button-bar-bottom",
+            ),
+            mainContentKeyboardAdjustment: rootStyle.getPropertyValue(
+                "--main-content-keyboard-adjustment",
+            ),
+            footerBottom: rootStyle.getPropertyValue("--footer-bottom"),
+        },
+        layout: {
+            html: readElementLayout("html"),
+            body: readElementLayout("body"),
+            app: readElementLayout("#app"),
+            main: readElementLayout("main"),
+            footerButtonBar: barLayout,
+            footerBar: readElementLayout(".footer-bar"),
+            reasonInput: readElementLayout(".reason-input-container"),
+            barGapToVisualViewportBottom:
+                barLayout === null
+                    ? null
+                    : visualViewportBottom - barLayout.rect.bottom,
+        },
+        focus: {
+            tagName: document.activeElement?.tagName ?? null,
+            id: document.activeElement?.id ?? null,
+            className:
+                document.activeElement instanceof HTMLElement
+                    ? document.activeElement.className
+                    : null,
+        },
+    });
+}
+
 /**
  * visualViewportの監視を開始
  * コンポーネントの$effect内で呼び出す
@@ -222,9 +434,24 @@ export function setupViewportListener(): (() => void) | undefined {
     }
 
     const isSafariViewportMode = isNonPwaIPhoneSafari();
-    let _rafId: number | null = null;
+    const virtualKeyboard = (
+        navigator as Navigator & { virtualKeyboard?: VirtualKeyboardDebugInfo }
+    ).virtualKeyboard;
+    const usesKeyboardOverlay =
+        isNonPwaAndroidChrome() &&
+        virtualKeyboard?.boundingRect !== undefined &&
+        typeof virtualKeyboard.addEventListener === "function" &&
+        typeof virtualKeyboard.removeEventListener === "function";
+    const previousOverlaysContent = virtualKeyboard?.overlaysContent;
 
-    function scheduleViewportSync() {
+    if (usesKeyboardOverlay && virtualKeyboard) {
+        virtualKeyboard.overlaysContent = true;
+    }
+
+    let _rafId: number | null = null;
+    let lastDebugContext: ViewportDebugContext | null = null;
+
+    function scheduleViewportSync(source: string) {
         // throttle via requestAnimationFrame to avoid jank on iOS/Android
         if (_rafId) cancelAnimationFrame(_rafId);
         _rafId = requestAnimationFrame(() => {
@@ -256,16 +483,27 @@ export function setupViewportListener(): (() => void) | undefined {
             );
 
             // キーボードが開いているかどうかを閾値で判定
-            const isKeyboardOpen = isSafariViewportMode
-                ? keyboardViewportReduction > KEYBOARD_THRESHOLD
-                : calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
-            const keyboardStoreHeight = isSafariViewportMode
-                ? keyboardViewportReduction
-                : calculatedKeyboardHeight;
+            const virtualKeyboardHeight = usesKeyboardOverlay
+                ? Math.max(0, virtualKeyboard?.boundingRect?.height ?? 0)
+                : 0;
+            const isKeyboardOpen = usesKeyboardOverlay
+                ? virtualKeyboardHeight > KEYBOARD_THRESHOLD
+                : isSafariViewportMode
+                    ? keyboardViewportReduction > KEYBOARD_THRESHOLD
+                    : calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
+            const keyboardStoreHeight = usesKeyboardOverlay
+                ? virtualKeyboardHeight
+                : isSafariViewportMode
+                    ? keyboardViewportReduction
+                    : calculatedKeyboardHeight;
 
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
             // 閾値を設けて、PWAモードでの小さな差分を無視する
-            bottomPosition = isKeyboardOpen ? calculatedKeyboardHeight : FOOTER_HEIGHT;
+            bottomPosition = isKeyboardOpen
+                ? usesKeyboardOverlay
+                    ? virtualKeyboardHeight
+                    : calculatedKeyboardHeight
+                : FOOTER_HEIGHT;
 
             // キーボード高さストアを更新（閾値以下は 0 として扱う）
             keyboardHeight = isKeyboardOpen ? keyboardStoreHeight : 0;
@@ -276,20 +514,74 @@ export function setupViewportListener(): (() => void) | undefined {
                 layoutViewportHeight: isSafariViewportMode
                     ? layoutViewportHeight
                     : undefined,
+                usesKeyboardOverlay,
             });
+
+            lastDebugContext = {
+                viewport,
+                isSafariViewportMode,
+                layoutViewportHeight,
+                viewportOffsetTop,
+                visibleBottom,
+                calculatedKeyboardHeight,
+                keyboardViewportReduction,
+                isKeyboardOpen,
+                keyboardStoreHeight,
+            };
+            logViewportDebugSnapshot(source, lastDebugContext);
         });
     }
 
-    const handleViewportResize = () => scheduleViewportSync();
-    const handleViewportScroll = () => scheduleViewportSync();
-    const handleWindowResize = () => scheduleViewportSync();
-    const handleWindowScroll = () => scheduleViewportSync();
+    const handleViewportResize = () => scheduleViewportSync("visualViewport.resize");
+    const handleViewportScroll = () => scheduleViewportSync("visualViewport.scroll");
+    const handleWindowResize = () => scheduleViewportSync("window.resize");
+    const handleWindowScroll = () => scheduleViewportSync("window.scroll");
+    const handleVirtualKeyboardGeometryChange = () =>
+        scheduleViewportSync("virtualKeyboard.geometrychange");
+    const handleLayoutTransition = (event: TransitionEvent) => {
+        if (!import.meta.env.DEV || event.propertyName !== "bottom" || !lastDebugContext) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const targetName = target.matches(".footer-button-bar")
+            ? "footer-button-bar"
+            : target.matches(".footer-bar")
+                ? "footer-bar"
+                : target.matches(".reason-input-container")
+                    ? "reason-input"
+                    : null;
+        if (!targetName) return;
+
+        logViewportDebugSnapshot(
+            `${targetName}.${event.type}`,
+            lastDebugContext,
+            {
+                type: event.type,
+                propertyName: event.propertyName,
+                elapsedTime: event.elapsedTime,
+            },
+        );
+    };
 
     // 初期値を設定
-    scheduleViewportSync();
+    scheduleViewportSync("initial");
 
     window.visualViewport.addEventListener("resize", handleViewportResize);
     window.visualViewport.addEventListener("scroll", handleViewportScroll);
+    if (usesKeyboardOverlay) {
+        virtualKeyboard?.addEventListener?.(
+            "geometrychange",
+            handleVirtualKeyboardGeometryChange,
+        );
+    }
+    if (import.meta.env.DEV) {
+        document.addEventListener("transitionrun", handleLayoutTransition, true);
+        document.addEventListener("transitioncancel", handleLayoutTransition, true);
+        document.addEventListener("transitionend", handleLayoutTransition, true);
+    }
 
     if (isSafariViewportMode) {
         window.addEventListener("resize", handleWindowResize);
@@ -300,6 +592,20 @@ export function setupViewportListener(): (() => void) | undefined {
         keyboardTouchScrollLock?.dispose();
         window.visualViewport?.removeEventListener("resize", handleViewportResize);
         window.visualViewport?.removeEventListener("scroll", handleViewportScroll);
+        if (usesKeyboardOverlay) {
+            virtualKeyboard?.removeEventListener?.(
+                "geometrychange",
+                handleVirtualKeyboardGeometryChange,
+            );
+            if (virtualKeyboard && previousOverlaysContent !== undefined) {
+                virtualKeyboard.overlaysContent = previousOverlaysContent;
+            }
+        }
+        if (import.meta.env.DEV) {
+            document.removeEventListener("transitionrun", handleLayoutTransition, true);
+            document.removeEventListener("transitioncancel", handleLayoutTransition, true);
+            document.removeEventListener("transitionend", handleLayoutTransition, true);
+        }
 
         if (isSafariViewportMode) {
             window.removeEventListener("resize", handleWindowResize);

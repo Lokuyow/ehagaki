@@ -43,3 +43,21 @@ export function isNonPwaIPhoneSafari(): boolean {
 
     return isIPhone && isWebKit && !isCriOS && !isFxiOS && !isEdgiOS && !isStandalone;
 }
+
+export function isNonPwaAndroidChrome(): boolean {
+    if (typeof window === "undefined" || typeof navigator === "undefined") {
+        return false;
+    }
+
+    const userAgent = navigator.userAgent;
+    const isAndroid = /Android/i.test(userAgent);
+    const isChrome = /Chrome\/[\d.]+/i.test(userAgent);
+    const isOtherChromiumBrowser =
+        /(?:EdgA|OPR|SamsungBrowser)\/[\d.]+/i.test(userAgent) ||
+        /; wv\)/i.test(userAgent);
+    const isStandalone =
+        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+    return isAndroid && isChrome && !isOtherChromiumBrowser && !isStandalone;
+}
