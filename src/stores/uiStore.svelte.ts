@@ -260,8 +260,6 @@ function logViewportDebugSnapshot(
         elapsedTime: number;
     },
 ): void {
-    if (!import.meta.env.DEV) return;
-
     const {
         viewport,
         isSafariViewportMode,
@@ -539,7 +537,7 @@ export function setupViewportListener(): (() => void) | undefined {
     const handleVirtualKeyboardGeometryChange = () =>
         scheduleViewportSync("virtualKeyboard.geometrychange");
     const handleLayoutTransition = (event: TransitionEvent) => {
-        if (!import.meta.env.DEV || event.propertyName !== "bottom" || !lastDebugContext) {
+        if (event.propertyName !== "bottom" || !lastDebugContext) {
             return;
         }
 
@@ -577,11 +575,9 @@ export function setupViewportListener(): (() => void) | undefined {
             handleVirtualKeyboardGeometryChange,
         );
     }
-    if (import.meta.env.DEV) {
-        document.addEventListener("transitionrun", handleLayoutTransition, true);
-        document.addEventListener("transitioncancel", handleLayoutTransition, true);
-        document.addEventListener("transitionend", handleLayoutTransition, true);
-    }
+    document.addEventListener("transitionrun", handleLayoutTransition, true);
+    document.addEventListener("transitioncancel", handleLayoutTransition, true);
+    document.addEventListener("transitionend", handleLayoutTransition, true);
 
     if (isSafariViewportMode) {
         window.addEventListener("resize", handleWindowResize);
@@ -601,11 +597,9 @@ export function setupViewportListener(): (() => void) | undefined {
                 virtualKeyboard.overlaysContent = previousOverlaysContent;
             }
         }
-        if (import.meta.env.DEV) {
-            document.removeEventListener("transitionrun", handleLayoutTransition, true);
-            document.removeEventListener("transitioncancel", handleLayoutTransition, true);
-            document.removeEventListener("transitionend", handleLayoutTransition, true);
-        }
+        document.removeEventListener("transitionrun", handleLayoutTransition, true);
+        document.removeEventListener("transitioncancel", handleLayoutTransition, true);
+        document.removeEventListener("transitionend", handleLayoutTransition, true);
 
         if (isSafariViewportMode) {
             window.removeEventListener("resize", handleWindowResize);
