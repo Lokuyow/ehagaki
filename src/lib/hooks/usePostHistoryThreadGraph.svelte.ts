@@ -254,6 +254,12 @@ function resolveDirectReplyFetchCompleteness(
 ): "complete" | "partial" {
     return status === "partial" ? "partial" : "complete";
 }
+
+function resolveEffectiveDirectReplyFetchedAt(
+    metadata: { completeness: "complete" | "partial"; fetchedAt: number } | null,
+): number | null {
+    return metadata?.completeness === "complete" ? metadata.fetchedAt : null;
+}
 const POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS = 5 * 60 * 1_000;
 let nextThreadGraphParentResolverScopeId = 0;
 
@@ -352,6 +358,7 @@ export function usePostHistoryThreadGraph({
     const replyBadgePreloadKeys = new Set<string>();
     const childReplyCountPrefetchKeys = new Set<string>();
     const childPrefetchReservationKeys = new Set<string>();
+    const childManualLoadIntentKeys = new Set<string>();
     let reactionSummaryByParentId =
         $state.raw<Record<string, PostHistoryReactionSummary>>({});
     let reactionRecordsByParentId =
@@ -1651,6 +1658,7 @@ export function usePostHistoryThreadGraph({
             cleanup: () => {
                 taskTracker.deleteChildrenFetchTask(key);
                 taskTracker.deleteChildRequestToken(key);
+                clearChildManualLoadIntent(post.eventId, nodeEventId);
             },
             onError: createChildrenRevalidateErrorHandler({
                 updateExpansion: (updater) => updateExpansion(post.eventId, nodeEventId, updater),
@@ -1709,12 +1717,15 @@ export function usePostHistoryThreadGraph({
                         fetchedAt: result.status === "partial" ? null : result.fetchedAt,
                     });
                 }
-                await directReplyFetchMetadataRepositoryImpl.save({
+                const effectiveMetadata = await directReplyFetchMetadataRepositoryImpl.save({
                     parentEventId: nodeEventId,
                     completeness: resolveDirectReplyFetchCompleteness(result.status),
                     fetchedAt: result.fetchedAt,
                     requestStartedAt,
                 });
+                const effectiveFetchedAt = resolveEffectiveDirectReplyFetchedAt(
+                    effectiveMetadata,
+                );
 
                 const nextRecords = await filterVisibleReplyRecords(
                     await directReplyRecordsAdapterImpl.getDirectReplyRecords(nodeEventId),
@@ -1736,7 +1747,7 @@ export function usePostHistoryThreadGraph({
                 await coordinateThreadGraphStatusStrategy({
                     status: childrenStatus,
                     strategies: createChildrenRevalidateStatusStrategies({
-                        fetchedAt: result.status === "partial" ? null : result.fetchedAt,
+                        fetchedAt: effectiveFetchedAt,
                         prefetchOnly: !!options.prefetchOnly,
                         updateExpansion: (updater) => {
                             updateExpansion(post.eventId, nodeEventId, updater);
@@ -1745,6 +1756,12 @@ export function usePostHistoryThreadGraph({
                             void prefetchChildReplyCounts(post, nodeEventId);
                         },
                     }),
+                });
+                markEmptyChildrenIncompleteIfNeeded({
+                    anchorEventId: post.eventId,
+                    nodeEventId,
+                    effectiveFetchedAt,
+                    replyCount: nextRecords.length,
                 });
             },
         });
@@ -1767,6 +1784,45 @@ export function usePostHistoryThreadGraph({
         );
     }
 
+    function markChildManualLoadIntent(anchorEventId: string, nodeEventId: string): void {
+        childManualLoadIntentKeys.add(buildAnchorNodeKey(anchorEventId, nodeEventId));
+    }
+
+    function clearChildManualLoadIntent(anchorEventId: string, nodeEventId: string): void {
+        childManualLoadIntentKeys.delete(buildAnchorNodeKey(anchorEventId, nodeEventId));
+    }
+
+    function hasChildManualLoadIntent(anchorEventId: string, nodeEventId: string): boolean {
+        return childManualLoadIntentKeys.has(buildAnchorNodeKey(anchorEventId, nodeEventId));
+    }
+
+    function clearChildManualLoadIntentsForNode(nodeEventId: string): void {
+        for (const key of childManualLoadIntentKeys) {
+            if (key.endsWith(`:${nodeEventId}`)) {
+                childManualLoadIntentKeys.delete(key);
+            }
+        }
+    }
+
+    function continueChildManualLoadAfterPrefetch(
+        post: PostHistoryRecord,
+        nodeEventId: string,
+    ): void {
+        if (!hasChildManualLoadIntent(post.eventId, nodeEventId)) {
+            return;
+        }
+        const requestKey = buildAnchorNodeKey(post.eventId, nodeEventId);
+        if (taskTracker.getChildRequestToken(requestKey) !== undefined) {
+            return;
+        }
+        const expansion = getExpansion(post.eventId, nodeEventId);
+        clearChildManualLoadIntent(post.eventId, nodeEventId);
+        if (!getShow() || !expansion.visibleChildren) {
+            return;
+        }
+        void loadChildrenForNode(post, nodeEventId, { force: true });
+    }
+
     function handleActiveChildRequest(
         post: PostHistoryRecord,
         nodeEventId: string,
@@ -1781,6 +1837,7 @@ export function usePostHistoryThreadGraph({
         }
 
         if (!prefetchOnly) {
+            markChildManualLoadIntent(post.eventId, nodeEventId);
             updateExpansion(post.eventId, nodeEventId, (state) => ({
                 ...state,
                 visibleChildren: true,
@@ -1839,7 +1896,7 @@ export function usePostHistoryThreadGraph({
                     void prefetchChildReplyCounts(post, nodeEventId);
                 }
                 if (shouldRunThreadGraphBackgroundRevalidate({
-                    hasVisibleData: hasReplies,
+                    hasVisibleData: true,
                     lastFetchedAt: currentExpansion.lastFetchedChildrenAt,
                     ttlMs: POST_HISTORY_THREAD_GRAPH_REVALIDATE_TTL_MS,
                 })) {
@@ -1952,17 +2009,31 @@ export function usePostHistoryThreadGraph({
                     remainingEventIds.push(eventId);
                 } else {
                     releaseChildPrefetch(post.eventId, eventId);
+                    if (!needsNetwork) {
+                        clearChildManualLoadIntent(post.eventId, eventId);
+                    } else {
+                        continueChildManualLoadAfterPrefetch(post, eventId);
+                    }
                 }
             } catch {
                 releaseChildPrefetch(post.eventId, eventId);
+                continueChildManualLoadAfterPrefetch(post, eventId);
             }
         }));
+        remainingEventIds.sort((left, right) =>
+            Number(hasChildManualLoadIntent(post.eventId, right))
+            - Number(hasChildManualLoadIntent(post.eventId, left)));
         remainingEventIds
             .splice(POST_HISTORY_CHILD_REPLY_PREFETCH_LIMIT)
-            .forEach((eventId) => releaseChildPrefetch(post.eventId, eventId));
+            .forEach((eventId) => {
+                releaseChildPrefetch(post.eventId, eventId);
+                continueChildManualLoadAfterPrefetch(post, eventId);
+            });
         if (!getShow() || remainingEventIds.length === 0) {
-            remainingEventIds.forEach((eventId) =>
-                releaseChildPrefetch(post.eventId, eventId));
+            remainingEventIds.forEach((eventId) => {
+                releaseChildPrefetch(post.eventId, eventId);
+                continueChildManualLoadAfterPrefetch(post, eventId);
+            });
             return;
         }
 
@@ -2042,6 +2113,26 @@ export function usePostHistoryThreadGraph({
         setReactionRecords(parentEventId, cachedRecords);
     }
 
+    function markEmptyChildrenIncompleteIfNeeded(input: {
+        anchorEventId: string;
+        nodeEventId: string;
+        effectiveFetchedAt: number | null;
+        replyCount: number;
+    }): boolean {
+        if (input.effectiveFetchedAt !== null || input.replyCount > 0) {
+            return false;
+        }
+        updateExpansion(input.anchorEventId, input.nodeEventId, (state) => ({
+            ...state,
+            loadedChildren: false,
+            loadingChildren: false,
+            revalidatingChildren: false,
+            childrenError: null,
+            lastFetchedChildrenAt: null,
+        }));
+        return true;
+    }
+
     async function preloadCachedDirectReplyStateForParent(input: {
         post: PostHistoryRecord;
         parentEventId: string;
@@ -2071,13 +2162,22 @@ export function usePostHistoryThreadGraph({
         if (!input.ensureActive() || (acceptedRecords.length === 0 && !metadata)) {
             return;
         }
+        if (
+            metadata?.completeness === "partial"
+            && markEmptyChildrenIncompleteIfNeeded({
+                anchorEventId: input.post.eventId,
+                nodeEventId: input.parentEventId,
+                effectiveFetchedAt: null,
+                replyCount: acceptedRecords.length,
+            })
+        ) {
+            return;
+        }
 
         const cachedFetchedAt = readFailed
             ? null
             : metadata
-                ? metadata.completeness === "complete"
-                    ? metadata.fetchedAt
-                    : null
+                ? resolveEffectiveDirectReplyFetchedAt(metadata)
                 : resolveCachedReplyFetchedAt(acceptedRecords);
         updateExpansion(input.post.eventId, input.parentEventId, (state) => ({
             ...buildChildrenLoadedExpansionState(state, {
@@ -2202,8 +2302,9 @@ export function usePostHistoryThreadGraph({
         const activeGraphRequestId = taskTracker.getRequestId();
         const requestStartedAt = Date.now();
         const requestTokens = new Map<string, number>();
-        let completedFetchAt: number | null = null;
+        const effectiveFetchedAtByParentId = new Map<string, number | null>();
         let batchCancelled = false;
+        let batchCompletedSuccessfully = false;
 
         const taskKey = `${post.eventId}:children-prefetch:${batchEventIds.join(",")}`;
         const isPrefetchBatchActive = (): boolean => {
@@ -2256,9 +2357,13 @@ export function usePostHistoryThreadGraph({
                 for (const eventId of batchEventIds) {
                     updateExpansion(post.eventId, eventId, (state) => ({
                         ...buildChildrenLoadedExpansionState(state, {
-                            loadedChildren,
+                            loadedChildren: loadedChildren && (
+                                (effectiveFetchedAtByParentId.get(eventId) ?? null) !== null
+                                || toVisibleChildEventIds(eventId).length > 0
+                            ),
                             revalidatingChildren: false,
-                            lastFetchedChildrenAt: completedFetchAt,
+                            lastFetchedChildrenAt:
+                                effectiveFetchedAtByParentId.get(eventId) ?? null,
                         }),
                     }));
                 }
@@ -2269,6 +2374,11 @@ export function usePostHistoryThreadGraph({
                     taskTracker.deleteChildRequestToken(key);
                 }
                 releaseChildPrefetch(post.eventId, eventId);
+                if (batchCompletedSuccessfully || batchCancelled) {
+                    clearChildManualLoadIntent(post.eventId, eventId);
+                } else {
+                    continueChildManualLoadAfterPrefetch(post, eventId);
+                }
             },
             cleanup: () => {
                 taskTracker.deleteChildrenFetchTask(taskKey);
@@ -2322,15 +2432,6 @@ export function usePostHistoryThreadGraph({
                     return;
                 }
                 assertPostHistoryReplyFetchCanApply(result.status);
-                completedFetchAt = result.status === "partial" ? null : result.fetchedAt;
-                for (const eventId of batchEventIds) {
-                    updateExpansion(post.eventId, eventId, (state) => ({
-                        ...buildChildrenLoadedExpansionState(state, {
-                            revalidatingChildren: false,
-                            lastFetchedChildrenAt: completedFetchAt,
-                        }),
-                    }));
-                }
 
                 const batchEventIdSet = new Set(batchEventIds);
                 const directReplyItems = result.events.filter((item) => {
@@ -2377,12 +2478,16 @@ export function usePostHistoryThreadGraph({
                     if (!ensureActive()) {
                         return;
                     }
-                    await directReplyFetchMetadataRepositoryImpl.save({
+                    const effectiveMetadata = await directReplyFetchMetadataRepositoryImpl.save({
                         parentEventId: eventId,
                         completeness: resolveDirectReplyFetchCompleteness(result.status),
                         fetchedAt: result.fetchedAt,
                         requestStartedAt,
                     });
+                    effectiveFetchedAtByParentId.set(
+                        eventId,
+                        resolveEffectiveDirectReplyFetchedAt(effectiveMetadata),
+                    );
 
                     const nextRecords = await filterVisibleReplyRecords(
                         await directReplyRecordsAdapterImpl.getDirectReplyRecords(eventId),
@@ -2398,6 +2503,7 @@ export function usePostHistoryThreadGraph({
                 if (!ensureActive()) {
                     return;
                 }
+                batchCompletedSuccessfully = true;
             },
         });
     }
@@ -2456,6 +2562,7 @@ export function usePostHistoryThreadGraph({
     }
 
     function hideChildrenForNode(anchorEventId: string, nodeEventId: string): void {
+        clearChildManualLoadIntent(anchorEventId, nodeEventId);
         updateExpansion(anchorEventId, nodeEventId, (state) => ({
             ...state,
             visibleChildren: false,
@@ -2602,6 +2709,7 @@ export function usePostHistoryThreadGraph({
             return;
         }
 
+        clearChildManualLoadIntentsForNode(input.eventId);
         hideEvent(input.authorPubkey, input.eventId);
         removeEventIdFromChildren(input.eventId);
         markParentDeletedForEvent(input.eventId, input.authorPubkey, { revealKnownParent: true });
@@ -2668,6 +2776,7 @@ export function usePostHistoryThreadGraph({
         taskTracker.cancelAndClearFetchTasks();
         taskTracker.clearChildRequestTokens();
         childPrefetchReservationKeys.clear();
+        childManualLoadIntentKeys.clear();
         if (ownsProfileSync) {
             profileSync.reset();
         }

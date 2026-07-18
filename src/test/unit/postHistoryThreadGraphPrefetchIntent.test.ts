@@ -89,13 +89,29 @@ function createGraph(
     cachedChildFetchedAt = Date.now(),
     childCacheProbe?: ReturnType<typeof createDeferred<PostHistoryChildInteractionRecord[]>>,
     eventKind: 1 | 42 = 1,
+    includeCachedAnchorReply = true,
+    additionalCachedChildCount = 0,
 ) {
     const post = createPost(eventKind);
     const childEvent = createReplyEvent(childId, anchorId, 110, eventKind);
     const grandchildEvent = createReplyEvent(grandchildId, childId, 120, eventKind);
-    const recordsByParent = new Map<string, PostHistoryChildInteractionRecord[]>([
-        [anchorId, [toRecord(childEvent, anchorId, cachedChildFetchedAt)]],
-    ]);
+    const extraChildEvents = Array.from(
+        { length: additionalCachedChildCount },
+        (_, index) => createReplyEvent(
+            (index + 16).toString(16).padStart(64, "0"),
+            anchorId,
+            90 + index,
+            eventKind,
+        ),
+    );
+    const recordsByParent = new Map<string, PostHistoryChildInteractionRecord[]>();
+    if (includeCachedAnchorReply) {
+        recordsByParent.set(anchorId, [
+            ...extraChildEvents.map((event) =>
+                toRecord(event, anchorId, cachedChildFetchedAt)),
+            toRecord(childEvent, anchorId, cachedChildFetchedAt),
+        ]);
+    }
     const metadataByParent = new Map<string, {
         parentEventId: string;
         completeness: "complete" | "partial";
@@ -240,6 +256,7 @@ function createGraph(
         getFetchMetadata,
         saveFetchMetadata,
         metadataByParent,
+        extraChildEventIds: extraChildEvents.map((event) => event.id),
     };
 }
 
@@ -396,7 +413,7 @@ describe("post history child prefetch reveal intent", () => {
         harness.dispose();
     });
 
-    it("cache probe失敗後は予約を解放し、手動操作で再取得できる", async () => {
+    it("cache probe失敗後も合流済みの手動取得を自動で継続する", async () => {
         const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
         const harness = createGraph(Date.now(), cacheProbe);
 
@@ -405,16 +422,81 @@ describe("post history child prefetch reveal intent", () => {
         await vi.waitFor(() => {
             expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
         });
-        cacheProbe.reject(new Error("cache probe failed"));
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
-
         harness.graph.toggleNodeChildren(harness.post, childId);
+        cacheProbe.reject(new Error("cache probe failed"));
+
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
         harness.resolvePrefetch();
+        await vi.waitFor(() => {
+            const childState = harness.graph.getAnchorState(harness.post).replyNodeStates[0];
+            expect(childState?.repliesActionState.visible).toBe(true);
+            expect(childState?.replyNodeStates[0]?.node.eventId).toBe(grandchildId);
+        });
         harness.dispose();
     });
 
+    it("cache probe失敗前に閉じた場合は手動取得を継続しない", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        cacheProbe.reject(new Error("cache probe failed"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(harness.fetchDirectReplies).not.toHaveBeenCalled();
+        harness.dispose();
+    });
+
+
+    it("prefetch上限13件目でも手動intentを優先して取得対象へ含める", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe, 1, true, 12);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        harness.graph.toggleNodeChildren(harness.post, childId);
+        cacheProbe.resolve([]);
+
+        await vi.waitFor(() => {
+            expect(harness.fetchDirectReplies.mock.calls.some((call) =>
+                call[1]?.parents?.some((parent) => parent.eventId === childId)))
+                .toBe(true);
+        });
+        const requestedChildIds = harness.fetchDirectReplies.mock.calls.flatMap((call) =>
+            call[1]?.parents?.map((parent) => parent.eventId) ?? []);
+        expect(requestedChildIds.filter((eventId) => eventId === childId)).toHaveLength(1);
+        harness.dispose();
+    });
+
+    it("prefetch上限13件目に手動intentがなければbackground取得しない", async () => {
+        const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
+        const harness = createGraph(Date.now(), cacheProbe, 1, true, 12);
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => {
+            expect(harness.getDirectReplyRecords).toHaveBeenCalledWith(childId);
+        });
+        cacheProbe.resolve([]);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(2));
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(3));
+
+        const requestedChildIds = harness.fetchDirectReplies.mock.calls.flatMap((call) =>
+            call[1]?.parents?.map((parent) => parent.eventId) ?? []);
+        expect(requestedChildIds).not.toContain(childId);
+        expect(new Set(requestedChildIds)).toEqual(new Set(harness.extraChildEventIds));
+        harness.dispose();
+    });
     it("reset中に完了したcache probeからREQを開始しない", async () => {
         const cacheProbe = createDeferred<PostHistoryChildInteractionRecord[]>();
         const harness = createGraph(Date.now(), cacheProbe);
@@ -455,7 +537,7 @@ describe("post history child prefetch reveal intent", () => {
     });
 
     it("0件のpartial結果も親metadataへ保存する", async () => {
-        const harness = createGraph(0);
+        const harness = createGraph(0, undefined, 1, false);
         await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
         harness.graph.toggleChildren(harness.post);
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -471,7 +553,7 @@ describe("post history child prefetch reveal intent", () => {
     });
 
     it("0件のsuccess結果をcompleteとして保存する", async () => {
-        const harness = createGraph(0);
+        const harness = createGraph(0, undefined, 1, false);
         await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
         harness.graph.toggleChildren(harness.post);
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -489,7 +571,7 @@ describe("post history child prefetch reveal intent", () => {
     it.each(["failed", "cancelled"] as const)(
         "%s結果では親metadataを更新しない",
         async (status) => {
-            const harness = createGraph(0);
+            const harness = createGraph(0, undefined, 1, false);
             await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
             harness.graph.toggleChildren(harness.post);
             await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -516,7 +598,7 @@ describe("post history child prefetch reveal intent", () => {
     });
 
     it("partial metadataはgraph再表示相当のreset後も再取得を許可する", async () => {
-        const harness = createGraph(0);
+        const harness = createGraph(0, undefined, 1, false);
         await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
         harness.graph.toggleChildren(harness.post);
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -531,7 +613,7 @@ describe("post history child prefetch reveal intent", () => {
     });
 
     it("complete metadataはgraph再表示相当のreset後にTTLを有効にする", async () => {
-        const harness = createGraph(0);
+        const harness = createGraph(0, undefined, 1, false);
         await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
         harness.graph.toggleChildren(harness.post);
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -547,7 +629,7 @@ describe("post history child prefetch reveal intent", () => {
     });
 
     it("kind 42 direct replyも同じparent completeness metadataを使用する", async () => {
-        const harness = createGraph(0, undefined, 42);
+        const harness = createGraph(0, undefined, 42, false);
         await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
         harness.graph.toggleChildren(harness.post);
         await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
@@ -562,6 +644,168 @@ describe("post history child prefetch reveal intent", () => {
         harness.dispose();
     });
 
+
+    it.each([1, 42] as const)(
+        "kind %iのpartial metadataだけを復元した場合も手動展開で再取得する",
+        async (eventKind) => {
+            const harness = createGraph(Date.now(), undefined, eventKind, false);
+            harness.metadataByParent.set(anchorId, {
+                parentEventId: anchorId,
+                completeness: "partial",
+                fetchedAt: Date.now(),
+                requestStartedAt: Date.now(),
+                updatedAt: Date.now(),
+                schemaVersion: 1,
+            });
+
+            await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+            harness.graph.toggleChildren(harness.post);
+
+            await vi.waitFor(() => {
+                expect(countFetchCallsForParent(harness, anchorId)).toBe(1);
+            });
+            harness.dispose();
+        },
+    );
+
+    it("complete metadataだけでもTTL切れなら再取得する", async () => {
+        const harness = createGraph(Date.now(), undefined, 1, false);
+        const staleFetchedAt = Date.now() - 10 * 60 * 1_000;
+        harness.metadataByParent.set(anchorId, {
+            parentEventId: anchorId,
+            completeness: "complete",
+            fetchedAt: staleFetchedAt,
+            requestStartedAt: staleFetchedAt,
+            updatedAt: staleFetchedAt,
+            schemaVersion: 1,
+        });
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+
+        await vi.waitFor(() => {
+            expect(countFetchCallsForParent(harness, anchorId)).toBe(1);
+        });
+        harness.dispose();
+    });
+
+    it("単独取得はCAS後のpartial metadataを画面freshnessへ反映する", async () => {
+        const harness = createGraph(Date.now(), undefined, 1, false);
+        harness.saveFetchMetadata.mockImplementation(async (input) => {
+            const metadata = {
+                ...input,
+                completeness: "partial" as const,
+                updatedAt: input.fetchedAt,
+                schemaVersion: 1,
+            };
+            harness.metadataByParent.set(input.parentEventId, metadata);
+            return metadata;
+        });
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(countFetchCallsForParent(harness, anchorId)).toBe(1));
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(harness.graph.getAnchorState(harness.post).repliesActionState.status)
+            .toBe("unloaded");
+        harness.dispose();
+    });
+
+    it("単独取得はCAS後のcomplete metadataをpartial結果より優先する", async () => {
+        const harness = createGraph(Date.now(), undefined, 1, false);
+        harness.saveFetchMetadata.mockImplementation(async (input) => {
+            const metadata = {
+                ...input,
+                completeness: "complete" as const,
+                updatedAt: input.fetchedAt,
+                schemaVersion: 1,
+            };
+            harness.metadataByParent.set(input.parentEventId, metadata);
+            return metadata;
+        });
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(countFetchCallsForParent(harness, anchorId)).toBe(1));
+        harness.resolvePrefetch({ status: "partial", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(harness.graph.getAnchorState(harness.post).repliesActionState.status)
+            .toBe("loaded");
+        expect(countFetchCallsForParent(harness, anchorId)).toBe(1);
+        harness.dispose();
+    });
+
+
+    it("metadata save失敗時は取得結果をfresh表示しない", async () => {
+        const harness = createGraph(Date.now(), undefined, 1, false);
+        harness.saveFetchMetadata.mockRejectedValue(new Error("metadata save failed"));
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(countFetchCallsForParent(harness, anchorId)).toBe(1));
+        harness.resolvePrefetch({ status: "success", events: [] });
+
+        await vi.waitFor(() => {
+            expect(harness.graph.getAnchorState(harness.post).repliesActionState.status)
+                .toBe("failed");
+        });
+        harness.dispose();
+    });
+    it("batch prefetchもCAS後のparent metadataを画面freshnessへ反映する", async () => {
+        const harness = createGraph();
+        harness.saveFetchMetadata.mockImplementation(async (input) => {
+            const metadata = {
+                ...input,
+                completeness: "partial" as const,
+                updatedAt: input.fetchedAt,
+                schemaVersion: 1,
+            };
+            harness.metadataByParent.set(input.parentEventId, metadata);
+            return metadata;
+        });
+        await startChildPrefetch(harness);
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const childState = harness.graph.getAnchorState(harness.post).replyNodeStates[0];
+        expect(childState?.repliesActionState.status).toBe("unloaded");
+        harness.dispose();
+    });
+    it("batch prefetchはparentごとのCAS結果を個別に画面freshnessへ反映する", async () => {
+        const harness = createGraph(Date.now(), undefined, 1, true, 1);
+        const completeParentId = harness.extraChildEventIds[0]!;
+        harness.saveFetchMetadata.mockImplementation(async (input) => {
+            const metadata = {
+                ...input,
+                completeness: input.parentEventId === completeParentId
+                    ? "complete" as const
+                    : "partial" as const,
+                updatedAt: input.fetchedAt,
+                schemaVersion: 1,
+            };
+            harness.metadataByParent.set(input.parentEventId, metadata);
+            return metadata;
+        });
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+        harness.graph.toggleChildren(harness.post);
+        await vi.waitFor(() => expect(harness.fetchDirectReplies).toHaveBeenCalledTimes(1));
+        harness.resolvePrefetch({ status: "success", events: [] });
+        await vi.waitFor(() => expect(harness.saveFetchMetadata).toHaveBeenCalledTimes(2));
+
+        const childStates = harness.graph.getAnchorState(harness.post).replyNodeStates;
+        expect(childStates.find((state) => state.node.eventId === completeParentId)
+            ?.repliesActionState.status).toBe("loaded");
+        expect(childStates.find((state) => state.node.eventId === childId)
+            ?.repliesActionState.status).toBe("unloaded");
+        harness.dispose();
+    });
     it("cancelled prefetch完了後は予約を解放して再度手動取得できる", async () => {
         const harness = createGraph();
         await startChildPrefetch(harness);

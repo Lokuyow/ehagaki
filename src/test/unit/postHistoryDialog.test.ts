@@ -2687,7 +2687,7 @@ describe('PostHistoryDialog', () => {
                     : params.eventId === replyBEventId
                         ? [{ parentEventId: replyBEventId, event: replyC.rawEvent, relayUrls: ['wss://relay.example.com/'] }]
                         : [],
-                fetchedAt: 1_700_000_030,
+                fetchedAt: Date.now(),
                 relayUrls: ['wss://relay.example.com/'],
             }),
             cancel: vi.fn(),
