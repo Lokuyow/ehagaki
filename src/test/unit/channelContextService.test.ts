@@ -363,6 +363,112 @@ describe("ChannelContextService", () => {
         );
     });
 
+    it("互換APIはroot取得失敗時の返却contextも外部hintを3件に制限する", async () => {
+        const hints = Array.from(
+            { length: 10 },
+            (_, index) => `wss://external-${index}.example.com`,
+        );
+        const rxNostr = createRxNostr((observer) => observer.complete());
+
+        const result = await service.resolveChannelContext({
+            eventId: channelId,
+            relayHints: hints,
+        }, rxNostr, null);
+
+        expect(result.relayHints).toEqual(
+            hints.slice(0, 3).map((relay) => `${relay}/`),
+        );
+        const rootRequestRelays = (rxNostr.use as any).mock.calls[0]?.[1]?.on.relays;
+        expect(rootRequestRelays.slice(0, 3)).toEqual(result.relayHints);
+        expect(rootRequestRelays).not.toContain(`${hints[3]}/`);
+    });
+
+    it("互換APIはroot-only時に検証済みroot取得元を外部hintより優先する", async () => {
+        const rootSource = "wss://verified-root.example.com";
+        const hints = Array.from(
+            { length: 10 },
+            (_, index) => `wss://external-${index}.example.com`,
+        );
+        const rxNostr = createRxNostr(
+            (observer) => {
+                observer.next({
+                    event: createEvent({ content: "{invalid-json" }),
+                    from: rootSource,
+                });
+                observer.complete();
+            },
+            (observer) => observer.complete(),
+        );
+
+        const result = await service.resolveChannelContext({
+            eventId: channelId,
+            relayHints: hints,
+        }, rxNostr, null);
+
+        expect(result.relayHints).toEqual([
+            `${rootSource}/`,
+            ...hints.slice(0, 3).map((relay) => `${relay}/`),
+        ]);
+    });
+
+    it("互換APIのresolved結果は3件の外部hintと検証済みsource relayだけをマージする", async () => {
+        const rootSource = "wss://verified-root.example.com";
+        const metadataSource = "wss://verified-metadata.example.com";
+        const hints = Array.from(
+            { length: 10 },
+            (_, index) => `wss://external-${index}.example.com`,
+        );
+        const metadataEvent = createEvent({
+            id: "c".repeat(64),
+            kind: 41,
+            created_at: 200,
+            tags: [["e", channelId]],
+            content: JSON.stringify({ name: "Resolved" }),
+        });
+        const rxNostr = createRxNostr(
+            (observer) => {
+                observer.next({ event: createEvent(), from: rootSource });
+                observer.complete();
+            },
+            (observer) => {
+                observer.next({ event: metadataEvent, from: metadataSource });
+                observer.complete();
+            },
+        );
+
+        const result = await service.resolveChannelContext({
+            eventId: channelId,
+            relayHints: hints,
+        }, rxNostr, null);
+
+        expect(result.relayHints).toEqual([
+            ...hints.slice(0, 3).map((relay) => `${relay}/`),
+            `${rootSource}/`,
+            `${metadataSource}/`,
+        ]);
+        expect(result.relayHints).not.toContain(`${hints[3]}/`);
+
+        const metadataResolution = await service.resolveChannelMetadata({
+            eventId: channelId,
+            relayHints: hints,
+        }, createRxNostr(
+            (observer) => {
+                observer.next({ event: createEvent(), from: rootSource });
+                observer.complete();
+            },
+            (observer) => {
+                observer.next({ event: metadataEvent, from: metadataSource });
+                observer.complete();
+            },
+        ), null);
+        expect(metadataResolution).toMatchObject({
+            status: "resolved",
+            metadata: {
+                verifiedSourceRelays: [`${rootSource}/`, `${metadataSource}/`],
+            },
+        });
+    });
+
     it("author または channel reference が異なる kind 41 は無視する", async () => {
         const invalidAuthor = createEvent({
             id: "c".repeat(64),

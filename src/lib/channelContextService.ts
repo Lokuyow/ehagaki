@@ -142,7 +142,19 @@ export class ChannelContextService {
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
     ): Promise<ChannelContextState> {
-        const resolution = await this.resolveChannelMetadata(channelContextQuery, rxNostr, relayConfig);
+        const sanitizedExternalHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+            channelContextQuery.relayHints,
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        );
+        const sanitizedQuery = {
+            ...channelContextQuery,
+            relayHints: sanitizedExternalHints,
+        };
+        const resolution = await this.resolveChannelMetadata(
+            sanitizedQuery,
+            rxNostr,
+            relayConfig,
+        );
         if (resolution.status === "resolved") {
             return toChannelContextState(resolution.metadata);
         }
@@ -152,7 +164,7 @@ export class ChannelContextService {
         return {
             eventId: channelContextQuery.eventId,
             relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
-                RelayConfigUtils.mergeRelayConfigs(channelContextQuery.relayHints, verifiedSourceRelays),
+                RelayConfigUtils.mergeRelayConfigs(verifiedSourceRelays, sanitizedExternalHints),
                 { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
             ),
             name: null,
