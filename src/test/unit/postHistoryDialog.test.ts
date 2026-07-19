@@ -968,7 +968,7 @@ describe('PostHistoryDialog', () => {
             about: input.about ?? null,
             picture: input.picture ?? null,
             relays: input.relays ?? [],
-            relayHints: input.relayHints ?? [],
+            relayHints: input.verifiedSourceRelays ?? [],
             creatorPubkey: input.creatorPubkey,
             createEventCreatedAt: input.createEventCreatedAt,
             metadataEventId: input.metadataEventId,
@@ -990,16 +990,22 @@ describe('PostHistoryDialog', () => {
             picture: null,
         });
         channelContextServiceMock.resolveChannelMetadata.mockResolvedValue({
-            channelEventId: 'channel-id',
-            relayHints: ['wss://channel.example.com/'],
-            channelRelays: ['wss://channel-write.example.com/'],
-            name: 'general',
-            about: null,
-            picture: null,
-            creatorPubkey: 'c'.repeat(64),
-            createEventCreatedAt: 100,
-            metadataEventId: 'm'.repeat(64),
-            metadataCreatedAt: 200,
+            status: 'resolved',
+            quality: 'verified-metadata',
+            metadataLookup: 'complete',
+            metadata: {
+                channelEventId: 'channel-id',
+                relayHints: ['wss://channel.example.com/'],
+                channelRelays: ['wss://channel-write.example.com/'],
+                name: 'general',
+                about: null,
+                picture: null,
+                creatorPubkey: 'c'.repeat(64),
+                createEventCreatedAt: 100,
+                metadataEventId: 'm'.repeat(64),
+                metadataCreatedAt: 200,
+                verifiedSourceRelays: ['wss://channel.example.com/'],
+            },
         });
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
         customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(true);

@@ -311,6 +311,46 @@ export interface ResolvedChannelMetadata {
     metadataCreatedAt: number | null;
 }
 
+export type ChannelMetadataLookupStatus = "complete" | "incomplete";
+
+export interface VerifiedChannelMetadata extends ResolvedChannelMetadata {
+    creatorPubkey: string;
+    createEventCreatedAt: number;
+    verifiedSourceRelays: string[];
+}
+
+export type ChannelNetworkFailureReason =
+    | "root-not-found"
+    | "wrong-kind"
+    | "timeout"
+    | "request-error";
+
+export type ChannelNetworkResolution =
+    | {
+        status: "resolved";
+        quality: "verified-metadata";
+        metadataLookup: ChannelMetadataLookupStatus;
+        metadata: VerifiedChannelMetadata;
+    }
+    | {
+        status: "root-only";
+        quality: "verified-root-only";
+        reason: "invalid-root-content" | "no-valid-metadata";
+        metadataLookup: ChannelMetadataLookupStatus;
+        channelEventId: string;
+        creatorPubkey: string;
+        createEventCreatedAt: number;
+        verifiedSourceRelays: string[];
+    }
+    | {
+        status: "failed";
+        reason: ChannelNetworkFailureReason;
+        cause?: unknown;
+    }
+    | {
+        status: "aborted";
+    };
+
 export interface NostrEvent {
     id: string;
     pubkey: string;

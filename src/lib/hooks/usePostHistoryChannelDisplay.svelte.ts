@@ -189,7 +189,7 @@ export function usePostHistoryChannelDisplay({
                     );
 
                     try {
-                        const resolvedMetadata =
+                        const resolution =
                             await channelContextService.resolveChannelMetadata(
                                 {
                                     eventId: channelEventId,
@@ -202,75 +202,62 @@ export function usePostHistoryChannelDisplay({
 
                         if (
                             abortController.signal.aborted ||
-                            currentChannelAbortController !== abortController
+                            currentChannelAbortController !== abortController ||
+                            resolution.status === "aborted"
                         ) {
                             return null;
                         }
 
-                        const savedRecord =
-                            await channelMetadataRepository.upsertResolvedChannel(
-                                {
-                                    channelEventId:
-                                        resolvedMetadata.channelEventId,
-                                    name: resolvedMetadata.name,
-                                    about: resolvedMetadata.about,
-                                    picture: resolvedMetadata.picture,
-                                    relays: resolvedMetadata.channelRelays,
-                                    relayHints: resolvedMetadata.relayHints,
-                                    ...(resolvedMetadata.creatorPubkey
-                                        ? {
-                                            creatorPubkey:
-                                                resolvedMetadata.creatorPubkey,
-                                        }
-                                        : {}),
-                                    ...(typeof resolvedMetadata.createEventCreatedAt ===
-                                        "number"
-                                        ? {
-                                            createEventCreatedAt:
-                                                resolvedMetadata.createEventCreatedAt,
-                                        }
-                                        : {}),
-                                    ...(resolvedMetadata.metadataEventId
-                                        ? {
-                                            metadataEventId:
-                                                resolvedMetadata.metadataEventId,
-                                        }
-                                        : {}),
-                                    ...(typeof resolvedMetadata.metadataCreatedAt ===
-                                        "number"
-                                        ? {
-                                            metadataCreatedAt:
-                                                resolvedMetadata.metadataCreatedAt,
-                                        }
-                                        : {}),
-                                },
-                            );
+                        if (resolution.status === "failed") {
+                            await channelMetadataRepository.markFetchFailed(channelEventId);
+                            return {
+                                channelEventId,
+                                status: cachedRecord?.name ? "resolved" : "failed",
+                                name: cachedRecord?.name ?? null,
+                            } satisfies { channelEventId: string } & ChannelDisplayState;
+                        }
+
+                        const savedRecord = resolution.status === "resolved"
+                            ? await channelMetadataRepository.upsertResolvedChannel({
+                                channelEventId: resolution.metadata.channelEventId,
+                                quality: "verified-metadata",
+                                metadataLookup: resolution.metadataLookup,
+                                name: resolution.metadata.name,
+                                about: resolution.metadata.about,
+                                picture: resolution.metadata.picture,
+                                relays: resolution.metadata.channelRelays,
+                                verifiedSourceRelays: resolution.metadata.verifiedSourceRelays,
+                                creatorPubkey: resolution.metadata.creatorPubkey,
+                                createEventCreatedAt: resolution.metadata.createEventCreatedAt,
+                                ...(resolution.metadata.metadataEventId
+                                    ? { metadataEventId: resolution.metadata.metadataEventId }
+                                    : {}),
+                                ...(typeof resolution.metadata.metadataCreatedAt === "number"
+                                    ? { metadataCreatedAt: resolution.metadata.metadataCreatedAt }
+                                    : {}),
+                            })
+                            : await channelMetadataRepository.upsertResolvedChannel({
+                                channelEventId: resolution.channelEventId,
+                                quality: "verified-root-only",
+                                metadataLookup: resolution.metadataLookup,
+                                verifiedSourceRelays: resolution.verifiedSourceRelays,
+                                creatorPubkey: resolution.creatorPubkey,
+                                createEventCreatedAt: resolution.createEventCreatedAt,
+                            });
 
                         return {
                             channelEventId,
                             status: savedRecord.name ? "resolved" : "failed",
                             name: savedRecord.name,
-                        } satisfies {
-                            channelEventId: string;
-                        } & ChannelDisplayState;
+                        } satisfies { channelEventId: string } & ChannelDisplayState;
                     } catch {
-                        if (abortController.signal.aborted) {
-                            return null;
-                        }
-
-                        await channelMetadataRepository.markFetchFailed(
-                            channelEventId,
-                            Date.now(),
-                            relayHints,
-                        );
-
+                        if (abortController.signal.aborted) return null;
+                        await channelMetadataRepository.markFetchFailed(channelEventId);
                         return {
                             channelEventId,
                             status: cachedRecord?.name ? "resolved" : "failed",
                             name: cachedRecord?.name ?? null,
-                        } satisfies {
-                            channelEventId: string;
-                        } & ChannelDisplayState;
+                        } satisfies { channelEventId: string } & ChannelDisplayState;
                     }
                 }),
             );
@@ -307,7 +294,12 @@ export function usePostHistoryChannelDisplay({
                         ]),
                 ),
             };
-        })();
+        })().catch((error) => {
+            if (requestId === channelResolutionRequestId) {
+                clearCurrentChannelResolution();
+            }
+            console.error("チャンネル表示のバックグラウンド解決に失敗しました:", error);
+        });
     });
 
     onDestroy(() => {

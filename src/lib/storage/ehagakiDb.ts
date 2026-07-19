@@ -243,6 +243,11 @@ export interface ChannelMetadataRecord {
     metadataCreatedAt?: number;
     fetchedAt?: number;
     lastFetchFailedAt?: number;
+    resolutionQuality?: "legacy-seed" | "verified-root-only" | "verified-metadata";
+    verifiedRootAt?: number;
+    verifiedMetadataAt?: number;
+    lastResolutionAttemptAt?: number;
+    lastResolutionAttemptStatus?: "complete" | "incomplete" | "failed";
     updatedAt: number;
     schemaVersion: number;
 }
