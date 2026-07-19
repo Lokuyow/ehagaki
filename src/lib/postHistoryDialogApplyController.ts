@@ -1,9 +1,10 @@
 import type { PostHistoryRecord } from './storage/ehagakiDb';
 import type {
-    ApplyChannelContextQueryParams,
     ApplyReplyQuoteQueryParams,
     HydrateReplyQuoteReferencesParams,
 } from './bootstrap/externalInputBootstrap';
+import type { PostHistoryChannelContextApplyHandle } from './postHistoryChannelContextApply';
+import type { ChannelContextQueryTarget } from './types';
 import {
     buildPostHistoryReferenceTarget,
     buildPostHistoryReplyChannelContextQuery,
@@ -11,24 +12,20 @@ import {
 } from './postHistoryReplyUtils';
 
 export interface PostHistoryDialogApplyControllerDependencies {
-    applyChannelContextQuery(
-        params: ApplyChannelContextQueryParams,
-    ): Promise<void>;
+    startChannelContextQuery(
+        channelContextQuery: ChannelContextQueryTarget,
+    ): PostHistoryChannelContextApplyHandle;
     applyReplyQuoteQuery(params: ApplyReplyQuoteQueryParams): Promise<void>;
     hydrateReplyQuoteReferences(
         params: HydrateReplyQuoteReferencesParams,
     ): Promise<void>;
-    getChannelContextApplyParams(): Pick<
-        ApplyChannelContextQueryParams,
-        'rxNostr' | 'relayConfig' | 'setChannelContext'
-    >;
-      getReplyQuoteApplyParams(): Pick<
-          ApplyReplyQuoteQueryParams,
-          | 'rxNostr'
+    getReplyQuoteApplyParams(): Pick<
+        ApplyReplyQuoteQueryParams,
+        | 'rxNostr'
         | 'relayConfig'
         | 'setReplyQuote'
         | 'updateReferencedEvent'
-          | 'setReplyQuoteError'
+        | 'setReplyQuoteError'
     >;
     clearChannelContext(): void;
     hasReplyOrQuotes(): boolean;
@@ -51,16 +48,16 @@ export function createPostHistoryDialogApplyController(
     deps: PostHistoryDialogApplyControllerDependencies,
 ): PostHistoryDialogApplyController {
     const logger = deps.logger ?? FALLBACK_LOGGER;
+    let currentChannelApplyHandle: PostHistoryChannelContextApplyHandle | null = null;
 
-    async function applyChannelContext(post: PostHistoryRecord): Promise<boolean> {
+    function applyChannelContext(post: PostHistoryRecord): boolean {
+        currentChannelApplyHandle?.release();
+        currentChannelApplyHandle = null;
         const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
 
         if (channelContextQuery) {
             try {
-                await deps.applyChannelContextQuery({
-                    channelContextQuery,
-                    ...deps.getChannelContextApplyParams(),
-                });
+                currentChannelApplyHandle = deps.startChannelContextQuery(channelContextQuery);
                 return true;
             } catch (error) {
                 logger.error('投稿履歴からのチャンネル適用に失敗:', error);
@@ -76,28 +73,22 @@ export function createPostHistoryDialogApplyController(
         const preloadedEvents = buildPostHistoryReplySeedEvents(post);
         const referenceTarget = buildPostHistoryReferenceTarget(post);
 
-        if (!await applyChannelContext(post)) {
+        if (!applyChannelContext(post)) {
             return false;
         }
 
-        try {
-            await deps.applyReplyQuoteQuery({
-                replyQuoteQuery: {
-                    reply: {
-                        ...referenceTarget,
-                    },
-                    quotes: [],
+        void deps.applyReplyQuoteQuery({
+            replyQuoteQuery: {
+                reply: {
+                    ...referenceTarget,
                 },
-                ...deps.getReplyQuoteApplyParams(),
-                ...(preloadedEvents ? { preloadedEvents } : {}),
-            });
-        } catch (error) {
-            logger.error('投稿履歴からのリプライ適用に失敗:', error);
-            if (post.kind === 42) {
-                deps.clearChannelContext();
-            }
-            return false;
-        }
+                quotes: [],
+            },
+            ...deps.getReplyQuoteApplyParams(),
+            ...(preloadedEvents ? { preloadedEvents } : {}),
+        }).catch((error) => {
+            logger.error('投稿履歴からのリプライhydrateに失敗:', error);
+        });
 
         deps.focusEditor();
         return true;

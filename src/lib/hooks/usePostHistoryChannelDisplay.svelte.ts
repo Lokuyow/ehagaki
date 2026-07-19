@@ -1,14 +1,16 @@
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { RxNostr } from "rx-nostr";
-import { ChannelContextService } from "../channelContextService";
+import {
+    channelContextCoordinator,
+    type ChannelContextCoordinatorHandle,
+} from "../channelContextCoordinator";
+import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "../channelContextConstants";
+import { RelayConfigUtils } from "../relayConfigUtils";
 import {
     buildChannelRelayHints,
     toChannelDisplayState,
     type ChannelDisplayState,
 } from "../postHistoryDialogUtils";
-import {
-    channelMetadataRepository,
-} from "../storage/channelMetadataRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 
@@ -27,26 +29,18 @@ export function usePostHistoryChannelDisplay({
     getRelayConfig,
     getIsSearchMode,
 }: UsePostHistoryChannelDisplayParams) {
-    const channelContextService = new ChannelContextService();
-
     let channelDisplayByEventId = $state<Record<string, ChannelDisplayState>>(
         {},
     );
     let channelResolutionRequestId = 0;
-    let currentChannelAbortController: AbortController | null = null;
-    let currentChannelRequestIds: string[] = [];
-    const pendingChannelEventIds = new Set<string>();
+    let currentHandles: ChannelContextCoordinatorHandle[] = [];
 
     function clearCurrentChannelResolution(): void {
-        currentChannelRequestIds.forEach((channelEventId) => {
-            pendingChannelEventIds.delete(channelEventId);
-        });
-        currentChannelRequestIds = [];
-        currentChannelAbortController = null;
+        currentHandles = [];
     }
 
     function cancelCurrentChannelResolution(): void {
-        currentChannelAbortController?.abort();
+        currentHandles.forEach((handle) => handle.release());
         clearCurrentChannelResolution();
     }
 
@@ -125,181 +119,66 @@ export function usePostHistoryChannelDisplay({
         }
 
         const requestId = ++channelResolutionRequestId;
-        void (async () => {
-            const cachedRecords =
-                await channelMetadataRepository.getMany(channelEventIds);
-
-            if (!getShow() || requestId !== channelResolutionRequestId) {
-                return;
-            }
-
-            const cachedById = new Map(
-                cachedRecords.map((record) => [record.channelEventId, record]),
+        const rxNostr = getIsSearchMode() ? undefined : getRxNostr();
+        const handles = channelEventIds.map((channelEventId) => {
+            const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+                channelPosts
+                    .filter((post) => post.channelEventId === channelEventId)
+                    .flatMap((post) => buildChannelRelayHints(post, null)),
+                { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
             );
-
-            channelDisplayByEventId = {
-                ...channelDisplayByEventId,
-                ...Object.fromEntries(
-                    channelEventIds.map((channelEventId) => {
-                        const cachedRecord = cachedById.get(channelEventId) ?? null;
-                        return [
-                            channelEventId,
-                            toChannelDisplayState(
-                                cachedRecord,
-                                !!getRxNostr() && !getIsSearchMode(),
-                            ) satisfies ChannelDisplayState,
-                        ];
-                    }),
-                ),
-            };
-
-            const rxNostr = getRxNostr();
-            if (!rxNostr || getIsSearchMode()) {
-                return;
-            }
-
-            const refreshTargets = channelEventIds.filter((channelEventId) => {
-                const cachedRecord = cachedById.get(channelEventId) ?? null;
-                return (
-                    channelMetadataRepository.shouldRefresh(cachedRecord) &&
-                    !pendingChannelEventIds.has(channelEventId)
-                );
-            });
-
-            if (refreshTargets.length === 0) {
-                return;
-            }
-
-            const abortController = new AbortController();
-            currentChannelAbortController = abortController;
-            currentChannelRequestIds = [...refreshTargets];
-            refreshTargets.forEach((channelEventId) => {
-                pendingChannelEventIds.add(channelEventId);
-            });
-
-            const resolvedChannels = await Promise.all(
-                refreshTargets.map(async (channelEventId) => {
-                    const sourcePost = channelPosts.find(
-                        (post) => post.channelEventId === channelEventId,
-                    );
-                    const cachedRecord = cachedById.get(channelEventId) ?? null;
-                    const relayHints = buildChannelRelayHints(
-                        sourcePost,
-                        cachedRecord,
-                    );
-
-                    try {
-                        const resolution =
-                            await channelContextService.resolveChannelMetadataWithInternalHints(
-                                {
-                                    eventId: channelEventId,
-                                    relayHints,
-                                },
-                                rxNostr,
-                                getRelayConfig(),
-                                { signal: abortController.signal },
-                            );
-
-                        if (
-                            abortController.signal.aborted ||
-                            currentChannelAbortController !== abortController ||
-                            resolution.status === "aborted"
-                        ) {
-                            return null;
-                        }
-
-                        if (resolution.status === "failed") {
-                            await channelMetadataRepository.markFetchFailed(channelEventId);
-                            return {
-                                channelEventId,
-                                status: cachedRecord?.name ? "resolved" : "failed",
-                                name: cachedRecord?.name ?? null,
-                            } satisfies { channelEventId: string } & ChannelDisplayState;
-                        }
-
-                        const savedRecord = resolution.status === "resolved"
-                            ? await channelMetadataRepository.upsertResolvedChannel({
-                                channelEventId: resolution.metadata.channelEventId,
-                                quality: "verified-metadata",
-                                metadataLookup: resolution.metadataLookup,
-                                name: resolution.metadata.name,
-                                about: resolution.metadata.about,
-                                picture: resolution.metadata.picture,
-                                relays: resolution.metadata.channelRelays,
-                                verifiedSourceRelays: resolution.metadata.verifiedSourceRelays,
-                                creatorPubkey: resolution.metadata.creatorPubkey,
-                                createEventCreatedAt: resolution.metadata.createEventCreatedAt,
-                                ...(resolution.metadata.metadataEventId
-                                    ? { metadataEventId: resolution.metadata.metadataEventId }
-                                    : {}),
-                                ...(typeof resolution.metadata.metadataCreatedAt === "number"
-                                    ? { metadataCreatedAt: resolution.metadata.metadataCreatedAt }
-                                    : {}),
-                            })
-                            : await channelMetadataRepository.upsertResolvedChannel({
-                                channelEventId: resolution.channelEventId,
-                                quality: "verified-root-only",
-                                metadataLookup: resolution.metadataLookup,
-                                verifiedSourceRelays: resolution.verifiedSourceRelays,
-                                creatorPubkey: resolution.creatorPubkey,
-                                createEventCreatedAt: resolution.createEventCreatedAt,
-                            });
-
-                        return {
-                            channelEventId,
-                            status: savedRecord.name ? "resolved" : "failed",
-                            name: savedRecord.name,
-                        } satisfies { channelEventId: string } & ChannelDisplayState;
-                    } catch {
-                        if (abortController.signal.aborted) return null;
-                        await channelMetadataRepository.markFetchFailed(channelEventId);
-                        return {
-                            channelEventId,
-                            status: cachedRecord?.name ? "resolved" : "failed",
-                            name: cachedRecord?.name ?? null,
-                        } satisfies { channelEventId: string } & ChannelDisplayState;
-                    }
-                }),
+            return channelContextCoordinator.resolveInternal(
+                { eventId: channelEventId, relayHints },
+                rxNostr,
+                getRelayConfig(),
             );
-
-            if (
-                !getShow() ||
-                requestId !== channelResolutionRequestId ||
-                currentChannelAbortController !== abortController ||
-                abortController.signal.aborted
-            ) {
-                return;
-            }
-
-            clearCurrentChannelResolution();
-            channelDisplayByEventId = {
-                ...channelDisplayByEventId,
-                ...Object.fromEntries(
-                    resolvedChannels
-                        .filter(
-                            (
-                                result,
-                            ): result is {
-                                channelEventId: string;
-                                status: "resolved" | "failed";
-                                name: string | null;
-                            } => result !== null,
-                        )
-                        .map((result) => [
-                            result.channelEventId,
-                            {
-                                status: result.status,
-                                name: result.name,
-                            } satisfies ChannelDisplayState,
-                        ]),
-                ),
-            };
-        })().catch((error) => {
-            if (requestId === channelResolutionRequestId) {
-                clearCurrentChannelResolution();
-            }
-            console.error("チャンネル表示のバックグラウンド解決に失敗しました:", error);
         });
+        currentHandles = handles;
+
+        channelDisplayByEventId = {
+            ...untrack(() => channelDisplayByEventId),
+            ...Object.fromEntries(channelEventIds.map((channelEventId) => [
+                channelEventId,
+                { status: "loading", name: null } satisfies ChannelDisplayState,
+            ])),
+        };
+
+        void Promise.all(handles.map((handle) => handle.cacheReady))
+            .then((snapshots) => {
+                if (!getShow() || requestId !== channelResolutionRequestId) return;
+                channelDisplayByEventId = {
+                    ...channelDisplayByEventId,
+                    ...Object.fromEntries(snapshots.map((snapshot) => [
+                        snapshot.context.eventId,
+                        toChannelDisplayState(snapshot.cache, !!rxNostr),
+                    ])),
+                };
+            })
+            .catch((error) => {
+                console.error("チャンネル表示のキャッシュ解決に失敗しました:", error);
+            });
+
+        void Promise.all(handles.map((handle) => handle.refresh))
+            .then((results) => {
+                if (!getShow() || requestId !== channelResolutionRequestId) return;
+                clearCurrentChannelResolution();
+                channelDisplayByEventId = {
+                    ...channelDisplayByEventId,
+                    ...Object.fromEntries(results.map((result) => [
+                        result.snapshot.context.eventId,
+                        {
+                            status: result.snapshot.context.name ? "resolved" : "failed",
+                            name: result.snapshot.context.name,
+                        } satisfies ChannelDisplayState,
+                    ])),
+                };
+            })
+            .catch((error) => {
+                if (requestId === channelResolutionRequestId) {
+                    clearCurrentChannelResolution();
+                }
+                console.error("チャンネル表示のバックグラウンド解決に失敗しました:", error);
+            });
     });
 
     onDestroy(() => {

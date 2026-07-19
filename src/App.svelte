@@ -106,6 +106,7 @@
     restoreChannelContext,
     setChannelContext,
   } from "./stores/channelContextStore.svelte";
+  import { startPostHistoryChannelContextApply } from "./lib/postHistoryChannelContextApply";
   import { relayConfigStore } from "./stores/relayStore.svelte";
   import {
     resolveInitialNip46ConnectionRelayCandidates,
@@ -330,10 +331,16 @@
   });
   const postHistoryDialogApplyController =
     createPostHistoryDialogApplyController({
-      applyChannelContextQuery,
+      startChannelContextQuery: (channelContextQuery) =>
+        startPostHistoryChannelContextApply({
+          channelContextQuery,
+          rxNostr,
+          relayConfig: relayConfigStore.value,
+          getCurrentChannelContext: () => channelContextState.value,
+          setChannelContext,
+        }),
       applyReplyQuoteQuery,
       hydrateReplyQuoteReferences,
-      getChannelContextApplyParams: () => getChannelContextApplyParams(),
       getReplyQuoteApplyParams: () => getReplyQuoteApplyParams(),
       clearChannelContext,
       hasReplyOrQuotes: () =>

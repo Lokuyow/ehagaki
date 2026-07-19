@@ -9,6 +9,10 @@ import {
     isPostHistoryRawEventConsistent,
 } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import {
+    CHANNEL_ADDITIONAL_WRITE_RELAY_LIMIT,
+    CHANNEL_TEMPORARY_READ_RELAY_LIMIT,
+} from "./channelContextConstants";
 
 export function buildPostHistoryReplySeedEvents(
     post: PostHistoryRecord,
@@ -54,13 +58,15 @@ export function buildPostHistoryReplyChannelContextQuery(
         [
             ...(derivedReference.channelRelayHints ?? []),
             ...(post.channelRelayHints ?? []),
+            ...(post.fetchedRelays ?? []),
             ...post.relayHints,
             ...post.acceptedRelays,
         ],
-        { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
     );
     const channelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
         post.acceptedRelays,
+        { limit: CHANNEL_ADDITIONAL_WRITE_RELAY_LIMIT },
     );
 
     return {

@@ -154,6 +154,7 @@ const channelContextServiceMock = vi.hoisted(() => ({
 }));
 
 const channelMetadataRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
     getMany: vi.fn(),
     upsertResolvedChannel: vi.fn(),
     shouldRefresh: vi.fn(),
@@ -473,6 +474,7 @@ describe('PostHistoryDialog', () => {
             deletionEventId: 'delete-event-id',
             deletedAt: 1234,
         });
+        channelMetadataRepositoryMock.get.mockResolvedValue(null);
         channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
         channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
             channelEventId: input.channelEventId,
@@ -536,7 +538,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[channel-cache-hit] channelMetadata cache 済みなら service を呼ばず channel 名を表示する', async () => {
-        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+        channelMetadataRepositoryMock.get.mockResolvedValue(
             {
                 channelEventId: 'channel-id',
                 name: 'cached-general',
@@ -550,7 +552,7 @@ describe('PostHistoryDialog', () => {
                 metadataCreatedAt: 200,
                 fetchedAt: 1000,
             },
-        ]);
+        );
         channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(false);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
@@ -574,7 +576,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(channelMetadataRepositoryMock.getMany).toHaveBeenCalledWith(['channel-id']);
+            expect(channelMetadataRepositoryMock.get).toHaveBeenCalledWith('channel-id');
             expect(channelContextServiceMock.resolveChannelMetadataWithInternalHints).not.toHaveBeenCalled();
             expect(screen.getByText('cached-general')).toBeTruthy();
         });

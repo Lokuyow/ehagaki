@@ -6,6 +6,7 @@ import {
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    buildChannelRelayHints,
     formatPostedAtExact,
     formatPostHistoryMonthLabel,
     resolvePostHistoryMediaDimensionHints,
@@ -15,6 +16,28 @@ import {
 } from "../../lib/postHistoryDialogUtils";
 
 describe("postHistoryDialogUtils", () => {
+    it("channel表示のread候補を取得元、履歴hint、accepted fallback、DBの順で組み立てる", () => {
+        const post = {
+            channelRelayHints: ["wss://root.example.com/"],
+            fetchedRelays: ["wss://fetched.example.com/"],
+            relayHints: ["wss://history.example.com/"],
+            acceptedRelays: ["wss://accepted.example.com/"],
+        };
+        const cache = {
+            relayHints: ["wss://verified-source.example.com/"],
+            relays: ["wss://verified-write.example.com/"],
+        };
+
+        expect(buildChannelRelayHints(post as never, cache as never)).toEqual([
+            "wss://root.example.com/",
+            "wss://fetched.example.com/",
+            "wss://history.example.com/",
+            "wss://accepted.example.com/",
+            "wss://verified-source.example.com/",
+            "wss://verified-write.example.com/",
+        ]);
+    });
+
     it("buildPreview trims content and preserves a blank placeholder", () => {
         expect(buildPreview("  hello\n")).toBe("hello");
         expect(buildPreview("   ")).toBe(" ");

@@ -154,6 +154,7 @@ const channelContextServiceMock = vi.hoisted(() => ({
 }));
 
 const channelMetadataRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
     getMany: vi.fn(),
     upsertResolvedChannel: vi.fn(),
     shouldRefresh: vi.fn(),
@@ -473,6 +474,7 @@ describe('PostHistoryDialog', () => {
             deletionEventId: 'delete-event-id',
             deletedAt: 1234,
         });
+        channelMetadataRepositoryMock.get.mockResolvedValue(null);
         channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
         channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
             channelEventId: input.channelEventId,
@@ -635,7 +637,7 @@ describe('PostHistoryDialog', () => {
             total: 1,
             hasNext: false,
         });
-        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+        channelMetadataRepositoryMock.get.mockResolvedValue(
             {
                 channelEventId: 'channel-id',
                 name: 'cached-general',
@@ -649,7 +651,7 @@ describe('PostHistoryDialog', () => {
                 metadataCreatedAt: 200,
                 fetchedAt: 1000,
             },
-        ]);
+        );
 
         render(PostHistoryDialog, {
             props: {

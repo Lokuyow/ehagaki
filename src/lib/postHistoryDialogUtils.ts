@@ -14,6 +14,7 @@ import type {
     ChannelMetadataCache,
 } from "./storage/channelMetadataRepository";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
+import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -148,13 +149,13 @@ export function buildChannelRelayHints(
     return RelayConfigUtils.sanitizeExternalRelayUrls(
         [
             ...(sourcePost?.channelRelayHints ?? []),
+            ...(sourcePost?.fetchedRelays ?? []),
+            ...(sourcePost?.relayHints ?? []),
+            ...(sourcePost?.acceptedRelays ?? []),
             ...(cachedRecord?.relayHints ?? []),
             ...(cachedRecord?.relays ?? []),
-            ...(sourcePost?.relayHints ?? []),
-            ...(sourcePost?.fetchedRelays ?? []),
-            ...(sourcePost?.acceptedRelays ?? []),
         ],
-        { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
     );
 }
 

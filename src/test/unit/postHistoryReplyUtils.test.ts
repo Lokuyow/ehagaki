@@ -71,6 +71,29 @@ describe('postHistoryReplyUtils', () => {
         });
     });
 
+    it('channel read hintsではfetchedRelaysをread候補、acceptedRelaysをfallbackとして扱う', () => {
+        const record = createRecord({
+            kind: 42,
+            tags: [['e', channelEventId, 'wss://root.example.com/', 'root']],
+            channelRelayHints: ['wss://stored-root.example.com/'],
+            fetchedRelays: ['wss://fetched.example.com/'],
+            relayHints: ['wss://history.example.com/'],
+            acceptedRelays: ['wss://accepted.example.com/'],
+        });
+
+        expect(buildPostHistoryReplyChannelContextQuery(record as never)).toEqual({
+            eventId: channelEventId,
+            relayHints: [
+                'wss://root.example.com/',
+                'wss://stored-root.example.com/',
+                'wss://fetched.example.com/',
+                'wss://history.example.com/',
+                'wss://accepted.example.com/',
+            ],
+            channelRelays: ['wss://accepted.example.com/'],
+        });
+    });
+
     it('rawEvent しか無くても kind42 の channel context を導出できる', () => {
         const record = createRecord({
             kind: 42,
