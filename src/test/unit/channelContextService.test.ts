@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RxNostr } from "rx-nostr";
-import { ChannelContextService } from "../../lib/channelContextService";
+import {
+    ChannelContextService,
+    channelContextServiceInternals,
+} from "../../lib/channelContextService";
+import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "../../lib/channelContextConstants";
+import { FALLBACK_RELAYS } from "../../lib/constants";
 import type { NostrEvent } from "../../lib/types";
 
 const channelId = "a".repeat(64);
@@ -207,26 +212,155 @@ describe("ChannelContextService", () => {
             tags: [["e", channelId]],
             content: JSON.stringify({ name: "Smaller" }),
         });
-        const rxNostr = createRxNostr(
-            (observer) => {
-                observer.next({ event: createEvent() });
-                observer.complete();
-            },
-            (observer) => {
-                observer.next({ event: larger });
-                observer.next({ event: smaller });
-                observer.complete();
-            },
+        for (const metadataEvents of [[larger, smaller], [smaller, larger]]) {
+            const rxNostr = createRxNostr(
+                (observer) => {
+                    observer.next({ event: createEvent() });
+                    observer.complete();
+                },
+                (observer) => {
+                    metadataEvents.forEach((event) => observer.next({ event }));
+                    observer.complete();
+                },
+            );
+
+            const result = await service.resolveChannelMetadata({
+                eventId: channelId,
+                relayHints: [],
+            }, rxNostr, null);
+            expect(result).toMatchObject({
+                status: "resolved",
+                metadata: { metadataEventId: smaller.id, name: "Smaller" },
+            });
+        }
+    });
+
+    it("kind 41検索ではroot取得元、直接hint、root content relayの順で8件に制限する", async () => {
+        const rootSource = "wss://root-source.example.com";
+        const directHint = "wss://direct-hint.example.com";
+        const rootRelays = Array.from(
+            { length: CHANNEL_TEMPORARY_READ_RELAY_LIMIT + 2 },
+            (_, index) => `wss://root-${index}.example.com`,
         );
+        const metadataEvent = createEvent({
+            id: "c".repeat(64),
+            kind: 41,
+            created_at: 200,
+            tags: [["e", channelId]],
+            content: JSON.stringify({ name: "Updated from root source" }),
+        });
+        let useCount = 0;
+        const use = vi.fn((_req: unknown, options: any) => {
+            const currentUse = useCount++;
+            return {
+                subscribe: (observer: any) => {
+                    if (currentUse === 0) {
+                        observer.next({
+                            event: createEvent({
+                                content: JSON.stringify({ relays: rootRelays }),
+                            }),
+                            from: rootSource,
+                        });
+                    } else if (options.on.relays.includes(`${rootSource}/`)) {
+                        observer.next({ event: metadataEvent, from: rootSource });
+                    }
+                    observer.complete();
+                    return { unsubscribe: vi.fn() };
+                },
+            };
+        });
 
         const result = await service.resolveChannelMetadata({
             eventId: channelId,
-            relayHints: [],
-        }, rxNostr, null);
+            relayHints: [directHint],
+        }, { use } as any, null);
+
+        expect(use.mock.calls[1]?.[1].on.relays).toEqual([
+            `${rootSource}/`,
+            `${directHint}/`,
+            ...rootRelays.slice(0, CHANNEL_TEMPORARY_READ_RELAY_LIMIT - 2)
+                .map((relay) => `${relay}/`),
+        ]);
+        expect(use.mock.calls[1]?.[1].on.relays).toHaveLength(
+            CHANNEL_TEMPORARY_READ_RELAY_LIMIT,
+        );
         expect(result).toMatchObject({
             status: "resolved",
-            metadata: { metadataEventId: smaller.id, name: "Smaller" },
+            metadata: {
+                metadataEventId: metadataEvent.id,
+                name: "Updated from root source",
+            },
         });
+    });
+
+    it("一時read relayは既定read relayを除きfallback込みで最大8件にする", () => {
+        const build = channelContextServiceInternals.buildChannelReadOnParams;
+        const hints = Array.from(
+            { length: CHANNEL_TEMPORARY_READ_RELAY_LIMIT + 2 },
+            (_, index) => `wss://hint-${index}.example.com`,
+        );
+
+        expect(build([hints[0]], {
+            "wss://configured.example.com": { read: true, write: false },
+        })).toEqual({
+            defaultReadRelays: true,
+            relays: [`${hints[0]}/`],
+        });
+
+        const belowLimit = build([hints[0]], null);
+        expect(belowLimit).toEqual({
+            defaultReadRelays: false,
+            relays: [
+                `${hints[0]}/`,
+                ...FALLBACK_RELAYS.map((relay) => `${relay}`),
+            ],
+        });
+        expect(belowLimit.relays).toHaveLength(1 + FALLBACK_RELAYS.length);
+
+        const exactLimit = build(hints.slice(0, CHANNEL_TEMPORARY_READ_RELAY_LIMIT), null);
+        expect(exactLimit.relays).toEqual(
+            hints.slice(0, CHANNEL_TEMPORARY_READ_RELAY_LIMIT).map((relay) => `${relay}/`),
+        );
+
+        const overLimit = build(hints, null);
+        expect(overLimit.relays).toEqual(
+            hints.slice(0, CHANNEL_TEMPORARY_READ_RELAY_LIMIT).map((relay) => `${relay}/`),
+        );
+        expect(overLimit.relays).toHaveLength(CHANNEL_TEMPORARY_READ_RELAY_LIMIT);
+
+        const duplicateFallback = build([FALLBACK_RELAYS[0], hints[0]], null);
+        expect(duplicateFallback.relays).toEqual([
+            FALLBACK_RELAYS[0],
+            `${hints[0]}/`,
+            ...FALLBACK_RELAYS.slice(1),
+        ]);
+        expect(new Set(duplicateFallback.relays).size).toBe(duplicateFallback.relays?.length);
+    });
+
+    it("外部入力は3件、内部候補は最大8件のrelay hintをroot検索へ渡す", async () => {
+        const hints = Array.from(
+            { length: CHANNEL_TEMPORARY_READ_RELAY_LIMIT + 2 },
+            (_, index) => `wss://hint-${index}.example.com`,
+        );
+        const externalRxNostr = createRxNostr((observer) => observer.complete());
+        await service.resolveChannelMetadata({ eventId: channelId, relayHints: hints }, externalRxNostr, null);
+        const externalOn = (externalRxNostr.use as any).mock.calls[0]?.[1]?.on;
+        expect(externalOn.relays?.slice(0, 3)).toEqual(
+            hints.slice(0, 3).map((relay) => `${relay}/`),
+        );
+        expect(externalOn.relays).not.toContain(`${hints[3]}/`);
+
+        const internalRxNostr = createRxNostr((observer) => observer.complete());
+        await service.resolveChannelMetadataWithInternalHints(
+            { eventId: channelId, relayHints: hints },
+            internalRxNostr,
+            null,
+        );
+        const internalOn = (internalRxNostr.use as any).mock.calls[0]?.[1]?.on;
+        expect(internalOn.relays).toEqual(
+            hints.slice(0, CHANNEL_TEMPORARY_READ_RELAY_LIMIT)
+                .map((relay) => `${relay}/`),
+        );
     });
 
     it("author または channel reference が異なる kind 41 は無視する", async () => {

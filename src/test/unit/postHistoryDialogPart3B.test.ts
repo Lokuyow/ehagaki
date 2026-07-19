@@ -150,7 +150,7 @@ const postDeletionServiceMock = vi.hoisted(() => ({
 
 const channelContextServiceMock = vi.hoisted(() => ({
     resolveChannelContext: vi.fn(),
-    resolveChannelMetadata: vi.fn(),
+    resolveChannelMetadataWithInternalHints: vi.fn(),
 }));
 
 const channelMetadataRepositoryMock = vi.hoisted(() => ({
@@ -501,7 +501,7 @@ describe('PostHistoryDialog', () => {
             about: null,
             picture: null,
         });
-        channelContextServiceMock.resolveChannelMetadata.mockResolvedValue({
+        channelContextServiceMock.resolveChannelMetadataWithInternalHints.mockResolvedValue({
             status: 'resolved',
             quality: 'verified-metadata',
             metadataLookup: 'complete',
@@ -666,7 +666,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('cached-general')).toBeTruthy();
-            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+            expect(channelContextServiceMock.resolveChannelMetadataWithInternalHints).not.toHaveBeenCalled();
         });
 
         const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];

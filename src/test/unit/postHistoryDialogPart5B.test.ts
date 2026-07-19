@@ -150,7 +150,7 @@ const postDeletionServiceMock = vi.hoisted(() => ({
 
 const channelContextServiceMock = vi.hoisted(() => ({
     resolveChannelContext: vi.fn(),
-    resolveChannelMetadata: vi.fn(),
+    resolveChannelMetadataWithInternalHints: vi.fn(),
 }));
 
 const channelMetadataRepositoryMock = vi.hoisted(() => ({
@@ -501,7 +501,7 @@ describe('PostHistoryDialog', () => {
             about: null,
             picture: null,
         });
-        channelContextServiceMock.resolveChannelMetadata.mockResolvedValue({
+        channelContextServiceMock.resolveChannelMetadataWithInternalHints.mockResolvedValue({
             status: 'resolved',
             quality: 'verified-metadata',
             metadataLookup: 'complete',
@@ -575,7 +575,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(channelMetadataRepositoryMock.getMany).toHaveBeenCalledWith(['channel-id']);
-            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+            expect(channelContextServiceMock.resolveChannelMetadataWithInternalHints).not.toHaveBeenCalled();
             expect(screen.getByText('cached-general')).toBeTruthy();
         });
 
@@ -614,14 +614,14 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(channelContextServiceMock.resolveChannelMetadata).toHaveBeenCalledTimes(1);
+            expect(channelContextServiceMock.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
             expect(channelMetadataRepositoryMock.upsertResolvedChannel).toHaveBeenCalledTimes(1);
             expect(screen.getAllByText('general').length).toBeGreaterThan(0);
         });
     });
 
     it('[channel-fetch-failure] channel metadata 取得失敗時は失敗を記録して unknown を表示する', async () => {
-        channelContextServiceMock.resolveChannelMetadata.mockRejectedValueOnce(new Error('fetch failed'));
+        channelContextServiceMock.resolveChannelMetadataWithInternalHints.mockRejectedValueOnce(new Error('fetch failed'));
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({

@@ -1,4 +1,5 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
+import { compareChannelMetadataEventVersions } from "../channelMetadataEventOrder";
 import {
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
     CHANNEL_VERIFIED_WRITE_RELAY_CACHE_LIMIT,
@@ -131,7 +132,10 @@ function shouldApplyResolvedMetadata(
     if (inputCreatedAt !== existingCreatedAt) return inputCreatedAt > existingCreatedAt;
     if (!input.metadataEventId) return !existingRecord.metadataEventId;
     if (!existingRecord.metadataEventId) return true;
-    return input.metadataEventId.localeCompare(existingRecord.metadataEventId) <= 0;
+    return compareChannelMetadataEventVersions(
+        { createdAt: inputCreatedAt, eventId: input.metadataEventId },
+        { createdAt: existingCreatedAt, eventId: existingRecord.metadataEventId },
+    ) >= 0;
 }
 
 function isSameResolvedMetadata(

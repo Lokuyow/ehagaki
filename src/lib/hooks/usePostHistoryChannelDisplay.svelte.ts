@@ -190,7 +190,7 @@ export function usePostHistoryChannelDisplay({
 
                     try {
                         const resolution =
-                            await channelContextService.resolveChannelMetadata(
+                            await channelContextService.resolveChannelMetadataWithInternalHints(
                                 {
                                     eventId: channelEventId,
                                     relayHints,

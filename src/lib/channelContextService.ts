@@ -1,6 +1,7 @@
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
+import { compareChannelMetadataEventVersions } from "./channelMetadataEventOrder";
 import {
     CHANNEL_TEMPORARY_READ_RELAY_LIMIT,
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
@@ -48,6 +49,29 @@ type FetchLatestMetadataResult =
     }
     | { status: "aborted" };
 
+function buildChannelReadOnParams(
+    relayHints: string[],
+    relayConfig?: RelayConfig | null,
+): { defaultReadRelays: boolean; relays?: string[] } {
+    const hasReadRelays = !!relayConfig
+        && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
+    const temporaryRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        RelayConfigUtils.mergeRelayConfigs(
+            relayHints,
+            ...(hasReadRelays ? [] : [FALLBACK_RELAYS]),
+        ),
+        { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
+    );
+    return {
+        defaultReadRelays: hasReadRelays,
+        ...(temporaryRelays.length > 0 ? { relays: temporaryRelays } : {}),
+    };
+}
+
+export const channelContextServiceInternals = {
+    buildChannelReadOnParams,
+};
+
 export interface ChannelContextResolveOptions {
     signal?: AbortSignal;
 }
@@ -92,10 +116,10 @@ function toChannelContextState(
 
 function isPreferredMetadataEvent(candidate: NostrEvent, current: NostrEvent | null): boolean {
     if (!current) return true;
-    if (candidate.created_at !== current.created_at) {
-        return candidate.created_at > current.created_at;
-    }
-    return candidate.id.localeCompare(current.id) < 0;
+    return compareChannelMetadataEventVersions(
+        { createdAt: candidate.created_at, eventId: candidate.id },
+        { createdAt: current.created_at, eventId: current.id },
+    ) > 0;
 }
 
 export class ChannelContextService {
@@ -137,15 +161,51 @@ export class ChannelContextService {
         };
     }
 
+    /** Resolves raw external input and accepts at most the external-input relay limit. */
     resolveChannelMetadata(
         channelContextQuery: ChannelContextQueryTarget,
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
         options: ChannelContextResolveOptions = {},
     ): Promise<ChannelNetworkResolution> {
+        return this.resolveChannelMetadataWithRelayHintLimit(
+            channelContextQuery,
+            rxNostr,
+            relayConfig,
+            RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+            options,
+        );
+    }
+
+    /**
+     * Resolves relay candidates assembled by trusted application code.
+     * Raw iframe, URL, or other external payloads must use resolveChannelMetadata().
+     */
+    resolveChannelMetadataWithInternalHints(
+        channelContextQuery: ChannelContextQueryTarget,
+        rxNostr: RxNostr,
+        relayConfig?: RelayConfig | null,
+        options: ChannelContextResolveOptions = {},
+    ): Promise<ChannelNetworkResolution> {
+        return this.resolveChannelMetadataWithRelayHintLimit(
+            channelContextQuery,
+            rxNostr,
+            relayConfig,
+            CHANNEL_TEMPORARY_READ_RELAY_LIMIT,
+            options,
+        );
+    }
+
+    private resolveChannelMetadataWithRelayHintLimit(
+        channelContextQuery: ChannelContextQueryTarget,
+        rxNostr: RxNostr,
+        relayConfig: RelayConfig | null | undefined,
+        relayHintLimit: number,
+        options: ChannelContextResolveOptions,
+    ): Promise<ChannelNetworkResolution> {
         const sanitizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(
             channelContextQuery.relayHints,
-            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+            { limit: relayHintLimit },
         );
         return this.resolveChannelMetadataInternal(
             channelContextQuery.eventId,
@@ -194,9 +254,9 @@ export class ChannelContextService {
         const baseMetadata = baseMetadataResult.metadata;
         const metadataReadRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
             RelayConfigUtils.mergeRelayConfigs(
-                baseMetadata.relays,
                 rootResult.relayUrl ? [rootResult.relayUrl] : [],
                 relayHints,
+                baseMetadata.relays,
             ),
             { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
         );
@@ -289,23 +349,6 @@ export class ChannelContextService {
         }
     }
 
-    private buildReadOnParams(
-        relayHints: string[],
-        relayConfig?: RelayConfig | null,
-    ): { defaultReadRelays: boolean; relays?: string[] } {
-        const hasReadRelays = !!relayConfig
-            && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
-        const temporaryRelays = new Set<string>(relayHints);
-        if (!hasReadRelays) {
-            RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS)
-                .forEach((relayUrl) => temporaryRelays.add(relayUrl));
-        }
-        return {
-            defaultReadRelays: hasReadRelays,
-            ...(temporaryRelays.size > 0 ? { relays: Array.from(temporaryRelays) } : {}),
-        };
-    }
-
     private fetchEventById(
         eventId: string,
         relayHints: string[],
@@ -346,7 +389,7 @@ export class ChannelContextService {
             try {
                 const rxReq = this.createRxBackwardReqFn();
                 subscription = rxNostr.use(rxReq, {
-                    on: this.buildReadOnParams(relayHints, relayConfig),
+                    on: buildChannelReadOnParams(relayHints, relayConfig),
                 }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         if (packet.event?.id !== eventId) return;
@@ -433,7 +476,7 @@ export class ChannelContextService {
             try {
                 const rxReq = this.createRxBackwardReqFn();
                 subscription = rxNostr.use(rxReq, {
-                    on: this.buildReadOnParams(relayHints, relayConfig),
+                    on: buildChannelReadOnParams(relayHints, relayConfig),
                 }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         const event = packet.event;

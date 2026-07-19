@@ -177,13 +177,21 @@ describe("DexieChannelMetadataRepository", () => {
         expect(tieWinner.name).toBe("Tie winner");
         expect(tieWinner.metadataEventId).toBe("c".repeat(64));
 
+        now = 2500;
+        const sameEvent = await repository.upsertResolvedChannel(metadataInput({
+            name: "Tie winner",
+            metadataEventId: "c".repeat(64),
+        }));
+        expect(sameEvent.name).toBe("Tie winner");
+        expect(sameEvent.verifiedMetadataAt).toBe(2500);
+
         now = 3000;
         const tieLoser = await repository.upsertResolvedChannel(metadataInput({
             name: "Tie loser",
             metadataEventId: "e".repeat(64),
         }));
         expect(tieLoser.name).toBe("Tie winner");
-        expect(tieLoser.verifiedMetadataAt).toBe(2000);
+        expect(tieLoser.verifiedMetadataAt).toBe(2500);
 
         now = 4000;
         const newer = await repository.upsertResolvedChannel(metadataInput({

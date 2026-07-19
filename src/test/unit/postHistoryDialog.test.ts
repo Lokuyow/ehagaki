@@ -246,7 +246,7 @@ const postDeletionServiceMock = vi.hoisted(() => ({
 
 const channelContextServiceMock = vi.hoisted(() => ({
     resolveChannelContext: vi.fn(),
-    resolveChannelMetadata: vi.fn(),
+    resolveChannelMetadataWithInternalHints: vi.fn(),
 }));
 
 const channelMetadataRepositoryMock = vi.hoisted(() => ({
@@ -989,7 +989,7 @@ describe('PostHistoryDialog', () => {
             about: null,
             picture: null,
         });
-        channelContextServiceMock.resolveChannelMetadata.mockResolvedValue({
+        channelContextServiceMock.resolveChannelMetadataWithInternalHints.mockResolvedValue({
             status: 'resolved',
             quality: 'verified-metadata',
             metadataLookup: 'complete',
