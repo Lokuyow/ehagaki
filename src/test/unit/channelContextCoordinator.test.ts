@@ -10,10 +10,12 @@ const channelId = "a".repeat(64);
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((next) => {
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((next, fail) => {
         resolve = next;
+        reject = fail;
     });
-    return { promise, resolve };
+    return { promise, resolve, reject };
 }
 
 function createCache(overrides: Partial<ChannelMetadataCache> = {}): ChannelMetadataCache {
@@ -561,6 +563,228 @@ describe("ChannelContextCoordinator", () => {
         });
     });
 
+    it("初回Service例外後に追加済みの新hintを含めて即時再試行する", async () => {
+        const { repository } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise)
+                .mockResolvedValueOnce(resolvedNetworkResult("Retried after throw")),
+        };
+        const coordinator = new ChannelContextCoordinator({
+            service,
+            repository,
+            logger: { error: vi.fn() },
+        });
+        const rxNostr = {} as RxNostr;
+        const firstHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://first.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+        const secondHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://new.example.com/"],
+        }, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+
+        firstRequest.reject(new Error("first request threw"));
+        const results = await Promise.all([firstHandle.refresh, secondHandle.refresh]);
+
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+        expect(service.resolveChannelMetadataWithInternalHints.mock.calls[1]?.[0]).toEqual({
+            eventId: channelId,
+            relayHints: [
+                "wss://first.example.com/",
+                "wss://new.example.com/",
+            ],
+        });
+        expect(results).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                status: "updated",
+                snapshot: expect.objectContaining({
+                    context: expect.objectContaining({ name: "Retried after throw" }),
+                }),
+            }),
+        ]));
+    });
+
+    it("Service例外の失敗記録中に追加された新hintを次のREQへ渡す", async () => {
+        const { repository } = createRepository(null);
+        const markFinished = deferred<void>();
+        repository.markFetchFailed = vi.fn(() => markFinished.promise);
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockRejectedValueOnce(new Error("request threw"))
+                .mockResolvedValueOnce(resolvedNetworkResult("Retried after exception mark")),
+        };
+        const coordinator = new ChannelContextCoordinator({
+            service,
+            repository,
+            logger: { error: vi.fn() },
+        });
+        const rxNostr = {} as RxNostr;
+        const firstHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://first.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => expect(repository.markFetchFailed).toHaveBeenCalledTimes(1));
+
+        const secondHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://late.example.com/"],
+        }, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+        markFinished.resolve();
+
+        await Promise.all([firstHandle.refresh, secondHandle.refresh]);
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+        expect(service.resolveChannelMetadataWithInternalHints.mock.calls[1]?.[0]).toEqual({
+            eventId: channelId,
+            relayHints: [
+                "wss://first.example.com/",
+                "wss://late.example.com/",
+            ],
+        });
+    });
+
+    it("中間metadata保存後の再試行例外でもさらに追加されたhintで再試行し昇格する", async () => {
+        const { repository, getStored } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const secondRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise)
+                .mockReturnValueOnce(secondRequest.promise)
+                .mockResolvedValueOnce(resolvedNetworkResult("Newest verified")),
+        };
+        const coordinator = new ChannelContextCoordinator({
+            service,
+            repository,
+            logger: { error: vi.fn() },
+        });
+        const rxNostr = {} as RxNostr;
+        const firstHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://a.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+        const secondHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://b.example.com/"],
+        }, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+        firstRequest.resolve(incompleteResolvedNetworkResult("Saved intermediate"));
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+        });
+
+        const thirdHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://c.example.com/"],
+        }, rxNostr);
+        await thirdHandle.cacheReady;
+        await Promise.resolve();
+        secondRequest.reject(new Error("second request threw"));
+
+        const results = await Promise.all([
+            firstHandle.refresh,
+            secondHandle.refresh,
+            thirdHandle.refresh,
+        ]);
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(3);
+        expect(service.resolveChannelMetadataWithInternalHints.mock.calls[2]?.[0]).toEqual({
+            eventId: channelId,
+            relayHints: [
+                "wss://a.example.com/",
+                "wss://b.example.com/",
+                "wss://c.example.com/",
+                "wss://network-source.example.com/",
+                "wss://network-write.example.com/",
+            ],
+        });
+        expect(repository.upsertResolvedChannel).toHaveBeenCalledTimes(2);
+        expect(getStored()).toMatchObject({
+            name: "Newest verified",
+            resolutionQuality: "verified-metadata",
+        });
+        expect(results.every((result) => result.status === "updated")).toBe(true);
+        expect(results[0]).toMatchObject({
+            snapshot: { source: "network", context: { name: "Newest verified" } },
+        });
+    });
+
+    it("中間root-only保存後の再試行例外でもsource relayを保ち新hintでmetadataへ昇格する", async () => {
+        const { repository, getStored } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const secondRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise)
+                .mockReturnValueOnce(secondRequest.promise)
+                .mockResolvedValueOnce(resolvedNetworkResult("Verified after root")),
+        };
+        const coordinator = new ChannelContextCoordinator({
+            service,
+            repository,
+            logger: { error: vi.fn() },
+        });
+        const rxNostr = {} as RxNostr;
+        const firstHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://a.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+        const secondHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://b.example.com/"],
+        }, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+        firstRequest.resolve(incompleteRootOnlyResult());
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+        });
+        expect(getStored()).toMatchObject({
+            resolutionQuality: "verified-root-only",
+            relayHints: ["wss://root.example.com/"],
+        });
+
+        const thirdHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://c.example.com/"],
+        }, rxNostr);
+        await thirdHandle.cacheReady;
+        await Promise.resolve();
+        secondRequest.reject(new Error("second root request threw"));
+
+        await Promise.all([firstHandle.refresh, secondHandle.refresh, thirdHandle.refresh]);
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(3);
+        expect(service.resolveChannelMetadataWithInternalHints.mock.calls[2]?.[0]).toEqual({
+            eventId: channelId,
+            relayHints: [
+                "wss://a.example.com/",
+                "wss://b.example.com/",
+                "wss://c.example.com/",
+                "wss://root.example.com/",
+            ],
+        });
+        expect(repository.upsertResolvedChannel).toHaveBeenCalledTimes(2);
+        expect(getStored()).toMatchObject({
+            name: "Verified after root",
+            resolutionQuality: "verified-metadata",
+        });
+    });
+
     it("Service failed確定後に全consumerがreleaseされても失敗記録を完了する", async () => {
         const { repository } = createRepository(null);
         const markFinished = deferred<void>();
@@ -768,10 +992,11 @@ describe("ChannelContextCoordinator", () => {
     it("保存前のService例外はfailedだがsnapshotをnetwork扱いしない", async () => {
         const { repository } = createRepository(null);
         const serviceError = new Error("initial service failed");
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn().mockRejectedValue(serviceError),
+        };
         const coordinator = new ChannelContextCoordinator({
-            service: {
-                resolveChannelMetadataWithInternalHints: vi.fn().mockRejectedValue(serviceError),
-            },
+            service,
             repository,
             logger: { error: vi.fn() },
         });
@@ -785,6 +1010,7 @@ describe("ChannelContextCoordinator", () => {
             status: "failed",
             snapshot: { source: "seed" },
         });
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
         expect(repository.upsertResolvedChannel).not.toHaveBeenCalled();
         expect(repository.markFetchFailed).toHaveBeenCalledTimes(1);
     });
@@ -817,6 +1043,7 @@ describe("ChannelContextCoordinator", () => {
         handle.release();
 
         await expect(handle.refresh).resolves.toMatchObject({ status: "aborted" });
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
         expect(repository.markFetchFailed).not.toHaveBeenCalled();
     });
 
