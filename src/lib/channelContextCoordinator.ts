@@ -57,6 +57,7 @@ export interface ChannelContextCoordinatorDeps {
 interface SharedResolutionOutcome {
     status: "updated" | "failed" | "aborted";
     cache: ChannelMetadataCache | null;
+    didPersistVerifiedResult?: boolean;
 }
 
 interface SharedResolutionEntry {
@@ -64,6 +65,7 @@ interface SharedResolutionEntry {
     rxNostr: RxNostr;
     relayConfig?: RelayConfig | null;
     relayHints: string[];
+    hintRevision: number;
     consumers: Set<symbol>;
     abortController: AbortController;
     promise: Promise<SharedResolutionOutcome>;
@@ -170,6 +172,11 @@ function hasNewRelayHints(candidateHints: string[], attemptedHints: string[]): b
     return candidateHints.some((relay) => !attempted.has(relay));
 }
 
+function areRelayHintsEqual(first: string[], second: string[]): boolean {
+    return first.length === second.length
+        && first.every((relay, index) => relay === second[index]);
+}
+
 function canNewHintsBypassRetrySuppression(
     cache: ChannelMetadataCache | null,
     candidateHints: string[],
@@ -266,7 +273,9 @@ export class ChannelContextCoordinator {
                 const snapshot: ChannelContextCoordinatorSnapshot = {
                     context: mergeCacheIntoContext(seedContext, outcome.cache),
                     cache: outcome.cache,
-                    source: outcome.status === "updated" ? "network" : cachedSnapshot.source,
+                    source: outcome.status === "updated" || outcome.didPersistVerifiedResult
+                        ? "network"
+                        : cachedSnapshot.source,
                 };
                 return outcome.status === "updated"
                     ? { status: "updated", snapshot } as const
@@ -312,13 +321,18 @@ export class ChannelContextCoordinator {
             entry = undefined;
         }
         if (entry) {
-            entry.relayHints = mergeReadRelays(entry.relayHints, query.relayHints);
+            const mergedRelayHints = mergeReadRelays(entry.relayHints, query.relayHints);
+            if (!areRelayHintsEqual(entry.relayHints, mergedRelayHints)) {
+                entry.relayHints = mergedRelayHints;
+                entry.hintRevision += 1;
+            }
         } else {
             const nextEntry: SharedResolutionEntry = {
                 eventId: query.eventId,
                 rxNostr,
                 relayConfig,
                 relayHints: [...query.relayHints],
+                hintRevision: 0,
                 consumers: new Set(),
                 abortController: new AbortController(),
                 promise: Promise.resolve({ status: "aborted", cache: null }),
@@ -365,8 +379,10 @@ export class ChannelContextCoordinator {
         entry: SharedResolutionEntry,
     ): Promise<SharedResolutionOutcome> {
         let attemptedHints: string[] = [];
+        let didPersistVerifiedResult = false;
         while (!entry.abortController.signal.aborted) {
             attemptedHints = [...entry.relayHints];
+            const attemptedHintRevision = entry.hintRevision;
             this.setLastAttemptHints(entry.rxNostr, entry.eventId, attemptedHints);
             const resolution = await this.service.resolveChannelMetadataWithInternalHints(
                 { eventId: entry.eventId, relayHints: attemptedHints },
@@ -379,31 +395,63 @@ export class ChannelContextCoordinator {
                 return { status: "aborted", cache: null };
             }
 
-            const hasNewHints = hasNewRelayHints(entry.relayHints, attemptedHints);
-            // A new relay candidate retries only an unsuccessful/incomplete lookup.
-            // A resolved + complete lookup remains successful; the new hint is kept
-            // for a later stale or explicit refresh instead of adding timing-based REQs.
-            const mayImproveWithNewHints = resolution.status === "failed"
-                || resolution.metadataLookup === "incomplete";
-            if (hasNewHints && mayImproveWithNewHints) {
-                continue;
-            }
-
             if (resolution.status === "failed") {
                 await this.markFetchFailedSafely(entry.eventId);
+                if (entry.abortController.signal.aborted) {
+                    return { status: "aborted", cache: null };
+                }
+                const cache = await this.getCacheSafely(entry.eventId);
+                if (entry.abortController.signal.aborted) {
+                    return { status: "aborted", cache: null };
+                }
+                if (this.hasNewHintsSinceAttempt(
+                    entry,
+                    attemptedHintRevision,
+                    attemptedHints,
+                )) {
+                    continue;
+                }
                 return {
                     status: "failed",
-                    cache: await this.getCacheSafely(entry.eventId),
+                    cache,
+                    ...(didPersistVerifiedResult ? { didPersistVerifiedResult: true } : {}),
                 };
             }
 
             const cache = await this.repository.upsertResolvedChannel(
                 toRepositoryInput(resolution),
             );
+            didPersistVerifiedResult = true;
+            if (entry.abortController.signal.aborted) {
+                return { status: "aborted", cache: null };
+            }
+
+            // Incomplete verified data is durable before a hint-driven retry. A
+            // complete result is final for this attempt even if a consumer joined
+            // during persistence; that hint remains available to a later refresh.
+            if (
+                resolution.metadataLookup === "incomplete"
+                && this.hasNewHintsSinceAttempt(
+                    entry,
+                    attemptedHintRevision,
+                    attemptedHints,
+                )
+            ) {
+                continue;
+            }
             return { status: "updated", cache };
         }
 
         return { status: "aborted", cache: null };
+    }
+
+    private hasNewHintsSinceAttempt(
+        entry: SharedResolutionEntry,
+        attemptedHintRevision: number,
+        attemptedHints: string[],
+    ): boolean {
+        return entry.hintRevision > attemptedHintRevision
+            && hasNewRelayHints(entry.relayHints, attemptedHints);
     }
 
     private getLastAttemptHints(rxNostr: RxNostr, eventId: string): string[] {
