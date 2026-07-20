@@ -67,7 +67,7 @@ describe('embedComposerContextNotification', () => {
             name: 'General',
             about: 'General discussion',
             picture: 'https://example.com/channel.png',
-        }, 12345);
+        }, null, 12345);
 
         expect(payload).toEqual({
             timestamp: 12345,
@@ -96,5 +96,28 @@ describe('embedComposerContextNotification', () => {
         });
 
         expect(first).toBe(second);
+    });
+
+    it('provenanceにある明示nullだけを通知し、未取得nullは省略する', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: '55'.repeat(32),
+            relayHints: [],
+            name: null,
+            about: null,
+            picture: null,
+        }, {
+            source: 'iframe',
+            metadataOverrides: { name: null },
+        }, 123);
+
+        expect(payload.channel).toEqual({
+            reference: expect.stringMatching(/^note1/),
+            name: null,
+        });
+        expect(payload.channel).not.toHaveProperty('about');
+        expect(payload.channel).not.toHaveProperty('picture');
     });
 });

@@ -217,8 +217,9 @@ iframe の `src` に URL クエリを付けることで、起動時の composer 
 パブリックチャットの relay と metadata は次のルールで扱われます。
 
 - `channelRelays` が 1 件以上ある場合は、その一覧を kind 42 用 relay として使います
-- `channelName`、`channelAbout`、`channelPicture` が 1 つも無い場合は、iframe 側が kind 40 / kind 41 から metadata と `relays` を解決します
-- metadata だけがあり `channelRelays` が無い場合、kind 42 は eHagaki 自身の write relay 一覧を使います
+- `channelName`、`channelAbout`、`channelPicture` の非空値は、このcomposerセッション中の明示値として維持されます。欠落または空文字の項目だけ、IndexedDB cacheとkind 40 / kind 41から補完されます
+- `channelRelays` は一時的な追加write relay候補として検証済みchannel relayより先に使われます。eHagaki自身の既定write relayも従来どおり併用されます
+- URL由来の表示値やrelay候補は検証済みcacheとして保存されません
 
 常時表示している iframe では、context を切り替えるたびに `src` を更新すると再読み込みが発生してチラつきます。その場合は初回表示だけ URL クエリを使い、起動後の更新は `postMessage` に切り替えてください。
 
@@ -281,11 +282,13 @@ window.addEventListener('message', (event) => {
 
 - `reply` と `quotes` は URL クエリと同じく `note1...` / `nevent1...` を使います
 - `channel` は `{ reference, relays?, name?, about?, picture? }` です。`reference` は `note1...` / `nevent1...` を使います
-- `channel.relays` は kind 42 用 relay、`channel.name` / `channel.about` / `channel.picture` は preview metadata です。省略時の解決ルールは URL クエリと同じです
+- `channel.relays` は kind 42 用の一時的な追加write relay候補です。外部入力のrelay hintと合わせて最大3件へ制限され、検証済みcacheには保存されません
+- `channel.name` / `channel.about` / `channel.picture` は三値です。省略（`undefined`）はDB・relayから補完可能、`null` は明示クリア、非空文字列は明示値として扱い、同じcomposerセッション中はDB・relay結果で上書きされません
 - `composer.setContext` は patch として扱われます。`undefined` は変更なし、`reply: null` は reply 解除、`quotes: []` または `quotes: null` は quote 全解除、`channel: null` はパブリックチャット解除、`content: null` は本文クリアです
 - `composer.setContext` の `requestId` は必須です。iframe は `composer.contextApplied` / `composer.contextError` に同じ `requestId` を載せて返します
-- `composer.contextApplied` の payload は `{ timestamp }`、`composer.contextError` の payload は `{ timestamp, code, message? }` です
-- iframe 内の UI で composer context を変更した場合、子側から `composer.contextUpdated` が送られます
+- `composer.contextApplied` の payload は `{ timestamp }` です。payload全体の構文とreferenceを検証し、channel、reply、quotes、contentの利用可能な初期状態を設定した時点で返します。IndexedDB補完、kind 40 / kind 41取得、reply / quote参照イベントhydrate、プロフィール取得の完了は待ちません
+- 同期検証に失敗した場合は `composer.contextApplied` を送らず、`composer.contextError`（`{ timestamp, code, message? }`）を返します。非同期補完の失敗は初期選択を維持する非致命的失敗であり、`composer.contextError`にはしません
+- iframe 内のUI操作または非同期補完で通知対象のstable contextが変わった場合、子側から `composer.contextUpdated` が送られます。初期適用そのものや同一内容は重複通知しません
 - `composer.contextUpdated` の payload は `{ timestamp, reply, quotes, channel }` です。`channel` は `{ reference, relays?, name?, about?, picture? } | null` で返ります。`reply` は未設定時に `null`、`quotes` は常に配列です
 - `event.origin` と `event.source` の検証は URL 起動時と同じく必須です
 

@@ -1,6 +1,7 @@
 import { nip19 } from 'nostr-tools';
 import type { ChannelContextState, ReplyQuoteComposerState, ReplyQuoteState } from './types';
 import type { EmbedChannelContextPayload, EmbedComposerContextUpdatedPayload } from './embedProtocol';
+import type { ChannelContextProvenance } from './channelContextRuntime';
 
 export function encodeComposerContextReference(
     reference: Pick<ReplyQuoteState, 'eventId' | 'relayHints' | 'authorPubkey'>,
@@ -19,6 +20,7 @@ export function encodeComposerContextReference(
 export function buildComposerContextUpdatedPayload(
     state: ReplyQuoteComposerState,
     channelContext: ChannelContextState | null,
+    channelProvenance: ChannelContextProvenance | null = null,
     now = Date.now(),
 ): EmbedComposerContextUpdatedPayload {
     return {
@@ -28,14 +30,18 @@ export function buildComposerContextUpdatedPayload(
             : null,
         quotes: state.quotes.map((quote) => encodeComposerContextReference(quote)),
         channel: channelContext
-            ? buildChannelContextPayload(channelContext)
+            ? buildChannelContextPayload(channelContext, channelProvenance)
             : null,
     };
 }
 
 function buildChannelContextPayload(
     channelContext: ChannelContextState,
+    provenance: ChannelContextProvenance | null,
 ): EmbedChannelContextPayload {
+    const metadataOverrides = provenance?.metadataOverrides ?? {};
+    const hasOverride = (field: 'name' | 'about' | 'picture') =>
+        Object.prototype.hasOwnProperty.call(metadataOverrides, field);
     return {
         reference: encodeComposerContextReference({
             eventId: channelContext.eventId,
@@ -45,9 +51,15 @@ function buildChannelContextPayload(
         ...(channelContext.channelRelays?.length
             ? { relays: [...channelContext.channelRelays] }
             : {}),
-        ...(channelContext.name ? { name: channelContext.name } : {}),
-        ...(channelContext.about ? { about: channelContext.about } : {}),
-        ...(channelContext.picture ? { picture: channelContext.picture } : {}),
+        ...(hasOverride('name')
+            ? { name: channelContext.name }
+            : channelContext.name ? { name: channelContext.name } : {}),
+        ...(hasOverride('about')
+            ? { about: channelContext.about }
+            : channelContext.about ? { about: channelContext.about } : {}),
+        ...(hasOverride('picture')
+            ? { picture: channelContext.picture }
+            : channelContext.picture ? { picture: channelContext.picture } : {}),
     };
 }
 

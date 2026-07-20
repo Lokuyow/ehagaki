@@ -21,16 +21,12 @@ const HISTORY_QUOTE_EVENT_ID = '77'.repeat(32);
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
     const logoutAccount = vi.fn(() => null);
-    const applyReplyQuoteQuery = vi.fn().mockResolvedValue(undefined);
-    const applyChannelContextQuery = vi.fn().mockImplementation(async ({ channelContextQuery }: any) => {
-        const { setChannelContext } = await import('../../stores/channelContextStore.svelte');
-        setChannelContext({
-            eventId: channelContextQuery.eventId,
-            relayHints: channelContextQuery.relayHints,
-            name: channelContextQuery.name ?? 'General',
-            about: channelContextQuery.about ?? 'Public chat',
-            picture: channelContextQuery.picture ?? 'https://example.com/channel.png',
-        });
+    const applyReplyQuoteQuery = vi.fn(({ replyQuoteQuery, setReplyQuote }: any) => {
+        setReplyQuote(replyQuoteQuery);
+        return [
+            ...(replyQuoteQuery.reply ? [replyQuoteQuery.reply] : []),
+            ...replyQuoteQuery.quotes,
+        ];
     });
     const authenticateWithParentClient = vi.fn(async () => ({
         success: true,
@@ -123,7 +119,6 @@ const mockState = vi.hoisted(() => {
         runInitializeNostrSession,
         completePostAuthBootstrap,
         applyReplyQuoteQuery,
-        applyChannelContextQuery,
         runAppInitializationBootstrap,
         cleanupVisibilityHandler,
         getReplyQuoteFromEmbedPayload,
@@ -277,8 +272,8 @@ vi.mock('../../lib/iframeMessageService', () => ({
 }));
 
 vi.mock('../../lib/bootstrap/externalInputBootstrap', () => ({
+    applyReplyQuoteSelection: mockState.applyReplyQuoteQuery,
     applyReplyQuoteQuery: mockState.applyReplyQuoteQuery,
-    applyChannelContextQuery: mockState.applyChannelContextQuery,
     hydrateReplyQuoteReferences: mockState.hydrateReplyQuoteReferences,
 }));
 
@@ -364,7 +359,6 @@ describe('App parentClient integration', () => {
         mockState.initializeNostrSession.mockClear();
         mockState.completePostAuthBootstrap.mockClear();
         mockState.applyReplyQuoteQuery.mockClear();
-        mockState.applyChannelContextQuery.mockClear();
         mockState.getReplyQuoteFromEmbedPayload.mockClear();
         mockState.getChannelFromEmbedPayload.mockClear();
         mockState.notifyComposerContextApplied.mockClear();
@@ -597,7 +591,6 @@ describe('App parentClient integration', () => {
             expect(mockState.applyReplyQuoteQuery).toHaveBeenCalledWith(
                 expect.objectContaining({
                     replyQuoteQuery,
-                    rxNostr: latestSession.rxNostr,
                 }),
             );
         });
@@ -667,7 +660,6 @@ describe('App parentClient integration', () => {
         expect(mockState.applyReplyQuoteQuery).toHaveBeenCalledWith(
             expect.objectContaining({
                 replyQuoteQuery,
-                rxNostr: latestSession.rxNostr,
             }),
         );
         expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(requestId);
@@ -785,22 +777,9 @@ describe('App parentClient integration', () => {
             expect(mockState.getChannelFromEmbedPayload).toHaveBeenCalled();
         });
         await waitFor(() => {
-            expect(mockState.applyChannelContextQuery).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    channelContextQuery: {
-                        eventId: CHANNEL_EVENT_ID,
-                        relayHints: ['wss://channel-relay.example.com'],
-                        name: 'General',
-                        about: 'Public chat',
-                        picture: 'https://example.com/channel.png',
-                    },
-                }),
-            );
-        });
-        await waitFor(() => {
             expect(channelContextState.value).toEqual({
                 eventId: CHANNEL_EVENT_ID,
-                relayHints: ['wss://channel-relay.example.com'],
+                relayHints: ['wss://channel-relay.example.com/'],
                 name: 'General',
                 about: 'Public chat',
                 picture: 'https://example.com/channel.png',

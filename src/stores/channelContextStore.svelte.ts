@@ -1,6 +1,11 @@
 import type { ChannelContextState, DraftChannelData } from '../lib/types';
+import {
+    cloneChannelContextProvenance,
+    type ChannelContextProvenance,
+} from '../lib/channelContextRuntime';
 
 let channelContext = $state<ChannelContextState | null>(null);
+let channelContextProvenance = $state<ChannelContextProvenance | null>(null);
 
 const channelContextChangeListeners = new Set<
     (state: ChannelContextState | null) => void
@@ -28,6 +33,10 @@ export const channelContextState = {
     get value() { return channelContext; },
 };
 
+export const channelContextProvenanceState = {
+    get value() { return channelContextProvenance; },
+};
+
 export function onChannelContextChanged(
     listener: (state: ChannelContextState | null) => void,
 ): () => void {
@@ -39,15 +48,27 @@ export function onChannelContextChanged(
 
 export function setChannelContext(value: ChannelContextState): void {
     channelContext = cloneChannelContext(value);
+    channelContextProvenance = null;
+    notifyChannelContextChanged();
+}
+
+export function setChannelContextWithProvenance(
+    value: ChannelContextState,
+    provenance: ChannelContextProvenance,
+): void {
+    channelContext = cloneChannelContext(value);
+    channelContextProvenance = cloneChannelContextProvenance(provenance);
     notifyChannelContextChanged();
 }
 
 export function restoreChannelContext(value: DraftChannelData): void {
     channelContext = cloneChannelContext(value);
+    channelContextProvenance = null;
     notifyChannelContextChanged();
 }
 
 export function clearChannelContext(): void {
     channelContext = null;
+    channelContextProvenance = null;
     notifyChannelContextChanged();
 }

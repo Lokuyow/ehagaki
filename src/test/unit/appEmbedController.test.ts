@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { nip19 } from 'nostr-tools';
 
 import { createAppEmbedController } from '../../lib/appEmbedController';
 import type { ReplyQuoteComposerState } from '../../lib/types';
@@ -38,7 +39,8 @@ function createController(overrides: Record<string, unknown> = {}) {
         notifySettingsError: vi.fn(),
     };
     const composerContextApply = {
-        applyReplyQuoteQuery: vi.fn(),
+        applyReplyQuoteSelection: vi.fn(() => []),
+        hydrateReplyQuoteReferences: vi.fn().mockResolvedValue(undefined),
         clearReplyQuote: vi.fn(),
         applyChannelContextQuery: vi.fn(),
         clearChannelContext: vi.fn(),
@@ -64,6 +66,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         hasPendingParentAuth: vi.fn(() => pendingParentAuth),
         getReplyQuoteState: vi.fn(createReplyQuoteState),
         getChannelContextState: vi.fn(createChannelContextState),
+        getChannelContextProvenance: vi.fn(() => null),
         getRuntimeSnapshot: vi.fn(createRuntimeSnapshot),
     };
 
@@ -133,11 +136,127 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-2');
     });
 
-    it('無効な composer.setContext はエラー通知に変換する', async () => {
+    it('初期適用の状態変更をcontextUpdatedとして重複通知しない', async () => {
         const { controller, parentFrame } = createController();
+
+        await controller.handleRemoteComposerSetContext({ content: 'initial' }, 'req-baseline');
+        controller.notifyComposerContextUpdatedIfChanged();
+
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-baseline');
+        expect(parentFrame.notifyComposerContextUpdated).not.toHaveBeenCalled();
+    });
+
+    it('reply選択を同期適用してhydrate完了前にackし、hydrateはack後に開始する', async () => {
+        let resolveHydration!: () => void;
+        const hydration = new Promise<void>((resolve) => {
+            resolveHydration = resolve;
+        });
+        const reply = {
+            eventId: '1'.repeat(64),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const applyReplyQuoteSelection = vi.fn(() => [reply]);
+        const hydrateReplyQuoteReferences = vi.fn(() => hydration);
+        const { controller, parentFrame } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection,
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+
+        await controller.handleRemoteComposerSetContext({
+            reply: nip19.noteEncode(reply.eventId),
+        }, 'req-reply-fast-ack');
+
+        expect(applyReplyQuoteSelection).toHaveBeenCalledOnce();
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-reply-fast-ack');
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
+        expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
+            .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
+        resolveHydration();
+        await hydration;
+    });
+
+    it('quoteだけのpayloadも選択設定直後にackしてからhydrateする', async () => {
+        const quote = {
+            eventId: '5'.repeat(64),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const applyReplyQuoteSelection = vi.fn(() => [quote]);
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const { controller, parentFrame } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection,
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+
+        await controller.handleRemoteComposerSetContext({
+            quotes: [nip19.noteEncode(quote.eventId)],
+        }, 'req-quote-fast-ack');
+
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-quote-fast-ack');
+        expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
+            .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
+    });
+
+    it('channel・reply・quotes同時指定でも初期状態だけでackし、hydrate失敗は非致命的に扱う', async () => {
+        const reply = {
+            eventId: '2'.repeat(64),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const quote = {
+            eventId: '3'.repeat(64),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const applyChannelContextQuery = vi.fn();
+        const applyReplyQuoteSelection = vi.fn(() => [reply, quote]);
+        const hydrateError = new Error('hydrate failed');
+        const hydrateReplyQuoteReferences = vi.fn().mockRejectedValue(hydrateError);
+        const { controller, parentFrame, logger } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection,
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery,
+                clearChannelContext: vi.fn(),
+            },
+        });
+
+        await controller.handleRemoteComposerSetContext({
+            channel: { reference: nip19.noteEncode('4'.repeat(64)) },
+            reply: nip19.noteEncode(reply.eventId),
+            quotes: [nip19.noteEncode(quote.eventId)],
+            content: 'initial content',
+        }, 'req-all-fast-ack');
+        await Promise.resolve();
+
+        expect(applyChannelContextQuery).toHaveBeenCalledOnce();
+        expect(applyReplyQuoteSelection).toHaveBeenCalledOnce();
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-all-fast-ack');
+        expect(parentFrame.notifyComposerContextError).not.toHaveBeenCalled();
+        expect(logger.warn).toHaveBeenCalledWith(
+            'composer context の非同期補完をスキップ:',
+            hydrateError,
+        );
+    });
+
+    it('無効な composer.setContext はエラー通知に変換する', async () => {
+        const { controller, parentFrame, composerInput } = createController();
 
         await controller.handleRemoteComposerSetContext(
             {
+                content: 'must not be partially applied',
                 channel: {
                     reference: 'not-a-pointer',
                 },
@@ -146,6 +265,7 @@ describe('createAppEmbedController', () => {
         );
 
         expect(parentFrame.notifyComposerContextApplied).not.toHaveBeenCalled();
+        expect(composerInput.insertText).not.toHaveBeenCalled();
         expect(parentFrame.notifyComposerContextError).toHaveBeenCalledWith(
             expect.objectContaining({
                 code: 'composer_context_apply_failed',
@@ -238,6 +358,7 @@ describe('createAppEmbedController', () => {
                 hasPendingParentAuth: vi.fn(() => false),
                 getReplyQuoteState: vi.fn(() => replyState),
                 getChannelContextState: vi.fn(() => null),
+                getChannelContextProvenance: vi.fn(() => null),
                 getRuntimeSnapshot: vi.fn(createRuntimeSnapshot),
             },
         });

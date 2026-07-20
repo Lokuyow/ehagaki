@@ -16,6 +16,16 @@ function trimToNull(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function readEmbedMetadataField(
+  channel: Record<string, unknown>,
+  field: 'name' | 'about' | 'picture',
+): { provided: false } | { provided: true; value: string | null } {
+  if (!Object.prototype.hasOwnProperty.call(channel, field)) {
+    return { provided: false };
+  }
+  return { provided: true, value: trimToNull(channel[field]) };
+}
+
 function parseChannelRelaysQuery(value: string | null): string[] {
   if (!value) {
     return [];
@@ -136,6 +146,10 @@ export function getChannelFromEmbedPayload(
       (value): value is string => typeof value === 'string',
     )
     : [];
+  const channel = payload.channel as unknown as Record<string, unknown>;
+  const name = readEmbedMetadataField(channel, 'name');
+  const about = readEmbedMetadataField(channel, 'about');
+  const picture = readEmbedMetadataField(channel, 'picture');
 
   return {
     eventId: decoded.eventId,
@@ -145,9 +159,9 @@ export function getChannelFromEmbedPayload(
         channelRelays,
       }
       : {}),
-    name: trimToNull(payload.channel.name),
-    about: trimToNull(payload.channel.about),
-    picture: trimToNull(payload.channel.picture),
+    ...(name.provided ? { name: name.value } : {}),
+    ...(about.provided ? { about: about.value } : {}),
+    ...(picture.provided ? { picture: picture.value } : {}),
   };
 }
 
@@ -201,6 +215,9 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
   }
 
   const channelRelays = parseChannelRelaysQuery(urlParams.get('channelRelays'));
+  const name = trimToNull(urlParams.get('channelName'));
+  const about = trimToNull(urlParams.get('channelAbout'));
+  const picture = trimToNull(urlParams.get('channelPicture'));
 
   return {
     eventId: decoded.eventId,
@@ -212,9 +229,9 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
         ),
       }
       : {}),
-    name: trimToNull(urlParams.get('channelName')),
-    about: trimToNull(urlParams.get('channelAbout')),
-    picture: trimToNull(urlParams.get('channelPicture')),
+    ...(name !== null ? { name } : {}),
+    ...(about !== null ? { about } : {}),
+    ...(picture !== null ? { picture } : {}),
   };
 }
 

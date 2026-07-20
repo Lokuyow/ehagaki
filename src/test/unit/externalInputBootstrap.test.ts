@@ -16,14 +16,6 @@ const mockState = vi.hoisted(() => {
         hasContentQueryParam: vi.fn(() => false),
         getContentFromUrlQuery: vi.fn(() => null),
         cleanupAllQueryParams: vi.fn(),
-        resolveChannelContext: vi.fn().mockResolvedValue({
-            eventId: 'channel-root-event',
-            relayHints: ['wss://channel-relay.example.com/'],
-            channelRelays: ['wss://channel-write.example.com/'],
-            name: 'General',
-            about: 'Public chat',
-            picture: 'https://example.com/channel.png',
-        }),
         fetchReferencedEvent: vi.fn(() => new Promise((resolve) => {
             state.resolveReferencedEvent = resolve;
         })),
@@ -63,14 +55,6 @@ vi.mock('../../lib/replyQuoteService', () => ({
     }),
 }));
 
-vi.mock('../../lib/channelContextService', () => ({
-    ChannelContextService: vi.fn(function () {
-        return {
-            resolveChannelContext: mockState.resolveChannelContext,
-        };
-    }),
-}));
-
 vi.mock('../../lib/shareHandler', () => ({
     checkIfOpenedFromShare: mockState.checkIfOpenedFromShare,
 }));
@@ -100,7 +84,7 @@ function createParams() {
         consumeFirstVisitFlag: vi.fn(() => false),
         showWelcomeDialog: vi.fn(),
         updateUrlQueryContentStore: vi.fn(),
-        setChannelContext: vi.fn(),
+        applyChannelContextQuery: vi.fn(),
         setReplyQuote: vi.fn(),
         updateReferencedEvent: vi.fn(),
         initializeReplyNotificationRecipients: vi.fn(),
@@ -117,14 +101,6 @@ describe('runExternalInputBootstrap', () => {
         mockState.resolveReferencedEvent = null;
         mockState.hasChannelQueryParam.mockReturnValue(false);
         mockState.getChannelFromUrlQuery.mockReturnValue(null);
-        mockState.resolveChannelContext.mockResolvedValue({
-            eventId: 'channel-root-event',
-            relayHints: ['wss://channel-relay.example.com/'],
-            channelRelays: ['wss://channel-write.example.com/'],
-            name: 'General',
-            about: 'Public chat',
-            picture: 'https://example.com/channel.png',
-        });
         mockState.hasReplyQuoteQueryParam.mockReturnValue(true);
         mockState.getReplyQuoteFromUrlQuery.mockReturnValue({
             reply: {
@@ -138,7 +114,7 @@ describe('runExternalInputBootstrap', () => {
         mockState.checkIfOpenedFromShare.mockReturnValue(false);
     });
 
-    it('reply/quote の参照イベント取得が完了するまで完了しない', async () => {
+    it('reply/quote選択後は参照イベントhydrateを待たずにbootstrapを完了する', async () => {
         const params = createParams();
         let resolved = false;
 
@@ -162,8 +138,10 @@ describe('runExternalInputBootstrap', () => {
             params.rxNostr,
             null,
         );
-        expect(resolved).toBe(false);
-        expect(mockState.cleanupAllQueryParams).not.toHaveBeenCalled();
+        await bootstrapPromise;
+        expect(resolved).toBe(true);
+        expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
+        expect(params.updateReferencedEvent).not.toHaveBeenCalled();
 
         const event = {
             id: 'event-1',
@@ -176,22 +154,20 @@ describe('runExternalInputBootstrap', () => {
         };
         mockState.resolveReferencedEvent?.(event);
 
-        await bootstrapPromise;
-
-        expect(params.updateReferencedEvent).toHaveBeenCalledWith(
-            'event-1',
-            event,
-            {
-                rootEventId: null,
-                rootRelayHint: null,
-                rootPubkey: null,
-            },
-        );
-        expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
-        expect(resolved).toBe(true);
+        await vi.waitFor(() => {
+            expect(params.updateReferencedEvent).toHaveBeenCalledWith(
+                'event-1',
+                event,
+                {
+                    rootEventId: null,
+                    rootRelayHint: null,
+                    rootPubkey: null,
+                },
+            );
+        });
     });
 
-    it('参照イベントと通知受信者の初期化だけを待ち、プロフィール取得を行わない', async () => {
+    it('非同期hydrate後に参照イベントと通知受信者を初期化する', async () => {
         const params = createParams();
         const bootstrapPromise = runExternalInputBootstrap(params as never);
 
@@ -210,16 +186,17 @@ describe('runExternalInputBootstrap', () => {
         mockState.resolveReferencedEvent?.(event);
 
         await bootstrapPromise;
-
-        expect(params.updateReferencedEvent).toHaveBeenCalledWith(
-            'event-1',
-            event,
-            expect.any(Object),
-        );
-        expect(params.initializeReplyNotificationRecipients).toHaveBeenCalledWith(
-            'event-1',
-            event,
-        );
+        await vi.waitFor(() => {
+            expect(params.updateReferencedEvent).toHaveBeenCalledWith(
+                'event-1',
+                event,
+                expect.any(Object),
+            );
+            expect(params.initializeReplyNotificationRecipients).toHaveBeenCalledWith(
+                'event-1',
+                event,
+            );
+        });
     });
 
     it('無効な relay hint は参照イベント取得とプロフィール取得へ渡さない', async () => {
@@ -328,14 +305,13 @@ describe('runExternalInputBootstrap', () => {
 
         await runExternalInputBootstrap(params as never);
 
-        expect(params.setChannelContext).toHaveBeenCalledWith({
+        expect(params.applyChannelContextQuery).toHaveBeenCalledWith({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-relay.example.com/'],
             name: 'General',
             about: 'Public chat',
             picture: 'https://example.com/channel.png',
         });
-        expect(mockState.resolveChannelContext).not.toHaveBeenCalled();
         expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
     });
 
@@ -358,7 +334,7 @@ describe('runExternalInputBootstrap', () => {
 
         await runExternalInputBootstrap(params as never);
 
-        expect(params.setChannelContext).toHaveBeenCalledWith({
+        expect(params.applyChannelContextQuery).toHaveBeenCalledWith({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-relay.example.com/'],
             channelRelays: [
@@ -369,11 +345,10 @@ describe('runExternalInputBootstrap', () => {
             about: null,
             picture: null,
         });
-        expect(mockState.resolveChannelContext).not.toHaveBeenCalled();
         expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
     });
 
-    it('channel metadata がない場合は relay から解決して cleanup する', async () => {
+    it('channel metadata がない場合も共通Coordinator入口へ同期委譲して cleanup する', async () => {
         mockState.hasChannelQueryParam.mockReturnValue(true);
         mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
         mockState.getChannelFromUrlQuery.mockReturnValue({
@@ -384,67 +359,15 @@ describe('runExternalInputBootstrap', () => {
             picture: null,
         } as any);
 
-        let resolveChannelContextPromise: ((value: any) => void) | null = null;
-        mockState.resolveChannelContext.mockImplementationOnce(() => new Promise<any>((resolve) => {
-            resolveChannelContextPromise = resolve;
-        }));
-
         const params = createParams();
-        let resolved = false;
+        await runExternalInputBootstrap(params as never);
 
-        const bootstrapPromise = runExternalInputBootstrap(params as never).then(() => {
-            resolved = true;
-        });
-
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(params.setChannelContext).toHaveBeenNthCalledWith(1, {
+        expect(params.applyChannelContextQuery).toHaveBeenCalledWith({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-relay.example.com/'],
             name: null,
             about: null,
             picture: null,
-            isMetadataLoading: true,
-        });
-        expect(resolved).toBe(false);
-
-        expect(mockState.resolveChannelContext).toHaveBeenCalledWith(
-            {
-                eventId: 'channel-root-event',
-                relayHints: ['wss://channel-relay.example.com/'],
-                name: null,
-                about: null,
-                picture: null,
-            },
-            params.rxNostr,
-            null,
-        );
-
-        if (!resolveChannelContextPromise) {
-            throw new Error('resolveChannelContextPromise was not initialized');
-        }
-
-        const resolveChannelContext = resolveChannelContextPromise as (value: any) => void;
-
-        resolveChannelContext({
-            eventId: 'channel-root-event',
-            relayHints: ['wss://channel-relay.example.com/'],
-            channelRelays: ['wss://channel-write.example.com/'],
-            name: 'General',
-            about: 'Public chat',
-            picture: 'https://example.com/channel.png',
-        });
-
-        await bootstrapPromise;
-
-        expect(params.setChannelContext).toHaveBeenNthCalledWith(2, {
-            eventId: 'channel-root-event',
-            relayHints: ['wss://channel-relay.example.com/'],
-            channelRelays: ['wss://channel-write.example.com/'],
-            name: 'General',
-            about: 'Public chat',
-            picture: 'https://example.com/channel.png',
         });
         expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
     });

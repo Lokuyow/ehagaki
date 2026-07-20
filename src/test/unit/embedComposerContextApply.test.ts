@@ -100,8 +100,6 @@ describe('embedComposerContextApply', () => {
                 relayHints: ['wss://relay.example.com/'],
                 channelRelays: ['wss://write.example.com'],
                 name: 'General',
-                about: null,
-                picture: null,
             });
         });
 

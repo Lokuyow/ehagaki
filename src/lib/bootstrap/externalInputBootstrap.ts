@@ -1,5 +1,4 @@
 import { ReplyQuoteService } from "../replyQuoteService";
-import { ChannelContextService } from "../channelContextService";
 import { checkIfOpenedFromShare } from "../shareHandler";
 import {
     getChannelFromUrlQuery,
@@ -17,7 +16,6 @@ import {
     getSharedMediaWithFallback,
 } from "../utils/swCommunication";
 import { sharedMediaRepository } from "../storage/sharedMediaRepository";
-import { processExternalChannelContextQuery } from './externalChannelContextBootstrapUtils';
 import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type {
     ChannelContextQueryTarget,
@@ -45,7 +43,7 @@ export interface RunExternalInputBootstrapParams {
     consumeFirstVisitFlag: () => boolean;
     showWelcomeDialog: () => void;
     updateUrlQueryContentStore: (content: string) => void;
-    setChannelContext: (value: any) => void;
+    applyChannelContextQuery: (query: ChannelContextQueryTarget) => void;
     setReplyQuote: (value: any) => void;
     updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
     initializeReplyNotificationRecipients?: (eventId: string, event: NostrEvent) => void;
@@ -158,70 +156,29 @@ async function bootstrapReplyQuote({
         return;
     }
 
-    await applyReplyQuoteQuery({
+    const references = applyReplyQuoteSelection({
         replyQuoteQuery,
+        setReplyQuote,
+    });
+    if (references.length === 0) {
+        return;
+    }
+
+    void hydrateReplyQuoteReferences({
+        references,
         rxNostr,
         relayConfig,
-        setReplyQuote,
         updateReferencedEvent,
         initializeReplyNotificationRecipients,
         setReplyQuoteError,
-    });
-}
-
-export interface ApplyChannelContextQueryParams extends Pick<
-    RunExternalInputBootstrapParams,
-    | "rxNostr"
-    | "relayConfig"
-    | "setChannelContext"
-> {
-    channelContextQuery: ChannelContextQueryTarget;
-}
-
-function sanitizeChannelContextQuery(
-    channelContextQuery: ChannelContextQueryTarget,
-): ChannelContextQueryTarget {
-    const sanitizedChannelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-        channelContextQuery.channelRelays,
-    );
-
-    return {
-        ...channelContextQuery,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
-            channelContextQuery.relayHints,
-            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-        ),
-        ...(sanitizedChannelRelays.length > 0
-            ? {
-                channelRelays: sanitizedChannelRelays,
-            }
-            : {}),
-    };
-}
-
-export async function applyChannelContextQuery({
-    channelContextQuery,
-    rxNostr,
-    relayConfig,
-    setChannelContext,
-}: ApplyChannelContextQueryParams): Promise<void> {
-    const sanitizedChannelContextQuery = sanitizeChannelContextQuery(
-        channelContextQuery,
-    );
-    await processExternalChannelContextQuery({
-        channelContextQuery: sanitizedChannelContextQuery,
-        channelContextService: new ChannelContextService(),
-        rxNostr,
-        relayConfig,
-        setChannelContext,
+    }).catch((error) => {
+        console.error("URLの返信・引用コンテキスト補完に失敗:", error);
     });
 }
 
 async function bootstrapChannelContext({
-    rxNostr,
-    relayConfig,
-    setChannelContext,
-}: Pick<RunExternalInputBootstrapParams, 'rxNostr' | 'relayConfig' | 'setChannelContext'>): Promise<void> {
+    applyChannelContextQuery,
+}: Pick<RunExternalInputBootstrapParams, 'applyChannelContextQuery'>): Promise<void> {
     if (!hasChannelQueryParam()) {
         return;
     }
@@ -231,12 +188,7 @@ async function bootstrapChannelContext({
         return;
     }
 
-    await applyChannelContextQuery({
-        channelContextQuery: channelContext,
-        rxNostr,
-        relayConfig,
-        setChannelContext,
-    });
+    applyChannelContextQuery(channelContext);
 }
 
 export interface ApplyReplyQuoteQueryParams extends Pick<
@@ -250,6 +202,13 @@ export interface ApplyReplyQuoteQueryParams extends Pick<
 > {
     replyQuoteQuery: ReplyQuoteQueryResult;
     preloadedEvents?: Record<string, NostrEvent>;
+}
+
+export interface ApplyReplyQuoteSelectionParams extends Pick<
+    RunExternalInputBootstrapParams,
+    "setReplyQuote"
+> {
+    replyQuoteQuery: ReplyQuoteQueryResult;
 }
 
 function sanitizeReplyQuoteQuery(
@@ -345,14 +304,10 @@ export async function applyReplyQuoteQuery({
     initializeReplyNotificationRecipients,
     setReplyQuoteError,
 }: ApplyReplyQuoteQueryParams): Promise<void> {
-    const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
-
-    setReplyQuote(sanitizedReplyQuoteQuery);
-
-    const references = [
-        ...(sanitizedReplyQuoteQuery.reply ? [sanitizedReplyQuoteQuery.reply] : []),
-        ...sanitizedReplyQuoteQuery.quotes,
-    ];
+    const references = applyReplyQuoteSelection({
+        replyQuoteQuery,
+        setReplyQuote,
+    });
 
     if (references.length === 0) {
         return;
@@ -369,6 +324,18 @@ export async function applyReplyQuoteQuery({
     });
 }
 
+export function applyReplyQuoteSelection({
+    replyQuoteQuery,
+    setReplyQuote,
+}: ApplyReplyQuoteSelectionParams): ReplyQuoteQueryTarget[] {
+    const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
+    setReplyQuote(sanitizedReplyQuoteQuery);
+    return [
+        ...(sanitizedReplyQuoteQuery.reply ? [sanitizedReplyQuoteQuery.reply] : []),
+        ...sanitizedReplyQuoteQuery.quotes,
+    ];
+}
+
 export async function runExternalInputBootstrap({
     sharedError,
     sharedMediaStore,
@@ -376,7 +343,7 @@ export async function runExternalInputBootstrap({
     consumeFirstVisitFlag,
     showWelcomeDialog,
     updateUrlQueryContentStore,
-    setChannelContext,
+    applyChannelContextQuery,
     setReplyQuote,
     updateReferencedEvent,
     initializeReplyNotificationRecipients,
@@ -416,9 +383,7 @@ export async function runExternalInputBootstrap({
     }
 
     await bootstrapChannelContext({
-        rxNostr,
-        relayConfig,
-        setChannelContext,
+        applyChannelContextQuery,
     });
 
     await bootstrapReplyQuote({

@@ -319,6 +319,18 @@ describe('urlQueryHandler', () => {
       ]);
     });
 
+    it('URLの欠落・空metadataは未指定として省略し、DB補完を妨げない', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?channel=${validChannelNote}&channelName=&channelAbout=%20%20`,
+      } as Location;
+
+      expect(getChannelFromUrlQuery()).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: [],
+      });
+    });
+
     it('embed payload から channel metadata を取得できる', () => {
       expect(getChannelFromEmbedPayload({
         channel: {
@@ -335,6 +347,21 @@ describe('urlQueryHandler', () => {
         name: 'General',
         about: 'General discussion',
         picture: 'https://example.com/channel.png',
+      });
+    });
+
+    it('embed metadataはundefinedを省略し、明示nullを保持する', () => {
+      expect(getChannelFromEmbedPayload({
+        channel: {
+          reference: validChannelNote,
+          name: null,
+          picture: ' Picture ',
+        },
+      })).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: [],
+        name: null,
+        picture: 'Picture',
       });
     });
 

@@ -101,10 +101,12 @@
   } from "./stores/replyQuoteStore.svelte";
   import {
     channelContextState,
+    channelContextProvenanceState,
     clearChannelContext,
     onChannelContextChanged,
     restoreChannelContext,
     setChannelContext,
+    setChannelContextWithProvenance,
   } from "./stores/channelContextStore.svelte";
   import { startPostHistoryChannelContextApply } from "./lib/postHistoryChannelContextApply";
   import { relayConfigStore } from "./stores/relayStore.svelte";
@@ -129,11 +131,12 @@
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
   import {
-    applyChannelContextQuery,
     applyReplyQuoteQuery,
+    applyReplyQuoteSelection,
     hydrateReplyQuoteReferences,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
+  import { createChannelContextApplyController } from "./lib/channelContextApplyController";
   import type { EmbedSettingsSetPayload } from "./lib/embedProtocol";
   import { createDraftComposerController } from "./lib/draftComposerController";
   import { createPostHistoryDialogApplyController } from "./lib/postHistoryDialogApplyController";
@@ -863,13 +866,13 @@
     };
   }
 
-  function getChannelContextApplyParams() {
-    return {
-      rxNostr,
-      relayConfig: relayConfigStore.value,
-      setChannelContext,
-    };
-  }
+  const channelContextApplyController = createChannelContextApplyController({
+    getCurrentChannelContext: () => channelContextState.value,
+    setChannelContext: (context, provenance) =>
+      setChannelContextWithProvenance(context, provenance),
+    clearChannelContext,
+    logger: console,
+  });
 
   const appEmbedController = createAppEmbedController({
     composerInput: {
@@ -887,25 +890,30 @@
       updateUrlQueryContentStore,
     },
     composerContextApply: {
-      applyReplyQuoteQuery: (query, runtime) =>
-        applyReplyQuoteQuery({
+      applyReplyQuoteSelection: (query) =>
+        applyReplyQuoteSelection({
           replyQuoteQuery: query,
+          setReplyQuote,
+        }),
+      hydrateReplyQuoteReferences: (references, runtime) =>
+        hydrateReplyQuoteReferences({
+          references,
           rxNostr: runtime.rxNostr,
           relayConfig: runtime.relayConfig,
-          setReplyQuote,
           updateReferencedEvent,
           initializeReplyNotificationRecipients,
           setReplyQuoteError,
         }),
       clearReplyQuote,
-      applyChannelContextQuery: (query, runtime) =>
-        applyChannelContextQuery({
-          channelContextQuery: query,
+      applyChannelContextQuery: (query, runtime) => {
+        channelContextApplyController.applyExternal({
+          query,
+          source: "iframe",
           rxNostr: runtime.rxNostr,
           relayConfig: runtime.relayConfig,
-          setChannelContext,
-        }),
-      clearChannelContext,
+        });
+      },
+      clearChannelContext: () => channelContextApplyController.clear(),
     },
     settingsApply: {
       applySettings: async (payload: EmbedSettingsSetPayload) => {
@@ -955,6 +963,7 @@
         parentClientAuthCoordinator.hasPendingRequest(),
       getReplyQuoteState: () => replyQuoteState.value,
       getChannelContextState: () => channelContextState.value,
+      getChannelContextProvenance: () => channelContextProvenanceState.value,
       getRuntimeSnapshot: () => ({
         rxNostr,
         relayConfig: relayConfigStore.value,
@@ -1191,7 +1200,14 @@
       consumeFirstVisitFlag,
       showWelcomeDialog: welcomeDialog.open,
       updateUrlQueryContentStore,
-      setChannelContext,
+      applyChannelContextQuery: (query) => {
+        channelContextApplyController.applyExternal({
+          query,
+          source: "url",
+          rxNostr,
+          relayConfig: relayConfigStore.value,
+        });
+      },
       setReplyQuote,
       updateReferencedEvent,
       initializeReplyNotificationRecipients,
@@ -1235,6 +1251,7 @@
     return () => {
       cleanupVisibilityHandler();
       cleanupRuntimeBindings();
+      channelContextApplyController.dispose();
     };
   });
 

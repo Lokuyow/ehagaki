@@ -5,7 +5,9 @@ import type {
     RelayConfig,
     ReplyQuoteComposerState,
     ReplyQuoteQueryResult,
+    ReplyQuoteQueryTarget,
 } from "./types";
+import type { ChannelContextProvenance } from "./channelContextRuntime";
 import type {
     EmbedChannelContextPayload,
     EmbedComposerSetContextPayload,
@@ -26,15 +28,16 @@ export interface AppEmbedComposerInputPort {
 }
 
 export interface AppEmbedComposerContextApplyPort {
-    applyReplyQuoteQuery(
-        query: ReplyQuoteQueryResult,
+    applyReplyQuoteSelection(query: ReplyQuoteQueryResult): ReplyQuoteQueryTarget[];
+    hydrateReplyQuoteReferences(
+        references: ReplyQuoteQueryTarget[],
         runtime: AppEmbedRuntimeSnapshot,
     ): Promise<void>;
     clearReplyQuote(): void;
     applyChannelContextQuery(
         query: ChannelContextQueryTarget,
         runtime: AppEmbedRuntimeSnapshot,
-    ): Promise<void>;
+    ): void;
     clearChannelContext(): void;
 }
 
@@ -108,6 +111,7 @@ export interface AppEmbedRuntimeStateGetters {
     hasPendingParentAuth(): boolean;
     getReplyQuoteState(): ReplyQuoteComposerState;
     getChannelContextState(): ChannelContextState | null;
+    getChannelContextProvenance(): ChannelContextProvenance | null;
     getRuntimeSnapshot(): AppEmbedRuntimeSnapshot;
 }
 
@@ -150,6 +154,7 @@ export type AppEmbedPendingComposerAction = Readonly<{
 interface AppEmbedControllerState {
     pendingComposerAction?: AppEmbedPendingComposerAction;
     lastNotifiedComposerContextSignature: string | null;
+    applyingComposerContext: boolean;
 }
 
 export interface AppEmbedController {
@@ -181,11 +186,25 @@ export function createAppEmbedController(
     const state: AppEmbedControllerState = {
         pendingComposerAction: undefined,
         lastNotifiedComposerContextSignature: null,
+        applyingComposerContext: false,
     };
 
-    async function applyRemoteComposerSetContext(
+    function buildCurrentComposerContextPayload() {
+        return buildComposerContextUpdatedPayload(
+            deps.runtime.getReplyQuoteState(),
+            deps.runtime.getChannelContextState(),
+            deps.runtime.getChannelContextProvenance(),
+        );
+    }
+
+    function applyRemoteComposerSetContext(
         payload: EmbedComposerSetContextPayload,
-    ): Promise<void> {
+    ): Array<() => Promise<void>> {
+        // Decode and validate every reference before mutating any composer state.
+        const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
+            payload,
+            deps.runtime.getReplyQuoteState(),
+        );
         const composerInput = deps.composerInput.get();
 
         applyEmbedComposerContent(payload.content, {
@@ -203,17 +222,13 @@ export function createAppEmbedController(
                 : undefined,
         });
 
-        const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
-            payload,
-            deps.runtime.getReplyQuoteState(),
-        );
         const runtimeSnapshot = deps.runtime.getRuntimeSnapshot();
 
         if (channelContext !== undefined) {
             if (channelContext === null) {
                 deps.composerContextApply.clearChannelContext();
             } else {
-                await deps.composerContextApply.applyChannelContextQuery(
+                deps.composerContextApply.applyChannelContextQuery(
                     channelContext,
                     runtimeSnapshot,
                 );
@@ -221,18 +236,48 @@ export function createAppEmbedController(
         }
 
         if (replyQuoteQuery === undefined) {
-            return;
+            return [];
         }
 
         if (replyQuoteQuery === null) {
             deps.composerContextApply.clearReplyQuote();
-            return;
+            return [];
         }
 
-        await deps.composerContextApply.applyReplyQuoteQuery(
+        const references = deps.composerContextApply.applyReplyQuoteSelection(
             replyQuoteQuery,
-            runtimeSnapshot,
         );
+        return references.length > 0
+            ? [() => deps.composerContextApply.hydrateReplyQuoteReferences(
+                references,
+                runtimeSnapshot,
+            )]
+            : [];
+    }
+
+    function runBackgroundComposerTasks(tasks: Array<() => Promise<void>>): void {
+        for (const task of tasks) {
+            void task().catch((error) => {
+                deps.logger.warn("composer context の非同期補完をスキップ:", error);
+            });
+        }
+    }
+
+    function applyAndAcknowledgeComposerContext(
+        payload: EmbedComposerSetContextPayload,
+        requestId: string,
+    ): void {
+        state.applyingComposerContext = true;
+        try {
+            const backgroundTasks = applyRemoteComposerSetContext(payload);
+            deps.parentFrame.notifyComposerContextApplied(requestId);
+            state.lastNotifiedComposerContextSignature = buildComposerContextSignature(
+                buildCurrentComposerContextPayload(),
+            );
+            runBackgroundComposerTasks(backgroundTasks);
+        } finally {
+            state.applyingComposerContext = false;
+        }
     }
 
     function notifyComposerError(
@@ -266,8 +311,7 @@ export function createAppEmbedController(
             }
 
             try {
-                await applyRemoteComposerSetContext(payload);
-                deps.parentFrame.notifyComposerContextApplied(requestId);
+                applyAndAcknowledgeComposerContext(payload, requestId);
             } catch (error) {
                 notifyComposerError(error, requestId, "composer.setContext の適用に失敗:");
             }
@@ -316,8 +360,10 @@ export function createAppEmbedController(
             }
 
             try {
-                await applyRemoteComposerSetContext(pendingAction.payload);
-                deps.parentFrame.notifyComposerContextApplied(pendingAction.requestId);
+                applyAndAcknowledgeComposerContext(
+                    pendingAction.payload,
+                    pendingAction.requestId,
+                );
             } catch (error) {
                 notifyComposerError(
                     error,
@@ -328,14 +374,11 @@ export function createAppEmbedController(
         },
 
         notifyComposerContextUpdatedIfChanged(): void {
-            if (deps.runtime.isBootstrappingApp()) {
+            if (deps.runtime.isBootstrappingApp() || state.applyingComposerContext) {
                 return;
             }
 
-            const payload = buildComposerContextUpdatedPayload(
-                deps.runtime.getReplyQuoteState(),
-                deps.runtime.getChannelContextState(),
-            );
+            const payload = buildCurrentComposerContextPayload();
             const signature = buildComposerContextSignature(payload);
 
             if (signature === state.lastNotifiedComposerContextSignature) {
