@@ -365,6 +365,18 @@ describe('urlQueryHandler', () => {
       });
     });
 
+    it('embed metadataのown undefinedは未指定として扱う', () => {
+      expect(getChannelFromEmbedPayload({
+        channel: {
+          reference: validChannelNote,
+          name: undefined,
+        },
+      })).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: [],
+      });
+    });
+
   });
 
   describe('getReplyQuoteFromUrlQuery', () => {

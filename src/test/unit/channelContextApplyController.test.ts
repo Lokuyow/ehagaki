@@ -4,7 +4,10 @@ import type {
     ChannelContextCoordinatorRefreshResult,
     ChannelContextCoordinatorSnapshot,
 } from "../../lib/channelContextCoordinator";
-import type { ChannelContextProvenance } from "../../lib/channelContextRuntime";
+import {
+    buildEffectiveChannelContext,
+    type ChannelContextProvenance,
+} from "../../lib/channelContextRuntime";
 import type { ChannelContextState } from "../../lib/types";
 
 const eventId = "a".repeat(64);
@@ -38,17 +41,21 @@ function snapshot(
 function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
     let current: ChannelContextState | null = null;
     let provenance: ChannelContextProvenance | null = null;
-    const setChannelContext = vi.fn((next, nextProvenance) => {
+    let ownerToken: symbol | null = null;
+    const setChannelContext = vi.fn((next, nextProvenance, nextOwnerToken) => {
         current = next;
         provenance = nextProvenance;
+        ownerToken = nextOwnerToken;
     });
     const clearChannelContext = vi.fn(() => {
         current = null;
         provenance = null;
+        ownerToken = null;
     });
     const controller = createChannelContextApplyController({
         coordinator: { resolveInternal } as never,
         getCurrentChannelContext: () => current,
+        getChannelContextOwnerToken: () => ownerToken,
         setChannelContext,
         clearChannelContext,
         logger: { error: vi.fn() },
@@ -59,6 +66,14 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
         clearChannelContext,
         getCurrent: () => current,
         getProvenance: () => provenance,
+        getEffective: () => current
+            ? buildEffectiveChannelContext(current, provenance)
+            : null,
+        setOutside(next: ChannelContextState | null) {
+            current = next;
+            provenance = null;
+            ownerToken = null;
+        },
     };
 }
 
@@ -70,7 +85,7 @@ describe("createChannelContextApplyController", () => {
         const resolveInternal = vi.fn((_query: unknown) => ({
             initial: snapshot({
                 relayHints: ["wss://initial.example.com/"],
-                name: "Parent name",
+                name: null,
                 about: null,
                 picture: null,
             }, "seed"),
@@ -90,6 +105,11 @@ describe("createChannelContextApplyController", () => {
             },
         });
         expect(harness.getCurrent()).toMatchObject({
+            name: null,
+            about: null,
+            picture: null,
+        });
+        expect(harness.getEffective()).toMatchObject({
             name: "Parent name",
             about: null,
             picture: null,
@@ -103,6 +123,11 @@ describe("createChannelContextApplyController", () => {
         await handle.cacheReady;
 
         expect(harness.getCurrent()).toMatchObject({
+            name: "Verified name",
+            about: "Verified about",
+            picture: "https://example.com/verified.png",
+        });
+        expect(harness.getEffective()).toMatchObject({
             name: "Parent name",
             about: "Verified about",
             picture: null,
@@ -138,11 +163,14 @@ describe("createChannelContextApplyController", () => {
         });
         await handle.cacheReady;
 
-        expect(resolveInternal.mock.calls[0]?.[0]).toMatchObject({
-            relayHints: relayHints.slice(0, 3).map((relay) => `${relay}/`),
-            channelRelays: channelRelays.slice(0, 3).map((relay) => `${relay}/`),
+        expect(resolveInternal.mock.calls[0]?.[0]).toEqual({
+            eventId,
+            relayHints: [],
         });
         expect(harness.getCurrent()?.channelRelays).toEqual([
+            "wss://verified.example.com/",
+        ]);
+        expect(harness.getEffective()?.channelRelays).toEqual([
             ...channelRelays.slice(0, 3).map((relay) => `${relay}/`),
             "wss://verified.example.com/",
         ]);
@@ -206,5 +234,67 @@ describe("createChannelContextApplyController", () => {
         expect(harness.clearChannelContext).toHaveBeenCalledOnce();
         expect(harness.getCurrent()).toBeNull();
         expect(harness.getProvenance()).toBeNull();
+    });
+
+    it.each([
+        "通常setter",
+        "投稿履歴適用",
+        "下書き復元",
+        "clear後の通常setter",
+    ])("外部適用中に%sが同じeventIdを所有したら古い結果を復活させない", async (route) => {
+        const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
+        const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const resolveInternal = vi.fn(() => ({
+            initial: snapshot({ name: null }, "seed"),
+            cacheReady: cacheReady.promise,
+            refresh: refresh.promise,
+            release: vi.fn(),
+        }));
+        const harness = createHarness(resolveInternal);
+        harness.controller.applyExternal({
+            source: "iframe",
+            query: { eventId, relayHints: [], name: "Parent" },
+        });
+
+        if (route === "clear後の通常setter") harness.setOutside(null);
+        harness.setOutside(snapshot({ name: "Outside" }).context);
+        cacheReady.resolve(snapshot({ name: "Old cache" }));
+        refresh.resolve({
+            status: "updated",
+            snapshot: snapshot({ name: "Old network" }, "network"),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(harness.getCurrent()?.name).toBe("Outside");
+        expect(harness.getProvenance()).toBeNull();
+    });
+
+    it("同じexternal handle自身のcacheからnetworkへの更新はowner tokenを維持して反映する", async () => {
+        const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
+        const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const resolveInternal = vi.fn(() => ({
+            initial: snapshot({}, "seed"),
+            cacheReady: cacheReady.promise,
+            refresh: refresh.promise,
+            release: vi.fn(),
+        }));
+        const harness = createHarness(resolveInternal);
+        const handle = harness.controller.applyExternal({
+            source: "iframe",
+            query: { eventId, relayHints: [], name: "Parent" },
+        });
+
+        cacheReady.resolve(snapshot({ about: "Cached" }));
+        await handle.cacheReady;
+        expect(harness.getCurrent()?.about).toBe("Cached");
+        refresh.resolve({
+            status: "updated",
+            snapshot: snapshot({ about: "Network" }, "network"),
+        });
+        await handle.refresh;
+
+        expect(harness.getCurrent()?.about).toBe("Network");
+        expect(harness.getEffective()?.name).toBe("Parent");
     });
 });

@@ -1,11 +1,13 @@
 /**
  * URLクエリパラメータからコンテンツを取得する
  */
-import { nip19 } from 'nostr-tools';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { EmbedComposerSetContextPayload } from './embedProtocol';
 import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from './types';
+import { decodeEventPointerValue } from './eventPointerUtils';
+
+export { decodeEventPointerValue } from './eventPointerUtils';
 
 function trimToNull(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -21,6 +23,9 @@ function readEmbedMetadataField(
   field: 'name' | 'about' | 'picture',
 ): { provided: false } | { provided: true; value: string | null } {
   if (!Object.prototype.hasOwnProperty.call(channel, field)) {
+    return { provided: false };
+  }
+  if (channel[field] === undefined) {
     return { provided: false };
   }
   return { provided: true, value: trimToNull(channel[field]) };
@@ -43,42 +48,6 @@ function getCurrentUrlParams(): URLSearchParams | null {
   }
 
   return new URLSearchParams(window.location.search);
-}
-
-function decodeEventPointerValue(
-  value: string,
-): {
-  eventId: string;
-  relayHints: string[];
-  authorPubkey: string | null;
-} | null {
-  try {
-    const decoded = nip19.decode(value);
-
-    if (decoded.type === 'nevent') {
-      const data = decoded.data as nip19.EventPointer;
-      return {
-        eventId: data.id,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(data.relays ? [...data.relays] : [], {
-          limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
-        }),
-        authorPubkey: data.author ?? null,
-      };
-    }
-
-    if (decoded.type === 'note') {
-      return {
-        eventId: decoded.data as string,
-        relayHints: [],
-        authorPubkey: null,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error('リプライ/引用パラメータのデコードに失敗:', error);
-    return null;
-  }
 }
 
 function buildReplyQuoteQueryResult(

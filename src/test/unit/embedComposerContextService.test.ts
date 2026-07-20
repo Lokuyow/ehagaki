@@ -122,7 +122,7 @@ describe('EmbedComposerContextService', () => {
         expect(onRemoteSetContext).not.toHaveBeenCalled();
     });
 
-    it('不正な content を含む composer.setContext は無視する', () => {
+    it('有効requestIdの不正payloadもControllerがerror ackできるようlistenerへ渡す', () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
@@ -134,6 +134,7 @@ describe('EmbedComposerContextService', () => {
                 namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'composer.setContext',
+                requestId: 'invalid-payload-1',
                 payload: {
                     content: 123,
                 },
@@ -142,7 +143,10 @@ describe('EmbedComposerContextService', () => {
             source: parent,
         } as unknown as MessageEvent);
 
-        expect(onRemoteSetContext).not.toHaveBeenCalled();
+        expect(onRemoteSetContext).toHaveBeenCalledWith(
+            { content: 123 },
+            'invalid-payload-1',
+        );
     });
 
     it('requestId がない composer.setContext は無視する', () => {

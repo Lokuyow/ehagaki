@@ -6,12 +6,10 @@ import {
     type ChannelContextCoordinatorSnapshot,
 } from "./channelContextCoordinator";
 import {
-    applyChannelContextProvenance,
-    buildExternalChannelContextProvenance,
+    prepareExternalChannelContext,
     type ChannelContextExternalSource,
     type ChannelContextProvenance,
 } from "./channelContextRuntime";
-import { RelayConfigUtils } from "./relayConfigUtils";
 import type {
     ChannelContextQueryTarget,
     ChannelContextState,
@@ -23,7 +21,9 @@ export interface ChannelContextApplyControllerDeps {
     setChannelContext(
         context: ChannelContextState,
         provenance: ChannelContextProvenance,
+        ownerToken: symbol,
     ): void;
+    getChannelContextOwnerToken(): symbol | null;
     clearChannelContext(): void;
     coordinator?: ChannelContextCoordinator;
     logger?: Pick<Console, "error">;
@@ -48,23 +48,6 @@ export interface ChannelContextApplyController {
     dispose(): void;
 }
 
-function sanitizeExternalQuery(
-    query: ChannelContextQueryTarget,
-): ChannelContextQueryTarget {
-    const channelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
-        query.channelRelays,
-        { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-    );
-    return {
-        ...query,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
-            query.relayHints,
-            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-        ),
-        ...(channelRelays.length > 0 ? { channelRelays } : {}),
-    };
-}
-
 export function createChannelContextApplyController(
     deps: ChannelContextApplyControllerDeps,
 ): ChannelContextApplyController {
@@ -84,32 +67,27 @@ export function createChannelContextApplyController(
             const applyGeneration = generation;
             releaseCurrent();
 
-            const sanitizedQuery = sanitizeExternalQuery(query);
-            const provenance = buildExternalChannelContextProvenance(
-                sanitizedQuery,
+            const { coordinatorQuery, provenance } = prepareExternalChannelContext(
+                query,
                 source,
             );
+            const ownerToken = Symbol(`external-channel:${coordinatorQuery.eventId}`);
             const resolution = coordinator.resolveInternal(
-                sanitizedQuery,
+                coordinatorQuery,
                 rxNostr,
                 relayConfig,
             );
             let active = true;
             const isCurrent = () => active
                 && generation === applyGeneration
-                && deps.getCurrentChannelContext()?.eventId === sanitizedQuery.eventId;
+                && deps.getCurrentChannelContext()?.eventId === coordinatorQuery.eventId
+                && deps.getChannelContextOwnerToken() === ownerToken;
             const applySnapshot = (snapshot: ChannelContextCoordinatorSnapshot) => {
                 if (!isCurrent()) return;
-                deps.setChannelContext(
-                    applyChannelContextProvenance(snapshot.context, provenance),
-                    provenance,
-                );
+                deps.setChannelContext(snapshot.context, provenance, ownerToken);
             };
 
-            deps.setChannelContext(
-                applyChannelContextProvenance(resolution.initial.context, provenance),
-                provenance,
-            );
+            deps.setChannelContext(resolution.initial.context, provenance, ownerToken);
 
             const release = () => {
                 if (!active) return;

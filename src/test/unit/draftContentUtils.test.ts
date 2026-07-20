@@ -7,6 +7,7 @@ import {
     createDraftSavePayload,
     extractMediaToGalleryHtml,
 } from '../../lib/draftContentUtils';
+import { buildEffectiveChannelContext } from '../../lib/channelContextRuntime';
 
 function createReplyState() {
     return {
@@ -196,6 +197,33 @@ describe('createDraftSavePayload', () => {
             channelData: createChannelState(),
             replyQuoteData: undefined,
         });
+    });
+
+    it('V1下書きにはruntime metadata/write overrideでなくstable contextだけを保存する', () => {
+        const stable = {
+            ...createChannelState(),
+            channelRelays: ['wss://verified.example.com/'],
+        };
+        const effective = buildEffectiveChannelContext(stable, {
+            source: 'iframe',
+            metadataOverrides: { name: 'Parent override', picture: null },
+            channelRelayOverrides: ['wss://external.example.com/'],
+        });
+        expect(effective.name).toBe('Parent override');
+        expect(effective.channelRelays?.[0]).toBe('wss://external.example.com/');
+
+        const payload = createDraftSavePayload({
+            htmlContent: '<p></p>',
+            galleryItems: [],
+            replyQuoteState: createEmptyComposerState(),
+            channelContextState: stable,
+        });
+
+        expect(payload?.channelData).toEqual(stable);
+        expect(payload?.channelData?.name).toBe('General');
+        expect(payload?.channelData?.channelRelays).toEqual([
+            'wss://verified.example.com/',
+        ]);
     });
 
     it('空本文でも reply context があれば保存 payload を返す', () => {

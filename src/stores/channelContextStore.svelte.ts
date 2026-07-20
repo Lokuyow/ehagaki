@@ -1,11 +1,13 @@
 import type { ChannelContextState, DraftChannelData } from '../lib/types';
 import {
+    buildEffectiveChannelContext,
     cloneChannelContextProvenance,
     type ChannelContextProvenance,
 } from '../lib/channelContextRuntime';
 
 let channelContext = $state<ChannelContextState | null>(null);
 let channelContextProvenance = $state<ChannelContextProvenance | null>(null);
+let channelContextOwnerToken: symbol | null = null;
 
 const channelContextChangeListeners = new Set<
     (state: ChannelContextState | null) => void
@@ -37,6 +39,18 @@ export const channelContextProvenanceState = {
     get value() { return channelContextProvenance; },
 };
 
+export const effectiveChannelContextState = {
+    get value() {
+        return channelContext
+            ? buildEffectiveChannelContext(channelContext, channelContextProvenance)
+            : null;
+    },
+};
+
+export function getChannelContextOwnerToken(): symbol | null {
+    return channelContextOwnerToken;
+}
+
 export function onChannelContextChanged(
     listener: (state: ChannelContextState | null) => void,
 ): () => void {
@@ -49,26 +63,31 @@ export function onChannelContextChanged(
 export function setChannelContext(value: ChannelContextState): void {
     channelContext = cloneChannelContext(value);
     channelContextProvenance = null;
+    channelContextOwnerToken = null;
     notifyChannelContextChanged();
 }
 
 export function setChannelContextWithProvenance(
     value: ChannelContextState,
     provenance: ChannelContextProvenance,
+    ownerToken: symbol,
 ): void {
     channelContext = cloneChannelContext(value);
     channelContextProvenance = cloneChannelContextProvenance(provenance);
+    channelContextOwnerToken = ownerToken;
     notifyChannelContextChanged();
 }
 
 export function restoreChannelContext(value: DraftChannelData): void {
     channelContext = cloneChannelContext(value);
     channelContextProvenance = null;
+    channelContextOwnerToken = null;
     notifyChannelContextChanged();
 }
 
 export function clearChannelContext(): void {
     channelContext = null;
     channelContextProvenance = null;
+    channelContextOwnerToken = null;
     notifyChannelContextChanged();
 }

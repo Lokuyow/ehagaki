@@ -47,7 +47,7 @@
     replyQuoteState,
     clearReplyQuote,
   } from "../stores/replyQuoteStore.svelte";
-  import { channelContextState } from "../stores/channelContextStore.svelte";
+  import { effectiveChannelContextState } from "../stores/channelContextStore.svelte";
   import { ReplyQuoteService } from "../lib/replyQuoteService";
   import { savePostedEventWithMediaCacheLink } from "../lib/postHistoryMediaPersistence";
   import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
@@ -188,7 +188,7 @@
           getNip46SignerFn: () => nip46Service.getSigner(),
           waitForNip46ReadyFn: () => nip46Service.waitForPendingOperation(),
           getParentClientSignerFn: () => parentClientAuthService.getSigner(),
-          channelContextState,
+          channelContextState: effectiveChannelContextState,
           replyQuoteState,
           replyQuoteService: new ReplyQuoteService(),
           clearReplyQuoteFn: clearReplyQuote,

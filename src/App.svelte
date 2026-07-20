@@ -102,6 +102,8 @@
   import {
     channelContextState,
     channelContextProvenanceState,
+    effectiveChannelContextState,
+    getChannelContextOwnerToken,
     clearChannelContext,
     onChannelContextChanged,
     restoreChannelContext,
@@ -868,8 +870,9 @@
 
   const channelContextApplyController = createChannelContextApplyController({
     getCurrentChannelContext: () => channelContextState.value,
-    setChannelContext: (context, provenance) =>
-      setChannelContextWithProvenance(context, provenance),
+    getChannelContextOwnerToken,
+    setChannelContext: (context, provenance, ownerToken) =>
+      setChannelContextWithProvenance(context, provenance, ownerToken),
     clearChannelContext,
     logger: console,
   });
@@ -1155,9 +1158,7 @@
         }
 
         return appEmbedController.handleRemoteComposerSetContext(
-          payload as Parameters<
-            typeof appEmbedController.handleRemoteComposerSetContext
-          >[0],
+          payload,
           requestId,
         );
       },
@@ -1494,10 +1495,10 @@
             class="composer-scroll-content"
             bind:this={composerScrollContentEl}
           >
-            {#if channelContextState.value}
+            {#if effectiveChannelContextState.value}
               <div class="composer-block composer-reference-block">
                 <ChannelContextPreview
-                  channel={channelContextState.value}
+                  channel={effectiveChannelContextState.value}
                   onClear={clearChannelContext}
                 />
               </div>

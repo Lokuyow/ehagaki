@@ -4,6 +4,7 @@ import {
     buildComposerContextUpdatedPayload,
     encodeComposerContextReference,
 } from '../../lib/embedComposerContextNotification';
+import { getChannelFromEmbedPayload } from '../../lib/urlQueryHandler';
 
 describe('embedComposerContextNotification', () => {
     it('relay hint または author がある参照は nevent として encode する', () => {
@@ -119,5 +120,53 @@ describe('embedComposerContextNotification', () => {
         });
         expect(payload.channel).not.toHaveProperty('about');
         expect(payload.channel).not.toHaveProperty('picture');
+    });
+
+    it('外部provenanceではoverride relayだけを通知しverified relayを再分類させない', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: '66'.repeat(32),
+            relayHints: ['wss://read.example.com/'],
+            channelRelays: ['wss://verified.example.com/'],
+            name: 'Verified',
+            about: null,
+            picture: null,
+        }, {
+            source: 'iframe',
+            metadataOverrides: { name: 'Parent' },
+            channelRelayOverrides: ['wss://external.example.com/'],
+        }, 123);
+
+        expect(payload.channel).toEqual({
+            reference: expect.stringMatching(/^nevent1/),
+            relays: ['wss://external.example.com/'],
+            name: 'Parent',
+        });
+        expect(payload.channel?.relays).not.toContain('wss://verified.example.com/');
+
+        const reapplied = getChannelFromEmbedPayload({ channel: payload.channel! });
+        expect(reapplied?.channelRelays).toEqual(['wss://external.example.com/']);
+        expect(reapplied?.channelRelays).not.toContain('wss://verified.example.com/');
+    });
+
+    it('外部provenanceにrelay overrideがなければstable write relayを通知しない', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: '77'.repeat(32),
+            relayHints: [],
+            channelRelays: ['wss://verified.example.com/'],
+            name: null,
+            about: null,
+            picture: null,
+        }, {
+            source: 'url',
+            metadataOverrides: {},
+        });
+
+        expect(payload.channel).not.toHaveProperty('relays');
     });
 });

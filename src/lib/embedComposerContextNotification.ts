@@ -40,6 +40,9 @@ function buildChannelContextPayload(
     provenance: ChannelContextProvenance | null,
 ): EmbedChannelContextPayload {
     const metadataOverrides = provenance?.metadataOverrides ?? {};
+    const relays = provenance
+        ? provenance.channelRelayOverrides
+        : channelContext.channelRelays;
     const hasOverride = (field: 'name' | 'about' | 'picture') =>
         Object.prototype.hasOwnProperty.call(metadataOverrides, field);
     return {
@@ -48,17 +51,17 @@ function buildChannelContextPayload(
             relayHints: channelContext.relayHints,
             authorPubkey: null,
         }),
-        ...(channelContext.channelRelays?.length
-            ? { relays: [...channelContext.channelRelays] }
+        ...(relays?.length
+            ? { relays: [...relays] }
             : {}),
         ...(hasOverride('name')
-            ? { name: channelContext.name }
+            ? { name: metadataOverrides.name ?? null }
             : channelContext.name ? { name: channelContext.name } : {}),
         ...(hasOverride('about')
-            ? { about: channelContext.about }
+            ? { about: metadataOverrides.about ?? null }
             : channelContext.about ? { about: channelContext.about } : {}),
         ...(hasOverride('picture')
-            ? { picture: channelContext.picture }
+            ? { picture: metadataOverrides.picture ?? null }
             : channelContext.picture ? { picture: channelContext.picture } : {}),
     };
 }

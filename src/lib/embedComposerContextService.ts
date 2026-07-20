@@ -3,49 +3,12 @@ import {
     getParentOriginFromSearch,
     isValidEmbedRequestId,
     isEmbedMessageEnvelope,
-    type EmbedComposerSetContextPayload,
 } from "./embedProtocol";
 
 type RemoteComposerSetContextListener = (
-    payload: EmbedComposerSetContextPayload,
+    payload: unknown,
     requestId: string,
 ) => void;
-
-function isComposerSetContextPayload(
-    value: unknown,
-): value is EmbedComposerSetContextPayload {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-
-    const payload = value as Record<string, unknown>;
-    if (
-        payload.reply !== undefined
-        && payload.reply !== null
-        && typeof payload.reply !== "string"
-    ) {
-        return false;
-    }
-
-    if (
-        payload.quotes !== undefined
-        && payload.quotes !== null
-        && (!Array.isArray(payload.quotes)
-            || payload.quotes.some((quote) => typeof quote !== "string"))
-    ) {
-        return false;
-    }
-
-    if (
-        payload.content !== undefined
-        && payload.content !== null
-        && typeof payload.content !== "string"
-    ) {
-        return false;
-    }
-
-    return true;
-}
 
 export class EmbedComposerContextService {
     private trustedParentOrigin: string | null = null;
@@ -98,14 +61,6 @@ export class EmbedComposerContextService {
                 this.console.warn(
                     "requestId がない composer.setContext を無視:",
                     message,
-                );
-                return;
-            }
-
-            if (!isComposerSetContextPayload(message.payload)) {
-                this.console.warn(
-                    "不正な composer.setContext payload を無視:",
-                    message.payload,
                 );
                 return;
             }

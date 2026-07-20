@@ -11,13 +11,18 @@ export interface ChannelMetadataOverrides {
 }
 
 /**
- * Runtime-only origin information. It is intentionally separate from the
- * stable context used by posting and is not part of draft persistence yet.
+ * Runtime-only origin information. It stays separate from the stable cache /
+ * draft context; posting and preview derive an effective context from both.
  */
 export interface ChannelContextProvenance {
     source: ChannelContextExternalSource;
     metadataOverrides: ChannelMetadataOverrides;
     channelRelayOverrides?: string[];
+}
+
+export interface PreparedExternalChannelContext {
+    coordinatorQuery: ChannelContextQueryTarget;
+    provenance: ChannelContextProvenance;
 }
 
 const METADATA_FIELDS = ["name", "about", "picture"] as const;
@@ -26,33 +31,64 @@ function hasOwn(value: object, key: PropertyKey): boolean {
     return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export function buildExternalChannelContextProvenance(
+export function prepareExternalChannelContext(
     query: ChannelContextQueryTarget,
     source: ChannelContextExternalSource,
-): ChannelContextProvenance {
+): PreparedExternalChannelContext {
     const metadataOverrides: ChannelMetadataOverrides = {};
     for (const field of METADATA_FIELDS) {
-        if (hasOwn(query, field)) {
+        if (hasOwn(query, field) && query[field] !== undefined) {
             metadataOverrides[field] = query[field] ?? null;
         }
     }
 
+    // All untrusted relays share one budget. Explicit write overrides reserve
+    // the budget first; only the remaining slots may be used by reference hints.
     const channelRelayOverrides = RelayConfigUtils.sanitizeExternalRelayUrls(
         query.channelRelays,
         { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
     );
+    const overrideSet = new Set(channelRelayOverrides);
+    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+        query.relayHints,
+        { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+    )
+        .filter((relay) => !overrideSet.has(relay))
+        .slice(
+            0,
+            Math.max(
+                0,
+                RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT
+                    - channelRelayOverrides.length,
+            ),
+        );
 
     return {
-        source,
-        metadataOverrides,
-        ...(channelRelayOverrides.length > 0 ? { channelRelayOverrides } : {}),
+        coordinatorQuery: {
+            eventId: query.eventId,
+            relayHints,
+        },
+        provenance: {
+            source,
+            metadataOverrides,
+            ...(channelRelayOverrides.length > 0 ? { channelRelayOverrides } : {}),
+        },
     };
 }
 
-export function applyChannelContextProvenance(
+export function buildEffectiveChannelContext(
     context: ChannelContextState,
-    provenance: ChannelContextProvenance,
+    provenance: ChannelContextProvenance | null,
 ): ChannelContextState {
+    if (!provenance) {
+        return {
+            ...context,
+            relayHints: [...context.relayHints],
+            ...(context.channelRelays
+                ? { channelRelays: [...context.channelRelays] }
+                : {}),
+        };
+    }
     const overridden = { ...context };
     for (const field of METADATA_FIELDS) {
         if (hasOwn(provenance.metadataOverrides, field)) {

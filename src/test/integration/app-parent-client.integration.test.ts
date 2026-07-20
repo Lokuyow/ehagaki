@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
+import { nip19 } from 'nostr-tools';
 import {
     mockAuthStoreModule,
     mockProfileStoreModule,
@@ -551,8 +552,11 @@ describe('App parentClient integration', () => {
             },
         };
         const payload = {
-            reply: 'nevent1reply',
-            quotes: ['note1quote'],
+            reply: nip19.neventEncode({
+                id: DEFAULT_REPLY_EVENT_ID,
+                relays: ['wss://hint-relay.example.com'],
+            }),
+            quotes: [nip19.noteEncode(DEFAULT_QUOTE_EVENT_ID)],
             content: 'runtime composer content',
         };
         const requestId = 'composer-request-1';
@@ -608,7 +612,10 @@ describe('App parentClient integration', () => {
             },
         };
         const payload = {
-            reply: 'nevent1queued',
+            reply: nip19.neventEncode({
+                id: QUEUED_REPLY_EVENT_ID,
+                relays: ['wss://hint-relay.example.com'],
+            }),
             quotes: [],
             content: 'queued content',
         };
@@ -744,7 +751,11 @@ describe('App parentClient integration', () => {
     });
 
     it('channel を含む remote composer.setContext は channel context を適用して ack を返す', async () => {
-        const { channelContextState, clearChannelContext } = await import('../../stores/channelContextStore.svelte');
+        const {
+            channelContextState,
+            effectiveChannelContextState,
+            clearChannelContext,
+        } = await import('../../stores/channelContextStore.svelte');
         clearChannelContext();
         mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(null as any);
         mockState.getChannelFromEmbedPayload.mockReturnValue({
@@ -764,7 +775,7 @@ describe('App parentClient integration', () => {
         mockState.composerRemoteSetContextListener?.(
             {
                 channel: {
-                    reference: `note1${CHANNEL_EVENT_ID}`,
+                    reference: nip19.noteEncode(CHANNEL_EVENT_ID),
                     name: 'General',
                     about: 'Public chat',
                     picture: 'https://example.com/channel.png',
@@ -778,6 +789,13 @@ describe('App parentClient integration', () => {
         });
         await waitFor(() => {
             expect(channelContextState.value).toEqual({
+                eventId: CHANNEL_EVENT_ID,
+                relayHints: ['wss://channel-relay.example.com/'],
+                name: null,
+                about: null,
+                picture: null,
+            });
+            expect(effectiveChannelContextState.value).toEqual({
                 eventId: CHANNEL_EVENT_ID,
                 relayHints: ['wss://channel-relay.example.com/'],
                 name: 'General',

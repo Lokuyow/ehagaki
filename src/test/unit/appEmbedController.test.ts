@@ -275,6 +275,115 @@ describe('createAppEmbedController', () => {
         );
     });
 
+    it.each([
+        ['content number', { content: 123 }],
+        ['reply number', { reply: 123 }],
+        ['quotes valid and invalid reference', {
+            quotes: [nip19.noteEncode('7'.repeat(64)), 'invalid'],
+        }],
+        ['quotes valid and number', {
+            quotes: [nip19.noteEncode('7'.repeat(64)), 123],
+        }],
+        ['empty metadata', {
+            channel: { reference: nip19.noteEncode('8'.repeat(64)), name: '' },
+        }],
+        ['blank metadata', {
+            channel: { reference: nip19.noteEncode('8'.repeat(64)), name: '   ' },
+        }],
+        ['metadata number', {
+            channel: { reference: nip19.noteEncode('8'.repeat(64)), name: 123 },
+        }],
+        ['mixed relay types', {
+            channel: {
+                reference: nip19.noteEncode('8'.repeat(64)),
+                relays: ['wss://valid.example.com', 123],
+            },
+        }],
+        ['invalid relay protocol', {
+            channel: {
+                reference: nip19.noteEncode('8'.repeat(64)),
+                relays: ['https://invalid.example.com'],
+            },
+        }],
+        ['invalid channel reference', {
+            channel: { reference: 'invalid' },
+        }],
+        ['valid channel and invalid reply', {
+            channel: { reference: nip19.noteEncode('8'.repeat(64)) },
+            reply: 'invalid',
+        }],
+        ['valid content and invalid quote', {
+            content: 'must not be applied',
+            quotes: ['invalid'],
+        }],
+    ])('不正payloadを原子的にrejectする: %s', async (_label, payload) => {
+        const {
+            controller,
+            composerInput,
+            sharedContent,
+            composerContextApply,
+            parentFrame,
+        } = createController();
+
+        await controller.handleRemoteComposerSetContext(payload, 'req-invalid');
+
+        expect(parentFrame.notifyComposerContextApplied).not.toHaveBeenCalled();
+        expect(parentFrame.notifyComposerContextError).toHaveBeenCalledTimes(1);
+        expect(parentFrame.notifyComposerContextError).toHaveBeenCalledWith(
+            expect.objectContaining({
+                code: 'composer_context_apply_failed',
+                message: 'invalid_composer_context',
+            }),
+            'req-invalid',
+        );
+        expect(composerInput.insertText).not.toHaveBeenCalled();
+        expect(composerInput.resetContent).not.toHaveBeenCalled();
+        expect(sharedContent.updateUrlQueryContentStore).not.toHaveBeenCalled();
+        expect(sharedContent.clearUrlQueryContentStore).not.toHaveBeenCalled();
+        expect(composerContextApply.applyChannelContextQuery).not.toHaveBeenCalled();
+        expect(composerContextApply.clearChannelContext).not.toHaveBeenCalled();
+        expect(composerContextApply.applyReplyQuoteSelection).not.toHaveBeenCalled();
+        expect(composerContextApply.clearReplyQuote).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['undefined', undefined, false],
+        ['null', null, true],
+        ['trimmed string', ' Parent ', true],
+    ])('channel.name %s を契約どおり適用する', async (_label, name, hasName) => {
+        const { controller, composerContextApply, parentFrame } = createController();
+        await controller.handleRemoteComposerSetContext({
+            channel: {
+                reference: nip19.noteEncode('9'.repeat(64)),
+                name,
+            },
+        }, 'req-metadata');
+
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-metadata');
+        const query = composerContextApply.applyChannelContextQuery.mock.calls[0]?.[0];
+        expect(Object.prototype.hasOwnProperty.call(query, 'name')).toBe(hasName);
+        if (name === null) expect(query.name).toBeNull();
+        if (typeof name === 'string') expect(query.name).toBe(name.trim());
+    });
+
+    it('重複quoteは現行方針どおりeventIdでdedupeする', async () => {
+        const quote = nip19.noteEncode('a'.repeat(64));
+        const { controller, composerContextApply, parentFrame } = createController();
+        await controller.handleRemoteComposerSetContext({
+            quotes: [quote, quote],
+        }, 'req-duplicate-quotes');
+
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-duplicate-quotes');
+        expect(composerContextApply.applyReplyQuoteSelection).toHaveBeenCalledWith({
+            reply: null,
+            quotes: [{
+                eventId: 'a'.repeat(64),
+                relayHints: [],
+                authorPubkey: null,
+            }],
+        });
+    });
+
     it('settings.set の uploadEndpoint を applied key として通知する', async () => {
         const { controller, parentFrame } = createController({
             settingsApply: {

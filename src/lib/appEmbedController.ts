@@ -10,7 +10,6 @@ import type {
 import type { ChannelContextProvenance } from "./channelContextRuntime";
 import type {
     EmbedChannelContextPayload,
-    EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
 } from "./embedProtocol";
 import {
@@ -21,6 +20,7 @@ import {
     buildComposerContextSignature,
     buildComposerContextUpdatedPayload,
 } from "./embedComposerContextNotification";
+import { validateEmbedComposerSetContextPayload } from "./embedComposerContextValidation";
 
 export interface AppEmbedComposerInputPort {
     resetContent(): void;
@@ -147,7 +147,7 @@ export interface AppEmbedControllerDependencies {
 
 export type AppEmbedPendingComposerAction = Readonly<{
     type: "set";
-    payload: EmbedComposerSetContextPayload;
+    payload: unknown;
     requestId: string;
 }>;
 
@@ -159,7 +159,7 @@ interface AppEmbedControllerState {
 
 export interface AppEmbedController {
     handleRemoteComposerSetContext(
-        payload: EmbedComposerSetContextPayload,
+        payload: unknown,
         requestId: string,
     ): Promise<void>;
     handleRemoteSettingsSet(
@@ -167,7 +167,7 @@ export interface AppEmbedController {
         requestId: string,
     ): Promise<void>;
     queueRemoteComposerAction(
-        payload: EmbedComposerSetContextPayload,
+        payload: unknown,
         requestId: string,
     ): void;
     flushPendingComposerAction(): Promise<void>;
@@ -198,8 +198,9 @@ export function createAppEmbedController(
     }
 
     function applyRemoteComposerSetContext(
-        payload: EmbedComposerSetContextPayload,
+        rawPayload: unknown,
     ): Array<() => Promise<void>> {
+        const payload = validateEmbedComposerSetContextPayload(rawPayload);
         // Decode and validate every reference before mutating any composer state.
         const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
             payload,
@@ -264,7 +265,7 @@ export function createAppEmbedController(
     }
 
     function applyAndAcknowledgeComposerContext(
-        payload: EmbedComposerSetContextPayload,
+        payload: unknown,
         requestId: string,
     ): void {
         state.applyingComposerContext = true;
@@ -298,7 +299,7 @@ export function createAppEmbedController(
 
     return {
         async handleRemoteComposerSetContext(
-            payload: EmbedComposerSetContextPayload,
+            payload: unknown,
             requestId: string,
         ): Promise<void> {
             if (shouldQueueAction(deps.runtime)) {
@@ -338,7 +339,7 @@ export function createAppEmbedController(
         },
 
         queueRemoteComposerAction(
-            payload: EmbedComposerSetContextPayload,
+            payload: unknown,
             requestId: string,
         ): void {
             state.pendingComposerAction = {
