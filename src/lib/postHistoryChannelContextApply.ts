@@ -54,7 +54,10 @@ export function startPostHistoryChannelContextApply({
         });
     void handle.refresh
         .then((result) => {
-            if (result.status === "updated") {
+            if (
+                result.status === "updated"
+                || (result.status === "failed" && result.snapshot.source === "network")
+            ) {
                 applyIfCurrent(result.snapshot.context);
             }
         })

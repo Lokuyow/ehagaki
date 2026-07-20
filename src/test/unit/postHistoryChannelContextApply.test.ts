@@ -11,6 +11,139 @@ function deferred<T>() {
 }
 
 describe("startPostHistoryChannelContextApply", () => {
+    it("failedでもnetwork由来のverified snapshotをコンポーザーへ適用する", async () => {
+        const eventId = "a".repeat(64);
+        const refresh = deferred<any>();
+        const initialContext = {
+            eventId,
+            relayHints: ["wss://seed.example.com/"],
+            channelRelays: ["wss://seed-write.example.com/"],
+            name: null,
+            about: null,
+            picture: null,
+        };
+        const handle: ChannelContextCoordinatorHandle = {
+            initial: { context: initialContext, cache: null, source: "seed" },
+            cacheReady: new Promise(() => {}),
+            refresh: refresh.promise,
+            release: vi.fn(),
+        };
+        let currentContext = initialContext;
+        const setChannelContext = vi.fn((context) => {
+            currentContext = context;
+        });
+        startPostHistoryChannelContextApply({
+            channelContextQuery: { eventId, relayHints: [] },
+            getCurrentChannelContext: () => currentContext,
+            setChannelContext,
+            coordinator: { resolveInternal: vi.fn(() => handle) } as never,
+        });
+
+        refresh.resolve({
+            status: "failed",
+            snapshot: {
+                source: "network",
+                cache: null,
+                context: {
+                    ...initialContext,
+                    name: "Verified partial",
+                    channelRelays: ["wss://verified-write.example.com/"],
+                },
+            },
+        });
+        await refresh.promise;
+        await Promise.resolve();
+
+        expect(setChannelContext).toHaveBeenCalledTimes(2);
+        expect(currentContext).toMatchObject({
+            name: "Verified partial",
+            channelRelays: ["wss://verified-write.example.com/"],
+        });
+    });
+
+    it.each([
+        { status: "failed", source: "seed" },
+        { status: "failed", source: "cache" },
+        { status: "aborted", source: "network" },
+        { status: "skipped", source: "network" },
+    ] as const)("$status + $sourceのrefresh snapshotは再適用しない", async ({
+        status,
+        source,
+    }) => {
+        const eventId = "a".repeat(64);
+        const initialContext = {
+            eventId,
+            relayHints: [],
+            name: null,
+            about: null,
+            picture: null,
+        };
+        const handle: ChannelContextCoordinatorHandle = {
+            initial: { context: initialContext, cache: null, source: "seed" },
+            cacheReady: new Promise(() => {}),
+            refresh: Promise.resolve({
+                status,
+                snapshot: {
+                    context: { ...initialContext, name: "Must not apply" },
+                    cache: null,
+                    source,
+                },
+            }),
+            release: vi.fn(),
+        };
+        const setChannelContext = vi.fn();
+
+        startPostHistoryChannelContextApply({
+            channelContextQuery: { eventId, relayHints: [] },
+            getCurrentChannelContext: () => initialContext,
+            setChannelContext,
+            coordinator: { resolveInternal: vi.fn(() => handle) } as never,
+        });
+        await handle.refresh;
+        await Promise.resolve();
+
+        expect(setChannelContext).toHaveBeenCalledTimes(1);
+    });
+
+    it("release済みhandleはfailed + network snapshotも適用しない", async () => {
+        const eventId = "a".repeat(64);
+        const refresh = deferred<any>();
+        const initialContext = {
+            eventId,
+            relayHints: [],
+            name: null,
+            about: null,
+            picture: null,
+        };
+        const handle: ChannelContextCoordinatorHandle = {
+            initial: { context: initialContext, cache: null, source: "seed" },
+            cacheReady: new Promise(() => {}),
+            refresh: refresh.promise,
+            release: vi.fn(),
+        };
+        const setChannelContext = vi.fn();
+        const applyHandle = startPostHistoryChannelContextApply({
+            channelContextQuery: { eventId, relayHints: [] },
+            getCurrentChannelContext: () => initialContext,
+            setChannelContext,
+            coordinator: { resolveInternal: vi.fn(() => handle) } as never,
+        });
+
+        applyHandle.release();
+        refresh.resolve({
+            status: "failed",
+            snapshot: {
+                context: { ...initialContext, name: "Must not apply" },
+                cache: null,
+                source: "network",
+            },
+        });
+        await refresh.promise;
+        await Promise.resolve();
+
+        expect(setChannelContext).toHaveBeenCalledTimes(1);
+    });
+
     it("release済みhandleは同じeventIdの新しいseedを古い結果で上書きしない", async () => {
         const eventId = "a".repeat(64);
         const cacheA = deferred<any>();

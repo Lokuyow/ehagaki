@@ -339,17 +339,6 @@ export class ChannelContextCoordinator {
             };
             nextEntry.promise = Promise.resolve()
                 .then(() => this.executeSharedResolution(nextEntry))
-                .catch(async (error) => {
-                    if (nextEntry.abortController.signal.aborted) {
-                        return { status: "aborted", cache: null } as const;
-                    }
-                    this.logger.error("共有チャンネル解決に失敗しました:", error);
-                    await this.markFetchFailedSafely(nextEntry.eventId);
-                    return {
-                        status: "failed",
-                        cache: await this.getCacheSafely(nextEntry.eventId),
-                    } as const;
-                })
                 .finally(() => {
                     if (byEventId?.get(nextEntry.eventId) === nextEntry) {
                         byEventId.delete(nextEntry.eventId);
@@ -380,69 +369,88 @@ export class ChannelContextCoordinator {
     ): Promise<SharedResolutionOutcome> {
         let attemptedHints: string[] = [];
         let didPersistVerifiedResult = false;
-        while (!entry.abortController.signal.aborted) {
-            attemptedHints = [...entry.relayHints];
-            const attemptedHintRevision = entry.hintRevision;
-            this.setLastAttemptHints(entry.rxNostr, entry.eventId, attemptedHints);
-            const resolution = await this.service.resolveChannelMetadataWithInternalHints(
-                { eventId: entry.eventId, relayHints: attemptedHints },
-                entry.rxNostr,
-                entry.relayConfig,
-                { signal: entry.abortController.signal },
-            );
+        let lastPersistedCache: ChannelMetadataCache | null = null;
+        try {
+            while (!entry.abortController.signal.aborted) {
+                attemptedHints = [...entry.relayHints];
+                const attemptedHintRevision = entry.hintRevision;
+                this.setLastAttemptHints(entry.rxNostr, entry.eventId, attemptedHints);
+                const resolution = await this.service.resolveChannelMetadataWithInternalHints(
+                    { eventId: entry.eventId, relayHints: attemptedHints },
+                    entry.rxNostr,
+                    entry.relayConfig,
+                    { signal: entry.abortController.signal },
+                );
 
-            if (resolution.status === "aborted" || entry.abortController.signal.aborted) {
-                return { status: "aborted", cache: null };
-            }
+                if (resolution.status === "aborted" || entry.abortController.signal.aborted) {
+                    return { status: "aborted", cache: null };
+                }
 
-            if (resolution.status === "failed") {
-                await this.markFetchFailedSafely(entry.eventId);
+                if (resolution.status === "failed") {
+                    // Once the Service reports failed, the network attempt is final.
+                    // Consumer release may suppress UI application, but it does not
+                    // turn the shared attempt or its persisted failure into abort.
+                    await this.markFetchFailedSafely(entry.eventId);
+                    const cache = await this.getCacheSafely(entry.eventId)
+                        ?? lastPersistedCache;
+                    if (
+                        !entry.abortController.signal.aborted
+                        && this.hasNewHintsSinceAttempt(
+                            entry,
+                            attemptedHintRevision,
+                            attemptedHints,
+                        )
+                    ) {
+                        continue;
+                    }
+                    return {
+                        status: "failed",
+                        cache,
+                        ...(didPersistVerifiedResult ? { didPersistVerifiedResult: true } : {}),
+                    };
+                }
+
+                const cache = await this.repository.upsertResolvedChannel(
+                    toRepositoryInput(resolution),
+                );
+                didPersistVerifiedResult = true;
+                lastPersistedCache = cache;
                 if (entry.abortController.signal.aborted) {
                     return { status: "aborted", cache: null };
                 }
-                const cache = await this.getCacheSafely(entry.eventId);
-                if (entry.abortController.signal.aborted) {
-                    return { status: "aborted", cache: null };
-                }
-                if (this.hasNewHintsSinceAttempt(
-                    entry,
-                    attemptedHintRevision,
-                    attemptedHints,
-                )) {
+
+                // Incomplete verified data is durable before a hint-driven retry. A
+                // complete result is final for this attempt even if a consumer joined
+                // during persistence; that hint remains available to a later refresh.
+                if (
+                    resolution.metadataLookup === "incomplete"
+                    && this.hasNewHintsSinceAttempt(
+                        entry,
+                        attemptedHintRevision,
+                        attemptedHints,
+                    )
+                ) {
                     continue;
                 }
-                return {
-                    status: "failed",
-                    cache,
-                    ...(didPersistVerifiedResult ? { didPersistVerifiedResult: true } : {}),
-                };
+                return { status: "updated", cache };
             }
 
-            const cache = await this.repository.upsertResolvedChannel(
-                toRepositoryInput(resolution),
-            );
-            didPersistVerifiedResult = true;
+            return { status: "aborted", cache: null };
+        } catch (error) {
             if (entry.abortController.signal.aborted) {
                 return { status: "aborted", cache: null };
             }
 
-            // Incomplete verified data is durable before a hint-driven retry. A
-            // complete result is final for this attempt even if a consumer joined
-            // during persistence; that hint remains available to a later refresh.
-            if (
-                resolution.metadataLookup === "incomplete"
-                && this.hasNewHintsSinceAttempt(
-                    entry,
-                    attemptedHintRevision,
-                    attemptedHints,
-                )
-            ) {
-                continue;
-            }
-            return { status: "updated", cache };
+            this.logger.error("共有チャンネル解決に失敗しました:", error);
+            await this.markFetchFailedSafely(entry.eventId);
+            const cache = await this.getCacheSafely(entry.eventId)
+                ?? lastPersistedCache;
+            return {
+                status: "failed",
+                cache,
+                ...(didPersistVerifiedResult ? { didPersistVerifiedResult: true } : {}),
+            };
         }
-
-        return { status: "aborted", cache: null };
     }
 
     private hasNewHintsSinceAttempt(
