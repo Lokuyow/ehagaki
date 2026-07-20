@@ -11,6 +11,68 @@ function deferred<T>() {
 }
 
 describe("startPostHistoryChannelContextApply", () => {
+    it("release済みhandleは同じeventIdの新しいseedを古い結果で上書きしない", async () => {
+        const eventId = "a".repeat(64);
+        const cacheA = deferred<any>();
+        const refreshA = deferred<any>();
+        const releaseA = vi.fn();
+        const makeSnapshot = (name: string) => ({
+            context: {
+                eventId,
+                relayHints: [`wss://${name.toLowerCase()}.example.com/`],
+                name,
+                about: null,
+                picture: null,
+            },
+            cache: null,
+            source: "seed" as const,
+        });
+        const handleA: ChannelContextCoordinatorHandle = {
+            initial: makeSnapshot("Seed A"),
+            cacheReady: cacheA.promise,
+            refresh: refreshA.promise,
+            release: releaseA,
+        };
+        const handleB: ChannelContextCoordinatorHandle = {
+            initial: makeSnapshot("Seed B"),
+            cacheReady: new Promise(() => {}),
+            refresh: new Promise(() => {}),
+            release: vi.fn(),
+        };
+        const coordinator = {
+            resolveInternal: vi.fn()
+                .mockReturnValueOnce(handleA)
+                .mockReturnValueOnce(handleB),
+        };
+        let currentContext = handleA.initial.context;
+        const setChannelContext = vi.fn((context) => {
+            currentContext = context;
+        });
+        const params = {
+            channelContextQuery: { eventId, relayHints: [] },
+            getCurrentChannelContext: () => currentContext,
+            setChannelContext,
+            coordinator: coordinator as never,
+        };
+
+        const applyA = startPostHistoryChannelContextApply(params);
+        applyA.release();
+        applyA.release();
+        startPostHistoryChannelContextApply(params);
+
+        cacheA.resolve({ ...makeSnapshot("Cache A"), source: "cache" });
+        refreshA.resolve({
+            status: "updated",
+            snapshot: { ...makeSnapshot("Network A"), source: "network" },
+        });
+        await Promise.all([cacheA.promise, refreshA.promise]);
+        await Promise.resolve();
+
+        expect(setChannelContext).toHaveBeenCalledTimes(2);
+        expect(currentContext.name).toBe("Seed B");
+        expect(releaseA).toHaveBeenCalledTimes(1);
+    });
+
     it("seedを同期適用し、同じeventIdの間だけcacheとnetwork更新を反映する", async () => {
         const eventId = "a".repeat(64);
         const cacheReady = deferred<any>();
@@ -78,4 +140,3 @@ describe("startPostHistoryChannelContextApply", () => {
         expect(release).toHaveBeenCalledTimes(1);
     });
 });
-

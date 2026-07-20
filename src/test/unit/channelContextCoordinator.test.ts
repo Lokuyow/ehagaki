@@ -8,6 +8,14 @@ import type {
 
 const channelId = "a".repeat(64);
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((next) => {
+        resolve = next;
+    });
+    return { promise, resolve };
+}
+
 function createCache(overrides: Partial<ChannelMetadataCache> = {}): ChannelMetadataCache {
     return {
         channelEventId: channelId,
@@ -113,6 +121,59 @@ describe("ChannelContextCoordinator", () => {
         });
         await expect(handle.refresh).resolves.toMatchObject({ status: "skipped" });
         expect(service.resolveChannelMetadataWithInternalHints).not.toHaveBeenCalled();
+    });
+
+    it("legacy-seedは表示metadataだけに使い、read/write relay候補には使わない", async () => {
+        const { repository } = createRepository(createCache({
+            name: "Legacy name",
+            relayHints: ["wss://legacy-read.example.com/"],
+            relays: ["wss://legacy-write.example.com/"],
+            resolutionQuality: "legacy-seed",
+        }));
+        repository.shouldRefresh = vi.fn(() => false);
+        const coordinator = new ChannelContextCoordinator({
+            service: { resolveChannelMetadataWithInternalHints: vi.fn() },
+            repository,
+        });
+
+        const snapshot = await coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://seed-read.example.com/"],
+            channelRelays: ["wss://seed-write.example.com/"],
+        }).cacheReady;
+
+        expect(snapshot.context).toMatchObject({
+            name: "Legacy name",
+            relayHints: ["wss://seed-read.example.com/"],
+            channelRelays: ["wss://seed-write.example.com/"],
+        });
+    });
+
+    it("verified-root-onlyはsource relayだけをread候補に追加する", async () => {
+        const { repository } = createRepository(createCache({
+            relayHints: ["wss://verified-root.example.com/"],
+            relays: ["wss://must-not-write.example.com/"],
+            resolutionQuality: "verified-root-only",
+        }));
+        repository.shouldRefresh = vi.fn(() => false);
+        const coordinator = new ChannelContextCoordinator({
+            service: { resolveChannelMetadataWithInternalHints: vi.fn() },
+            repository,
+        });
+
+        const snapshot = await coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://seed-read.example.com/"],
+            channelRelays: ["wss://seed-write.example.com/"],
+        }).cacheReady;
+
+        expect(snapshot.context.relayHints).toEqual([
+            "wss://seed-read.example.com/",
+            "wss://verified-root.example.com/",
+        ]);
+        expect(snapshot.context.channelRelays).toEqual([
+            "wss://seed-write.example.com/",
+        ]);
     });
 
     it("検証済みnetwork結果だけをRepositoryへ保存する", async () => {
@@ -222,6 +283,139 @@ describe("ChannelContextCoordinator", () => {
         expect(observedSignal?.aborted).toBe(true);
         await Promise.all([handleA.refresh, handleB.refresh]);
         expect(repository.markFetchFailed).not.toHaveBeenCalled();
+    });
+
+    it("abort済みentryは新consumerへ共有せず、古いfinallyも新entryを削除しない", async () => {
+        const { repository } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const secondRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise)
+                .mockReturnValueOnce(secondRequest.promise),
+        };
+        const coordinator = new ChannelContextCoordinator({ service, repository });
+        const rxNostr = {} as RxNostr;
+        const handleA = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://a.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+
+        handleA.release();
+        const firstSignal = service.resolveChannelMetadataWithInternalHints.mock.calls[0]?.[3]?.signal;
+        expect(firstSignal?.aborted).toBe(true);
+
+        const handleB = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://b.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+        });
+
+        firstRequest.resolve({ status: "aborted" });
+        await handleA.refresh;
+        const handleC = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://c.example.com/"],
+        }, rxNostr);
+        await handleC.cacheReady;
+        await Promise.resolve();
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(2);
+
+        secondRequest.resolve(resolvedNetworkResult("Fresh request"));
+        await expect(handleB.refresh).resolves.toMatchObject({
+            status: "updated",
+            snapshot: { context: { name: "Fresh request" } },
+        });
+        await expect(handleC.refresh).resolves.toMatchObject({ status: "updated" });
+        expect(repository.upsertResolvedChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        {
+            label: "failed",
+            firstResult: { status: "failed", reason: "root-not-found" },
+            expectedCalls: 2,
+        },
+        {
+            label: "incomplete",
+            firstResult: {
+                status: "root-only",
+                quality: "verified-root-only",
+                reason: "invalid-root-content",
+                metadataLookup: "incomplete",
+                channelEventId: channelId,
+                creatorPubkey: "b".repeat(64),
+                createEventCreatedAt: 100,
+                verifiedSourceRelays: ["wss://root.example.com/"],
+            },
+            expectedCalls: 2,
+        },
+        {
+            label: "resolved + complete",
+            firstResult: resolvedNetworkResult("Already complete"),
+            expectedCalls: 1,
+        },
+    ])("in-flight中の新hintは$labelの場合にだけ即時再試行する", async ({
+        firstResult,
+        expectedCalls,
+    }) => {
+        const { repository } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise)
+                .mockResolvedValueOnce(resolvedNetworkResult("Retried")),
+        };
+        const coordinator = new ChannelContextCoordinator({ service, repository });
+        const rxNostr = {} as RxNostr;
+        const firstHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://first.example.com/"],
+        }, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+        const secondHandle = coordinator.resolveInternal({
+            eventId: channelId,
+            relayHints: ["wss://new.example.com/"],
+        }, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+
+        firstRequest.resolve(firstResult);
+        await Promise.all([firstHandle.refresh, secondHandle.refresh]);
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(expectedCalls);
+    });
+
+    it("in-flight中に同じhintを再追加しても再試行しない", async () => {
+        const { repository } = createRepository(null);
+        const firstRequest = deferred<any>();
+        const service = {
+            resolveChannelMetadataWithInternalHints: vi.fn()
+                .mockReturnValueOnce(firstRequest.promise),
+        };
+        const coordinator = new ChannelContextCoordinator({ service, repository });
+        const rxNostr = {} as RxNostr;
+        const query = {
+            eventId: channelId,
+            relayHints: ["wss://same.example.com/"],
+        };
+        const firstHandle = coordinator.resolveInternal(query, rxNostr);
+        await vi.waitFor(() => {
+            expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
+        });
+        const secondHandle = coordinator.resolveInternal(query, rxNostr);
+        await secondHandle.cacheReady;
+        await Promise.resolve();
+
+        firstRequest.resolve({ status: "failed", reason: "root-not-found" });
+        await Promise.all([firstHandle.refresh, secondHandle.refresh]);
+        expect(service.resolveChannelMetadataWithInternalHints).toHaveBeenCalledTimes(1);
     });
 
     it("同一Coordinator内では新hintだけが失敗抑制を迂回する", async () => {

@@ -38,8 +38,9 @@ export function startPostHistoryChannelContextApply({
         relayConfig,
     );
     const eventId = channelContextQuery.eventId;
+    let active = true;
     const applyIfCurrent = (context: ChannelContextState) => {
-        if (getCurrentChannelContext()?.eventId === eventId) {
+        if (active && getCurrentChannelContext()?.eventId === eventId) {
             setChannelContext(context);
         }
     };
@@ -61,6 +62,11 @@ export function startPostHistoryChannelContextApply({
             logger.error("投稿履歴のチャンネル更新に失敗しました:", error);
         });
 
-    return { release: handle.release };
+    return {
+        release: () => {
+            if (!active) return;
+            active = false;
+            handle.release();
+        },
+    };
 }
-

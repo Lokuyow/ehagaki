@@ -109,17 +109,19 @@ function mergeCacheIntoContext(
 ): ChannelContextState {
     if (!cache) return seed;
 
+    const hasVerifiedRoot = cache.resolutionQuality === "verified-root-only"
+        || cache.resolutionQuality === "verified-metadata";
     const hasVerifiedMetadata = cache.resolutionQuality === "verified-metadata";
     const channelRelays = hasVerifiedMetadata
         ? mergeWriteRelays(cache.relays, seed.channelRelays ?? [])
-        : mergeWriteRelays(seed.channelRelays ?? [], cache.relays);
+        : mergeWriteRelays(seed.channelRelays ?? []);
 
     return {
         eventId: seed.eventId,
         relayHints: mergeReadRelays(
             seed.relayHints,
-            cache.relayHints,
-            cache.relays,
+            ...(hasVerifiedRoot ? [cache.relayHints] : []),
+            ...(hasVerifiedMetadata ? [cache.relays] : []),
         ),
         ...(channelRelays.length > 0 ? { channelRelays } : {}),
         name: hasVerifiedMetadata ? cache.name : seed.name ?? cache.name,
@@ -303,6 +305,12 @@ export class ChannelContextCoordinator {
         }
 
         let entry = byEventId.get(query.eventId);
+        if (entry?.abortController.signal.aborted) {
+            if (byEventId.get(query.eventId) === entry) {
+                byEventId.delete(query.eventId);
+            }
+            entry = undefined;
+        }
         if (entry) {
             entry.relayHints = mergeReadRelays(entry.relayHints, query.relayHints);
         } else {
@@ -372,6 +380,9 @@ export class ChannelContextCoordinator {
             }
 
             const hasNewHints = hasNewRelayHints(entry.relayHints, attemptedHints);
+            // A new relay candidate retries only an unsuccessful/incomplete lookup.
+            // A resolved + complete lookup remains successful; the new hint is kept
+            // for a later stale or explicit refresh instead of adding timing-based REQs.
             const mayImproveWithNewHints = resolution.status === "failed"
                 || resolution.metadataLookup === "incomplete";
             if (hasNewHints && mayImproveWithNewHints) {
