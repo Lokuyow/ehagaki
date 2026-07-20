@@ -4,7 +4,7 @@ import type {
     HydrateReplyQuoteReferencesParams,
 } from './bootstrap/externalInputBootstrap';
 import type { PostHistoryChannelContextApplyHandle } from './postHistoryChannelContextApply';
-import type { ChannelContextQueryTarget } from './types';
+import type { ChannelContextQueryTarget, ReplyQuoteQueryTarget } from './types';
 import {
     buildPostHistoryReferenceTarget,
     buildPostHistoryReplyChannelContextQuery,
@@ -31,8 +31,8 @@ export interface PostHistoryDialogApplyControllerDependencies {
     hasReplyOrQuotes(): boolean;
     clearReplyQuote(): void;
     addQuoteReference(
-        reference: HydrateReplyQuoteReferencesParams['references'][number],
-    ): boolean;
+        reference: ReplyQuoteQueryTarget,
+    ): HydrateReplyQuoteReferencesParams['references'][number] | null;
     focusEditor(): void;
     logger?: Pick<Console, 'error'>;
 }
@@ -103,7 +103,8 @@ export function createPostHistoryDialogApplyController(
             deps.clearReplyQuote();
         }
 
-        if (!deps.addQuoteReference(referenceTarget)) {
+        const hydrationTarget = deps.addQuoteReference(referenceTarget);
+        if (!hydrationTarget) {
             deps.focusEditor();
             return;
         }
@@ -111,7 +112,7 @@ export function createPostHistoryDialogApplyController(
         const preloadedEvents = buildPostHistoryReplySeedEvents(post);
 
         void deps.hydrateReplyQuoteReferences({
-            references: [referenceTarget],
+            references: [hydrationTarget],
             ...deps.getReplyQuoteApplyParams(),
             ...(preloadedEvents ? { preloadedEvents } : {}),
         }).catch((error) => {

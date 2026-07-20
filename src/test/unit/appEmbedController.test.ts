@@ -153,6 +153,8 @@ describe('createAppEmbedController', () => {
         });
         const reply = {
             eventId: '1'.repeat(64),
+            mode: 'reply' as const,
+            ownerToken: Symbol('reply-owner'),
             relayHints: [],
             authorPubkey: null,
         };
@@ -184,6 +186,8 @@ describe('createAppEmbedController', () => {
     it('quoteだけのpayloadも選択設定直後にackしてからhydrateする', async () => {
         const quote = {
             eventId: '5'.repeat(64),
+            mode: 'quote' as const,
+            ownerToken: Symbol('quote-owner'),
             relayHints: [],
             authorPubkey: null,
         };
@@ -211,11 +215,15 @@ describe('createAppEmbedController', () => {
     it('channel・reply・quotes同時指定でも初期状態だけでackし、hydrate失敗は非致命的に扱う', async () => {
         const reply = {
             eventId: '2'.repeat(64),
+            mode: 'reply' as const,
+            ownerToken: Symbol('reply-owner'),
             relayHints: [],
             authorPubkey: null,
         };
         const quote = {
             eventId: '3'.repeat(64),
+            mode: 'quote' as const,
+            ownerToken: Symbol('quote-owner'),
             relayHints: [],
             authorPubkey: null,
         };
@@ -316,6 +324,35 @@ describe('createAppEmbedController', () => {
             content: 'must not be applied',
             quotes: ['invalid'],
         }],
+        ['invalid relay in channel reference', {
+            channel: {
+                reference: nip19.neventEncode({
+                    id: '8'.repeat(64),
+                    relays: ['https://invalid.example.com'],
+                }),
+            },
+        }],
+        ['invalid relay in reply reference', {
+            reply: nip19.neventEncode({
+                id: '8'.repeat(64),
+                relays: ['http://invalid.example.com'],
+            }),
+        }],
+        ['valid quote and invalid-relay quote', {
+            quotes: [
+                nip19.noteEncode('7'.repeat(64)),
+                nip19.neventEncode({
+                    id: '8'.repeat(64),
+                    relays: ['wss://user:password@invalid.example.com'],
+                }),
+            ],
+        }],
+        ['valid and invalid relays in one reference', {
+            reply: nip19.neventEncode({
+                id: '8'.repeat(64),
+                relays: ['wss://valid.example.com', 'not-a-relay'],
+            }),
+        }],
     ])('不正payloadを原子的にrejectする: %s', async (_label, payload) => {
         const {
             controller,
@@ -344,6 +381,7 @@ describe('createAppEmbedController', () => {
         expect(composerContextApply.clearChannelContext).not.toHaveBeenCalled();
         expect(composerContextApply.applyReplyQuoteSelection).not.toHaveBeenCalled();
         expect(composerContextApply.clearReplyQuote).not.toHaveBeenCalled();
+        expect(composerContextApply.hydrateReplyQuoteReferences).not.toHaveBeenCalled();
     });
 
     it.each([

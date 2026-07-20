@@ -1,15 +1,19 @@
 import { ReplyQuoteService } from '../replyQuoteService';
-import type { NostrEvent, ReplyQuoteQueryTarget } from '../types';
+import type {
+    NostrEvent,
+    ReplyQuoteHydrationTarget,
+    ReplyQuoteUpdateTarget,
+} from '../types';
 
 export interface ProcessReplyQuoteReferenceParams {
-    reference: ReplyQuoteQueryTarget;
+    reference: ReplyQuoteHydrationTarget;
     replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>;
     initialEvent?: NostrEvent;
     rxNostr?: any;
     relayConfig: any;
-    updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
-    initializeReplyNotificationRecipients?: (eventId: string, event: NostrEvent) => void;
-    setReplyQuoteError: (eventId: string, message: string) => void;
+    updateReferencedEvent: (target: ReplyQuoteUpdateTarget, event: any, threadInfo: any) => void;
+    initializeReplyNotificationRecipients?: (target: ReplyQuoteUpdateTarget, event: NostrEvent) => void;
+    setReplyQuoteError: (target: ReplyQuoteUpdateTarget, message: string) => void;
 }
 
 export async function processReplyQuoteReference({
@@ -31,11 +35,11 @@ export async function processReplyQuoteReference({
         );
 
     if (!event) {
-        setReplyQuoteError(reference.eventId, 'Event not found');
+        setReplyQuoteError(reference, 'Event not found');
         return;
     }
 
     const threadInfo = replyQuoteService.extractThreadInfo(event);
-    updateReferencedEvent(reference.eventId, event, threadInfo);
-    initializeReplyNotificationRecipients?.(reference.eventId, event);
+    updateReferencedEvent(reference, event, threadInfo);
+    initializeReplyNotificationRecipients?.(reference, event);
 }

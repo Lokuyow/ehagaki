@@ -6,6 +6,8 @@ import type {
     ReplyQuoteComposerState,
     ReplyQuoteQueryResult,
     ReplyQuoteQueryTarget,
+    ReplyQuoteHydrationTarget,
+    ReplyQuoteUpdateTarget,
     DraftReplyQuoteEntryData,
     ReplyNotificationRecipient,
 } from '../lib/types';
@@ -45,6 +47,7 @@ function createReplyQuoteState(params: {
         rootPubkey: null,
         loading: true,
         error: null,
+        ownerToken: Symbol(`${params.mode}:${params.eventId}`),
     };
 }
 
@@ -66,6 +69,7 @@ function createDraftEntryState(data: DraftReplyQuoteEntryData): ReplyQuoteState 
             : createLegacyReplyNotificationRecipients(data),
         loading: false,
         error: null,
+        ownerToken: Symbol(`draft:${data.mode}:${data.eventId}`),
     };
 }
 
@@ -95,18 +99,46 @@ function isLegacyDraftReplyQuoteData(
 }
 
 function updateMatchingReferences(
-    eventId: string,
+    target: ReplyQuoteUpdateTarget,
     updater: (state: ReplyQuoteState) => void,
-): void {
-    if (replyQuote.reply?.eventId === eventId) {
+): boolean {
+    let matched = false;
+    const matches = (reference: ReplyQuoteState) =>
+        reference.eventId === target.eventId
+        && reference.mode === target.mode
+        && reference.ownerToken === target.ownerToken;
+    if (replyQuote.reply && matches(replyQuote.reply)) {
+        matched = true;
         updater(replyQuote.reply);
     }
 
     replyQuote.quotes.forEach((quote) => {
-        if (quote.eventId === eventId) {
+        if (matches(quote)) {
+            matched = true;
             updater(quote);
         }
     });
+    return matched;
+}
+
+function updateMatchingReferencesByEventId(
+    eventId: string,
+    updater: (state: ReplyQuoteState) => void,
+): void {
+    if (replyQuote.reply?.eventId === eventId) updater(replyQuote.reply);
+    replyQuote.quotes.forEach((quote) => {
+        if (quote.eventId === eventId) updater(quote);
+    });
+}
+
+function toHydrationTarget(reference: ReplyQuoteState): ReplyQuoteHydrationTarget {
+    return {
+        eventId: reference.eventId,
+        mode: reference.mode,
+        ownerToken: reference.ownerToken!,
+        relayHints: [...reference.relayHints],
+        authorPubkey: reference.authorPubkey,
+    };
 }
 
 export const replyQuoteState = {
@@ -128,7 +160,7 @@ export function onReplyQuoteChanged(
     };
 }
 
-export function setReplyQuote(params: ReplyQuoteQueryResult): void {
+export function setReplyQuote(params: ReplyQuoteQueryResult): ReplyQuoteHydrationTarget[] {
     replyQuote = {
         reply: params.reply
             ? createReplyQuoteState({
@@ -144,10 +176,14 @@ export function setReplyQuote(params: ReplyQuoteQueryResult): void {
         ),
     };
     notifyReplyQuoteChanged();
+    return [
+        ...(replyQuote.reply ? [toHydrationTarget(replyQuote.reply)] : []),
+        ...replyQuote.quotes.map(toHydrationTarget),
+    ];
 }
 
 export function updateReferencedEvent(
-    eventId: string,
+    target: ReplyQuoteUpdateTarget,
     event: NostrEvent,
     threadInfo?: {
         rootEventId: string | null;
@@ -155,7 +191,7 @@ export function updateReferencedEvent(
         rootPubkey: string | null;
     }
 ): void {
-    updateMatchingReferences(eventId, (reference) => {
+    const matched = updateMatchingReferences(target, (reference) => {
         reference.referencedEvent = event;
         reference.authorPubkey = event.pubkey;
         reference.loading = false;
@@ -166,14 +202,14 @@ export function updateReferencedEvent(
             reference.rootPubkey = threadInfo.rootPubkey;
         }
     });
-    notifyReplyQuoteChanged();
+    if (matched) notifyReplyQuoteChanged();
 }
 
 export function initializeReplyNotificationRecipients(
-    eventId: string,
+    target: ReplyQuoteUpdateTarget,
     event: NostrEvent,
 ): void {
-    updateMatchingReferences(eventId, (reference) => {
+    const matched = updateMatchingReferences(target, (reference) => {
         if (reference.mode !== 'reply') {
             return;
         }
@@ -193,11 +229,11 @@ export function initializeReplyNotificationRecipients(
             }];
         });
     });
-    notifyReplyQuoteChanged();
+    if (matched) notifyReplyQuoteChanged();
 }
 
 export function updateReplyNotificationRecipientProfile(
-    eventId: string,
+    target: ReplyQuoteUpdateTarget,
     pubkey: string,
     profile: {
         displayName: string | null;
@@ -207,7 +243,7 @@ export function updateReplyNotificationRecipientProfile(
     const displayName = profile.displayName?.trim() || null;
     const picture = profile.picture?.trim() || null;
     let changed = false;
-    updateMatchingReferences(eventId, (reference) => {
+    updateMatchingReferences(target, (reference) => {
         for (const recipient of reference.replyNotificationRecipients ?? []) {
             if (
                 recipient.pubkey !== pubkey
@@ -234,7 +270,7 @@ export function setReplyNotificationRecipientEnabled(
     enabled: boolean,
 ): void {
     let changed = false;
-    updateMatchingReferences(eventId, (reference) => {
+    updateMatchingReferencesByEventId(eventId, (reference) => {
         const recipient = reference.replyNotificationRecipients?.find(
             (item) => item.pubkey === pubkey,
         );
@@ -248,16 +284,16 @@ export function setReplyNotificationRecipientEnabled(
     }
 }
 
-export function setReplyQuoteError(eventId: string, error: string): void {
-    updateMatchingReferences(eventId, (reference) => {
+export function setReplyQuoteError(target: ReplyQuoteUpdateTarget, error: string): void {
+    const matched = updateMatchingReferences(target, (reference) => {
         reference.loading = false;
         reference.error = error;
     });
-    notifyReplyQuoteChanged();
+    if (matched) notifyReplyQuoteChanged();
 }
 
 export function updateAuthorProfile(
-    eventId: string,
+    target: ReplyQuoteUpdateTarget,
     pubkey: string,
     profile: {
         displayName: string | null;
@@ -267,7 +303,7 @@ export function updateAuthorProfile(
     const displayName = profile.displayName?.trim() || null;
     const picture = profile.picture?.trim() || null;
     let changed = false;
-    updateMatchingReferences(eventId, (reference) => {
+    updateMatchingReferences(target, (reference) => {
         if (
             reference.authorPubkey !== pubkey
             || (
@@ -313,20 +349,23 @@ export function removeQuoteReference(eventId: string): void {
     notifyReplyQuoteChanged();
 }
 
-export function addQuoteReference(reference: ReplyQuoteQueryTarget): boolean {
+export function addQuoteReference(
+    reference: ReplyQuoteQueryTarget,
+): ReplyQuoteHydrationTarget | null {
     if (replyQuote.quotes.some((quote) => quote.eventId === reference.eventId)) {
-        return false;
+        return null;
     }
 
+    const state = createReplyQuoteState({
+        mode: 'quote',
+        ...reference,
+    });
     replyQuote.quotes = [
         ...replyQuote.quotes,
-        createReplyQuoteState({
-            mode: 'quote',
-            ...reference,
-        }),
+        state,
     ];
     notifyReplyQuoteChanged();
-    return true;
+    return toHydrationTarget(state);
 }
 
 export function setQuoteNotificationEnabled(eventId: string, enabled: boolean): void {

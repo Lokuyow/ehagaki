@@ -22,6 +22,8 @@ import type {
     NostrEvent,
     ReplyQuoteQueryTarget,
     ReplyQuoteQueryResult,
+    ReplyQuoteHydrationTarget,
+    ReplyQuoteUpdateTarget,
 } from "../types";
 
 interface SharedMediaStoreLike {
@@ -44,10 +46,10 @@ export interface RunExternalInputBootstrapParams {
     showWelcomeDialog: () => void;
     updateUrlQueryContentStore: (content: string) => void;
     applyChannelContextQuery: (query: ChannelContextQueryTarget) => void;
-    setReplyQuote: (value: any) => void;
-    updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
-    initializeReplyNotificationRecipients?: (eventId: string, event: NostrEvent) => void;
-    setReplyQuoteError: (eventId: string, message: string) => void;
+    setReplyQuote: (value: ReplyQuoteQueryResult) => ReplyQuoteHydrationTarget[];
+    updateReferencedEvent: (target: ReplyQuoteUpdateTarget, event: any, threadInfo: any) => void;
+    initializeReplyNotificationRecipients?: (target: ReplyQuoteUpdateTarget, event: NostrEvent) => void;
+    setReplyQuoteError: (target: ReplyQuoteUpdateTarget, message: string) => void;
     rxNostr?: any;
     relayConfig: any;
     locationHref: string;
@@ -236,8 +238,8 @@ function sanitizeReplyQuoteQuery(
 }
 
 function sanitizeReplyQuoteReferences(
-    references: ReplyQuoteQueryTarget[],
-): ReplyQuoteQueryTarget[] {
+    references: ReplyQuoteHydrationTarget[],
+): ReplyQuoteHydrationTarget[] {
     return references.map((reference) => ({
         ...reference,
         relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
@@ -255,7 +257,7 @@ export interface HydrateReplyQuoteReferencesParams extends Pick<
     | "initializeReplyNotificationRecipients"
     | "setReplyQuoteError"
 > {
-    references: ReplyQuoteQueryTarget[];
+    references: ReplyQuoteHydrationTarget[];
     preloadedEvents?: Record<string, NostrEvent>;
 }
 
@@ -327,13 +329,9 @@ export async function applyReplyQuoteQuery({
 export function applyReplyQuoteSelection({
     replyQuoteQuery,
     setReplyQuote,
-}: ApplyReplyQuoteSelectionParams): ReplyQuoteQueryTarget[] {
+}: ApplyReplyQuoteSelectionParams): ReplyQuoteHydrationTarget[] {
     const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
-    setReplyQuote(sanitizedReplyQuoteQuery);
-    return [
-        ...(sanitizedReplyQuoteQuery.reply ? [sanitizedReplyQuoteQuery.reply] : []),
-        ...sanitizedReplyQuoteQuery.quotes,
-    ];
+    return setReplyQuote(sanitizedReplyQuoteQuery);
 }
 
 export async function runExternalInputBootstrap({

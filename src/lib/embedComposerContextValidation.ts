@@ -18,7 +18,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validateReference(value: unknown): void {
-    if (typeof value !== "string" || decodeEventPointerValue(value) === null) {
+    if (
+        typeof value !== "string"
+        || decodeEventPointerValue(value, { relayValidation: "strict" }) === null
+    ) {
         invalid();
     }
 }

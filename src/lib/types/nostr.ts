@@ -274,6 +274,8 @@ export interface ReplyQuoteState {
     rootPubkey: string | null;
     loading: boolean;
     error: string | null;
+    /** Runtime-only identity. Draft serialization intentionally excludes it. */
+    ownerToken?: symbol;
 }
 
 export interface ReplyNotificationRecipient {
@@ -370,6 +372,17 @@ export interface ReplyQuoteQueryTarget {
     eventId: string;
     relayHints: string[];
     authorPubkey: string | null;
+}
+
+export interface ReplyQuoteHydrationTarget extends ReplyQuoteQueryTarget {
+    mode: ReplyQuoteMode;
+    ownerToken: symbol;
+}
+
+export interface ReplyQuoteUpdateTarget {
+    eventId: string;
+    mode: ReplyQuoteMode;
+    ownerToken: symbol;
 }
 
 export interface ChannelContextQueryTarget {

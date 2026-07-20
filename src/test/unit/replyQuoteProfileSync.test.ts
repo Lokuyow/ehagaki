@@ -6,6 +6,25 @@ import type {
     ReplyQuoteState,
 } from "../../lib/types";
 
+const ownerTokens = new Map<string, symbol>();
+
+function getOwnerToken(mode: "reply" | "quote", eventId: string): symbol {
+    const key = `${mode}:${eventId}`;
+    const existing = ownerTokens.get(key);
+    if (existing) return existing;
+    const created = Symbol(key);
+    ownerTokens.set(key, created);
+    return created;
+}
+
+function ownedTarget(eventId: string, mode: "reply" | "quote") {
+    return expect.objectContaining({
+        eventId,
+        mode,
+        ownerToken: expect.any(Symbol),
+    });
+}
+
 function createReference(
     mode: "reply" | "quote",
     eventId: string,
@@ -26,6 +45,7 @@ function createReference(
         rootPubkey: null,
         loading: false,
         error: null,
+        ownerToken: getOwnerToken(mode, eventId),
         ...overrides,
     };
 }
@@ -41,6 +61,61 @@ function createProfile(name: string, picture = `https://example.com/${name}.png`
 }
 
 describe("replyQuoteProfileSync", () => {
+    it("同じentryを再生成した場合は古いprofile fetch結果を新ownerへ適用しない", async () => {
+        let resolveOld!: (profile: ProfileData) => void;
+        let resolveNew!: (profile: ProfileData) => void;
+        const fetchProfileRealtime = vi.fn()
+            .mockReturnValueOnce(new Promise<ProfileData>((resolve) => {
+                resolveOld = resolve;
+            }))
+            .mockReturnValueOnce(new Promise<ProfileData>((resolve) => {
+                resolveNew = resolve;
+            }));
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime,
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+        const oldOwner = Symbol("old-owner");
+        const newOwner = Symbol("new-owner");
+
+        controller.sync({
+            reply: createReference("reply", "same-event", {
+                ownerToken: oldOwner,
+                authorPubkey: "same-author",
+            }),
+            quotes: [],
+        });
+        controller.sync({
+            reply: createReference("reply", "same-event", {
+                ownerToken: newOwner,
+                authorPubkey: "same-author",
+            }),
+            quotes: [],
+        });
+
+        resolveOld(createProfile("Old"));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(updateAuthorProfile).not.toHaveBeenCalled();
+
+        resolveNew(createProfile("New"));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(updateAuthorProfile).toHaveBeenCalledWith(
+            { eventId: "same-event", mode: "reply", ownerToken: newOwner },
+            "same-author",
+            {
+                displayName: "New",
+                picture: "https://example.com/New.png",
+            },
+        );
+    });
+
     it("deduplicates pubkeys, merges relay hints, and updates reply and quote targets", async () => {
         const callbacks = new Map<string, (profile: ProfileData | null) => void>();
         const fetchProfileRealtime = vi.fn(async (pubkey: string) => (
@@ -89,16 +164,16 @@ describe("replyQuoteProfileSync", () => {
                 "wss://quote.example.com/",
             ],
         });
-        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("reply-event", "reply"), "author-a", {
             displayName: "Alice",
             picture: "https://example.com/Alice.png",
         });
-        expect(updateAuthorProfile).toHaveBeenCalledWith("quote-event", "shared-b", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("quote-event", "quote"), "shared-b", {
             displayName: "Bob",
             picture: "https://example.com/Bob.png",
         });
         expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
-            "reply-event",
+            ownedTarget("reply-event", "reply"),
             "shared-b",
             {
                 displayName: "Bob",
@@ -139,11 +214,11 @@ describe("replyQuoteProfileSync", () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(updateAuthorProfile).toHaveBeenCalledWith("name-event", "name-only", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("name-event", "reply"), "name-only", {
             displayName: "Name only",
             picture: null,
         });
-        expect(updateAuthorProfile).toHaveBeenCalledWith("picture-event", "picture-only", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("picture-event", "quote"), "picture-only", {
             displayName: null,
             picture: "https://example.com/picture.png",
         });
@@ -188,7 +263,7 @@ describe("replyQuoteProfileSync", () => {
 
         expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
         expect(updateAuthorProfile).toHaveBeenCalledOnce();
-        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("reply-event", "reply"), "author-a", {
             displayName: "Alice",
             picture: "https://example.com/Alice.png",
         });
@@ -221,7 +296,7 @@ describe("replyQuoteProfileSync", () => {
         callback(createProfile("Updated"));
 
         expect(updateAuthorProfile).toHaveBeenLastCalledWith(
-            "reply-event",
+            ownedTarget("reply-event", "reply"),
             "author-a",
             {
                 displayName: "Updated",
@@ -234,7 +309,7 @@ describe("replyQuoteProfileSync", () => {
 
         expect(unsubscribe).toHaveBeenCalledOnce();
         expect(updateAuthorProfile).not.toHaveBeenCalledWith(
-            "reply-event",
+            ownedTarget("reply-event", "reply"),
             "author-a",
             expect.objectContaining({ displayName: "After dispose" }),
         );
@@ -324,13 +399,13 @@ describe("replyQuoteProfileSync", () => {
         expect(fetchProfileRealtime).toHaveBeenCalledWith("author-a", {
             additionalRelays: [],
         });
-        expect(updateAuthorProfile).toHaveBeenCalledWith("reply-event", "author-a", {
+        expect(updateAuthorProfile).toHaveBeenCalledWith(ownedTarget("reply-event", "reply"), "author-a", {
             displayName: "Alice",
             picture: "https://example.com/Alice.png",
         });
     });
 
-    it("adds recipients while reusing an existing pubkey subscription and cached profile", async () => {
+    it("新しいowner target追加時はpubkey subscriptionを更新して古い結果を共有しない", async () => {
         const subscribeProfile = vi.fn(() => vi.fn());
         const fetchProfileRealtime = vi.fn(async (pubkey: string) =>
             createProfile(pubkey === "shared" ? "Shared" : "New"),
@@ -367,10 +442,10 @@ describe("replyQuoteProfileSync", () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(subscribeProfile).toHaveBeenCalledTimes(2);
-        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+        expect(subscribeProfile).toHaveBeenCalledTimes(3);
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(3);
         expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
-            "quote-event",
+            ownedTarget("quote-event", "quote"),
             "shared",
             {
                 displayName: "Shared",
@@ -378,7 +453,7 @@ describe("replyQuoteProfileSync", () => {
             },
         );
         expect(updateReplyNotificationRecipientProfile).toHaveBeenCalledWith(
-            "quote-event",
+            ownedTarget("quote-event", "quote"),
             "new",
             {
                 displayName: "New",

@@ -12,6 +12,8 @@ import {
     updateAuthorProfile,
     updateReplyNotificationRecipientProfile,
     setReplyNotificationRecipientEnabled,
+    setReplyQuoteError,
+    updateReferencedEvent,
     setReplyQuote,
 } from '../../stores/replyQuoteStore.svelte';
 
@@ -147,12 +149,12 @@ describe('replyQuoteStore', () => {
         const eventId = '11'.repeat(32);
         const directPubkey = '22'.repeat(32);
         const recipientPubkey = '33'.repeat(32);
-        setReplyQuote({
+        const [target] = setReplyQuote({
             reply: { eventId, relayHints: [], authorPubkey: directPubkey },
             quotes: [],
         });
 
-        initializeReplyNotificationRecipients(eventId, {
+        initializeReplyNotificationRecipients(target, {
             id: eventId,
             pubkey: directPubkey,
             created_at: 1,
@@ -172,7 +174,7 @@ describe('replyQuoteStore', () => {
         const eventId = '11'.repeat(32);
         const authorPubkey = '22'.repeat(32);
         const listener = vi.fn();
-        setReplyQuote({
+        const [target] = setReplyQuote({
             reply: { eventId, relayHints: [], authorPubkey },
             quotes: [{
                 eventId: '33'.repeat(32),
@@ -182,7 +184,7 @@ describe('replyQuoteStore', () => {
         });
         const cleanup = onReplyQuoteChanged(listener);
 
-        updateAuthorProfile(eventId, authorPubkey, {
+        updateAuthorProfile(target, authorPubkey, {
             displayName: ' Alice ',
             picture: ' https://example.com/alice.png ',
         });
@@ -198,11 +200,11 @@ describe('replyQuoteStore', () => {
         expect(listener).toHaveBeenCalledOnce();
 
         listener.mockClear();
-        updateAuthorProfile(eventId, authorPubkey, {
+        updateAuthorProfile(target, authorPubkey, {
             displayName: 'Alice',
             picture: 'https://example.com/alice.png',
         });
-        updateAuthorProfile(eventId, 'wrong-pubkey', {
+        updateAuthorProfile(target, 'wrong-pubkey', {
             displayName: 'Wrong',
             picture: null,
         });
@@ -214,11 +216,11 @@ describe('replyQuoteStore', () => {
         const eventId = '11'.repeat(32);
         const directPubkey = '22'.repeat(32);
         const recipientPubkey = '33'.repeat(32);
-        setReplyQuote({
+        const [target] = setReplyQuote({
             reply: { eventId, relayHints: [], authorPubkey: directPubkey },
             quotes: [],
         });
-        initializeReplyNotificationRecipients(eventId, {
+        initializeReplyNotificationRecipients(target, {
             id: eventId,
             pubkey: directPubkey,
             created_at: 1,
@@ -230,7 +232,7 @@ describe('replyQuoteStore', () => {
         const listener = vi.fn();
         const cleanup = onReplyQuoteChanged(listener);
 
-        updateReplyNotificationRecipientProfile(eventId, recipientPubkey, {
+        updateReplyNotificationRecipientProfile(target, recipientPubkey, {
             displayName: '   ',
             picture: ' https://example.com/recipient.png ',
         });
@@ -244,11 +246,14 @@ describe('replyQuoteStore', () => {
         expect(listener).toHaveBeenCalledOnce();
 
         listener.mockClear();
-        updateReplyNotificationRecipientProfile(eventId, recipientPubkey, {
+        updateReplyNotificationRecipientProfile(target, recipientPubkey, {
             displayName: null,
             picture: 'https://example.com/recipient.png',
         });
-        updateReplyNotificationRecipientProfile('wrong-event', recipientPubkey, {
+        updateReplyNotificationRecipientProfile({
+            ...target,
+            eventId: 'wrong-event',
+        }, recipientPubkey, {
             displayName: 'Wrong',
             picture: null,
         });
@@ -314,7 +319,11 @@ describe('replyQuoteStore', () => {
             eventId: '55'.repeat(32),
             relayHints: ['wss://quote-2.example.com'],
             authorPubkey: '66'.repeat(32),
-        })).toBe(true);
+        })).toEqual(expect.objectContaining({
+            eventId: '55'.repeat(32),
+            mode: 'quote',
+            ownerToken: expect.any(Symbol),
+        }));
         expect(replyQuoteState.value.reply?.eventId).toBe('11'.repeat(32));
         expect(replyQuoteState.value.quotes.map((quote) => quote.eventId)).toEqual([
             '33'.repeat(32),
@@ -327,8 +336,173 @@ describe('replyQuoteStore', () => {
             eventId: '55'.repeat(32),
             relayHints: ['wss://quote-2.example.com'],
             authorPubkey: '66'.repeat(32),
-        })).toBe(false);
+        })).toBeNull();
         expect(listener).not.toHaveBeenCalled();
         cleanup();
+    });
+
+    it('同じreply eventIdの再選択後は古いhydrate成功・失敗を無視する', () => {
+        const eventId = 'aa'.repeat(32);
+        const [oldTarget] = setReplyQuote({
+            reply: { eventId, relayHints: ['wss://old.example.com'], authorPubkey: null },
+            quotes: [],
+        });
+        const [newTarget] = setReplyQuote({
+            reply: { eventId, relayHints: ['wss://new.example.com'], authorPubkey: null },
+            quotes: [],
+        });
+        const event = {
+            id: eventId,
+            pubkey: 'bb'.repeat(32),
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'new',
+            sig: 'sig',
+        };
+        const listener = vi.fn();
+        const cleanup = onReplyQuoteChanged(listener);
+
+        updateReferencedEvent(newTarget, event);
+        listener.mockClear();
+        setReplyQuoteError(oldTarget, 'Event not found');
+        updateReferencedEvent(oldTarget, { ...event, content: 'old' });
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            relayHints: ['wss://new.example.com'],
+            referencedEvent: event,
+            loading: false,
+            error: null,
+        });
+        expect(listener).not.toHaveBeenCalled();
+        cleanup();
+    });
+
+    it('古いhydrate失敗後に同じeventIdを再選択して成功できる', () => {
+        const eventId = 'ab'.repeat(32);
+        const [oldTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        setReplyQuoteError(oldTarget, 'Event not found');
+        const [newTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        const event = {
+            id: eventId,
+            pubkey: 'bc'.repeat(32),
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'new success',
+            sig: 'sig',
+        };
+        updateReferencedEvent(newTarget, event);
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            referencedEvent: event,
+            loading: false,
+            error: null,
+        });
+    });
+
+    it('replyとquoteのmode変更では同じeventIdでも古いownerを適用しない', () => {
+        const eventId = 'cc'.repeat(32);
+        const [replyTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        const [quoteTarget] = setReplyQuote({
+            reply: null,
+            quotes: [{ eventId, relayHints: [], authorPubkey: null }],
+        });
+        setReplyQuoteError(replyTarget, 'old reply error');
+        expect(replyQuoteState.value.quotes[0].error).toBeNull();
+
+        const [newReplyTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        setReplyQuoteError(quoteTarget, 'old quote error');
+        expect(replyQuoteState.value.reply?.error).toBeNull();
+        expect(newReplyTarget.ownerToken).not.toBe(replyTarget.ownerToken);
+    });
+
+    it('clear・下書き復元後は以前のhydrate ownershipを失効させる', () => {
+        const eventId = 'dd'.repeat(32);
+        const [oldTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        clearReplyQuote();
+        setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey: null },
+            quotes: [],
+        });
+        setReplyQuoteError(oldTarget, 'after clear');
+        expect(replyQuoteState.value.reply?.error).toBeNull();
+
+        restoreReplyQuote({
+            reply: {
+                mode: 'reply',
+                eventId,
+                relayHints: [],
+                authorPubkey: null,
+                quoteNotificationEnabled: false,
+                authorDisplayName: null,
+                referencedEvent: null,
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+            },
+            quotes: [],
+        });
+        setReplyQuoteError(oldTarget, 'after draft restore');
+        expect(replyQuoteState.value.reply?.error).toBeNull();
+    });
+
+    it('古いownerによる通知recipient初期化とauthor/recipient profile反映を無視する', () => {
+        const eventId = 'ee'.repeat(32);
+        const authorPubkey = 'ff'.repeat(32);
+        const recipientPubkey = '11'.repeat(32);
+        const [oldTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey },
+            quotes: [],
+        });
+        const [newTarget] = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey },
+            quotes: [],
+        });
+        const event = {
+            id: eventId,
+            pubkey: authorPubkey,
+            created_at: 1,
+            kind: 1,
+            tags: [['p', recipientPubkey]],
+            content: '',
+            sig: '',
+        };
+        initializeReplyNotificationRecipients(newTarget, event);
+        initializeReplyNotificationRecipients(oldTarget, {
+            ...event,
+            tags: [['p', '22'.repeat(32)]],
+        });
+        updateAuthorProfile(oldTarget, authorPubkey, {
+            displayName: 'Old',
+            picture: null,
+        });
+        updateReplyNotificationRecipientProfile(oldTarget, recipientPubkey, {
+            displayName: 'Old recipient',
+            picture: null,
+        });
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: null,
+            replyNotificationRecipients: [{
+                pubkey: recipientPubkey,
+                displayName: null,
+            }],
+        });
     });
 });

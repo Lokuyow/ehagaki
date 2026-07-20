@@ -71,6 +71,20 @@ import {
 } from '../../lib/bootstrap/externalInputBootstrap';
 
 function createParams() {
+    const setReplyQuote = vi.fn((value: any) => [
+        ...(value.reply
+            ? [{
+                ...value.reply,
+                mode: 'reply' as const,
+                ownerToken: Symbol(`reply:${value.reply.eventId}`),
+            }]
+            : []),
+        ...value.quotes.map((quote: any) => ({
+            ...quote,
+            mode: 'quote' as const,
+            ownerToken: Symbol(`quote:${quote.eventId}`),
+        })),
+    ]);
     return {
         sharedError: null,
         sharedMediaStore: {
@@ -85,7 +99,7 @@ function createParams() {
         showWelcomeDialog: vi.fn(),
         updateUrlQueryContentStore: vi.fn(),
         applyChannelContextQuery: vi.fn(),
-        setReplyQuote: vi.fn(),
+        setReplyQuote,
         updateReferencedEvent: vi.fn(),
         initializeReplyNotificationRecipients: vi.fn(),
         setReplyQuoteError: vi.fn(),
@@ -156,7 +170,7 @@ describe('runExternalInputBootstrap', () => {
 
         await vi.waitFor(() => {
             expect(params.updateReferencedEvent).toHaveBeenCalledWith(
-                'event-1',
+                expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
                 event,
                 {
                     rootEventId: null,
@@ -188,12 +202,12 @@ describe('runExternalInputBootstrap', () => {
         await bootstrapPromise;
         await vi.waitFor(() => {
             expect(params.updateReferencedEvent).toHaveBeenCalledWith(
-                'event-1',
+                expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
                 event,
                 expect.any(Object),
             );
             expect(params.initializeReplyNotificationRecipients).toHaveBeenCalledWith(
-                'event-1',
+                expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
                 event,
             );
         });
@@ -278,7 +292,7 @@ describe('runExternalInputBootstrap', () => {
             quotes: [],
         });
         expect(params.updateReferencedEvent).toHaveBeenCalledWith(
-            'event-1',
+            expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
             event,
             {
                 rootEventId: null,

@@ -4,12 +4,14 @@ import type {
     ProfileData,
     ReplyQuoteComposerState,
     ReplyQuoteState,
+    ReplyQuoteUpdateTarget,
 } from "./types";
 
 interface ReplyQuoteProfileTarget {
     key: string;
     presentation: ProfilePresentation;
     applyProfile: (profile: ProfilePresentation) => void;
+    ownerToken: symbol;
 }
 
 interface ProfilePresentation {
@@ -27,6 +29,7 @@ interface ActiveProfileSync extends DesiredProfileSync {
     unsubscribe: () => void;
     lastProfile: ProfileData | null;
     disposed: boolean;
+    requestRevision: number;
 }
 
 export interface ReplyQuoteProfileSyncDependencies {
@@ -35,7 +38,7 @@ export interface ReplyQuoteProfileSyncDependencies {
         "fetchProfileRealtime" | "subscribeProfile"
     >;
     updateAuthorProfile: (
-        eventId: string,
+        target: ReplyQuoteUpdateTarget,
         pubkey: string,
         profile: {
             displayName: string | null;
@@ -43,7 +46,7 @@ export interface ReplyQuoteProfileSyncDependencies {
         },
     ) => void;
     updateReplyNotificationRecipientProfile: (
-        eventId: string,
+        target: ReplyQuoteUpdateTarget,
         pubkey: string,
         profile: {
             displayName: string | null;
@@ -78,6 +81,12 @@ function appendReferenceTargets(
     reference: ReplyQuoteState,
     deps: ReplyQuoteProfileSyncDependencies,
 ): void {
+    if (!reference.ownerToken) return;
+    const updateTarget: ReplyQuoteUpdateTarget = {
+        eventId: reference.eventId,
+        mode: reference.mode,
+        ownerToken: reference.ownerToken,
+    };
     const appendTarget = (
         pubkey: string,
         target: ReplyQuoteProfileTarget,
@@ -108,9 +117,10 @@ function appendReferenceTargets(
                 displayName: reference.authorDisplayName,
                 picture: reference.authorPicture,
             },
+            ownerToken: reference.ownerToken,
             applyProfile: (profile) => {
                 deps.updateAuthorProfile(
-                    reference.eventId,
+                    updateTarget,
                     reference.authorPubkey!,
                     profile,
                 );
@@ -125,9 +135,10 @@ function appendReferenceTargets(
                 displayName: recipient.displayName,
                 picture: recipient.picture,
             },
+            ownerToken: reference.ownerToken,
             applyProfile: (profile) => {
                 deps.updateReplyNotificationRecipientProfile(
-                    reference.eventId,
+                    updateTarget,
                     recipient.pubkey,
                     profile,
                 );
@@ -174,10 +185,14 @@ export function createReplyQuoteProfileSyncController(
     };
 
     const requestProfile = (active: ActiveProfileSync) => {
+        const requestRevision = ++active.requestRevision;
         void deps.relayProfileService.fetchProfileRealtime(active.pubkey, {
             additionalRelays: active.relayHints,
         }).then((profile) => {
-            if (activeByPubkey.get(active.pubkey) === active) {
+            if (
+                activeByPubkey.get(active.pubkey) === active
+                && active.requestRevision === requestRevision
+            ) {
                 applyProfile(active, profile);
             }
         }).catch((error) => {
@@ -199,7 +214,13 @@ export function createReplyQuoteProfileSyncController(
 
         for (const [pubkey, desired] of desiredByPubkey.entries()) {
             const current = activeByPubkey.get(pubkey);
-            if (current) {
+            const ownerChanged = current
+                ? [...desired.targets.entries()].some(
+                    ([key, target]) =>
+                        current.targets.get(key)?.ownerToken !== target.ownerToken,
+                )
+                : false;
+            if (current && !ownerChanged) {
                 const previousRelayHints = current.relayHints.join("\n");
                 current.relayHints = desired.relayHints;
                 current.targets = desired.targets;
@@ -211,12 +232,18 @@ export function createReplyQuoteProfileSyncController(
                 }
                 continue;
             }
+            if (current) {
+                current.disposed = true;
+                current.unsubscribe();
+                activeByPubkey.delete(pubkey);
+            }
 
             const active: ActiveProfileSync = {
                 ...desired,
                 unsubscribe: () => undefined,
                 lastProfile: null,
                 disposed: false,
+                requestRevision: 0,
             };
             activeByPubkey.set(pubkey, active);
             active.unsubscribe = deps.relayProfileService.subscribeProfile(

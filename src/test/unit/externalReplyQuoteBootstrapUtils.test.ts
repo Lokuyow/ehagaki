@@ -9,6 +9,8 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         await processReplyQuoteReference({
             reference: {
                 eventId: 'event-1',
+                mode: 'reply',
+                ownerToken: Symbol('owner'),
                 relayHints: ['wss://relay.example.com/'],
                 authorPubkey: null,
             },
@@ -21,7 +23,10 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             setReplyQuoteError,
         });
 
-        expect(setReplyQuoteError).toHaveBeenCalledWith('event-1', 'Event not found');
+        expect(setReplyQuoteError).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
+            'Event not found',
+        );
     });
 
     it('参照イベント取得後に thread info と通知受信者を初期化する', async () => {
@@ -45,6 +50,8 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         await processReplyQuoteReference({
             reference: {
                 eventId: 'event-1',
+                mode: 'reply',
+                ownerToken: Symbol('owner'),
                 relayHints: ['wss://relay.example.com/'],
                 authorPubkey: null,
             },
@@ -58,7 +65,14 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             setReplyQuoteError: vi.fn(),
         });
 
-        expect(updateReferencedEvent).toHaveBeenCalledWith('event-1', event, threadInfo);
-        expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith('event-1', event);
+        expect(updateReferencedEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
+            event,
+            threadInfo,
+        );
+        expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
+            event,
+        );
     });
 });

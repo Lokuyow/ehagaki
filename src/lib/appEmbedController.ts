@@ -5,7 +5,7 @@ import type {
     RelayConfig,
     ReplyQuoteComposerState,
     ReplyQuoteQueryResult,
-    ReplyQuoteQueryTarget,
+    ReplyQuoteHydrationTarget,
 } from "./types";
 import type { ChannelContextProvenance } from "./channelContextRuntime";
 import type {
@@ -28,9 +28,9 @@ export interface AppEmbedComposerInputPort {
 }
 
 export interface AppEmbedComposerContextApplyPort {
-    applyReplyQuoteSelection(query: ReplyQuoteQueryResult): ReplyQuoteQueryTarget[];
+    applyReplyQuoteSelection(query: ReplyQuoteQueryResult): ReplyQuoteHydrationTarget[];
     hydrateReplyQuoteReferences(
-        references: ReplyQuoteQueryTarget[],
+        references: ReplyQuoteHydrationTarget[],
         runtime: AppEmbedRuntimeSnapshot,
     ): Promise<void>;
     clearReplyQuote(): void;

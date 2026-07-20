@@ -37,7 +37,11 @@ function createDependencies(overrides: Record<string, unknown> = {}) {
         clearChannelContext: vi.fn(),
         hasReplyOrQuotes: vi.fn().mockReturnValue(false),
         clearReplyQuote: vi.fn(),
-        addQuoteReference: vi.fn().mockReturnValue(true),
+        addQuoteReference: vi.fn((reference) => ({
+            ...reference,
+            mode: 'quote',
+            ownerToken: Symbol('quote-owner'),
+        })),
         focusEditor: vi.fn(),
         logger: { error: vi.fn() },
         ...overrides,
@@ -108,7 +112,7 @@ describe('createPostHistoryDialogApplyController', () => {
     it('quote 適用で追加不可なら hydrate せずフォーカスする', () => {
         const deps = createDependencies({
             hasReplyOrQuotes: vi.fn().mockReturnValue(true),
-            addQuoteReference: vi.fn().mockReturnValue(false),
+            addQuoteReference: vi.fn().mockReturnValue(null),
         });
         const controller = createPostHistoryDialogApplyController(deps as never);
 
