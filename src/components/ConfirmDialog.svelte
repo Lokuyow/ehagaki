@@ -182,10 +182,7 @@
 <style>
     :global(.confirm-dialog-overlay) {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
         background-color: var(--dialog-bg-overlay);
         display: flex;
         justify-content: center;
@@ -213,7 +210,6 @@
         width: 100%;
         max-height: 85svh;
         padding: 16px;
-        box-sizing: border-box;
         overflow-y: auto;
         text-align: center;
         display: flex;

@@ -91,7 +91,7 @@
     .post-history-quote-status-body {
         display: grid;
         gap: 8px;
-        padding: 2px 10px 10px 10px;
+        padding: 2px 10px 10px;
     }
 
     .post-history-quote-status-message {

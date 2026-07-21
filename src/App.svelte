@@ -1267,7 +1267,7 @@
   async function deleteSharedMediaForShare(shareId: string): Promise<void> {
     // Clear the mirror first. If that acknowledgement fails, retain the
     // authoritative IndexedDB record to prevent the stale mirror being used.
-    if (!await acknowledgeSharedMedia(shareId)) {
+    if (!(await acknowledgeSharedMedia(shareId))) {
       return;
     }
     await sharedMediaRepository.deleteLatestForShare(shareId);
@@ -1333,10 +1333,16 @@
           bodyStatus,
           automaticRetryCount: sharedMediaStore.automaticRetryCount + 1,
         });
-        setSharedMediaError("共有メディアのアップロードに失敗しました。次回起動時に一度だけ再試行します。", 5000);
+        setSharedMediaError(
+          "共有メディアのアップロードに失敗しました。次回起動時に一度だけ再試行します。",
+          5000,
+        );
       } else {
         await deleteSharedMediaForShare(shareId);
-        setSharedMediaError("共有メディアのアップロードに失敗しました。元のアプリからもう一度共有してください。", 5000);
+        setSharedMediaError(
+          "共有メディアのアップロードに失敗しました。元のアプリからもう一度共有してください。",
+          5000,
+        );
       }
 
       clearSharedMediaStoreForShare(shareId);
@@ -1775,10 +1781,7 @@
 
   .transition-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background-color: var(--dialog-bg-overlay);
     z-index: 100;
     pointer-events: none;
@@ -1788,7 +1791,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    box-sizing: border-box;
     padding-top: var(--main-content-top-spacing);
     width: 100%;
     height: calc(

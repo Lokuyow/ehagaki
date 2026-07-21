@@ -71,7 +71,6 @@
         height: 100%;
         margin: 10px 0 0;
         padding: 8px;
-        box-sizing: border-box;
         overflow: auto;
         border: 1px solid var(--border-hr);
         border-radius: 8px;

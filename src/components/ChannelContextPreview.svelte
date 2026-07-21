@@ -115,7 +115,7 @@
         --preview-meta-gap: 8px;
         --preview-content-display: grid;
         --preview-content-gap: 10px;
-        --preview-content-padding: 12px 20px 14px 20px;
+        --preview-content-padding: 12px 20px 14px;
     }
 
     :global(.channel-context-preview .channel-loading-inline) {
@@ -182,6 +182,6 @@
     .meta-row dd {
         margin: 0;
         white-space: pre-wrap;
-        word-break: break-word;
+        overflow-wrap: anywhere;
     }
 </style>

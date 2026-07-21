@@ -1125,7 +1125,7 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
-        padding: 8px 14px 14px 14px;
+        padding: 8px 14px 14px;
         margin-bottom: 8px;
     }
     @keyframes toast-fadein {
@@ -1221,7 +1221,6 @@
         width: 100%;
         background: var(--dialog-bg2);
         border-radius: 8px;
-        box-sizing: border-box;
     }
 
     .remote-signer-details summary {
@@ -1477,7 +1476,6 @@
         width: 100%;
         display: inline-flex;
         align-items: center;
-        box-sizing: border-box;
     }
 
     @media (min-width: 601px) {

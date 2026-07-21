@@ -315,7 +315,7 @@
 <style>
     :global(.reply-quote-preview) {
         --preview-meta-gap: 12px;
-        --preview-content-padding: 10px 20px 10px 20px;
+        --preview-content-padding: 10px 20px;
     }
 
     :global(.reply-quote-preview .quote-notification-button) {
@@ -465,7 +465,7 @@
     .content-text {
         margin: 0;
         white-space: pre-wrap;
-        word-break: break-word;
+        overflow-wrap: anywhere;
         line-height: 1.4;
     }
 </style>

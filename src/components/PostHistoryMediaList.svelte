@@ -928,7 +928,6 @@
         width: 100%;
         height: 100%;
         min-height: 0;
-        box-sizing: border-box;
     }
 
     .post-history-media-image,
@@ -975,7 +974,6 @@
         align-items: flex-start;
         justify-content: center;
         padding: 12px;
-        box-sizing: border-box;
         text-align: left;
         position: relative;
         isolation: isolate;
@@ -1077,7 +1075,6 @@
         border-radius: 12px;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
-        box-sizing: border-box;
         overflow: hidden;
     }
 

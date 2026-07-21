@@ -141,7 +141,6 @@
         white-space: pre-wrap;
         font-size: 1rem;
         line-height: 1.5;
-        word-break: break-word;
     }
 
     .post-history-preview-text-collapsed {

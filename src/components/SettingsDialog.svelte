@@ -824,7 +824,7 @@
     :global(.sw-update-btn.primary) {
         height: 54px;
         width: auto;
-        padding: 12px 10px 12px 8px;
+        padding: 12px 10px 12px;
         flex-shrink: 0;
     }
 

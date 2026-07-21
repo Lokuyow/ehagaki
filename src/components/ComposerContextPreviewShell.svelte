@@ -89,7 +89,7 @@
         --preview-meta-gap: 8px;
         --preview-content-display: block;
         --preview-content-gap: 0;
-        --preview-content-padding: 10px 20px 10px 20px;
+        --preview-content-padding: 10px 20px;
 
         display: flex;
         flex-direction: column;

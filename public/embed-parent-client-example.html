@@ -305,7 +305,7 @@
 
         .timeline-content {
             white-space: pre-wrap;
-            word-break: break-word;
+            overflow-wrap: anywhere;
             line-height: 1.55;
         }
 
@@ -520,7 +520,8 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">`embedReplyNotification=true` は毎回強制、`defaultReplyNotification=false` は未保存時だけ適用します。常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。設定変更は親ストレージにも保存されます。</p>
+                <p class="small">`embedReplyNotification=true` は毎回強制、`defaultReplyNotification=false` は未保存時だけ適用します。常時表示
+                    iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。設定変更は親ストレージにも保存されます。</p>
 
                 <div class="buttons">
                     <button id="sync-runtime-settings" type="button" class="secondary button-full">現在の設定を postMessage

@@ -237,10 +237,7 @@
     /* ダイアログ共通スタイル */
     :global(.dialog-overlay) {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
         background-color: var(--dialog-bg-overlay);
         display: flex;
         justify-content: center;
@@ -274,7 +271,6 @@
         width: 100%;
         max-height: 85svh;
         padding: 16px;
-        box-sizing: border-box;
         overflow-y: auto;
     }
 
@@ -293,7 +289,6 @@
         justify-content: space-between;
         gap: 8px;
         width: 100%;
-        box-sizing: border-box;
         padding: 6px;
         border-top: 1px solid var(--border-hr);
     }
