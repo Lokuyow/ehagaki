@@ -106,7 +106,7 @@
 
     @keyframes post-history-thread-toggle-spinner {
         to {
-            transform: rotate(360deg);
+            rotate: 360deg;
         }
     }
 </style>

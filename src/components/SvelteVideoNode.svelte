@@ -219,7 +219,7 @@
         cursor: pointer;
 
         &:active {
-            transform: scale(1);
+            scale: 1;
         }
     }
 

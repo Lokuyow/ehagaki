@@ -72,7 +72,7 @@
         position: absolute;
         top: 50%;
         left: -7px;
-        transform: translateY(-50%);
+        translate: 0 -50%;
         border-style: solid;
         border-width: 4px 8px 4px 0;
         border-color: transparent #fff transparent transparent;
@@ -83,7 +83,7 @@
         position: absolute;
         top: 50%;
         left: -10px;
-        transform: translateY(-50%);
+        translate: 0 -50%;
         border-style: solid;
         border-width: 6px 10px 6px 0;
         border-color: transparent; /* 外側黒 */

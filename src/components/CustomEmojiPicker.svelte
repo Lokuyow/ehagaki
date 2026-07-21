@@ -579,7 +579,7 @@
         width: 38px;
         height: 4px;
         border-radius: 999px;
-        transform: translate(-50%, -50%);
+        translate: -50% -50%;
         background: var(--border);
     }
 
@@ -659,7 +659,7 @@
     }
 
     :global(.custom-emoji-editor-button:active) {
-        transform: scale(0.94);
+        scale: 0.94;
     }
 
     :global(.custom-emoji-editor-button .svg-icon) {

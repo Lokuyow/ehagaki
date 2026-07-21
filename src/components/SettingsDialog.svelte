@@ -791,11 +791,12 @@
         left: 3px;
         bottom: 3px;
         background-color: var(--toggle-circle);
-        transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
+        translate: 0 0;
+        transition: translate 0.2s cubic-bezier(0, 1, 0.5, 1);
         border-radius: 50%;
     }
     :global(.bui-switch[data-state="checked"] .bui-switch-thumb) {
-        transform: translateX(46px);
+        translate: 46px 0;
     }
 
     .hide-mascot-flavor-group {

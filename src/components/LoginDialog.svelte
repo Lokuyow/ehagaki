@@ -1110,7 +1110,7 @@
         position: fixed;
         top: 0px;
         left: 50%;
-        transform: translateX(-50%);
+        translate: -50% 0;
         display: flex;
         width: 100%;
         max-width: 500px;
@@ -1131,11 +1131,11 @@
     @keyframes toast-fadein {
         from {
             opacity: 0;
-            transform: translateX(-50%) translateY(-10px);
+            translate: -50% -10px;
         }
         to {
             opacity: 0.98;
-            transform: translateX(-50%) translateY(0);
+            translate: -50% 0;
         }
     }
 

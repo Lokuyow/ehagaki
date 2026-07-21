@@ -290,7 +290,7 @@
                 outline: none;
             }
             &:active {
-                transform: scale(1);
+                scale: 1;
             }
             @media (hover: hover) and (pointer: fine) {
                 &:hover {
@@ -309,7 +309,7 @@
     /* ドラッグ状態での追加スタイル */
     .editor-image-button[data-dragging="true"] .editor-image {
         opacity: 0.3;
-        transform: scale(0.95);
+        scale: 0.95;
         transition: all 0.2s ease;
     }
 

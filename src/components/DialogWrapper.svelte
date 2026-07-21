@@ -252,7 +252,7 @@
         position: fixed;
         top: 50%;
         left: 50%;
-        transform: translate(-50%, -50%);
+        translate: -50% -50%;
         background: var(--dialog-bg);
         color: var(--text);
         width: 100%;
@@ -399,7 +399,7 @@
     }
 
     :global(.modal-close:active:not(:disabled)) {
-        transform: scale(1);
+        scale: 1;
     }
 
     :global(.visually-hidden) {

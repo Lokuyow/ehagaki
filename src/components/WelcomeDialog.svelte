@@ -105,6 +105,6 @@
     }
 
     :global(.welcome-dialog .get-started-btn:active) {
-        transform: scale(1);
+        scale: 1;
     }
 </style>

@@ -873,7 +873,7 @@
             margin-inline: auto;
 
             &:active:not(:disabled) {
-                transform: scale(1);
+                scale: 1;
             }
         }
     }

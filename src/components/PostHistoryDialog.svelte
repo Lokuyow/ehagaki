@@ -2814,7 +2814,7 @@
 <style>
     :global(.post-history-dialog.dialog) {
         top: 0;
-        transform: translateX(-50%);
+        translate: -50% 0;
         height: 100svh;
         max-height: 100svh;
 

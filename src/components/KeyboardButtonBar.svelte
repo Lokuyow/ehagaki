@@ -484,8 +484,8 @@
             height: var(--keyboard-button-bar-height);
 
             &:active {
-                transform: scale(0.9);
-                transition: transform 0.1s ease-in-out;
+                scale: 0.9;
+                transition: scale 0.1s ease-in-out;
             }
 
             .plane-icon {
@@ -590,14 +590,14 @@
         position: absolute;
         bottom: calc(100% + 12px);
         left: 50%;
-        transform: translateX(-50%);
+        translate: -50% 0;
         pointer-events: none;
         z-index: 99;
     }
 
     .progress-ring {
         display: block;
-        transform: rotate(-90deg);
+        rotate: -90deg;
     }
 
     .progress-ring-bg {

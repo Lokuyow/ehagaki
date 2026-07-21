@@ -235,7 +235,7 @@
     }
 
     .floating-dev-console-log:active {
-        transform: scale(0.97);
+        scale: 0.97;
     }
 
     .shared-media-error {

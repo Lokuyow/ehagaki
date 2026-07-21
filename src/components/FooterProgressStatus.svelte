@@ -27,7 +27,7 @@
     }
 
     function getProgressIndicatorStyle(currentValue: number): string {
-        return `transform: translateX(-${100 - clampProgressValue(currentValue)}%);`;
+        return `translate: -${100 - clampProgressValue(currentValue)}% 0;`;
     }
 
     let normalizedValue = $derived(clampProgressValue(value));
@@ -131,6 +131,6 @@
         width: 100%;
         height: 100%;
         background-color: var(--theme);
-        transition: transform 0.3s ease;
+        transition: translate 0.3s ease;
     }
 </style>

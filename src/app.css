@@ -178,8 +178,8 @@ button>* {
 
 button:active:not(:disabled),
 *[role="button"]:active {
-  transform: scale(0.98);
-  transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
+  scale: 0.98;
+  transition: scale 0.1s cubic-bezier(0, 1, 0.5, 1);
 }
 
 @media (hover: hover) and (pointer: fine) {
