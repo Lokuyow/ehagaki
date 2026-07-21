@@ -213,14 +213,13 @@ select {
 }
 
 .svg-icon {
-  --icon-size: 28px;
   mask-repeat: no-repeat;
   mask-size: contain;
   mask-position: center;
   background-color: var(--svg);
   display: inline-block;
-  inline-size: var(--icon-size);
-  block-size: var(--icon-size);
+  inline-size: var(--icon-size, 28px);
+  block-size: var(--icon-size, 28px);
 }
 
 .tooltip-content {
