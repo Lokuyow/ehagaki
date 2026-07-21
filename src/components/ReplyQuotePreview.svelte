@@ -448,16 +448,13 @@
     }
 
     :global(.reply-quote-tooltip-content) {
-        z-index: 10000;
-        max-width: 240px;
-        border-radius: 6px;
-        padding: 6px 8px;
-        background: var(--dialog-bg);
-        color: var(--text);
-        border: 1px solid var(--border);
+        --tooltip-padding: 6px 8px;
+        --tooltip-font-size: 0.8rem;
+        --tooltip-line-height: 1.35;
+        --tooltip-z-index: 10000;
+        --tooltip-max-width: 240px;
+
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-        font-size: 0.8rem;
-        line-height: 1.35;
     }
 
     .content-text {
