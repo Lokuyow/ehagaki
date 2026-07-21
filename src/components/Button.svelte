@@ -180,7 +180,7 @@
             background-color: white;
         }
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
                     color: color-mix(in srgb, white, black 6%);
@@ -225,7 +225,7 @@
         --text: var(--text-black);
         --border: var(--light-gray);
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
                     background: color-mix(in srgb, var(--btn-bg), black 3%);
@@ -241,7 +241,7 @@
 
     .header {
         border: 1px solid var(--hagaki);
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             :global(:root.light) & {
                 &:hover:not(:disabled) {
                     border-color: color-mix(in srgb, var(--hagaki), black 3%);
@@ -259,7 +259,7 @@
         --text: white;
         border: none;
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
                     background-color: color-mix(
@@ -286,7 +286,7 @@
         --text: var(--text-black);
         border: none;
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
                     background: color-mix(in srgb, var(--btn-bg), black 8%);
@@ -320,7 +320,7 @@
             mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 --btn-bg: rgba(25, 25, 25, 0.5);
                 background: var(--btn-bg);
@@ -344,7 +344,7 @@
             mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 --btn-bg: rgba(25, 25, 25, 0.45);
                 background: var(--btn-bg);

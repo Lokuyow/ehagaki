@@ -652,7 +652,7 @@
         touch-action: manipulation;
     }
 
-    @media (min-width: 601px) {
+    @media (hover: hover) and (pointer: fine) {
         :global(.custom-emoji-editor-button:hover) {
             background: var(--btn-bg);
         }
@@ -749,9 +749,14 @@
         outline: none;
     }
 
-    :global(.emoji-item:hover),
     :global(.emoji-item[data-highlighted]) {
         background: var(--btn-hover-bg);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        :global(.emoji-item:hover) {
+            background: var(--btn-hover-bg);
+        }
     }
 
     .emoji-image {

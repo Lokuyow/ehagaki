@@ -182,7 +182,7 @@ button:active:not(:disabled),
   transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
 }
 
-@media (min-width: 601px) {
+@media (hover: hover) and (pointer: fine) {
   a:hover {
     text-decoration: underline;
   }
@@ -263,7 +263,7 @@ select {
   background-color: color-mix(in srgb, var(--btn-bg), white 22%);
 }
 
-@media (min-width: 601px) {
+@media (hover: hover) and (pointer: fine) {
 
   :root.light button:where(:hover:not(:disabled)),
   :root.light [role="button"]:where(:hover:not([aria-disabled="true"])),

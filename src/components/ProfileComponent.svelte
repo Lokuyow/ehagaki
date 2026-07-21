@@ -683,9 +683,11 @@
                 background-color 0.15s,
                 color 0.15s;
 
-            &:hover:not(:disabled) {
-                background-color: rgba(239, 68, 68, 0.1);
-                color: #ef4444;
+            @media (hover: hover) and (pointer: fine) {
+                &:hover:not(:disabled) {
+                    background-color: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                }
             }
 
             &:disabled {

@@ -292,8 +292,10 @@
             &:active {
                 transform: scale(1);
             }
-            &:hover {
-                background: none;
+            @media (hover: hover) and (pointer: fine) {
+                &:hover {
+                    background: none;
+                }
             }
         }
     }

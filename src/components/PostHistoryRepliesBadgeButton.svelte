@@ -53,12 +53,18 @@
         text-align: center;
     }
 
-    :global(.post-preview-replies-badge-button.selected .post-preview-replies-badge) {
+    :global(
+            .post-preview-replies-badge-button.selected
+                .post-preview-replies-badge
+        ) {
         background-color: var(--text-light);
     }
 
-    @media (min-width: 601px) {
-        :global(.post-preview-replies-badge-button:hover:not(:disabled) .post-preview-replies-badge) {
+    @media (hover: hover) and (pointer: fine) {
+        :global(
+                .post-preview-replies-badge-button:hover:not(:disabled)
+                    .post-preview-replies-badge
+            ) {
             background-color: var(--text);
         }
     }

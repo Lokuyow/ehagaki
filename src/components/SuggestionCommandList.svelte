@@ -189,10 +189,15 @@
         user-select: none;
     }
 
-    :global(.suggestion-command-item:hover),
     :global(.suggestion-command-item.selected),
     :global(.suggestion-command-item[data-highlighted]) {
         background: var(--btn-hover-bg);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        :global(.suggestion-command-item:hover) {
+            background: var(--btn-hover-bg);
+        }
     }
 
     :global(.suggestion-command-scrollbar) {

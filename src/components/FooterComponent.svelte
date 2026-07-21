@@ -258,9 +258,11 @@
         flex: 0 0 auto;
         z-index: 10;
 
-        &:hover:not(:disabled) {
-            opacity: 0.85;
-            background: var(--btn-bg);
+        @media (hover: hover) and (pointer: fine) {
+            &:hover:not(:disabled) {
+                opacity: 0.85;
+                background: var(--btn-bg);
+            }
         }
     }
 

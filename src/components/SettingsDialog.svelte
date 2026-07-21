@@ -131,7 +131,9 @@
     });
 
     $effect(() => {
-        if (replyNotificationEnabled !== settingsStore.replyNotificationEnabled) {
+        if (
+            replyNotificationEnabled !== settingsStore.replyNotificationEnabled
+        ) {
             settingsStore.replyNotificationEnabled = replyNotificationEnabled;
         }
     });
@@ -494,8 +496,9 @@
                     <div class="setting-label-group">
                         <div class="setting-label-row">
                             <span class="setting-label"
-                        >{$_("settingsDialog.quote_notification_label") ||
-                            "引用元の投稿者に通知"}</span
+                                >{$_(
+                                    "settingsDialog.quote_notification_label",
+                                ) || "引用元の投稿者に通知"}</span
                             >
                             <InfoPopoverButton
                                 side="top"
@@ -525,8 +528,9 @@
                     <div class="setting-label-group">
                         <div class="setting-label-row">
                             <span class="setting-label"
-                        >{$_("settingsDialog.reply_notification_label") ||
-                            "返信先以外にも通知"}</span
+                                >{$_(
+                                    "settingsDialog.reply_notification_label",
+                                ) || "返信先以外にも通知"}</span
                             >
                             <InfoPopoverButton
                                 side="top"
@@ -755,7 +759,7 @@
         transition: opacity 0.2s;
         flex-shrink: 0;
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 opacity: 0.15;
                 background: var(--btn-bg);
@@ -767,7 +771,7 @@
     :global(button.bui-switch[data-state="checked"]) {
         opacity: 1;
 
-        @media (min-width: 601px) {
+        @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 opacity: 0.9;
                 background: var(--btn-bg);

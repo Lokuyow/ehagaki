@@ -209,8 +209,10 @@
         appearance: none;
         border-radius: 0;
 
-        &:hover {
-            --btn-bg: #ffe0e0;
+        @media (hover: hover) and (pointer: fine) {
+            &:hover {
+                --btn-bg: #ffe0e0;
+            }
         }
     }
 

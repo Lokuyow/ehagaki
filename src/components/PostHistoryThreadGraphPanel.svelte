@@ -33,9 +33,7 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
-        onShowRawJson?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
+        onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
         onBroadcastPointerDown?: (
             nodeState: PostHistoryThreadGraphNodeState,
             event: PointerEvent,
@@ -45,9 +43,13 @@
             event: Event,
         ) => void;
         isBroadcastSending?: (nodeEventId: string) => boolean;
-        canDeleteNodePost?: (nodeState: PostHistoryThreadGraphNodeState) => boolean;
+        canDeleteNodePost?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => boolean;
         isDeletionSending?: (nodeEventId: string) => boolean;
-        onOpenDeleteConfirm?: (nodeState: PostHistoryThreadGraphNodeState) => void;
+        onOpenDeleteConfirm?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
     }
 
     let {
@@ -268,7 +270,7 @@
         font-size: 0.82rem;
     }
 
-    @media (min-width: 601px) {
+    @media (hover: hover) and (pointer: fine) {
         :global(.post-history-context-button:hover:not(:disabled)) {
             color: var(--theme);
             background: color-mix(in srgb, var(--theme) 10%, transparent);

@@ -90,7 +90,9 @@
     interface Props {
         show: boolean;
         onClose: () => void;
-        onReplyPost?: (post: PostHistoryRecord) => void | boolean | Promise<boolean>;
+        onReplyPost?: (
+            post: PostHistoryRecord,
+        ) => void | boolean | Promise<boolean>;
         onQuotePost?: (post: PostHistoryRecord) => void;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
@@ -257,7 +259,7 @@
     let broadcastFloatingMessageX = $state(0);
     let broadcastFloatingMessageY = $state(0);
     let broadcastFloatingMessageKey = $state<
-        "postHistory.broadcastSent"
+        | "postHistory.broadcastSent"
         | "postHistory.broadcastPartial"
         | "postHistory.broadcastFailed"
     >("postHistory.broadcastSent");
@@ -909,10 +911,10 @@
         broadcastFloatingMessageY = position.y;
         broadcastFloatingMessageKey = !result.success
             ? "postHistory.broadcastFailed"
-            : ((result.rejectedRelays?.length ?? 0) > 0
-                || (result.timedOutRelays?.length ?? 0) > 0)
-                ? "postHistory.broadcastPartial"
-                : "postHistory.broadcastSent";
+            : (result.rejectedRelays?.length ?? 0) > 0 ||
+                (result.timedOutRelays?.length ?? 0) > 0
+              ? "postHistory.broadcastPartial"
+              : "postHistory.broadcastSent";
         showBroadcastFloatingMessage = true;
         broadcastFloatingMessageTimeout = setTimeout(() => {
             showBroadcastFloatingMessage = false;
@@ -1073,7 +1075,7 @@
             return;
         }
 
-        if (await onReplyPost(post) !== false) {
+        if ((await onReplyPost(post)) !== false) {
             handleClose();
         }
     }
@@ -2099,7 +2101,8 @@
                                                                                 class="raw-json-icon svg-icon"
                                                                                 aria-hidden="true"
                                                                             ></div>
-                                                                            <span>
+                                                                            <span
+                                                                            >
                                                                                 {$_(
                                                                                     "postHistory.rawJson",
                                                                                 )}
@@ -3464,8 +3467,10 @@
                 background: transparent;
             }
 
-            :global(.post-preview-toggle-button:hover) {
-                text-decoration: underline;
+            @media (hover: hover) and (pointer: fine) {
+                :global(.post-preview-toggle-button:hover) {
+                    text-decoration: underline;
+                }
             }
         }
     }
@@ -3525,7 +3530,7 @@
         color: var(--text-light);
     }
 
-    @media (min-width: 601px) {
+    @media (hover: hover) and (pointer: fine) {
         :global(
                 :root.light
                     .post-history-thread-toggle-button.selected:hover:not(
