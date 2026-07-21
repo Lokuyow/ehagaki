@@ -195,14 +195,28 @@
         --svg: currentColor;
     }
 
+    :global(
+            .post-history-menu-content
+                .menu-action-button[data-highlighted]:not([data-disabled])
+        ) {
+        background-color: var(--post-history-menu-action-hover-bg);
+        color: var(--post-history-menu-action-hover-color);
+        --svg: currentColor;
+    }
+
+    :global(
+            .post-history-menu-content
+                .menu-action-button-danger[data-highlighted]:not([data-disabled])
+        ) {
+        background-color: var(--post-history-menu-action-danger-hover-bg);
+        color: var(--danger);
+        --svg: currentColor;
+    }
+
     @media (hover: hover) and (pointer: fine) {
         :global(
                 .post-history-menu-content
                     .menu-action-button:hover:not([data-disabled])
-            ),
-        :global(
-                .post-history-menu-content
-                    .menu-action-button[data-highlighted]:not([data-disabled])
             ) {
             background-color: var(--post-history-menu-action-hover-bg);
             color: var(--post-history-menu-action-hover-color);
@@ -212,12 +226,6 @@
         :global(
                 .post-history-menu-content
                     .menu-action-button-danger:hover:not([data-disabled])
-            ),
-        :global(
-                .post-history-menu-content
-                    .menu-action-button-danger[data-highlighted]:not(
-                        [data-disabled]
-                    )
             ) {
             background-color: var(--post-history-menu-action-danger-hover-bg);
             color: var(--danger);
