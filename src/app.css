@@ -74,6 +74,22 @@
   --toggle-bg: var(--svg);
   --toggle-circle: var(--dialog-bg);
 
+  --message-success-bg: hsl(200, 39%, 96%);
+  --message-success-color: hsl(210, 60%, 40%);
+  --message-success-border: hsl(210, 48%, 70%);
+  --message-error-bg: hsl(351, 99%, 96%);
+  --message-error-color: hsl(351, 99%, 32%);
+  --message-error-border: hsl(351, 99%, 70%);
+  --message-warning-bg: hsl(38, 100%, 95%);
+  --message-warning-color: hsl(30, 90%, 35%);
+  --message-warning-border: hsl(38, 90%, 65%);
+  --message-flavor-bg: hsl(125, 39%, 94%);
+  --message-flavor-color: hsl(123, 46%, 32%);
+  --message-flavor-border: hsl(125, 39%, 70%);
+  --message-tips-bg: hsl(270, 50%, 96%);
+  --message-tips-color: hsl(270, 55%, 38%);
+  --message-tips-border: hsl(270, 45%, 70%);
+
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
 
@@ -250,6 +266,22 @@ select {
   --hashtag-bg: #65B1FC1a;
   --toggle-bg: var(--svg);
   --toggle-circle: var(--dialog-bg);
+
+  --message-success-bg: hsl(200, 39%, 96%);
+  --message-success-color: hsl(210, 60%, 40%);
+  --message-success-border: hsl(210, 48%, 70%);
+  --message-error-bg: hsl(351, 99%, 96%);
+  --message-error-color: hsl(351, 99%, 32%);
+  --message-error-border: hsl(351, 99%, 70%);
+  --message-warning-bg: hsl(38, 100%, 95%);
+  --message-warning-color: hsl(30, 90%, 35%);
+  --message-warning-border: hsl(38, 90%, 65%);
+  --message-flavor-bg: hsl(125, 39%, 94%);
+  --message-flavor-color: hsl(123, 46%, 32%);
+  --message-flavor-border: hsl(125, 39%, 70%);
+  --message-tips-bg: hsl(270, 50%, 96%);
+  --message-tips-color: hsl(270, 55%, 38%);
+  --message-tips-border: hsl(270, 45%, 70%);
 }
 
 

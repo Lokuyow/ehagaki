@@ -90,7 +90,6 @@
     let compactMessageText = $derived(
         resolveCompactMessageText(compactMessage, compactSuccessText),
     );
-
 </script>
 
 <div class="header-container">
@@ -273,42 +272,49 @@
     }
 
     .compact-message {
+        --compact-message-bg: color-mix(
+            in srgb,
+            var(--dialog-bg) 82%,
+            var(--base) 18%
+        );
+        --compact-message-color: var(--text);
+        --compact-message-border: var(--border-hr);
         display: flex;
         align-items: center;
         min-width: 0;
         max-width: min(100%, 280px);
         margin: 0 6px;
         padding: 8px 10px;
-        background: color-mix(in srgb, var(--dialog-bg) 82%, var(--base) 18%);
-        color: var(--text);
+        background: var(--compact-message-bg);
+        color: var(--compact-message-color);
         font-size: 1rem;
         line-height: 1.2;
-        border: 1px solid var(--border-hr);
+        border: 1px solid var(--compact-message-border);
     }
 
     .compact-message.success {
-        background: var(--balloon-success-bg);
-        color: var(--balloon-success-color);
-        border-color: var(--balloon-success-border);
+        --compact-message-bg: var(--message-success-bg);
+        --compact-message-color: var(--message-success-color);
+        --compact-message-border: var(--message-success-border);
     }
 
     .compact-message.error,
     .compact-message.warning {
-        background: var(--balloon-error-bg);
-        color: var(--balloon-error-color);
-        border-color: var(--balloon-error-border);
+        --compact-message-bg: var(--message-error-bg);
+        --compact-message-color: var(--message-error-color);
+        --compact-message-border: var(--message-error-border);
     }
 
     .compact-message.tips {
-        background: var(--balloon-tips-bg);
-        color: var(--balloon-tips-color);
-        border-color: var(--balloon-tips-border);
+        --compact-message-bg: var(--message-tips-bg);
+        --compact-message-color: var(--message-tips-color);
+        --compact-message-border: var(--message-tips-border);
     }
 
     .compact-message.flavor {
-        background: var(--balloon-flavor-bg);
-        color: var(--balloon-flavor-color);
-        border-color: var(--balloon-flavor-border);
+        --compact-message-bg: var(--message-flavor-bg);
+        --compact-message-color: var(--message-flavor-color);
+        --compact-message-border: var(--message-flavor-border);
     }
 
     .compact-message-text {
