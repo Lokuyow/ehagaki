@@ -662,7 +662,7 @@
             font-size: 0.875rem;
             font-weight: 600;
             color: var(--theme);
-            margin-left: auto;
+            margin-inline-start: auto;
             flex-shrink: 0;
         }
 
@@ -803,7 +803,7 @@
         flex: 1;
         min-width: 0;
         height: 50px;
-        padding-left: 8px;
+        padding-inline-start: 8px;
         background-color: var(--btn-bg);
         border-radius: 8px 0 0 8px;
         cursor: pointer;

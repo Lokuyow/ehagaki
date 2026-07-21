@@ -150,7 +150,7 @@
 
 <style>
     .setting-info {
-        margin-left: 10px;
+        margin-inline-start: 10px;
 
         :global(.relay-toggle-label) {
             min-height: 40px;
@@ -162,7 +162,7 @@
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .relay-list {
-        margin-left: 10px;
+        margin-inline-start: 10px;
 
         .relay-list-header,
         li {

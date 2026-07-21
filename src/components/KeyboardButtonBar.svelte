@@ -492,7 +492,7 @@
                 mask-image: url("/icons/paper-plane-solid-full.svg");
                 width: 34px;
                 height: 34px;
-                margin-right: 2px;
+                margin-inline-end: 2px;
                 margin-top: 2px;
             }
         }
@@ -523,7 +523,7 @@
                 mask-image: url("/icons/tag_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
                 width: 26px;
                 height: 26px;
-                margin-right: -4px;
+                margin-inline-end: -4px;
             }
 
             .thumbtack-icon {
@@ -619,13 +619,11 @@
     }
 
     :global(.tooltip-content) {
-        background: var(--dialog-bg);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 12px;
-        font-size: 1rem;
+        --tooltip-padding: 12px;
+        --tooltip-font-size: 1rem;
+        --tooltip-line-height: normal;
+        --tooltip-z-index: 100;
+        --tooltip-max-width: none;
         font-weight: 600;
-        z-index: 100;
     }
 </style>

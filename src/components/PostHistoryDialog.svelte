@@ -3074,12 +3074,12 @@
     }
 
     :global(.post-history-date-picker-nav-icon-left) {
-        margin-right: 1px;
+        margin-inline-end: 1px;
         mask-image: url("/icons/keyboard_arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.post-history-date-picker-nav-icon-right) {
-        margin-left: 1px;
+        margin-inline-start: 1px;
         mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 

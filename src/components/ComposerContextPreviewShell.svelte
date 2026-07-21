@@ -93,7 +93,7 @@
 
         display: flex;
         flex-direction: column;
-        border-left: 3px solid var(--theme);
+        border-inline-start: 3px solid var(--theme);
         background-color: var(--bg-input);
         max-width: 800px;
         width: 100%;
@@ -136,8 +136,7 @@
     }
 
     .preview-mode-icon.reply-icon {
-        width: 24px;
-        height: 24px;
+        --icon-size: 24px;
         flex-shrink: 0;
     }
 

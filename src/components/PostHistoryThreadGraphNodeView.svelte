@@ -36,9 +36,7 @@
             event: Event,
         ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
-        onShowRawJson?: (
-            nodeState: PostHistoryThreadGraphNodeState,
-        ) => void;
+        onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
         onBroadcastPointerDown?: (
             nodeState: PostHistoryThreadGraphNodeState,
             event: PointerEvent,
@@ -218,11 +216,7 @@
         data-post-history-thread-anchor-scope-id={state.anchorEventId}
         data-post-history-thread-anchor-event-id={state.node.eventId}
     >
-        <PostHistoryThreadNode
-            node={state.node}
-            {scrollRoot}
-            {onImageOpen}
-        >
+        <PostHistoryThreadNode node={state.node} {scrollRoot} {onImageOpen}>
             {#snippet topActions()}
                 {#if state.parentTargetId && !state.parentAlreadyInPath && !(state.parentExpansion.visibleParent && state.parentExpansion.parentDeleted)}
                     <div class="post-history-thread-node-top-actions">
@@ -244,7 +238,9 @@
             {/snippet}
 
             {#snippet footerLeftExtras()}
-                <PostHistoryDeletionLifecycleStatusBadge eventId={state.node.eventId} />
+                <PostHistoryDeletionLifecycleStatusBadge
+                    eventId={state.node.eventId}
+                />
             {/snippet}
 
             {#snippet footerActions()}
@@ -266,83 +262,79 @@
                     timestamp={postedAtExact}
                 >
                     {#snippet items()}
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        disabled={state.repliesActionState
-                                            .status === "loading"}
-                                        onSelect={handleRepliesAction}
-                                    >
-                                        <div
-                                            class={`${
-                                                state.repliesActionState.visible
-                                                    ? "collapse-content-icon"
-                                                    : "find_in_page-icon"
-                                            } svg-icon`}
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>{getRepliesActionLabel()}</span>
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        onSelect={handleShowRawJson}
-                                    >
-                                        <div
-                                            class="raw-json-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>{$_("postHistory.rawJson")}</span>
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        onpointerdown={handleCopyPointerDown}
-                                        onSelect={handleCopyNevent}
-                                    >
-                                        <div
-                                            class="copy-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span>
-                                            {copyFailed
-                                                ? $_("postHistory.copyFailed")
-                                                : $_("postHistory.copyNevent")}
-                                        </span>
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        class="menu-action-button"
-                                        disabled={broadcastSending}
-                                        onpointerdown={handleBroadcastPointerDown}
-                                        onSelect={handleBroadcastPost}
-                                    >
-                                        <div
-                                            class="broadcast-icon svg-icon"
-                                            aria-hidden="true"
-                                        ></div>
-                                        <span
-                                            >{$_("postHistory.broadcast")}</span
-                                        >
-                                    </DropdownMenu.Item>
-                                    {#if canDelete}
-                                        <DropdownMenu.Separator
-                                            class="post-history-menu-separator"
-                                        />
-                                        <DropdownMenu.Item
-                                            class="menu-action-button menu-action-button-danger"
-                                            disabled={deletionSending}
-                                            onSelect={openDeleteConfirm}
-                                        >
-                                            <div
-                                                class="trash-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></div>
-                                            <span>
-                                                {deletionSending
-                                                    ? $_(
-                                                          "postHistory.deleteSending",
-                                                      )
-                                                    : $_("postHistory.delete")}
-                                            </span>
-                                        </DropdownMenu.Item>
-                                    {/if}
+                        <DropdownMenu.Item
+                            class="menu-action-button"
+                            disabled={state.repliesActionState.status ===
+                                "loading"}
+                            onSelect={handleRepliesAction}
+                        >
+                            <div
+                                class={`${
+                                    state.repliesActionState.visible
+                                        ? "collapse-content-icon"
+                                        : "find_in_page-icon"
+                                } svg-icon`}
+                                aria-hidden="true"
+                            ></div>
+                            <span>{getRepliesActionLabel()}</span>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            class="menu-action-button"
+                            onSelect={handleShowRawJson}
+                        >
+                            <div
+                                class="raw-json-icon svg-icon"
+                                aria-hidden="true"
+                            ></div>
+                            <span>{$_("postHistory.rawJson")}</span>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            class="menu-action-button"
+                            onpointerdown={handleCopyPointerDown}
+                            onSelect={handleCopyNevent}
+                        >
+                            <div
+                                class="copy-icon svg-icon"
+                                aria-hidden="true"
+                            ></div>
+                            <span>
+                                {copyFailed
+                                    ? $_("postHistory.copyFailed")
+                                    : $_("postHistory.copyNevent")}
+                            </span>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            class="menu-action-button"
+                            disabled={broadcastSending}
+                            onpointerdown={handleBroadcastPointerDown}
+                            onSelect={handleBroadcastPost}
+                        >
+                            <div
+                                class="broadcast-icon svg-icon"
+                                aria-hidden="true"
+                            ></div>
+                            <span>{$_("postHistory.broadcast")}</span>
+                        </DropdownMenu.Item>
+                        {#if canDelete}
+                            <DropdownMenu.Separator
+                                class="post-history-menu-separator"
+                            />
+                            <DropdownMenu.Item
+                                class="menu-action-button menu-action-button-danger"
+                                disabled={deletionSending}
+                                onSelect={openDeleteConfirm}
+                            >
+                                <div
+                                    class="trash-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>
+                                    {deletionSending
+                                        ? $_("postHistory.deleteSending")
+                                        : $_("postHistory.delete")}
+                                </span>
+                            </DropdownMenu.Item>
+                        {/if}
                     {/snippet}
                 </PostHistoryActionMenu>
             {/snippet}
@@ -389,7 +381,7 @@
     }
 
     .post-history-thread-node-parent {
-        padding-left: 0;
+        padding-inline-start: 0;
     }
 
     .post-history-thread-node-anchor {
@@ -398,7 +390,7 @@
     }
 
     .post-history-thread-node-children {
-        padding-left: 0;
+        padding-inline-start: 0;
     }
 
     :global(.post-history-context-button) {

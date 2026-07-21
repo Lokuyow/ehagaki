@@ -328,7 +328,7 @@
         align-items: center;
         width: fit-content;
         height: 100%;
-        margin-left: auto;
+        margin-inline-start: auto;
     }
 
     .buttons-container {
@@ -344,32 +344,30 @@
         width: 50px;
     }
 
+    .trash-icon,
+    .list-icon,
+    .floppy-disk-icon {
+        --icon-size: 30px;
+    }
+
     .trash-icon {
         mask-image: url("/icons/delete_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 30px;
-        height: 30px;
     }
 
     .list-icon {
         mask-image: url("/icons/edit_note_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 30px;
-        height: 30px;
     }
 
     .floppy-disk-icon {
         mask-image: url("/icons/save_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 30px;
-        height: 30px;
     }
 
     :global(.tooltip-content) {
-        background: var(--dialog-bg);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 12px;
-        font-size: 1rem;
+        --tooltip-padding: 12px;
+        --tooltip-font-size: 1rem;
+        --tooltip-line-height: normal;
+        --tooltip-z-index: 100;
+        --tooltip-max-width: none;
         font-weight: 600;
-        z-index: 100;
     }
 </style>

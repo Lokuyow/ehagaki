@@ -244,8 +244,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 20px;
-        height: 20px;
+        --icon-size: 20px;
     }
 
     @keyframes post-history-menu-popover-in {

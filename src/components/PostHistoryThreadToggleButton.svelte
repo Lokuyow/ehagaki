@@ -81,8 +81,7 @@
     }
 
     .post-history-thread-toggle-icon {
-        width: 24px;
-        height: 24px;
+        --icon-size: 24px;
     }
 
     .post-history-thread-toggle-icon-arrow-top-right {
@@ -90,8 +89,7 @@
     }
 
     .post-history-thread-toggle-icon-collapse {
-        width: 28px;
-        height: 28px;
+        --icon-size: 28px;
         mask-image: url("/icons/collapse_content_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 

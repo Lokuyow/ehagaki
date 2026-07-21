@@ -47,7 +47,7 @@
 
     .post-preview-footer-regular {
         --post-history-preview-footer-height: 36px;
-        padding-left: 1rem;
+        padding-inline-start: 1rem;
     }
 
     .post-preview-footer-compact {

@@ -213,13 +213,32 @@ select {
 }
 
 .svg-icon {
+  --icon-size: 28px;
   mask-repeat: no-repeat;
   mask-size: contain;
   mask-position: center;
   background-color: var(--svg);
   display: inline-block;
-  width: 28px;
-  height: 28px;
+  inline-size: var(--icon-size);
+  block-size: var(--icon-size);
+}
+
+.tooltip-content {
+  --tooltip-padding: 12px;
+  --tooltip-font-size: 1rem;
+  --tooltip-line-height: normal;
+  --tooltip-z-index: 100;
+  --tooltip-max-width: none;
+
+  background: var(--dialog-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--tooltip-padding);
+  font-size: var(--tooltip-font-size);
+  line-height: var(--tooltip-line-height);
+  z-index: var(--tooltip-z-index);
+  max-width: var(--tooltip-max-width);
 }
 
 /* クラスベース: ダークモード（index.htmlのインラインスクリプトで適用） */

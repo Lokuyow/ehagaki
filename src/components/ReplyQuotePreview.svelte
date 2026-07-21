@@ -356,8 +356,7 @@
     }
 
     .quote-notification-icon {
-        width: 24px;
-        height: 24px;
+        --icon-size: 24px;
     }
 
     .reply-notification-recipients {
@@ -420,8 +419,7 @@
     }
 
     .reply-notification-icon {
-        width: 20px;
-        height: 20px;
+        --icon-size: 20px;
         flex-shrink: 0;
     }
 
