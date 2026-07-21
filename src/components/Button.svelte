@@ -139,7 +139,7 @@
     }
     /* --- Variant Styles --- */
     :global(html body :where(.default)) {
-        padding: 8px 12px 8px 12px;
+        padding: 8px 12px;
 
         :global(:where(.svg-icon)) {
             width: 24px;
@@ -156,7 +156,7 @@
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
-        padding: 8px 12px 8px 12px;
+        padding: 8px 12px;
         gap: 8px;
         border: none;
 
@@ -219,7 +219,7 @@
     }
 
     :global(html body :where(.secondary)) {
-        padding: 8px 12px 8px 12px;
+        padding: 8px 12px;
         border: 1px solid var(--btn-border);
         --btn-bg: white;
         --text: var(--text-black);
@@ -304,52 +304,44 @@
         --btn-bg: transparent;
     }
 
-    button.close {
-        --btn-bg: rgba(0, 0, 0, 0.5);
+    button:is(.close, .copy) {
+        --btn-bg: rgb(0 0 0 / var(--overlay-opacity));
         --svg: whitesmoke;
-        backdrop-filter: blur(4px);
-        opacity: 0.8;
-        border: none;
         width: 50px;
         height: 50px;
+        padding: 0;
+        border: none;
+        opacity: 0.8;
+        backdrop-filter: blur(4px);
         transition: background 0.2s ease;
+        background: var(--btn-bg);
 
         :global(.svg-icon) {
-            width: 32px;
-            height: 32px;
-            mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            width: var(--icon-size);
+            height: var(--icon-size);
+            mask-image: var(--icon-mask);
         }
 
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
-                --btn-bg: rgba(25, 25, 25, 0.5);
+                --btn-bg: rgb(25 25 25 / var(--hover-overlay-opacity));
                 background: var(--btn-bg);
             }
         }
     }
 
+    button.close {
+        --overlay-opacity: 0.5;
+        --hover-overlay-opacity: 0.5;
+        --icon-size: 32px;
+        --icon-mask: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
     button.copy {
-        --btn-bg: rgba(0, 0, 0, 0.45);
-        --svg: whitesmoke;
-        backdrop-filter: blur(4px);
-        opacity: 0.8;
-        border: none;
-        width: 50px;
-        height: 50px;
-        transition: background 0.2s ease;
-
-        :global(.svg-icon) {
-            width: 20px;
-            height: 20px;
-            mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        }
-
-        @media (hover: hover) and (pointer: fine) {
-            &:hover:not(:disabled) {
-                --btn-bg: rgba(25, 25, 25, 0.45);
-                background: var(--btn-bg);
-            }
-        }
+        --overlay-opacity: 0.45;
+        --hover-overlay-opacity: 0.45;
+        --icon-size: 20px;
+        --icon-mask: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     /* --- Shape Styles --- */
