@@ -206,7 +206,9 @@
 
     :global(
             .post-history-menu-content
-                .menu-action-button-danger[data-highlighted]:not([data-disabled])
+                .menu-action-button-danger[data-highlighted]:not(
+                    [data-disabled]
+                )
         ) {
         background-color: var(--post-history-menu-action-danger-hover-bg);
         color: var(--danger);
