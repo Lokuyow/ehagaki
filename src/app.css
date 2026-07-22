@@ -90,23 +90,6 @@
   --message-tips-color: hsl(270, 55%, 38%);
   --message-tips-border: hsl(270, 45%, 70%);
 
-  --button-selected-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 18%),
-      color-mix(in srgb, var(--btn-bg), white 22%));
-  --button-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 4%),
-      color-mix(in srgb, var(--btn-bg), white 5%));
-  --button-hover-color: light-dark(color-mix(in srgb, var(--text), black 40%),
-      color-mix(in srgb, var(--text), white 50%));
-  --button-hover-svg: light-dark(color-mix(in srgb, var(--svg), black 40%),
-      color-mix(in srgb, var(--svg), white 50%));
-  --button-selected-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 20%),
-      color-mix(in srgb, var(--btn-bg), white 30%));
-  --button-selected-hover-color: light-dark(color-mix(in srgb, var(--text), black 20%),
-      color-mix(in srgb, var(--text), white 30%));
-  --button-selected-hover-svg: light-dark(color-mix(in srgb, var(--svg), black 20%),
-      color-mix(in srgb, var(--svg), white 30%));
-  --link-hover-color: light-dark(color-mix(in srgb, currentColor, black 30%),
-      color-mix(in srgb, currentColor, white 30%));
-
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
 
@@ -155,6 +138,9 @@ body {
 }
 
 a {
+  --link-hover-color: light-dark(color-mix(in srgb, var(--link), black 30%),
+      color-mix(in srgb, var(--link), white 30%));
+
   font-weight: 500;
   color: var(--link);
   text-decoration: inherit;
@@ -177,7 +163,7 @@ h3 {
 }
 
 button,
-*[role="button"],
+[role="button"],
 select {
   display: inline-flex;
   align-items: center;
@@ -210,15 +196,9 @@ button>* {
 }
 
 button:active:not(:disabled),
-*[role="button"]:active {
+[role="button"]:active {
   scale: 0.98;
   transition: scale 0.1s cubic-bezier(0, 1, 0.5, 1);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  a:hover {
-    text-decoration: underline;
-  }
 }
 
 span {
@@ -257,6 +237,28 @@ select {
   max-width: var(--tooltip-max-width);
 }
 
+button,
+[role="button"],
+select {
+  --button-selected-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 18%),
+      color-mix(in srgb, var(--btn-bg), white 22%));
+  --button-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 4%),
+      color-mix(in srgb, var(--btn-bg), white 5%));
+  --button-hover-color: light-dark(color-mix(in srgb, var(--text), black 40%),
+      color-mix(in srgb, var(--text), white 50%));
+  --button-selected-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 20%),
+      color-mix(in srgb, var(--btn-bg), white 30%));
+  --button-selected-hover-color: light-dark(color-mix(in srgb, var(--text), black 20%),
+      color-mix(in srgb, var(--text), white 30%));
+}
+
+.svg-icon {
+  --icon-hover-color: light-dark(color-mix(in srgb, var(--svg), black 40%),
+      color-mix(in srgb, var(--svg), white 50%));
+  --icon-selected-hover-color: light-dark(color-mix(in srgb, var(--svg), black 20%),
+      color-mix(in srgb, var(--svg), white 30%));
+}
+
 :root:is(.light, .dark) button.selected:where(:not(:disabled)),
 :root:is(.light, .dark) button:where([data-state="active"]) {
   background-color: var(--button-selected-bg);
@@ -271,7 +273,7 @@ select {
     color: var(--button-hover-color);
 
     .svg-icon {
-      background-color: var(--button-hover-svg);
+      background-color: var(--icon-hover-color);
     }
   }
 
@@ -281,7 +283,7 @@ select {
     color: var(--button-selected-hover-color);
 
     .svg-icon {
-      background-color: var(--button-selected-hover-svg);
+      background-color: var(--icon-selected-hover-color);
     }
   }
 
