@@ -1005,37 +1005,21 @@
     }
 
     .post-history-media-placeholder-uncached {
+        --post-history-placeholder-stripe-soft: light-dark(
+            color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
+            color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%)
+        );
+        --post-history-placeholder-stripe-strong: light-dark(
+            color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%),
+            color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%)
+        );
+
         background: repeating-linear-gradient(
             -45deg,
-            color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
-            color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%) 10px,
-            color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 10px,
-            color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 20px
-        );
-    }
-
-    .post-history-media-placeholder-uncached {
-        background: light-dark(
-            repeating-linear-gradient(
-                -45deg,
-                color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
-                color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%)
-                    10px,
-                color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%)
-                    10px,
-                color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%)
-                    20px
-            ),
-            repeating-linear-gradient(
-                -45deg,
-                color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%),
-                color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%)
-                    10px,
-                color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%)
-                    10px,
-                color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%)
-                    20px
-            )
+            var(--post-history-placeholder-stripe-soft),
+            var(--post-history-placeholder-stripe-soft) 10px,
+            var(--post-history-placeholder-stripe-strong) 10px,
+            var(--post-history-placeholder-stripe-strong) 20px
         );
     }
 
