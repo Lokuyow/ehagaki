@@ -298,10 +298,7 @@
 
     .video-drag-overlay {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 50px;
+        inset: 0 0 50px;
         z-index: 1;
     }
 
