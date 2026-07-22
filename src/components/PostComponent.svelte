@@ -769,13 +769,34 @@
 {/if}
 
 <style>
-  .post-container {
-    max-width: 800px;
+  .post-container,
+  .editor-container,
+  :global(.editor-content),
+  :global(.tiptap-editor) {
     width: 100%;
     flex: 1 1 auto;
-    min-height: 0;
+  }
+
+  .post-container,
+  .editor-container,
+  :global(.editor-content) {
     display: flex;
     flex-direction: column;
+  }
+
+  .post-container,
+  :global(.editor-content),
+  :global(.tiptap-editor) {
+    min-height: 0;
+  }
+
+  :global(.editor-content),
+  :global(.tiptap-editor) {
+    height: 100%;
+  }
+
+  .post-container {
+    max-width: 800px;
     align-items: stretch;
     overflow: visible;
   }
@@ -789,14 +810,10 @@
   }
 
   .editor-container {
-    width: 100%;
-    flex: 1 1 auto;
     min-height: var(--post-editor-min-height, 92px);
     height: var(--post-editor-target-height, auto);
     max-height: var(--post-editor-target-height, auto);
     position: relative;
-    display: flex;
-    flex-direction: column;
     cursor: text;
     outline: none;
     background: var(--bg-input);
@@ -813,22 +830,9 @@
     display: none !important;
   }
 
-  :global(.editor-content) {
-    width: 100%;
-    min-height: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-  }
-
   /* Tiptapエディターのスタイル */
   :global(.tiptap-editor) {
     display: block;
-    width: 100%;
-    min-height: 0;
-    height: 100%;
-    flex: 1 1 auto;
     padding: 10px;
     font-family: inherit;
     font-size: 1.25rem;
