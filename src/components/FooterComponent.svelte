@@ -222,8 +222,7 @@
     }
     .update-indicator {
         position: absolute;
-        top: 8px;
-        right: 8px;
+        inset: 8px 8px auto auto;
         width: 10px;
         height: 10px;
         background: var(--theme);
