@@ -621,16 +621,18 @@
         gap: 2px;
         border-bottom: 1px solid var(--border-hr);
     }
-    .first-row {
+    .first-row,
+    .second-row {
         display: flex;
         align-items: center;
+    }
+
+    .first-row {
         justify-content: space-between;
         width: 100%;
         gap: 10px;
     }
     .second-row {
-        display: flex;
-        align-items: center;
         justify-content: flex-end;
         width: 100%;
         gap: 10px;
@@ -649,11 +651,14 @@
             color: var(--text-light);
         }
     }
-    :global(.github-link-btn.circle) {
+    :global(.github-link-btn.circle),
+    :global(.help-btn.circle) {
         width: 38px;
         height: 38px;
         --btn-bg: var(--dialog-bg);
+    }
 
+    :global(.github-link-btn.circle) {
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
             width: 26px;
@@ -661,9 +666,6 @@
         }
     }
     :global(.help-btn.circle) {
-        width: 38px;
-        height: 38px;
-        --btn-bg: var(--dialog-bg);
         :global(.help-icon) {
             mask-image: url("/icons/help_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
             width: 30px;
@@ -725,9 +727,14 @@
         align-items: flex-start;
     }
 
-    .setting-label-group {
+    .setting-label-group,
+    .hide-mascot-flavor-group,
+    .notification-group {
         display: flex;
         flex-direction: column;
+    }
+
+    .setting-label-group {
         gap: 4px;
         min-width: 0;
     }
@@ -799,14 +806,10 @@
     }
 
     .hide-mascot-flavor-group {
-        display: flex;
-        flex-direction: column;
         gap: 4px;
     }
 
     .notification-group {
-        display: flex;
-        flex-direction: column;
         gap: 4px;
     }
 
