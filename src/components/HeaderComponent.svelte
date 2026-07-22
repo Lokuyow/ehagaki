@@ -244,10 +244,9 @@
         margin-bottom: 6px;
         padding: 0 8px;
         display: flex;
-        flex-direction: row;
         align-items: center;
 
-        @media (min-width: 801px) {
+        @media (width >= 801px) {
             padding: 0;
         }
     }

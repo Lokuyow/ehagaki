@@ -239,9 +239,6 @@
         position: fixed;
         inset: 0;
         background-color: var(--dialog-bg-overlay);
-        display: flex;
-        justify-content: center;
-        align-items: center;
         z-index: calc(100 + var(--bits-dialog-depth, 0) * 2);
     }
 
@@ -304,15 +301,11 @@
         }
 
         :global(.dialog-page-button) {
+            --icon-size: 32px;
             min-width: 40px;
             height: auto;
             min-height: 40px;
             flex: 1 0 auto;
-
-            :global(.svg-icon) {
-                width: 32px;
-                height: 32px;
-            }
         }
     }
 
@@ -380,16 +373,12 @@
         border-top: none;
 
         :global(.modal-close) {
+            --icon-size: 20px;
             border: 1px solid var(--btn-border);
             border-radius: 50px;
             width: 100%;
             min-width: 72px;
             min-height: 34px;
-        }
-
-        :global(.modal-close .svg-icon) {
-            width: 20px;
-            height: 20px;
         }
     }
 
