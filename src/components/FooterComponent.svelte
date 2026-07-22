@@ -194,7 +194,8 @@
         }
     }
 
-    :global(.settings-btn.default) {
+    :global(.settings-btn.default),
+    :global(button.profile-display.default) {
         width: 50px;
         height: 50px;
     }
@@ -253,8 +254,6 @@
 
     /* プロフィール表示のスタイル */
     :global(button.profile-display.default) {
-        width: 50px;
-        height: 50px;
         flex: 0 0 auto;
         z-index: 10;
 
@@ -266,22 +265,23 @@
         }
     }
 
-    :global(.profile-picture) {
+    :global(.profile-picture),
+    :global(.profile-picture-image),
+    :global(.profile-picture-fallback) {
         width: 100%;
         height: 100%;
+    }
+
+    :global(.profile-picture),
+    :global(.profile-picture-image) {
         border-radius: 50%;
+    }
+
+    :global(.profile-picture) {
         overflow: hidden;
     }
 
     :global(.profile-picture-image) {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
         object-fit: cover;
-    }
-
-    :global(.profile-picture-fallback) {
-        width: 100%;
-        height: 100%;
     }
 </style>
