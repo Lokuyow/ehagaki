@@ -216,10 +216,6 @@
             height: 32px;
         }
     }
-
-    :global(.post-history-btn.default:not(:disabled)) {
-        background-color: var(--btn-bg);
-    }
     :global(.settings-btn.has-update) {
         position: relative;
     }
