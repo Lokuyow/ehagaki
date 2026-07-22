@@ -780,8 +780,6 @@
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
                 opacity: 0.9;
-                background: var(--btn-bg);
-                transition: none;
             }
         }
     }
