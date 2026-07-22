@@ -216,18 +216,43 @@
 </div>
 
 <style>
-    .gallery-item {
+    .gallery-item,
+    .gallery-item-media,
+    .video-wrapper {
         position: relative;
+    }
+
+    .gallery-item,
+    .gallery-item-media,
+    .gallery-image,
+    .gallery-video {
+        -webkit-touch-callout: none;
+    }
+
+    .gallery-item,
+    .gallery-image,
+    .gallery-video {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .gallery-item,
+    .video-drag-overlay {
+        cursor: grab;
+    }
+
+    .gallery-item:active,
+    .video-drag-overlay:active {
+        cursor: grabbing;
+    }
+
+    .gallery-item {
         display: inline-flex;
         flex-shrink: 0;
         overflow: visible;
-        cursor: grab;
         transition:
             transform 0.15s ease,
             opacity 0.15s ease;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
 
         :global(.circle) {
             width: 40px;
@@ -235,18 +260,12 @@
         }
     }
 
-    .gallery-item:active {
-        cursor: grabbing;
-    }
-
     .gallery-item-media {
         border-radius: 6px;
         overflow: hidden;
-        position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
-        -webkit-touch-callout: none;
     }
 
     .gallery-item-media[role="button"] {
@@ -258,9 +277,6 @@
     .gallery-video {
         object-fit: cover;
         display: block;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
     }
 
     .gallery-image {
@@ -280,22 +296,13 @@
         height: 180px;
     }
 
-    .video-wrapper {
-        position: relative;
-    }
-
     .video-drag-overlay {
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
         bottom: 50px;
-        cursor: grab;
         z-index: 1;
-    }
-
-    .video-drag-overlay:active {
-        cursor: grabbing;
     }
 
     @media (hover: none) and (pointer: coarse) {
