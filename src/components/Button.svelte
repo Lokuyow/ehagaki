@@ -304,10 +304,6 @@
         }
     }
 
-    button:is(.close, .copy):where(:not(:disabled)) {
-        background: var(--btn-bg);
-    }
-
     button.close {
         --overlay-opacity: 0.5;
         --hover-overlay-opacity: 0.5;
