@@ -31,7 +31,7 @@
   --dark-gray: hsl(0, 0%, 66%);
   --light-gray: hsl(0, 0%, 83%);
 
-  /* ライトモード用カラー変数（デフォルト） */
+  /* ライトモード・ダークモード用カラー変数（デフォルト） */
   --bg: light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%));
   --bg-input: light-dark(hsl(0, 0%, 100%), hsl(0, 0%, 19%));
   --bg-footer: light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%));
@@ -265,6 +265,9 @@ select {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  a:hover {
+    text-decoration: underline;
+  }
 
   :root:is(.light, .dark) button:where(:hover:not(:disabled)),
   :root:is(.light, .dark) [role="button"]:where(:hover:not([aria-disabled="true"])),
