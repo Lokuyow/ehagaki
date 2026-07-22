@@ -387,7 +387,6 @@
     .media-gallery {
         display: flex;
         align-items: center;
-        flex-direction: row;
         width: 100%;
         min-height: 180px;
         overflow-x: auto;
