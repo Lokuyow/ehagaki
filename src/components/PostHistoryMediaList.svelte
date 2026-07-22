@@ -1048,17 +1048,6 @@
         cursor: pointer;
     }
 
-    .post-history-media-retry-button {
-        width: 100%;
-        height: 100%;
-        padding: 6px 12px;
-        border: 1px solid var(--border, #ccc);
-        border-radius: 10px;
-        color: var(--text, #111);
-        font: inherit;
-        cursor: pointer;
-    }
-
     .post-history-video-list,
     .post-history-other-media-list {
         display: flex;

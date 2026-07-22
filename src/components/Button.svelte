@@ -138,9 +138,11 @@
         background-color: var(--btn-bg);
     }
     /* --- Variant Styles --- */
-    :global(html body :where(.default)) {
+    :global(html body :where(.default, .primary, .secondary)) {
         padding: 8px 12px;
+    }
 
+    :global(html body :where(.default)) {
         :global(:where(.svg-icon)) {
             width: 24px;
             height: 24px;
@@ -156,7 +158,6 @@
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
-        padding: 8px 12px;
         gap: 8px;
         border: none;
 
@@ -203,7 +204,6 @@
     }
 
     :global(html body :where(.secondary)) {
-        padding: 8px 12px;
         border: 1px solid var(--btn-border);
         --btn-bg: white;
         --text: var(--text-black);
@@ -304,6 +304,10 @@
         }
     }
 
+    button:is(.close, .copy):where(:not(:disabled)) {
+        background: var(--btn-bg);
+    }
+
     button.close {
         --overlay-opacity: 0.5;
         --hover-overlay-opacity: 0.5;
@@ -319,9 +323,13 @@
     }
 
     /* --- Shape Styles --- */
+    .square,
+    .circle {
+        padding: 0;
+    }
+
     .square {
         border-radius: 0;
-        padding: 0;
 
         :global(:where(.svg-icon)) {
             width: 30px;
@@ -336,7 +344,6 @@
     }
     .circle {
         border-radius: 50%;
-        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
