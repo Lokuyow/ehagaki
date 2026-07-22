@@ -580,10 +580,10 @@
         display: flex;
         align-items: center;
         justify-content: space-evenly;
+    }
 
-        :global(.footer.selected:not(:disabled)) {
-            background: var(--btn-bg);
-        }
+    :global(.button-group-right .footer.selected:not(:disabled)) {
+        background: var(--btn-bg);
     }
 
     .progress-ring-container {

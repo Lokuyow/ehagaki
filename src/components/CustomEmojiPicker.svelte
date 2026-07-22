@@ -650,11 +650,11 @@
         color: var(--text);
         background-color: var(--btn-bg);
         touch-action: manipulation;
-    }
 
-    @media (hover: hover) and (pointer: fine) {
-        :global(.custom-emoji-editor-button:hover) {
-            background: var(--btn-bg);
+        @media (hover: hover) and (pointer: fine) {
+            &:hover {
+                background: var(--btn-bg);
+            }
         }
     }
 
