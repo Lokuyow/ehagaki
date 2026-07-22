@@ -677,10 +677,10 @@
         .zap-btn,
         .view-btn {
             min-width: 70px;
+            background: var(--btn-bg);
         }
 
         .zap-btn {
-            background: var(--btn-bg);
             border-radius: 6px 0 0 6px;
             border-right-color: transparent;
             padding: 0 10px 0 13px;
@@ -692,7 +692,6 @@
         }
 
         .view-btn {
-            background: var(--btn-bg);
             border-radius: 0 6px 6px 0;
             border-left-color: transparent;
             padding: 0 14px 0 12px;

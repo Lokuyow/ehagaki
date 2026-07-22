@@ -3055,7 +3055,8 @@
         font-weight: 600;
     }
 
-    :global(.post-history-date-picker-nav) {
+    :global(.post-history-date-picker-nav),
+    :global(.post-history-date-picker-year-nav) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -3067,7 +3068,8 @@
         color: var(--text);
     }
 
-    :global(.post-history-date-picker-nav-icon) {
+    :global(.post-history-date-picker-nav-icon),
+    :global(.post-history-date-picker-year-nav-icon) {
         width: 24px;
         height: 24px;
         background-color: currentColor;
@@ -3081,24 +3083,6 @@
     :global(.post-history-date-picker-nav-icon-right) {
         margin-inline-start: 1px;
         mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    :global(.post-history-date-picker-year-nav) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 30px;
-        height: 30px;
-        border: 1px solid var(--border-soft);
-        border-radius: 6px;
-        background-color: var(--btn-bg2);
-        color: var(--text);
-    }
-
-    :global(.post-history-date-picker-year-nav-icon) {
-        width: 24px;
-        height: 24px;
-        background-color: currentColor;
     }
 
     :global(.post-history-date-picker-year-nav-icon-left) {
