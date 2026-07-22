@@ -3531,23 +3531,16 @@
 
     @media (hover: hover) and (pointer: fine) {
         :global(
-                :root.light
-                    .post-history-thread-toggle-button.selected:hover:not(
-                        :disabled
-                    )
+                .post-history-thread-toggle-button.selected:hover:not(:disabled)
             ) {
-            background-color: color-mix(in srgb, var(--dialog-bg), black 20%);
-            color: color-mix(in srgb, var(--text), black 20%);
-        }
-
-        :global(
-                :root.dark
-                    .post-history-thread-toggle-button.selected:hover:not(
-                        :disabled
-                    )
-            ) {
-            background-color: color-mix(in srgb, var(--dialog-bg), white 30%);
-            color: color-mix(in srgb, var(--text), white 30%);
+            background-color: light-dark(
+                color-mix(in srgb, var(--dialog-bg), black 20%),
+                color-mix(in srgb, var(--dialog-bg), white 30%)
+            );
+            color: light-dark(
+                color-mix(in srgb, var(--text), black 20%),
+                color-mix(in srgb, var(--text), white 30%)
+            );
         }
     }
 

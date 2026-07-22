@@ -1014,13 +1014,28 @@
         );
     }
 
-    :global(:root.dark) .post-history-media-placeholder-uncached {
-        background: repeating-linear-gradient(
-            -45deg,
-            color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%),
-            color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%) 10px,
-            color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 10px,
-            color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 20px
+    .post-history-media-placeholder-uncached {
+        background: light-dark(
+            repeating-linear-gradient(
+                -45deg,
+                color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
+                color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%)
+                    10px,
+                color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%)
+                    10px,
+                color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%)
+                    20px
+            ),
+            repeating-linear-gradient(
+                -45deg,
+                color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%),
+                color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%)
+                    10px,
+                color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%)
+                    10px,
+                color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%)
+                    20px
+            )
         );
     }
 
@@ -1129,10 +1144,7 @@
         }
     }
 
-    :global(:root.light) .post-history-media-video {
-        background-color: rgba(0, 0, 0, 0.1);
-    }
-    :global(:root.dark) .post-history-media-video {
-        background-color: rgba(0, 0, 0, 0.3);
+    :global(.post-history-media-video) {
+        background-color: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
     }
 </style>

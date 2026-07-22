@@ -6,7 +6,11 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import { Selection } from "@tiptap/pm/state";
   import type { RxNostr } from "rx-nostr";
-  import type { FullscreenMediaItem, PostResult, UploadHelperResult } from "../lib/types";
+  import type {
+    FullscreenMediaItem,
+    PostResult,
+    UploadHelperResult,
+  } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
@@ -340,7 +344,9 @@
 
   const handleFileSelect = uploadHandlers.handleFileSelect;
 
-  export async function uploadFiles(files: File[] | FileList): Promise<UploadHelperResult | null> {
+  export async function uploadFiles(
+    files: File[] | FileList,
+  ): Promise<UploadHelperResult | null> {
     return await uploadHandlers.performUpload(files);
   }
 
@@ -380,10 +386,11 @@
     if (currentEditor.isEmpty) {
       currentEditor.commands.setContent({ type: "doc", content: paragraphs });
     } else {
-      currentEditor.chain().focus("end").insertContent([
-        { type: "paragraph" },
-        ...paragraphs,
-      ]).run();
+      currentEditor
+        .chain()
+        .focus("end")
+        .insertContent([{ type: "paragraph" }, ...paragraphs])
+        .run();
     }
 
     currentEditor.commands.focus("end");
@@ -935,13 +942,8 @@
   }
 
   /* ProseMirror のギャップカーソルの色を上書き（Light / Dark 対応） */
-  :global(:root.light .tiptap-editor .ProseMirror-gapcursor):after,
-  :global(:root.light .tiptap-editor .ProseMirror-gapcursor):before {
-    border-top-color: black;
-  }
-
-  :global(:root.dark .tiptap-editor .ProseMirror-gapcursor):after,
-  :global(:root.dark .tiptap-editor .ProseMirror-gapcursor):before {
-    border-top-color: white;
+  :global(.tiptap-editor .ProseMirror-gapcursor):after,
+  :global(.tiptap-editor .ProseMirror-gapcursor):before {
+    border-top-color: light-dark(black, white);
   }
 </style>

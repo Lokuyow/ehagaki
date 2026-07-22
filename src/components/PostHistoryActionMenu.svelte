@@ -103,42 +103,18 @@
         min-width: 180px;
         z-index: 102;
         outline: none;
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            var(--border) 12%
+        --post-history-menu-action-hover-bg: light-dark(
+            color-mix(in srgb, var(--dialog-bg), black 6%),
+            color-mix(in srgb, var(--dialog-bg), white 10%)
         );
-        --post-history-menu-action-hover-color: var(--text);
+        --post-history-menu-action-hover-color: light-dark(
+            color-mix(in srgb, var(--text), black 6%),
+            color-mix(in srgb, var(--text), white 10%)
+        );
         --post-history-menu-action-danger-hover-bg: color-mix(
             in srgb,
             var(--dialog-bg),
             var(--danger) 12%
-        );
-    }
-
-    :global(:root.light .post-history-menu-content) {
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            black 6%
-        );
-        --post-history-menu-action-hover-color: color-mix(
-            in srgb,
-            var(--text),
-            black 6%
-        );
-    }
-
-    :global(:root.dark .post-history-menu-content) {
-        --post-history-menu-action-hover-bg: color-mix(
-            in srgb,
-            var(--dialog-bg),
-            white 10%
-        );
-        --post-history-menu-action-hover-color: color-mix(
-            in srgb,
-            var(--text),
-            white 10%
         );
     }
 

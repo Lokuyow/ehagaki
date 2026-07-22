@@ -32,45 +32,45 @@
   --light-gray: hsl(0, 0%, 83%);
 
   /* ライトモード用カラー変数（デフォルト） */
-  --bg: hsl(0, 0%, 89%);
-  --bg-input: hsl(0, 0%, 100%);
-  --bg-footer: hsl(0, 0%, 82%);
-  --bg-translucent: #EDEDEDcc;
-  --bg-buttonbar: hsl(0, 0%, 91%);
+  --bg: light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%));
+  --bg-input: light-dark(hsl(0, 0%, 100%), hsl(0, 0%, 19%));
+  --bg-footer: light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%));
+  --bg-translucent: light-dark(#EDEDEDcc, #212121cc);
+  --bg-buttonbar: light-dark(hsl(0, 0%, 91%), hsl(0, 0%, 28%));
 
-  --btn-bg: hsl(0, 0%, 92%);
-  --btn-bg2: color-mix(in srgb, var(--btn-bg), black 6%);
-  --btn-bg3: color-mix(in srgb, var(--btn-bg), black 11%);
-  --btn-border: hsl(0, 0%, 75%);
-  --btn-hover-bg: rgba(50, 50, 50, 0.12);
-  --btn-post-preview-action: hsl(0, 0%, 74%);
+  --btn-bg: light-dark(hsl(0, 0%, 92%), hsl(0, 0%, 25%));
+  --btn-bg2: light-dark(color-mix(in srgb, var(--btn-bg), black 6%), color-mix(in srgb, var(--btn-bg), white 10%));
+  --btn-bg3: light-dark(color-mix(in srgb, var(--btn-bg), black 11%), color-mix(in srgb, var(--btn-bg), white 20%));
+  --btn-border: light-dark(hsl(0, 0%, 75%), hsl(0, 0%, 30%));
+  --btn-hover-bg: light-dark(rgba(50, 50, 50, 0.12), rgba(255, 255, 255, 0.12));
+  --btn-post-preview-action: light-dark(hsl(0, 0%, 74%), hsl(0, 0%, 36%));
 
-  --border: var(--light-gray);
-  --border-hr: hsl(0, 0%, 84%);
-  --border-hr-light: hsl(0, 0%, 92%);
+  --border: light-dark(var(--light-gray), dimgray);
+  --border-hr: light-dark(hsl(0, 0%, 84%), hsl(0, 0%, 30%));
+  --border-hr-light: light-dark(hsl(0, 0%, 92%), hsl(0, 0%, 20%));
 
-  --text: hsl(0, 0%, 24%);
-  --text-light: hsl(0, 0%, 46%);
-  --text-muted: hsl(0, 0%, 60%);
-  --text-red: hsl(0, 99%, 45%);
-  --text-r: #e6e6e6;
+  --text: light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%));
+  --text-light: light-dark(hsl(0, 0%, 46%), hsl(0, 0%, 75%));
+  --text-muted: light-dark(hsl(0, 0%, 60%), hsl(0, 0%, 55%));
+  --text-red: light-dark(hsl(0, 99%, 45%), hsl(0, 99%, 69%));
+  --text-r: light-dark(#e6e6e6, #3D3D3D);
 
-  --link: #1a0dab;
-  --link-visited: #681da8;
+  --link: light-dark(#1a0dab, #99c3ff);
+  --link-visited: light-dark(#681da8, #c58af9);
 
-  --dialog-bg: white;
-  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), black 6%);
-  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), black 11%);
-  --dialog-bg-overlay: rgba(0, 0, 0, 0.6);
+  --dialog-bg: light-dark(white, hsl(0, 0%, 14%));
+  --dialog-bg2: light-dark(color-mix(in srgb, var(--dialog-bg), black 6%), color-mix(in srgb, var(--dialog-bg), white 10%));
+  --dialog-bg3: light-dark(color-mix(in srgb, var(--dialog-bg), black 11%), color-mix(in srgb, var(--dialog-bg), white 16%));
+  --dialog-bg-overlay: light-dark(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.8));
 
-  --window: hsl(0, 0%, 95%);
+  --window: light-dark(hsl(0, 0%, 95%), hsl(0, 0%, 14%));
 
-  --svg: hsl(0, 0%, 36%);
+  --svg: light-dark(hsl(0, 0%, 36%), hsl(0, 0%, 90%));
   --svg-light: var(--text-light);
-  --shadow: rgba(0, 0, 0, 0.1);
-  --hagaki: hsl(0, 77%, 56%);
-  --hashtag-text: #106BC7;
-  --hashtag-bg: #106BC71a;
+  --shadow: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
+  --hagaki: light-dark(hsl(0, 77%, 56%), hsl(5, 99%, 71%));
+  --hashtag-text: light-dark(#106BC7, #65B1FC);
+  --hashtag-bg: light-dark(#106BC71a, #65B1FC1a);
   --toggle-bg: var(--svg);
   --toggle-circle: var(--dialog-bg);
 
@@ -89,6 +89,23 @@
   --message-tips-bg: hsl(270, 50%, 96%);
   --message-tips-color: hsl(270, 55%, 38%);
   --message-tips-border: hsl(270, 45%, 70%);
+
+  --button-selected-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 18%),
+      color-mix(in srgb, var(--btn-bg), white 22%));
+  --button-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 4%),
+      color-mix(in srgb, var(--btn-bg), white 5%));
+  --button-hover-color: light-dark(color-mix(in srgb, var(--text), black 40%),
+      color-mix(in srgb, var(--text), white 50%));
+  --button-hover-svg: light-dark(color-mix(in srgb, var(--svg), black 40%),
+      color-mix(in srgb, var(--svg), white 50%));
+  --button-selected-hover-bg: light-dark(color-mix(in srgb, var(--btn-bg), black 20%),
+      color-mix(in srgb, var(--btn-bg), white 30%));
+  --button-selected-hover-color: light-dark(color-mix(in srgb, var(--text), black 20%),
+      color-mix(in srgb, var(--text), white 30%));
+  --button-selected-hover-svg: light-dark(color-mix(in srgb, var(--svg), black 20%),
+      color-mix(in srgb, var(--svg), white 30%));
+  --link-hover-color: light-dark(color-mix(in srgb, currentColor, black 30%),
+      color-mix(in srgb, currentColor, white 30%));
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
@@ -240,129 +257,36 @@ select {
   max-width: var(--tooltip-max-width);
 }
 
-/* クラスベース: ダークモード（index.htmlのインラインスクリプトで適用） */
-:root.dark {
-  --bg: hsl(0, 0%, 12%);
-  --bg-input: hsl(0, 0%, 19%);
-  --bg-footer: hsl(0, 0%, 10%);
-  --bg-translucent: #212121cc;
-  --bg-buttonbar: hsl(0, 0%, 28%);
-
-  --btn-bg: hsl(0, 0%, 25%);
-  --btn-bg2: color-mix(in srgb, var(--btn-bg), white 10%);
-  --btn-bg3: color-mix(in srgb, var(--btn-bg), white 20%);
-  --btn-border: hsl(0, 0%, 30%);
-  --btn-hover-bg: rgba(255, 255, 255, 0.12);
-  --btn-post-preview-action: hsl(0, 0%, 36%);
-
-  --border: dimgray;
-  --border-hr: hsl(0, 0%, 30%);
-  --border-hr-light: hsl(0, 0%, 20%);
-
-  --text: hsl(0, 0%, 90%);
-  --text-light: hsl(0, 0%, 75%);
-  --text-muted: hsl(0, 0%, 55%);
-  --text-red: hsl(0, 99%, 69%);
-  --text-r: #3D3D3D;
-
-  --link: #99c3ff;
-  --link-visited: #c58af9;
-
-  --dialog-bg: hsl(0, 0%, 14%);
-  --dialog-bg2: color-mix(in srgb, var(--dialog-bg), white 10%);
-  --dialog-bg3: color-mix(in srgb, var(--dialog-bg), white 16%);
-  --dialog-bg-overlay: rgba(0, 0, 0, 0.8);
-
-  --window: hsl(0, 0%, 14%);
-
-  --svg: hsl(0, 0%, 90%);
-  --svg-light: var(--text-light);
-
-  --shadow: rgba(255, 255, 255, 0.1);
-  --hagaki: hsl(5, 99%, 71%);
-  --hashtag-text: #65B1FC;
-  --hashtag-bg: #65B1FC1a;
-  --toggle-bg: var(--svg);
-  --toggle-circle: var(--dialog-bg);
-
-  --message-success-bg: hsl(200, 39%, 96%);
-  --message-success-color: hsl(210, 60%, 40%);
-  --message-success-border: hsl(210, 48%, 70%);
-  --message-error-bg: hsl(351, 99%, 96%);
-  --message-error-color: hsl(351, 99%, 32%);
-  --message-error-border: hsl(351, 99%, 70%);
-  --message-warning-bg: hsl(38, 100%, 95%);
-  --message-warning-color: hsl(30, 90%, 35%);
-  --message-warning-border: hsl(38, 90%, 65%);
-  --message-flavor-bg: hsl(125, 39%, 94%);
-  --message-flavor-color: hsl(123, 46%, 32%);
-  --message-flavor-border: hsl(125, 39%, 70%);
-  --message-tips-bg: hsl(270, 50%, 96%);
-  --message-tips-color: hsl(270, 55%, 38%);
-  --message-tips-border: hsl(270, 45%, 70%);
-}
-
-
-:root.light button.selected:where(:not(:disabled)),
-:root.light button:where([data-state="active"]) {
-  background-color: color-mix(in srgb, var(--btn-bg), black 18%);
-}
-
-:root.dark button.selected:where(:not(:disabled)),
-:root.dark button:where([data-state="active"]) {
-  background-color: color-mix(in srgb, var(--btn-bg), white 22%);
+:root button.selected:where(:not(:disabled)),
+:root button:where([data-state="active"]) {
+  background-color: var(--button-selected-bg);
 }
 
 @media (hover: hover) and (pointer: fine) {
 
-  :root.light button:where(:hover:not(:disabled)),
-  :root.light [role="button"]:where(:hover:not([aria-disabled="true"])),
-  :root.light select:where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), black 4%);
-    color: color-mix(in srgb, var(--text), black 40%);
+  :root button:where(:hover:not(:disabled)),
+  :root [role="button"]:where(:hover:not([aria-disabled="true"])),
+  :root select:where(:hover:not(:disabled)) {
+    background-color: var(--button-hover-bg);
+    color: var(--button-hover-color);
 
     .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), black 40%);
+      background-color: var(--button-hover-svg);
     }
   }
 
-  :root.dark button:where(:hover:not(:disabled)),
-  :root.dark [role="button"]:where(:hover:not([aria-disabled="true"])),
-  :root.dark select:where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), white 5%);
-    color: color-mix(in srgb, var(--text), white 50%);
+  :root button.selected:where(:hover:not(:disabled)),
+  :root button:where([data-state="active"]:hover:not(:disabled)) {
+    background-color: var(--button-selected-hover-bg);
+    color: var(--button-selected-hover-color);
 
     .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), white 50%);
+      background-color: var(--button-selected-hover-svg);
     }
   }
 
-  :root.light button.selected:where(:hover:not(:disabled)),
-  :root.light button:where([data-state="active"]:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), black 20%);
-    color: color-mix(in srgb, var(--text), black 20%);
-
-    .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), black 20%);
-    }
-  }
-
-  :root.dark button.selected:where(:hover:not(:disabled)),
-  :root.dark button:where([data-state="active"]):where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), white 30%);
-    color: color-mix(in srgb, var(--text), white 30%);
-
-    .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), white 30%);
-    }
-  }
-
-  :root.light a:hover {
-    color: color-mix(in srgb, currentColor, black 30%);
-  }
-
-  :root.dark a:hover {
-    color: color-mix(in srgb, currentColor, white 30%);
+  :root a:hover {
+    color: var(--link-hover-color);
   }
 }
 

@@ -182,37 +182,21 @@
 
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    color: color-mix(in srgb, white, black 6%);
-                    background-color: color-mix(
-                        in srgb,
-                        var(--btn-bg),
-                        black 4%
-                    );
+                color: light-dark(
+                    color-mix(in srgb, white, black 6%),
+                    color-mix(in srgb, white, black 10%)
+                );
+                background-color: light-dark(
+                    color-mix(in srgb, var(--btn-bg), black 4%),
+                    color-mix(in srgb, var(--btn-bg), black 7%)
+                );
 
-                    :global(.svg-icon) {
-                        background-color: currentColor;
-                    }
-
-                    :global(.btn-text) {
-                        color: currentColor;
-                    }
+                :global(.svg-icon) {
+                    background-color: currentColor;
                 }
-                :global(:root.dark) & {
-                    color: color-mix(in srgb, white, black 10%);
-                    background-color: color-mix(
-                        in srgb,
-                        var(--btn-bg),
-                        black 7%
-                    );
 
-                    :global(.svg-icon) {
-                        background-color: currentColor;
-                    }
-
-                    :global(.btn-text) {
-                        color: currentColor;
-                    }
+                :global(.btn-text) {
+                    color: currentColor;
                 }
             }
         }
@@ -227,14 +211,14 @@
 
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 3%);
-                    color: color-mix(in srgb, var(--text), black 6%);
-                }
-                :global(:root.dark) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 8%);
-                    color: black;
-                }
+                background: light-dark(
+                    color-mix(in srgb, var(--btn-bg), black 3%),
+                    color-mix(in srgb, var(--btn-bg), black 8%)
+                );
+                color: light-dark(
+                    color-mix(in srgb, var(--text), black 6%),
+                    black
+                );
             }
         }
     }
@@ -261,22 +245,14 @@
 
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    background-color: color-mix(
-                        in srgb,
-                        var(--btn-bg),
-                        black 8%
-                    );
-                    color: color-mix(in srgb, white, black 8%);
-                }
-                :global(:root.dark) & {
-                    background-color: color-mix(
-                        in srgb,
-                        var(--btn-bg),
-                        black 12%
-                    );
-                    color: color-mix(in srgb, white, black 12%);
-                }
+                background-color: light-dark(
+                    color-mix(in srgb, var(--btn-bg), black 8%),
+                    color-mix(in srgb, var(--btn-bg), black 12%)
+                );
+                color: light-dark(
+                    color-mix(in srgb, white, black 8%),
+                    color-mix(in srgb, white, black 12%)
+                );
             }
         }
     }
@@ -288,12 +264,10 @@
 
         @media (hover: hover) and (pointer: fine) {
             &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 8%);
-                }
-                :global(:root.dark) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 12%);
-                }
+                background: light-dark(
+                    color-mix(in srgb, var(--btn-bg), black 8%),
+                    color-mix(in srgb, var(--btn-bg), black 12%)
+                );
             }
         }
     }

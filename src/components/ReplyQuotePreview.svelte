@@ -399,13 +399,11 @@
         object-fit: cover;
     }
 
-    :global(:root.light .reply-notification-recipient[aria-pressed="true"]) {
-        background-color: color-mix(in srgb, var(--btn-bg), black 18%);
-        color: var(--text);
-    }
-
-    :global(:root.dark .reply-notification-recipient[aria-pressed="true"]) {
-        background-color: color-mix(in srgb, var(--btn-bg), white 22%);
+    :global(.reply-notification-recipient[aria-pressed="true"]) {
+        background-color: light-dark(
+            color-mix(in srgb, var(--btn-bg), black 18%),
+            color-mix(in srgb, var(--btn-bg), white 22%)
+        );
         color: var(--text);
     }
 

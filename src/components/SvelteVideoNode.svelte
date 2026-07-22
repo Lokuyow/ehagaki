@@ -248,10 +248,7 @@
         opacity: 1;
     }
 
-    :global(:root.light) .video-wrapper {
-        background-color: rgba(0, 0, 0, 0.1);
-    }
-    :global(:root.dark) .video-wrapper {
-        background-color: rgba(0, 0, 0, 0.3);
+    .video-wrapper {
+        background-color: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
     }
 </style>
