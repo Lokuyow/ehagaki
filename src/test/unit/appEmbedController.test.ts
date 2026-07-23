@@ -550,6 +550,61 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(3);
     });
 
+    it('draft provenanceはmetadata overrideとstable relayを通知し、relay変更も再通知する', () => {
+        let channelContext = {
+            eventId: 'c'.repeat(64),
+            relayHints: ['wss://read.example.com/'],
+            channelRelays: ['wss://relay-a.example.com/'],
+            name: 'Verified name',
+            about: 'Verified about',
+            picture: null,
+        };
+        const provenance = {
+            source: 'draft' as const,
+            metadataOverrides: {
+                name: 'Draft override',
+            },
+        };
+        const { controller, parentFrame } = createController({
+            runtime: {
+                isBootstrappingApp: vi.fn(() => false),
+                hasPendingParentAuth: vi.fn(() => false),
+                getReplyQuoteState: vi.fn(createReplyQuoteState),
+                getChannelContextState: vi.fn(() => channelContext),
+                getChannelContextProvenance: vi.fn(() => provenance),
+                getRuntimeSnapshot: vi.fn(createRuntimeSnapshot),
+            },
+        });
+
+        controller.notifyComposerContextUpdatedIfChanged();
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenLastCalledWith({
+            reply: null,
+            quotes: [],
+            channel: {
+                reference: expect.stringMatching(/^nevent1/),
+                relays: ['wss://relay-a.example.com/'],
+                name: 'Draft override',
+                about: 'Verified about',
+            },
+        });
+
+        channelContext = {
+            ...channelContext,
+            channelRelays: ['wss://relay-b.example.com/'],
+        };
+        controller.notifyComposerContextUpdatedIfChanged();
+
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenCalledTimes(2);
+        expect(parentFrame.notifyComposerContextUpdated).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                channel: expect.objectContaining({
+                    relays: ['wss://relay-b.example.com/'],
+                    name: 'Draft override',
+                }),
+            }),
+        );
+    });
+
     it('initializeEmbedStorageSync は snapshot を適用し、キーがあれば stored settings を反映する', async () => {
         const injectedStorage = {
             getEmbedStorageSnapshot: vi.fn().mockResolvedValue({ locale: 'ja' }),

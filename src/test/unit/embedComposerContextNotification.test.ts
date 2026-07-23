@@ -151,12 +151,34 @@ describe('embedComposerContextNotification', () => {
         expect(reapplied?.channelRelays).not.toContain('wss://verified.example.com/');
     });
 
-    it('外部provenanceにrelay overrideがなければstable write relayを通知しない', () => {
+    it.each(['iframe', 'url'] as const)(
+        '%s provenanceにrelay overrideがなければstable write relayを通知しない',
+        (source) => {
+            const payload = buildComposerContextUpdatedPayload({
+                reply: null,
+                quotes: [],
+            }, {
+                eventId: '77'.repeat(32),
+                relayHints: [],
+                channelRelays: ['wss://verified.example.com/'],
+                name: null,
+                about: null,
+                picture: null,
+            }, {
+                source,
+                metadataOverrides: {},
+            });
+
+            expect(payload.channel).not.toHaveProperty('relays');
+        },
+    );
+
+    it('URL provenanceでもoverride relayだけを通知する', () => {
         const payload = buildComposerContextUpdatedPayload({
             reply: null,
             quotes: [],
         }, {
-            eventId: '77'.repeat(32),
+            eventId: '88'.repeat(32),
             relayHints: [],
             channelRelays: ['wss://verified.example.com/'],
             name: null,
@@ -165,8 +187,94 @@ describe('embedComposerContextNotification', () => {
         }, {
             source: 'url',
             metadataOverrides: {},
+            channelRelayOverrides: ['wss://url-override.example.com/'],
         });
 
-        expect(payload.channel).not.toHaveProperty('relays');
+        expect(payload.channel?.relays).toEqual([
+            'wss://url-override.example.com/',
+        ]);
+        expect(payload.channel?.relays).not.toContain(
+            'wss://verified.example.com/',
+        );
+    });
+
+    it('draft provenanceではstable relayとmetadata overrideを同時に通知する', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: '99'.repeat(32),
+            relayHints: ['wss://read.example.com/'],
+            channelRelays: ['wss://verified.example.com/'],
+            name: 'Verified name',
+            about: 'Verified about',
+            picture: 'https://example.com/verified.png',
+        }, {
+            source: 'draft',
+            metadataOverrides: {
+                name: 'Draft override',
+            },
+        });
+
+        expect(payload.channel).toEqual({
+            reference: expect.stringMatching(/^nevent1/),
+            relays: ['wss://verified.example.com/'],
+            name: 'Draft override',
+            about: 'Verified about',
+            picture: 'https://example.com/verified.png',
+        });
+    });
+
+    it('draft provenanceの明示nullと未指定metadataを区別しstable relayを通知する', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: 'aa'.repeat(32),
+            relayHints: [],
+            channelRelays: ['wss://verified.example.com/'],
+            name: 'Verified name',
+            about: 'Verified about',
+            picture: 'https://example.com/verified.png',
+        }, {
+            source: 'draft',
+            metadataOverrides: {
+                name: null,
+                picture: null,
+            },
+        });
+
+        expect(payload.channel).toEqual({
+            reference: expect.stringMatching(/^note1/),
+            relays: ['wss://verified.example.com/'],
+            name: null,
+            about: 'Verified about',
+            picture: null,
+        });
+    });
+
+    it('draft provenanceではstable relayだけの変更もsignatureへ反映する', () => {
+        const build = (relay: string) => buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: 'bb'.repeat(32),
+            relayHints: [],
+            channelRelays: [relay],
+            name: 'Verified',
+            about: null,
+            picture: null,
+        }, {
+            source: 'draft',
+            metadataOverrides: { name: 'Draft override' },
+        });
+
+        const first = build('wss://relay-a.example.com/');
+        const second = build('wss://relay-b.example.com/');
+
+        expect(buildComposerContextSignature(first))
+            .not.toBe(buildComposerContextSignature(second));
+        expect(first.channel?.relays).toEqual(['wss://relay-a.example.com/']);
+        expect(second.channel?.relays).toEqual(['wss://relay-b.example.com/']);
     });
 });
