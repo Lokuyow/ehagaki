@@ -72,6 +72,20 @@ function createChannelState() {
     };
 }
 
+function createDraftChannelV2() {
+    const channel = createChannelState();
+    return {
+        version: 2 as const,
+        eventId: channel.eventId,
+        relayHints: ['wss://channel-relay.example.com/'],
+        seedMetadata: {
+            name: channel.name,
+            about: channel.about,
+            picture: channel.picture,
+        },
+    };
+}
+
 describe('buildDraftReplyQuoteData', () => {
     it('replyQuoteState がある場合に保存用データへ変換する', () => {
         expect(buildDraftReplyQuoteData(createComposerState())).toEqual({
@@ -194,12 +208,12 @@ describe('createDraftSavePayload', () => {
         })).toEqual({
             content: '<p></p>',
             galleryItems: [],
-            channelData: createChannelState(),
+            channelData: createDraftChannelV2(),
             replyQuoteData: undefined,
         });
     });
 
-    it('V1下書きにはruntime metadata/write overrideでなくstable contextだけを保存する', () => {
+    it('V2下書きはmetadata overrideを分離し、write override優先度を保存しない', () => {
         const stable = {
             ...createChannelState(),
             channelRelays: ['wss://verified.example.com/'],
@@ -217,13 +231,29 @@ describe('createDraftSavePayload', () => {
             galleryItems: [],
             replyQuoteState: createEmptyComposerState(),
             channelContextState: stable,
+            channelContextProvenance: {
+                source: 'iframe',
+                metadataOverrides: { name: 'Parent override', picture: null },
+                channelRelayOverrides: ['wss://external.example.com/'],
+            },
         });
 
-        expect(payload?.channelData).toEqual(stable);
-        expect(payload?.channelData?.name).toBe('General');
-        expect(payload?.channelData?.channelRelays).toEqual([
-            'wss://verified.example.com/',
-        ]);
+        expect(payload?.channelData).toEqual({
+            version: 2,
+            eventId: stable.eventId,
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelayCandidates: ['wss://verified.example.com/'],
+            seedMetadata: {
+                name: 'General',
+                about: 'General discussion',
+                picture: 'https://example.com/channel.png',
+            },
+            overrides: {
+                name: 'Parent override',
+                picture: null,
+            },
+        });
+        expect(payload?.channelData).not.toHaveProperty('channelRelayOverrides');
     });
 
     it('空本文でも reply context があれば保存 payload を返す', () => {
@@ -286,7 +316,7 @@ describe('createDraftSavePayload', () => {
         })).toEqual({
             content: '<p>body</p>',
             galleryItems: [galleryItems[0]],
-            channelData: createChannelState(),
+            channelData: createDraftChannelV2(),
             replyQuoteData: {
                 reply: {
                     mode: 'reply',

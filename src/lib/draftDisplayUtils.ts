@@ -9,6 +9,7 @@ import type {
     DraftReplyQuoteData,
     DraftReplyQuoteEntryData,
 } from './types';
+import { getDraftEffectiveChannelContext } from './draftChannelContext';
 
 export type DraftContextKind = 'channel' | 'reply' | 'quote';
 
@@ -69,7 +70,8 @@ function getReplyQuoteName(entry: DraftReplyQuoteEntryData): string {
 }
 
 function getChannelName(channel: DraftChannelData): string {
-    return channel.name?.trim() || `ID: ${shortenIdentifier(channel.eventId)}`;
+    const context = getDraftEffectiveChannelContext(channel);
+    return context.name?.trim() || `ID: ${shortenIdentifier(context.eventId)}`;
 }
 
 function isSelectionReplyQuoteData(
@@ -153,11 +155,12 @@ export function createDraftListDisplay(
     const contexts: DraftContextDisplayItem[] = [];
 
     if (draft.channelData) {
+        const channel = getDraftEffectiveChannelContext(draft.channelData);
         contexts.push({
             kind: 'channel',
             label: labels.channel,
             name: getChannelName(draft.channelData),
-            detail: sanitizeText(draft.channelData.about),
+            detail: sanitizeText(channel.about),
         });
     }
 

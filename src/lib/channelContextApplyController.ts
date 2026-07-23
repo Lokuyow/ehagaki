@@ -6,23 +6,33 @@ import {
     type ChannelContextCoordinatorSnapshot,
 } from "./channelContextCoordinator";
 import {
+    buildEffectiveChannelContext,
     prepareExternalChannelContext,
     type ChannelContextExternalSource,
     type ChannelContextProvenance,
 } from "./channelContextRuntime";
+import {
+    decodeDraftChannelContext,
+} from "./draftChannelContext";
 import type {
     ChannelContextQueryTarget,
     ChannelContextState,
+    DraftChannelData,
     RelayConfig,
 } from "./types";
+import type {
+    ChannelContextRuntimeQuality,
+    ChannelContextRuntimeState,
+} from "./channelContextRuntime";
 
 export interface ChannelContextApplyControllerDeps {
     getCurrentChannelContext(): ChannelContextState | null;
     setChannelContext(
         context: ChannelContextState,
-        provenance: ChannelContextProvenance,
+        provenance: ChannelContextProvenance | null,
         ownerToken: symbol,
     ): void;
+    setRuntimeState?(state: ChannelContextRuntimeState): void;
     getChannelContextOwnerToken(): symbol | null;
     clearChannelContext(): void;
     coordinator?: ChannelContextCoordinator;
@@ -36,6 +46,12 @@ export interface ApplyExternalChannelContextParams {
     relayConfig?: RelayConfig | null;
 }
 
+export interface ApplyDraftChannelContextParams {
+    channelData: DraftChannelData;
+    rxNostr?: RxNostr;
+    relayConfig?: RelayConfig | null;
+}
+
 export interface ChannelContextApplyHandle {
     cacheReady: Promise<ChannelContextCoordinatorSnapshot>;
     refresh: Promise<ChannelContextCoordinatorRefreshResult>;
@@ -44,6 +60,7 @@ export interface ChannelContextApplyHandle {
 
 export interface ChannelContextApplyController {
     applyExternal(params: ApplyExternalChannelContextParams): ChannelContextApplyHandle;
+    applyDraft(params: ApplyDraftChannelContextParams): ChannelContextApplyHandle;
     clear(): void;
     dispose(): void;
 }
@@ -61,72 +78,192 @@ export function createChannelContextApplyController(
         currentRelease = null;
     };
 
+    const getSnapshotQuality = (
+        snapshot: ChannelContextCoordinatorSnapshot,
+        fallback: ChannelContextRuntimeQuality | null,
+    ): ChannelContextRuntimeQuality | null =>
+        snapshot.cache?.resolutionQuality ?? fallback;
+
+    const hasResolvedPresentation = (
+        snapshot: ChannelContextCoordinatorSnapshot,
+        quality: ChannelContextRuntimeQuality | null,
+        provenance: ChannelContextProvenance | null,
+    ): boolean =>
+        quality === "verified-metadata"
+        || (() => {
+            const effective = buildEffectiveChannelContext(
+                snapshot.context,
+                provenance,
+            );
+            return !!effective.name || !!effective.about || !!effective.picture;
+        })();
+
+    const applyPrepared = ({
+        coordinatorQuery,
+        provenance,
+        ownerLabel,
+        initialQuality,
+        rxNostr,
+        relayConfig,
+    }: {
+        coordinatorQuery: ChannelContextQueryTarget;
+        provenance: ChannelContextProvenance | null;
+        ownerLabel: string;
+        initialQuality: ChannelContextRuntimeQuality | null;
+        rxNostr?: RxNostr;
+        relayConfig?: RelayConfig | null;
+    }): ChannelContextApplyHandle => {
+        generation += 1;
+        const applyGeneration = generation;
+        releaseCurrent();
+
+        const ownerToken = Symbol(`${ownerLabel}:${coordinatorQuery.eventId}`);
+        const resolution = coordinator.resolveInternal(
+            coordinatorQuery,
+            rxNostr,
+            relayConfig,
+        );
+        let active = true;
+        const isCurrent = () => active
+            && generation === applyGeneration
+            && deps.getCurrentChannelContext()?.eventId === coordinatorQuery.eventId
+            && deps.getChannelContextOwnerToken() === ownerToken;
+        const setRuntime = (state: ChannelContextRuntimeState) => {
+            if (isCurrent()) deps.setRuntimeState?.(state);
+        };
+        const applySnapshot = (snapshot: ChannelContextCoordinatorSnapshot) => {
+            if (!isCurrent()) return;
+            deps.setChannelContext(snapshot.context, provenance, ownerToken);
+        };
+
+        deps.setChannelContext(resolution.initial.context, provenance, ownerToken);
+        const initialSnapshotQuality = getSnapshotQuality(
+            resolution.initial,
+            initialQuality,
+        );
+        setRuntime({
+            phase: hasResolvedPresentation(
+                resolution.initial,
+                initialSnapshotQuality,
+                provenance,
+            )
+                ? "refreshing"
+                : "loading",
+            quality: initialSnapshotQuality,
+            source: resolution.initial.source,
+        });
+
+        const release = () => {
+            if (!active) return;
+            active = false;
+            resolution.release();
+            if (generation === applyGeneration) {
+                currentRelease = null;
+            }
+        };
+        currentRelease = release;
+
+        const cacheReady = resolution.cacheReady
+            .then((snapshot) => {
+                applySnapshot(snapshot);
+                const quality = getSnapshotQuality(snapshot, initialQuality);
+                setRuntime({
+                    phase: hasResolvedPresentation(snapshot, quality, provenance)
+                        ? "refreshing"
+                        : "loading",
+                    quality,
+                    source: snapshot.source,
+                });
+                return snapshot;
+            })
+            .catch((error) => {
+                logger.error("チャンネルキャッシュの適用に失敗しました:", error);
+                return resolution.initial;
+            });
+        const refresh = resolution.refresh
+            .then((result) => {
+                if (
+                    result.status === "updated"
+                    || (result.status === "failed" && result.snapshot.source === "network")
+                ) {
+                    applySnapshot(result.snapshot);
+                }
+                if (result.status !== "aborted") {
+                    const quality = getSnapshotQuality(
+                        result.snapshot,
+                        initialQuality,
+                    );
+                    const hasPresentation = hasResolvedPresentation(
+                        result.snapshot,
+                        quality,
+                        provenance,
+                    );
+                    setRuntime({
+                        phase: result.status === "failed"
+                            ? hasPresentation
+                                ? "refresh-failed"
+                                : "unavailable"
+                            : hasPresentation
+                                ? "ready"
+                                : "unavailable",
+                        quality,
+                        source: result.snapshot.source,
+                    });
+                }
+                return result;
+            })
+            .catch((error) => {
+                logger.error("チャンネルのバックグラウンド更新に失敗しました:", error);
+                const quality = getSnapshotQuality(
+                    resolution.initial,
+                    initialQuality,
+                );
+                setRuntime({
+                    phase: hasResolvedPresentation(
+                        resolution.initial,
+                        quality,
+                        provenance,
+                    )
+                        ? "refresh-failed"
+                        : "unavailable",
+                    quality,
+                    source: resolution.initial.source,
+                });
+                return {
+                    status: "failed" as const,
+                    snapshot: resolution.initial,
+                };
+            });
+
+        return { cacheReady, refresh, release };
+    };
+
     return {
         applyExternal({ query, source, rxNostr, relayConfig }) {
-            generation += 1;
-            const applyGeneration = generation;
-            releaseCurrent();
-
             const { coordinatorQuery, provenance } = prepareExternalChannelContext(
                 query,
                 source,
             );
-            const ownerToken = Symbol(`external-channel:${coordinatorQuery.eventId}`);
-            const resolution = coordinator.resolveInternal(
+            return applyPrepared({
                 coordinatorQuery,
+                provenance,
+                ownerLabel: "external-channel",
+                initialQuality: null,
                 rxNostr,
                 relayConfig,
-            );
-            let active = true;
-            const isCurrent = () => active
-                && generation === applyGeneration
-                && deps.getCurrentChannelContext()?.eventId === coordinatorQuery.eventId
-                && deps.getChannelContextOwnerToken() === ownerToken;
-            const applySnapshot = (snapshot: ChannelContextCoordinatorSnapshot) => {
-                if (!isCurrent()) return;
-                deps.setChannelContext(snapshot.context, provenance, ownerToken);
-            };
+            });
+        },
 
-            deps.setChannelContext(resolution.initial.context, provenance, ownerToken);
-
-            const release = () => {
-                if (!active) return;
-                active = false;
-                resolution.release();
-                if (generation === applyGeneration) {
-                    currentRelease = null;
-                }
-            };
-            currentRelease = release;
-
-            const cacheReady = resolution.cacheReady
-                .then((snapshot) => {
-                    applySnapshot(snapshot);
-                    return snapshot;
-                })
-                .catch((error) => {
-                    logger.error("外部チャンネルキャッシュの適用に失敗しました:", error);
-                    return resolution.initial;
-                });
-            const refresh = resolution.refresh
-                .then((result) => {
-                    if (
-                        result.status === "updated"
-                        || (result.status === "failed" && result.snapshot.source === "network")
-                    ) {
-                        applySnapshot(result.snapshot);
-                    }
-                    return result;
-                })
-                .catch((error) => {
-                    logger.error("外部チャンネルのバックグラウンド更新に失敗しました:", error);
-                    return {
-                        status: "failed" as const,
-                        snapshot: resolution.initial,
-                    };
-                });
-
-            return { cacheReady, refresh, release };
+        applyDraft({ channelData, rxNostr, relayConfig }) {
+            const { query, provenance } = decodeDraftChannelContext(channelData);
+            return applyPrepared({
+                coordinatorQuery: query,
+                provenance,
+                ownerLabel: "draft-channel",
+                initialQuality: "legacy-seed",
+                rxNostr,
+                relayConfig,
+            });
         },
 
         clear() {

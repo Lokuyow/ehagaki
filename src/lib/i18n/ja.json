@@ -405,6 +405,9 @@
     "collapse": "チャンネル情報を折りたたむ",
     "clear": "チャンネル選択を解除",
     "loading": "チャンネル情報を読み込み中...",
+    "refreshing": "更新中...",
+    "refresh_failed": "更新できませんでした。保存済みの情報を表示しています。",
+    "unavailable": "チャンネル情報を取得できませんでした。",
     "relays_label": "リレー"
   },
   "balloonMessage": {

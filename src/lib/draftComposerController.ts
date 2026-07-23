@@ -7,6 +7,7 @@ import type {
     MediaGalleryItem,
     ReplyQuoteComposerState,
 } from './types';
+import type { ChannelContextProvenance } from './channelContextRuntime';
 
 interface DraftSaveResult {
     success: boolean;
@@ -24,6 +25,7 @@ export interface DraftComposerControllerDependencies {
     getEditorHtml(): string | undefined;
     getGalleryItems(): MediaGalleryItem[];
     getChannelContextState(): ChannelContextState | null;
+    getChannelContextProvenance?(): ChannelContextProvenance | null;
     getReplyQuoteState(): ReplyQuoteComposerState;
     getPubkeyHex(): string | null;
     saveDraft(
@@ -65,6 +67,8 @@ export function createDraftComposerController(
             htmlContent,
             galleryItems: deps.getGalleryItems(),
             channelContextState: deps.getChannelContextState(),
+            channelContextProvenance:
+                deps.getChannelContextProvenance?.() ?? null,
             replyQuoteState: deps.getReplyQuoteState(),
         });
 

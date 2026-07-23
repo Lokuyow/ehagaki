@@ -1,12 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     channelContextProvenanceState,
+    channelContextRuntimeState,
     channelContextState,
     clearChannelContext,
     effectiveChannelContextState,
     getChannelContextOwnerToken,
+    onChannelContextChanged,
     restoreChannelContext,
     setChannelContext,
+    setChannelContextRuntimeState,
     setChannelContextWithProvenance,
 } from "../../stores/channelContextStore.svelte";
 
@@ -54,5 +57,51 @@ describe("channelContextStore", () => {
 
         expect(getChannelContextOwnerToken()).toBeNull();
         expect(channelContextProvenanceState.value).toBeNull();
+    });
+
+    it("V2復元ではmetadata provenanceを維持し、runtime-only情報を別stateに置く", () => {
+        restoreChannelContext({
+            version: 2,
+            eventId: stable.eventId,
+            relayHints: stable.relayHints,
+            channelRelayCandidates: stable.channelRelays,
+            seedMetadata: {
+                name: "Seed",
+                about: null,
+                picture: null,
+            },
+            overrides: {
+                name: "Draft override",
+            },
+        });
+
+        expect(channelContextState.value?.name).toBe("Seed");
+        expect(channelContextProvenanceState.value).toEqual({
+            source: "draft",
+            metadataOverrides: { name: "Draft override" },
+        });
+        expect(effectiveChannelContextState.value?.name).toBe("Draft override");
+        expect(channelContextRuntimeState.value).toEqual({
+            phase: "ready",
+            quality: null,
+            source: "seed",
+        });
+    });
+
+    it("phaseとqualityだけの変更ではstable context listenerを通知しない", () => {
+        setChannelContext(stable);
+        const listener = vi.fn();
+        const unsubscribe = onChannelContextChanged(listener);
+
+        setChannelContextRuntimeState({
+            phase: "refreshing",
+            quality: "legacy-seed",
+            source: "cache",
+        });
+
+        expect(listener).not.toHaveBeenCalled();
+        expect(channelContextRuntimeState.value.phase).toBe("refreshing");
+        expect(channelContextState.value).toEqual(stable);
+        unsubscribe();
     });
 });

@@ -405,6 +405,9 @@
     "collapse": "Collapse channel details",
     "clear": "Clear channel selection",
     "loading": "Loading channel details...",
+    "refreshing": "Refreshing...",
+    "refresh_failed": "Could not refresh. Showing the saved channel details.",
+    "unavailable": "Channel details are unavailable.",
     "relays_label": "Relays"
   },
   "balloonMessage": {

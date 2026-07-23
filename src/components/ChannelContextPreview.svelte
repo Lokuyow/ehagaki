@@ -4,16 +4,30 @@
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import type { ChannelContextState } from "../lib/types";
+    import type { ChannelContextRuntimeState } from "../lib/channelContextRuntime";
 
     interface Props {
         channel: ChannelContextState;
+        runtime?: ChannelContextRuntimeState;
         onClear: () => void;
     }
 
-    let { channel, onClear }: Props = $props();
+    let {
+        channel,
+        runtime = { phase: "ready", quality: null, source: null },
+        onClear,
+    }: Props = $props();
 
     let expanded = $state(false);
-    let isMetadataLoading = $derived(!!channel.isMetadataLoading);
+    let isMetadataLoading = $derived(runtime.phase === "loading");
+    let isMetadataRefreshing = $derived(runtime.phase === "refreshing");
+    let metadataStatusText = $derived(
+        runtime.phase === "refresh-failed"
+            ? $_("channelComposer.refresh_failed")
+            : runtime.phase === "unavailable"
+                ? $_("channelComposer.unavailable")
+                : "",
+    );
 
     let channelName = $derived(
         channel.name?.trim() || `ID: ${channel.eventId}`,
@@ -31,6 +45,8 @@
     let relaySummary = $derived((channel.channelRelays ?? []).join("\n"));
     let canToggleExpand = $derived(
         isMetadataLoading ||
+            isMetadataRefreshing ||
+            !!metadataStatusText ||
             !!sanitizedAbout ||
             !!channel.picture ||
             (channel.channelRelays?.length ?? 0) > 0,
@@ -84,6 +100,13 @@
                 />
             {/if}
             <span class="channel-name">{channelName}</span>
+            {#if isMetadataRefreshing}
+                <LoadingPlaceholder
+                    showLoader={true}
+                    text={$_("channelComposer.refreshing")}
+                    customClass="channel-refreshing-inline"
+                />
+            {/if}
         {/if}
     {/snippet}
 
@@ -106,6 +129,9 @@
                     </div>
                 </dl>
             {/if}
+            {#if metadataStatusText}
+                <p class="metadata-status">{metadataStatusText}</p>
+            {/if}
         {/if}
     {/snippet}
 </ComposerContextPreviewShell>
@@ -123,6 +149,14 @@
         flex: 0 1 auto;
         justify-content: flex-start;
         flex-wrap: nowrap;
+    }
+
+    :global(.channel-context-preview .channel-refreshing-inline) {
+        width: auto;
+        flex: 0 1 auto;
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        font-size: 0.82rem;
     }
 
     :global(
@@ -161,6 +195,12 @@
         margin: 0;
         white-space: pre-wrap;
         line-height: 1.45;
+    }
+
+    .metadata-status {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.86rem;
     }
 
     .meta-list {

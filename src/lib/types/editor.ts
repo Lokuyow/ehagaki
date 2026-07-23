@@ -2,6 +2,7 @@
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { MediaGalleryItem } from "./media";
+import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
 
 // Post and Editor types
@@ -163,7 +164,36 @@ export interface DraftReplyQuoteSelectionData {
 }
 
 export type DraftReplyQuoteData = DraftReplyQuoteSelectionData | DraftReplyQuoteEntryData;
-export type DraftChannelData = import('./nostr').ChannelContextState;
+
+export interface DraftChannelMetadataData {
+    name: string | null;
+    about: string | null;
+    picture: string | null;
+}
+
+export interface DraftChannelMetadataOverrides {
+    name?: string | null;
+    about?: string | null;
+    picture?: string | null;
+}
+
+/** Legacy persisted shape. Presentation values are seeds, not overrides. */
+export interface DraftChannelDataV1 extends ChannelContextState {
+    version?: never;
+    /** Legacy runtime field. It is ignored during decode and never re-saved. */
+    isMetadataLoading?: boolean;
+}
+
+export interface DraftChannelDataV2 {
+    version: 2;
+    eventId: string;
+    relayHints: string[];
+    channelRelayCandidates?: string[];
+    seedMetadata?: DraftChannelMetadataData;
+    overrides?: DraftChannelMetadataOverrides;
+}
+
+export type DraftChannelData = DraftChannelDataV1 | DraftChannelDataV2;
 
 export interface Draft {
     id: string;

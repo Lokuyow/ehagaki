@@ -4,6 +4,7 @@ import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 import type { MediaGalleryItem } from './types';
 import type { DraftChannelData, DraftReplyQuoteData } from './types';
+import { getDraftEffectiveChannelContext } from './draftChannelContext';
 
 export interface DraftPreviewParts {
     firstLine: string;
@@ -106,7 +107,10 @@ export function generateDraftPreview(
                 : 0;
     if (hasReply) mediaLabels.push(replyLabel);
     if (quoteCount > 0) mediaLabels.push(quoteLabel);
-    if (channelData?.name) mediaLabels.push(`#${channelData.name}`);
+    const channelContext = channelData
+        ? getDraftEffectiveChannelContext(channelData)
+        : null;
+    if (channelContext?.name) mediaLabels.push(`#${channelContext.name}`);
     if (hasImage) mediaLabels.push(imageLabel);
     if (hasVideo) mediaLabels.push(videoLabel);
     const mediaText = mediaLabels.join('');

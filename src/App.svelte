@@ -102,12 +102,13 @@
   import {
     channelContextState,
     channelContextProvenanceState,
+    channelContextRuntimeState,
     effectiveChannelContextState,
     getChannelContextOwnerToken,
     clearChannelContext,
     onChannelContextChanged,
-    restoreChannelContext,
     setChannelContext,
+    setChannelContextRuntimeState,
     setChannelContextWithProvenance,
   } from "./stores/channelContextStore.svelte";
   import { startPostHistoryChannelContextApply } from "./lib/postHistoryChannelContextApply";
@@ -343,6 +344,7 @@
           relayConfig: relayConfigStore.value,
           getCurrentChannelContext: () => channelContextState.value,
           setChannelContext,
+          setRuntimeState: setChannelContextRuntimeState,
         }),
       applyReplyQuoteQuery,
       hydrateReplyQuoteReferences,
@@ -634,6 +636,7 @@
     getEditorHtml: () => postComponentRef?.getEditorHtml?.(),
     getGalleryItems: () => mediaGalleryStore.getItems(),
     getChannelContextState: () => channelContextState.value,
+    getChannelContextProvenance: () => channelContextProvenanceState.value,
     getReplyQuoteState: () => replyQuoteState.value,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     saveDraft,
@@ -649,8 +652,14 @@
       postComponentRef?.appendMediaToEditor(items);
     },
     generateMediaItemId,
-    restoreChannelContext,
-    clearChannelContext,
+    restoreChannelContext: (channelData) => {
+      channelContextApplyController.applyDraft({
+        channelData,
+        rxNostr,
+        relayConfig: relayConfigStore.value,
+      });
+    },
+    clearChannelContext: () => channelContextApplyController.clear(),
     restoreReplyQuote,
     clearReplyQuote,
   });
@@ -873,6 +882,7 @@
     getChannelContextOwnerToken,
     setChannelContext: (context, provenance, ownerToken) =>
       setChannelContextWithProvenance(context, provenance, ownerToken),
+    setRuntimeState: setChannelContextRuntimeState,
     clearChannelContext,
     logger: console,
   });
@@ -1394,7 +1404,7 @@
   function handleResetPostContent() {
     postComponentRef?.resetPostContent();
     clearReplyQuote();
-    clearChannelContext();
+    channelContextApplyController.clear();
   }
 
   // --- 下書き機能ハンドラ---
@@ -1505,7 +1515,8 @@
               <div class="composer-block composer-reference-block">
                 <ChannelContextPreview
                   channel={effectiveChannelContextState.value}
-                  onClear={clearChannelContext}
+                  runtime={channelContextRuntimeState.value}
+                  onClear={() => channelContextApplyController.clear()}
                 />
               </div>
             {/if}

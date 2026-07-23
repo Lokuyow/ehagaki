@@ -3,6 +3,24 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 import type { ChannelContextQueryTarget, ChannelContextState } from "./types";
 
 export type ChannelContextExternalSource = "iframe" | "url";
+export type ChannelContextProvenanceSource = ChannelContextExternalSource | "draft";
+export type ChannelContextResolutionPhase =
+    | "idle"
+    | "loading"
+    | "ready"
+    | "refreshing"
+    | "refresh-failed"
+    | "unavailable";
+export type ChannelContextRuntimeQuality =
+    | "legacy-seed"
+    | "verified-root-only"
+    | "verified-metadata";
+
+export interface ChannelContextRuntimeState {
+    phase: ChannelContextResolutionPhase;
+    quality: ChannelContextRuntimeQuality | null;
+    source: "seed" | "cache" | "network" | null;
+}
 
 export interface ChannelMetadataOverrides {
     name?: string | null;
@@ -15,7 +33,7 @@ export interface ChannelMetadataOverrides {
  * draft context; posting and preview derive an effective context from both.
  */
 export interface ChannelContextProvenance {
-    source: ChannelContextExternalSource;
+    source: ChannelContextProvenanceSource;
     metadataOverrides: ChannelMetadataOverrides;
     channelRelayOverrides?: string[];
 }

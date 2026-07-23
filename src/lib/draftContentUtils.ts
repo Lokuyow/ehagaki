@@ -11,6 +11,8 @@ import type {
     NostrEvent,
 } from './types';
 import { createSanitizedDraftContainer, sanitizeDraftHtml } from './draftHtmlSanitizer';
+import { serializeDraftChannelContext } from './draftChannelContext';
+import type { ChannelContextProvenance } from './channelContextRuntime';
 
 type DraftReplyQuoteStateLike = Pick<
     ReplyQuoteState,
@@ -31,6 +33,7 @@ interface CreateDraftSavePayloadParams {
     htmlContent: string;
     galleryItems: MediaGalleryItem[];
     channelContextState: ChannelContextState | null;
+    channelContextProvenance?: ChannelContextProvenance | null;
     replyQuoteState: ReplyQuoteComposerState;
 }
 
@@ -144,22 +147,6 @@ export function buildDraftReplyQuoteData(
     };
 }
 
-function buildDraftChannelData(
-    channelContextState: ChannelContextState | null,
-): DraftChannelData | undefined {
-    if (!channelContextState) {
-        return undefined;
-    }
-
-    return {
-        ...channelContextState,
-        relayHints: [...channelContextState.relayHints],
-        ...(channelContextState.channelRelays
-            ? { channelRelays: [...channelContextState.channelRelays] }
-            : {}),
-    };
-}
-
 function buildDraftGalleryItem(item: MediaGalleryItem): MediaGalleryItem {
     return {
         id: item.id,
@@ -182,6 +169,7 @@ export function createDraftSavePayload({
     htmlContent,
     galleryItems,
     channelContextState,
+    channelContextProvenance = null,
     replyQuoteState,
 }: CreateDraftSavePayloadParams): {
     content: string;
@@ -193,7 +181,10 @@ export function createDraftSavePayload({
     const persistedGalleryItems = galleryItems
         .filter((item) => !item.isPlaceholder)
         .map(buildDraftGalleryItem);
-    const channelData = buildDraftChannelData(channelContextState);
+    const channelData = serializeDraftChannelContext(
+        channelContextState,
+        channelContextProvenance,
+    );
     const replyQuoteData = buildDraftReplyQuoteData(replyQuoteState);
     const hasComposerContext = !!channelData || !!replyQuoteData;
 

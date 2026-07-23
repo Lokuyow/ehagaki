@@ -9,6 +9,9 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'channelComposer.collapse': 'チャンネル情報を折りたたむ',
         'channelComposer.clear': 'チャンネル選択を解除',
         'channelComposer.loading': 'チャンネル情報を読み込み中...',
+        'channelComposer.refreshing': '更新中...',
+        'channelComposer.refresh_failed': '更新失敗',
+        'channelComposer.unavailable': '取得不可',
         'channelComposer.unnamed': '名称未設定チャンネル',
         'channelComposer.relays_label': 'リレー',
     };
@@ -29,7 +32,6 @@ function createChannel(overrides: Partial<{
     name: string | null;
     about: string | null;
     picture: string | null;
-    isMetadataLoading: boolean;
 }> = {}) {
     return {
         eventId: '11'.repeat(32),
@@ -38,7 +40,6 @@ function createChannel(overrides: Partial<{
         name: 'General',
         about: 'General discussion',
         picture: 'https://example.com/channel.png',
-        isMetadataLoading: false,
         ...overrides,
     };
 }
@@ -104,8 +105,12 @@ describe('ChannelContextPreview', () => {
                     picture: null,
                     relayHints: ['wss://channel-lookup.example.com'],
                     channelRelays: [],
-                    isMetadataLoading: true,
                 }),
+                runtime: {
+                    phase: 'loading',
+                    quality: null,
+                    source: 'seed',
+                },
                 onClear: vi.fn(),
             },
         });
@@ -116,6 +121,42 @@ describe('ChannelContextPreview', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'チャンネル情報を展開' }));
 
         expect(container.querySelector('.channel-loading-block')).toBeTruthy();
+    });
+
+    it('seedまたはcacheを表示したまま更新中であることを示す', () => {
+        render(ChannelContextPreview, {
+            props: {
+                channel: createChannel({ name: 'Cached channel' }),
+                runtime: {
+                    phase: 'refreshing',
+                    quality: 'verified-metadata',
+                    source: 'cache',
+                },
+                onClear: vi.fn(),
+            },
+        });
+
+        expect(screen.getByText('Cached channel')).toBeTruthy();
+        expect(screen.getByText('更新中...')).toBeTruthy();
+        expect(screen.queryByText('チャンネル情報を読み込み中...')).toBeNull();
+    });
+
+    it('更新失敗後も既存表示を維持し、展開時だけ非致命的状態を示す', async () => {
+        render(ChannelContextPreview, {
+            props: {
+                channel: createChannel({ name: 'Cached channel' }),
+                runtime: {
+                    phase: 'refresh-failed',
+                    quality: 'verified-metadata',
+                    source: 'cache',
+                },
+                onClear: vi.fn(),
+            },
+        });
+
+        expect(screen.getByText('Cached channel')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'チャンネル情報を展開' }));
+        expect(screen.getByText('更新失敗')).toBeTruthy();
     });
 
     it('button 押下前に focus 移動を抑止し、キーボード表示中の activeElement を維持する', () => {

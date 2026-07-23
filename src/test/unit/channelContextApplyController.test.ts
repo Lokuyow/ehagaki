@@ -7,6 +7,7 @@ import type {
 import {
     buildEffectiveChannelContext,
     type ChannelContextProvenance,
+    type ChannelContextRuntimeState,
 } from "../../lib/channelContextRuntime";
 import type { ChannelContextState } from "../../lib/types";
 
@@ -42,6 +43,7 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
     let current: ChannelContextState | null = null;
     let provenance: ChannelContextProvenance | null = null;
     let ownerToken: symbol | null = null;
+    let runtime: ChannelContextRuntimeState | null = null;
     const setChannelContext = vi.fn((next, nextProvenance, nextOwnerToken) => {
         current = next;
         provenance = nextProvenance;
@@ -57,6 +59,9 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
         getCurrentChannelContext: () => current,
         getChannelContextOwnerToken: () => ownerToken,
         setChannelContext,
+        setRuntimeState: (next) => {
+            runtime = next;
+        },
         clearChannelContext,
         logger: { error: vi.fn() },
     });
@@ -69,6 +74,7 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
         getEffective: () => current
             ? buildEffectiveChannelContext(current, provenance)
             : null,
+        getRuntime: () => runtime,
         setOutside(next: ChannelContextState | null) {
             current = next;
             provenance = null;
@@ -78,6 +84,155 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
 }
 
 describe("createChannelContextApplyController", () => {
+    it("V2下書きを同期seed表示し、DB・networkでstableだけを更新する", async () => {
+        const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
+        const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const resolveInternal = vi.fn(() => ({
+            initial: snapshot({
+                name: "Draft seed",
+                channelRelays: ["wss://saved-candidate.example.com/"],
+            }, "seed"),
+            cacheReady: cacheReady.promise,
+            refresh: refresh.promise,
+            release: vi.fn(),
+        }));
+        const harness = createHarness(resolveInternal);
+
+        const handle = harness.controller.applyDraft({
+            channelData: {
+                version: 2,
+                eventId,
+                relayHints: ["wss://draft-read.example.com"],
+                channelRelayCandidates: ["wss://saved-candidate.example.com"],
+                seedMetadata: {
+                    name: "Draft seed",
+                    about: null,
+                    picture: null,
+                },
+                overrides: {
+                    name: "Persisted override",
+                },
+            },
+        });
+
+        expect(harness.getCurrent()?.name).toBe("Draft seed");
+        expect(harness.getEffective()?.name).toBe("Persisted override");
+        expect(harness.getRuntime()).toEqual({
+            phase: "refreshing",
+            quality: "legacy-seed",
+            source: "seed",
+        });
+        expect(resolveInternal).toHaveBeenCalledWith({
+            eventId,
+            relayHints: ["wss://draft-read.example.com/"],
+            channelRelays: ["wss://saved-candidate.example.com/"],
+            name: "Draft seed",
+            about: null,
+            picture: null,
+        }, undefined, undefined);
+
+        cacheReady.resolve({
+            ...snapshot({
+                name: "Verified",
+                channelRelays: ["wss://verified.example.com/"],
+            }, "cache"),
+            cache: {
+                resolutionQuality: "verified-metadata",
+            } as never,
+        });
+        await handle.cacheReady;
+
+        expect(harness.getCurrent()?.channelRelays).toEqual([
+            "wss://verified.example.com/",
+        ]);
+        expect(harness.getEffective()?.name).toBe("Persisted override");
+
+        refresh.resolve({
+            status: "updated",
+            snapshot: {
+                ...snapshot({ name: "New verified" }, "network"),
+                cache: {
+                    resolutionQuality: "verified-metadata",
+                } as never,
+            },
+        });
+        await handle.refresh;
+
+        expect(harness.getCurrent()?.name).toBe("New verified");
+        expect(harness.getEffective()?.name).toBe("Persisted override");
+        expect(harness.getRuntime()).toEqual({
+            phase: "ready",
+            quality: "verified-metadata",
+            source: "network",
+        });
+    });
+
+    it("下書きA復元直後に下書きBを復元したらAの遅延結果を反映しない", async () => {
+        const eventIdB = "b".repeat(64);
+        const firstCache = deferred<ChannelContextCoordinatorSnapshot>();
+        const firstRefresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const secondSnapshot = snapshot({
+            eventId: eventIdB,
+            name: "Draft B",
+        }, "seed");
+        const resolveInternal = vi.fn()
+            .mockReturnValueOnce({
+                initial: snapshot({ name: "Draft A" }, "seed"),
+                cacheReady: firstCache.promise,
+                refresh: firstRefresh.promise,
+                release: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                initial: secondSnapshot,
+                cacheReady: Promise.resolve(secondSnapshot),
+                refresh: Promise.resolve({
+                    status: "skipped",
+                    snapshot: secondSnapshot,
+                }),
+                release: vi.fn(),
+            });
+        const harness = createHarness(resolveInternal);
+
+        harness.controller.applyDraft({
+            channelData: {
+                version: 2,
+                eventId,
+                relayHints: [],
+                seedMetadata: {
+                    name: "Draft A",
+                    about: null,
+                    picture: null,
+                },
+            },
+        });
+        const second = harness.controller.applyDraft({
+            channelData: {
+                version: 2,
+                eventId: eventIdB,
+                relayHints: [],
+                seedMetadata: {
+                    name: "Draft B",
+                    about: null,
+                    picture: null,
+                },
+            },
+        });
+
+        firstCache.resolve(snapshot({ name: "Old A cache" }, "cache"));
+        firstRefresh.resolve({
+            status: "updated",
+            snapshot: snapshot({ name: "Old A network" }, "network"),
+        });
+        await second.cacheReady;
+        await Promise.resolve();
+
+        expect(harness.getCurrent()).toMatchObject({
+            eventId: eventIdB,
+            name: "Draft B",
+        });
+        expect(harness.getProvenance()?.source).toBeUndefined();
+    });
+
     it("明示metadata overrideをcache/networkより優先し、省略項目だけ補完する", async () => {
         const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
         const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
@@ -114,6 +269,7 @@ describe("createChannelContextApplyController", () => {
             about: null,
             picture: null,
         });
+        expect(harness.getRuntime()?.phase).toBe("refreshing");
 
         cacheReady.resolve(snapshot({
             name: "Verified name",
