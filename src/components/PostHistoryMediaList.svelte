@@ -994,8 +994,7 @@
 
     .post-history-media-placeholder-loader {
         position: absolute;
-        right: 8px;
-        bottom: 8px;
+        inset: auto 8px 8px auto;
         z-index: 2;
         pointer-events: none;
     }

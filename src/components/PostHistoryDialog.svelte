@@ -3171,8 +3171,7 @@
 
     .post-history-latest-row {
         position: absolute;
-        bottom: 12px;
-        right: 16px;
+        inset: auto 16px 12px auto;
         display: flex;
         justify-content: flex-end;
         width: auto;

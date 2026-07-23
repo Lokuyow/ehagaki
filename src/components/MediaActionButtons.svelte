@@ -60,8 +60,7 @@
 <style>
     :global(button.media-delete-btn.circle.close) {
         position: absolute;
-        top: 6px;
-        right: 6px;
+        inset: 6px 6px auto auto;
         z-index: 10;
         width: 50px;
         height: 50px;
@@ -69,8 +68,7 @@
 
     :global(button.media-copy-btn.circle.copy) {
         position: absolute;
-        top: 62px;
-        right: 6px;
+        inset: 62px 6px auto auto;
         z-index: 10;
         width: 50px;
         height: 50px;
