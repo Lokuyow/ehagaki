@@ -259,7 +259,7 @@
     }
 
     :global(.post-history-thread-direct-parent-context) {
-        margin-left: var(--thread-direct-parent-indent);
+        margin-inline-start: var(--thread-direct-parent-indent);
     }
 
     :global(.post-history-context-button) {

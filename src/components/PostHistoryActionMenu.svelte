@@ -162,7 +162,7 @@
         background-color: transparent;
         color: inherit;
         font: inherit;
-        text-align: left;
+        text-align: start;
         cursor: pointer;
     }
 

@@ -82,7 +82,8 @@
 <style>
     .post-history-quote-status-card {
         display: grid;
-        border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
+        border-inline-start: 2px solid
+            color-mix(in srgb, var(--theme), transparent 45%);
         background: color-mix(in srgb, var(--dialog-bg), var(--border-hr) 24%);
         color: var(--text);
         font-size: 0.9rem;

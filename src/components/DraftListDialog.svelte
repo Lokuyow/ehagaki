@@ -333,7 +333,7 @@
             --btn-bg: var(--dialog-bg);
             border: none;
             cursor: pointer;
-            text-align: left;
+            text-align: start;
             color: var(--text);
             font-size: 1rem;
             min-width: 0;

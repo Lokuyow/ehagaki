@@ -159,7 +159,7 @@
         gap: var(--preview-content-gap);
         width: 100%;
         padding: var(--preview-content-padding);
-        text-align: left;
+        text-align: start;
         color: var(--text);
         font: inherit;
     }

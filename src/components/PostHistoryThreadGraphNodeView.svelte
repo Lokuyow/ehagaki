@@ -386,7 +386,7 @@
 
     .post-history-thread-node-anchor {
         display: grid;
-        margin-left: var(--thread-context-indent);
+        margin-inline-start: var(--thread-context-indent);
     }
 
     .post-history-thread-node-children {

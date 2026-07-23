@@ -328,7 +328,7 @@
         min-width: 0;
         max-width: 220px;
         flex-shrink: 1;
-        text-align: right;
+        text-align: end;
     }
 
     .preview-status-text {

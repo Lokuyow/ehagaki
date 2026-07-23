@@ -90,7 +90,7 @@
     }
 
     .features {
-        text-align: left;
+        text-align: start;
         white-space: pre-line;
         margin-bottom: 1rem;
         padding-inline-start: 1rem;

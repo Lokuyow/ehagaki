@@ -587,13 +587,13 @@
                 .account-info-button {
                     background-color: transparent;
                     border: solid 1px var(--border);
-                    border-right: none;
+                    border-inline-end: none;
                 }
 
                 .account-logout-button {
                     background-color: transparent;
                     border: solid 1px var(--border);
-                    border-left: none;
+                    border-inline-start: none;
                 }
             }
         }

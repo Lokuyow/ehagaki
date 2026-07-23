@@ -164,7 +164,7 @@
         font-size: 0.9375rem;
         line-height: 1.1;
         white-space: normal;
-        text-align: left;
+        text-align: start;
         max-width: 100%;
         gap: 2px;
     }

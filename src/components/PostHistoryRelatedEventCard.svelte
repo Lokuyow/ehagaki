@@ -44,8 +44,7 @@
 
     let authorName = $derived.by(() => {
         const displayName =
-            profile?.displayName?.trim() ||
-            profile?.name?.trim();
+            profile?.displayName?.trim() || profile?.name?.trim();
         if (displayName) {
             return displayName;
         }
@@ -119,11 +118,12 @@
             var(--dialog-bg),
             var(--border-hr) 24%
         );
-        border-left: 2px solid color-mix(in srgb, var(--theme), transparent 45%);
+        border-inline-start: 2px solid
+            color-mix(in srgb, var(--theme), transparent 45%);
         background: var(--post-history-related-card-bg);
         color: var(--text);
         font-size: 0.9rem;
-        padding-left: 2px;
+        padding-inline-start: 2px;
     }
 
     .post-history-related-card-body {

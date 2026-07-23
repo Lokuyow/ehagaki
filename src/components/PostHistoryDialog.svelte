@@ -2912,7 +2912,7 @@
     .post-history-summary-count {
         flex: 0 0 auto;
         white-space: nowrap;
-        text-align: right;
+        text-align: end;
     }
 
     :global(.post-history-repair-button) {
@@ -3669,7 +3669,7 @@
         gap: 0.5rem;
         margin: 10px 0 30px 0;
         margin-inline: auto;
-        text-align: left;
+        text-align: start;
     }
 
     .delete-confirm-description,

@@ -183,7 +183,7 @@
 
         ul {
             margin: 0;
-            padding-left: 0;
+            padding-inline-start: 0;
             font-size: 0.9375rem;
             list-style: none;
         }

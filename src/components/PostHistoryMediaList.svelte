@@ -868,7 +868,7 @@
             padding: 0;
             border: 0;
             background-color: transparent;
-            text-align: left;
+            text-align: start;
             cursor: pointer;
             margin-inline: auto;
 
@@ -974,7 +974,7 @@
         align-items: flex-start;
         justify-content: center;
         padding: 12px;
-        text-align: left;
+        text-align: start;
         position: relative;
         isolation: isolate;
         height: auto;

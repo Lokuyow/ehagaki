@@ -58,8 +58,8 @@
                             >
                             <td
                                 >{Math.round(
-                                    COMPRESSION_OPTIONS_MAP.high.initialQuality *
-                                        100,
+                                    COMPRESSION_OPTIONS_MAP.high
+                                        .initialQuality * 100,
                                 )}%</td
                             >
                         </tr>
@@ -84,8 +84,8 @@
                             >
                             <td
                                 >{Math.round(
-                                    COMPRESSION_OPTIONS_MAP.low
-                                        .initialQuality * 100,
+                                    COMPRESSION_OPTIONS_MAP.low.initialQuality *
+                                        100,
                                 )}%</td
                             >
                         </tr>
@@ -94,9 +94,11 @@
                 <p class="popover-note">
                     {$_("settingsDialog.image_short_edge_protection_note", {
                         values: {
-                            aspectRatio: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.aspectRatioThreshold,
+                            aspectRatio:
+                                DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.aspectRatioThreshold,
                             pixels: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.minShortEdge,
-                            megapixels: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.maxMegapixels,
+                            megapixels:
+                                DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.maxMegapixels,
                         },
                     })}
                 </p>
@@ -207,7 +209,7 @@
         th,
         td {
             padding: 4px 8px;
-            text-align: left;
+            text-align: start;
         }
 
         th {

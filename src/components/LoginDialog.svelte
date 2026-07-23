@@ -1281,13 +1281,13 @@
         cursor: pointer;
 
         &[data-value="qr"] {
-            border-top-left-radius: 10px;
-            border-bottom-left-radius: 10px;
+            border-start-start-radius: 10px;
+            border-end-start-radius: 10px;
         }
 
         &[data-value="bunker"] {
-            border-top-right-radius: 10px;
-            border-bottom-right-radius: 10px;
+            border-start-end-radius: 10px;
+            border-end-end-radius: 10px;
         }
     }
 
