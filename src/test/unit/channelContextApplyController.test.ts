@@ -53,6 +53,11 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
         current = null;
         provenance = null;
         ownerToken = null;
+        runtime = {
+            phase: "idle",
+            quality: null,
+            source: null,
+        };
     });
     const controller = createChannelContextApplyController({
         coordinator: { resolveInternal } as never,
@@ -71,6 +76,7 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
         clearChannelContext,
         getCurrent: () => current,
         getProvenance: () => provenance,
+        getOwnerToken: () => ownerToken,
         getEffective: () => current
             ? buildEffectiveChannelContext(current, provenance)
             : null,
@@ -84,6 +90,326 @@ function createHarness(resolveInternal: ReturnType<typeof vi.fn>) {
 }
 
 describe("createChannelContextApplyController", () => {
+    it.each(["draft", "iframe", "url"] as const)(
+        "投稿履歴X補完中に%s Xを適用したら古い投稿履歴結果を無視する",
+        async (newerSource) => {
+            const historyCache = deferred<ChannelContextCoordinatorSnapshot>();
+            const historyRefresh = deferred<ChannelContextCoordinatorRefreshResult>();
+            const historyRelease = vi.fn();
+            const newerSnapshot = snapshot({ name: "New stable" }, "seed");
+            const pending = new Promise<never>(() => {});
+            const resolveInternal = vi.fn()
+                .mockReturnValueOnce({
+                    initial: snapshot({ name: "History seed" }, "seed"),
+                    cacheReady: historyCache.promise,
+                    refresh: historyRefresh.promise,
+                    release: historyRelease,
+                })
+                .mockReturnValueOnce({
+                    initial: newerSnapshot,
+                    cacheReady: pending,
+                    refresh: pending,
+                    release: vi.fn(),
+                });
+            const harness = createHarness(resolveInternal);
+
+            harness.controller.applyPostHistory({
+                query: { eventId, relayHints: [] },
+            });
+            if (newerSource === "draft") {
+                harness.controller.applyDraft({
+                    channelData: {
+                        version: 2,
+                        eventId,
+                        relayHints: [],
+                        seedMetadata: {
+                            name: "New stable",
+                            about: null,
+                            picture: null,
+                        },
+                        overrides: { name: "Draft override" },
+                    },
+                });
+            } else {
+                harness.controller.applyExternal({
+                    source: newerSource,
+                    query: {
+                        eventId,
+                        relayHints: [],
+                        name: "External override",
+                        channelRelays: ["wss://external-write.example.com"],
+                    },
+                });
+            }
+            const newerOwner = harness.getOwnerToken();
+            const newerRuntime = harness.getRuntime();
+
+            historyCache.resolve(snapshot({ name: "Old history cache" }, "cache"));
+            historyRefresh.resolve({
+                status: "updated",
+                snapshot: snapshot({ name: "Old history network" }, "network"),
+            });
+            await Promise.all([historyCache.promise, historyRefresh.promise]);
+            await Promise.resolve();
+
+            expect(historyRelease).toHaveBeenCalledOnce();
+            expect(harness.getCurrent()?.name).toBe("New stable");
+            expect(harness.getOwnerToken()).toBe(newerOwner);
+            expect(harness.getRuntime()).toEqual(newerRuntime);
+            if (newerSource === "draft") {
+                expect(harness.getProvenance()).toEqual({
+                    source: "draft",
+                    metadataOverrides: { name: "Draft override" },
+                });
+                expect(harness.getEffective()?.name).toBe("Draft override");
+            } else {
+                expect(harness.getProvenance()?.source).toBe(newerSource);
+                expect(harness.getEffective()).toMatchObject({
+                    name: "External override",
+                    channelRelays: ["wss://external-write.example.com/"],
+                });
+            }
+        },
+    );
+
+    it.each(["draft", "iframe"] as const)(
+        "%s X補完中に投稿履歴Xを適用したら投稿履歴が新しいownerになる",
+        async (oldSource) => {
+            const oldCache = deferred<ChannelContextCoordinatorSnapshot>();
+            const oldRefresh = deferred<ChannelContextCoordinatorRefreshResult>();
+            const oldRelease = vi.fn();
+            const historySnapshot = snapshot({ name: "History seed" }, "seed");
+            const pending = new Promise<never>(() => {});
+            const resolveInternal = vi.fn()
+                .mockReturnValueOnce({
+                    initial: snapshot({ name: "Old stable" }, "seed"),
+                    cacheReady: oldCache.promise,
+                    refresh: oldRefresh.promise,
+                    release: oldRelease,
+                })
+                .mockReturnValueOnce({
+                    initial: historySnapshot,
+                    cacheReady: pending,
+                    refresh: pending,
+                    release: vi.fn(),
+                });
+            const harness = createHarness(resolveInternal);
+
+            if (oldSource === "draft") {
+                harness.controller.applyDraft({
+                    channelData: {
+                        version: 2,
+                        eventId,
+                        relayHints: [],
+                        seedMetadata: {
+                            name: "Old stable",
+                            about: null,
+                            picture: null,
+                        },
+                        overrides: { name: "Old draft override" },
+                    },
+                });
+            } else {
+                harness.controller.applyExternal({
+                    source: "iframe",
+                    query: {
+                        eventId,
+                        relayHints: [],
+                        name: "Old iframe override",
+                    },
+                });
+            }
+            harness.controller.applyPostHistory({
+                query: { eventId, relayHints: [], name: "History seed" },
+            });
+            const historyOwner = harness.getOwnerToken();
+
+            oldCache.resolve(snapshot({ name: "Old cache" }, "cache"));
+            oldRefresh.resolve({
+                status: "updated",
+                snapshot: snapshot({ name: "Old network" }, "network"),
+            });
+            await Promise.all([oldCache.promise, oldRefresh.promise]);
+            await Promise.resolve();
+
+            expect(oldRelease).toHaveBeenCalledOnce();
+            expect(harness.getOwnerToken()).toBe(historyOwner);
+            expect(harness.getCurrent()?.name).toBe("History seed");
+            expect(harness.getProvenance()).toBeNull();
+        },
+    );
+
+    it("投稿履歴Xの再適用とYへの切替は以前のconsumerをreleaseする", () => {
+        const releases = [vi.fn(), vi.fn(), vi.fn()];
+        const pending = new Promise<never>(() => {});
+        const resolveInternal = vi.fn()
+            .mockImplementationOnce(() => ({
+                initial: snapshot({ name: "X1" }, "seed"),
+                cacheReady: pending,
+                refresh: pending,
+                release: releases[0],
+            }))
+            .mockImplementationOnce(() => ({
+                initial: snapshot({ name: "X2" }, "seed"),
+                cacheReady: pending,
+                refresh: pending,
+                release: releases[1],
+            }))
+            .mockImplementationOnce(() => ({
+                initial: snapshot({ eventId: "b".repeat(64), name: "Y" }, "seed"),
+                cacheReady: pending,
+                refresh: pending,
+                release: releases[2],
+            }));
+        const harness = createHarness(resolveInternal);
+
+        harness.controller.applyPostHistory({
+            query: { eventId, relayHints: [], name: "X1" },
+        });
+        const firstOwner = harness.getOwnerToken();
+        harness.controller.applyPostHistory({
+            query: { eventId, relayHints: [], name: "X2" },
+        });
+        const secondOwner = harness.getOwnerToken();
+        harness.controller.applyPostHistory({
+            query: {
+                eventId: "b".repeat(64),
+                relayHints: [],
+                name: "Y",
+            },
+        });
+
+        expect(releases[0]).toHaveBeenCalledOnce();
+        expect(releases[1]).toHaveBeenCalledOnce();
+        expect(firstOwner).not.toBe(secondOwner);
+        expect(harness.getCurrent()).toMatchObject({
+            eventId: "b".repeat(64),
+            name: "Y",
+        });
+    });
+
+    it("投稿履歴のruntimeをloading→refreshing→readyへ遷移させる", async () => {
+        const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
+        const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const resolveInternal = vi.fn(() => ({
+            initial: snapshot({ name: null }, "seed"),
+            cacheReady: cacheReady.promise,
+            refresh: refresh.promise,
+            release: vi.fn(),
+        }));
+        const harness = createHarness(resolveInternal);
+
+        const handle = harness.controller.applyPostHistory({
+            query: { eventId, relayHints: [] },
+        });
+        expect(harness.getRuntime()?.phase).toBe("loading");
+
+        cacheReady.resolve(snapshot({ name: "Cached" }, "cache"));
+        await handle.cacheReady;
+        expect(harness.getRuntime()?.phase).toBe("refreshing");
+
+        refresh.resolve({
+            status: "updated",
+            snapshot: snapshot({ name: "Verified" }, "network"),
+        });
+        await handle.refresh;
+        expect(harness.getRuntime()).toEqual({
+            phase: "ready",
+            quality: null,
+            source: "network",
+        });
+    });
+
+    it.each([
+        { name: "Cached", expected: "refresh-failed" },
+        { name: null, expected: "unavailable" },
+    ] as const)(
+        "投稿履歴の失敗時に表示可能性から$expectedへ遷移する",
+        async ({ name, expected }) => {
+            const cached = snapshot({ name }, name ? "cache" : "seed");
+            const resolveInternal = vi.fn(() => ({
+                initial: snapshot({ name: null }, "seed"),
+                cacheReady: Promise.resolve(cached),
+                refresh: Promise.resolve({
+                    status: "failed" as const,
+                    snapshot: cached,
+                }),
+                release: vi.fn(),
+            }));
+            const harness = createHarness(resolveInternal);
+
+            const handle = harness.controller.applyPostHistory({
+                query: { eventId, relayHints: [] },
+            });
+            await handle.refresh;
+
+            expect(harness.getRuntime()?.phase).toBe(expected);
+        },
+    );
+
+    it.each([
+        {
+            status: "failed",
+            source: "network",
+            expectedName: "Refresh snapshot",
+        },
+        { status: "failed", source: "seed", expectedName: "Initial" },
+        { status: "failed", source: "cache", expectedName: "Initial" },
+        { status: "aborted", source: "network", expectedName: "Initial" },
+        { status: "skipped", source: "network", expectedName: "Initial" },
+    ] as const)(
+        "投稿履歴の$status + $source snapshot適用契約を維持する",
+        async ({ status, source, expectedName }) => {
+            const initial = snapshot({ name: "Initial" }, "seed");
+            const resolveInternal = vi.fn(() => ({
+                initial,
+                cacheReady: new Promise<never>(() => {}),
+                refresh: Promise.resolve({
+                    status,
+                    snapshot: snapshot({ name: "Refresh snapshot" }, source),
+                }),
+                release: vi.fn(),
+            }));
+            const harness = createHarness(resolveInternal);
+
+            const handle = harness.controller.applyPostHistory({
+                query: { eventId, relayHints: [], name: "Initial" },
+            });
+            await handle.refresh;
+
+            expect(harness.getCurrent()?.name).toBe(expectedName);
+        },
+    );
+
+    it("投稿履歴X補完中のclearはconsumerをreleaseし古いruntimeも反映しない", async () => {
+        const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
+        const refresh = deferred<ChannelContextCoordinatorRefreshResult>();
+        const release = vi.fn();
+        const resolveInternal = vi.fn(() => ({
+            initial: snapshot({ name: null }, "seed"),
+            cacheReady: cacheReady.promise,
+            refresh: refresh.promise,
+            release,
+        }));
+        const harness = createHarness(resolveInternal);
+
+        harness.controller.applyPostHistory({
+            query: { eventId, relayHints: [] },
+        });
+        harness.controller.clear();
+        cacheReady.resolve(snapshot({ name: "Old cache" }, "cache"));
+        refresh.resolve({
+            status: "failed",
+            snapshot: snapshot({ name: "Old network" }, "network"),
+        });
+        await Promise.all([cacheReady.promise, refresh.promise]);
+        await Promise.resolve();
+
+        expect(release).toHaveBeenCalledOnce();
+        expect(harness.getCurrent()).toBeNull();
+        expect(harness.getRuntime()?.phase).toBe("idle");
+    });
+
     it("V2下書きを同期seed表示し、DB・networkでstableだけを更新する", async () => {
         const cacheReady = deferred<ChannelContextCoordinatorSnapshot>();
         const refresh = deferred<ChannelContextCoordinatorRefreshResult>();

@@ -3,7 +3,7 @@ import type {
     ApplyReplyQuoteQueryParams,
     HydrateReplyQuoteReferencesParams,
 } from './bootstrap/externalInputBootstrap';
-import type { PostHistoryChannelContextApplyHandle } from './postHistoryChannelContextApply';
+import type { ChannelContextApplyHandle } from './channelContextApplyController';
 import type { ChannelContextQueryTarget, ReplyQuoteQueryTarget } from './types';
 import {
     buildPostHistoryReferenceTarget,
@@ -14,7 +14,7 @@ import {
 export interface PostHistoryDialogApplyControllerDependencies {
     startChannelContextQuery(
         channelContextQuery: ChannelContextQueryTarget,
-    ): PostHistoryChannelContextApplyHandle;
+    ): ChannelContextApplyHandle;
     applyReplyQuoteQuery(params: ApplyReplyQuoteQueryParams): Promise<void>;
     hydrateReplyQuoteReferences(
         params: HydrateReplyQuoteReferencesParams,
@@ -48,7 +48,7 @@ export function createPostHistoryDialogApplyController(
     deps: PostHistoryDialogApplyControllerDependencies,
 ): PostHistoryDialogApplyController {
     const logger = deps.logger ?? FALLBACK_LOGGER;
-    let currentChannelApplyHandle: PostHistoryChannelContextApplyHandle | null = null;
+    let currentChannelApplyHandle: ChannelContextApplyHandle | null = null;
 
     function applyChannelContext(post: PostHistoryRecord): boolean {
         currentChannelApplyHandle?.release();

@@ -52,6 +52,12 @@ export interface ApplyDraftChannelContextParams {
     relayConfig?: RelayConfig | null;
 }
 
+export interface ApplyPostHistoryChannelContextParams {
+    query: ChannelContextQueryTarget;
+    rxNostr?: RxNostr;
+    relayConfig?: RelayConfig | null;
+}
+
 export interface ChannelContextApplyHandle {
     cacheReady: Promise<ChannelContextCoordinatorSnapshot>;
     refresh: Promise<ChannelContextCoordinatorRefreshResult>;
@@ -61,6 +67,9 @@ export interface ChannelContextApplyHandle {
 export interface ChannelContextApplyController {
     applyExternal(params: ApplyExternalChannelContextParams): ChannelContextApplyHandle;
     applyDraft(params: ApplyDraftChannelContextParams): ChannelContextApplyHandle;
+    applyPostHistory(
+        params: ApplyPostHistoryChannelContextParams,
+    ): ChannelContextApplyHandle;
     clear(): void;
     dispose(): void;
 }
@@ -261,6 +270,17 @@ export function createChannelContextApplyController(
                 provenance,
                 ownerLabel: "draft-channel",
                 initialQuality: "legacy-seed",
+                rxNostr,
+                relayConfig,
+            });
+        },
+
+        applyPostHistory({ query, rxNostr, relayConfig }) {
+            return applyPrepared({
+                coordinatorQuery: query,
+                provenance: null,
+                ownerLabel: "post-history-channel",
+                initialQuality: null,
                 rxNostr,
                 relayConfig,
             });

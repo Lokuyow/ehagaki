@@ -105,16 +105,13 @@ export function decodeDraftChannelContext(
         };
     }
 
-    const channelRelayCandidates = sanitizeChannelRelayCandidates(
-        data.channelRelays,
-    );
     return {
         query: {
             eventId: data.eventId,
+            // V1 did not preserve relay provenance. A saved channel relay may
+            // have been an iframe / URL runtime override, so it is discarded
+            // rather than restored as either a read or write candidate.
             relayHints: sanitizeRelayHints(data.relayHints),
-            ...(channelRelayCandidates.length > 0
-                ? { channelRelays: channelRelayCandidates }
-                : {}),
             // V1 cannot distinguish an explicit value from a cached or temporary
             // presentation value, so every field is a replaceable seed.
             name: data.name ?? null,
