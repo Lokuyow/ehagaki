@@ -1340,8 +1340,7 @@
 
     :global(button.nostrconnect-copy-btn.circle.copy) {
         position: absolute;
-        right: 2px;
-        bottom: 2px;
+        inset: auto 2px 2px auto;
         width: 34px;
         min-width: 34px;
         height: 34px;
