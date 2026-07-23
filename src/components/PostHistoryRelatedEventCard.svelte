@@ -44,8 +44,7 @@
 
     let authorName = $derived.by(() => {
         const displayName =
-            profile?.displayName?.trim() ||
-            profile?.name?.trim();
+            profile?.displayName?.trim() || profile?.name?.trim();
         if (displayName) {
             return displayName;
         }
