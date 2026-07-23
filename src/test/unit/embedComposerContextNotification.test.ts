@@ -151,7 +151,7 @@ describe('embedComposerContextNotification', () => {
         expect(reapplied?.channelRelays).not.toContain('wss://verified.example.com/');
     });
 
-    it.each(['iframe', 'url'] as const)(
+    it.each(['iframe', 'url', 'manual'] as const)(
         '%s provenanceにrelay overrideがなければstable write relayを通知しない',
         (source) => {
             const payload = buildComposerContextUpdatedPayload({
@@ -172,6 +172,25 @@ describe('embedComposerContextNotification', () => {
             expect(payload.channel).not.toHaveProperty('relays');
         },
     );
+
+    it('manual provenanceでは入力relayも検証済みwrite relayも通知しない', () => {
+        const payload = buildComposerContextUpdatedPayload({
+            reply: null,
+            quotes: [],
+        }, {
+            eventId: 'cc'.repeat(32),
+            relayHints: ['wss://manual-input.example.com/'],
+            channelRelays: ['wss://verified.example.com/'],
+            name: 'Manual target',
+            about: null,
+            picture: null,
+        }, {
+            source: 'manual',
+            metadataOverrides: {},
+        });
+
+        expect(payload.channel).not.toHaveProperty('relays');
+    });
 
     it('URL provenanceでもoverride relayだけを通知する', () => {
         const payload = buildComposerContextUpdatedPayload({

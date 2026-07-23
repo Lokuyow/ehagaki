@@ -41,7 +41,8 @@ function buildChannelContextPayload(
 ): EmbedChannelContextPayload {
     const metadataOverrides = provenance?.metadataOverrides ?? {};
     const hasExternalRelayProvenance = provenance?.source === 'iframe'
-        || provenance?.source === 'url';
+        || provenance?.source === 'url'
+        || provenance?.source === 'manual';
     const relays = hasExternalRelayProvenance
         ? provenance.channelRelayOverrides
         : channelContext.channelRelays;

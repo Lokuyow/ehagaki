@@ -753,6 +753,43 @@ describe('PostEventBuilder', () => {
             ]);
         });
 
+        it('kind 42引用はchannel root eタグとqタグを持ちreply eタグを持たない', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Channel quote\nnostr:nevent1example',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                [['q', 'quoted-kind-42', 'wss://quote.example.com']],
+                {
+                    eventId: 'channel-root-event',
+                    relayHints: ['wss://channel-relay.example.com'],
+                    name: 'General',
+                    about: null,
+                    picture: null,
+                },
+            );
+
+            expect(event.kind).toBe(42);
+            expect(event.tags).toContainEqual([
+                'e',
+                'channel-root-event',
+                'wss://channel-relay.example.com',
+                'root',
+            ]);
+            expect(event.tags).toContainEqual([
+                'q',
+                'quoted-kind-42',
+                'wss://quote.example.com',
+            ]);
+            expect(event.tags.filter((tag: string[]) => tag[0] === 'e'))
+                .toHaveLength(1);
+        });
+
         it('emoji tags を kind 1 に追加する', async () => {
             const event = await PostEventBuilder.buildEvent(
                 'Hello :blobcat:',

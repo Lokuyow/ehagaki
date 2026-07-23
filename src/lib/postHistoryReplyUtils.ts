@@ -4,6 +4,7 @@ import type {
     NostrEvent,
     ReplyQuoteQueryTarget,
 } from "./types";
+import type { ComposerEventTarget } from "./composerTargetApplyController";
 import {
     extractPostHistoryChannelReference,
     isPostHistoryRawEventConsistent,
@@ -73,5 +74,23 @@ export function buildPostHistoryReplyChannelContextQuery(
         eventId: derivedReference.channelEventId,
         relayHints,
         ...(channelRelays.length > 0 ? { channelRelays } : {}),
+    };
+}
+
+export function buildPostHistoryComposerEventTarget(
+    post: PostHistoryRecord,
+): ComposerEventTarget {
+    const preloadedEvents = buildPostHistoryReplySeedEvents(post);
+    const reference = buildPostHistoryReferenceTarget(post);
+    return {
+        source: "post-history",
+        kind: post.kind,
+        eventId: reference.eventId,
+        relayHints: reference.relayHints,
+        authorPubkey: reference.authorPubkey,
+        ...(preloadedEvents?.[post.eventId]
+            ? { event: preloadedEvents[post.eventId] }
+            : {}),
+        channelQuery: buildPostHistoryReplyChannelContextQuery(post),
     };
 }

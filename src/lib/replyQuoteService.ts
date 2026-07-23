@@ -11,6 +11,18 @@ export interface ReplyQuoteServiceDeps {
     clearTimeoutFn?: (id: ReturnType<typeof setTimeout>) => void;
 }
 
+export type ReferencedEventFetchResult =
+    | { status: 'found'; event: NostrEvent; relayUrl: string | null }
+    | { status: 'not-found' }
+    | { status: 'timeout' }
+    | { status: 'error' }
+    | { status: 'cancelled' };
+
+export interface ReferencedEventFetchTask {
+    promise: Promise<ReferencedEventFetchResult>;
+    cancel(): void;
+}
+
 export class ReplyQuoteService {
     private console: Console;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -32,7 +44,26 @@ export class ReplyQuoteService {
         relayConfig?: RelayConfig | null,
         timeoutMs: number = 5000
     ): Promise<NostrEvent | null> {
-        return new Promise((resolve) => {
+        return this.fetchReferencedEventTask(
+            eventId,
+            relayHints,
+            rxNostr,
+            relayConfig,
+            timeoutMs,
+        ).promise.then((result) =>
+            result.status === 'found' ? result.event : null,
+        );
+    }
+
+    fetchReferencedEventTask(
+        eventId: string,
+        relayHints: string[],
+        rxNostr: RxNostr,
+        relayConfig?: RelayConfig | null,
+        timeoutMs: number = 5000,
+    ): ReferencedEventFetchTask {
+        let cancelTask: (() => void) | undefined;
+        const promise = new Promise<ReferencedEventFetchResult>((resolve) => {
             const rxReq = createRxBackwardReq();
             let resolved = false;
             let subscription: any = undefined;
@@ -49,13 +80,14 @@ export class ReplyQuoteService {
                 }
             };
 
-            const safeResolve = (result: NostrEvent | null) => {
+            const safeResolve = (result: ReferencedEventFetchResult) => {
                 if (!resolved) {
                     resolved = true;
                     cleanup();
                     resolve(result);
                 }
             };
+            cancelTask = () => safeResolve({ status: 'cancelled' });
 
             // readリレーが0件の場合はFALLBACK_RELAYSを使用
             const normalizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(relayHints, {
@@ -76,41 +108,59 @@ export class ReplyQuoteService {
             }
 
             try {
-                subscription = rxNostr.use(rxReq, { on: onParams }).subscribe({
+                const nextSubscription = rxNostr.use(rxReq, { on: onParams }).subscribe({
                     next: (packet: any) => {
                         if (resolved) return;
                         if (packet.event?.id === eventId) {
                             this.console.log('参照イベントを取得:', packet.event.id);
-                            safeResolve(packet.event as NostrEvent);
+                            safeResolve({
+                                status: 'found',
+                                event: packet.event as NostrEvent,
+                                relayUrl: typeof packet.from === 'string'
+                                    ? packet.from
+                                    : null,
+                            });
                         }
                     },
                     complete: () => {
                         if (!resolved) {
                             this.console.log('参照イベント取得: EOSE受信、イベントなし');
-                            safeResolve(null);
+                            safeResolve({ status: 'not-found' });
                         }
                     },
                     error: (error: any) => {
                         this.console.error('参照イベント取得エラー:', error);
-                        safeResolve(null);
+                        safeResolve({ status: 'error' });
                     }
                 });
+                subscription = nextSubscription;
+                if (resolved) {
+                    cleanup();
+                    return;
+                }
 
                 rxReq.emit({ ids: [eventId] });
                 rxReq.over();
 
-                timeoutId = this.setTimeoutFn(() => {
-                    if (!resolved) {
-                        this.console.warn('参照イベント取得タイムアウト');
-                        safeResolve(null);
-                    }
-                }, timeoutMs);
+                if (!resolved) {
+                    timeoutId = this.setTimeoutFn(() => {
+                        if (!resolved) {
+                            this.console.warn('参照イベント取得タイムアウト');
+                            safeResolve({ status: 'timeout' });
+                        }
+                    }, timeoutMs);
+                }
 
             } catch (error) {
                 this.console.error('参照イベントリクエスト作成エラー:', error);
-                safeResolve(null);
+                safeResolve({ status: 'error' });
             }
         });
+
+        return {
+            promise,
+            cancel: () => cancelTask?.(),
+        };
     }
 
     /**

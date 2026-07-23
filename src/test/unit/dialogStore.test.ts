@@ -4,6 +4,7 @@ import {
     isAnyDialogOpen,
     pendingDraftContentStore,
     showAddAccountDialogStore,
+    showComposerTargetDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     showLoginDialogStore,
@@ -19,6 +20,7 @@ describe('dialogStore', () => {
         showSettingsDialogStore.set(false);
         showWelcomeDialogStore.set(false);
         showAddAccountDialogStore.set(false);
+        showComposerTargetDialogStore.set(false);
         showDraftListDialogStore.set(false);
         showDraftLimitConfirmStore.set(false);
         pendingDraftContentStore.set(null);
@@ -28,10 +30,12 @@ describe('dialogStore', () => {
         showLoginDialogStore.set(true);
         showAddAccountDialogStore.set(true);
         showDraftLimitConfirmStore.set(true);
+        showComposerTargetDialogStore.set(true);
 
         expect(showLoginDialogStore.value).toBe(true);
         expect(showAddAccountDialogStore.value).toBe(true);
         expect(showDraftLimitConfirmStore.value).toBe(true);
+        expect(showComposerTargetDialogStore.value).toBe(true);
     });
 
     it('いずれかの dialog が開いているか判定できる', () => {

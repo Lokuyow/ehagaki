@@ -337,6 +337,34 @@ describe("ReplyQuoteService", () => {
     });
 
     describe("fetchReferencedEvent", () => {
+        it("task cancelで購読とタイマーを破棄してcancelledを返す", async () => {
+            const unsubscribe = vi.fn();
+            const clearTimeoutFn = vi.fn();
+            const taskService = new ReplyQuoteService({
+                console: mockConsole,
+                setTimeoutFn: vi.fn(() => 1 as any),
+                clearTimeoutFn,
+            });
+            const mockRxNostr: RxNostr = {
+                use: vi.fn().mockReturnValue({
+                    subscribe: vi.fn(() => ({ unsubscribe })),
+                }),
+            } as any;
+
+            const task = taskService.fetchReferencedEventTask(
+                "target-event-id",
+                [],
+                mockRxNostr,
+            );
+            task.cancel();
+
+            await expect(task.promise).resolves.toEqual({
+                status: "cancelled",
+            });
+            expect(unsubscribe).toHaveBeenCalledTimes(1);
+            expect(clearTimeoutFn).toHaveBeenCalledTimes(1);
+        });
+
         it("イベントを正常に取得した場合にイベントを返す", async () => {
             const targetEvent: NostrEvent = {
                 id: "target-event-id",

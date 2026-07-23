@@ -14,6 +14,7 @@
         onResetPostContent: () => void;
         onSaveDraft: () => Promise<boolean>;
         onShowDraftList: () => void;
+        onChooseTarget?: () => void;
         canSaveDraft?: boolean;
         canResetPostContent?: boolean;
         balloonMessage?: BalloonMessageType | null;
@@ -26,6 +27,7 @@
         onResetPostContent,
         onSaveDraft,
         onShowDraftList,
+        onChooseTarget = () => undefined,
         canSaveDraft = undefined,
         canResetPostContent = undefined,
         balloonMessage = null,
@@ -222,6 +224,36 @@
                         </Tooltip.Content>
                     </Tooltip.Portal>
                 </Tooltip.Root>
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                variant="header"
+                                shape="square"
+                                contentLayout="icon"
+                                className="choose-target-button"
+                                disabled={postStatus.sending || isUploading}
+                                onClick={(e) => {
+                                    onChooseTarget();
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                ariaLabel={$_("composerTarget.title")}
+                                {...restProps}
+                            >
+                                <div class="choose-target-icon svg-icon"></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("composerTarget.title")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
             </div>
         </Tooltip.Provider>
     </div>
@@ -339,13 +371,15 @@
 
     :global(.header.clear-button),
     :global(.header.draft-save-button),
-    :global(.header.draft-list-button) {
+    :global(.header.draft-list-button),
+    :global(.header.choose-target-button) {
         width: 50px;
     }
 
     .trash-icon,
     .list-icon,
-    .floppy-disk-icon {
+    .floppy-disk-icon,
+    .choose-target-icon {
         --icon-size: 30px;
     }
 
@@ -359,6 +393,10 @@
 
     .floppy-disk-icon {
         mask-image: url("/icons/save_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .choose-target-icon {
+        mask-image: url("/icons/alternate_email_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.tooltip-content) {

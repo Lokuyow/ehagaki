@@ -2,7 +2,7 @@ import { CHANNEL_ADDITIONAL_WRITE_RELAY_LIMIT } from "./channelContextConstants"
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { ChannelContextQueryTarget, ChannelContextState } from "./types";
 
-export type ChannelContextExternalSource = "iframe" | "url";
+export type ChannelContextExternalSource = "iframe" | "url" | "manual";
 export type ChannelContextProvenanceSource = ChannelContextExternalSource | "draft";
 export type ChannelContextResolutionPhase =
     | "idle"

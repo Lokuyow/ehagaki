@@ -7,6 +7,7 @@ type SettingsDialogComponent = typeof import("../components/SettingsDialog.svelt
 type WelcomeDialogComponent = typeof import("../components/WelcomeDialog.svelte").default;
 type DraftListDialogComponent = typeof import("../components/DraftListDialog.svelte").default;
 type PostHistoryDialogComponent = typeof import("../components/PostHistoryDialog.svelte").default;
+type ComposerTargetDialogComponent = typeof import("../components/ComposerTargetDialog.svelte").default;
 type CustomEmojiPickerComponent = typeof import("../components/CustomEmojiPicker.svelte").default;
 
 export interface AppComponentLoaders {
@@ -17,6 +18,7 @@ export interface AppComponentLoaders {
     loadWelcomeDialog(): Promise<void>;
     loadDraftListDialog(): Promise<void>;
     loadPostHistoryDialog(): Promise<void>;
+    loadComposerTargetDialog(): Promise<void>;
     loadCustomEmojiPicker(): Promise<void>;
 }
 
@@ -28,6 +30,7 @@ export interface AppComponentLoaderTargets {
     setWelcomeDialogComponent(component: WelcomeDialogComponent | null): void;
     setDraftListDialogComponent(component: DraftListDialogComponent | null): void;
     setPostHistoryDialogComponent(component: PostHistoryDialogComponent | null): void;
+    setComposerTargetDialogComponent(component: ComposerTargetDialogComponent | null): void;
     setCustomEmojiPickerComponent(component: CustomEmojiPickerComponent | null): void;
 }
 
@@ -56,6 +59,9 @@ export function createAppComponentLoaders(
     const loadPostHistoryDialogModule = createComponentLoader<PostHistoryDialogComponent>(
         () => import("../components/PostHistoryDialog.svelte"),
     );
+    const loadComposerTargetDialogModule = createComponentLoader<ComposerTargetDialogComponent>(
+        () => import("../components/ComposerTargetDialog.svelte"),
+    );
     const loadCustomEmojiPickerModule = createComponentLoader<CustomEmojiPickerComponent>(
         () => import("../components/CustomEmojiPicker.svelte"),
     );
@@ -81,6 +87,11 @@ export function createAppComponentLoaders(
         },
         async loadPostHistoryDialog(): Promise<void> {
             targets.setPostHistoryDialogComponent(await loadPostHistoryDialogModule());
+        },
+        async loadComposerTargetDialog(): Promise<void> {
+            targets.setComposerTargetDialogComponent(
+                await loadComposerTargetDialogModule(),
+            );
         },
         async loadCustomEmojiPicker(): Promise<void> {
             targets.setCustomEmojiPickerComponent(await loadCustomEmojiPickerModule());

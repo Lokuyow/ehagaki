@@ -42,6 +42,7 @@
     showSettingsDialogStore,
     showWelcomeDialogStore,
     showPostHistoryDialogStore,
+    showComposerTargetDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
@@ -141,6 +142,11 @@
   import type { EmbedSettingsSetPayload } from "./lib/embedProtocol";
   import { createDraftComposerController } from "./lib/draftComposerController";
   import { createPostHistoryDialogApplyController } from "./lib/postHistoryDialogApplyController";
+  import {
+    createComposerTargetApplyController,
+    type ComposerEventTarget,
+  } from "./lib/composerTargetApplyController";
+  import type { ComposerTargetAction } from "./lib/composerTargetUtils";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
     createAppEmbedController,
@@ -199,6 +205,8 @@
     typeof import("./components/DraftListDialog.svelte").default;
   type PostHistoryDialogComponent =
     typeof import("./components/PostHistoryDialog.svelte").default;
+  type ComposerTargetDialogComponent =
+    typeof import("./components/ComposerTargetDialog.svelte").default;
   type CustomEmojiPickerComponent =
     typeof import("./components/CustomEmojiPicker.svelte").default;
   let PostComponent: PostComponent | null = $state(null);
@@ -208,6 +216,8 @@
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
   let PostHistoryDialogComponent: PostHistoryDialogComponent | null =
+    $state(null);
+  let ComposerTargetDialogComponent: ComposerTargetDialogComponent | null =
     $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
     $state(null);
@@ -220,6 +230,7 @@
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
+    loadComposerTargetDialog,
     loadCustomEmojiPicker,
   } = createAppComponentLoaders({
     setPostComponent: (component) => {
@@ -242,6 +253,9 @@
     },
     setPostHistoryDialogComponent: (component) => {
       PostHistoryDialogComponent = component;
+    },
+    setComposerTargetDialogComponent: (component) => {
+      ComposerTargetDialogComponent = component;
     },
     setCustomEmojiPickerComponent: (component) => {
       CustomEmojiPickerComponent = component;
@@ -482,6 +496,9 @@
   );
   const postHistoryDialog = createDialogVisibilityHandlers(
     showPostHistoryDialogStore,
+  );
+  const composerTargetDialog = createDialogVisibilityHandlers(
+    showComposerTargetDialogStore,
   );
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
@@ -768,6 +785,12 @@
   });
 
   $effect(() => {
+    if (showComposerTargetDialogStore.value) {
+      void loadComposerTargetDialog();
+    }
+  });
+
+  $effect(() => {
     if (!showPostHistoryDialogStore.value || isBootstrappingApp) {
       return;
     }
@@ -879,6 +902,30 @@
       setChannelContextWithProvenance(context, provenance, ownerToken),
     setRuntimeState: setChannelContextRuntimeState,
     clearChannelContext,
+    logger: console,
+  });
+
+  const composerTargetApplyController = createComposerTargetApplyController({
+    startChannelContextQuery: (query) =>
+      channelContextApplyController.applyExternal({
+        query,
+        source: "manual",
+        rxNostr,
+        relayConfig: relayConfigStore.value,
+      }),
+    applyReplyQuoteQuery,
+    hydrateReplyQuoteReferences,
+    getReplyQuoteApplyParams: () => getReplyQuoteApplyParams(),
+    clearChannelContext: () => channelContextApplyController.clear(),
+    hasReplyOrQuotes: () =>
+      replyQuoteState.value.reply !== null ||
+      replyQuoteState.value.quotes.length > 0,
+    clearReplyQuote,
+    clearReplyReference,
+    addQuoteReference,
+    focusEditor: () => {
+      focusEditor(".tiptap-editor", 100);
+    },
     logger: console,
   });
 
@@ -1257,6 +1304,7 @@
     return () => {
       cleanupVisibilityHandler();
       cleanupRuntimeBindings();
+      composerTargetApplyController.dispose();
       channelContextApplyController.dispose();
     };
   });
@@ -1419,6 +1467,19 @@
     postHistoryDialogApplyController.applyQuote(post);
   }
 
+  function handleComposerTargetApply(
+    action: ComposerTargetAction,
+    target: ComposerEventTarget,
+  ): boolean {
+    if (action === "reply") {
+      return composerTargetApplyController.applyReply(target);
+    }
+    if (action === "quote") {
+      return composerTargetApplyController.applyQuote(target);
+    }
+    return composerTargetApplyController.applyChannel(target);
+  }
+
   function handleWarmPostHistoryDialog(): void {
     void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
   }
@@ -1490,6 +1551,7 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
+          onChooseTarget={composerTargetDialog.open}
           canSaveDraft={hasDraftComposerContext || undefined}
           canResetPostContent={hasDraftComposerContext || undefined}
           balloonMessage={showHeaderBalloonMessage
@@ -1736,6 +1798,16 @@
           authoredSelfPostSave={latestAuthoredSelfPostSave}
           reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
           notifySavedAuthoredPosts={postHistoryInboundReplyReconciliation.notifySelfPostsSaved}
+        />
+      {/if}
+      {#if showComposerTargetDialogStore.value && ComposerTargetDialogComponent}
+        <ComposerTargetDialogComponent
+          show={showComposerTargetDialogStore.value}
+          onClose={composerTargetDialog.close}
+          onApply={handleComposerTargetApply}
+          {rxNostr}
+          relayConfig={relayConfigStore.value}
+          profileService={relayProfileService}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

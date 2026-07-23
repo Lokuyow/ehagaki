@@ -53,6 +53,8 @@
         onLastPage?: () => void;
         /** 開いた直後のフォーカス先 */
         initialFocus?: "default" | "content";
+        /** Dialog.Contentの自動フォーカスを呼び出し側で処理する */
+        onOpenAutoFocus?: (event: Event) => void;
         /** ダイアログのメインコンテンツ */
         children?: Snippet;
         /** ダイアログのフッター（閉じるボタン等） */
@@ -84,6 +86,7 @@
         onNextPage,
         onLastPage,
         initialFocus = "default",
+        onOpenAutoFocus = undefined,
         children,
         footer,
     }: Props = $props();
@@ -98,6 +101,10 @@
     }
 
     function handleOpenAutoFocus(e: Event) {
+        if (onOpenAutoFocus) {
+            onOpenAutoFocus(e);
+            return;
+        }
         if (!shouldFocusContent) return;
 
         e.preventDefault();
