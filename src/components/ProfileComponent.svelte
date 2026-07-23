@@ -674,7 +674,7 @@
             height: 50px;
             background-color: var(--btn-bg);
             border: solid 1px var(--btn-bg);
-            border-left: none;
+            border-inline-start: none;
             border-radius: 0 8px 8px 0;
             cursor: pointer;
             flex-shrink: 0;

@@ -3292,7 +3292,7 @@
         align-items: center;
         gap: 2px;
         flex-shrink: 0;
-        margin-left: auto;
+        margin-inline-start: auto;
     }
 
     .post-preview-header-right > span {
@@ -3414,7 +3414,7 @@
     .post-preview-body {
         display: flex;
         flex-direction: column;
-        padding-left: 1rem;
+        padding-inline-start: 1rem;
         gap: 4px;
 
         .post-preview-content {
@@ -3634,7 +3634,7 @@
     }
 
     .post-meta-inline {
-        margin-left: auto;
+        margin-inline-start: auto;
         display: flex;
         align-items: center;
         gap: 6px;
