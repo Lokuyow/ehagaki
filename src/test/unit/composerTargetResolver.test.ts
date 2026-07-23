@@ -233,6 +233,58 @@ describe("createComposerTargetResolver", () => {
         });
     });
 
+    it("有効rootとイベントIDが不正なrootが混在するkind 42を拒否する", async () => {
+        const resolveInternal = vi.fn();
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: {
+                fetchReferencedEventTask: () => foundTask(event({
+                    kind: 42,
+                    tags: [
+                        ["e", channelId, "wss://valid.example/", "root"],
+                        ["e", "not-a-valid-event-id", "", "root"],
+                    ],
+                })),
+            },
+            channelCoordinator: { resolveInternal },
+            verifyEventFn: () => true,
+        });
+
+        await expect(resolver.resolve({
+            pointer: pointer({ kindHint: 42 }),
+            rxNostr: {} as never,
+        }).promise).resolves.toMatchObject({
+            status: "error",
+            reason: "channel-unavailable",
+        });
+        expect(resolveInternal).not.toHaveBeenCalled();
+    });
+
+    it("異なるイベントIDのrootが複数あるkind 42を拒否する", async () => {
+        const resolveInternal = vi.fn();
+        const resolver = createComposerTargetResolver({
+            replyQuoteService: {
+                fetchReferencedEventTask: () => foundTask(event({
+                    kind: 42,
+                    tags: [
+                        ["e", channelId, "", "root"],
+                        ["e", "6".repeat(64), "", "root"],
+                    ],
+                })),
+            },
+            channelCoordinator: { resolveInternal },
+            verifyEventFn: () => true,
+        });
+
+        await expect(resolver.resolve({
+            pointer: pointer({ kindHint: 42 }),
+            rxNostr: {} as never,
+        }).promise).resolves.toMatchObject({
+            status: "error",
+            reason: "channel-unavailable",
+        });
+        expect(resolveInternal).not.toHaveBeenCalled();
+    });
+
     it("cancelで取得taskを解除し、古い結果をcancelledにする", async () => {
         let finish: ((value: { status: "cancelled" }) => void) | undefined;
         const cancel = vi.fn(() => finish?.({ status: "cancelled" }));

@@ -3,7 +3,14 @@ import { expect, test, type Page } from "@playwright/test";
 type HarnessState = {
     ready: boolean;
     inputs: Record<
-        "kind1" | "kind40" | "kind42" | "stale" | "unsupported" | "nsec",
+        | "kind1"
+        | "kind40"
+        | "kind42"
+        | "stale"
+        | "namelessChannel"
+        | "longNameChannel"
+        | "unsupported"
+        | "nsec",
         string
     >;
     applications: Array<{ action: string; kind: number }>;
@@ -92,13 +99,26 @@ test.describe("composer target dialog fixture", () => {
             if (!(await page.getByRole("dialog").isVisible())) {
                 await openDialog(page);
             }
-            await page.getByLabel("イベント識別子").fill(harness.inputs.kind42);
-            await expect(page.getByRole("button", { name: "返信する" })).toBeVisible();
-            const overflow = await page.evaluate(() =>
-                document.documentElement.scrollWidth
-                    - document.documentElement.clientWidth
-            );
-            expect(overflow).toBeLessThanOrEqual(0);
+            for (const [input, expectedName] of [
+                [
+                    harness.inputs.namelessChannel,
+                    "ID: eeeeeeeeeeee...eeeeeeee",
+                ],
+                [
+                    harness.inputs.longNameChannel,
+                    "LongChannelName".repeat(40),
+                ],
+            ] as const) {
+                await page.getByLabel("イベント識別子").fill(input);
+                await expect(page.getByRole("button", { name: "投稿する" }))
+                    .toBeVisible();
+                await expect(page.locator(".channel-name")).toHaveText(expectedName);
+                const overflow = await page.evaluate(() =>
+                    document.documentElement.scrollWidth
+                        - document.documentElement.clientWidth
+                );
+                expect(overflow).toBeLessThanOrEqual(0);
+            }
         }
     });
 });

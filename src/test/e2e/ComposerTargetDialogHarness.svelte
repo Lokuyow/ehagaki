@@ -16,12 +16,16 @@
         kind40: "4".repeat(64),
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
+        namelessChannel: "8".repeat(64),
+        longNameChannel: "9".repeat(64),
     };
     const inputs = {
         kind1: nip19.noteEncode(ids.kind1),
         kind40: nip19.noteEncode(ids.kind40),
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
+        namelessChannel: nip19.noteEncode(ids.namelessChannel),
+        longNameChannel: nip19.noteEncode(ids.longNameChannel),
         unsupported: nip19.npubEncode("b".repeat(64)),
         nsec: nip19.nsecEncode(Uint8Array.from({ length: 32 }, () => 7)),
     };
@@ -29,7 +33,11 @@
     let show = $state(false);
     let applications = $state<Array<{ action: ComposerTargetAction; kind: number }>>([]);
 
-    function makeTarget(kind: 1 | 40 | 42, eventId: string): ComposerResolvedTarget {
+    function makeTarget(
+        kind: 1 | 40 | 42,
+        eventId: string,
+        channelName: string | null = "Fixture channel",
+    ): ComposerResolvedTarget {
         const hasChannel = kind !== 1;
         return {
             event: {
@@ -59,7 +67,7 @@
                     eventId: "e".repeat(64),
                     relayHints: ["wss://verified.example.com/"],
                     channelRelays: ["wss://verified.example.com/"],
-                    name: "Fixture channel",
+                    name: channelName,
                     about: "Deterministic channel preview",
                     picture: null,
                 }
@@ -78,6 +86,18 @@
     function resolveForId(eventId: string): ComposerTargetResolveResult {
         if (eventId === ids.kind40) {
             return { status: "resolved", target: makeTarget(40, eventId) };
+        }
+        if (eventId === ids.namelessChannel) {
+            return {
+                status: "resolved",
+                target: makeTarget(40, eventId, null),
+            };
+        }
+        if (eventId === ids.longNameChannel) {
+            return {
+                status: "resolved",
+                target: makeTarget(40, eventId, "LongChannelName".repeat(40)),
+            };
         }
         if (eventId === ids.kind42) {
             return { status: "resolved", target: makeTarget(42, eventId) };

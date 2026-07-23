@@ -40,7 +40,10 @@ vi.mock("svelte-i18n", () => ({
     _: readable((key: string) => translations[key] ?? key),
 }));
 
-function resolvedTarget(kind: number): ComposerResolvedTarget {
+function resolvedTarget(
+    kind: number,
+    channelName: string | null = "General",
+): ComposerResolvedTarget {
     const channel = kind === 40 || kind === 42;
     return {
         event: {
@@ -61,7 +64,7 @@ function resolvedTarget(kind: number): ComposerResolvedTarget {
                 eventId: "4".repeat(64),
                 relayHints: ["wss://verified.example.com/"],
                 channelRelays: ["wss://verified.example.com/"],
-                name: "General",
+                name: channelName,
                 about: "Channel",
                 picture: null,
             }
@@ -221,6 +224,45 @@ describe("ComposerTargetDialog", () => {
         expect(screen.getByText("秘密鍵は入力できません。"))
             .not.toBeNull();
         expect(resolver.resolve).not.toHaveBeenCalled();
+    });
+
+    it("名前のないチャンネルは64桁IDを短縮して表示する", async () => {
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(40, null),
+            }),
+        });
+
+        await enterNote();
+        const channelName = document.querySelector(".channel-name");
+        expect(channelName?.textContent?.trim()).toBe(
+            "ID: 444444444444...44444444",
+        );
+        expect(channelName?.textContent).not.toContain("4".repeat(64));
+    });
+
+    it("非常に長い空白なしのチャンネル名を専用の折返し要素に表示する", async () => {
+        const longName = "VeryLongChannelName".repeat(20);
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(40, longName),
+            }),
+        });
+
+        await enterNote();
+        const channelName = document.querySelector(".channel-name");
+        expect(channelName?.textContent?.trim()).toBe(longName);
+        expect(channelName?.classList.contains("channel-name")).toBe(true);
     });
 
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {

@@ -78,6 +78,18 @@ function hasVerifiedChannel(snapshot: ChannelContextCoordinatorSnapshot): boolea
         || snapshot.cache?.resolutionQuality === "verified-metadata";
 }
 
+const BLOCKING_KIND_42_CHANNEL_ISSUES = new Set([
+    "missing-channel-root",
+    "invalid-channel-root",
+    "conflicting-channel-roots",
+]);
+
+function hasBlockingKind42ChannelIssue(
+    issues: ReturnType<typeof parseKind42ThreadReferences>["issues"],
+): boolean {
+    return issues.some((issue) => BLOCKING_KIND_42_CHANNEL_ISSUES.has(issue));
+}
+
 function resolveFinalChannelSnapshot(
     cached: ChannelContextCoordinatorSnapshot,
     refreshed: Awaited<ChannelContextCoordinatorHandle["refresh"]>,
@@ -164,7 +176,14 @@ export function createComposerTargetResolver(
                 const channelEventId = event.kind === 40
                     ? event.id
                     : references?.channelEventId ?? null;
-                if (!channelEventId) {
+                if (
+                    !channelEventId
+                    || (
+                        event.kind === 42
+                        && references
+                        && hasBlockingKind42ChannelIssue(references.issues)
+                    )
+                ) {
                     const authorProfile = await authorProfilePromise;
                     return {
                         status: "error",

@@ -118,6 +118,12 @@
             COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH,
         );
     });
+    let channelDisplayName = $derived.by(() => {
+        const context = target?.channelContext;
+        if (!context) return "";
+        return context.name?.trim()
+            || `ID: ${shortenMiddle(context.eventId, 12, 8)}`;
+    });
     let channelCreatorDisplay = $derived.by(() => {
         const pubkey = target?.channelCreatorPubkey;
         if (!pubkey) return "";
@@ -381,9 +387,8 @@
                             />
                         {/if}
                         <div class="channel-text">
-                            <strong>
-                                {target.channelContext.name?.trim()
-                                    || `ID: ${target.channelContext.eventId}`}
+                            <strong class="channel-name">
+                                {channelDisplayName}
                             </strong>
                             {#if channelAbout}<p>{channelAbout}</p>{/if}
                             {#if channelCreatorDisplay}
@@ -562,6 +567,11 @@
         display: grid;
         gap: 4px;
         min-width: 0;
+    }
+
+    .channel-name {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .channel-relays {
