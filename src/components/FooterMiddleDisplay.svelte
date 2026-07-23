@@ -189,8 +189,6 @@
         width: 100%;
         max-height: 10vh;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-        border: 1px solid #fbb;
-        border-radius: 8px;
         background: #fff0f0;
         overflow-y: auto;
         opacity: 0.6;
