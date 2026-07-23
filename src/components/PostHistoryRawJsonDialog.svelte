@@ -80,7 +80,7 @@
             "Liberation Mono", monospace;
         font-size: 0.82rem;
         line-height: 1.45;
-        text-align: start;
+        text-align: left;
         white-space: pre;
     }
 
