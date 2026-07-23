@@ -564,9 +564,7 @@
     .resize-handle::before {
         content: "";
         position: absolute;
-        left: 0;
-        right: 0;
-        top: 0;
+        inset: 0 0 auto 0;
         height: 12px;
         background: var(--bg-buttonbar);
     }
@@ -714,9 +712,7 @@
 
     .emoji-grid {
         position: absolute;
-        top: 4px;
-        left: 4px;
-        right: 4px;
+        inset: 4px 4px auto 4px;
         display: grid;
         justify-items: center;
     }

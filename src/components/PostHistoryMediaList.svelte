@@ -1096,8 +1096,7 @@
 
     :global(button.post-history-media-copy-button-image.circle.copy) {
         position: absolute;
-        top: 8px;
-        right: 8px;
+        inset: 8px 8px auto auto;
     }
 
     :global(button.post-history-video-copy-button.circle.copy) {
