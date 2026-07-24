@@ -263,7 +263,7 @@ describe('createDraftComposerController', () => {
                     },
                 ),
         );
-        const { controller } = createController({
+        const { controller, deps } = createController({
             saveDraft: vi.fn(async () => ({
                 status: 'confirmation-required' as const,
                 drafts: [],
@@ -272,10 +272,14 @@ describe('createDraftComposerController', () => {
         });
 
         await controller.saveDraftFromComposer();
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
         const firstConfirm = controller.confirmPendingDraftSave();
         const secondConfirm = controller.confirmPendingDraftSave();
+        controller.cancelPendingDraftSave();
 
         expect(saveDraftWithReplaceOldest).toHaveBeenCalledOnce();
+        expect(deps.closeDraftLimitConfirm).not.toHaveBeenCalled();
         resolveReplacement?.({
             status: 'saved',
             draft: createDraft('replacement'),
@@ -285,6 +289,8 @@ describe('createDraftComposerController', () => {
             { status: 'saved' },
             { status: 'saved' },
         ]);
+        expect(listener).toHaveBeenCalledOnce();
+        expect(deps.closeDraftLimitConfirm).toHaveBeenCalledOnce();
     });
 
     it('別々の連続保存をそれぞれ通知し、購読解除後は通知しない', async () => {

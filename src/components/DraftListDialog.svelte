@@ -263,6 +263,11 @@
     async function handleDeleteAllDrafts() {
         await runListMutation((options) => deleteAllDrafts(options));
     }
+
+    function handleRetryLoad() {
+        if (!show || listLoadState !== "failed") return;
+        void refreshDrafts(pubkeyHex, true);
+    }
 </script>
 
 <DialogWrapper
@@ -302,15 +307,31 @@
     </div>
 
     <div class="draft-list-container">
-        {#if listLoadState === "loading" || loadedPubkeyHex !== pubkeyHex}
+        {#if listLoadState === "loading"}
             <div class="empty-message">
                 {$_("loadingPlaceholder.loading") || "読み込み中..."}
             </div>
-        {:else if drafts.length === 0}
+        {:else if listLoadState === "failed"}
+            <div class="load-error">
+                <div role="alert">
+                    {$_("draft.load_failed") ||
+                        "下書き一覧を読み込めませんでした。"}
+                </div>
+                <Button
+                    className="retry-load-button"
+                    variant="secondary"
+                    shape="square"
+                    ariaLabel={$_("draft.retry_load") || "再試行"}
+                    onClick={handleRetryLoad}
+                >
+                    {$_("draft.retry_load") || "再試行"}
+                </Button>
+            </div>
+        {:else if listLoadState === "ready" && drafts.length === 0}
             <div class="empty-message">
                 {$_("draft.no_drafts") || "下書きがありません"}
             </div>
-        {:else}
+        {:else if listLoadState === "ready"}
             <ul class="draft-list">
                 {#each drafts as draft (draft.id)}
                     {@const display = createDraftListDisplay(
@@ -504,6 +525,15 @@
         height: 100px;
         color: var(--text-muted);
         font-size: 1rem;
+    }
+
+    .load-error {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+        padding: 24px 16px;
+        color: var(--text-muted);
+        text-align: center;
     }
 
     .draft-list {

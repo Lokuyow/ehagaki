@@ -34,6 +34,8 @@
         addToHistory?: boolean;
         /** 確認処理後に閉じるか（デフォルト: true） */
         closeOnConfirm?: boolean;
+        /** 非同期確認中のキャンセル・外側クリック・Escape・履歴closeを禁止するか */
+        preventCloseWhileConfirming?: boolean;
     }
 
     let {
@@ -51,6 +53,7 @@
         children,
         addToHistory = true,
         closeOnConfirm = true,
+        preventCloseWhileConfirming = false,
     }: Props = $props();
 
     // デフォルトのラベル（ローカライズ）
@@ -60,6 +63,9 @@
 
     let isConfirming = $state(false);
     let isCancelling = $state(false);
+    let closeLocked = $derived(
+        preventCloseWhileConfirming && isConfirming,
+    );
 
     function setOpen(newOpen: boolean) {
         if (open === newOpen) return;
@@ -68,6 +74,11 @@
     }
 
     function handleOpenChange(newOpen: boolean) {
+        if (!newOpen && closeLocked) {
+            open = true;
+            return;
+        }
+
         if (open !== newOpen) {
             open = newOpen;
             onOpenChange?.(newOpen);
@@ -83,6 +94,7 @@
     }
 
     function handleCancel() {
+        if (closeLocked) return;
         isCancelling = true;
         onCancel?.();
         setOpen(false);
@@ -91,23 +103,31 @@
         });
     }
 
-    function handleHistoryClose() {
+    function handleHistoryClose(): boolean {
+        if (closeLocked) return false;
         handleCancel();
+        return true;
+    }
+
+    function handleEscapeKeydown(event: KeyboardEvent) {
+        if (closeLocked) {
+            event.preventDefault();
+        }
     }
 
     // 確認ボタンのハンドラ
     async function handleConfirm() {
         if (isConfirming) return;
         isConfirming = true;
+        let confirmed = false;
         try {
             await onConfirm();
-            if (closeOnConfirm) {
-                setOpen(false);
-            }
+            confirmed = true;
         } finally {
-            queueMicrotask(() => {
-                isConfirming = false;
-            });
+            isConfirming = false;
+        }
+        if (confirmed && closeOnConfirm) {
+            setOpen(false);
         }
     }
 
@@ -125,7 +145,8 @@
         <AlertDialog.Content
             class={`confirm-dialog-shell ${contentClass}`}
             preventScroll={false}
-            interactOutsideBehavior="close"
+            interactOutsideBehavior={closeLocked ? "ignore" : "close"}
+            onEscapeKeydown={handleEscapeKeydown}
             onCloseAutoFocus={handleCloseAutoFocus}
         >
             <AlertDialog.Title class="visually-hidden">
@@ -169,6 +190,7 @@
                                 variant="secondary"
                                 shape="square"
                                 onClick={handleCancel}
+                                disabled={closeLocked}
                             >
                                 {defaultCancelLabel}
                             </Button>

@@ -25,12 +25,13 @@ import { generateSimpleUUID } from "../utils/appUtils";
  * ダイアログのブラウザ履歴統合を管理するフック
  *
  * @param getOpen - 現在のダイアログ開閉状態を返すゲッター関数
- * @param onClose - ダイアログを閉じる際に呼び出されるコールバック
+ * @param onClose - ダイアログを閉じる際に呼び出されるコールバック。
+ *                  falseを返した場合は履歴stateを復元してcloseを拒否する。
  * @param enabled - 履歴統合を有効にするかどうか（booleanまたはゲッター関数、デフォルト: true）
  */
 export function useDialogHistory(
     getOpen: () => boolean,
-    onClose: () => void,
+    onClose: () => void | boolean,
     enabled: boolean | (() => boolean) = true,
 ): void {
     // SSR環境では何もしない
@@ -52,7 +53,14 @@ export function useDialogHistory(
 
         // ダイアログが開いていて、履歴IDが一致しない場合は閉じる
         if (currentOpen && event.state?.modalId !== historyStateId) {
-            onClose();
+            const closeAccepted = onClose();
+            if (closeAccepted === false && getOpen() && historyStateId) {
+                history.pushState(
+                    { modalId: historyStateId },
+                    "",
+                    window.location.href,
+                );
+            }
         }
     };
 

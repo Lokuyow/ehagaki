@@ -1817,6 +1817,7 @@
           cancelLabel={$_("common.cancel")}
           confirmVariant="danger"
           closeOnConfirm={false}
+          preventCloseWhileConfirming={true}
           onConfirm={handleConfirmPendingDraftSave}
           onCancel={handleCancelPendingDraftSave}
         >

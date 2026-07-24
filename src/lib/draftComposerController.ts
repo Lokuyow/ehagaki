@@ -184,6 +184,7 @@ export function createDraftComposerController(
     }
 
     function cancelPendingDraftSave(): void {
+        if (pendingConfirmationPromise) return;
         pendingDraftSave = null;
         deps.closeDraftLimitConfirm();
     }

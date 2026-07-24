@@ -389,6 +389,8 @@
     "saved": "Draft saved",
     "limit_reached": "You have reached the draft limit (20). Delete the oldest draft and save?",
     "replace_save_failed": "Could not save the draft. Please try again.",
+    "load_failed": "Could not load drafts.",
+    "retry_load": "Try again",
     "info": "Drafts are stored in your browser. They will be deleted if you clear browser data or logout.",
     "time": {
       "now": "Now"

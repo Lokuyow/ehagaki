@@ -175,17 +175,68 @@ describe('ConfirmDialog', () => {
                 description: 'テストメッセージ',
                 onConfirm,
                 closeOnConfirm: false,
+                preventCloseWhileConfirming: true,
+                onCancel: mockOnCancel,
             },
         });
         const confirmButton = screen.getByText('OK') as HTMLButtonElement;
+        const cancelButton = screen.getByText('キャンセル') as HTMLButtonElement;
 
         await fireEvent.click(confirmButton);
         await fireEvent.click(confirmButton);
 
         expect(onConfirm).toHaveBeenCalledOnce();
         expect(confirmButton.disabled).toBe(true);
+        expect(cancelButton.disabled).toBe(true);
+        await fireEvent.click(cancelButton);
+        expect(mockOnCancel).not.toHaveBeenCalled();
         resolveConfirm?.();
-        await waitFor(() => expect(confirmButton.disabled).toBe(false));
+        await waitFor(() => {
+            expect(confirmButton.disabled).toBe(false);
+            expect(cancelButton.disabled).toBe(false);
+        });
+    });
+
+    it('close lock中は外側クリック・Escape・履歴closeを拒否する', async () => {
+        let resolveConfirm: (() => void) | undefined;
+        const onConfirm = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveConfirm = resolve;
+                }),
+        );
+        const onOpenChange = vi.fn();
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm,
+                onCancel: mockOnCancel,
+                onOpenChange,
+                closeOnConfirm: false,
+                preventCloseWhileConfirming: true,
+            },
+        });
+        await fireEvent.click(screen.getByText('OK'));
+
+        const overlay = document.body.querySelector('.confirm-dialog-overlay');
+        if (!overlay) throw new Error('overlay not found');
+        await fireEvent.pointerDown(overlay);
+        await fireEvent.click(overlay);
+        await fireEvent.keyDown(document, { key: 'Escape' });
+        const historyClose = vi.mocked(useDialogHistory).mock.calls.at(-1)?.[1];
+        expect(historyClose?.()).toBe(false);
+
+        expect(onOpenChange).not.toHaveBeenCalledWith(false);
+        expect(mockOnCancel).not.toHaveBeenCalled();
+        expect(screen.getAllByText('テストメッセージ')).toHaveLength(2);
+
+        resolveConfirm?.();
+        await waitFor(() =>
+            expect(
+                (screen.getByText('キャンセル') as HTMLButtonElement).disabled,
+            ).toBe(false),
+        );
     });
 
     it('キャンセルボタンをクリックするとonCancelが呼ばれる', async () => {

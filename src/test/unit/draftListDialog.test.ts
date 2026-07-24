@@ -24,6 +24,8 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'replyQuote.quote_label': '引用',
         'draft.save': '下書き保存',
         'draft.saved': '下書きを保存しました',
+        'draft.load_failed': '下書き一覧を読み込めませんでした。',
+        'draft.retry_load': '再試行',
         'global.close': '閉じる',
         'loadingPlaceholder.loading': '読み込み中...',
     };
@@ -173,6 +175,114 @@ describe('DraftListDialog', () => {
         await waitFor(() =>
             expect((saveButton as HTMLButtonElement).disabled).toBe(false),
         );
+    });
+
+    it('一覧読込失敗時はエラーと再試行を表示し、loading表示と操作可能状態を残さない', async () => {
+        mockLoadDrafts.mockRejectedValueOnce(new Error('load failed'));
+        render(DraftListDialog, {
+            props: createProps(),
+        });
+
+        await waitFor(() =>
+            expect(
+                screen.getByText('下書き一覧を読み込めませんでした。'),
+            ).toBeTruthy(),
+        );
+
+        expect(screen.queryByText('読み込み中...')).toBeNull();
+        expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(true);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '全て削除' }).disabled,
+        ).toBe(true);
+    });
+
+    it('再試行は現在のアカウントを読み込み、成功後だけ一覧操作を有効にする', async () => {
+        let resolveRetry: ((drafts: Draft[]) => void) | undefined;
+        mockLoadDrafts
+            .mockRejectedValueOnce(new Error('load failed'))
+            .mockImplementationOnce(
+                () =>
+                    new Promise<Draft[]>((resolve) => {
+                        resolveRetry = resolve;
+                    }),
+            );
+        render(DraftListDialog, {
+            props: createProps(createCompletionSource(), {
+                pubkeyHex: 'retry-account',
+            }),
+        });
+        const retryButton = await screen.findByRole('button', { name: '再試行' });
+
+        await fireEvent.click(retryButton);
+
+        expect(mockLoadDrafts).toHaveBeenNthCalledWith(2, {
+            pubkeyHex: 'retry-account',
+        });
+        expect(screen.getByText('読み込み中...')).toBeTruthy();
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(true);
+
+        resolveRetry?.([createDraft('retry', 'Retry success')]);
+        await waitFor(() => expect(screen.getByText('Retry success')).toBeTruthy());
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(false);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '削除' }).disabled,
+        ).toBe(false);
+    });
+
+    it('再試行も失敗した場合はエラー表示と無効状態を維持する', async () => {
+        mockLoadDrafts.mockRejectedValue(new Error('load failed'));
+        render(DraftListDialog, {
+            props: createProps(),
+        });
+        const retryButton = await screen.findByRole('button', { name: '再試行' });
+
+        await fireEvent.click(retryButton);
+
+        await waitFor(() =>
+            expect(
+                screen.getByText('下書き一覧を読み込めませんでした。'),
+            ).toBeTruthy(),
+        );
+        expect(mockLoadDrafts).toHaveBeenCalledTimes(2);
+        expect(screen.queryByText('読み込み中...')).toBeNull();
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(true);
+    });
+
+    it('再試行中にアカウントが切り替わっても古い結果を反映しない', async () => {
+        let resolveAccountA: ((drafts: Draft[]) => void) | undefined;
+        mockLoadDrafts
+            .mockRejectedValueOnce(new Error('load failed'))
+            .mockImplementationOnce(
+                () =>
+                    new Promise<Draft[]>((resolve) => {
+                        resolveAccountA = resolve;
+                    }),
+            )
+            .mockResolvedValueOnce([createDraft('b', 'Account B')]);
+        const source = createCompletionSource();
+        const { rerender } = render(DraftListDialog, {
+            props: createProps(source, { pubkeyHex: 'account-a' }),
+        });
+        await fireEvent.click(
+            await screen.findByRole('button', { name: '再試行' }),
+        );
+
+        await rerender(createProps(source, { pubkeyHex: 'account-b' }));
+        await waitFor(() => expect(screen.getByText('Account B')).toBeTruthy());
+        resolveAccountA?.([createDraft('a', 'Account A')]);
+        await Promise.resolve();
+
+        expect(screen.queryByText('Account A')).toBeNull();
+        expect(screen.getByText('Account B')).toBeTruthy();
     });
 
     it('保存完了イベントだけが一覧更新と成功表示を行う', async () => {
