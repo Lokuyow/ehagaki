@@ -501,7 +501,7 @@
   "composerTarget": {
     "title": "Choose target",
     "description": "Choose a Nostr event as the post destination, reply target, or quote target",
-    "inputLabel": "Event identifier",
+    "inputLabel": "Event ID",
     "placeholder": "Enter a note or nevent",
     "parsing": "Checking input",
     "checking": "Checking target",

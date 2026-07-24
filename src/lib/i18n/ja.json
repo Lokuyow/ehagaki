@@ -501,7 +501,7 @@
   "composerTarget": {
     "title": "宛先を指定",
     "description": "Nostrイベントを投稿先、返信先、または引用対象として指定します",
-    "inputLabel": "イベント識別子",
+    "inputLabel": "イベントID",
     "placeholder": "note または nevent を入力",
     "parsing": "入力を確認しています",
     "checking": "宛先を確認しています",
