@@ -65,7 +65,6 @@ export function usePostHistoryPreviewCollapse<
 
         for (const post of getPosts()) {
             if (post.forceCollapsible) {
-                nextCollapsiblePosts[post.eventId] = true;
                 continue;
             }
 
@@ -125,7 +124,8 @@ export function usePostHistoryPreviewCollapse<
     }
 
     function shouldCollapsePost(post: T): boolean {
-        return collapsiblePosts[post.eventId] ?? false;
+        return post.forceCollapsible === true
+            || (collapsiblePosts[post.eventId] ?? false);
     }
 
     $effect(() => {
