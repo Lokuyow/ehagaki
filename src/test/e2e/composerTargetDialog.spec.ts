@@ -121,4 +121,48 @@ test.describe("composer target dialog fixture", () => {
             }
         }
     });
+
+    test("スマートフォンだけ上寄せし、低い画面では内部をスクロールする", async ({
+        page,
+    }, testInfo) => {
+        const harness = await gotoHarness(page);
+        const isMobile = testInfo.project.name === "mobile-chromium";
+        await page.setViewportSize({
+            width: isMobile ? 375 : 900,
+            height: 720,
+        });
+        await openDialog(page);
+
+        const centerRatio = await page.getByRole("dialog").evaluate((dialog) => {
+            const rect = dialog.getBoundingClientRect();
+            return (rect.top + rect.height / 2) / window.innerHeight;
+        });
+        expect(centerRatio).toBeCloseTo(isMobile ? 0.43 : 0.5, 2);
+
+        if (!isMobile) return;
+
+        await page.setViewportSize({ width: 375, height: 480 });
+        await page.getByLabel("イベントID").fill(harness.inputs.longNameChannel);
+        await expect(page.getByRole("button", { name: "投稿する" }))
+            .toBeVisible();
+
+        const geometry = await page.getByRole("dialog").evaluate((dialog) => {
+            const rect = dialog.getBoundingClientRect();
+            const content = dialog.querySelector<HTMLElement>(".dialog-content");
+            return {
+                top: rect.top,
+                bottom: rect.bottom,
+                viewportHeight: window.innerHeight,
+                contentClientHeight: content?.clientHeight ?? 0,
+                contentScrollHeight: content?.scrollHeight ?? 0,
+            };
+        });
+        expect(geometry.top).toBeGreaterThanOrEqual(12);
+        expect(geometry.bottom).toBeLessThanOrEqual(
+            geometry.viewportHeight - 12,
+        );
+        expect(geometry.contentScrollHeight).toBeGreaterThan(
+            geometry.contentClientHeight,
+        );
+    });
 });

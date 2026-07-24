@@ -198,6 +198,8 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-center-y')).toBe('215px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-max-height')).toBe('430px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
@@ -278,6 +280,8 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-center-y')).toBe('215px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-max-height')).toBe('430px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');

@@ -475,6 +475,26 @@
         max-width: 560px;
     }
 
+    @media (max-width: 600px) {
+        :global(.composer-target-dialog) {
+            top: var(--mobile-dialog-center-y);
+            width: calc(100% - 24px);
+            max-height: calc(
+                var(--mobile-dialog-max-height) -
+                    env(safe-area-inset-top, 0px) -
+                    env(safe-area-inset-bottom, 0px) -
+                    24px
+            );
+        }
+
+        :global(.composer-target-dialog .dialog-content) {
+            min-height: 0;
+            max-height: none;
+            flex: 1 1 auto;
+            overflow-y: auto;
+        }
+    }
+
     .composer-target-content {
         display: grid;
         gap: 10px;

@@ -164,6 +164,26 @@ function syncLayoutCssVariables(
         reasonInputBottom,
     );
     setRootStyleProperty("--keyboard-height", `${keyboardHeight}px`);
+    const visibleViewportHeight =
+        lastViewportHeight === undefined
+            ? undefined
+            : Math.max(
+                  0,
+                  lastViewportHeight -
+                      (shouldUseKeyboardOverlay ? keyboardHeight : 0),
+              );
+    setRootStyleProperty(
+        "--mobile-dialog-center-y",
+        visibleViewportHeight === undefined
+            ? "43dvh"
+            : `${visibleViewportHeight * 0.43}px`,
+    );
+    setRootStyleProperty(
+        "--mobile-dialog-max-height",
+        visibleViewportHeight === undefined
+            ? "86dvh"
+            : `${visibleViewportHeight * 0.86}px`,
+    );
     setRootStyleProperty(
         "--keyboard-button-bar-bottom",
         keyboardButtonBarBottom,

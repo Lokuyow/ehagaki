@@ -12,6 +12,8 @@
   --footer-height: 66px;
   --footer-bottom: 0px;
   --keyboard-height: 0px;
+  --mobile-dialog-center-y: 43dvh;
+  --mobile-dialog-max-height: 86dvh;
   --keyboard-button-bar-height: 50px;
   --keyboard-button-bar-bottom: 66px;
   --main-content-keyboard-adjustment: var(--keyboard-height);
