@@ -160,9 +160,7 @@
         void refreshDrafts(event.pubkeyHex);
     }
 
-    onMount(() =>
-        subscribeToDraftSaveCompleted(handleDraftSaveCompleted),
-    );
+    onMount(() => subscribeToDraftSaveCompleted(handleDraftSaveCompleted));
 
     onDestroy(() => {
         destroyed = true;
@@ -222,7 +220,8 @@
             listActionsDisabled ||
             loadedPubkeyHex === undefined ||
             loadedPubkeyHex !== pubkeyHex
-        ) return;
+        )
+            return;
 
         const mutationPubkeyHex = loadedPubkeyHex;
         const generation = ++operationGeneration;
@@ -233,7 +232,8 @@
                 destroyed ||
                 generation !== operationGeneration ||
                 mutationPubkeyHex !== pubkeyHex
-            ) return;
+            )
+                return;
             await refreshDrafts(mutationPubkeyHex);
         } catch (error) {
             console.error("下書き一覧の更新に失敗:", error);
@@ -323,19 +323,15 @@
                     {$_("draft.retry_load") || "再試行"}
                 </Button>
             </div>
-        {:else if listLoadState === "loading" ||
-            loadedPubkeyHex !== pubkeyHex}
+        {:else if listLoadState === "loading" || loadedPubkeyHex !== pubkeyHex}
             <div class="empty-message">
                 {$_("loadingPlaceholder.loading") || "読み込み中..."}
             </div>
-        {:else if listLoadState === "ready" &&
-            loadedPubkeyHex === pubkeyHex &&
-            drafts.length === 0}
+        {:else if listLoadState === "ready" && loadedPubkeyHex === pubkeyHex && drafts.length === 0}
             <div class="empty-message">
                 {$_("draft.no_drafts") || "下書きがありません"}
             </div>
-        {:else if listLoadState === "ready" &&
-            loadedPubkeyHex === pubkeyHex}
+        {:else if listLoadState === "ready" && loadedPubkeyHex === pubkeyHex}
             <ul class="draft-list">
                 {#each drafts as draft (draft.id)}
                     {@const display = createDraftListDisplay(
@@ -454,10 +450,7 @@
     {/snippet}
 </DialogWrapper>
 
-<FloatingMessage
-    show={showSaveSuccessMessage}
-    variant="top-right"
->
+<FloatingMessage show={showSaveSuccessMessage} variant="top-right">
     <div>{$_("draft.saved") || "下書きを保存しました"}</div>
 </FloatingMessage>
 
@@ -691,7 +684,5 @@
 
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 20px;
-        height: 20px;
     }
 </style>
