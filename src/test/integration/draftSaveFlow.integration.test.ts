@@ -9,6 +9,7 @@ import {
     saveDraftWithReplaceOldest,
 } from "../../lib/draftManager";
 import { ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { draftsRepository } from "../../lib/storage/draftsRepository";
 import { MockStorage } from "../helpers";
 
 function createController(htmlContent: string, pubkeyHex = "pubkey-a") {
@@ -53,6 +54,7 @@ describe("draft save flow integration", () => {
                 await ehagakiDb.meta.clear();
             },
         );
+        draftsRepository.resetBackendSelectionForTesting();
     });
 
     afterEach(async () => {
@@ -89,7 +91,32 @@ describe("draft save flow integration", () => {
         expect(loadedLists).toEqual([["Normal save"]]);
     });
 
-    it("上限確認だけでは通知せず、置換成功後に通常保存と同じ通知から最新一覧を読み込める", async () => {
+    it("フォールバック通常保存も完了通知後の一覧から必ず取得できる", async () => {
+        vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+            new Error("put failed"),
+        );
+        const controller = createController("<p>Fallback save</p>");
+        const completionLists: string[][] = [];
+        let resolveCompletion: (() => void) | undefined;
+        const completion = new Promise<void>((resolve) => {
+            resolveCompletion = resolve;
+        });
+        controller.subscribeToDraftSaveCompleted((event) => {
+            void loadDrafts({ pubkeyHex: event.pubkeyHex }).then((drafts) => {
+                completionLists.push(drafts.map((draft) => draft.preview));
+                resolveCompletion?.();
+            });
+        });
+
+        await expect(controller.saveDraftFromComposer()).resolves.toEqual({
+            status: "saved",
+        });
+        await completion;
+
+        expect(completionLists).toEqual([["Fallback save"]]);
+    });
+
+    it("フォールバック置換でも確認中は通知せず、成功後に同じ通知から最新一覧を読み込める", async () => {
         for (let index = 0; index < MAX_DRAFTS; index += 1) {
             await saveDraft(
                 `<p>Existing ${index}</p>`,
@@ -123,6 +150,9 @@ describe("draft save flow integration", () => {
         });
         expect(completionEvents).toEqual([]);
 
+        vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+            new Error("put failed"),
+        );
         await expect(controller.confirmPendingDraftSave()).resolves.toEqual({
             status: "saved",
         });

@@ -15,6 +15,7 @@ import {
 import type { Draft, DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../../lib/types";
 import { MAX_DRAFTS, STORAGE_KEYS } from "../../lib/constants";
 import { ehagakiDb } from "../../lib/storage/ehagakiDb";
+import { draftsRepository } from "../../lib/storage/draftsRepository";
 import { MockStorage } from "../helpers";
 
 const mockLocale = vi.hoisted(() => ({ subscribe: vi.fn(), set: vi.fn() }));
@@ -103,6 +104,7 @@ describe("draftManager", () => {
             await ehagakiDb.drafts.clear();
             await ehagakiDb.meta.clear();
         });
+        draftsRepository.resetBackendSelectionForTesting();
         vi.clearAllMocks();
     });
 
@@ -244,6 +246,84 @@ describe("draftManager", () => {
             });
         });
 
+        it("IndexedDB 書き込み失敗後は localStorage に固定し、復旧した IndexedDB 読み込みへ戻らない", async () => {
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+
+            const result = await saveDraft(
+                "<p>Fallback draft</p>",
+                undefined,
+                undefined,
+                undefined,
+                { pubkeyHex: "pubkey-a" },
+            );
+
+            expect(result.status).toBe("saved");
+            expect(
+                (await loadDrafts({ pubkeyHex: "pubkey-a" })).map((draft) => draft.preview),
+            ).toEqual(["Fallback draft"]);
+            expect(storage.getItem(STORAGE_KEYS.DRAFTS_FALLBACK)).not.toBeNull();
+        });
+
+        it("フォールバック下書きをアカウント別に分離する", async () => {
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+
+            await saveDraft("<p>Account A fallback</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+            await saveDraft("<p>Account B fallback</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-b",
+            });
+
+            expect(
+                (await loadDrafts({ pubkeyHex: "pubkey-a" })).map((draft) => draft.preview),
+            ).toEqual(["Account A fallback"]);
+            expect(
+                (await loadDrafts({ pubkeyHex: "pubkey-b" })).map((draft) => draft.preview),
+            ).toEqual(["Account B fallback"]);
+        });
+
+        it("次セッションでフォールバックを IndexedDB に復旧しても二重表示しない", async () => {
+            await saveDraft("<p>Existing</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+            await saveDraft("<p>Fallback</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+
+            draftsRepository.resetBackendSelectionForTesting();
+            const recovered = await loadDrafts({ pubkeyHex: "pubkey-a" });
+
+            expect(recovered.map((draft) => draft.preview).sort()).toEqual([
+                "Existing",
+                "Fallback",
+            ]);
+            expect(new Set(recovered.map((draft) => draft.id)).size).toBe(2);
+            expect(storage.getItem(STORAGE_KEYS.DRAFTS_FALLBACK)).toBeNull();
+        });
+
+        it("IndexedDB と localStorage の両方へ保存できない場合は失敗する", async () => {
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+            vi.spyOn(storage, "setItem").mockImplementation(() => {
+                throw new Error("fallback failed");
+            });
+
+            await expect(
+                saveDraft("<p>Unsaved</p>", undefined, undefined, undefined, {
+                    pubkeyHex: "pubkey-a",
+                }),
+            ).rejects.toThrow();
+            expect(storage.getItem(STORAGE_KEYS.DRAFTS_FALLBACK)).toBeNull();
+        });
+
         it("上限に達した場合は confirmation-required を返す", async () => {
             for (let index = 0; index < MAX_DRAFTS; index += 1) {
                 await saveDraft(`<p>Content ${index}</p>`, undefined, undefined, undefined, {
@@ -311,6 +391,33 @@ describe("draftManager", () => {
             expect(result.drafts.some((draft) => draft.id === oldestId)).toBe(false);
         });
 
+        it("IndexedDB の置換失敗後も localStorage で置換し、直後に取得できる", async () => {
+            for (let index = 0; index < MAX_DRAFTS; index += 1) {
+                await saveDraft(`<p>Content ${index}</p>`, undefined, undefined, undefined, {
+                    pubkeyHex: "pubkey-a",
+                });
+            }
+            const before = await loadDrafts({ pubkeyHex: "pubkey-a" });
+            const oldestId = before[before.length - 1].id;
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+
+            const result = await saveDraftWithReplaceOldest(
+                "<p>Fallback replacement</p>",
+                undefined,
+                undefined,
+                undefined,
+                { pubkeyHex: "pubkey-a" },
+            );
+            const loaded = await loadDrafts({ pubkeyHex: "pubkey-a" });
+
+            expect(result.status).toBe("saved");
+            expect(loaded).toHaveLength(MAX_DRAFTS);
+            expect(loaded[0].preview).toBe("Fallback replacement");
+            expect(loaded.some((draft) => draft.id === oldestId)).toBe(false);
+        });
+
         it("置換保存が失敗した場合は最古の下書きを削除しない", async () => {
             for (let index = 0; index < MAX_DRAFTS; index += 1) {
                 await saveDraft(`<p>Content ${index}</p>`, undefined, undefined, undefined, {
@@ -334,7 +441,7 @@ describe("draftManager", () => {
                     undefined,
                     { pubkeyHex: "pubkey-a" },
                 ),
-            ).rejects.toThrow("fallback failed");
+            ).rejects.toThrow();
 
             const after = await loadDrafts({ pubkeyHex: "pubkey-a" });
             expect(after).toHaveLength(MAX_DRAFTS);
@@ -352,6 +459,25 @@ describe("draftManager", () => {
 
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe(drafts[1].id);
+        });
+
+        it("フォールバック中の削除を IndexedDB 復旧後も維持する", async () => {
+            const first = await saveDraft("<p>Delete me</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+            if (first.status !== "saved") throw new Error("expected saved draft");
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+            await saveDraft("<p>Keep me</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+            await deleteDraft(first.draft.id, { pubkeyHex: "pubkey-a" });
+
+            draftsRepository.resetBackendSelectionForTesting();
+            const recovered = await loadDrafts({ pubkeyHex: "pubkey-a" });
+
+            expect(recovered.map((draft) => draft.preview)).toEqual(["Keep me"]);
         });
     });
 
@@ -386,6 +512,36 @@ describe("draftManager", () => {
             await saveDraft("<p>Account A</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-a" });
             await saveDraft("<p>Account B</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-b" });
 
+            await deleteAllDrafts({ pubkeyHex: "pubkey-a" });
+
+            await expect(loadDrafts({ pubkeyHex: "pubkey-a" })).resolves.toEqual([]);
+            expect((await loadDrafts({ pubkeyHex: "pubkey-b" }))[0].preview).toBe("Account B");
+        });
+
+        it("フォールバックbackendでもアカウント別のピン留め・削除・全削除を一貫して扱う", async () => {
+            const accountA = await saveDraft("<p>Account A</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-a",
+            });
+            if (accountA.status !== "saved") throw new Error("expected saved draft");
+            await saveDraft("<p>Account B</p>", undefined, undefined, undefined, {
+                pubkeyHex: "pubkey-b",
+            });
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+            const fallbackA = await saveDraft(
+                "<p>Fallback A</p>",
+                undefined,
+                undefined,
+                undefined,
+                { pubkeyHex: "pubkey-a" },
+            );
+            if (fallbackA.status !== "saved") throw new Error("expected saved draft");
+
+            await toggleDraftPinned(accountA.draft.id, true, { pubkeyHex: "pubkey-a" });
+            expect((await getDraft(accountA.draft.id, { pubkeyHex: "pubkey-a" }))?.pinned).toBe(true);
+            await deleteDraft(fallbackA.draft.id, { pubkeyHex: "pubkey-a" });
+            expect(await getDraft(fallbackA.draft.id, { pubkeyHex: "pubkey-a" })).toBeUndefined();
             await deleteAllDrafts({ pubkeyHex: "pubkey-a" });
 
             await expect(loadDrafts({ pubkeyHex: "pubkey-a" })).resolves.toEqual([]);

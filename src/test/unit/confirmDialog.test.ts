@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 // svelte-i18nのモック（vi.hoistedで先に定義）
@@ -159,6 +159,33 @@ describe('ConfirmDialog', () => {
 
         expect(mockOnConfirm).toHaveBeenCalledTimes(1);
         expect(mockOnOpenChange).not.toHaveBeenCalledWith(false);
+    });
+
+    it('非同期確認中は確認ボタンを無効化して二重実行を防ぐ', async () => {
+        let resolveConfirm: (() => void) | undefined;
+        const onConfirm = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveConfirm = resolve;
+                }),
+        );
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm,
+                closeOnConfirm: false,
+            },
+        });
+        const confirmButton = screen.getByText('OK') as HTMLButtonElement;
+
+        await fireEvent.click(confirmButton);
+        await fireEvent.click(confirmButton);
+
+        expect(onConfirm).toHaveBeenCalledOnce();
+        expect(confirmButton.disabled).toBe(true);
+        resolveConfirm?.();
+        await waitFor(() => expect(confirmButton.disabled).toBe(false));
     });
 
     it('キャンセルボタンをクリックするとonCancelが呼ばれる', async () => {

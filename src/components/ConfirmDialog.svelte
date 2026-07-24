@@ -97,6 +97,7 @@
 
     // 確認ボタンのハンドラ
     async function handleConfirm() {
+        if (isConfirming) return;
         isConfirming = true;
         try {
             await onConfirm();

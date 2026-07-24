@@ -200,6 +200,91 @@ describe('createDraftComposerController', () => {
 
         expect(normalListener).not.toHaveBeenCalled();
         expect(replacementListener).not.toHaveBeenCalled();
+        expect(replacementFailure.deps.closeDraftLimitConfirm).not.toHaveBeenCalled();
+    });
+
+    it('置換失敗後も同じpayloadとpubkeyを保持し、再試行成功時だけ閉じて通知する', async () => {
+        let currentPubkey = 'account-a';
+        const replacementDraft = createDraft('replacement-draft');
+        const saveDraftWithReplaceOldest = vi.fn()
+            .mockRejectedValueOnce(new Error('replacement failed'))
+            .mockResolvedValueOnce({
+                status: 'saved' as const,
+                draft: replacementDraft,
+                drafts: [replacementDraft],
+            });
+        const { controller, deps } = createController({
+            getPubkeyHex: () => currentPubkey,
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+            saveDraftWithReplaceOldest,
+        });
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
+
+        await controller.saveDraftFromComposer();
+        currentPubkey = 'account-b';
+        await expect(controller.confirmPendingDraftSave()).resolves.toEqual({
+            status: 'failed',
+        });
+        expect(deps.closeDraftLimitConfirm).not.toHaveBeenCalled();
+        expect(listener).not.toHaveBeenCalled();
+
+        await expect(controller.confirmPendingDraftSave()).resolves.toEqual({
+            status: 'saved',
+        });
+
+        expect(saveDraftWithReplaceOldest).toHaveBeenCalledTimes(2);
+        expect(saveDraftWithReplaceOldest.mock.calls[0]).toEqual(
+            saveDraftWithReplaceOldest.mock.calls[1],
+        );
+        expect(saveDraftWithReplaceOldest).toHaveBeenLastCalledWith(
+            '<p>hello</p>',
+            [],
+            undefined,
+            undefined,
+            { pubkeyHex: 'account-a' },
+        );
+        expect(deps.closeDraftLimitConfirm).toHaveBeenCalledOnce();
+        expect(listener).toHaveBeenCalledOnce();
+    });
+
+    it('確認処理中の再呼び出しは同じPromiseを共有し、置換を二重実行しない', async () => {
+        let resolveReplacement:
+            | ((value: { status: 'saved'; draft: Draft; drafts: Draft[] }) => void)
+            | undefined;
+        const saveDraftWithReplaceOldest = vi.fn(
+            () =>
+                new Promise<{ status: 'saved'; draft: Draft; drafts: Draft[] }>(
+                    (resolve) => {
+                        resolveReplacement = resolve;
+                    },
+                ),
+        );
+        const { controller } = createController({
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+            saveDraftWithReplaceOldest,
+        });
+
+        await controller.saveDraftFromComposer();
+        const firstConfirm = controller.confirmPendingDraftSave();
+        const secondConfirm = controller.confirmPendingDraftSave();
+
+        expect(saveDraftWithReplaceOldest).toHaveBeenCalledOnce();
+        resolveReplacement?.({
+            status: 'saved',
+            draft: createDraft('replacement'),
+            drafts: [createDraft('replacement')],
+        });
+        await expect(Promise.all([firstConfirm, secondConfirm])).resolves.toEqual([
+            { status: 'saved' },
+            { status: 'saved' },
+        ]);
     });
 
     it('別々の連続保存をそれぞれ通知し、購読解除後は通知しない', async () => {

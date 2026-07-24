@@ -50,9 +50,12 @@
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
     let operationPhase = $state<"idle" | "saving" | "mutating-list">("idle");
+    let listLoadState = $state<"loading" | "ready" | "failed">("loading");
+    let loadedPubkeyHex = $state<string | null | undefined>(undefined);
     let showSaveSuccessMessage = $state(false);
     let saveSuccessMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
     let draftLoadGeneration = 0;
+    let operationGeneration = 0;
     let destroyed = false;
 
     function getDraftDisplayLabels(): DraftContextLabels {
@@ -67,13 +70,21 @@
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
+    let isListScopeCurrent = $derived(
+        listLoadState === "ready" &&
+            loadedPubkeyHex !== undefined &&
+            loadedPubkeyHex === pubkeyHex,
+    );
     let saveDisabled = $derived(
         !canSaveDraft ||
             postStatus.sending ||
             isUploading ||
-            operationPhase !== "idle",
+            operationPhase !== "idle" ||
+            !isListScopeCurrent,
     );
-    let listActionsDisabled = $derived(operationPhase !== "idle");
+    let listActionsDisabled = $derived(
+        operationPhase !== "idle" || !isListScopeCurrent,
+    );
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -101,10 +112,18 @@
         }, 2000);
     }
 
-    async function refreshDrafts(expectedPubkeyHex: string | null) {
+    async function refreshDrafts(
+        expectedPubkeyHex: string | null,
+        clearCurrentDrafts = false,
+    ) {
         if (!show || expectedPubkeyHex !== pubkeyHex) return;
 
         const generation = ++draftLoadGeneration;
+        listLoadState = "loading";
+        if (clearCurrentDrafts) {
+            drafts = [];
+            loadedPubkeyHex = undefined;
+        }
         try {
             const loadedDrafts = await loadDrafts({
                 pubkeyHex: expectedPubkeyHex,
@@ -116,8 +135,20 @@
                 generation === draftLoadGeneration
             ) {
                 drafts = loadedDrafts;
+                loadedPubkeyHex = expectedPubkeyHex;
+                listLoadState = "ready";
             }
         } catch (error) {
+            if (
+                !destroyed &&
+                show &&
+                expectedPubkeyHex === pubkeyHex &&
+                generation === draftLoadGeneration
+            ) {
+                drafts = [];
+                loadedPubkeyHex = undefined;
+                listLoadState = "failed";
+            }
             console.error("下書き一覧の読み込みに失敗:", error);
         }
     }
@@ -136,6 +167,7 @@
     onDestroy(() => {
         destroyed = true;
         draftLoadGeneration += 1;
+        operationGeneration += 1;
         clearSaveSuccessMessageTimeout();
     });
 
@@ -144,14 +176,22 @@
         const currentPubkeyHex = pubkeyHex;
         if (!show) {
             draftLoadGeneration += 1;
+            operationGeneration += 1;
+            drafts = [];
+            loadedPubkeyHex = undefined;
+            listLoadState = "loading";
+            operationPhase = "idle";
             return;
         }
 
-        void refreshDrafts(currentPubkeyHex);
+        operationGeneration += 1;
+        operationPhase = "idle";
+        void refreshDrafts(currentPubkeyHex, true);
     });
 
     // 下書きを適用
     function handleApplyDraft(draft: Draft) {
+        if (listActionsDisabled || loadedPubkeyHex !== pubkeyHex) return;
         onApplyDraft(draft);
         handleClose();
     }
@@ -159,11 +199,17 @@
     async function handleSaveDraftClick() {
         if (saveDisabled) return;
 
+        const savePubkeyHex = pubkeyHex;
+        const generation = ++operationGeneration;
         operationPhase = "saving";
         try {
             await onSaveDraft();
         } finally {
-            if (!destroyed) {
+            if (
+                !destroyed &&
+                generation === operationGeneration &&
+                savePubkeyHex === pubkeyHex
+            ) {
                 operationPhase = "idle";
             }
         }
@@ -172,17 +218,31 @@
     async function runListMutation(
         operation: (options: { pubkeyHex: string | null }) => Promise<unknown>,
     ) {
-        if (listActionsDisabled) return;
+        if (
+            listActionsDisabled ||
+            loadedPubkeyHex === undefined ||
+            loadedPubkeyHex !== pubkeyHex
+        ) return;
 
-        const mutationPubkeyHex = pubkeyHex;
+        const mutationPubkeyHex = loadedPubkeyHex;
+        const generation = ++operationGeneration;
         operationPhase = "mutating-list";
         try {
             await operation({ pubkeyHex: mutationPubkeyHex });
+            if (
+                destroyed ||
+                generation !== operationGeneration ||
+                mutationPubkeyHex !== pubkeyHex
+            ) return;
             await refreshDrafts(mutationPubkeyHex);
         } catch (error) {
             console.error("下書き一覧の更新に失敗:", error);
         } finally {
-            if (!destroyed) {
+            if (
+                !destroyed &&
+                generation === operationGeneration &&
+                mutationPubkeyHex === pubkeyHex
+            ) {
                 operationPhase = "idle";
             }
         }
@@ -242,7 +302,11 @@
     </div>
 
     <div class="draft-list-container">
-        {#if drafts.length === 0}
+        {#if listLoadState === "loading" || loadedPubkeyHex !== pubkeyHex}
+            <div class="empty-message">
+                {$_("loadingPlaceholder.loading") || "読み込み中..."}
+            </div>
+        {:else if drafts.length === 0}
             <div class="empty-message">
                 {$_("draft.no_drafts") || "下書きがありません"}
             </div>

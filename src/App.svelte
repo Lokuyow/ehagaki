@@ -620,6 +620,8 @@
     void nip46AuthFlowCoordinator.cancelPendingAuth();
   }
 
+  let draftLimitConfirmError = $state(false);
+
   const draftComposerController = createDraftComposerController({
     getEditorHtml: () => postComponentRef?.getEditorHtml?.(),
     getGalleryItems: () => mediaGalleryStore.getItems(),
@@ -629,7 +631,10 @@
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     saveDraft,
     saveDraftWithReplaceOldest,
-    openDraftLimitConfirm: () => showDraftLimitConfirmStore.set(true),
+    openDraftLimitConfirm: () => {
+      draftLimitConfirmError = false;
+      showDraftLimitConfirmStore.set(true);
+    },
     closeDraftLimitConfirm: () => showDraftLimitConfirmStore.set(false),
     logger: console,
     isGalleryMode: () => !mediaFreePlacementStore.value,
@@ -1434,6 +1439,19 @@
     return draftComposerController.saveDraftFromComposer();
   }
 
+  async function handleConfirmPendingDraftSave() {
+    draftLimitConfirmError = false;
+    const result = await draftComposerController.confirmPendingDraftSave();
+    if (result.status === "failed") {
+      draftLimitConfirmError = true;
+    }
+  }
+
+  function handleCancelPendingDraftSave() {
+    draftLimitConfirmError = false;
+    draftComposerController.cancelPendingDraftSave();
+  }
+
   function handleApplyDraft(draft: Draft) {
     draftComposerController.applyDraftToComposer(draft);
   }
@@ -1793,20 +1811,26 @@
       {#if showDraftLimitConfirmStore.value}
         <ConfirmDialog
           open={showDraftLimitConfirmStore.value}
-          onOpenChange={(open) => {
-            if (!open) draftComposerController.cancelPendingDraftSave();
-          }}
           title={$_("common.confirm")}
           description={$_("draft.limit_reached")}
           confirmLabel={$_("common.ok")}
           cancelLabel={$_("common.cancel")}
           confirmVariant="danger"
           closeOnConfirm={false}
-          onConfirm={async () => {
-            await draftComposerController.confirmPendingDraftSave();
-          }}
-          onCancel={draftComposerController.cancelPendingDraftSave}
-        />
+          onConfirm={handleConfirmPendingDraftSave}
+          onCancel={handleCancelPendingDraftSave}
+        >
+          <div class="draft-limit-confirm-content">
+            <div class="confirm-dialog-message">
+              {$_("draft.limit_reached")}
+            </div>
+            {#if draftLimitConfirmError}
+              <div class="draft-limit-confirm-error" role="alert">
+                {$_("draft.replace_save_failed")}
+              </div>
+            {/if}
+          </div>
+        </ConfirmDialog>
       {/if}
       {#if SettingsDialogComponent}
         <SettingsDialogComponent
@@ -1837,6 +1861,18 @@
   }
 
   .last-account-logout-error {
+    color: var(--error-color, #d32f2f);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .draft-limit-confirm-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .draft-limit-confirm-error {
     color: var(--error-color, #d32f2f);
     font-size: 0.9rem;
     line-height: 1.5;

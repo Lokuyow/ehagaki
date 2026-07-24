@@ -80,6 +80,7 @@ export function createDraftComposerController(
     deps: DraftComposerControllerDependencies,
 ): DraftComposerController {
     let pendingDraftSave: DraftLimitConfirmationPayload | null = null;
+    let pendingConfirmationPromise: Promise<DraftSaveAttemptResult> | null = null;
     const saveCompletedListeners = new Set<DraftSaveCompletedListener>();
 
     function notifyDraftSaveCompleted(event: DraftSaveCompletedEvent): void {
@@ -146,31 +147,40 @@ export function createDraftComposerController(
     }
 
     async function confirmPendingDraftSave(): Promise<DraftSaveAttemptResult> {
+        if (pendingConfirmationPromise) {
+            return pendingConfirmationPromise;
+        }
+
         const pending = pendingDraftSave;
         if (!pending) {
             return { status: 'not-saveable' };
         }
 
-        pendingDraftSave = null;
-        try {
-            const result = await deps.saveDraftWithReplaceOldest(
-                pending.content,
-                pending.galleryItems,
-                pending.replyQuoteData,
-                pending.channelData,
-                { pubkeyHex: pending.pubkeyHex },
-            );
-            notifyDraftSaveCompleted({
-                draftId: result.draft.id,
-                pubkeyHex: pending.pubkeyHex,
-            });
-            return { status: 'saved' };
-        } catch (error) {
-            deps.logger?.error('下書きの置換保存に失敗:', error);
-            return { status: 'failed' };
-        } finally {
-            deps.closeDraftLimitConfirm();
-        }
+        pendingConfirmationPromise = (async () => {
+            try {
+                const result = await deps.saveDraftWithReplaceOldest(
+                    pending.content,
+                    pending.galleryItems,
+                    pending.replyQuoteData,
+                    pending.channelData,
+                    { pubkeyHex: pending.pubkeyHex },
+                );
+                pendingDraftSave = null;
+                notifyDraftSaveCompleted({
+                    draftId: result.draft.id,
+                    pubkeyHex: pending.pubkeyHex,
+                });
+                deps.closeDraftLimitConfirm();
+                return { status: 'saved' };
+            } catch (error) {
+                deps.logger?.error('下書きの置換保存に失敗:', error);
+                return { status: 'failed' };
+            } finally {
+                pendingConfirmationPromise = null;
+            }
+        })();
+
+        return pendingConfirmationPromise;
     }
 
     function cancelPendingDraftSave(): void {

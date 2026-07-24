@@ -130,6 +130,7 @@ export const STORAGE_KEYS = {
     SHARED_MEDIA_PROCESSED: "sharedMediaProcessed",
     NOSTR_RELAYS: "nostr-relays-",
     DRAFTS: "nostr-drafts",
+    DRAFTS_FALLBACK: "nostr-drafts-fallback-v1",
     HASHTAG_HISTORY: "hashtagHistory",
     MEDIA_FREE_PLACEMENT: "mediaFreePlacement",
     THEME_MODE: "themeMode",

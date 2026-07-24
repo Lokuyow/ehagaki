@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { nip19 } from 'nostr-tools';
 import {
@@ -18,6 +18,65 @@ const CLEAR_REPLY_EVENT_ID = '44'.repeat(32);
 const CLEAR_QUOTE_EVENT_ID = '55'.repeat(32);
 const CHANNEL_EVENT_ID = '66'.repeat(32);
 const HISTORY_QUOTE_EVENT_ID = '77'.repeat(32);
+
+const mockDraftState = vi.hoisted(() => {
+    const drafts: any[] = [];
+    let saveMode: 'saved' | 'confirmation-required' = 'saved';
+    let replacementFailuresRemaining = 0;
+    let sequence = 0;
+
+    const saveDraft = vi.fn(async () => {
+        if (saveMode === 'confirmation-required') {
+            return { status: 'confirmation-required' as const, drafts: [...drafts] };
+        }
+        sequence += 1;
+        const draft = {
+            id: `app-draft-${sequence}`,
+            content: '<p>App draft</p>',
+            preview: `App draft ${sequence}`,
+            timestamp: sequence,
+        };
+        drafts.unshift(draft);
+        return { status: 'saved' as const, draft, drafts: [...drafts] };
+    });
+    const saveDraftWithReplaceOldest = vi.fn(async () => {
+        if (replacementFailuresRemaining > 0) {
+            replacementFailuresRemaining -= 1;
+            throw new Error('replacement failed');
+        }
+        sequence += 1;
+        const draft = {
+            id: `app-replacement-${sequence}`,
+            content: '<p>App replacement</p>',
+            preview: `App replacement ${sequence}`,
+            timestamp: sequence,
+        };
+        drafts.splice(0, drafts.length, draft);
+        return { status: 'saved' as const, draft, drafts: [...drafts] };
+    });
+
+    return {
+        drafts,
+        saveDraft,
+        saveDraftWithReplaceOldest,
+        loadDrafts: vi.fn(async () => [...drafts]),
+        deleteDraft: vi.fn(async () => [...drafts]),
+        deleteAllDrafts: vi.fn(async () => []),
+        toggleDraftPinned: vi.fn(async () => [...drafts]),
+        setSaveMode(value: 'saved' | 'confirmation-required') {
+            saveMode = value;
+        },
+        setReplacementFailures(value: number) {
+            replacementFailuresRemaining = value;
+        },
+        reset() {
+            drafts.splice(0);
+            saveMode = 'saved';
+            replacementFailuresRemaining = 0;
+            sequence = 0;
+        },
+    };
+});
 
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
@@ -168,7 +227,7 @@ vi.mock('svelte-i18n', () => ({
 vi.mock('../../i18n', () => ({}));
 
 vi.mock('../../components/PostComponent.svelte', async () =>
-    await import('../mocks/EmptyComponent.svelte'));
+    await import('../mocks/DraftPostComponentMock.svelte'));
 vi.mock('../../components/SettingsDialog.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
 vi.mock('../../components/ProfileComponent.svelte', async () =>
@@ -176,10 +235,6 @@ vi.mock('../../components/ProfileComponent.svelte', async () =>
 vi.mock('../../components/LoginDialog.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
 vi.mock('../../components/WelcomeDialog.svelte', async () =>
-    await import('../mocks/EmptyComponent.svelte'));
-vi.mock('../../components/DraftListDialog.svelte', async () =>
-    await import('../mocks/EmptyComponent.svelte'));
-vi.mock('../../components/ConfirmDialog.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
 vi.mock('../../components/HeaderComponent.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
@@ -323,16 +378,35 @@ vi.mock('nip07-awaiter', () => ({
     waitNostr: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../lib/draftManager', () => ({
+    loadDrafts: mockDraftState.loadDrafts,
+    saveDraft: mockDraftState.saveDraft,
+    saveDraftWithReplaceOldest: mockDraftState.saveDraftWithReplaceOldest,
+    deleteDraft: mockDraftState.deleteDraft,
+    deleteAllDrafts: mockDraftState.deleteAllDrafts,
+    toggleDraftPinned: mockDraftState.toggleDraftPinned,
+    formatDraftTimestamp: (timestamp: number) => String(timestamp),
+}));
+
 import App from '../../App.svelte';
 
 describe('App parentClient integration', () => {
     beforeEach(async () => {
         const { clearReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
-        const { showPostHistoryDialogStore } = await import('../../stores/dialogStore.svelte');
+        const {
+            showDraftLimitConfirmStore,
+            showDraftListDialogStore,
+            showPostHistoryDialogStore,
+        } = await import('../../stores/dialogStore.svelte');
+        const { editorState } = await import('../../stores/editorStore.svelte');
 
         vi.clearAllMocks();
         clearReplyQuote();
         showPostHistoryDialogStore.set(false);
+        showDraftListDialogStore.set(false);
+        showDraftLimitConfirmStore.set(false);
+        mockDraftState.reset();
+        editorState.canPost = false;
         mockState.bootstrapParams = null;
         mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
@@ -887,6 +961,63 @@ describe('App parentClient integration', () => {
             relayHints: ['wss://quote.example.com/', 'wss://accepted.example.com/'],
             authorPubkey: 'a'.repeat(64),
         }));
+    });
+
+    it('実際のAppとDraftListDialogを通して通常保存後に一覧と成功表示を更新する', async () => {
+        const { editorState } = await import('../../stores/editorStore.svelte');
+        const { showDraftListDialogStore } = await import('../../stores/dialogStore.svelte');
+        editorState.canPost = true;
+        showDraftListDialogStore.set(true);
+
+        render(App);
+
+        const saveButton = await screen.findByRole('button', { name: 'draft.save' });
+        await waitFor(() =>
+            expect((saveButton as HTMLButtonElement).disabled).toBe(false),
+        );
+        await fireEvent.click(saveButton);
+
+        await waitFor(() => expect(mockDraftState.saveDraft).toHaveBeenCalledOnce());
+        await waitFor(() => expect(screen.getByText('App draft')).toBeTruthy());
+        expect(screen.getByText('draft.saved')).toBeTruthy();
+    });
+
+    it('実際のApp・ConfirmDialog・DraftListDialogで置換失敗を表示し、同じpayloadの再試行成功時だけ完了表示する', async () => {
+        const { editorState } = await import('../../stores/editorStore.svelte');
+        const { showDraftListDialogStore } = await import('../../stores/dialogStore.svelte');
+        editorState.canPost = true;
+        mockDraftState.setSaveMode('confirmation-required');
+        mockDraftState.setReplacementFailures(1);
+        showDraftListDialogStore.set(true);
+
+        render(App);
+
+        const saveButton = await screen.findByRole('button', { name: 'draft.save' });
+        await waitFor(() =>
+            expect((saveButton as HTMLButtonElement).disabled).toBe(false),
+        );
+        await fireEvent.click(saveButton);
+        const confirmButton = await screen.findByRole('button', { name: 'common.ok' });
+
+        await fireEvent.click(confirmButton);
+        await waitFor(() =>
+            expect(screen.getByRole('alert').textContent).toBe(
+                'draft.replace_save_failed',
+            ),
+        );
+        expect(screen.queryByText('draft.saved')).toBeNull();
+        expect(mockDraftState.saveDraftWithReplaceOldest).toHaveBeenCalledOnce();
+
+        await fireEvent.click(confirmButton);
+        await waitFor(() =>
+            expect(mockDraftState.saveDraftWithReplaceOldest).toHaveBeenCalledTimes(2),
+        );
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+        await waitFor(() => expect(screen.getByText('App replacement')).toBeTruthy());
+        expect(screen.getByText('draft.saved')).toBeTruthy();
+        expect(
+            mockDraftState.saveDraftWithReplaceOldest.mock.calls[0],
+        ).toEqual(mockDraftState.saveDraftWithReplaceOldest.mock.calls[1]);
     });
 
 });

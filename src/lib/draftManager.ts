@@ -1,10 +1,9 @@
 import type { Draft, DraftChannelData, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
-import { STORAGE_KEYS, MAX_DRAFTS } from './constants';
+import { MAX_DRAFTS } from './constants';
 import { draftsRepository, type DraftsRepositoryOptions } from './storage/draftsRepository';
 import { createPersistedDraft } from './draftPersistenceUtils';
 import { generateDraftPreview } from './draftPreviewUtils';
-import { compareDraftsByDisplayOrder } from './draftSortUtils';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 
@@ -20,47 +19,10 @@ export type SaveDraftResult =
     };
 
 /**
- * 下書きをlocalStorageから読み込む
- */
-function loadDraftsFromStorage(): Draft[] {
-    const draftsJson = localStorage.getItem(STORAGE_KEYS.DRAFTS);
-    if (!draftsJson) return [];
-
-    try {
-        const drafts = JSON.parse(draftsJson) as Draft[];
-        // タイムスタンプの降順でソート（新しいものが先頭）
-        return drafts.sort(compareDraftsByDisplayOrder);
-    } catch {
-        return [];
-    }
-}
-
-/**
- * 下書きをlocalStorageに保存する
- */
-function saveDraftsToStorage(drafts: Draft[]): void {
-    localStorage.setItem(STORAGE_KEYS.DRAFTS, JSON.stringify(drafts));
-}
-
-async function runWithLocalStorageFallback<T>(
-    runIndexedDb: () => Promise<T>,
-    runFallback: () => T,
-): Promise<T> {
-    try {
-        return await runIndexedDb();
-    } catch {
-        return runFallback();
-    }
-}
-
-/**
- * 下書きをIndexedDBから読み込む
+ * 下書きを選択済みの永続化バックエンドから読み込む
  */
 export async function loadDrafts(options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
-    return runWithLocalStorageFallback(
-        () => draftsRepository.getAll(options),
-        loadDraftsFromStorage,
-    );
+    return draftsRepository.getAll(options);
 }
 
 /**
@@ -87,64 +49,36 @@ export async function saveDraft(
     channelData?: DraftChannelData,
     options: DraftsRepositoryOptions = {},
 ): Promise<SaveDraftResult> {
-    return runWithLocalStorageFallback(
-        async () => {
-            const drafts = await draftsRepository.getAll(options);
+    const drafts = await draftsRepository.getAll(options);
 
-            // 上限チェック
-            if (drafts.length >= MAX_DRAFTS) {
-                return { status: "confirmation-required" as const, drafts };
-            }
+    if (drafts.length >= MAX_DRAFTS) {
+        return { status: "confirmation-required" as const, drafts };
+    }
 
-            const timestamp = Date.now();
-            const newDraft = createPersistedDraft({
-                id: generateId(),
-                htmlContent,
-                timestamp,
-                galleryItems,
-                replyQuoteData,
-                channelData,
-                buildPreview: generatePreview,
-            });
+    const newDraft = createPersistedDraft({
+        id: generateId(),
+        htmlContent,
+        timestamp: Date.now(),
+        galleryItems,
+        replyQuoteData,
+        channelData,
+        buildPreview: generatePreview,
+    });
 
-            await draftsRepository.put({
-                ...newDraft,
-                pubkeyHex: options.pubkeyHex ?? null,
-            });
+    await draftsRepository.put({
+        ...newDraft,
+        pubkeyHex: options.pubkeyHex ?? null,
+    });
+    const persistedDrafts = await draftsRepository.getAll(options);
+    if (!persistedDrafts.some((draft) => draft.id === newDraft.id)) {
+        throw new Error("Saved draft could not be read from the active backend");
+    }
 
-            return {
-                status: "saved" as const,
-                draft: newDraft,
-                drafts: [newDraft, ...drafts].sort(compareDraftsByDisplayOrder),
-            };
-        },
-        () => {
-            const drafts = loadDraftsFromStorage();
-
-            if (drafts.length >= MAX_DRAFTS) {
-                return { status: "confirmation-required" as const, drafts };
-            }
-
-            const newDraft = createPersistedDraft({
-                id: generateId(),
-                htmlContent,
-                timestamp: Date.now(),
-                galleryItems,
-                replyQuoteData,
-                channelData,
-                buildPreview: generatePreview,
-            });
-
-            const updatedDrafts = [newDraft, ...drafts];
-            saveDraftsToStorage(updatedDrafts);
-
-            return {
-                status: "saved" as const,
-                draft: newDraft,
-                drafts: updatedDrafts.sort(compareDraftsByDisplayOrder),
-            };
-        },
-    );
+    return {
+        status: "saved" as const,
+        draft: newDraft,
+        drafts: persistedDrafts,
+    };
 }
 
 /**
@@ -157,49 +91,26 @@ export async function saveDraftWithReplaceOldest(
     channelData?: DraftChannelData,
     options: DraftsRepositoryOptions = {},
 ): Promise<{ status: "saved"; draft: Draft; drafts: Draft[] }> {
-    return runWithLocalStorageFallback(
-        async () => {
-            const newDraft = createPersistedDraft({
-                id: generateId(),
-                htmlContent,
-                timestamp: Date.now(),
-                galleryItems,
-                replyQuoteData,
-                channelData,
-                buildPreview: generatePreview,
-            });
+    const newDraft = createPersistedDraft({
+        id: generateId(),
+        htmlContent,
+        timestamp: Date.now(),
+        galleryItems,
+        replyQuoteData,
+        channelData,
+        buildPreview: generatePreview,
+    });
 
-            const drafts = await draftsRepository.replaceOldest({
-                ...newDraft,
-                pubkeyHex: options.pubkeyHex ?? null,
-            }, options);
+    await draftsRepository.replaceOldest({
+        ...newDraft,
+        pubkeyHex: options.pubkeyHex ?? null,
+    }, options);
+    const persistedDrafts = await draftsRepository.getAll(options);
+    if (!persistedDrafts.some((draft) => draft.id === newDraft.id)) {
+        throw new Error("Replaced draft could not be read from the active backend");
+    }
 
-            return { status: "saved" as const, draft: newDraft, drafts };
-        },
-        () => {
-            const drafts = loadDraftsFromStorage();
-            const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
-
-            const newDraft = createPersistedDraft({
-                id: generateId(),
-                htmlContent,
-                timestamp: Date.now(),
-                galleryItems,
-                replyQuoteData,
-                channelData,
-                buildPreview: generatePreview,
-            });
-
-            const updatedDrafts = [newDraft, ...remainingDrafts];
-            saveDraftsToStorage(updatedDrafts);
-
-            return {
-                status: "saved" as const,
-                draft: newDraft,
-                drafts: updatedDrafts.sort(compareDraftsByDisplayOrder),
-            };
-        },
-    );
+    return { status: "saved" as const, draft: newDraft, drafts: persistedDrafts };
 }
 
 /**
@@ -210,54 +121,24 @@ export async function toggleDraftPinned(
     pinned: boolean,
     options: DraftsRepositoryOptions = {},
 ): Promise<Draft[]> {
-    return runWithLocalStorageFallback(
-        async () => {
-            await draftsRepository.setPinned(id, pinned);
-            return draftsRepository.getAll(options);
-        },
-        () => {
-            const drafts = loadDraftsFromStorage();
-            const updatedDrafts = drafts
-                .map((draft) => draft.id === id ? { ...draft, pinned: pinned || undefined } : draft)
-                .sort(compareDraftsByDisplayOrder);
-            saveDraftsToStorage(updatedDrafts);
-            return updatedDrafts;
-        },
-    );
+    await draftsRepository.setPinned(id, pinned, options);
+    return draftsRepository.getAll(options);
 }
 
 /**
  * 指定IDの下書きを削除する
  */
 export async function deleteDraft(id: string, options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
-    return runWithLocalStorageFallback(
-        async () => {
-            await draftsRepository.delete(id);
-            return draftsRepository.getAll(options);
-        },
-        () => {
-            const drafts = loadDraftsFromStorage();
-            const updatedDrafts = drafts.filter(draft => draft.id !== id);
-            saveDraftsToStorage(updatedDrafts);
-            return updatedDrafts;
-        },
-    );
+    await draftsRepository.delete(id, options);
+    return draftsRepository.getAll(options);
 }
 
 /**
  * 全ての下書きを削除する
  */
 export async function deleteAllDrafts(options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
-    return runWithLocalStorageFallback(
-        async () => {
-            await draftsRepository.deleteAll(options);
-            return [];
-        },
-        () => {
-            saveDraftsToStorage([]);
-            return [];
-        },
-    );
+    await draftsRepository.deleteAll(options);
+    return draftsRepository.getAll(options);
 }
 
 /**

@@ -15,6 +15,8 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'draft.delete_all': '全て削除',
         'draft.delete': '削除',
         'draft.no_drafts': '下書きがありません',
+        'draft.pin': 'ピン留め',
+        'draft.unpin': 'ピン留めを解除',
         'draft.media.image': '[画像]',
         'draft.media.video': '[動画]',
         'channelComposer.selected_label': 'チャンネル',
@@ -23,6 +25,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'draft.save': '下書き保存',
         'draft.saved': '下書きを保存しました',
         'global.close': '閉じる',
+        'loadingPlaceholder.loading': '読み込み中...',
     };
 
     return translations[key] || key;
@@ -282,6 +285,108 @@ describe('DraftListDialog', () => {
         await Promise.resolve();
         expect(screen.queryByText('Account A')).toBeNull();
         expect(screen.getByText('Account B')).toBeTruthy();
+    });
+
+    it('アカウント切替時は旧一覧を即座に消し、新一覧の読込完了まで全操作と保存を無効にする', async () => {
+        let resolveAccountB: ((drafts: Draft[]) => void) | undefined;
+        mockLoadDrafts.mockImplementation(
+            ({ pubkeyHex }: { pubkeyHex: string | null }) => {
+                if (pubkeyHex === 'account-a') {
+                    return Promise.resolve([createDraft('a', 'Account A')]);
+                }
+                return new Promise<Draft[]>((resolve) => {
+                    resolveAccountB = resolve;
+                });
+            },
+        );
+        const source = createCompletionSource();
+        const onApplyDraft = vi.fn();
+        const { rerender } = render(DraftListDialog, {
+            props: createProps(source, {
+                pubkeyHex: 'account-a',
+                onApplyDraft,
+            }),
+        });
+        await waitFor(() => expect(screen.getByText('Account A')).toBeTruthy());
+
+        const oldApplyButton = screen.getByRole('button', { name: /Account A/ });
+        const oldDeleteButton = screen.getByRole('button', { name: '削除' });
+        const oldPinButton = screen.getByRole('button', { name: 'ピン留め' });
+
+        await rerender(createProps(source, {
+            pubkeyHex: 'account-b',
+            onApplyDraft,
+        }));
+
+        expect(screen.queryByText('Account A')).toBeNull();
+        expect(screen.getByText('読み込み中...')).toBeTruthy();
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(true);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '全て削除' }).disabled,
+        ).toBe(true);
+
+        await fireEvent.click(oldApplyButton);
+        await fireEvent.click(oldDeleteButton);
+        await fireEvent.click(oldPinButton);
+        expect(onApplyDraft).not.toHaveBeenCalled();
+        expect(mockDeleteDraft).not.toHaveBeenCalled();
+        expect(mockToggleDraftPinned).not.toHaveBeenCalled();
+        expect(mockDeleteAllDrafts).not.toHaveBeenCalled();
+
+        resolveAccountB?.([createDraft('b', 'Account B')]);
+        await waitFor(() => expect(screen.getByText('Account B')).toBeTruthy());
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled,
+        ).toBe(false);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '削除' }).disabled,
+        ).toBe(false);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: 'ピン留め' }).disabled,
+        ).toBe(false);
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '全て削除' }).disabled,
+        ).toBe(false);
+    });
+
+    it('アカウント切替前に開始したmutation完了結果を新アカウントへ反映しない', async () => {
+        let resolveDelete: (() => void) | undefined;
+        mockDeleteDraft.mockImplementation(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveDelete = resolve;
+                }),
+        );
+        mockLoadDrafts.mockImplementation(
+            ({ pubkeyHex }: { pubkeyHex: string | null }) =>
+                Promise.resolve(
+                    pubkeyHex === 'account-a'
+                        ? [createDraft('a', 'Account A')]
+                        : [createDraft('b', 'Account B')],
+                ),
+        );
+        const source = createCompletionSource();
+        const { rerender } = render(DraftListDialog, {
+            props: createProps(source, { pubkeyHex: 'account-a' }),
+        });
+        await waitFor(() => expect(screen.getByText('Account A')).toBeTruthy());
+
+        await fireEvent.click(screen.getByRole('button', { name: '削除' }));
+        await rerender(createProps(source, { pubkeyHex: 'account-b' }));
+        await waitFor(() => expect(screen.getByText('Account B')).toBeTruthy());
+        expect(
+            screen.getByRole<HTMLButtonElement>('button', { name: '削除' }).disabled,
+        ).toBe(false);
+
+        resolveDelete?.();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(screen.getByText('Account B')).toBeTruthy();
+        expect(screen.queryByText('Account A')).toBeNull();
+        expect(mockLoadDrafts).toHaveBeenCalledTimes(2);
     });
 
     it('現在のpubkeyで読み込み、削除後も同じ一覧更新経路を使う', async () => {
