@@ -44,9 +44,14 @@
             {#snippet child({ props })}
                 <Button
                     {...props}
-                    className="modal-close raw-json-close-button"
+                    className="modal-close"
+                    shape="square"
+                    ariaLabel={$_("global.close")}
                 >
-                    {$_("global.close")}
+                    <div
+                        class="xmark-icon svg-icon"
+                        aria-label={$_("global.close")}
+                    ></div>
                 </Button>
             {/snippet}
         </Dialog.Close>
@@ -54,6 +59,10 @@
 </DialogWrapper>
 
 <style>
+    .xmark-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
     :global(.post-history-raw-json-dialog .dialog-content) {
         padding: 8px;
     }

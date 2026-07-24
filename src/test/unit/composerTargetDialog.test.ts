@@ -297,7 +297,6 @@ describe("ComposerTargetDialog", () => {
         await fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
         expect(cancel).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalledTimes(1);
-        expect((screen.getByLabelText("Nostrイベント") as HTMLInputElement).value)
-            .toBe("");
+        expect(screen.queryByLabelText("Nostrイベント")).toBeNull();
     });
 });

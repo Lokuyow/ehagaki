@@ -119,14 +119,14 @@ describe('DraftListDialog', () => {
 
         const footer = screen
             .getByRole('button', { name: '閉じる' })
-            .closest('.dialog-footer-actions');
+            .closest('.dialog-footer');
         const saveButton = screen.getByRole('button', { name: '下書き保存' });
         const closeButton = screen.getByRole('button', { name: '閉じる' });
 
         expect(saveButton.className).toContain('primary');
         expect(saveButton.textContent).toContain('下書き保存');
         expect(saveButton.querySelector('.save-draft-icon')).toBeTruthy();
-        expect(footer?.firstElementChild).toBe(saveButton);
+        expect(footer?.firstElementChild).toContain(saveButton);
         expect(footer?.lastElementChild).toBe(closeButton);
     });
 

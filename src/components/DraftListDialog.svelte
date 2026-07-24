@@ -435,22 +435,22 @@
                 <div class="save-draft-icon svg-icon"></div>
                 <span class="btn-text">{$_("draft.save") || "下書き保存"}</span>
             </Button>
-            <Dialog.Close>
-                {#snippet child({ props })}
-                    <Button
-                        {...props}
-                        className="modal-close"
-                        shape="square"
-                        ariaLabel={$_("global.close") || "閉じる"}
-                    >
-                        <div
-                            class="xmark-icon svg-icon"
-                            aria-label={$_("global.close") || "閉じる"}
-                        ></div>
-                    </Button>
-                {/snippet}
-            </Dialog.Close>
         </div>
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    className="modal-close"
+                    shape="square"
+                    ariaLabel={$_("global.close") || "閉じる"}
+                >
+                    <div
+                        class="xmark-icon svg-icon"
+                        aria-label={$_("global.close") || "閉じる"}
+                    ></div>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
     {/snippet}
 </DialogWrapper>
 
@@ -506,7 +506,6 @@
     .dialog-footer-actions {
         display: flex;
         flex-direction: column;
-        gap: 8px;
         width: 100%;
     }
 

@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
+    import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -459,18 +460,29 @@
     </div>
 
     {#snippet footer()}
-        <Button
-            className="modal-close"
-            variant="default"
-            onClick={handleClose}
-            ariaLabel={$_("global.close")}
-        >
-            {$_("global.close")}
-        </Button>
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    className="modal-close"
+                    shape="square"
+                    ariaLabel={$_("global.close")}
+                >
+                    <div
+                        class="xmark-icon svg-icon"
+                        aria-label={$_("global.close")}
+                    ></div>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
     {/snippet}
 </DialogWrapper>
 
 <style>
+    .xmark-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
     :global(.composer-target-dialog) {
         max-width: 560px;
     }
