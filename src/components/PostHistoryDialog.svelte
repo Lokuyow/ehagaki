@@ -3712,7 +3712,7 @@
     .quote-icon.svg-icon {
         width: 24px;
         height: 24px;
-        mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.trash-icon) {

@@ -435,13 +435,23 @@
                 {#each actions as action}
                     <Button
                         variant="primary"
+                        contentLayout="iconText"
                         onClick={() => handleApply(action)}
                     >
-                        {action === "reply"
-                            ? $_("composerTarget.reply")
-                            : action === "quote"
-                              ? $_("composerTarget.quote")
-                              : $_("composerTarget.post")}
+                        {#if action === "reply"}
+                            <div class="action-icon reply-icon svg-icon"></div>
+                        {:else if action === "quote"}
+                            <div class="action-icon quote-icon svg-icon"></div>
+                        {:else}
+                            <div class="action-icon post-icon svg-icon"></div>
+                        {/if}
+                        <span class="btn-text">
+                            {action === "reply"
+                                ? $_("composerTarget.reply")
+                                : action === "quote"
+                                  ? $_("composerTarget.quote")
+                                  : $_("composerTarget.post")}
+                        </span>
                     </Button>
                 {/each}
             </div>
@@ -601,5 +611,21 @@
         flex-wrap: wrap;
         gap: 8px;
         justify-content: flex-end;
+    }
+
+    :global(.target-actions .reply-icon) {
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 26px;
+        height: 26px;
+    }
+
+    :global(.target-actions .quote-icon) {
+        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 30px;
+        height: 30px;
+    }
+
+    :global(.target-actions .post-icon) {
+        mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 </style>
