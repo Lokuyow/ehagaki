@@ -2,7 +2,6 @@ import { nip19 } from "nostr-tools";
 import { RelayConfigUtils } from "./relayConfigUtils";
 
 export const COMPOSER_TARGET_INPUT_MAX_LENGTH = 5_000;
-export const COMPOSER_TARGET_CONTENT_PREVIEW_LENGTH = 280;
 export const COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH = 200;
 
 export interface ComposerTargetPointer {

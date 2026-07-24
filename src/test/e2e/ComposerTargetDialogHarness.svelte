@@ -14,6 +14,7 @@
         kind40: "4".repeat(64),
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
+        longPost: "6".repeat(64),
         namelessChannel: "8".repeat(64),
         longNameChannel: "9".repeat(64),
     };
@@ -22,6 +23,7 @@
         kind40: nip19.noteEncode(ids.kind40),
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
+        longPost: nip19.noteEncode(ids.longPost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
         longNameChannel: nip19.noteEncode(ids.longNameChannel),
         unsupported: nip19.npubEncode("b".repeat(64)),
@@ -37,6 +39,7 @@
         kind: 1 | 40 | 42,
         eventId: string,
         channelName: string | null = "Fixture channel",
+        content = `Fixture kind ${kind}`,
     ): ComposerResolvedTarget {
         const hasChannel = kind !== 1;
         return {
@@ -49,7 +52,7 @@
                 content:
                     kind === 40
                         ? JSON.stringify({ name: "Fixture channel" })
-                        : `Fixture kind ${kind}`,
+                        : content,
                 sig: "d".repeat(128),
             },
             relayHints: ["wss://input.example.com/"],
@@ -102,6 +105,20 @@
         }
         if (eventId === ids.kind42) {
             return { status: "resolved", target: makeTarget(42, eventId) };
+        }
+        if (eventId === ids.longPost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    Array.from(
+                        { length: 6 },
+                        (_, index) => `Preview line ${index + 1}`,
+                    ).join("\n"),
+                ),
+            };
         }
         return { status: "resolved", target: makeTarget(1, eventId) };
     }

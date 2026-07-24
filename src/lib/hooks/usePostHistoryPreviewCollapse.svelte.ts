@@ -1,22 +1,30 @@
 import { onDestroy, tick } from "svelte";
-import type { PostHistoryRecord } from "../storage/ehagakiDb";
 
-interface UsePostHistoryPreviewCollapseParams {
+interface PreviewCollapseItem {
+    eventId: string;
+    content: string;
+}
+
+interface UsePostHistoryPreviewCollapseParams<
+    T extends PreviewCollapseItem,
+> {
     getShow: () => boolean;
-    getPosts: () => PostHistoryRecord[];
-    getContainer: () => HTMLDivElement | null;
+    getPosts: () => T[];
+    getContainer: () => HTMLElement | null;
     maxLines?: number;
 }
 
-export function usePostHistoryPreviewCollapse({
+export function usePostHistoryPreviewCollapse<
+    T extends PreviewCollapseItem,
+>({
     getShow,
     getPosts,
     getContainer,
     maxLines = 5,
-}: UsePostHistoryPreviewCollapseParams) {
+}: UsePostHistoryPreviewCollapseParams<T>) {
     let collapsiblePosts = $state<Record<string, boolean>>({});
     let expandedPosts = $state<Record<string, boolean>>({});
-    let postPreviewElements: Record<string, HTMLDivElement | null> = {};
+    let postPreviewElements: Record<string, HTMLElement | null> = {};
     let resizeObserver: ResizeObserver | null = null;
 
     function getLineHeight(element: HTMLElement): number {
@@ -31,7 +39,7 @@ export function usePostHistoryPreviewCollapse({
         return parsedLineHeight;
     }
 
-    function previewRef(node: HTMLDivElement, eventId: string) {
+    function previewRef(node: HTMLElement, eventId: string) {
         postPreviewElements[eventId] = node;
         void measureCollapsiblePosts();
 
@@ -99,7 +107,7 @@ export function usePostHistoryPreviewCollapse({
         disposeResizeObserver();
     }
 
-    function isPostExpanded(post: PostHistoryRecord): boolean {
+    function isPostExpanded(post: T): boolean {
         return expandedPosts[post.eventId] ?? false;
     }
 
@@ -110,7 +118,7 @@ export function usePostHistoryPreviewCollapse({
         };
     }
 
-    function shouldCollapsePost(post: PostHistoryRecord): boolean {
+    function shouldCollapsePost(post: T): boolean {
         return collapsiblePosts[post.eventId] ?? false;
     }
 

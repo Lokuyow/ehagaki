@@ -31,6 +31,8 @@ const translations: Record<string, string> = {
     "composerTarget.channelUnavailable": "チャンネルを確認できませんでした。",
     "composerTarget.preview": "イベントのプレビュー",
     "composerTarget.creator": "作成者",
+    "postHistory.expand": "もっと見る",
+    "postHistory.collapse": "折りたたむ",
     "postHistory.contextRetry": "再試行",
     "global.close": "閉じる",
 };
@@ -42,6 +44,7 @@ vi.mock("svelte-i18n", () => ({
 function resolvedTarget(
     kind: number,
     channelName: string | null = "General",
+    content = "Preview body",
 ): ComposerResolvedTarget {
     const channel = kind === 40 || kind === 42;
     return {
@@ -53,7 +56,7 @@ function resolvedTarget(
             tags: [],
             content: kind === 40
                 ? JSON.stringify({ name: "General", about: "Channel" })
-                : "Preview body",
+                : content,
             sig: "3".repeat(128),
         },
         relayHints: ["wss://read.example.com/"],
@@ -262,6 +265,41 @@ describe("ComposerTargetDialog", () => {
         const channelName = document.querySelector(".channel-name");
         expect(channelName?.textContent?.trim()).toBe(longName);
         expect(channelName?.classList.contains("channel-name")).toBe(true);
+    });
+
+    it("投稿履歴と同じ5行制限で折りたたみ、もっと見るボタンで展開する", async () => {
+        const content = Array.from(
+            { length: 6 },
+            (_, index) => `line ${index + 1}`,
+        ).join("\n");
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", content),
+            }),
+        });
+
+        await enterNote();
+        const previewContent = document.querySelector(".event-content");
+        const expandButton = screen.getByRole("button", {
+            name: "もっと見る",
+        });
+        expect(previewContent?.classList).toContain("event-content-collapsed");
+        expect(expandButton.getAttribute("aria-expanded")).toBe("false");
+
+        await fireEvent.click(expandButton);
+        expect(previewContent?.classList).not.toContain(
+            "event-content-collapsed",
+        );
+        expect(
+            screen.getByRole("button", { name: "折りたたむ" }).getAttribute(
+                "aria-expanded",
+            ),
+        ).toBe("true");
     });
 
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {

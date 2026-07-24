@@ -6,6 +6,7 @@
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import {
         createComposerTargetResolver,
@@ -17,7 +18,6 @@
     import type { ComposerEventTarget } from "../lib/composerTargetApplyController";
     import {
         COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH,
-        COMPOSER_TARGET_CONTENT_PREVIEW_LENGTH,
         getComposerTargetActions,
         parseComposerTargetInput,
         truncateComposerTargetPreview,
@@ -26,6 +26,7 @@
     } from "../lib/composerTargetUtils";
     import type { RelayProfileService } from "../lib/relayProfileService";
     import type { RelayConfig } from "../lib/types";
+    import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
@@ -74,6 +75,7 @@
 
     let inputValue = $state("");
     let inputElement: HTMLInputElement | null = $state(null);
+    let targetPreviewElement: HTMLElement | null = $state(null);
     let phase = $state<DialogPhase>("empty");
     let errorReason = $state<ErrorReason | null>(null);
     let target = $state<ComposerResolvedTarget | null>(null);
@@ -107,11 +109,28 @@
     let sanitizedContent = $derived.by(() => {
         const content = previewEvent?.content;
         if (!content || previewEvent?.kind === 40) return "";
-        return truncateComposerTargetPreview(
-            sanitizePlainText(content),
-            COMPOSER_TARGET_CONTENT_PREVIEW_LENGTH,
-        );
+        return sanitizePlainText(content);
     });
+    let previewCollapsePosts = $derived.by(() =>
+        previewEvent && sanitizedContent
+            ? [
+                  {
+                      eventId: previewEvent.id,
+                      content: sanitizedContent,
+                  },
+              ]
+            : [],
+    );
+    const previewCollapse = usePostHistoryPreviewCollapse({
+        getShow: () => show,
+        getPosts: () => previewCollapsePosts,
+        getContainer: () => targetPreviewElement,
+    });
+    const previewCollapseAction = previewCollapse.previewRef;
+    let previewCollapsePost = $derived(previewCollapsePosts[0]);
+    let previewContentId = $derived(
+        previewEvent ? `composer-target-preview-content-${previewEvent.id}` : "",
+    );
     let channelAbout = $derived.by(() => {
         const about = target?.channelContext?.about;
         if (!about) return "";
@@ -373,6 +392,7 @@
 
         {#if previewEvent}
             <section
+                bind:this={targetPreviewElement}
                 class="target-preview"
                 aria-label={$_("composerTarget.preview")}
             >
@@ -389,7 +409,32 @@
                     <span class="event-kind">kind {previewEvent.kind}</span>
                 </div>
                 {#if sanitizedContent}
-                    <p class="event-content">{sanitizedContent}</p>
+                    <p
+                        id={previewContentId}
+                        class="event-content"
+                        class:event-content-collapsed={previewCollapsePost &&
+                            !previewCollapse.isPostExpanded(
+                                previewCollapsePost,
+                            ) &&
+                            previewCollapse.shouldCollapsePost(
+                                previewCollapsePost,
+                            )}
+                        use:previewCollapseAction={previewEvent.id}
+                    >
+                        {sanitizedContent}
+                    </p>
+                    {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
+                        <PostPreviewToggleButton
+                            expanded={previewCollapse.isPostExpanded(
+                                previewCollapsePost,
+                            )}
+                            controls={previewContentId}
+                            onToggle={() =>
+                                previewCollapse.togglePostExpanded(
+                                    previewCollapsePost.eventId,
+                                )}
+                        />
+                    {/if}
                 {/if}
 
                 {#if target?.channelContext}
@@ -606,6 +651,11 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         line-height: 1.45;
+    }
+
+    .event-content-collapsed {
+        max-height: calc(5 * 1.45em);
+        overflow: hidden;
     }
 
     .channel-preview {

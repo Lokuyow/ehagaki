@@ -18,6 +18,7 @@
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
+    import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
@@ -1975,33 +1976,17 @@
                                             </div>
                                         {/if}
                                         {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
-                                            <div
-                                                class="post-preview-toggle-row"
-                                            >
-                                                <Button
-                                                    type="button"
-                                                    class="post-preview-action-button post-preview-toggle-button"
-                                                    aria-expanded={previewCollapse.isPostExpanded(
-                                                        post,
+                                            <PostPreviewToggleButton
+                                                expanded={previewCollapse.isPostExpanded(
+                                                    post,
+                                                )}
+                                                controls={"post-preview-content-" +
+                                                    post.eventId}
+                                                onToggle={() =>
+                                                    previewCollapse.togglePostExpanded(
+                                                        post.eventId,
                                                     )}
-                                                    aria-controls={"post-preview-content-" +
-                                                        post.eventId}
-                                                    onClick={() =>
-                                                        previewCollapse.togglePostExpanded(
-                                                            post.eventId,
-                                                        )}
-                                                >
-                                                    {previewCollapse.isPostExpanded(
-                                                        post,
-                                                    )
-                                                        ? $_(
-                                                              "postHistory.collapse",
-                                                          )
-                                                        : $_(
-                                                              "postHistory.expand",
-                                                          )}
-                                                </Button>
-                                            </div>
+                                            />
                                         {/if}
                                         {#if post.media.length > 0}
                                             <div class="post-preview-media">
@@ -3434,27 +3419,6 @@
             gap: 4px;
         }
 
-        .post-preview-toggle-row {
-            display: flex;
-
-            :global(
-                    .post-preview-toggle-button,
-                    .post-preview-toggle-button:hover
-                ) {
-                color: var(--text-muted);
-                font-size: 0.875rem;
-                font-weight: normal;
-                min-height: 24px;
-                padding: 0;
-                background: transparent;
-            }
-
-            @media (hover: hover) and (pointer: fine) {
-                :global(.post-preview-toggle-button:hover) {
-                    text-decoration: underline;
-                }
-            }
-        }
     }
 
     :global(.post-preview-action-buttons-group) {

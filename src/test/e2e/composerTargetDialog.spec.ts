@@ -7,6 +7,7 @@ type HarnessState = {
         | "kind40"
         | "kind42"
         | "stale"
+        | "longPost"
         | "namelessChannel"
         | "longNameChannel"
         | "unsupported"
@@ -120,6 +121,41 @@ test.describe("composer target dialog fixture", () => {
                 expect(overflow).toBeLessThanOrEqual(0);
             }
         }
+    });
+
+    test("5行を超える投稿をもっと見るボタンで展開できる", async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.longPost);
+
+        const previewContent = page.locator(".event-content");
+        const expandButton = page.getByRole("button", { name: "もっと見る" });
+        await expect(expandButton).toBeVisible();
+        await expect(expandButton).toHaveAttribute("aria-expanded", "false");
+        await expect(previewContent).toHaveCSS("overflow", "hidden");
+        await expect
+            .poll(() =>
+                previewContent.evaluate(
+                    (element) => element.scrollHeight > element.clientHeight,
+                ),
+            )
+            .toBe(true);
+
+        await expandButton.click();
+        const collapseButton = page.getByRole("button", {
+            name: "折りたたむ",
+        });
+        await expect(collapseButton).toHaveAttribute("aria-expanded", "true");
+        await expect(previewContent).not.toHaveCSS("overflow", "hidden");
+        await expect
+            .poll(() =>
+                previewContent.evaluate(
+                    (element) => element.scrollHeight === element.clientHeight,
+                ),
+            )
+            .toBe(true);
     });
 
     test("スマートフォンだけ上寄せし、低い画面では内部をスクロールする", async ({
