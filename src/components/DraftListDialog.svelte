@@ -307,11 +307,7 @@
     </div>
 
     <div class="draft-list-container">
-        {#if listLoadState === "loading"}
-            <div class="empty-message">
-                {$_("loadingPlaceholder.loading") || "読み込み中..."}
-            </div>
-        {:else if listLoadState === "failed"}
+        {#if listLoadState === "failed"}
             <div class="load-error">
                 <div role="alert">
                     {$_("draft.load_failed") ||
@@ -327,11 +323,19 @@
                     {$_("draft.retry_load") || "再試行"}
                 </Button>
             </div>
-        {:else if listLoadState === "ready" && drafts.length === 0}
+        {:else if listLoadState === "loading" ||
+            loadedPubkeyHex !== pubkeyHex}
+            <div class="empty-message">
+                {$_("loadingPlaceholder.loading") || "読み込み中..."}
+            </div>
+        {:else if listLoadState === "ready" &&
+            loadedPubkeyHex === pubkeyHex &&
+            drafts.length === 0}
             <div class="empty-message">
                 {$_("draft.no_drafts") || "下書きがありません"}
             </div>
-        {:else if listLoadState === "ready"}
+        {:else if listLoadState === "ready" &&
+            loadedPubkeyHex === pubkeyHex}
             <ul class="draft-list">
                 {#each drafts as draft (draft.id)}
                     {@const display = createDraftListDisplay(
