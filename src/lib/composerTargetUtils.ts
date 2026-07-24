@@ -3,6 +3,13 @@ import { RelayConfigUtils } from "./relayConfigUtils";
 
 export const COMPOSER_TARGET_INPUT_MAX_LENGTH = 5_000;
 export const COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH = 200;
+// This is a collapsed-render performance budget, not a user-visible content limit.
+export const COMPOSER_TARGET_COLLAPSED_CONTENT_RENDER_LIMIT = 2_000;
+
+export interface ComposerTargetCollapsedContent {
+    content: string;
+    exceedsRenderLimit: boolean;
+}
 
 export interface ComposerTargetPointer {
     format: "note" | "nevent";
@@ -109,4 +116,27 @@ export function truncateComposerTargetPreview(
     const characters = Array.from(value);
     if (characters.length <= limit) return value;
     return `${characters.slice(0, limit).join("")}…`;
+}
+
+export function limitComposerTargetCollapsedContent(
+    value: string,
+    limit = COMPOSER_TARGET_COLLAPSED_CONTENT_RENDER_LIMIT,
+): ComposerTargetCollapsedContent {
+    if (value.length <= limit) {
+        return {
+            content: value,
+            exceedsRenderLimit: false,
+        };
+    }
+
+    let sliceEnd = limit;
+    const lastCodeUnit = value.charCodeAt(sliceEnd - 1);
+    if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) {
+        sliceEnd -= 1;
+    }
+
+    return {
+        content: value.slice(0, sliceEnd),
+        exceedsRenderLimit: true,
+    };
 }

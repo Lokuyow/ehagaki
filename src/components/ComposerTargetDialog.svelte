@@ -19,6 +19,7 @@
     import {
         COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH,
         getComposerTargetActions,
+        limitComposerTargetCollapsedContent,
         parseComposerTargetInput,
         truncateComposerTargetPreview,
         type ComposerTargetAction,
@@ -106,17 +107,22 @@
             shortenMiddle(nip19.npubEncode(pubkey), 12, 4)
         );
     });
-    let sanitizedContent = $derived.by(() => {
+    let rawPreviewContent = $derived.by(() => {
         const content = previewEvent?.content;
         if (!content || previewEvent?.kind === 40) return "";
-        return sanitizePlainText(content);
+        return content;
     });
+    let collapsedContent = $derived(
+        limitComposerTargetCollapsedContent(rawPreviewContent),
+    );
     let previewCollapsePosts = $derived.by(() =>
-        previewEvent && sanitizedContent
+        previewEvent && rawPreviewContent
             ? [
                   {
                       eventId: previewEvent.id,
-                      content: sanitizedContent,
+                      content: collapsedContent.content,
+                      forceCollapsible:
+                          collapsedContent.exceedsRenderLimit,
                   },
               ]
             : [],
@@ -128,6 +134,18 @@
     });
     const previewCollapseAction = previewCollapse.previewRef;
     let previewCollapsePost = $derived(previewCollapsePosts[0]);
+    let isPreviewExpanded = $derived(
+        previewCollapsePost
+            ? previewCollapse.isPostExpanded(previewCollapsePost)
+            : false,
+    );
+    let displayedContent = $derived.by(() =>
+        sanitizePlainText(
+            isPreviewExpanded
+                ? rawPreviewContent
+                : collapsedContent.content,
+        ),
+    );
     let previewContentId = $derived(
         previewEvent ? `composer-target-preview-content-${previewEvent.id}` : "",
     );
@@ -408,26 +426,22 @@
                     <span>{authorDisplay}</span>
                     <span class="event-kind">kind {previewEvent.kind}</span>
                 </div>
-                {#if sanitizedContent}
+                {#if displayedContent || collapsedContent.exceedsRenderLimit}
                     <p
                         id={previewContentId}
                         class="event-content"
                         class:event-content-collapsed={previewCollapsePost &&
-                            !previewCollapse.isPostExpanded(
-                                previewCollapsePost,
-                            ) &&
+                            !isPreviewExpanded &&
                             previewCollapse.shouldCollapsePost(
                                 previewCollapsePost,
                             )}
                         use:previewCollapseAction={previewEvent.id}
                     >
-                        {sanitizedContent}
+                        {displayedContent}
                     </p>
                     {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
                         <PostPreviewToggleButton
-                            expanded={previewCollapse.isPostExpanded(
-                                previewCollapsePost,
-                            )}
+                            expanded={isPreviewExpanded}
                             controls={previewContentId}
                             onToggle={() =>
                                 previewCollapse.togglePostExpanded(

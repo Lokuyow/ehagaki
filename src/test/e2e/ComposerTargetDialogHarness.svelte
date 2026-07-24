@@ -14,7 +14,9 @@
         kind40: "4".repeat(64),
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
-        longPost: "6".repeat(64),
+        wrappingPost: "6".repeat(64),
+        exactlyFiveLinePost: "7".repeat(64),
+        oversizedPost: "3".repeat(64),
         namelessChannel: "8".repeat(64),
         longNameChannel: "9".repeat(64),
     };
@@ -23,12 +25,20 @@
         kind40: nip19.noteEncode(ids.kind40),
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
-        longPost: nip19.noteEncode(ids.longPost),
+        wrappingPost: nip19.noteEncode(ids.wrappingPost),
+        exactlyFiveLinePost: nip19.noteEncode(ids.exactlyFiveLinePost),
+        oversizedPost: nip19.noteEncode(ids.oversizedPost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
         longNameChannel: nip19.noteEncode(ids.longNameChannel),
         unsupported: nip19.npubEncode("b".repeat(64)),
         nsec: nip19.nsecEncode(Uint8Array.from({ length: 32 }, () => 7)),
     };
+    const wrappingPostContent = "wrapword ".repeat(24).trim();
+    const exactlyFiveLinePostContent = Array.from(
+        { length: 5 },
+        (_, index) => `Line ${index + 1}`,
+    ).join("\n");
+    const oversizedPostContent = "oversized-content-".repeat(2_000);
 
     let show = $state(false);
     let applications = $state<
@@ -106,17 +116,36 @@
         if (eventId === ids.kind42) {
             return { status: "resolved", target: makeTarget(42, eventId) };
         }
-        if (eventId === ids.longPost) {
+        if (eventId === ids.wrappingPost) {
             return {
                 status: "resolved",
                 target: makeTarget(
                     1,
                     eventId,
                     "Fixture channel",
-                    Array.from(
-                        { length: 6 },
-                        (_, index) => `Preview line ${index + 1}`,
-                    ).join("\n"),
+                    wrappingPostContent,
+                ),
+            };
+        }
+        if (eventId === ids.exactlyFiveLinePost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    exactlyFiveLinePostContent,
+                ),
+            };
+        }
+        if (eventId === ids.oversizedPost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    oversizedPostContent,
                 ),
             };
         }
@@ -160,6 +189,7 @@
     const harness = {
         ready: true,
         inputs,
+        oversizedPostContentLength: oversizedPostContent.length,
         get applications() {
             return applications;
         },

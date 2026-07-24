@@ -3,6 +3,7 @@ import { onDestroy, tick } from "svelte";
 interface PreviewCollapseItem {
     eventId: string;
     content: string;
+    forceCollapsible?: boolean;
 }
 
 interface UsePostHistoryPreviewCollapseParams<
@@ -63,6 +64,11 @@ export function usePostHistoryPreviewCollapse<
         const nextCollapsiblePosts: Record<string, boolean> = {};
 
         for (const post of getPosts()) {
+            if (post.forceCollapsible) {
+                nextCollapsiblePosts[post.eventId] = true;
+                continue;
+            }
+
             const previewEl = postPreviewElements[post.eventId];
             if (!previewEl) {
                 continue;

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { nip19 } from "nostr-tools";
 import {
+    COMPOSER_TARGET_COLLAPSED_CONTENT_RENDER_LIMIT,
     COMPOSER_TARGET_INPUT_MAX_LENGTH,
     getComposerTargetActions,
+    limitComposerTargetCollapsedContent,
     parseComposerTargetInput,
     truncateComposerTargetPreview,
 } from "../../lib/composerTargetUtils";
@@ -113,5 +115,26 @@ describe("composerTargetUtils", () => {
     it("Unicode文字単位でプレビューを省略する", () => {
         expect(truncateComposerTargetPreview("😀abc", 2)).toBe("😀a…");
         expect(truncateComposerTargetPreview("abc", 3)).toBe("abc");
+    });
+
+    it("折りたたみ用contentだけを描画上限で切り出す", () => {
+        const exact = "a".repeat(
+            COMPOSER_TARGET_COLLAPSED_CONTENT_RENDER_LIMIT,
+        );
+        expect(limitComposerTargetCollapsedContent(exact)).toEqual({
+            content: exact,
+            exceedsRenderLimit: false,
+        });
+
+        const oversized = `${exact}😀rest`;
+        const limited = limitComposerTargetCollapsedContent(
+            oversized,
+            exact.length + 1,
+        );
+        expect(limited).toEqual({
+            content: exact,
+            exceedsRenderLimit: true,
+        });
+        expect(limited.content).not.toContain("\ud83d");
     });
 });

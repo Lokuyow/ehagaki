@@ -302,6 +302,49 @@ describe("ComposerTargetDialog", () => {
         ).toBe("true");
     });
 
+    it("描画上限を超える投稿は折りたたみ中に一部だけ描画し、展開時だけ全文を表示する", async () => {
+        const content = "large-content-".repeat(1_000);
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", content),
+            }),
+        });
+
+        await enterNote();
+        const previewContent = document.querySelector(".event-content");
+        const expandButton = screen.getByRole("button", {
+            name: "もっと見る",
+        });
+        expect(previewContent?.textContent?.length).toBeLessThan(
+            content.length,
+        );
+        expect(expandButton.getAttribute("aria-controls")).toBe(
+            previewContent?.id,
+        );
+
+        await fireEvent.click(expandButton);
+        expect(previewContent?.textContent).toBe(content);
+        const collapseButton = screen.getByRole("button", {
+            name: "折りたたむ",
+        });
+        expect(collapseButton.getAttribute("aria-expanded")).toBe("true");
+
+        await fireEvent.click(collapseButton);
+        expect(previewContent?.textContent?.length).toBeLessThan(
+            content.length,
+        );
+        expect(
+            screen
+                .getByRole("button", { name: "もっと見る" })
+                .getAttribute("aria-expanded"),
+        ).toBe("false");
+    });
+
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {
         const cancel = vi.fn();
         const resolver = {
