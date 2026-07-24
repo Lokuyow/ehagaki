@@ -33,7 +33,7 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
 async function openDialog(page: Page): Promise<void> {
     await page.getByRole("button", { name: "宛先を指定" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByLabel("イベント識別子")).toBeFocused();
+    await expect(page.getByLabel("イベントID")).toBeFocused();
 }
 
 async function choose(
@@ -41,7 +41,7 @@ async function choose(
     value: string,
     action: "返信する" | "引用する" | "投稿する",
 ): Promise<void> {
-    await page.getByLabel("イベント識別子").fill(value);
+    await page.getByLabel("イベントID").fill(value);
     await page.getByRole("button", { name: action }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
 }
@@ -72,7 +72,7 @@ test.describe("composer target dialog fixture", () => {
     test("unsupportedとnsecを拒否し、入力競合では新しい結果だけを表示する", async ({ page }) => {
         const harness = await gotoHarness(page);
         await openDialog(page);
-        const input = page.getByLabel("イベント識別子");
+        const input = page.getByLabel("イベントID");
 
         await input.fill(harness.inputs.unsupported);
         await expect(page.getByText("この形式にはまだ対応していません"))
@@ -109,13 +109,13 @@ test.describe("composer target dialog fixture", () => {
                     "LongChannelName".repeat(40),
                 ],
             ] as const) {
-                await page.getByLabel("イベント識別子").fill(input);
+                await page.getByLabel("イベントID").fill(input);
                 await expect(page.getByRole("button", { name: "投稿する" }))
                     .toBeVisible();
                 await expect(page.locator(".channel-name")).toHaveText(expectedName);
                 const overflow = await page.evaluate(() =>
                     document.documentElement.scrollWidth
-                        - document.documentElement.clientWidth
+                    - document.documentElement.clientWidth
                 );
                 expect(overflow).toBeLessThanOrEqual(0);
             }
