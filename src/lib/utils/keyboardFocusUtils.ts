@@ -1,6 +1,42 @@
 let restoreTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let suppressedEditor: [HTMLElement, string | null] | null = null;
 
+export const POST_EDITOR_ROOT_SELECTOR = "[data-post-editor-root]";
+
+function getElementForNode(node: Node | null): Element | null {
+    if (node instanceof Element) {
+        return node;
+    }
+
+    return node?.parentElement ?? null;
+}
+
+export function isPostEditorFocusActive(
+    doc: Document = document,
+): boolean {
+    const activeElement = doc.activeElement;
+
+    if (activeElement?.closest(POST_EDITOR_ROOT_SELECTOR)) {
+        return true;
+    }
+
+    if (
+        activeElement &&
+        activeElement !== doc.body &&
+        activeElement !== doc.documentElement
+    ) {
+        return false;
+    }
+
+    const selection = doc.getSelection();
+    return Boolean(
+        selection?.rangeCount &&
+            getElementForNode(selection.anchorNode)?.closest(
+                POST_EDITOR_ROOT_SELECTOR,
+            ),
+    );
+}
+
 function restoreEditorKeyboardInput(): void {
     if (!suppressedEditor) {
         return;

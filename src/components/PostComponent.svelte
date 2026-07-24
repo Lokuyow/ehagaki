@@ -692,6 +692,7 @@
 
 <div
   class="post-container"
+  data-post-editor-root
   style={postContainerStyle}
   bind:this={postContainerEl}
 >

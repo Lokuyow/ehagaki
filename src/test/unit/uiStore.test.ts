@@ -81,6 +81,29 @@ function getRootPixelValue(name: string): number {
     );
 }
 
+function focusPostEditor(): HTMLElement {
+    const root = document.createElement('div');
+    root.setAttribute('data-post-editor-root', '');
+    const editor = document.createElement('div');
+    editor.className = 'tiptap-editor';
+    editor.contentEditable = 'true';
+    editor.tabIndex = 0;
+    root.append(editor);
+    document.body.append(root);
+    editor.focus();
+    return editor;
+}
+
+function focusDialogInput(dialogClass: string): HTMLInputElement {
+    const dialog = document.createElement('div');
+    dialog.className = dialogClass;
+    const input = document.createElement('input');
+    dialog.append(input);
+    document.body.append(dialog);
+    input.focus();
+    return input;
+}
+
 function createVirtualKeyboardMock(initialHeight = 0) {
     const listeners = new Set<EventListener>();
     let height = initialHeight;
@@ -134,6 +157,7 @@ describe('uiStore', () => {
     beforeEach(() => {
         vi.resetModules();
         vi.restoreAllMocks();
+        document.body.innerHTML = '';
         document.documentElement.removeAttribute('style');
 
         setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36');
@@ -166,9 +190,11 @@ describe('uiStore', () => {
             configurable: true,
             value: undefined,
         });
+
+        focusPostEditor();
     });
 
-    it('非PWA Android Chrome では VirtualKeyboard の矩形へバーとレイアウトを同期する', async () => {
+    it('投稿エディターへのフォーカス中は VirtualKeyboard の矩形へバーとレイアウトを同期し、閉じた際にリセットする', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
         const requestAnimationFrameSpy = vi
@@ -248,6 +274,143 @@ describe('uiStore', () => {
         );
         expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
 
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('「宛先を指定」ダイアログの入力欄では投稿エディター向けレイアウトを有効にしない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        focusDialogInput('composer-target-dialog');
+        createVisualViewportMock(800);
+        createVirtualKeyboardMock(300);
+        const {
+            FOOTER_HEIGHT,
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-center-y')).toBe('215px');
+        expect(document.documentElement.style.getPropertyValue('--mobile-dialog-max-height')).toBe('430px');
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('設定ダイアログの入力欄では投稿エディター向けレイアウトを有効にしない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        focusDialogInput('settings-dialog');
+        createVisualViewportMock(500);
+        const {
+            FOOTER_HEIGHT,
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('116px');
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('投稿エディターとダイアログ入力欄の間でフォーカスを移動しても状態が残留しない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        const editor = document.querySelector('.tiptap-editor') as HTMLElement;
+        const viewport = createVisualViewportMock(800);
+        const {
+            FOOTER_HEIGHT,
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+        viewport.visualViewport.height = 500;
+        viewport.emit('resize');
+
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(300);
+
+        focusDialogInput('composer-target-dialog');
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+
+        editor.focus();
+
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(300);
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
+
+        focusDialogInput('settings-dialog');
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+
+        viewport.visualViewport.height = 800;
+        viewport.emit('resize');
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+
+        cleanup?.();
         requestAnimationFrameSpy.mockRestore();
         cancelAnimationFrameSpy.mockRestore();
     });

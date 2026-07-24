@@ -11,6 +11,7 @@ import {
     isNonPwaIPhoneSafari,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
+import { isPostEditorFocusActive } from "../lib/utils/keyboardFocusUtils";
 
 // --- 定数 ---
 /** フッターの高さ（px） */
@@ -30,7 +31,8 @@ const KEYBOARD_THRESHOLD = 100;
 
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
-let lastLayoutViewportHeight: number | undefined;
+let lastPhysicalKeyboardVisible = false;
+let lastPhysicalKeyboardHeight = 0;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -63,12 +65,13 @@ function getFooterReservedHeight(isKeyboardOpen: boolean): number {
 }
 
 function syncLayoutCssVariables(
-    isKeyboardVisible: boolean,
+    isComposerKeyboardActive: boolean,
     viewportMetrics: {
         height?: number;
         offsetTop?: number;
-        layoutViewportHeight?: number;
         usesKeyboardOverlay?: boolean;
+        physicalKeyboardVisible?: boolean;
+        physicalKeyboardHeight?: number;
     } = {},
 ): void {
     if (viewportMetrics.height !== undefined) {
@@ -79,18 +82,25 @@ function syncLayoutCssVariables(
         lastViewportOffsetTop = viewportMetrics.offsetTop;
     }
 
-    if (viewportMetrics.layoutViewportHeight !== undefined) {
-        lastLayoutViewportHeight = viewportMetrics.layoutViewportHeight;
+    if (viewportMetrics.physicalKeyboardVisible !== undefined) {
+        lastPhysicalKeyboardVisible =
+            viewportMetrics.physicalKeyboardVisible;
     }
 
-    const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
+    if (viewportMetrics.physicalKeyboardHeight !== undefined) {
+        lastPhysicalKeyboardHeight = viewportMetrics.physicalKeyboardHeight;
+    }
+
+    const footerReservedHeight = getFooterReservedHeight(
+        isComposerKeyboardActive,
+    );
     const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
     const shouldUseKeyboardViewportHeight =
-        isKeyboardVisible &&
+        isComposerKeyboardActive &&
         !usesKeyboardOverlay &&
         lastViewportHeight !== undefined;
     const shouldUseKeyboardOverlay =
-        isKeyboardVisible && usesKeyboardOverlay;
+        isComposerKeyboardActive && usesKeyboardOverlay;
 
     syncKeyboardTouchScrollLock(
         shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
@@ -98,7 +108,7 @@ function syncLayoutCssVariables(
 
     const keyboardButtonBarBottom = `${bottomPosition}px`;
     const reasonInputBottom = `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
-    const footerBottom = isKeyboardVisible
+    const footerBottom = isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
 
@@ -175,7 +185,9 @@ function syncLayoutCssVariables(
             : Math.max(
                   0,
                   lastViewportHeight -
-                      (shouldUseKeyboardOverlay ? keyboardHeight : 0),
+                      (usesKeyboardOverlay && lastPhysicalKeyboardVisible
+                          ? lastPhysicalKeyboardHeight
+                          : 0),
               );
     setRootStyleProperty(
         "--mobile-dialog-center-y",
@@ -209,14 +221,8 @@ export const reasonInputVisibleStore = {
     },
     set: (v: boolean) => {
         reasonInputVisible = v;
-        const isSafariViewportMode = isNonPwaIPhoneSafari();
-        const isSafariKeyboardViewportReduced =
-            (lastLayoutViewportHeight ?? 0) - (lastViewportHeight ?? 0) >
-            KEYBOARD_THRESHOLD;
-
         syncLayoutCssVariables(
-            keyboardHeight > 0 ||
-            (isSafariViewportMode && isSafariKeyboardViewportReduced),
+            lastPhysicalKeyboardVisible && isPostEditorFocusActive(),
             { usesKeyboardOverlay: isVirtualKeyboardOverlayActive() },
         );
     },
@@ -342,25 +348,30 @@ export function setupViewportListener(): (() => void) | undefined {
                 : isSafariViewportMode
                     ? keyboardViewportReduction
                     : calculatedKeyboardHeight;
+            const isComposerKeyboardActive =
+                isKeyboardOpen && isPostEditorFocusActive();
 
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
             // 閾値を設けて、PWAモードでの小さな差分を無視する
-            bottomPosition = isKeyboardOpen
+            bottomPosition = isComposerKeyboardActive
                 ? usesKeyboardOverlay
                     ? virtualKeyboardLayoutInset
                     : calculatedKeyboardHeight
                 : FOOTER_HEIGHT;
 
             // キーボード高さストアを更新（閾値以下は 0 として扱う）
-            keyboardHeight = isKeyboardOpen ? keyboardStoreHeight : 0;
+            keyboardHeight = isComposerKeyboardActive
+                ? keyboardStoreHeight
+                : 0;
 
-            syncLayoutCssVariables(isKeyboardOpen, {
+            syncLayoutCssVariables(isComposerKeyboardActive, {
                 height: viewport.height,
                 offsetTop: viewportOffsetTop,
-                layoutViewportHeight: isSafariViewportMode
-                    ? layoutViewportHeight
-                    : undefined,
                 usesKeyboardOverlay,
+                physicalKeyboardVisible: isKeyboardOpen,
+                physicalKeyboardHeight: isKeyboardOpen
+                    ? keyboardStoreHeight
+                    : 0,
             });
         });
     }
@@ -371,12 +382,20 @@ export function setupViewportListener(): (() => void) | undefined {
     const handleWindowScroll = () => scheduleViewportSync();
     const handleVirtualKeyboardGeometryChange = () =>
         scheduleViewportSync();
+    const handleDocumentFocusChange = () => scheduleViewportSync();
+    const handleDocumentSelectionChange = () => scheduleViewportSync();
 
     // 初期値を設定
     scheduleViewportSync();
 
     window.visualViewport.addEventListener("resize", handleViewportResize);
     window.visualViewport.addEventListener("scroll", handleViewportScroll);
+    document.addEventListener("focusin", handleDocumentFocusChange);
+    document.addEventListener("focusout", handleDocumentFocusChange);
+    document.addEventListener(
+        "selectionchange",
+        handleDocumentSelectionChange,
+    );
     if (usesKeyboardOverlay) {
         virtualKeyboard?.addEventListener?.(
             "geometrychange",
@@ -393,6 +412,12 @@ export function setupViewportListener(): (() => void) | undefined {
         keyboardTouchScrollLock?.dispose();
         window.visualViewport?.removeEventListener("resize", handleViewportResize);
         window.visualViewport?.removeEventListener("scroll", handleViewportScroll);
+        document.removeEventListener("focusin", handleDocumentFocusChange);
+        document.removeEventListener("focusout", handleDocumentFocusChange);
+        document.removeEventListener(
+            "selectionchange",
+            handleDocumentSelectionChange,
+        );
         if (usesKeyboardOverlay) {
             virtualKeyboard?.removeEventListener?.(
                 "geometrychange",

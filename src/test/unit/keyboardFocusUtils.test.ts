@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     focusEditorWithoutKeyboardForCurrentTap,
     isIosTouchDevice,
+    isPostEditorFocusActive,
     preserveKeyboardForScrollableTouch,
 } from '../../lib/utils/keyboardFocusUtils';
 
@@ -82,6 +83,46 @@ describe('focusEditorWithoutKeyboardForCurrentTap', () => {
         expect(didFocus).toBe(false);
         expect(document.activeElement).toBe(button);
         expect(editorElement.hasAttribute('inputmode')).toBe(false);
+    });
+});
+
+describe('isPostEditorFocusActive', () => {
+    afterEach(() => {
+        document.body.innerHTML = '';
+        window.getSelection()?.removeAllRanges();
+    });
+
+    it('投稿エディタールート内の focus を検出する', () => {
+        const root = document.createElement('div');
+        root.setAttribute('data-post-editor-root', '');
+        const editor = document.createElement('div');
+        editor.contentEditable = 'true';
+        editor.tabIndex = 0;
+        root.append(editor);
+        document.body.append(root);
+
+        editor.focus();
+
+        expect(isPostEditorFocusActive()).toBe(true);
+    });
+
+    it('投稿エディター内に selection が残っていてもダイアログ input の focus を優先する', () => {
+        const root = document.createElement('div');
+        root.setAttribute('data-post-editor-root', '');
+        const editorText = document.createTextNode('draft');
+        root.append(editorText);
+        const input = document.createElement('input');
+        document.body.append(root, input);
+        const range = document.createRange();
+        range.setStart(editorText, 2);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        input.focus();
+
+        expect(isPostEditorFocusActive()).toBe(false);
     });
 });
 
