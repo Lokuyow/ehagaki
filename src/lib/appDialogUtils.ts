@@ -1,19 +1,5 @@
-import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from './types';
-
 type BooleanDialogStore = {
     set: (value: boolean) => void;
-};
-
-type PendingDraftContent = {
-    content: string;
-    galleryItems: MediaGalleryItem[];
-    channelData?: DraftChannelData;
-    replyQuoteData?: DraftReplyQuoteData;
-};
-
-type PendingDraftStore = {
-    readonly value: PendingDraftContent | null;
-    set: (value: PendingDraftContent | null) => void;
 };
 
 export function createDialogVisibilityHandlers(store: BooleanDialogStore) {
@@ -27,48 +13,3 @@ export function createDialogVisibilityHandlers(store: BooleanDialogStore) {
         },
     };
 }
-
-export function createDraftLimitConfirmHandlers(params: {
-    pendingDraftContentStore: PendingDraftStore;
-    showDraftLimitConfirmStore: BooleanDialogStore;
-    saveDraftWithReplaceOldest: (
-        content: string,
-        galleryItems: MediaGalleryItem[],
-        replyQuoteData?: DraftReplyQuoteData,
-        channelData?: DraftChannelData,
-    ) => void | Promise<void>;
-}) {
-    const clear = () => {
-        params.pendingDraftContentStore.set(null);
-        params.showDraftLimitConfirmStore.set(false);
-    };
-
-    return {
-        stage: (payload: PendingDraftContent) => {
-            params.pendingDraftContentStore.set(payload);
-            params.showDraftLimitConfirmStore.set(true);
-        },
-        confirm: async () => {
-            const pending = params.pendingDraftContentStore.value;
-
-            if (pending) {
-                await params.saveDraftWithReplaceOldest(
-                    pending.content,
-                    pending.galleryItems,
-                    pending.replyQuoteData,
-                    pending.channelData,
-                );
-            }
-
-            clear();
-        },
-        cancel: clear,
-        handleOpenChange: (open: boolean) => {
-            if (!open) {
-                clear();
-            }
-        },
-    };
-}
-
-export type { PendingDraftContent };

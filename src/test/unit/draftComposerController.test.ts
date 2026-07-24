@@ -1,16 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDraftComposerController } from '../../lib/draftComposerController';
+import type { Draft } from '../../lib/types';
 
-function createController(overrides: Partial<Parameters<typeof createDraftComposerController>[0]> = {}) {
+function createDraft(id: string): Draft {
+    return {
+        id,
+        content: '<p>hello</p>',
+        preview: 'hello',
+        timestamp: 1,
+    };
+}
+
+function createController(
+    overrides: Partial<Parameters<typeof createDraftComposerController>[0]> = {},
+) {
+    const savedDraft = createDraft('draft-1');
     const deps = {
         getEditorHtml: () => '<p>hello</p>',
         getGalleryItems: () => [],
         getChannelContextState: () => null,
         getReplyQuoteState: () => ({ reply: null, quotes: [] }) as any,
         getPubkeyHex: () => 'a'.repeat(64),
-        saveDraft: vi.fn(async () => ({ success: true, needsConfirmation: false })),
-        stageDraftLimitConfirm: vi.fn(),
+        saveDraft: vi.fn(async () => ({
+            status: 'saved' as const,
+            draft: savedDraft,
+            drafts: [savedDraft],
+        })),
+        saveDraftWithReplaceOldest: vi.fn(async () => ({
+            status: 'saved' as const,
+            draft: savedDraft,
+            drafts: [savedDraft],
+        })),
+        openDraftLimitConfirm: vi.fn(),
+        closeDraftLimitConfirm: vi.fn(),
+        logger: { error: vi.fn() },
         isGalleryMode: () => false,
         document,
         clearGallery: vi.fn(),
@@ -32,43 +56,178 @@ function createController(overrides: Partial<Parameters<typeof createDraftCompos
 }
 
 describe('createDraftComposerController', () => {
-    it('editor html が取れない場合は保存しない', async () => {
-        const { controller, deps } = createController({
+    it('保存対象がない場合は not-saveable を返し、永続化しない', async () => {
+        const missingEditor = createController({
             getEditorHtml: () => undefined,
         });
-
-        await expect(controller.saveDraftFromComposer()).resolves.toBe(false);
-        expect(deps.saveDraft).not.toHaveBeenCalled();
-    });
-
-    it('payload が空の場合は保存しない', async () => {
-        const { controller, deps } = createController({
+        const emptyPayload = createController({
             getEditorHtml: () => '<p></p>',
         });
 
-        await expect(controller.saveDraftFromComposer()).resolves.toBe(false);
-        expect(deps.saveDraft).not.toHaveBeenCalled();
+        await expect(
+            missingEditor.controller.saveDraftFromComposer(),
+        ).resolves.toEqual({ status: 'not-saveable' });
+        await expect(
+            emptyPayload.controller.saveDraftFromComposer(),
+        ).resolves.toEqual({ status: 'not-saveable' });
+        expect(missingEditor.deps.saveDraft).not.toHaveBeenCalled();
+        expect(emptyPayload.deps.saveDraft).not.toHaveBeenCalled();
     });
 
-    it('needsConfirmation の場合は確認ステージへ積む', async () => {
-        const stageDraftLimitConfirm = vi.fn();
-        const { controller, deps } = createController({
-            saveDraft: vi.fn(async () => ({ success: false, needsConfirmation: true })),
-            stageDraftLimitConfirm,
+    it('通常保存成功を一度だけ意味付きイベントで通知する', async () => {
+        const { controller } = createController();
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
+
+        await expect(controller.saveDraftFromComposer()).resolves.toEqual({
+            status: 'saved',
         });
 
-        await expect(controller.saveDraftFromComposer()).resolves.toBe(false);
-        expect(deps.saveDraft).toHaveBeenCalledTimes(1);
-        expect(stageDraftLimitConfirm).toHaveBeenCalledTimes(1);
+        expect(listener).toHaveBeenCalledOnce();
+        expect(listener).toHaveBeenCalledWith({
+            draftId: 'draft-1',
+            pubkeyHex: 'a'.repeat(64),
+        });
     });
 
-    it('保存成功時は true を返す', async () => {
-        const { controller, deps } = createController({
-            saveDraft: vi.fn(async () => ({ success: true, needsConfirmation: false })),
+    it('上限時は確認待ちにし、確認だけでは保存完了を通知しない', async () => {
+        const openDraftLimitConfirm = vi.fn();
+        const { controller } = createController({
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+            openDraftLimitConfirm,
+        });
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
+
+        await expect(controller.saveDraftFromComposer()).resolves.toEqual({
+            status: 'confirmation-required',
         });
 
-        await expect(controller.saveDraftFromComposer()).resolves.toBe(true);
-        expect(deps.saveDraft).toHaveBeenCalledTimes(1);
+        expect(openDraftLimitConfirm).toHaveBeenCalledOnce();
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('置換保存も通常保存と同じ完了イベントを一度だけ通知し、保存開始時のpubkeyを使う', async () => {
+        let currentPubkey = 'account-a';
+        const saveDraftWithReplaceOldest = vi.fn(async () => ({
+            status: 'saved' as const,
+            draft: createDraft('replacement-draft'),
+            drafts: [createDraft('replacement-draft')],
+        }));
+        const { controller } = createController({
+            getPubkeyHex: () => currentPubkey,
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+            saveDraftWithReplaceOldest,
+        });
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
+
+        await controller.saveDraftFromComposer();
+        currentPubkey = 'account-b';
+        await expect(controller.confirmPendingDraftSave()).resolves.toEqual({
+            status: 'saved',
+        });
+
+        expect(saveDraftWithReplaceOldest).toHaveBeenCalledWith(
+            '<p>hello</p>',
+            [],
+            undefined,
+            undefined,
+            { pubkeyHex: 'account-a' },
+        );
+        expect(listener).toHaveBeenCalledOnce();
+        expect(listener).toHaveBeenCalledWith({
+            draftId: 'replacement-draft',
+            pubkeyHex: 'account-a',
+        });
+    });
+
+    it('確認キャンセル後は置換保存も完了通知も行わない', async () => {
+        const { controller, deps } = createController({
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+        });
+        const listener = vi.fn();
+        controller.subscribeToDraftSaveCompleted(listener);
+
+        await controller.saveDraftFromComposer();
+        controller.cancelPendingDraftSave();
+        await expect(controller.confirmPendingDraftSave()).resolves.toEqual({
+            status: 'not-saveable',
+        });
+
+        expect(deps.saveDraftWithReplaceOldest).not.toHaveBeenCalled();
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('通常保存と置換保存の失敗では完了通知しない', async () => {
+        const normalFailure = createController({
+            saveDraft: vi.fn(async () => {
+                throw new Error('save failed');
+            }),
+        });
+        const replacementFailure = createController({
+            saveDraft: vi.fn(async () => ({
+                status: 'confirmation-required' as const,
+                drafts: [],
+            })),
+            saveDraftWithReplaceOldest: vi.fn(async () => {
+                throw new Error('replacement failed');
+            }),
+        });
+        const normalListener = vi.fn();
+        const replacementListener = vi.fn();
+        normalFailure.controller.subscribeToDraftSaveCompleted(normalListener);
+        replacementFailure.controller.subscribeToDraftSaveCompleted(
+            replacementListener,
+        );
+
+        await expect(
+            normalFailure.controller.saveDraftFromComposer(),
+        ).resolves.toEqual({ status: 'failed' });
+        await replacementFailure.controller.saveDraftFromComposer();
+        await expect(
+            replacementFailure.controller.confirmPendingDraftSave(),
+        ).resolves.toEqual({ status: 'failed' });
+
+        expect(normalListener).not.toHaveBeenCalled();
+        expect(replacementListener).not.toHaveBeenCalled();
+    });
+
+    it('別々の連続保存をそれぞれ通知し、購読解除後は通知しない', async () => {
+        let sequence = 0;
+        const { controller } = createController({
+            saveDraft: vi.fn(async () => {
+                sequence += 1;
+                const draft = createDraft(`draft-${sequence}`);
+                return {
+                    status: 'saved' as const,
+                    draft,
+                    drafts: [draft],
+                };
+            }),
+        });
+        const listener = vi.fn();
+        const unsubscribe = controller.subscribeToDraftSaveCompleted(listener);
+
+        await controller.saveDraftFromComposer();
+        await controller.saveDraftFromComposer();
+        unsubscribe();
+        await controller.saveDraftFromComposer();
+
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener.mock.calls.map(([event]) => event.draftId)).toEqual([
+            'draft-1',
+            'draft-2',
+        ]);
     });
 
     it('applyDraftToComposer は draft を composer に適用する', () => {
@@ -81,15 +240,7 @@ describe('createDraftComposerController', () => {
             isGalleryMode: () => false,
         });
 
-        controller.applyDraftToComposer({
-            id: 'draft-1',
-            content: '<p>hello</p>',
-            preview: 'hello',
-            timestamp: 1,
-            updatedAt: 1,
-            schemaVersion: 2,
-            galleryItems: [],
-        } as any);
+        controller.applyDraftToComposer(createDraft('draft-1'));
 
         expect(loadDraftContent).toHaveBeenCalledWith('<p>hello</p>');
         expect(appendMediaToEditor).not.toHaveBeenCalled();

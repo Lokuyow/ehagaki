@@ -108,6 +108,7 @@ describe("draftManager", () => {
 
     afterEach(async () => {
         vi.useRealTimers();
+        vi.restoreAllMocks();
         await ehagakiDb.transaction("rw", ehagakiDb.drafts, ehagakiDb.meta, async () => {
             await ehagakiDb.drafts.clear();
             await ehagakiDb.meta.clear();
@@ -230,8 +231,7 @@ describe("draftManager", () => {
                 pubkeyHex: "pubkey-a",
             });
 
-            expect(result.success).toBe(true);
-            expect(result.needsConfirmation).toBe(false);
+            expect(result.status).toBe("saved");
             expect(result.drafts).toHaveLength(1);
             expect(result.drafts[0].preview).toBe("Test content");
 
@@ -244,7 +244,7 @@ describe("draftManager", () => {
             });
         });
 
-        it("上限に達した場合は needsConfirmation=true を返す", async () => {
+        it("上限に達した場合は confirmation-required を返す", async () => {
             for (let index = 0; index < MAX_DRAFTS; index += 1) {
                 await saveDraft(`<p>Content ${index}</p>`, undefined, undefined, undefined, {
                     pubkeyHex: "pubkey-a",
@@ -255,8 +255,7 @@ describe("draftManager", () => {
                 pubkeyHex: "pubkey-a",
             });
 
-            expect(result.success).toBe(false);
-            expect(result.needsConfirmation).toBe(true);
+            expect(result.status).toBe("confirmation-required");
             expect(result.drafts).toHaveLength(MAX_DRAFTS);
         });
 
@@ -284,7 +283,7 @@ describe("draftManager", () => {
             );
             const fetched = await getDraft(result.drafts[0].id);
 
-            expect(result.success).toBe(true);
+            expect(result.status).toBe("saved");
             expect(fetched?.content).toContain('data-custom-emoji="true"');
             expect(fetched?.galleryItems).toEqual(galleryItems);
             expect(fetched?.preview).toContain(":blobcat:");
@@ -306,9 +305,40 @@ describe("draftManager", () => {
                 pubkeyHex: "pubkey-a",
             });
 
-            expect(result).toHaveLength(MAX_DRAFTS);
-            expect(result[0].preview).toBe("Newest");
-            expect(result.some((draft) => draft.id === oldestId)).toBe(false);
+            expect(result.status).toBe("saved");
+            expect(result.drafts).toHaveLength(MAX_DRAFTS);
+            expect(result.drafts[0].preview).toBe("Newest");
+            expect(result.drafts.some((draft) => draft.id === oldestId)).toBe(false);
+        });
+
+        it("置換保存が失敗した場合は最古の下書きを削除しない", async () => {
+            for (let index = 0; index < MAX_DRAFTS; index += 1) {
+                await saveDraft(`<p>Content ${index}</p>`, undefined, undefined, undefined, {
+                    pubkeyHex: "pubkey-a",
+                });
+            }
+            const before = await loadDrafts({ pubkeyHex: "pubkey-a" });
+            const oldestId = before[before.length - 1].id;
+            vi.spyOn(ehagakiDb.drafts, "put").mockRejectedValueOnce(
+                new Error("put failed"),
+            );
+            vi.spyOn(storage, "setItem").mockImplementation(() => {
+                throw new Error("fallback failed");
+            });
+
+            await expect(
+                saveDraftWithReplaceOldest(
+                    "<p>Newest</p>",
+                    undefined,
+                    undefined,
+                    undefined,
+                    { pubkeyHex: "pubkey-a" },
+                ),
+            ).rejects.toThrow("fallback failed");
+
+            const after = await loadDrafts({ pubkeyHex: "pubkey-a" });
+            expect(after).toHaveLength(MAX_DRAFTS);
+            expect(after.some((draft) => draft.id === oldestId)).toBe(true);
         });
     });
 

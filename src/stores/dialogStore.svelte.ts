@@ -1,17 +1,9 @@
 // --- UIダイアログ状態管理 ---
-import type { MediaGalleryItem } from '../lib/types';
 
 function createBooleanStore(getValue: () => boolean, setValue: (value: boolean) => void) {
     return {
         get value() { return getValue(); },
         set: (value: boolean) => { setValue(value); }
-    };
-}
-
-function createValueStore<T>(getValue: () => T, setValue: (value: T) => void) {
-    return {
-        get value() { return getValue(); },
-        set: (value: T) => { setValue(value); }
     };
 }
 
@@ -34,21 +26,12 @@ export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (val
 export const showPostHistoryDialogStore = createBooleanStore(() => showPostHistory, (value) => { showPostHistory = value; });
 export const showComposerTargetDialogStore = createBooleanStore(() => showComposerTarget, (value) => { showComposerTarget = value; });
 
-// --- 下書きダイアログ状態管理 ---
-import type { DraftChannelData, DraftReplyQuoteData } from '../lib/types';
-
 let showDraftList = $state(false);
 let showDraftLimitConfirm = $state(false);
-let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[]; channelData?: DraftChannelData; replyQuoteData?: DraftReplyQuoteData } | null>(null);
 
 export const showDraftListDialogStore = createBooleanStore(() => showDraftList, (value) => { showDraftList = value; });
 
 export const showDraftLimitConfirmStore = createBooleanStore(() => showDraftLimitConfirm, (value) => { showDraftLimitConfirm = value; });
-
-export const pendingDraftContentStore = createValueStore(
-    () => pendingDraftContent,
-    (value: { content: string; galleryItems: MediaGalleryItem[]; channelData?: DraftChannelData; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
-);
 
 // --- アカウント追加ダイアログ ---
 export const showAddAccountDialogStore = createBooleanStore(() => showAddAccount, (value) => { showAddAccount = value; });

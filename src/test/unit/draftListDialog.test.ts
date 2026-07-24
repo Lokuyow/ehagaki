@@ -1,8 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+import type { DraftSaveCompletedEvent } from '../../lib/draftComposerController';
+import type { Draft } from '../../lib/types';
+import { editorState } from '../../stores/editorStore.svelte';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
@@ -11,6 +13,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'draft.title': '下書き',
         'draft.info': '下書き情報',
         'draft.delete_all': '全て削除',
+        'draft.delete': '削除',
         'draft.no_drafts': '下書きがありません',
         'draft.media.image': '[画像]',
         'draft.media.video': '[動画]',
@@ -33,8 +36,6 @@ const mockLoadDrafts = vi.hoisted(() => vi.fn());
 const mockDeleteDraft = vi.hoisted(() => vi.fn());
 const mockDeleteAllDrafts = vi.hoisted(() => vi.fn());
 const mockToggleDraftPinned = vi.hoisted(() => vi.fn());
-const mockSaveDraftWithReplaceOldest = vi.hoisted(() => vi.fn());
-const mockSaveDraft = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/draftManager', () => ({
     loadDrafts: mockLoadDrafts,
@@ -42,250 +43,281 @@ vi.mock('../../lib/draftManager', () => ({
     deleteAllDrafts: mockDeleteAllDrafts,
     toggleDraftPinned: mockToggleDraftPinned,
     formatDraftTimestamp: (value: number) => new Date(value).toISOString(),
-    saveDraft: mockSaveDraft,
-    saveDraftWithReplaceOldest: mockSaveDraftWithReplaceOldest,
 }));
 
 import DraftListDialog from '../../components/DraftListDialog.svelte';
+
+function createDraft(id: string, preview = id): Draft {
+    return {
+        id,
+        content: `<p>${preview}</p>`,
+        preview,
+        timestamp: 1,
+    };
+}
+
+function createCompletionSource() {
+    const listeners = new Set<(event: DraftSaveCompletedEvent) => void>();
+    return {
+        subscribe: (
+            listener: (event: DraftSaveCompletedEvent) => void,
+        ) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        emit: (event: DraftSaveCompletedEvent) => {
+            for (const listener of listeners) listener(event);
+        },
+        get size() {
+            return listeners.size;
+        },
+    };
+}
+
+function createProps(
+    source = createCompletionSource(),
+    overrides: Record<string, unknown> = {},
+) {
+    return {
+        show: true,
+        onClose: vi.fn(),
+        onApplyDraft: vi.fn(),
+        onSaveDraft: vi.fn(async () => ({ status: 'saved' as const })),
+        subscribeToDraftSaveCompleted: source.subscribe,
+        canSaveDraft: true,
+        pubkeyHex: 'pubkey',
+        ...overrides,
+    };
+}
 
 describe('DraftListDialog', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockLoadDrafts.mockResolvedValue([]);
+        mockDeleteDraft.mockResolvedValue([]);
+        mockDeleteAllDrafts.mockResolvedValue([]);
+        mockToggleDraftPinned.mockResolvedValue([]);
+        editorState.postStatus = {
+            sending: false,
+            success: false,
+            error: false,
+            message: '',
+        };
+        editorState.isUploading = false;
+        editorState.canPost = false;
     });
 
-    it('保存ボタンに primary クラスがあり、閉じるボタンより前に配置される', () => {
+    it('primaryの保存ボタンをアイコン・ラベル付きで閉じるボタンより前に表示する', () => {
         render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey',
-            },
+            props: createProps(),
         });
 
-        const footer = screen.getByRole('button', { name: '閉じる' }).closest('.dialog-footer-actions');
+        const footer = screen
+            .getByRole('button', { name: '閉じる' })
+            .closest('.dialog-footer-actions');
         const saveButton = screen.getByRole('button', { name: '下書き保存' });
         const closeButton = screen.getByRole('button', { name: '閉じる' });
 
         expect(saveButton.className).toContain('primary');
+        expect(saveButton.textContent).toContain('下書き保存');
+        expect(saveButton.querySelector('.save-draft-icon')).toBeTruthy();
         expect(footer?.firstElementChild).toBe(saveButton);
         expect(footer?.lastElementChild).toBe(closeButton);
     });
 
-    it('通常保存が成功した場合だけ成功メッセージが表示される', async () => {
-        const onSaveDraft = vi.fn(async () => true);
-        render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft,
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey',
-            },
+    it('保存対象なし・投稿中・アップロード中は保存できない', async () => {
+        const source = createCompletionSource();
+        const { rerender } = render(DraftListDialog, {
+            props: createProps(source, { canSaveDraft: false }),
+        });
+        const saveButton = screen.getByRole<HTMLButtonElement>('button', {
+            name: '下書き保存',
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
-        await flushPromises();
+        expect(saveButton.disabled).toBe(true);
 
+        editorState.postStatus.sending = true;
+        await rerender(createProps(source, { canSaveDraft: true }));
+        expect(saveButton.disabled).toBe(true);
+
+        editorState.postStatus.sending = false;
+        editorState.isUploading = true;
+        await rerender(createProps(source, { canSaveDraft: true }));
+        expect(saveButton.disabled).toBe(true);
+    });
+
+    it('保存中は連打できない', async () => {
+        let resolveSave: (() => void) | undefined;
+        const onSaveDraft = vi.fn(
+            () =>
+                new Promise<{ status: 'saved' }>((resolve) => {
+                    resolveSave = () => resolve({ status: 'saved' });
+                }),
+        );
+        render(DraftListDialog, {
+            props: createProps(createCompletionSource(), { onSaveDraft }),
+        });
+        const saveButton = screen.getByRole('button', { name: '下書き保存' });
+
+        await fireEvent.click(saveButton);
+        await fireEvent.click(saveButton);
+
+        expect(onSaveDraft).toHaveBeenCalledOnce();
+        expect(
+            (saveButton as HTMLButtonElement).disabled,
+        ).toBe(true);
+        resolveSave?.();
+        await waitFor(() =>
+            expect((saveButton as HTMLButtonElement).disabled).toBe(false),
+        );
+    });
+
+    it('保存完了イベントだけが一覧更新と成功表示を行う', async () => {
+        const source = createCompletionSource();
+        mockLoadDrafts
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([createDraft('draft-1', '新しい下書き')]);
+        render(DraftListDialog, {
+            props: createProps(source),
+        });
+        await waitFor(() => expect(mockLoadDrafts).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(source.size).toBe(1));
+
+        source.emit({ draftId: 'draft-1', pubkeyHex: 'pubkey' });
+
+        await waitFor(() =>
+            expect(screen.getByText('下書きを保存しました')).toBeTruthy(),
+        );
+        await waitFor(() =>
+            expect(screen.getByText('新しい下書き')).toBeTruthy(),
+        );
+        expect(mockLoadDrafts).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['confirmation-required'],
+        ['not-saveable'],
+        ['failed'],
+    ] as const)(
+        '%sを返しただけでは一覧更新も成功表示もしない',
+        async (status) => {
+            const onSaveDraft = vi.fn(async () => ({ status }));
+            render(DraftListDialog, {
+                props: createProps(createCompletionSource(), { onSaveDraft }),
+            });
+            await waitFor(() =>
+                expect(mockLoadDrafts).toHaveBeenCalledTimes(1),
+            );
+
+            await fireEvent.click(
+                screen.getByRole('button', { name: '下書き保存' }),
+            );
+
+            expect(
+                screen.queryByText('下書きを保存しました'),
+            ).toBeNull();
+            expect(mockLoadDrafts).toHaveBeenCalledTimes(1);
+        },
+    );
+
+    it('別々の保存完了を取りこぼさず、それぞれ一度だけ処理する', async () => {
+        const source = createCompletionSource();
+        mockLoadDrafts.mockResolvedValue([]);
+        render(DraftListDialog, {
+            props: createProps(source),
+        });
+        await waitFor(() => expect(mockLoadDrafts).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(source.size).toBe(1));
+
+        source.emit({ draftId: 'draft-1', pubkeyHex: 'pubkey' });
+        source.emit({ draftId: 'draft-2', pubkeyHex: 'pubkey' });
+
+        await waitFor(() => expect(mockLoadDrafts).toHaveBeenCalledTimes(3));
         expect(screen.getByText('下書きを保存しました')).toBeTruthy();
     });
 
-    it('onSaveDraft が false を返した場合は成功メッセージが表示されない', async () => {
-        const onSaveDraft = vi.fn(async () => false);
+    it('別アカウントの保存完了通知を無視する', async () => {
+        const source = createCompletionSource();
         render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft,
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey',
-            },
+            props: createProps(source),
         });
+        await waitFor(() => expect(mockLoadDrafts).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(source.size).toBe(1));
 
-        await fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
-        await flushPromises();
+        source.emit({ draftId: 'other-draft', pubkeyHex: 'other-pubkey' });
 
+        expect(mockLoadDrafts).toHaveBeenCalledTimes(1);
         expect(screen.queryByText('下書きを保存しました')).toBeNull();
     });
 
-    it('保存処理が失敗した場合は一覧を再読み込みしない', async () => {
-        const onSaveDraft = vi.fn(async () => false);
-        render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft,
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey',
-            },
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
-        await flushPromises();
-
-        expect(mockLoadDrafts).toHaveBeenCalledTimes(1);
-    });
-
-    it('保存中は連打できず、成功時に一覧を再読み込みする', async () => {
-        let resolveSave: (value: boolean) => void = () => { };
-        const onSaveDraft = vi.fn(() => new Promise<boolean>((resolve) => {
-            resolveSave = resolve;
-        }));
-        mockLoadDrafts.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'draft-1', timestamp: 1 } as never]);
-
-        render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft,
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey',
-            },
-        });
-
-        const saveButton = screen.getByRole('button', { name: '下書き保存' });
-        await fireEvent.click(saveButton);
-        await fireEvent.click(saveButton);
-
-        expect(onSaveDraft).toHaveBeenCalledTimes(1);
-        resolveSave(true);
-
-        await waitFor(() => {
-            expect(mockLoadDrafts).toHaveBeenCalledTimes(2);
-        });
-    });
-
-    it('上限確認後の置換保存完了通知を受けると一覧を再読み込みする', async () => {
-        mockLoadDrafts.mockResolvedValue([]);
+    it('アカウント切替後に古いアカウントの読み込み結果で上書きしない', async () => {
+        let resolveAccountA:
+            | ((drafts: Draft[]) => void)
+            | undefined;
+        let resolveAccountB:
+            | ((drafts: Draft[]) => void)
+            | undefined;
+        mockLoadDrafts.mockImplementation(
+            ({ pubkeyHex }: { pubkeyHex: string | null }) =>
+                new Promise<Draft[]>((resolve) => {
+                    if (pubkeyHex === 'account-a') resolveAccountA = resolve;
+                    if (pubkeyHex === 'account-b') resolveAccountB = resolve;
+                }),
+        );
+        const source = createCompletionSource();
         const { rerender } = render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: true,
-                draftListRefreshRevision: 0,
-                pubkeyHex: 'pubkey',
-            },
+            props: createProps(source, { pubkeyHex: 'account-a' }),
         });
+        await waitFor(() => expect(resolveAccountA).toBeTypeOf('function'));
 
-        await flushPromises();
-        rerender({
-            show: true,
-            onClose: vi.fn(),
-            onApplyDraft: vi.fn(),
-            onSaveDraft: vi.fn(async () => true),
-            canSaveDraft: true,
-            draftListRefreshRevision: 1,
-            pubkeyHex: 'pubkey',
-        });
+        await rerender(
+            createProps(source, { pubkeyHex: 'account-b' }),
+        );
+        await waitFor(() => expect(resolveAccountB).toBeTypeOf('function'));
+        resolveAccountB?.([createDraft('b', 'Account B')]);
+        await waitFor(() => expect(screen.getByText('Account B')).toBeTruthy());
 
-        await waitFor(() => {
-            expect(mockLoadDrafts).toHaveBeenCalledTimes(2);
-        });
+        resolveAccountA?.([createDraft('a', 'Account A')]);
+
+        await Promise.resolve();
+        expect(screen.queryByText('Account A')).toBeNull();
+        expect(screen.getByText('Account B')).toBeTruthy();
     });
 
-    it('確認をキャンセルした場合は再読み込みしない', async () => {
-        const { rerender } = render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: true,
-                draftListRefreshRevision: 0,
-                pubkeyHex: 'pubkey',
-            },
-        });
-
-        await flushPromises();
-        rerender({
-            show: true,
-            onClose: vi.fn(),
-            onApplyDraft: vi.fn(),
-            onSaveDraft: vi.fn(async () => true),
-            canSaveDraft: true,
-            draftListRefreshRevision: 0,
-            pubkeyHex: 'pubkey',
-        });
-
-        expect(mockLoadDrafts).toHaveBeenCalledTimes(1);
-    });
-
-    it('保存完了通知が一度だけ処理される', async () => {
-        const { rerender } = render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: true,
-                draftListRefreshRevision: 0,
-                pubkeyHex: 'pubkey',
-            },
-        });
-
-        await flushPromises();
-        rerender({
-            show: true,
-            onClose: vi.fn(),
-            onApplyDraft: vi.fn(),
-            onSaveDraft: vi.fn(async () => true),
-            canSaveDraft: true,
-            draftListRefreshRevision: 1,
-            pubkeyHex: 'pubkey',
-        });
-        rerender({
-            show: true,
-            onClose: vi.fn(),
-            onApplyDraft: vi.fn(),
-            onSaveDraft: vi.fn(async () => true),
-            canSaveDraft: true,
-            draftListRefreshRevision: 2,
-            pubkeyHex: 'pubkey',
-        });
-
-        await waitFor(() => {
-            expect(mockLoadDrafts).toHaveBeenCalledTimes(3);
-        });
-    });
-
-    it('現在の pubkeyHex で一覧を読み込む', async () => {
+    it('現在のpubkeyで読み込み、削除後も同じ一覧更新経路を使う', async () => {
+        const source = createCompletionSource();
+        mockLoadDrafts
+            .mockResolvedValueOnce([createDraft('draft-1', '削除対象')])
+            .mockResolvedValueOnce([]);
         render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: true,
-                pubkeyHex: 'pubkey-2',
-            },
+            props: createProps(source, { pubkeyHex: 'pubkey-2' }),
         });
+        await waitFor(() => expect(screen.getByText('削除対象')).toBeTruthy());
 
-        await waitFor(() => {
-            expect(mockLoadDrafts).toHaveBeenCalledWith({ pubkeyHex: 'pubkey-2' });
+        await fireEvent.click(screen.getByRole('button', { name: '削除' }));
+
+        await waitFor(() =>
+            expect(screen.getByText('下書きがありません')).toBeTruthy(),
+        );
+        expect(mockLoadDrafts).toHaveBeenNthCalledWith(1, {
+            pubkeyHex: 'pubkey-2',
+        });
+        expect(mockLoadDrafts).toHaveBeenNthCalledWith(2, {
+            pubkeyHex: 'pubkey-2',
         });
     });
 
-    it('canSaveDraft が false のときは保存ボタンを無効化する', () => {
-        render(DraftListDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                onApplyDraft: vi.fn(),
-                onSaveDraft: vi.fn(async () => true),
-                canSaveDraft: false,
-                pubkeyHex: 'pubkey',
-            },
+    it('破棄時に保存完了購読を解除する', async () => {
+        const source = createCompletionSource();
+        const { unmount } = render(DraftListDialog, {
+            props: createProps(source),
         });
+        await waitFor(() => expect(source.size).toBe(1));
 
-        expect(screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled).toBe(true);
+        unmount();
+
+        expect(source.size).toBe(0);
+        source.emit({ draftId: 'late-draft', pubkeyHex: 'pubkey' });
+        expect(screen.queryByText('下書きを保存しました')).toBeNull();
     });
 });

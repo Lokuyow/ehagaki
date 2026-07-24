@@ -8,18 +8,28 @@ import type {
     ReplyQuoteComposerState,
 } from './types';
 import type { ChannelContextProvenance } from './channelContextRuntime';
-
-interface DraftSaveResult {
-    success: boolean;
-    needsConfirmation?: boolean;
-}
+import type { SaveDraftResult } from './draftManager';
 
 interface DraftLimitConfirmationPayload {
     content: string;
     galleryItems: MediaGalleryItem[];
     channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
+    pubkeyHex: string | null;
 }
+
+export type DraftSaveAttemptResult =
+    | { status: 'saved' }
+    | { status: 'confirmation-required' }
+    | { status: 'not-saveable' }
+    | { status: 'failed' };
+
+export interface DraftSaveCompletedEvent {
+    draftId: string;
+    pubkeyHex: string | null;
+}
+
+type DraftSaveCompletedListener = (event: DraftSaveCompletedEvent) => void;
 
 export interface DraftComposerControllerDependencies {
     getEditorHtml(): string | undefined;
@@ -34,8 +44,17 @@ export interface DraftComposerControllerDependencies {
         replyQuoteData: DraftReplyQuoteData | undefined,
         channelData: DraftChannelData | undefined,
         options: { pubkeyHex: string | null },
-    ): Promise<DraftSaveResult>;
-    stageDraftLimitConfirm(payload: DraftLimitConfirmationPayload): void;
+    ): Promise<SaveDraftResult>;
+    saveDraftWithReplaceOldest(
+        content: string,
+        galleryItems: MediaGalleryItem[],
+        replyQuoteData: DraftReplyQuoteData | undefined,
+        channelData: DraftChannelData | undefined,
+        options: { pubkeyHex: string | null },
+    ): Promise<{ status: 'saved'; draft: Draft }>;
+    openDraftLimitConfirm(): void;
+    closeDraftLimitConfirm(): void;
+    logger?: Pick<Console, 'error'>;
     isGalleryMode(): boolean;
     document: Document;
     clearGallery(): void;
@@ -50,17 +69,33 @@ export interface DraftComposerControllerDependencies {
 }
 
 export interface DraftComposerController {
-    saveDraftFromComposer(): Promise<boolean>;
+    saveDraftFromComposer(): Promise<DraftSaveAttemptResult>;
+    confirmPendingDraftSave(): Promise<DraftSaveAttemptResult>;
+    cancelPendingDraftSave(): void;
+    subscribeToDraftSaveCompleted(listener: DraftSaveCompletedListener): () => void;
     applyDraftToComposer(draft: Draft): void;
 }
 
 export function createDraftComposerController(
     deps: DraftComposerControllerDependencies,
 ): DraftComposerController {
-    async function saveDraftFromComposer(): Promise<boolean> {
+    let pendingDraftSave: DraftLimitConfirmationPayload | null = null;
+    const saveCompletedListeners = new Set<DraftSaveCompletedListener>();
+
+    function notifyDraftSaveCompleted(event: DraftSaveCompletedEvent): void {
+        for (const listener of saveCompletedListeners) {
+            try {
+                listener(event);
+            } catch (error) {
+                deps.logger?.error('下書き保存完了通知の処理に失敗:', error);
+            }
+        }
+    }
+
+    async function saveDraftFromComposer(): Promise<DraftSaveAttemptResult> {
         const htmlContent = deps.getEditorHtml();
         if (!htmlContent) {
-            return false;
+            return { status: 'not-saveable' };
         }
 
         const payload = createDraftSavePayload({
@@ -73,28 +108,83 @@ export function createDraftComposerController(
         });
 
         if (!payload) {
-            return false;
+            return { status: 'not-saveable' };
         }
 
-        const result = await deps.saveDraft(
-            payload.content,
-            payload.galleryItems,
-            payload.replyQuoteData,
-            payload.channelData,
-            { pubkeyHex: deps.getPubkeyHex() },
-        );
+        const pubkeyHex = deps.getPubkeyHex();
 
-        if (result.needsConfirmation) {
-            deps.stageDraftLimitConfirm({
-                content: payload.content,
-                galleryItems: payload.galleryItems,
-                channelData: payload.channelData,
-                replyQuoteData: payload.replyQuoteData,
+        try {
+            const result = await deps.saveDraft(
+                payload.content,
+                payload.galleryItems,
+                payload.replyQuoteData,
+                payload.channelData,
+                { pubkeyHex },
+            );
+
+            if (result.status === 'confirmation-required') {
+                pendingDraftSave = {
+                    content: payload.content,
+                    galleryItems: payload.galleryItems,
+                    channelData: payload.channelData,
+                    replyQuoteData: payload.replyQuoteData,
+                    pubkeyHex,
+                };
+                deps.openDraftLimitConfirm();
+                return { status: 'confirmation-required' };
+            }
+
+            notifyDraftSaveCompleted({
+                draftId: result.draft.id,
+                pubkeyHex,
             });
-            return false;
+            return { status: 'saved' };
+        } catch (error) {
+            deps.logger?.error('下書き保存に失敗:', error);
+            return { status: 'failed' };
+        }
+    }
+
+    async function confirmPendingDraftSave(): Promise<DraftSaveAttemptResult> {
+        const pending = pendingDraftSave;
+        if (!pending) {
+            return { status: 'not-saveable' };
         }
 
-        return result.success;
+        pendingDraftSave = null;
+        try {
+            const result = await deps.saveDraftWithReplaceOldest(
+                pending.content,
+                pending.galleryItems,
+                pending.replyQuoteData,
+                pending.channelData,
+                { pubkeyHex: pending.pubkeyHex },
+            );
+            notifyDraftSaveCompleted({
+                draftId: result.draft.id,
+                pubkeyHex: pending.pubkeyHex,
+            });
+            return { status: 'saved' };
+        } catch (error) {
+            deps.logger?.error('下書きの置換保存に失敗:', error);
+            return { status: 'failed' };
+        } finally {
+            deps.closeDraftLimitConfirm();
+        }
+    }
+
+    function cancelPendingDraftSave(): void {
+        pendingDraftSave = null;
+        deps.closeDraftLimitConfirm();
+    }
+
+    function subscribeToDraftSaveCompleted(
+        listener: DraftSaveCompletedListener,
+    ): () => void {
+        saveCompletedListeners.add(listener);
+        return () => {
+            saveCompletedListeners.delete(listener);
+        };
     }
 
     function applyDraft(draft: Draft): void {
@@ -116,6 +206,9 @@ export function createDraftComposerController(
 
     return {
         saveDraftFromComposer,
+        confirmPendingDraftSave,
+        cancelPendingDraftSave,
+        subscribeToDraftSaveCompleted,
         applyDraftToComposer: applyDraft,
     };
 }

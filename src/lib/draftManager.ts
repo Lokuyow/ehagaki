@@ -8,11 +8,16 @@ import { compareDraftsByDisplayOrder } from './draftSortUtils';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 
-export type SaveDraftResult = {
-    success: boolean;
-    needsConfirmation: boolean;
-    drafts: Draft[];
-};
+export type SaveDraftResult =
+    | {
+        status: "saved";
+        draft: Draft;
+        drafts: Draft[];
+    }
+    | {
+        status: "confirmation-required";
+        drafts: Draft[];
+    };
 
 /**
  * 下書きをlocalStorageから読み込む
@@ -73,7 +78,7 @@ function generateId(): string {
 
 /**
  * 新しい下書きを保存する
- * @returns 保存が成功した場合はtrue、上限に達してユーザーの確認が必要な場合はfalse
+ * @returns 保存完了、または上限確認が必要であることを表す結果
  */
 export async function saveDraft(
     htmlContent: string,
@@ -88,7 +93,7 @@ export async function saveDraft(
 
             // 上限チェック
             if (drafts.length >= MAX_DRAFTS) {
-                return { success: false, needsConfirmation: true, drafts };
+                return { status: "confirmation-required" as const, drafts };
             }
 
             const timestamp = Date.now();
@@ -108,8 +113,8 @@ export async function saveDraft(
             });
 
             return {
-                success: true,
-                needsConfirmation: false,
+                status: "saved" as const,
+                draft: newDraft,
                 drafts: [newDraft, ...drafts].sort(compareDraftsByDisplayOrder),
             };
         },
@@ -117,7 +122,7 @@ export async function saveDraft(
             const drafts = loadDraftsFromStorage();
 
             if (drafts.length >= MAX_DRAFTS) {
-                return { success: false, needsConfirmation: true, drafts };
+                return { status: "confirmation-required" as const, drafts };
             }
 
             const newDraft = createPersistedDraft({
@@ -133,7 +138,11 @@ export async function saveDraft(
             const updatedDrafts = [newDraft, ...drafts];
             saveDraftsToStorage(updatedDrafts);
 
-            return { success: true, needsConfirmation: false, drafts: updatedDrafts.sort(compareDraftsByDisplayOrder) };
+            return {
+                status: "saved" as const,
+                draft: newDraft,
+                drafts: updatedDrafts.sort(compareDraftsByDisplayOrder),
+            };
         },
     );
 }
@@ -147,15 +156,9 @@ export async function saveDraftWithReplaceOldest(
     replyQuoteData?: DraftReplyQuoteData,
     channelData?: DraftChannelData,
     options: DraftsRepositoryOptions = {},
-): Promise<Draft[]> {
+): Promise<{ status: "saved"; draft: Draft; drafts: Draft[] }> {
     return runWithLocalStorageFallback(
         async () => {
-            const drafts = await draftsRepository.getAll(options);
-
-            // 最も古い下書きを削除（配列の末尾）
-            const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
-            const oldestDraft = drafts[MAX_DRAFTS - 1];
-
             const newDraft = createPersistedDraft({
                 id: generateId(),
                 htmlContent,
@@ -166,15 +169,12 @@ export async function saveDraftWithReplaceOldest(
                 buildPreview: generatePreview,
             });
 
-            if (oldestDraft) {
-                await draftsRepository.delete(oldestDraft.id);
-            }
-            await draftsRepository.put({
+            const drafts = await draftsRepository.replaceOldest({
                 ...newDraft,
                 pubkeyHex: options.pubkeyHex ?? null,
-            });
+            }, options);
 
-            return [newDraft, ...remainingDrafts].sort(compareDraftsByDisplayOrder);
+            return { status: "saved" as const, draft: newDraft, drafts };
         },
         () => {
             const drafts = loadDraftsFromStorage();
@@ -193,7 +193,11 @@ export async function saveDraftWithReplaceOldest(
             const updatedDrafts = [newDraft, ...remainingDrafts];
             saveDraftsToStorage(updatedDrafts);
 
-            return updatedDrafts.sort(compareDraftsByDisplayOrder);
+            return {
+                status: "saved" as const,
+                draft: newDraft,
+                drafts: updatedDrafts.sort(compareDraftsByDisplayOrder),
+            };
         },
     );
 }

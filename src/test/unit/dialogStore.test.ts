@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach } from 'vitest';
 
 import {
     isAnyDialogOpen,
-    pendingDraftContentStore,
     showAddAccountDialogStore,
     showComposerTargetDialogStore,
     showDraftListDialogStore,
@@ -23,7 +22,6 @@ describe('dialogStore', () => {
         showComposerTargetDialogStore.set(false);
         showDraftListDialogStore.set(false);
         showDraftLimitConfirmStore.set(false);
-        pendingDraftContentStore.set(null);
     });
 
     it('boolean dialog stores を set/get できる', () => {
@@ -47,32 +45,5 @@ describe('dialogStore', () => {
         showSettingsDialogStore.set(false);
         showDraftListDialogStore.set(true);
         expect(isAnyDialogOpen()).toBe(true);
-    });
-
-    it('pending draft content を保持してクリアできる', () => {
-        const draftContent = {
-            content: '<p>draft</p>',
-            galleryItems: [
-                {
-                    id: 'media-1',
-                    type: 'image' as const,
-                    src: 'https://example.com/a.jpg',
-                    isPlaceholder: false,
-                },
-            ],
-            channelData: {
-                eventId: 'channel-root-event',
-                relayHints: ['wss://channel-relay.example.com'],
-                name: 'General',
-                about: 'General discussion',
-                picture: 'https://example.com/channel.png',
-            },
-        };
-
-        pendingDraftContentStore.set(draftContent);
-        expect(pendingDraftContentStore.value).toEqual(draftContent);
-
-        pendingDraftContentStore.set(null);
-        expect(pendingDraftContentStore.value).toBeNull();
     });
 });

@@ -45,7 +45,6 @@
     showComposerTargetDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
-    pendingDraftContentStore,
     showAddAccountDialogStore,
   } from "./stores/dialogStore.svelte";
   import { swNeedRefresh } from "./stores/swStore.svelte";
@@ -82,6 +81,7 @@
   import type { AuthResult, Draft, NostrEvent, PostResult } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
+  import { editorState } from "./stores/editorStore.svelte";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import {
     addQuoteReference,
@@ -154,10 +154,7 @@
   } from "./lib/appEmbedController";
   import { createAppComponentLoaders } from "./lib/appComponentLoaders";
   import { createNip46AuthFlowController } from "./lib/nip46AuthFlowCoordinator";
-  import {
-    createDialogVisibilityHandlers,
-    createDraftLimitConfirmHandlers,
-  } from "./lib/appDialogUtils";
+  import { createDialogVisibilityHandlers } from "./lib/appDialogUtils";
   import {
     clearNip46RuntimeForAuthChange,
     disposeNostrSession,
@@ -480,8 +477,6 @@
       !!replyQuoteState.value.reply ||
       replyQuoteState.value.quotes.length > 0,
   );
-  let draftListRefreshRevision = $state(0);
-
   // AccountManager初期化
   const accountManager = new AccountManager({ localStorage });
   authService.setAccountManager(accountManager);
@@ -625,27 +620,6 @@
     void nip46AuthFlowCoordinator.cancelPendingAuth();
   }
 
-  const draftLimitConfirm = createDraftLimitConfirmHandlers({
-    pendingDraftContentStore,
-    showDraftLimitConfirmStore,
-    saveDraftWithReplaceOldest: async (
-      content,
-      galleryItems,
-      replyQuoteData,
-      channelData,
-    ) => {
-      await saveDraftWithReplaceOldest(
-        content,
-        galleryItems,
-        replyQuoteData,
-        channelData,
-        {
-          pubkeyHex: authState.value?.pubkey ?? null,
-        },
-      );
-      draftListRefreshRevision += 1;
-    },
-  });
   const draftComposerController = createDraftComposerController({
     getEditorHtml: () => postComponentRef?.getEditorHtml?.(),
     getGalleryItems: () => mediaGalleryStore.getItems(),
@@ -654,7 +628,10 @@
     getReplyQuoteState: () => replyQuoteState.value,
     getPubkeyHex: () => authState.value?.pubkey ?? null,
     saveDraft,
-    stageDraftLimitConfirm: draftLimitConfirm.stage,
+    saveDraftWithReplaceOldest,
+    openDraftLimitConfirm: () => showDraftLimitConfirmStore.set(true),
+    closeDraftLimitConfirm: () => showDraftLimitConfirmStore.set(false),
+    logger: console,
     isGalleryMode: () => !mediaFreePlacementStore.value,
     document,
     clearGallery: () => mediaGalleryStore.clearAll(),
@@ -1453,7 +1430,7 @@
   }
 
   // --- 下書き機能ハンドラ---
-  async function handleSaveDraft(): Promise<boolean> {
+  async function handleSaveDraft() {
     return draftComposerController.saveDraftFromComposer();
   }
 
@@ -1782,8 +1759,8 @@
           onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
           onSaveDraft={handleSaveDraft}
-          canSaveDraft={hasDraftComposerContext || undefined}
-          {draftListRefreshRevision}
+          subscribeToDraftSaveCompleted={draftComposerController.subscribeToDraftSaveCompleted}
+          canSaveDraft={editorState.canPost || hasDraftComposerContext}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}
@@ -1816,14 +1793,19 @@
       {#if showDraftLimitConfirmStore.value}
         <ConfirmDialog
           open={showDraftLimitConfirmStore.value}
-          onOpenChange={draftLimitConfirm.handleOpenChange}
+          onOpenChange={(open) => {
+            if (!open) draftComposerController.cancelPendingDraftSave();
+          }}
           title={$_("common.confirm")}
           description={$_("draft.limit_reached")}
           confirmLabel={$_("common.ok")}
           cancelLabel={$_("common.cancel")}
           confirmVariant="danger"
-          onConfirm={draftLimitConfirm.confirm}
-          onCancel={draftLimitConfirm.cancel}
+          closeOnConfirm={false}
+          onConfirm={async () => {
+            await draftComposerController.confirmPendingDraftSave();
+          }}
+          onCancel={draftComposerController.cancelPendingDraftSave}
         />
       {/if}
       {#if SettingsDialogComponent}

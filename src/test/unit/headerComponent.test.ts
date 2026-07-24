@@ -24,10 +24,11 @@ import HeaderComponent from '../../components/HeaderComponent.svelte';
 describe('HeaderComponent', () => {
     it('ヘッダーに下書き保存ボタンがなく、宛先指定ボタンが最右に表示される', async () => {
         const onChooseTarget = vi.fn();
+        const onShowDraftList = vi.fn();
         const { container } = render(HeaderComponent, {
             props: {
                 onResetPostContent: vi.fn(),
-                onShowDraftList: vi.fn(),
+                onShowDraftList,
                 onChooseTarget,
                 showMascot: false,
                 showFlavorText: false,
@@ -41,6 +42,9 @@ describe('HeaderComponent', () => {
         expect(buttons.at(-1)?.getAttribute('aria-label')).toBe('宛先を指定');
         expect(container.querySelector('.choose-target-icon')).toBeTruthy();
         expect(container.textContent).not.toContain('@');
+
+        await fireEvent.click(screen.getByRole('button', { name: '下書き一覧' }));
+        expect(onShowDraftList).toHaveBeenCalledOnce();
 
         await fireEvent.click(screen.getByRole('button', { name: '宛先を指定' }));
         expect(onChooseTarget).toHaveBeenCalledOnce();

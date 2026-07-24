@@ -26,6 +26,11 @@ export type DraftsRepositoryOptions = {
 export interface DraftsRepository {
     getAll(options?: DraftsRepositoryOptions): Promise<Draft[]>;
     put(draft: DraftInput): Promise<void>;
+    replaceOldest(
+        draft: DraftInput,
+        options?: DraftsRepositoryOptions,
+        maxDrafts?: number,
+    ): Promise<Draft[]>;
     setPinned(id: string, pinned: boolean): Promise<void>;
     delete(id: string): Promise<void>;
     deleteAll(options?: DraftsRepositoryOptions): Promise<void>;
@@ -107,6 +112,34 @@ export class DexieDraftsRepository implements DraftsRepository {
     async put(draft: DraftInput): Promise<void> {
         await this.ensureLegacyDraftsMigrated();
         await this.db.drafts.put(toRecord(draft, this.now));
+    }
+
+    async replaceOldest(
+        draft: DraftInput,
+        options: DraftsRepositoryOptions = {},
+        maxDrafts = MAX_DRAFTS,
+    ): Promise<Draft[]> {
+        await this.ensureLegacyDraftsMigrated();
+
+        return this.db.transaction("rw", this.db.drafts, async () => {
+            const records = await this.db.drafts
+                .where("scopeKey")
+                .anyOf(this.getVisibleScopeKeys(options.pubkeyHex))
+                .toArray();
+            const sortedRecords = records.sort(compareDraftsByDisplayOrder);
+            const remainingRecords = sortedRecords.slice(0, maxDrafts - 1);
+            const oldestRecord = sortedRecords[maxDrafts - 1];
+            const newRecord = toRecord(draft, this.now);
+
+            if (oldestRecord) {
+                await this.db.drafts.delete(oldestRecord.id);
+            }
+            await this.db.drafts.put(newRecord);
+
+            return [newRecord, ...remainingRecords]
+                .sort(compareDraftsByDisplayOrder)
+                .map(toDraft);
+        });
     }
 
     async setPinned(id: string, pinned: boolean): Promise<void> {

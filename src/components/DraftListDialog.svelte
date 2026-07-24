@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import type { Draft } from "../lib/types";
@@ -20,14 +20,20 @@
         toggleDraftPinned,
         formatDraftTimestamp,
     } from "../lib/draftManager";
+    import type {
+        DraftSaveAttemptResult,
+        DraftSaveCompletedEvent,
+    } from "../lib/draftComposerController";
 
     interface Props {
         show: boolean;
         onClose: () => void;
         onApplyDraft: (draft: Draft) => void;
-        onSaveDraft: () => Promise<boolean>;
-        canSaveDraft?: boolean;
-        draftListRefreshRevision?: number;
+        onSaveDraft: () => Promise<DraftSaveAttemptResult>;
+        subscribeToDraftSaveCompleted: (
+            listener: (event: DraftSaveCompletedEvent) => void,
+        ) => () => void;
+        canSaveDraft: boolean;
         pubkeyHex?: string | null;
     }
 
@@ -36,26 +42,18 @@
         onClose,
         onApplyDraft,
         onSaveDraft,
-        canSaveDraft = undefined,
-        draftListRefreshRevision = 0,
+        subscribeToDraftSaveCompleted,
+        canSaveDraft,
         pubkeyHex = null,
     }: Props = $props();
 
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
-    let isSavingDraft = $state(false);
+    let operationPhase = $state<"idle" | "saving" | "mutating-list">("idle");
     let showSaveSuccessMessage = $state(false);
-    let saveSuccessMessageX = $state(0);
-    let saveSuccessMessageY = $state(0);
     let saveSuccessMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    let draftLoadRequestId = 0;
-    let lastHandledRefreshRevision = 0;
-    let hasLoadedDrafts = false;
-    let lastRefreshTriggerKey = "";
-
-    const getDraftOptions = () => ({
-        pubkeyHex,
-    });
+    let draftLoadGeneration = 0;
+    let destroyed = false;
 
     function getDraftDisplayLabels(): DraftContextLabels {
         return {
@@ -69,8 +67,13 @@
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
-    let canPost = $derived(editorState.canPost);
-    let canSaveCurrentDraft = $derived(canSaveDraft ?? canPost);
+    let saveDisabled = $derived(
+        !canSaveDraft ||
+            postStatus.sending ||
+            isUploading ||
+            operationPhase !== "idle",
+    );
+    let listActionsDisabled = $derived(operationPhase !== "idle");
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -88,59 +91,63 @@
         }
     }
 
-    function showSaveSuccessMessageAtAnchor(anchor?: HTMLElement | null) {
+    function showDraftSavedMessage() {
         clearSaveSuccessMessageTimeout();
-
-        const rect = anchor?.getBoundingClientRect();
-        saveSuccessMessageX = rect
-            ? rect.left + rect.width / 2
-            : window.innerWidth / 2;
-        saveSuccessMessageY = rect ? rect.bottom + 8 : window.innerHeight / 2;
         showSaveSuccessMessage = true;
         saveSuccessMessageTimeoutId = setTimeout(() => {
+            if (destroyed) return;
             showSaveSuccessMessage = false;
             saveSuccessMessageTimeoutId = undefined;
         }, 2000);
     }
 
-    async function refreshDrafts() {
-        const requestId = ++draftLoadRequestId;
-        const loadedDrafts = await loadDrafts(getDraftOptions());
-        if (show && requestId === draftLoadRequestId) {
-            drafts = loadedDrafts;
+    async function refreshDrafts(expectedPubkeyHex: string | null) {
+        if (!show || expectedPubkeyHex !== pubkeyHex) return;
+
+        const generation = ++draftLoadGeneration;
+        try {
+            const loadedDrafts = await loadDrafts({
+                pubkeyHex: expectedPubkeyHex,
+            });
+            if (
+                !destroyed &&
+                show &&
+                expectedPubkeyHex === pubkeyHex &&
+                generation === draftLoadGeneration
+            ) {
+                drafts = loadedDrafts;
+            }
+        } catch (error) {
+            console.error("下書き一覧の読み込みに失敗:", error);
         }
     }
 
-    onDestroy(clearSaveSuccessMessageTimeout);
+    function handleDraftSaveCompleted(event: DraftSaveCompletedEvent) {
+        if (!show || event.pubkeyHex !== pubkeyHex) return;
+
+        showDraftSavedMessage();
+        void refreshDrafts(event.pubkeyHex);
+    }
+
+    onMount(() =>
+        subscribeToDraftSaveCompleted(handleDraftSaveCompleted),
+    );
+
+    onDestroy(() => {
+        destroyed = true;
+        draftLoadGeneration += 1;
+        clearSaveSuccessMessageTimeout();
+    });
 
     // ダイアログが開かれたときに下書きを読み込む
     $effect(() => {
-        const triggerKey = `${show ? 1 : 0}:${draftListRefreshRevision}:${pubkeyHex ?? ""}`;
+        const currentPubkeyHex = pubkeyHex;
         if (!show) {
-            hasLoadedDrafts = false;
-            lastRefreshTriggerKey = "";
+            draftLoadGeneration += 1;
             return;
         }
 
-        if (triggerKey === lastRefreshTriggerKey) {
-            return;
-        }
-
-        lastRefreshTriggerKey = triggerKey;
-        const currentRevision = draftListRefreshRevision;
-        if (!hasLoadedDrafts) {
-            hasLoadedDrafts = true;
-            lastHandledRefreshRevision = currentRevision;
-        } else if (currentRevision > lastHandledRefreshRevision) {
-            lastHandledRefreshRevision = currentRevision;
-            showSaveSuccessMessageAtAnchor(
-                document.querySelector(
-                    ".save-draft-button",
-                ) as HTMLElement | null,
-            );
-        }
-
-        void refreshDrafts();
+        void refreshDrafts(currentPubkeyHex);
     });
 
     // 下書きを適用
@@ -149,41 +156,52 @@
         handleClose();
     }
 
-    async function handleSaveDraftClick(event?: MouseEvent) {
-        if (isSavingDraft || !canSaveCurrentDraft) {
-            return false;
-        }
+    async function handleSaveDraftClick() {
+        if (saveDisabled) return;
 
-        isSavingDraft = true;
+        operationPhase = "saving";
         try {
-            const success = await onSaveDraft();
-            if (success) {
-                const target = event?.currentTarget as HTMLElement | null;
-                await refreshDrafts();
-                showSaveSuccessMessageAtAnchor(target ?? null);
-            }
-            return success;
+            await onSaveDraft();
         } finally {
-            isSavingDraft = false;
+            if (!destroyed) {
+                operationPhase = "idle";
+            }
+        }
+    }
+
+    async function runListMutation(
+        operation: (options: { pubkeyHex: string | null }) => Promise<unknown>,
+    ) {
+        if (listActionsDisabled) return;
+
+        const mutationPubkeyHex = pubkeyHex;
+        operationPhase = "mutating-list";
+        try {
+            await operation({ pubkeyHex: mutationPubkeyHex });
+            await refreshDrafts(mutationPubkeyHex);
+        } catch (error) {
+            console.error("下書き一覧の更新に失敗:", error);
+        } finally {
+            if (!destroyed) {
+                operationPhase = "idle";
+            }
         }
     }
 
     // 下書きを削除
     async function handleDeleteDraft(id: string) {
-        drafts = await deleteDraft(id, getDraftOptions());
+        await runListMutation((options) => deleteDraft(id, options));
     }
 
     async function handleTogglePinned(draft: Draft) {
-        drafts = await toggleDraftPinned(
-            draft.id,
-            !draft.pinned,
-            getDraftOptions(),
+        await runListMutation((options) =>
+            toggleDraftPinned(draft.id, !draft.pinned, options),
         );
     }
 
     // 全ての下書きを削除
     async function handleDeleteAllDrafts() {
-        drafts = await deleteAllDrafts(getDraftOptions());
+        await runListMutation((options) => deleteAllDrafts(options));
     }
 </script>
 
@@ -213,6 +231,7 @@
             variant="default"
             shape="rounded"
             ariaLabel={$_("draft.delete_all") || "全て削除"}
+            disabled={listActionsDisabled}
             onClick={handleDeleteAllDrafts}
         >
             <div class="trash-icon svg-icon"></div>
@@ -244,6 +263,7 @@
                                 ? $_("draft.unpin") || "ピン留めを解除"
                                 : $_("draft.pin") || "ピン留め"}
                             aria-pressed={draft.pinned ? "true" : "false"}
+                            disabled={listActionsDisabled}
                             onClick={() => void handleTogglePinned(draft)}
                         >
                             <div class="thumbtack-icon svg-icon"></div>
@@ -251,6 +271,7 @@
                         <button
                             type="button"
                             class="draft-content"
+                            disabled={listActionsDisabled}
                             onclick={() => handleApplyDraft(draft)}
                         >
                             <span class="draft-main">
@@ -300,6 +321,7 @@
                             variant="default"
                             shape="square"
                             ariaLabel={$_("draft.delete") || "削除"}
+                            disabled={listActionsDisabled}
                             onClick={() => void handleDeleteDraft(draft.id)}
                         >
                             <div class="trash-icon svg-icon"></div>
@@ -318,11 +340,8 @@
                 shape="square"
                 contentLayout="iconText"
                 ariaLabel={$_("draft.save") || "下書き保存"}
-                disabled={!canSaveCurrentDraft ||
-                    postStatus.sending ||
-                    isUploading ||
-                    isSavingDraft}
-                onClick={(event) => handleSaveDraftClick(event)}
+                disabled={saveDisabled}
+                onClick={handleSaveDraftClick}
             >
                 <div class="save-draft-icon svg-icon"></div>
                 <span class="btn-text">{$_("draft.save") || "下書き保存"}</span>
@@ -348,8 +367,7 @@
 
 <FloatingMessage
     show={showSaveSuccessMessage}
-    x={saveSuccessMessageX}
-    y={saveSuccessMessageY}
+    variant="top-right"
 >
     <div>{$_("draft.saved") || "下書きを保存しました"}</div>
 </FloatingMessage>
