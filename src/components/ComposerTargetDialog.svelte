@@ -433,7 +433,10 @@
         {#if actions.length > 0}
             <div class="target-actions">
                 {#each actions as action}
-                    <Button onClick={() => handleApply(action)}>
+                    <Button
+                        variant="primary"
+                        onClick={() => handleApply(action)}
+                    >
                         {action === "reply"
                             ? $_("composerTarget.reply")
                             : action === "quote"
