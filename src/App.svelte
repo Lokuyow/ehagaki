@@ -480,6 +480,7 @@
       !!replyQuoteState.value.reply ||
       replyQuoteState.value.quotes.length > 0,
   );
+  let draftListRefreshRevision = $state(0);
 
   // AccountManager初期化
   const accountManager = new AccountManager({ localStorage });
@@ -642,6 +643,7 @@
           pubkeyHex: authState.value?.pubkey ?? null,
         },
       );
+      draftListRefreshRevision += 1;
     },
   });
   const draftComposerController = createDraftComposerController({
@@ -1781,6 +1783,7 @@
           onApplyDraft={handleApplyDraft}
           onSaveDraft={handleSaveDraft}
           canSaveDraft={hasDraftComposerContext || undefined}
+          {draftListRefreshRevision}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}

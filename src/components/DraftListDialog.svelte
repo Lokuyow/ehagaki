@@ -1,10 +1,12 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import type { Draft } from "../lib/types";
     import { editorState } from "../stores/editorStore.svelte";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import {
@@ -25,6 +27,7 @@
         onApplyDraft: (draft: Draft) => void;
         onSaveDraft: () => Promise<boolean>;
         canSaveDraft?: boolean;
+        draftListRefreshRevision?: number;
         pubkeyHex?: string | null;
     }
 
@@ -34,12 +37,21 @@
         onApplyDraft,
         onSaveDraft,
         canSaveDraft = undefined,
+        draftListRefreshRevision = 0,
         pubkeyHex = null,
     }: Props = $props();
 
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
     let isSavingDraft = $state(false);
+    let showSaveSuccessMessage = $state(false);
+    let saveSuccessMessageX = $state(0);
+    let saveSuccessMessageY = $state(0);
+    let saveSuccessMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    let draftLoadRequestId = 0;
+    let lastHandledRefreshRevision = 0;
+    let hasLoadedDrafts = false;
+    let lastRefreshTriggerKey = "";
 
     const getDraftOptions = () => ({
         pubkeyHex,
@@ -69,18 +81,66 @@
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
 
+    function clearSaveSuccessMessageTimeout() {
+        if (saveSuccessMessageTimeoutId !== undefined) {
+            clearTimeout(saveSuccessMessageTimeoutId);
+            saveSuccessMessageTimeoutId = undefined;
+        }
+    }
+
+    function showSaveSuccessMessageAtAnchor(anchor?: HTMLElement | null) {
+        clearSaveSuccessMessageTimeout();
+
+        const rect = anchor?.getBoundingClientRect();
+        saveSuccessMessageX = rect
+            ? rect.left + rect.width / 2
+            : window.innerWidth / 2;
+        saveSuccessMessageY = rect ? rect.bottom + 8 : window.innerHeight / 2;
+        showSaveSuccessMessage = true;
+        saveSuccessMessageTimeoutId = setTimeout(() => {
+            showSaveSuccessMessage = false;
+            saveSuccessMessageTimeoutId = undefined;
+        }, 2000);
+    }
+
     async function refreshDrafts() {
+        const requestId = ++draftLoadRequestId;
         const loadedDrafts = await loadDrafts(getDraftOptions());
-        if (show) {
+        if (show && requestId === draftLoadRequestId) {
             drafts = loadedDrafts;
         }
     }
 
+    onDestroy(clearSaveSuccessMessageTimeout);
+
     // ダイアログが開かれたときに下書きを読み込む
     $effect(() => {
-        if (show) {
-            void refreshDrafts();
+        const triggerKey = `${show ? 1 : 0}:${draftListRefreshRevision}:${pubkeyHex ?? ""}`;
+        if (!show) {
+            hasLoadedDrafts = false;
+            lastRefreshTriggerKey = "";
+            return;
         }
+
+        if (triggerKey === lastRefreshTriggerKey) {
+            return;
+        }
+
+        lastRefreshTriggerKey = triggerKey;
+        const currentRevision = draftListRefreshRevision;
+        if (!hasLoadedDrafts) {
+            hasLoadedDrafts = true;
+            lastHandledRefreshRevision = currentRevision;
+        } else if (currentRevision > lastHandledRefreshRevision) {
+            lastHandledRefreshRevision = currentRevision;
+            showSaveSuccessMessageAtAnchor(
+                document.querySelector(
+                    ".save-draft-button",
+                ) as HTMLElement | null,
+            );
+        }
+
+        void refreshDrafts();
     });
 
     // 下書きを適用
@@ -89,7 +149,7 @@
         handleClose();
     }
 
-    async function handleSaveDraftClick() {
+    async function handleSaveDraftClick(event?: MouseEvent) {
         if (isSavingDraft || !canSaveCurrentDraft) {
             return false;
         }
@@ -98,7 +158,9 @@
         try {
             const success = await onSaveDraft();
             if (success) {
+                const target = event?.currentTarget as HTMLElement | null;
                 await refreshDrafts();
+                showSaveSuccessMessageAtAnchor(target ?? null);
             }
             return success;
         } finally {
@@ -260,8 +322,7 @@
                     postStatus.sending ||
                     isUploading ||
                     isSavingDraft}
-                onClick={() => handleSaveDraftClick()}
-                floatingMessage={$_("draft.saved") || "下書きを保存しました"}
+                onClick={(event) => handleSaveDraftClick(event)}
             >
                 <div class="save-draft-icon svg-icon"></div>
                 <span class="btn-text">{$_("draft.save") || "下書き保存"}</span>
@@ -285,9 +346,25 @@
     {/snippet}
 </DialogWrapper>
 
+<FloatingMessage
+    show={showSaveSuccessMessage}
+    x={saveSuccessMessageX}
+    y={saveSuccessMessageY}
+>
+    <div>{$_("draft.saved") || "下書きを保存しました"}</div>
+</FloatingMessage>
+
 <style>
+    :global(.draft-list-dialog) {
+        max-height: calc(100svh - 32px);
+        overflow: hidden;
+    }
+
     :global(.draft-list-dialog .dialog-content) {
         padding: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
     }
 
     .dialog-heading-container {
@@ -314,7 +391,8 @@
 
     .draft-list-container {
         width: 100%;
-        min-height: 100px;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
     }
 
