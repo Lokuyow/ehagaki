@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import type { Draft } from "../lib/types";
+    import { editorState } from "../stores/editorStore.svelte";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
@@ -22,6 +23,8 @@
         show: boolean;
         onClose: () => void;
         onApplyDraft: (draft: Draft) => void;
+        onSaveDraft: () => Promise<boolean>;
+        canSaveDraft?: boolean;
         pubkeyHex?: string | null;
     }
 
@@ -29,11 +32,14 @@
         show = $bindable(false),
         onClose,
         onApplyDraft,
+        onSaveDraft,
+        canSaveDraft = undefined,
         pubkeyHex = null,
     }: Props = $props();
 
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
+    let isSavingDraft = $state(false);
 
     const getDraftOptions = () => ({
         pubkeyHex,
@@ -49,6 +55,11 @@
         };
     }
 
+    let postStatus = $derived(editorState.postStatus);
+    let isUploading = $derived(editorState.isUploading);
+    let canPost = $derived(editorState.canPost);
+    let canSaveCurrentDraft = $derived(canSaveDraft ?? canPost);
+
     // ダイアログを閉じるハンドラ
     function handleClose() {
         show = false;
@@ -58,14 +69,17 @@
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
 
+    async function refreshDrafts() {
+        const loadedDrafts = await loadDrafts(getDraftOptions());
+        if (show) {
+            drafts = loadedDrafts;
+        }
+    }
+
     // ダイアログが開かれたときに下書きを読み込む
     $effect(() => {
         if (show) {
-            void loadDrafts(getDraftOptions()).then((loadedDrafts) => {
-                if (show) {
-                    drafts = loadedDrafts;
-                }
-            });
+            void refreshDrafts();
         }
     });
 
@@ -73,6 +87,23 @@
     function handleApplyDraft(draft: Draft) {
         onApplyDraft(draft);
         handleClose();
+    }
+
+    async function handleSaveDraftClick() {
+        if (isSavingDraft || !canSaveCurrentDraft) {
+            return false;
+        }
+
+        isSavingDraft = true;
+        try {
+            const success = await onSaveDraft();
+            if (success) {
+                await refreshDrafts();
+            }
+            return success;
+        } finally {
+            isSavingDraft = false;
+        }
     }
 
     // 下書きを削除
@@ -218,21 +249,39 @@
     </div>
 
     {#snippet footer()}
-        <Dialog.Close>
-            {#snippet child({ props })}
-                <Button
-                    {...props}
-                    className="modal-close"
-                    shape="square"
-                    ariaLabel={$_("global.close") || "閉じる"}
-                >
-                    <div
-                        class="xmark-icon svg-icon"
-                        aria-label={$_("global.close") || "閉じる"}
-                    ></div>
-                </Button>
-            {/snippet}
-        </Dialog.Close>
+        <div class="dialog-footer-actions">
+            <Button
+                className="save-draft-button"
+                variant="primary"
+                shape="square"
+                contentLayout="iconText"
+                ariaLabel={$_("draft.save") || "下書き保存"}
+                disabled={!canSaveCurrentDraft ||
+                    postStatus.sending ||
+                    isUploading ||
+                    isSavingDraft}
+                onClick={() => handleSaveDraftClick()}
+                floatingMessage={$_("draft.saved") || "下書きを保存しました"}
+            >
+                <div class="save-draft-icon svg-icon"></div>
+                <span class="btn-text">{$_("draft.save") || "下書き保存"}</span>
+            </Button>
+            <Dialog.Close>
+                {#snippet child({ props })}
+                    <Button
+                        {...props}
+                        className="modal-close"
+                        shape="square"
+                        ariaLabel={$_("global.close") || "閉じる"}
+                    >
+                        <div
+                            class="xmark-icon svg-icon"
+                            aria-label={$_("global.close") || "閉じる"}
+                        ></div>
+                    </Button>
+                {/snippet}
+            </Dialog.Close>
+        </div>
     {/snippet}
 </DialogWrapper>
 
@@ -267,6 +316,25 @@
         width: 100%;
         min-height: 100px;
         overflow-y: auto;
+    }
+
+    .dialog-footer-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    :global(.save-draft-button) {
+        width: 100%;
+        height: 50px;
+        justify-content: center;
+    }
+
+    .save-draft-icon {
+        width: 24px;
+        height: 24px;
+        mask-image: url("/icons/save_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .empty-message {

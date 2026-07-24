@@ -1549,10 +1549,8 @@
       <div class="main-content">
         <HeaderComponent
           onResetPostContent={handleResetPostContent}
-          onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
           onChooseTarget={composerTargetDialog.open}
-          canSaveDraft={hasDraftComposerContext || undefined}
           canResetPostContent={hasDraftComposerContext || undefined}
           balloonMessage={showHeaderBalloonMessage
             ? balloon.finalMessage
@@ -1781,6 +1779,8 @@
           show={showDraftListDialogStore.value}
           onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
+          onSaveDraft={handleSaveDraft}
+          canSaveDraft={hasDraftComposerContext || undefined}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}

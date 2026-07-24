@@ -6,9 +6,7 @@
         ComposerResolvedTarget,
         ComposerTargetResolveResult,
     } from "../../lib/composerTargetResolver";
-    import type {
-        ComposerEventTarget,
-    } from "../../lib/composerTargetApplyController";
+    import type { ComposerEventTarget } from "../../lib/composerTargetApplyController";
     import type { ComposerTargetAction } from "../../lib/composerTargetUtils";
 
     const ids = {
@@ -31,7 +29,9 @@
     };
 
     let show = $state(false);
-    let applications = $state<Array<{ action: ComposerTargetAction; kind: number }>>([]);
+    let applications = $state<
+        Array<{ action: ComposerTargetAction; kind: number }>
+    >([]);
 
     function makeTarget(
         kind: 1 | 40 | 42,
@@ -46,9 +46,10 @@
                 created_at: 1,
                 kind,
                 tags: [],
-                content: kind === 40
-                    ? JSON.stringify({ name: "Fixture channel" })
-                    : `Fixture kind ${kind}`,
+                content:
+                    kind === 40
+                        ? JSON.stringify({ name: "Fixture channel" })
+                        : `Fixture kind ${kind}`,
                 sig: "d".repeat(128),
             },
             relayHints: ["wss://input.example.com/"],
@@ -64,21 +65,21 @@
             },
             channelContext: hasChannel
                 ? {
-                    eventId: "e".repeat(64),
-                    relayHints: ["wss://verified.example.com/"],
-                    channelRelays: ["wss://verified.example.com/"],
-                    name: channelName,
-                    about: "Deterministic channel preview",
-                    picture: null,
-                }
+                      eventId: "e".repeat(64),
+                      relayHints: ["wss://verified.example.com/"],
+                      channelRelays: ["wss://verified.example.com/"],
+                      name: channelName,
+                      about: "Deterministic channel preview",
+                      picture: null,
+                  }
                 : null,
             channelCreatorPubkey: hasChannel ? "f".repeat(64) : null,
             channelCreatorProfile: null,
             channelQuery: hasChannel
                 ? {
-                    eventId: "e".repeat(64),
-                    relayHints: ["wss://verified.example.com/"],
-                }
+                      eventId: "e".repeat(64),
+                      relayHints: ["wss://verified.example.com/"],
+                  }
                 : null,
         };
     }
@@ -110,13 +111,17 @@
             let cancelled = false;
             let timer: ReturnType<typeof setTimeout> | undefined;
             const delay = params.pointer.eventId === ids.stale ? 700 : 20;
-            const promise = new Promise<ComposerTargetResolveResult>((resolve) => {
-                timer = setTimeout(() => {
-                    resolve(cancelled
-                        ? { status: "cancelled" }
-                        : resolveForId(params.pointer.eventId));
-                }, delay);
-            });
+            const promise = new Promise<ComposerTargetResolveResult>(
+                (resolve) => {
+                    timer = setTimeout(() => {
+                        resolve(
+                            cancelled
+                                ? { status: "cancelled" }
+                                : resolveForId(params.pointer.eventId),
+                        );
+                    }, delay);
+                },
+            );
             return {
                 promise,
                 cancel() {
@@ -142,9 +147,11 @@
             return applications;
         },
     };
-    (window as typeof window & {
-        __COMPOSER_TARGET_HARNESS__?: typeof harness;
-    }).__COMPOSER_TARGET_HARNESS__ = harness;
+    (
+        window as typeof window & {
+            __COMPOSER_TARGET_HARNESS__?: typeof harness;
+        }
+    ).__COMPOSER_TARGET_HARNESS__ = harness;
 </script>
 
 <svelte:head>
@@ -154,10 +161,8 @@
 <div class="composer-target-playwright-harness">
     <HeaderComponent
         onResetPostContent={() => undefined}
-        onSaveDraft={async () => true}
         onShowDraftList={() => undefined}
-        onChooseTarget={() => show = true}
-        canSaveDraft={true}
+        onChooseTarget={() => (show = true)}
         canResetPostContent={true}
         showMascot={false}
         showFlavorText={false}
@@ -165,14 +170,16 @@
     <main>
         <p>Deterministic composer target fixture</p>
         <output aria-label="適用結果">
-            {applications.map(({ action, kind }) => `${kind}:${action}`).join(",")}
+            {applications
+                .map(({ action, kind }) => `${kind}:${action}`)
+                .join(",")}
         </output>
     </main>
 </div>
 
 <ComposerTargetDialog
     {show}
-    onClose={() => show = false}
+    onClose={() => (show = false)}
     onApply={apply}
     rxNostr={{} as never}
     {resolver}

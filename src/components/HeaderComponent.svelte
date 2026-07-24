@@ -1,21 +1,17 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { onDestroy } from "svelte";
     import { Tooltip } from "bits-ui";
     import { editorState } from "../stores/editorStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
-    import FloatingMessage from "./FloatingMessage.svelte";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         onResetPostContent: () => void;
-        onSaveDraft: () => Promise<boolean>;
         onShowDraftList: () => void;
         onChooseTarget?: () => void;
-        canSaveDraft?: boolean;
         canResetPostContent?: boolean;
         balloonMessage?: BalloonMessageType | null;
         compactMessage?: BalloonMessageType | null;
@@ -25,10 +21,8 @@
 
     let {
         onResetPostContent,
-        onSaveDraft,
         onShowDraftList,
         onChooseTarget = () => undefined,
-        canSaveDraft = undefined,
         canResetPostContent = undefined,
         balloonMessage = null,
         compactMessage = null,
@@ -36,55 +30,9 @@
         showFlavorText = true,
     }: Props = $props();
 
-    // 下書き保存メッセージの状態
-    let showDraftSavedMessage = $state(false);
-    let draftMessageX = $state(0);
-    let draftMessageY = $state(0);
-    let isSavingDraft = $state(false);
-    let draftSavedMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    function clearDraftSavedMessageTimeout() {
-        if (draftSavedMessageTimeoutId !== undefined) {
-            clearTimeout(draftSavedMessageTimeoutId);
-            draftSavedMessageTimeoutId = undefined;
-        }
-    }
-
-    onDestroy(clearDraftSavedMessageTimeout);
-
-    async function handleSaveDraft(e: MouseEvent) {
-        if (isSavingDraft) return;
-
-        const target = e.currentTarget as HTMLElement | null;
-        const rect = target?.getBoundingClientRect();
-
-        isSavingDraft = true;
-        let success = false;
-        try {
-            success = await onSaveDraft();
-        } finally {
-            isSavingDraft = false;
-        }
-
-        if (success && rect) {
-            clearDraftSavedMessageTimeout();
-            // ボタンの位置を基準にメッセージを表示
-            draftMessageX = rect.left + rect.width / 2;
-            draftMessageY = rect.bottom + 8;
-            showDraftSavedMessage = true;
-
-            // 2秒後に自動で閉じる
-            draftSavedMessageTimeoutId = setTimeout(() => {
-                showDraftSavedMessage = false;
-                draftSavedMessageTimeoutId = undefined;
-            }, 2000);
-        }
-    }
-
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
-    let canSaveCurrentDraft = $derived(canSaveDraft ?? canPost);
     let canResetCurrentPostContent = $derived(canResetPostContent ?? canPost);
     let compactSuccessText = $derived(
         $_("balloonMessage.success.compact_post_success") || "投稿完了",
@@ -200,39 +148,6 @@
                                 variant="header"
                                 shape="square"
                                 contentLayout="icon"
-                                className="draft-save-button"
-                                disabled={!canSaveCurrentDraft ||
-                                    postStatus.sending ||
-                                    isUploading ||
-                                    isSavingDraft}
-                                onClick={(e) => {
-                                    void handleSaveDraft(e);
-                                    if (typeof tooltipOnclick === "function") {
-                                        tooltipOnclick(e);
-                                    }
-                                }}
-                                ariaLabel={$_("draft.save") || "下書き保存"}
-                                {...restProps}
-                            >
-                                <div class="floppy-disk-icon svg-icon"></div>
-                            </Button>
-                        {/snippet}
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                        <Tooltip.Content sideOffset={8} class="tooltip-content">
-                            {$_("draft.save") || "下書き保存"}
-                        </Tooltip.Content>
-                    </Tooltip.Portal>
-                </Tooltip.Root>
-                <Tooltip.Root delayDuration={500}>
-                    <Tooltip.Trigger>
-                        {#snippet child({ props })}
-                            {@const { onclick: tooltipOnclick, ...restProps } =
-                                props}
-                            <Button
-                                variant="header"
-                                shape="square"
-                                contentLayout="icon"
                                 className="choose-target-button"
                                 disabled={postStatus.sending || isUploading}
                                 onClick={(e) => {
@@ -258,15 +173,6 @@
         </Tooltip.Provider>
     </div>
 </div>
-
-<!-- 下書き保存成功メッセージ -->
-<FloatingMessage
-    show={showDraftSavedMessage}
-    x={draftMessageX}
-    y={draftMessageY}
->
-    <div>{$_("draft.saved")}</div>
-</FloatingMessage>
 
 <style>
     .header-container {
@@ -370,7 +276,6 @@
     }
 
     :global(.header.clear-button),
-    :global(.header.draft-save-button),
     :global(.header.draft-list-button),
     :global(.header.choose-target-button) {
         width: 50px;
@@ -378,7 +283,6 @@
 
     .trash-icon,
     .list-icon,
-    .floppy-disk-icon,
     .choose-target-icon {
         --icon-size: 30px;
     }
@@ -389,10 +293,6 @@
 
     .list-icon {
         mask-image: url("/icons/edit_note_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .floppy-disk-icon {
-        mask-image: url("/icons/save_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .choose-target-icon {
