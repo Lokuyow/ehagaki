@@ -75,6 +75,12 @@ function createVisualViewportMock(height: number, offsetTop = 0) {
     };
 }
 
+function getRootPixelValue(name: string): number {
+    return Number.parseFloat(
+        document.documentElement.style.getPropertyValue(name),
+    );
+}
+
 function createVirtualKeyboardMock(initialHeight = 0) {
     const listeners = new Set<EventListener>();
     let height = initialHeight;
@@ -301,7 +307,19 @@ describe('uiStore', () => {
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(300);
 
+        viewport.visualViewport.offsetTop = 40;
+        viewport.emit('scroll');
+
+        expect(keyboardHeightStore.value).toBe(260);
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            40 + 500 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            500 * 0.86,
+        );
+
         viewport.visualViewport.height = 760;
+        viewport.visualViewport.offsetTop = 0;
         viewport.emit('resize');
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
@@ -428,6 +446,7 @@ describe('uiStore', () => {
         const {
             bottomPositionStore,
             keyboardHeightStore,
+            reasonInputVisibleStore,
             setupViewportListener,
         } = await import('../../stores/uiStore.svelte');
 
@@ -443,6 +462,8 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('285px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(314 * 0.43);
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(314 * 0.86);
 
         Object.defineProperty(window, 'innerHeight', {
             configurable: true,
@@ -458,6 +479,21 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('54px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            231 + 314 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            314 * 0.86,
+        );
+
+        reasonInputVisibleStore.set(true);
+
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            231 + 314 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            314 * 0.86,
+        );
 
         Object.defineProperty(window, 'innerHeight', {
             configurable: true,
@@ -471,6 +507,12 @@ describe('uiStore', () => {
         expect(bottomPositionStore.value).toBe(0);
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            308 + 314 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            314 * 0.86,
+        );
 
         setWindowScroll(333);
         viewport.visualViewport.height = 216;
@@ -486,6 +528,29 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            333 + 216 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            216 * 0.86,
+        );
+
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 549,
+        });
+        setWindowScroll(0);
+        viewport.visualViewport.height = 549;
+        viewport.visualViewport.offsetTop = 0;
+        viewport.emit('resize');
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            549 * 0.43,
+        );
+        expect(getRootPixelValue('--mobile-dialog-max-height')).toBeCloseTo(
+            549 * 0.86,
+        );
 
         cleanup?.();
 

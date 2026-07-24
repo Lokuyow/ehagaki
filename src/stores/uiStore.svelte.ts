@@ -29,6 +29,7 @@ export const MAIN_CONTENT_TOP_SPACING = 6;
 const KEYBOARD_THRESHOLD = 100;
 
 let lastViewportHeight: number | undefined;
+let lastViewportOffsetTop = 0;
 let lastLayoutViewportHeight: number | undefined;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
@@ -72,6 +73,10 @@ function syncLayoutCssVariables(
 ): void {
     if (viewportMetrics.height !== undefined) {
         lastViewportHeight = viewportMetrics.height;
+    }
+
+    if (viewportMetrics.offsetTop !== undefined) {
+        lastViewportOffsetTop = viewportMetrics.offsetTop;
     }
 
     if (viewportMetrics.layoutViewportHeight !== undefined) {
@@ -176,7 +181,7 @@ function syncLayoutCssVariables(
         "--mobile-dialog-center-y",
         visibleViewportHeight === undefined
             ? "43dvh"
-            : `${visibleViewportHeight * 0.43}px`,
+            : `${lastViewportOffsetTop + visibleViewportHeight * 0.43}px`,
     );
     setRootStyleProperty(
         "--mobile-dialog-max-height",
@@ -351,7 +356,7 @@ export function setupViewportListener(): (() => void) | undefined {
 
             syncLayoutCssVariables(isKeyboardOpen, {
                 height: viewport.height,
-                offsetTop: isSafariViewportMode ? viewportOffsetTop : 0,
+                offsetTop: viewportOffsetTop,
                 layoutViewportHeight: isSafariViewportMode
                     ? layoutViewportHeight
                     : undefined,
