@@ -13,7 +13,6 @@ const translations: Record<string, string> = {
     "composerTarget.description": "Nostrイベントを指定します。",
     "composerTarget.inputLabel": "Nostrイベント",
     "composerTarget.placeholder": "note1... または nevent1...",
-    "composerTarget.help": "note / neventに対応しています。",
     "composerTarget.parsing": "入力を確認中...",
     "composerTarget.checking": "イベントを取得中...",
     "composerTarget.channelLoading": "チャンネルを確認中...",

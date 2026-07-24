@@ -500,7 +500,6 @@
     "description": "Nostrイベントを投稿先、返信先、または引用対象として指定します",
     "inputLabel": "イベント識別子",
     "placeholder": "note または nevent を入力",
-    "help": "nostr: URIにも対応しています",
     "parsing": "入力を確認しています",
     "checking": "宛先を確認しています",
     "channelLoading": "パブリックチャットを確認しています",

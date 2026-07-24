@@ -500,7 +500,6 @@
     "description": "Choose a Nostr event as the post destination, reply target, or quote target",
     "inputLabel": "Event identifier",
     "placeholder": "Enter a note or nevent",
-    "help": "nostr: URIs are also supported",
     "parsing": "Checking input",
     "checking": "Checking target",
     "channelLoading": "Checking public chat",

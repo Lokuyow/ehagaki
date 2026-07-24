@@ -13,9 +13,7 @@
         type ComposerTargetResolveTask,
         type ComposerTargetResolver,
     } from "../lib/composerTargetResolver";
-    import type {
-        ComposerEventTarget,
-    } from "../lib/composerTargetApplyController";
+    import type { ComposerEventTarget } from "../lib/composerTargetApplyController";
     import {
         COMPOSER_TARGET_CHANNEL_ABOUT_PREVIEW_LENGTH,
         COMPOSER_TARGET_CONTENT_PREVIEW_LENGTH,
@@ -79,7 +77,8 @@
     let errorReason = $state<ErrorReason | null>(null);
     let target = $state<ComposerResolvedTarget | null>(null);
     let partialEvent = $state<ComposerResolvedTarget["event"] | null>(null);
-    let partialAuthorProfile = $state<ComposerResolvedTarget["authorProfile"]>(null);
+    let partialAuthorProfile =
+        $state<ComposerResolvedTarget["authorProfile"]>(null);
     let retryRevision = $state(0);
     let generation = 0;
     let debounceId: ReturnType<typeof setTimeout> | undefined;
@@ -98,9 +97,11 @@
     let authorDisplay = $derived.by(() => {
         const pubkey = previewEvent?.pubkey;
         if (!pubkey) return "";
-        return authorProfile?.displayName?.trim()
-            || authorProfile?.name?.trim()
-            || shortenMiddle(nip19.npubEncode(pubkey), 12, 4);
+        return (
+            authorProfile?.displayName?.trim() ||
+            authorProfile?.name?.trim() ||
+            shortenMiddle(nip19.npubEncode(pubkey), 12, 4)
+        );
     });
     let sanitizedContent = $derived.by(() => {
         const content = previewEvent?.content;
@@ -121,29 +122,33 @@
     let channelDisplayName = $derived.by(() => {
         const context = target?.channelContext;
         if (!context) return "";
-        return context.name?.trim()
-            || `ID: ${shortenMiddle(context.eventId, 12, 8)}`;
+        return (
+            context.name?.trim() ||
+            `ID: ${shortenMiddle(context.eventId, 12, 8)}`
+        );
     });
     let channelCreatorDisplay = $derived.by(() => {
         const pubkey = target?.channelCreatorPubkey;
         if (!pubkey) return "";
-        return target?.channelCreatorProfile?.displayName?.trim()
-            || target?.channelCreatorProfile?.name?.trim()
-            || shortenMiddle(nip19.npubEncode(pubkey), 12, 4);
+        return (
+            target?.channelCreatorProfile?.displayName?.trim() ||
+            target?.channelCreatorProfile?.name?.trim() ||
+            shortenMiddle(nip19.npubEncode(pubkey), 12, 4)
+        );
     });
     let statusText = $derived(resolveStatusText());
     let canRetry = $derived(
-        errorReason === "not-found"
-            || errorReason === "timeout"
-            || errorReason === "network"
-            || errorReason === "channel-unavailable"
-            || errorReason === "nostr-not-ready",
+        errorReason === "not-found" ||
+            errorReason === "timeout" ||
+            errorReason === "network" ||
+            errorReason === "channel-unavailable" ||
+            errorReason === "nostr-not-ready",
     );
     let isLoading = $derived(
-        phase === "debouncing"
-            || phase === "event-loading"
-            || phase === "channel-loading"
-            || phase === "profile-loading",
+        phase === "debouncing" ||
+            phase === "event-loading" ||
+            phase === "channel-loading" ||
+            phase === "profile-loading",
     );
 
     function clearAsyncWork(): void {
@@ -179,9 +184,11 @@
             return $_("composerTarget.profileLoading");
         }
         if (!errorReason) return "";
-        if (errorReason === "unsupported") return $_("composerTarget.unsupportedFormat");
+        if (errorReason === "unsupported")
+            return $_("composerTarget.unsupportedFormat");
         if (errorReason === "secret-key") return $_("composerTarget.secretKey");
-        if (errorReason === "invalid") return $_("composerTarget.invalidFormat");
+        if (errorReason === "invalid")
+            return $_("composerTarget.invalidFormat");
         if (errorReason === "not-found") return $_("composerTarget.notFound");
         if (errorReason === "timeout") return $_("composerTarget.timeout");
         if (errorReason === "mismatch") return $_("composerTarget.mismatch");
@@ -213,7 +220,8 @@
             },
         });
         const result = await activeTask.promise;
-        if (generation !== runGeneration || result.status === "cancelled") return;
+        if (generation !== runGeneration || result.status === "cancelled")
+            return;
         activeTask = null;
 
         if (result.status === "resolved") {
@@ -338,10 +346,13 @@
             spellcheck="false"
             placeholder={$_("composerTarget.placeholder")}
         />
-        <p class="input-help">{$_("composerTarget.help")}</p>
 
         {#if statusText}
-            <div class="target-status" class:error={phase === "error"} aria-live="polite">
+            <div
+                class="target-status"
+                class:error={phase === "error"}
+                aria-live="polite"
+            >
                 {#if isLoading}
                     <LoadingPlaceholder
                         showLoader={true}
@@ -360,7 +371,10 @@
         {/if}
 
         {#if previewEvent}
-            <section class="target-preview" aria-label={$_("composerTarget.preview")}>
+            <section
+                class="target-preview"
+                aria-label={$_("composerTarget.preview")}
+            >
                 <div class="event-author">
                     <ProfileAvatar
                         src={authorProfile?.picture ?? ""}
@@ -399,7 +413,9 @@
                             {/if}
                             {#if target.channelContext.channelRelays?.length}
                                 <span class="channel-relays">
-                                    {target.channelContext.channelRelays.join("\n")}
+                                    {target.channelContext.channelRelays.join(
+                                        "\n",
+                                    )}
                                 </span>
                             {/if}
                         </div>
@@ -421,8 +437,8 @@
                         {action === "reply"
                             ? $_("composerTarget.reply")
                             : action === "quote"
-                                ? $_("composerTarget.quote")
-                                : $_("composerTarget.post")}
+                              ? $_("composerTarget.quote")
+                              : $_("composerTarget.post")}
                     </Button>
                 {/each}
             </div>
@@ -471,7 +487,6 @@
         font: inherit;
     }
 
-    .input-help,
     .target-status p,
     .event-content,
     .channel-preview p,
@@ -479,7 +494,6 @@
         margin: 0;
     }
 
-    .input-help,
     .event-kind,
     .channel-creator,
     .channel-relays {
