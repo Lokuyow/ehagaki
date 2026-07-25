@@ -26,21 +26,21 @@
 <style>
     .post-preview-toggle-row {
         display: flex;
-    }
 
-    :global(.post-preview-toggle-button),
-    :global(.post-preview-toggle-button:hover) {
-        color: var(--text-muted);
-        font-size: 0.875rem;
-        font-weight: normal;
-        min-height: 24px;
-        padding: 0;
-        background: transparent;
-    }
+        :global(:root) & :global(button.post-preview-toggle-button),
+        :global(:root) & :global(button.post-preview-toggle-button:hover) {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: normal;
+            min-height: 24px;
+            padding: 0;
+            background: transparent;
+        }
 
-    @media (hover: hover) and (pointer: fine) {
-        :global(.post-preview-toggle-button:hover) {
-            text-decoration: underline;
+        @media (hover: hover) and (pointer: fine) {
+            :global(:root) & :global(button.post-preview-toggle-button:hover) {
+                text-decoration: underline;
+            }
         }
     }
 </style>
