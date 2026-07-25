@@ -135,6 +135,81 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("classifies valid non-media URLs as link segments and preserves trailing punctuation", () => {
+        const result = buildPreviewContent({
+            content:
+                "before https://例え.テスト/パス?q=値#場所）。 after http://localhost:4173/test",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "before " },
+            {
+                type: "link",
+                text: "https://例え.テスト/パス?q=値#場所",
+                href: "https://xn--r8jz45g.xn--zckzah/%E3%83%91%E3%82%B9?q=%E5%80%A4#%E5%A0%B4%E6%89%80",
+            },
+            { type: "text", text: "）。 after " },
+            {
+                type: "link",
+                text: "http://localhost:4173/test",
+                href: "http://localhost:4173/test",
+            },
+        ]);
+    });
+
+    it("keeps invalid and non-HTTP values as text", () => {
+        const result = buildPreviewContent({
+            content:
+                "https://] javascript:alert(1) data:text/plain,hello /relative",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            {
+                type: "text",
+                text:
+                    "https://] javascript:alert(1) data:text/plain,hello /relative",
+            },
+        ]);
+    });
+
+    it("keeps custom emoji around links while removing separately rendered media URLs", () => {
+        const result = buildPreviewContent({
+            content:
+                ":blobcat: https://example.com/page https://example.com/image.jpg :party:",
+            tags: [
+                ["emoji", "blobcat", "https://emoji.example/blobcat.webp"],
+                ["emoji", "party", "https://emoji.example/party.webp"],
+            ],
+            media: [
+                {
+                    url: "https://example.com/image.jpg",
+                    mimeType: "image/jpeg",
+                },
+            ],
+        });
+
+        expect(result.segments.map((segment) => segment.type)).toEqual([
+            "emoji",
+            "text",
+            "link",
+            "text",
+            "media",
+            "text",
+            "emoji",
+        ]);
+        expect(
+            result.segments.find((segment) => segment.type === "link"),
+        ).toEqual({
+            type: "link",
+            text: "https://example.com/page",
+            href: "https://example.com/page",
+        });
+    });
+
     it("resolvePostHistoryMedia dedupes normalized URLs and classifies media kinds", () => {
         const result = resolvePostHistoryMedia([
             {

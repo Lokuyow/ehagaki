@@ -157,6 +157,19 @@ describe('エディター・リンク判定統合テスト', () => {
         });
     });
 
+    describe('エディター固有のホスト条件', () => {
+        it.each([
+            'https://localhost/path',
+            'http://[::1]/path',
+            'https://example/path',
+        ])('共通解析では有効でも既存条件を満たさない %s はリンク化しない', async (url) => {
+            editor.commands.setContent(`<p>${url}</p>`);
+            await waitForContentTracking();
+
+            expectLinkNotExists(editor.getHTML());
+        });
+    });
+
     describe('動的なリンク再判定', () => {
         it('無効なURLを修正して有効にした場合、リンク判定されること', async () => {
             // 1. 無効なURL（8文字未満）

@@ -5,8 +5,10 @@
     import Button from "./Button.svelte";
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
+    import TextLinkSegments from "./TextLinkSegments.svelte";
     import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
+    import { buildLinkifiedTextSegments } from "../lib/utils/linkifiedText";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     interface Props {
@@ -54,6 +56,9 @@
     });
 
     let canToggleExpand = $derived(!!sanitizedContent);
+    let contentSegments = $derived(
+        buildLinkifiedTextSegments(sanitizedContent),
+    );
 
     let showLoadingStatus = $derived(reference.loading && showDelayedLoading);
 
@@ -307,7 +312,9 @@
 
     {#snippet content()}
         {#if sanitizedContent}
-            <p class="content-text">{sanitizedContent}</p>
+            <p class="content-text">
+                <TextLinkSegments segments={contentSegments} />
+            </p>
         {/if}
     {/snippet}
 </ComposerContextPreviewShell>

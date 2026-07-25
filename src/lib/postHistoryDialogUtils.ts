@@ -15,6 +15,7 @@ import type {
 } from "./storage/channelMetadataRepository";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "./channelContextConstants";
+import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 
 const CUSTOM_EMOJI_SHORTCODE_PATTERN = /:([^\s:]+):/g;
 
@@ -35,6 +36,11 @@ export type PostHistoryPreviewSegment =
         shortcodeLower: string;
         rawShortcodeText: string;
         url: string;
+    }
+    | {
+        type: "link";
+        text: string;
+        href: string;
     };
 
 export type PostHistoryPreviewContent = {
@@ -78,8 +84,6 @@ export type PostHistoryMediaRenderState =
     | "loading"
     | "error"
     | "unknown";
-
-const URL_PATTERN = /https?:\/\/[^\s]+/g;
 
 const IMAGE_ROW_PATTERNS: Record<number, number[]> = {
     1: [1],
@@ -497,6 +501,12 @@ export function buildPreviewContent(
             continue;
         }
 
+        const shortcodeLower = normalizeEmojiShortcodeForLookup(rawShortcode);
+        const emoji = shortcodeLower ? emojiMap.get(shortcodeLower) : undefined;
+        if (!emoji) {
+            continue;
+        }
+
         if (matchIndex > lastIndex) {
             pushTextSegment(
                 segments,
@@ -505,20 +515,14 @@ export function buildPreviewContent(
             );
         }
 
-        const shortcodeLower = normalizeEmojiShortcodeForLookup(rawShortcode);
-        const emoji = shortcodeLower ? emojiMap.get(shortcodeLower) : undefined;
-        if (emoji) {
-            segments.push({
-                type: "emoji",
-                shortcode: emoji.shortcode,
-                shortcodeLower,
-                rawShortcodeText,
-                url: emoji.url,
-            });
-            emojiUrls.add(emoji.url);
-        } else {
-            pushTextSegment(segments, rawShortcodeText, mediaMap);
-        }
+        segments.push({
+            type: "emoji",
+            shortcode: emoji.shortcode,
+            shortcodeLower,
+            rawShortcodeText,
+            url: emoji.url,
+        });
+        emojiUrls.add(emoji.url);
 
         lastIndex = matchIndex + rawShortcodeText.length;
     }
@@ -602,25 +606,6 @@ function buildPostMediaMap(
     return mediaMap;
 }
 
-function splitUrlTrailingText(rawUrl: string): {
-    url: string;
-    trailingText: string;
-} {
-    const match = rawUrl.match(/[),.!?:;\]\u3001\u3002]+$/u);
-    if (!match) {
-        return {
-            url: rawUrl,
-            trailingText: "",
-        };
-    }
-
-    const trailingText = match[0];
-    return {
-        url: rawUrl.slice(0, -trailingText.length),
-        trailingText,
-    };
-}
-
 function pushTextSegment(
     segments: PostHistoryPreviewSegment[],
     text: string,
@@ -631,28 +616,34 @@ function pushTextSegment(
     }
 
     let lastIndex = 0;
-    for (const match of text.matchAll(URL_PATTERN)) {
-        const matchIndex = match.index ?? -1;
-        const rawUrl = match[0] ?? "";
-        if (matchIndex < 0 || !rawUrl) {
+    for (const candidate of scanHttpUrlCandidates(text)) {
+        if (!candidate.isValidHttpUrl || !candidate.href) {
             continue;
         }
 
-        const { url, trailingText } = splitUrlTrailingText(rawUrl);
-        const media = mediaMap.get(normalizePostMediaUrl(url));
-        if (!media) {
-            continue;
-        }
+        const normalizedUrl = normalizePostMediaUrl(candidate.displayText);
+        const media = mediaMap.get(normalizedUrl);
 
-        pushPlainTextSegment(segments, text.slice(lastIndex, matchIndex));
-        segments.push({
-            type: "media",
-            url,
-            normalizedUrl: normalizePostMediaUrl(url),
-            media,
-        });
-        pushPlainTextSegment(segments, trailingText);
-        lastIndex = matchIndex + rawUrl.length;
+        pushPlainTextSegment(
+            segments,
+            text.slice(lastIndex, candidate.candidateStart),
+        );
+        if (media) {
+            segments.push({
+                type: "media",
+                url: candidate.displayText,
+                normalizedUrl,
+                media,
+            });
+        } else {
+            segments.push({
+                type: "link",
+                text: candidate.displayText,
+                href: candidate.href,
+            });
+        }
+        pushPlainTextSegment(segments, candidate.trailingText);
+        lastIndex = candidate.candidateEnd;
     }
 
     if (lastIndex < text.length) {

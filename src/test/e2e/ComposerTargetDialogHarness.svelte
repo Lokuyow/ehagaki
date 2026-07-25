@@ -15,6 +15,7 @@
         kind42: "2".repeat(64),
         stale: "a".repeat(64),
         wrappingPost: "6".repeat(64),
+        linkPost: "5".repeat(64),
         exactlyFiveLinePost: "7".repeat(64),
         oversizedPost: "3".repeat(64),
         namelessChannel: "8".repeat(64),
@@ -26,6 +27,7 @@
         kind42: nip19.noteEncode(ids.kind42),
         stale: nip19.noteEncode(ids.stale),
         wrappingPost: nip19.noteEncode(ids.wrappingPost),
+        linkPost: nip19.noteEncode(ids.linkPost),
         exactlyFiveLinePost: nip19.noteEncode(ids.exactlyFiveLinePost),
         oversizedPost: nip19.noteEncode(ids.oversizedPost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
@@ -34,6 +36,18 @@
         nsec: nip19.nsecEncode(Uint8Array.from({ length: 32 }, () => 7)),
     };
     const wrappingPostContent = "wrapword ".repeat(24).trim();
+    const linkTargetUrl = new URL(
+        "reference-link-target",
+        window.location.href,
+    ).href;
+    const linkPostContent = [
+        `Reference target ${linkTargetUrl}`,
+        "Line 2",
+        "Line 3",
+        "Line 4",
+        "Line 5",
+        `Line 6 ${"long-path-segment-".repeat(12)}`,
+    ].join("\n");
     const exactlyFiveLinePostContent = Array.from(
         { length: 5 },
         (_, index) => `Line ${index + 1}`,
@@ -127,6 +141,17 @@
                 ),
             };
         }
+        if (eventId === ids.linkPost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    linkPostContent,
+                ),
+            };
+        }
         if (eventId === ids.exactlyFiveLinePost) {
             return {
                 status: "resolved",
@@ -189,6 +214,7 @@
     const harness = {
         ready: true,
         inputs,
+        linkTargetUrl,
         oversizedPostContentLength: oversizedPostContent.length,
         get applications() {
             return applications;

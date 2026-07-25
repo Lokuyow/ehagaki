@@ -1,17 +1,22 @@
 import { render, screen } from "@testing-library/svelte";
-import { describe, expect, it } from "vitest";
+import { readable } from "svelte/store";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("svelte-i18n", () => ({
+    _: readable((key: string) => key),
+}));
 
 import PostHistoryRelatedEventCard from "../../components/PostHistoryRelatedEventCard.svelte";
 import type { NostrEvent, ProfileData } from "../../lib/types";
 
 const pubkey = "a".repeat(64);
 
-function createEvent(): NostrEvent {
+function createEvent(content = "reply"): NostrEvent {
     return {
         id: "1".repeat(64),
         pubkey,
         kind: 1,
-        content: "reply",
+        content,
         tags: [],
         created_at: 100,
         sig: "2".repeat(128),
@@ -59,5 +64,53 @@ describe("PostHistoryRelatedEventCard", () => {
         expect(
             screen.getByAltText("Updated display name").getAttribute("src"),
         ).toBe("https://example.com/updated.png");
+    });
+
+    it("preserves link segments instead of flattening related event content", () => {
+        render(PostHistoryRelatedEventCard, {
+            event: createEvent(
+                "reply https://example.com/path?q=1#part）。",
+            ),
+            profile: null,
+        });
+
+        const link = screen.getByRole("link", {
+            name: "https://example.com/path?q=1#part",
+        });
+        expect(link.getAttribute("href")).toBe(
+            "https://example.com/path?q=1#part",
+        );
+        expect(link.getAttribute("target")).toBe("_blank");
+        expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+        expect(
+            document.querySelector(".post-history-related-content")
+                ?.textContent,
+        ).toBe("reply https://example.com/path?q=1#part）。");
+    });
+
+    it("keeps media URLs out of related-card text while rendering other links", () => {
+        render(PostHistoryRelatedEventCard, {
+            event: createEvent(
+                "https://example.com/page https://example.com/image.jpg",
+            ),
+            profile: null,
+            media: [{
+                url: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+            }],
+        });
+
+        expect(screen.getByRole("link", {
+            name: "https://example.com/page",
+        })).toBeTruthy();
+        expect(
+            document.querySelector(".post-history-related-content")
+                ?.textContent,
+        ).toBe("https://example.com/page ");
+        expect(
+            screen.queryByRole("link", {
+                name: "https://example.com/image.jpg",
+            }),
+        ).toBeNull();
     });
 });

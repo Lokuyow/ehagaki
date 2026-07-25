@@ -3,6 +3,7 @@
     import type { Snippet } from "svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
+    import TextLinkSegments from "./TextLinkSegments.svelte";
     import {
         buildPreviewContent,
         formatPostedAt,
@@ -51,26 +52,24 @@
 
         return shortenMiddle(nip19.npubEncode(event.pubkey), 12, 4);
     });
-    let content = $derived.by(() =>
+    let previewContent = $derived.by(() =>
         buildPreviewContent({
             content: event.content,
             tags: event.tags,
             media,
-        })
-            .segments.map((segment) => {
-                if (segment.type === "text") {
-                    return segment.text;
-                }
-
-                if (segment.type === "emoji") {
-                    return segment.rawShortcodeText;
-                }
-
-                return "";
-            })
-            .join(""),
+        }),
     );
-    let hasContent = $derived(content.trim().length > 0);
+    let contentSegments = $derived(
+        previewContent.segments.filter((segment) => segment.type !== "media"),
+    );
+    let hasContent = $derived(
+        contentSegments.some(
+            (segment) =>
+                segment.type === "emoji" ||
+                segment.type === "link" ||
+                (segment.type === "text" && segment.text.trim().length > 0),
+        ),
+    );
     let postedAt = $derived(formatPostedAt(event.created_at * 1000));
 </script>
 
@@ -93,7 +92,15 @@
             <span class="post-history-related-author-name">{authorName}</span>
         </div>
         {#if hasContent}
-            <p class="post-history-related-content">{content}</p>
+            <p class="post-history-related-content">
+                {#each contentSegments as segment, index (index)}
+                    {#if segment.type === "emoji"}
+                        <span>{segment.rawShortcodeText}</span>
+                    {:else}
+                        <TextLinkSegments segments={[segment]} />
+                    {/if}
+                {/each}
+            </p>
         {/if}
         {#if media.length > 0}
             <div class="post-history-related-media">

@@ -106,4 +106,37 @@ describe("PostHistoryPreviewContent", () => {
         expect(container.querySelector(".post-history-custom-emoji-slot")).toBeNull();
         expect(screen.getByText(":blobcat:")).toBeTruthy();
     });
+
+    it("renders native links with safe external attributes while preserving surrounding text", () => {
+        const { container } = render(PostHistoryPreviewContent, {
+            props: {
+                previewContent: {
+                    segments: [
+                        { type: "text", text: "before\n" },
+                        {
+                            type: "link",
+                            text: "https://例え.テスト/パス",
+                            href: "https://xn--r8jz45g.xn--zckzah/%E3%83%91%E3%82%B9",
+                        },
+                        { type: "text", text: " after" },
+                    ],
+                    emojiUrls: [],
+                },
+                isCollapsed: true,
+            },
+        });
+
+        const link = screen.getByRole("link", {
+            name: "https://例え.テスト/パス",
+        });
+        expect(link.getAttribute("href")).toBe(
+            "https://xn--r8jz45g.xn--zckzah/%E3%83%91%E3%82%B9",
+        );
+        expect(link.getAttribute("target")).toBe("_blank");
+        expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+        expect(container.querySelector(".post-history-preview-text")?.textContent)
+            .toBe("before\nhttps://例え.テスト/パス after");
+        expect(container.querySelector(".post-history-preview-text")?.classList)
+            .toContain("post-history-preview-text-collapsed");
+    });
 });

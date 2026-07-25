@@ -1,6 +1,7 @@
 import type { PostHistoryMediaRecord } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
 import { normalizeSafeExternalMediaUrl } from "./postMediaCacheUtils";
+import { scanHttpUrlCandidates } from "./utils/httpUrlCandidates";
 
 function parseImetaTag(tag: string[]): PostHistoryMediaRecord | null {
     const fields = new Map<string, string>();
@@ -64,9 +65,9 @@ function extractContentMedia(
     content: string,
     existingUrls: Set<string>,
 ): PostHistoryMediaRecord[] {
-    const matches = content.match(/https?:\/\/[^\s<>"']+/g) ?? [];
-    return matches
-        .map((url) => url.replace(/[),.。、]+$/u, ""))
+    return scanHttpUrlCandidates(content)
+        .filter((candidate) => candidate.isValidHttpUrl)
+        .map((candidate) => candidate.displayText)
         .map((url) => normalizeSafeExternalMediaUrl(url))
         .filter((url) => url.length > 0)
         .filter((url) => {

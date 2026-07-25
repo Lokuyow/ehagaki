@@ -8,6 +8,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
+    import TextLinkSegments from "./TextLinkSegments.svelte";
     import {
         createComposerTargetResolver,
         type ComposerResolvedTarget,
@@ -29,6 +30,7 @@
     import type { RelayConfig } from "../lib/types";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
+    import { buildLinkifiedTextSegments } from "../lib/utils/linkifiedText";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     type DialogPhase =
@@ -145,6 +147,9 @@
                 ? rawPreviewContent
                 : collapsedContent.content,
         ),
+    );
+    let displayedContentSegments = $derived(
+        buildLinkifiedTextSegments(displayedContent),
     );
     let previewContentId = $derived(
         previewEvent ? `composer-target-preview-content-${previewEvent.id}` : "",
@@ -437,7 +442,9 @@
                             )}
                         use:previewCollapseAction={previewEvent.id}
                     >
-                        {displayedContent}
+                        <TextLinkSegments
+                            segments={displayedContentSegments}
+                        />
                     </p>
                     {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
                         <PostPreviewToggleButton

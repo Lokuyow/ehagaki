@@ -5,8 +5,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import {
     validateAndNormalizeImageUrl,
     isWordBoundary,
-    cleanUrlEnd,
 } from '../utils/editorUrlUtils';
+import { scanHttpUrlCandidates } from '../utils/httpUrlCandidates';
 import {
     extractPostContentFromDoc,
     isEditorDocEmpty,
@@ -140,13 +140,6 @@ function getChangedTextBlocks(
     return Array.from(blocks.values()).sort((left, right) => left.from - right.from);
 }
 
-function createBlockUrlRegex(): RegExp {
-    return new RegExp(
-        CONTENT_TRACKING_CONFIG.URL_REGEX.source,
-        CONTENT_TRACKING_CONFIG.URL_REGEX.flags
-    );
-}
-
 function collectBlockChanges(
     block: TextBlockRange,
     linkMark: NonNullable<import('@tiptap/pm/model').Schema['marks']['link']>,
@@ -202,24 +195,16 @@ function collectBlockChanges(
         return changes;
     }
 
-    const urlRegex = createBlockUrlRegex();
-    let urlMatch: RegExpExecArray | null;
-
-    while ((urlMatch = urlRegex.exec(fullText)) !== null) {
-        if (typeof urlMatch.index !== 'number') {
-            continue;
-        }
-
-        const matchStart = urlMatch.index;
-        const originalUrl = urlMatch[0];
+    for (const candidate of scanHttpUrlCandidates(fullText)) {
+        const matchStart = candidate.start;
         const prevChar = matchStart > 0 ? fullText[matchStart - 1] : undefined;
 
         if (!isWordBoundary(prevChar)) {
             continue;
         }
 
-        const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
-        const matchEnd = matchStart + actualLength;
+        const cleanUrl = candidate.displayText;
+        const matchEnd = candidate.end;
         const startDocPos = block.pos + 1 + matchStart;
         const endDocPos = block.pos + 1 + matchEnd;
 

@@ -8,6 +8,7 @@ type HarnessState = {
         | "kind42"
         | "stale"
         | "wrappingPost"
+        | "linkPost"
         | "exactlyFiveLinePost"
         | "oversizedPost"
         | "namelessChannel"
@@ -17,6 +18,7 @@ type HarnessState = {
         string
     >;
     oversizedPostContentLength: number;
+    linkTargetUrl: string;
     applications: Array<{ action: string; kind: number }>;
 };
 
@@ -188,6 +190,55 @@ test.describe("composer target dialog fixture", () => {
                 ),
             )
             .toBe(true);
+    });
+
+    test("投稿参照リンクは折りたたみ前後で属性と親ダイアログ状態を維持する", async ({
+        page,
+    }, testInfo) => {
+        await page.route("**/reference-link-target", (route) =>
+            route.fulfill({
+                contentType: "text/html",
+                body: "<title>Reference target</title>",
+            }),
+        );
+        const harness = await gotoHarness(page);
+        await page.setViewportSize({ width: 375, height: 720 });
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.linkPost);
+
+        const dialog = page.getByRole("dialog");
+        const preview = dialog.locator(".event-content");
+        const link = preview.getByRole("link", {
+            name: harness.linkTargetUrl,
+        });
+        const expandButton = dialog.getByRole("button", {
+            name: "もっと見る",
+        });
+        await expect(link).toHaveAttribute("href", harness.linkTargetUrl);
+        await expect(link).toHaveAttribute("target", "_blank");
+        await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+        await expect(expandButton).toHaveAttribute("aria-expanded", "false");
+
+        const popupPromise = page.waitForEvent("popup");
+        if (testInfo.project.name === "mobile-chromium") {
+            await link.tap();
+        } else {
+            await link.click();
+        }
+        const popup = await popupPromise;
+        await popup.close();
+        await expect(dialog).toBeVisible();
+        await expect(expandButton).toHaveAttribute("aria-expanded", "false");
+
+        await expandButton.click();
+        await expect(
+            dialog.getByRole("button", { name: "折りたたむ" }),
+        ).toHaveAttribute("aria-expanded", "true");
+        await expect(link).toBeVisible();
+        const overflow = await preview.evaluate(
+            (element) => element.scrollWidth - element.clientWidth,
+        );
+        expect(overflow).toBeLessThanOrEqual(1);
     });
 
     test("ちょうど5行の投稿には展開ボタンを表示しない", async ({

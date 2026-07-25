@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
+    import type { NostrEvent } from "../../lib/types";
     import { clearPersistedPostHistoryListingSnapshots } from "../../lib/hooks/usePostHistoryListing.svelte";
     import { clearPersistedPostHistoryViewStateForPubkey } from "../../lib/postHistoryDialogViewState";
     import {
@@ -10,6 +11,7 @@
         type PostHistoryChildInteractionRecord,
     } from "../../lib/storage/ehagakiDb";
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
+    import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
 
     const HARNESS_PUBKEY = "f".repeat(64);
@@ -35,6 +37,11 @@
         scrolledPlainPostEventId: string;
         quotePostEventId: string;
         quoteContent: string;
+        linkTargetUrl: string;
+        linkPostEventId: string;
+        replyParentEventId: string;
+        replyContent: string;
+        threadParentPostEventId: string;
     };
 
     type HarnessWindow = Window &
@@ -43,7 +50,9 @@
         };
 
     function buildHexId(index: number, suffix: string): string {
-        const prefix = index.toString(16).padStart(60, "0");
+        const prefix = index
+            .toString(16)
+            .padStart(64 - suffix.length, "0");
         return `${prefix}${suffix}`.slice(0, 64);
     }
 
@@ -119,9 +128,22 @@
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) =>
         buildPost(index),
     );
+    const linkTargetUrl = new URL(
+        "reference-link-target",
+        window.location.href,
+    ).href;
+    const linkPost = posts[1];
+    linkPost.content = [
+        `alpha reference ${linkTargetUrl}`,
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        `line 6 ${"long-path-segment-".repeat(12)}`,
+    ].join("\n");
     const quoteEventId = "9".repeat(64);
     const loadingQuoteEventId = "8".repeat(64);
-    const quoteContent = "playwright quote source";
+    const quoteContent = `playwright quote source ${linkTargetUrl}`;
     const quoteParentPost = posts[2];
     const quoteRecord: PostHistoryRecord = {
         id: quoteEventId,
@@ -162,7 +184,57 @@
         created_at: quoteParentPost.createdAt,
         sig: "b".repeat(128),
     };
-    const reactionRecords = [buildReactionRecord(0), buildReactionRecord(20)];
+    const threadParentPost = posts[3];
+    threadParentPost.tags = [
+        ["e", quoteEventId, "", "reply"],
+        ["p", quoteRecord.pubkeyHex],
+    ];
+    threadParentPost.rawEvent = {
+        id: threadParentPost.eventId,
+        pubkey: HARNESS_PUBKEY,
+        kind: 1,
+        content: threadParentPost.content,
+        tags: threadParentPost.tags,
+        created_at: threadParentPost.createdAt,
+        sig: "e".repeat(128),
+    };
+    const replyEventId = "7".repeat(64);
+    const replyContent = `playwright direct reply ${linkTargetUrl}`;
+    const replyCreatedAt = linkPost.createdAt + 60;
+    const replyRecord: PostHistoryChildInteractionRecord = {
+        id: replyEventId,
+        eventId: replyEventId,
+        parentEventId: linkPost.eventId,
+        authorPubkey: "6".repeat(64),
+        kind: 1,
+        content: replyContent,
+        tags: [
+            ["p", HARNESS_PUBKEY],
+            ["e", linkPost.eventId, "", "reply"],
+        ],
+        createdAt: replyCreatedAt,
+        relayUrls: ["wss://relay.example.com/"],
+        discoveredAs: ["direct-reply"],
+        rawEvent: {
+            id: replyEventId,
+            pubkey: "6".repeat(64),
+            kind: 1,
+            content: replyContent,
+            tags: [
+                ["p", HARNESS_PUBKEY],
+                ["e", linkPost.eventId, "", "reply"],
+            ],
+            created_at: replyCreatedAt,
+            sig: "c".repeat(128),
+        },
+        fetchedAt: linkPost.updatedAt,
+        updatedAt: linkPost.updatedAt,
+        schemaVersion: 1,
+    };
+    const interactionRecords = [
+        buildReactionRecord(0),
+        buildReactionRecord(20),
+    ];
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
     const initialMonthLabel = formatPostHistoryMonthLabel(
@@ -189,6 +261,11 @@
         scrolledPlainPostEventId: posts[21].eventId,
         quotePostEventId: quoteParentPost.eventId,
         quoteContent,
+        linkTargetUrl,
+        linkPostEventId: linkPost.eventId,
+        replyParentEventId: linkPost.eventId,
+        replyContent,
+        threadParentPostEventId: threadParentPost.eventId,
     };
 
     onMount(async () => {
@@ -201,7 +278,19 @@
             .delete();
         await ehagakiDb.postHistoryChildInteractions.clear();
         await ehagakiDb.postHistory.bulkPut([...posts, quoteRecord]);
-        await ehagakiDb.postHistoryChildInteractions.bulkPut(reactionRecords);
+        await ehagakiDb.postHistoryChildInteractions.bulkPut(
+            interactionRecords,
+        );
+        await postHistoryChildInteractionsRepository.upsertChildInteractions({
+            parentEventId: linkPost.eventId,
+            events: [
+                {
+                    event: replyRecord.rawEvent as NostrEvent,
+                    relayUrls: replyRecord.relayUrls,
+                },
+            ],
+            fetchedAt: replyRecord.fetchedAt,
+        });
 
         ready = true;
         (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
@@ -219,6 +308,11 @@
             scrolledPlainPostEventId: posts[21].eventId,
             quotePostEventId: quoteParentPost.eventId,
             quoteContent,
+            linkTargetUrl,
+            linkPostEventId: linkPost.eventId,
+            replyParentEventId: linkPost.eventId,
+            replyContent,
+            threadParentPostEventId: threadParentPost.eventId,
         };
     });
 </script>

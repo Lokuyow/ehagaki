@@ -71,6 +71,14 @@ describe("postHistoryDialogPresentation", () => {
         })).toBe(true);
         expect(hasRenderablePostHistoryPreviewContent({
             segments: [{
+                type: "link",
+                text: "https://example.com/",
+                href: "https://example.com/",
+            }],
+            emojiUrls: [],
+        })).toBe(true);
+        expect(hasRenderablePostHistoryPreviewContent({
+            segments: [{
                 type: "emoji",
                 shortcode: "blobcat",
                 shortcodeLower: "blobcat",

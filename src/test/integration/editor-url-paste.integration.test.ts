@@ -188,7 +188,7 @@ describe('エディター・URLペースト統合テスト', () => {
 
     describe('エッジケース', () => {
         it.each([
-            ['Visit https://example.com/.', 'https://example.com/.'],
+            ['Visit https://example.com/.', 'https://example.com/'],
             ['https://example.com/?key=value&other=123', 'https://example.com/?key=value&amp;other=123'],
             ['https://example.com/page#section', 'https://example.com/page#section'],
             ['URL：　https://example.com/　です', 'https://example.com/']

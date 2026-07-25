@@ -302,6 +302,54 @@ describe("ComposerTargetDialog", () => {
         ).toBe("true");
     });
 
+    it("折りたたみ前後で本文URLをnative linkとして保ち、リンク操作でダイアログを閉じない", async () => {
+        const onClose = vi.fn();
+        const content = [
+            "https://example.com/パス?q=値#場所）。",
+            "line 2",
+            "line 3",
+            "line 4",
+            "line 5",
+            "https://second.example/path",
+        ].join("\n");
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose,
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", content),
+            }),
+        });
+
+        await enterNote();
+        const firstLink = screen.getByRole("link", {
+            name: "https://example.com/パス?q=値#場所",
+        });
+        expect(firstLink.getAttribute("href")).toBe(
+            "https://example.com/%E3%83%91%E3%82%B9?q=%E5%80%A4#%E5%A0%B4%E6%89%80",
+        );
+        expect(firstLink.getAttribute("target")).toBe("_blank");
+        expect(firstLink.getAttribute("rel")).toBe("noopener noreferrer");
+        expect(document.querySelector(".event-content")?.classList).toContain(
+            "event-content-collapsed",
+        );
+
+        await fireEvent.click(firstLink);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Nostrイベント")).toBeTruthy();
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "もっと見る" }),
+        );
+        expect(screen.getByRole("link", {
+            name: "https://second.example/path",
+        })).toBeTruthy();
+        expect(document.querySelector(".event-content")?.classList).not
+            .toContain("event-content-collapsed");
+    });
+
     it("描画上限を超える投稿は折りたたみ中に一部だけ描画し、展開時だけ全文を表示する", async () => {
         const content = "large-content-".repeat(1_000);
         render(ComposerTargetDialog, {

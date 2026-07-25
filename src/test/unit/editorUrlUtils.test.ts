@@ -101,6 +101,18 @@ describe('editorUrlUtils', () => {
                 cleanUrl: 'https://example.com',
                 trailingChars: '',
             });
+            expect(extractTrailingPunctuation('https://example.com/path）。')).toEqual({
+                cleanUrl: 'https://example.com/path',
+                trailingChars: '）。',
+            });
+            expect(
+                extractTrailingPunctuation(
+                    'https://example.com/wiki/Function_(mathematics))。',
+                ),
+            ).toEqual({
+                cleanUrl: 'https://example.com/wiki/Function_(mathematics)',
+                trailingChars: ')。',
+            });
         });
 
         it('should clean URL end and return length', () => {

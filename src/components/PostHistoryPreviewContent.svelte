@@ -3,6 +3,7 @@
         PostHistoryPreviewContent as PostHistoryPreviewContentData,
         PostHistoryPreviewSegment,
     } from "../lib/postHistoryDialogUtils";
+    import TextLinkSegments from "./TextLinkSegments.svelte";
 
     const POST_HISTORY_CUSTOM_EMOJI_SIZE = 30;
 
@@ -49,6 +50,7 @@
         textSegments.some(
             (segment) =>
                 segment.type === "emoji" ||
+                segment.type === "link" ||
                 (segment.type === "text" && segment.text.trim().length > 0),
         ),
     );
@@ -97,8 +99,8 @@
             use:previewCollapseAction={previewCollapseEventId}
         >
             {#each textSegments as segment, index (index)}
-                {#if segment.type === "text"}
-                    <span>{segment.text}</span>
+                {#if segment.type === "text" || segment.type === "link"}
+                    <TextLinkSegments segments={[segment]} />
                 {:else if hasEmojiFailed(segment.url)}
                     <span>{segment.rawShortcodeText}</span>
                 {:else}

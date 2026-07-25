@@ -188,9 +188,6 @@ export const SELECTORS = {
 
 // --- ContentTracking Extension用定数 ---
 export const CONTENT_TRACKING_CONFIG = {
-    // URL検出用正規表現（画像URL検出およびリンク判定用）
-    URL_REGEX: /https?:\/\/[^\s\u3000]+/gi,
-
     // デフォルト設定
     DEBOUNCE_DELAY: 300, // ms
     ENABLE_HASHTAGS: true,

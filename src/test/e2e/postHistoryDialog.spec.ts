@@ -14,6 +14,11 @@ type HarnessState = {
     scrolledPlainPostEventId: string;
     quotePostEventId: string;
     quoteContent: string;
+    linkTargetUrl: string;
+    linkPostEventId: string;
+    replyParentEventId: string;
+    replyContent: string;
+    threadParentPostEventId: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -142,6 +147,25 @@ async function getFooterActionPositions(page: Page, eventId: string) {
         menuX: menuActionBox!.x,
         hasReactionButton: await reactionActionButton.count() > 0,
     };
+}
+
+async function expectReferenceLinkAttributes(
+    link: ReturnType<Page['locator']>,
+    href: string,
+) {
+    await expect(link).toHaveAttribute('href', href);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+}
+
+async function expectNoHorizontalOverflow(
+    locator: ReturnType<Page['locator']>,
+) {
+    const metrics = await locator.evaluate((element) => ({
+        clientWidth: (element as HTMLElement).clientWidth,
+        scrollWidth: (element as HTMLElement).scrollWidth,
+    }));
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
@@ -273,6 +297,129 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(footerBox!.height).toBeLessThanOrEqual(29);
         expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
         expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
+    });
+
+    test('desktop reference links open natively without toggling their parent previews', async ({
+        page,
+        isMobile,
+    }) => {
+        test.skip(isMobile, 'desktop only');
+        await page.route('**/reference-link-target', (route) =>
+            route.fulfill({
+                contentType: 'text/html',
+                body: '<title>Reference target</title>',
+            }),
+        );
+        const harness = await gotoHarness(page);
+        const historyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.linkPostEventId}"]`,
+        );
+        const link = historyItem
+            .locator('.post-history-preview-text a')
+            .filter({ hasText: harness.linkTargetUrl });
+        const expandButton = historyItem.getByRole('button', {
+            name: 'もっと見る',
+        });
+
+        await expect(link).toBeVisible();
+        await expectReferenceLinkAttributes(link, harness.linkTargetUrl);
+        await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+        await expectNoHorizontalOverflow(historyItem);
+
+        const clickPopupPromise = page.waitForEvent('popup');
+        await link.click();
+        const clickPopup = await clickPopupPromise;
+        await expect(clickPopup).toHaveURL(harness.linkTargetUrl);
+        await clickPopup.close();
+        await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+
+        await link.focus();
+        await expect(link).toBeFocused();
+        const keyboardPopupPromise = page.waitForEvent('popup');
+        await page.keyboard.press('Enter');
+        const keyboardPopup = await keyboardPopupPromise;
+        await expect(keyboardPopup).toHaveURL(harness.linkTargetUrl);
+        await keyboardPopup.close();
+        await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('quote and thread graph related cards preserve reference links', async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        const quoteItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        const quoteLink = quoteCard.getByRole('link', {
+            name: harness.linkTargetUrl,
+        });
+        await expectReferenceLinkAttributes(quoteLink, harness.linkTargetUrl);
+        await expectNoHorizontalOverflow(quoteCard);
+
+        const replyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await replyItem
+            .getByRole('button', { name: '返信 1件を表示' })
+            .click();
+        const replyCard = replyItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        await expectReferenceLinkAttributes(
+            replyCard.getByRole('link', { name: harness.linkTargetUrl }),
+            harness.linkTargetUrl,
+        );
+
+        const threadParentItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
+        );
+        await threadParentItem
+            .getByRole('button', { name: '返信先を見る' })
+            .click();
+        const parentCard = threadParentItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        await expectReferenceLinkAttributes(
+            parentCard.getByRole('link', { name: harness.linkTargetUrl }),
+            harness.linkTargetUrl,
+        );
+    });
+
+    test('mobile reference link stays tappable without changing parent state or overflowing', async ({
+        page,
+        isMobile,
+    }) => {
+        test.skip(!isMobile, 'mobile only');
+        await page.route('**/reference-link-target', (route) =>
+            route.fulfill({
+                contentType: 'text/html',
+                body: '<title>Reference target</title>',
+            }),
+        );
+        const harness = await gotoHarness(page);
+        const historyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.linkPostEventId}"]`,
+        );
+        const link = historyItem.getByRole('link', {
+            name: harness.linkTargetUrl,
+        });
+        const expandButton = historyItem.getByRole('button', {
+            name: 'もっと見る',
+        });
+
+        await expectReferenceLinkAttributes(link, harness.linkTargetUrl);
+        await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+        await expectNoHorizontalOverflow(historyItem);
+        const popupPromise = page.waitForEvent('popup');
+        await link.tap();
+        const popup = await popupPromise;
+        await popup.close();
+        await expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
     });
 
     test('mobile timeline controls stay usable and fit the viewport', async ({ page, isMobile }) => {

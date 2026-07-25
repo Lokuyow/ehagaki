@@ -124,6 +124,37 @@ describe('ReplyQuotePreview', () => {
         expect(screen.getByText('hello nostr world')).toBeTruthy();
     });
 
+    it('展開後の本文URLをnative linkとして描画し、クリックしても展開・取消状態を変えない', async () => {
+        const onClear = vi.fn();
+        render(ReplyQuotePreview, {
+            props: {
+                reference: createReference({
+                    authorDisplayName: 'Alice',
+                    referencedEvent: createReferencedEvent(
+                        'before https://example.com/パス?q=値#場所）。 after',
+                    ),
+                }),
+                mode: 'quote',
+                onClear,
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '展開する' }));
+        const link = screen.getByRole('link', {
+            name: 'https://example.com/パス?q=値#場所',
+        });
+        expect(link.getAttribute('href')).toBe(
+            'https://example.com/%E3%83%91%E3%82%B9?q=%E5%80%A4#%E5%A0%B4%E6%89%80',
+        );
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+
+        await fireEvent.click(link);
+
+        expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
+        expect(onClear).not.toHaveBeenCalled();
+    });
+
     it('quote では preview-label と author-name の間に通知ボタンを表示する', () => {
         const { container } = render(ReplyQuotePreview, {
             props: {

@@ -4,6 +4,7 @@ import {
     ALLOWED_IMAGE_EXTENSIONS,
     ALLOWED_VIDEO_EXTENSIONS,
 } from '../constants';
+import { splitHttpUrlTrailingText } from './httpUrlCandidates';
 
 export function normalizeUrl(url: string): string {
     return encodeURI(url.trim());
@@ -72,16 +73,11 @@ export function extractTrailingPunctuation(url: string): {
     cleanUrl: string;
     trailingChars: string;
 } {
-    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
-    const trailingMatch = url.match(trailingPattern);
-
-    if (trailingMatch) {
-        const trailingChars = trailingMatch[0];
-        const cleanUrl = url.slice(0, -trailingChars.length);
-        return { cleanUrl, trailingChars };
-    }
-
-    return { cleanUrl: url, trailingChars: '' };
+    const { displayText, trailingText } = splitHttpUrlTrailingText(url);
+    return {
+        cleanUrl: displayText,
+        trailingChars: trailingText,
+    };
 }
 
 export function cleanUrlEnd(url: string): CleanUrlResult {
