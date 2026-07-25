@@ -27,6 +27,8 @@ public/ffmpeg-core
 *.sw?
 
 references
+!.agents/skills/**/references/
+!.agents/skills/**/references/**
 internalDocs
 .github/copilot-instructions.md
 .github/instructions/

@@ -1,0 +1,195 @@
+# eHagaki Nostr implementation map
+
+この文書は2026-07-26時点のcheckoutをコードとテストから対応付けた調査用索引である。現在のコードと差がある場合は現在のコードを優先する。
+
+## 使用中のNostr関連ライブラリ
+
+- `nostr-tools`: `^2.23.3`
+- `rx-nostr`: `^3.7.4`
+- `@rx-nostr/crypto`: `^3.1.6`
+- `nip07-awaiter`: `^1.1.0`
+- 関連パッケージ: `nostr-zap ^1.3.0`、`nostr-zap-view ^1.4.6`
+
+## 通常投稿
+
+- 機能: 通常のshort text noteを構築し、署名してrelayへ送る。
+- 関連NIP: NIP-01。付加tagは各機能のNIPも参照する。
+- event kind: `1`
+- 主なtag: `t`、`client`、`content-warning`、`emoji`、`imeta`。reply/quote時は`e`、`p`、`q`も加わる。
+- 主な実装ファイル: `src/lib/postManager.ts`、`src/lib/postEventBuilder.ts`、`src/components/PostComponent.svelte`
+- 主な関数または責務: `PostManager.submitPost`が投稿状態とtagを統合し、`PostEventBuilder.buildEvent`がevent templateを構築し、`PostEventSender.sendEvent`がrx-nostr送信結果を集約する。
+- 関連テスト: `src/test/unit/postManager.test.ts`
+- 注意点: `PostEventBuilder.buildEvent`はreply/quote系tagを先頭に置く。送信と構築を同じ責務へ戻さない。
+
+## リプライ
+
+- 機能: kind 1またはkind 42へのreply targetを取得し、thread tagと通知先を構築する。
+- 関連NIP: NIP-10。public chatではNIP-28も関係する。
+- event kind: 投稿先により`1`または`42`
+- 主なtag: marked `e` (`root`、`reply`)、`p`。kind 42ではchannel rootの`e`も必要になる。
+- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/stores/replyQuoteStore.svelte.ts`
+- 主な関数または責務: `ReplyQuoteService.extractThreadInfo`、`buildReplyTags`、`fetchReferencedEventTask`、`parseKind1ThreadReferences`、`parseKind42ThreadReferences`が取得とthread semanticsを分担する。
+- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
+- 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。
+
+## 引用
+
+- 機能: quote targetを保持し、`q` tagと`nostr:nevent`本文参照を生成・解決する。
+- 関連NIP: NIP-18、NIP-21、NIP-19
+- event kind: 引用投稿は`1`または`42`。target kindは取得したeventに従う。
+- 主なtag: `q` (`event id`, `relay hint`, `author`)。設定により通知用`p`。
+- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryQuoteUtils.ts`、`src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`
+- 主な関数または責務: `buildQuoteTags`、`generateNostrUri`、`extractInlineQuoteTags`、`parsePostHistoryQuoteReferences`がtag、URI、表示用referenceを扱う。
+- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryQuoteUtils.test.ts`、`src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`
+- 注意点: kind 42のquoteはchannel root `e`と`q`を持つが、reply `e`を自動追加しない既存契約がテストされている。同一targetの`q`と通知用`p`はdedupeする。
+
+## リポスト
+
+- 機能: READMEはNIP-18 Reposts対応を掲げる。
+- 関連NIP: NIP-18
+- event kind: NIP上は`6`またはgeneric repostの`16`が関係するが、現在の実装で構築・取得する箇所は確認できなかった。
+- 主なtag: 現在の実装では確認できなかった。
+- 主な実装ファイル: 実装ファイルは確認できなかった。`README.md`の対応NIP一覧にのみ記載がある。
+- 主な関数または責務: 確認できなかった。
+- 関連テスト: kind 6/16またはrepostを対象にするテストは確認できなかった。
+- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsを`needs confirmation`として先に確定する。
+
+## NIP-19識別子
+
+- 機能: nsec、npub、nprofile、note、neventをdecode/encodeし、event pointerを入力経路へ変換する。
+- 関連NIP: NIP-19
+- event kind: pointer自体に固定kindはない。`nevent`のkind hintを検証に使う経路がある。
+- 主なtag: なし。pointer内にrelay hint、author hint、kind hintを含み得る。
+- 主な実装ファイル: `src/lib/utils/nostrUtils.ts`、`src/lib/eventPointerUtils.ts`、`src/lib/composerTargetUtils.ts`、`src/lib/composerTargetResolver.ts`
+- 主な関数または責務: `decodeEventPointerValue`はnote/neventを正規化し、`parseComposerTargetInput`はnote/neventだけをcomposer targetとして受理する。`createComposerTargetResolver`は取得eventをID、author hint、kind hint、署名で検証する。
+- 関連テスト: `src/test/unit/nostrUtils.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/composerTargetResolver.test.ts`
+- 注意点: composer targetでは`npub`、`nprofile`、`naddr`を明示的にunsupportedとし、`nsec`をsecret-keyとして分離する。現在のコードに汎用naddr resolverは確認できない。
+
+## nostr: URI
+
+- 機能: NIP-21 URIをquery、embed、composer target、inline quote、post history表示で扱う。
+- 関連NIP: NIP-21、NIP-19
+- event kind: URIが指すeventに従う。
+- 主なtag: inline quoteでは解決結果から`q`、必要に応じて`p`を作る。
+- 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/urlQueryHandler.ts`、`src/lib/embedComposerContextValidation.ts`、`src/lib/embedComposerContextNotification.ts`、`src/lib/composerTargetUtils.ts`、`src/lib/postHistoryQuoteUtils.ts`
+- 主な関数または責務: `generateNostrUri`、`extractInlineQuoteTags`、`decodeEventPointerValue`、`parseComposerTargetInput`が生成・decode・入力検証を分担する。
+- 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/urlQueryHandler.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/postHistoryQuoteUtils.test.ts`
+- 注意点: inline quoteの抽出対象はnote/neventである。post history表示でもnaddr URIはquote targetとして解決しないことがテストされている。
+
+## パブリックチャット
+
+- 機能: channel creation/metadata/messageを解決し、channel context付きkind 42投稿を構築する。
+- 関連NIP: NIP-28。replyにはNIP-10、quoteにはNIP-18も関係する。
+- event kind: channel creation `40`、metadata `41`、channel message `42`
+- 主なtag: kind 41/42のchannelを指す`e`、kind 42 root/reply `e`、通知先`p`、引用`q`
+- 主な実装ファイル: `src/lib/channelContextService.ts`、`src/lib/channelContextCoordinator.ts`、`src/lib/channelContextApplyController.ts`、`src/lib/composerTargetResolver.ts`、`src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`
+- 主な関数または責務: `ChannelContextService.resolveChannelContext`とmetadata解決処理がkind 40/41を取得し、`createComposerTargetResolver`がkind 40/42 targetを検証し、`PostEventBuilder.buildEvent`がkind 42とchannel rootを構築する。
+- 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
+- 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。
+
+## Content Warning
+
+- 機能: 投稿へContent WarningとNSFW tagを付与する。
+- 関連NIP: NIP-36
+- event kind: `1`または`42`
+- 主なtag: `content-warning`、`t`=`nsfw`
+- 主な実装ファイル: `src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`
+- 主な関数または責務: `PostEventBuilder.buildEvent`が理由の有無と既存NSFW hashtagを考慮してtagを構築し、`PostManager.submitPost`がstore状態を渡す。
+- 関連テスト: `src/test/unit/postManager.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`
+- 注意点: Content Warning有効時は`nsfw` hashtagも追加し、既存tagを重複させない。
+
+## カスタム絵文字
+
+- 機能: kind 10030/30030から絵文字セットを取得・cacheし、投稿本文と`emoji` tagへ反映する。
+- 関連NIP: NIP-30
+- event kind: profile emoji list `10030`、emoji set `30030`、利用先投稿`1`または`42`
+- 主なtag: `emoji`、kind 10030からkind 30030を参照する`a`、parameterized eventの`d`
+- 主な実装ファイル: `src/lib/customEmoji.ts`、`src/lib/utils/editorDocumentUtils.ts`、`src/lib/postEventBuilder.ts`、`src/lib/storage/emojisRepository.ts`
+- 主な関数または責務: `fetchCustomEmojiList`がbackward REQで10030/30030を取得し、`parseEmojiTags`と`getKind10030EmojiSetAddresses`がdescriptorを解釈し、editor extractionと`buildEvent`が利用tagを生成する。
+- 関連テスト: `src/test/unit/customEmoji.test.ts`、`src/test/unit/editorDocumentUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/ehagakiDb.test.ts`
+- 注意点: shortcodeだけで同名画像を潰さず、選択したURLと必要なset addressを保持する。network testはmockする。
+
+## NIP-07
+
+- 機能: browser extensionを待機し、公開鍵取得とevent署名を行う。
+- 関連NIP: NIP-07
+- event kind: 署名対象に従う。
+- 主なtag: 署名対象eventに従う。
+- 主な実装ファイル: `src/lib/nip07AuthService.ts`、`src/lib/nostrAuthService.ts`、`src/lib/authService.ts`
+- 主な関数または責務: `Nip07AuthService.waitForExtension`、`authenticate`、`signEvent`が`nip07-awaiter`とcaptured `window.nostr`を扱い、`NostrAuthService.getEventSigner`が共通Signer境界へ接続する。
+- 関連テスト: `src/test/unit/nip07AuthService.test.ts`、`src/test/unit/nostrAuthService.test.ts`、`src/test/unit/authService.authenticate.test.ts`
+- 注意点: extension注入待機と署名を独自pollingへ置き換えない。session pubkeyと署名者pubkeyの一致検証を保つ。
+
+## NIP-46
+
+- 機能: bunker/Nostr Connect接続、session復元、remote signer署名、relay選択、接続状態管理を行う。
+- 関連NIP: NIP-46
+- event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`42`、`10063`、`22242`、`27235`、`24242`。
+- 主なtag: NIP-46接続で利用する`p`、Nostr Connect URIのrelay/secret/metadata、各署名対象eventのtag
+- 主な実装ファイル: `src/lib/nip46Service.ts`、`src/lib/nip46AuthFlowCoordinator.ts`、`src/lib/nip46PendingOperationUtils.ts`、`src/lib/nip46ConnectUiUtils.ts`、`src/lib/authService.ts`
+- 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続とSigner adapterを分担する。`NIP46_REQUESTED_PERMISSIONS`が要求権限のsource of truthである。
+- 関連テスト: `src/test/unit/nip46Service.test.ts`、`src/test/unit/nip46AuthFlowCoordinator.test.ts`、`src/test/unit/nip46PendingOperationUtils.test.ts`、`src/test/unit/nip46ConnectUiUtils.test.ts`、`src/test/unit/loginDialog.test.ts`
+- 注意点: 接続確認と`get_public_key`検証を混同しない。payload、secret、署名要求本文をログやfixtureへ残さない。`Nip46WebSocket`にはrelay互換目的の`limit:0`補正があるため、根拠なく一般化しない。
+
+## プロフィール取得
+
+- 機能: kind 0 metadataをrelayから取得し、比較、cache、IndexedDB永続化、subscriber通知を行う。
+- 関連NIP: NIP-01。relay tier解決にはNIP-65も関係する。
+- event kind: profile metadata `0`、relay list metadata `10002`
+- 主なtag: kind 0自体の主要情報はJSON `content`。REQは`authors`、`kinds`、`until`、`limit`を使う。
+- 主な実装ファイル: `src/lib/profileManager.ts`、`src/lib/profileMetadataCache.svelte.ts`、`src/lib/relayProfileService.ts`、`src/lib/profileEventComparison.ts`、`src/lib/storage/profilesRepository.ts`
+- 主な関数または責務: `ProfileNetworkFetcher.fetchFromNetwork`、`ProfileManager`、`profileMetadataCache`、`RelayProfileService.fetchProfileRealtime`/`subscribeProfile`がnetwork、selection、cache、購読を分担する。
+- 関連テスト: `src/test/unit/profileManager.test.ts`、`src/test/unit/profileMetadataCache.test.ts`、`src/test/unit/relayProfileService.test.ts`、`src/test/unit/profileEventComparison.test.ts`、`src/test/unit/profilesRepository.test.ts`、`src/test/unit/ProfileComponent.test.ts`
+- 注意点: 複数relayのkind 0はevent freshnessと署名検証を考慮し、negative cache、同時要求共有、timeout、unsubscribeを保つ。
+
+## 関連イベント取得
+
+- 機能: reply parent、quote target、deletion requestなどpost historyの関連eventを発見・取得・cache・表示状態へ解決する。
+- 関連NIP: NIP-09、NIP-10、NIP-18、NIP-21
+- event kind: target `1`/`42`など、deletion request `5`
+- 主なtag: replyの`e`/`p`、quoteの`q`、deletionの`e`/`a`
+- 主な実装ファイル: `src/lib/postHistoryRelatedTargetDiscoveryAdapter.ts`、`src/lib/postHistoryRelatedTargetResolver.svelte.ts`、`src/lib/postHistoryContextFetchService.ts`、`src/lib/postHistoryDeletionFetchService.ts`、`src/lib/storage/postHistoryRepository.ts`
+- 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。
+- 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
+- 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
+
+## relay管理
+
+- 機能: relay設定を保存し、NIP-65 relay list metadataとlegacy kind 3を取得してrx-nostrへ反映する。
+- 関連NIP: NIP-65、NIP-02、NIP-42
+- event kind: relay list metadata `10002`、legacy contact list `3`、relay AUTH `22242`
+- 主なtag: NIP-65の`r` (`read`/`write`)、kind 3 content内のrelay map、AUTHの`relay`/`challenge`
+- 主な実装ファイル: `src/lib/relayManager.ts`、`src/lib/relayConfigUtils.ts`、`src/lib/storage/relayConfigsRepository.ts`、`src/lib/bootstrap/authBootstrap.ts`、`src/lib/nostrAuthService.ts`
+- 主な関数または責務: `RelayNetworkFetcher.fetchKind10002`/`fetchKind3`、`RelayManager.fetchUserRelays`、`RelayConfigUtils`が取得・fallback・正規化を担い、`initializeNostrSession`がverifierとNIP-42 authenticator付きrx-nostr sessionを作る。
+- 関連テスト: `src/test/unit/relayManager.test.ts`、`src/test/unit/relayConfigUtils.test.ts`、`src/test/unit/authBootstrap.test.ts`、`src/test/unit/nostrAuthService.test.ts`
+- 注意点: external relay hintと保存済みread/write relayを混同しない。NIP-42 transport/retryはrx-nostrに任せ、AUTH eventをbound relayとsession signerへ結び付ける。
+
+## ファイルメタデータ
+
+- 機能: NIP-96応答のfile metadataを解析し、投稿用`imeta` tagを生成する。
+- 関連NIP: NIP-94、NIP-92
+- event kind: NIP-94 file metadata `1063`はserver応答の`nip94_event`として扱う。eHagakiがkind 1063をpublishする処理は確認できなかった。`imeta`の利用先は`1`/`42`。
+- 主なtag: NIP-94応答の`url`、`m`、`x`、`ox`、`size`、`dim`、`blurhash`、`alt`など。投稿側は`imeta`。
+- 主な実装ファイル: `src/lib/upload/Nip96UploadAdapter.ts`、`src/lib/upload/BlossomUploadAdapter.ts`、`src/lib/tags/imetaTag.ts`、`src/lib/uploadImetaUtils.ts`、`src/lib/postEventBuilder.ts`
+- 主な関数または責務: `Nip96UploadAdapter.upload`の`parseNip94Tags`が応答を正規化し、`createImetaTag`と`generateDevImetaTags`が投稿用metadataを作る。
+- 関連テスト: `src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/uploadImetaUtils.test.ts`、`src/test/unit/postManager.test.ts`
+- 注意点: server descriptor、投稿用imeta、event kind 1063のpublishを同一機能とみなさない。未知tagを勝手にprotocol要件へ昇格させない。
+
+## upload認証
+
+- 機能: NIP-96 endpoint discovery/uploadとNIP-98 Authorizationを行い、Blossomでは別の認証eventを使う。
+- 関連NIP: NIP-96、NIP-98。Blossom側はBUD-11/BUD-03でありNIP-98と混同しない。
+- event kind: NIP-98 `27235`、Blossom authorization `24242`、BUD-03 server list `10063`
+- 主なtag: NIP-98のURL/HTTP method/payload関連tagは`nostr-tools/nip98`へ委譲する。Blossomは`expiration`、`t`、任意の`x`。BUD-03はserver `r`。
+- 主な実装ファイル: `src/lib/nostrAuthService.ts`、`src/lib/upload/Nip96UploadAdapter.ts`、`src/lib/upload/BlossomUploadAdapter.ts`、`src/lib/upload/bud03ServerList.ts`、`src/lib/upload/uploadAdapterRegistry.ts`
+- 主な関数または責務: `NostrAuthService.buildAuthHeader`は`nostr-tools/nip98.getToken`を使い、`Nip96UploadAdapter.upload`がPOSTとprocessing URL用GET tokenを別々に作る。`buildBlossomAuthorizationHeader`はkind 24242を構築する。
+- 関連テスト: `src/test/unit/nostrAuthService.test.ts`、`src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/bud03ServerList.test.ts`、`src/test/integration/file-upload-flow.integration.test.ts`
+- 注意点: tokenをログやfixtureへ残さない。URLとmethodを実requestに一致させ、processing URLでは新しいGET tokenを作る。NIP-96とBlossomの認証方式を統合しない。
+
+## 横断的な購読・テスト境界
+
+- 一回取得は主に`createRxBackwardReq`を使い、`emit`後に`over()`し、成功・EOSE・error・timeout・cancelで`unsubscribe()`する。
+- 継続購読は`src/lib/postHistoryAuthoredPostsRealtimeService.ts`と`src/lib/postHistoryInboundInteractionsRealtimeService.ts`で`createRxForwardReq`を使う。所有hookとvisibility/account lifecycleを確認する。
+- relay横断取得、retry、可視範囲repairは`src/lib/postHistoryRelayFetchService.ts`などpost history専用serviceへ分離されている。汎用化前に既存scopeを確認する。
+- application codeのNostr/TypeScript変更では対象unit/component testを先に実行し、原則`npm test`と`npm run check`まで広げる。実relayへ接続するテストは追加しない。
+- browser固有のcomposer targetとpost history表示は既存の`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`を使う。protocol-only変更のためだけにPlaywrightを追加しない。
