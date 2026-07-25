@@ -296,6 +296,18 @@ test.describe('PostHistoryDialog Playwright', () => {
         }));
         expect(containerMetrics.scrollWidth).toBeLessThanOrEqual(containerMetrics.clientWidth + 1);
 
+        const loadingQuote = page
+            .locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`)
+            .locator('.post-history-quote-status-card');
+        await expect(loadingQuote).toContainText('引用投稿を読み込み中...');
+        const loadingQuoteMetrics = await loadingQuote.evaluate((element) => ({
+            clientWidth: (element as HTMLElement).clientWidth,
+            scrollWidth: (element as HTMLElement).scrollWidth,
+        }));
+        expect(loadingQuoteMetrics.scrollWidth).toBeLessThanOrEqual(
+            loadingQuoteMetrics.clientWidth + 1,
+        );
+
         await jumpToDate(page, harness.jumpDate);
 
         await expect(page.getByRole('button', { name: '最新へ戻る' })).toBeVisible();

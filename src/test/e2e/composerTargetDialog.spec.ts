@@ -256,7 +256,7 @@ test.describe("composer target dialog fixture", () => {
             .toBeLessThan(harness.oversizedPostContentLength);
     });
 
-    test("スマートフォンだけ上寄せし、低い画面では内部をスクロールする", async ({
+    test("スマートフォンの短い内容は上寄せし、長い内容はviewport全高を使う", async ({
         page,
     }, testInfo) => {
         const harness = await gotoHarness(page);
@@ -276,27 +276,63 @@ test.describe("composer target dialog fixture", () => {
         if (!isMobile) return;
 
         await page.setViewportSize({ width: 375, height: 480 });
-        await page.getByLabel("イベントID").fill(harness.inputs.longNameChannel);
-        await expect(page.getByRole("button", { name: "投稿する" }))
-            .toBeVisible();
+        await page.getByLabel("イベントID").fill(harness.inputs.oversizedPost);
+        const expandButton = page.getByRole("button", { name: "もっと見る" });
+        await expect(expandButton).toBeVisible();
+        await expandButton.click();
 
         const geometry = await page.getByRole("dialog").evaluate((dialog) => {
             const rect = dialog.getBoundingClientRect();
             const content = dialog.querySelector<HTMLElement>(".dialog-content");
+            const footer = dialog.querySelector<HTMLElement>(".dialog-footer");
             return {
                 top: rect.top,
                 bottom: rect.bottom,
-                viewportHeight: window.innerHeight,
+                height: rect.height,
+                viewportTop: window.visualViewport?.offsetTop ?? 0,
+                viewportHeight: window.visualViewport?.height ?? window.innerHeight,
                 contentClientHeight: content?.clientHeight ?? 0,
                 contentScrollHeight: content?.scrollHeight ?? 0,
+                footerTop: footer?.getBoundingClientRect().top ?? 0,
+                footerBottom: footer?.getBoundingClientRect().bottom ?? 0,
             };
         });
-        expect(geometry.top).toBeGreaterThanOrEqual(12);
+        const viewportBottom = geometry.viewportTop + geometry.viewportHeight;
+        const oldMaximumHeight = geometry.viewportHeight * 0.86 - 24;
+        expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop + 12);
         expect(geometry.bottom).toBeLessThanOrEqual(
-            geometry.viewportHeight - 12,
+            viewportBottom - 12,
         );
+        expect(geometry.height).toBeGreaterThan(oldMaximumHeight);
         expect(geometry.contentScrollHeight).toBeGreaterThan(
             geometry.contentClientHeight,
+        );
+        expect(geometry.footerTop).toBeGreaterThanOrEqual(geometry.top);
+        expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.bottom);
+
+        const autoPanGeometry = await page.getByRole("dialog").evaluate((dialog) => {
+            const viewportTop = 231;
+            const viewportHeight = 314;
+            const rootStyle = document.documentElement.style;
+            rootStyle.setProperty("--mobile-dialog-viewport-top", `${viewportTop}px`);
+            rootStyle.setProperty("--mobile-dialog-viewport-height", `${viewportHeight}px`);
+            rootStyle.setProperty(
+                "--mobile-dialog-center-y",
+                `${viewportTop + viewportHeight * 0.43}px`,
+            );
+            const rect = dialog.getBoundingClientRect();
+            return {
+                top: rect.top,
+                bottom: rect.bottom,
+                viewportTop,
+                viewportHeight,
+            };
+        });
+        expect(autoPanGeometry.top).toBeGreaterThanOrEqual(
+            autoPanGeometry.viewportTop + 12,
+        );
+        expect(autoPanGeometry.bottom).toBeLessThanOrEqual(
+            autoPanGeometry.viewportTop + autoPanGeometry.viewportHeight - 12,
         );
     });
 });

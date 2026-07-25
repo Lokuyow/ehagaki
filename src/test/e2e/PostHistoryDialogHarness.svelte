@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import { clearPersistedPostHistoryListingSnapshots } from "../../lib/hooks/usePostHistoryListing.svelte";
     import { clearPersistedPostHistoryViewStateForPubkey } from "../../lib/postHistoryDialogViewState";
@@ -119,6 +120,7 @@
         buildPost(index),
     );
     const quoteEventId = "9".repeat(64);
+    const loadingQuoteEventId = "8".repeat(64);
     const quoteContent = "playwright quote source";
     const quoteParentPost = posts[2];
     const quoteRecord: PostHistoryRecord = {
@@ -147,7 +149,10 @@
         updatedAt: quoteParentPost.postedAt,
         schemaVersion: 2,
     };
-    quoteParentPost.tags = [["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex]];
+    quoteParentPost.tags = [
+        ["q", quoteEventId, "wss://relay.example.com/", quoteRecord.pubkeyHex],
+        ["q", loadingQuoteEventId, "wss://relay.example.com/", "d".repeat(64)],
+    ];
     quoteParentPost.rawEvent = {
         id: quoteParentPost.eventId,
         pubkey: HARNESS_PUBKEY,
@@ -228,6 +233,11 @@
             show={true}
             onClose={() => undefined}
             pubkeyHex={HARNESS_PUBKEY}
+            rxNostr={{
+                use: () => ({
+                    subscribe: () => ({ unsubscribe: () => undefined }),
+                }),
+            } as unknown as RxNostr}
             onQuotePost={() => undefined}
         />
     {/if}

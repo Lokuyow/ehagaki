@@ -190,16 +190,20 @@ function syncLayoutCssVariables(
                           : 0),
               );
     setRootStyleProperty(
+        "--mobile-dialog-viewport-top",
+        `${lastViewportOffsetTop}px`,
+    );
+    setRootStyleProperty(
+        "--mobile-dialog-viewport-height",
+        visibleViewportHeight === undefined
+            ? "100dvh"
+            : `${visibleViewportHeight}px`,
+    );
+    setRootStyleProperty(
         "--mobile-dialog-center-y",
         visibleViewportHeight === undefined
             ? "43dvh"
             : `${lastViewportOffsetTop + visibleViewportHeight * 0.43}px`,
-    );
-    setRootStyleProperty(
-        "--mobile-dialog-max-height",
-        visibleViewportHeight === undefined
-            ? "86dvh"
-            : `${visibleViewportHeight * 0.86}px`,
     );
     setRootStyleProperty(
         "--keyboard-button-bar-bottom",

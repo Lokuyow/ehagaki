@@ -42,3 +42,12 @@
         className={`post-history-quote-lifecycle-status ${status ?? ""}`.trim()}
     />
 {/if}
+
+<style>
+    :global(.post-history-quote-lifecycle-status) {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>

@@ -548,10 +548,19 @@
 
     @media (max-width: 600px) {
         :global(.composer-target-dialog) {
-            top: var(--mobile-dialog-center-y);
+            top: 0;
+            translate:
+                -50%
+                max(
+                    calc(
+                        var(--mobile-dialog-viewport-top) +
+                            env(safe-area-inset-top, 0px) + 12px
+                    ),
+                    calc(var(--mobile-dialog-center-y) - 50%)
+                );
             width: calc(100% - 24px);
             max-height: calc(
-                var(--mobile-dialog-max-height) -
+                var(--mobile-dialog-viewport-height) -
                     env(safe-area-inset-top, 0px) -
                     env(safe-area-inset-bottom, 0px) -
                     24px
@@ -563,6 +572,10 @@
             max-height: none;
             flex: 1 1 auto;
             overflow-y: auto;
+        }
+
+        :global(.composer-target-dialog .dialog-footer) {
+            flex: 0 0 auto;
         }
     }
 

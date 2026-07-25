@@ -3429,6 +3429,7 @@
     :global(.post-preview-quote-action-group) {
         display: inline-flex;
         align-items: center;
+        min-width: 0;
         gap: 6px;
     }
 

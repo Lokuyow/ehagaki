@@ -81,7 +81,8 @@
 
     .post-preview-footer-actions {
         justify-content: center;
-        flex: 1 0 auto;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .post-preview-footer-regular .post-preview-footer-actions {
