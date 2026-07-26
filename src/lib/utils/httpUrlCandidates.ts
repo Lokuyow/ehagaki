@@ -45,7 +45,6 @@ const CLOSING_BRACKET_TO_OPENING = new Map([
     ["\u3019", "\u3018"],
     ["\u301b", "\u301a"],
 ]);
-const OPENING_BRACKETS = new Set(CLOSING_BRACKET_TO_OPENING.values());
 
 export interface HttpUrlCandidate {
     candidateStart: number;
@@ -83,47 +82,16 @@ function hasUnmatchedClosingBracket(
         countCharacter(value, openingBracket);
 }
 
-function findUnmatchedClosingBracketBoundary(rawCandidate: string): number {
-    const bracketDepth = new Map<string, number>();
-    let offset = 0;
-
-    for (const character of rawCandidate) {
-        const openingBracket = CLOSING_BRACKET_TO_OPENING.get(character);
-        if (openingBracket) {
-            const depth = bracketDepth.get(openingBracket) ?? 0;
-            if (depth === 0) {
-                return offset;
-            }
-            bracketDepth.set(openingBracket, depth - 1);
-        } else if (OPENING_BRACKETS.has(character)) {
-            bracketDepth.set(
-                character,
-                (bracketDepth.get(character) ?? 0) + 1,
-            );
-        }
-
-        offset += character.length;
-    }
-
-    return rawCandidate.length;
-}
-
-function collectTrailingTextEnd(text: string, start: number): number {
-    let end = start;
-
-    while (end < text.length) {
-        const character = String.fromCodePoint(text.codePointAt(end) ?? 0);
-        if (
-            !TRAILING_PUNCTUATION.has(character) &&
-            !TRAILING_QUOTES.has(character) &&
-            !CLOSING_BRACKET_TO_OPENING.has(character)
-        ) {
-            break;
-        }
-        end += character.length;
-    }
-
-    return end;
+function isClosingBracketOnlyQueryValue(
+    value: string,
+    index: number,
+): boolean {
+    const queryIndex = value.indexOf("?");
+    const fragmentIndex = value.indexOf("#");
+    return queryIndex >= 0 &&
+        queryIndex < index &&
+        (fragmentIndex < 0 || fragmentIndex > index) &&
+        value[index - 1] === "=";
 }
 
 export function splitHttpUrlTrailingText(
@@ -150,6 +118,10 @@ export function splitHttpUrlTrailingText(
             CLOSING_BRACKET_TO_OPENING.get(trailingCharacter);
         if (
             openingBracket &&
+            !isClosingBracketOnlyQueryValue(
+                value,
+                value.length - trailingCharacter.length,
+            ) &&
             hasUnmatchedClosingBracket(
                 value,
                 trailingCharacter,
@@ -200,13 +172,8 @@ export function scanHttpUrlCandidates(text: string): HttpUrlCandidate[] {
             continue;
         }
 
-        const bracketBoundary = findUnmatchedClosingBracketBoundary(matchedText);
-        const trailingStart = candidateStart + bracketBoundary;
-        const candidateEnd = bracketBoundary < matchedText.length
-            ? collectTrailingTextEnd(text, trailingStart)
-            : candidateStart + matchedText.length;
-        const rawCandidate = text.slice(candidateStart, candidateEnd);
-        pattern.lastIndex = candidateEnd;
+        const candidateEnd = candidateStart + matchedText.length;
+        const rawCandidate = matchedText;
 
         const { displayText, trailingText } =
             splitHttpUrlTrailingText(rawCandidate);

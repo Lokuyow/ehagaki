@@ -23,6 +23,33 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps internal closing brackets and separates only a trailing bracket", () => {
+        expect(
+            buildLinkifiedTextSegments(
+                "https://example.com/foo)bar https://example.com/search?q=) https://example.com/path)",
+            ),
+        ).toEqual([
+            {
+                type: "link",
+                text: "https://example.com/foo)bar",
+                href: "https://example.com/foo)bar",
+            },
+            { type: "text", text: " " },
+            {
+                type: "link",
+                text: "https://example.com/search?q=)",
+                href: "https://example.com/search?q=)",
+            },
+            { type: "text", text: " " },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: ")" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

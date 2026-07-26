@@ -189,6 +189,36 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps internal closing brackets in link segments", () => {
+        const result = buildPreviewContent({
+            content:
+                "https://example.com/foo)bar https://example.com/search?q=) https://example.com/path)",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            {
+                type: "link",
+                text: "https://example.com/foo)bar",
+                href: "https://example.com/foo)bar",
+            },
+            { type: "text", text: " " },
+            {
+                type: "link",
+                text: "https://example.com/search?q=)",
+                href: "https://example.com/search?q=)",
+            },
+            { type: "text", text: " " },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: ")" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:

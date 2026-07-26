@@ -6,7 +6,7 @@ describe("postHistoryMediaUtils", () => {
         expect(
             extractPostHistoryMedia({
                 content:
-                    "画像（https://example.com/image.jpg）。動画 https://example.com/video.mp4!?",
+                    "画像（https://example.com/image.jpg）。 動画 https://example.com/video.mp4!?",
                 tags: [],
             }),
         ).toEqual([
@@ -49,6 +49,25 @@ describe("postHistoryMediaUtils", () => {
             },
             {
                 url: "https://example.com/%E8%A8%98%E4%BA%8B%E3%80%82%E7%B6%9A%E3%81%8D/video.mp4",
+                mimeType: "video/mp4",
+            },
+        ]);
+    });
+
+    it("keeps internal closing brackets in media URLs", () => {
+        expect(
+            extractPostHistoryMedia({
+                content:
+                    "https://example.com/foo)bar/image.jpg https://example.com/foo]bar/video.mp4",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/foo)bar/image.jpg",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "https://example.com/foo]bar/video.mp4",
                 mimeType: "video/mp4",
             },
         ]);

@@ -179,11 +179,37 @@ describe('エディター・リンク判定統合テスト', () => {
             expect(textNode?.marks?.find((mark) => mark.type === 'link')?.attrs?.href)
                 .toBe(url);
         });
+
+        it.each([
+            'https://example.com/foo)bar',
+            'https://example.com/foo]bar',
+            'https://example.com/foo}bar',
+            'https://example.com/search?q=)',
+            'https://example.com/#section]2',
+        ])('URL内部の閉じ括弧を含む候補全体をリンク化する: %s', async (url) => {
+            editor.commands.setContent(`<p>${url}</p>`);
+            await waitForContentTracking();
+
+            const textNode = editor.getJSON().content?.[0]?.content?.[0] as
+                | {
+                    text?: string;
+                    marks?: Array<{
+                        type: string;
+                        attrs?: Record<string, unknown>;
+                    }>;
+                }
+                | undefined;
+            expect(textNode?.text).toBe(url);
+            expect(textNode?.marks?.find((mark) => mark.type === 'link')?.attrs?.href)
+                .toBe(url);
+        });
     });
 
     describe('画像URL変換', () => {
-        it('内部の全角句読点を含む画像URL候補を途中切断せず画像へ変換する', async () => {
-            const imageUrl = 'https://example.com/記事。続き/image.png';
+        it.each([
+            'https://example.com/記事。続き/image.png',
+            'https://example.com/foo)bar/image.png',
+        ])('内部文字を含む画像URL候補を途中切断せず画像へ変換する: %s', async (imageUrl) => {
             const imageEditor = new Editor({
                 extensions: [
                     StarterKit.configure({

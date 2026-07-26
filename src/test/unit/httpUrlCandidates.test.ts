@@ -69,6 +69,67 @@ describe("httpUrlCandidates", () => {
         expect(candidate.href).toBe(new URL(input).href);
     });
 
+    it.each([
+        ["https://example.com/foo)bar"],
+        ["https://example.com/foo]bar"],
+        ["https://example.com/foo}bar"],
+        ["https://example.com/search?q=)"],
+        ["https://example.com/#section]2"],
+    ])("keeps URL-internal closing brackets and source offsets in %s", (url) => {
+        const text = `before ${url} after`;
+        const [candidate] = scanHttpUrlCandidates(text);
+        const start = text.indexOf(url);
+
+        expect(candidate).toMatchObject({
+            candidateStart: start,
+            candidateEnd: start + url.length,
+            start,
+            end: start + url.length,
+            rawCandidate: url,
+            displayText: url,
+            trailingText: "",
+            href: new URL(url).href,
+            isValidHttpUrl: true,
+        });
+        expect(text.slice(candidate.start, candidate.end)).toBe(url);
+    });
+
+    it("separates only an unmatched closing bracket at the candidate end", () => {
+        const text = "before https://example.com/path) after";
+        const rawCandidate = "https://example.com/path)";
+        const displayText = "https://example.com/path";
+        const [candidate] = scanHttpUrlCandidates(text);
+        const start = text.indexOf("https://");
+
+        expect(candidate).toMatchObject({
+            candidateStart: start,
+            candidateEnd: start + rawCandidate.length,
+            start,
+            end: start + displayText.length,
+            rawCandidate,
+            displayText,
+            trailingText: ")",
+        });
+    });
+
+    it("keeps a balanced URL bracket and separates only the extra trailing bracket", () => {
+        const text =
+            "https://example.com/wiki/Function_(mathematics))。";
+        const displayText =
+            "https://example.com/wiki/Function_(mathematics)";
+        const [candidate] = scanHttpUrlCandidates(text);
+
+        expect(candidate).toMatchObject({
+            candidateStart: 0,
+            candidateEnd: text.length,
+            start: 0,
+            end: displayText.length,
+            rawCandidate: text,
+            displayText,
+            trailingText: ")。",
+        });
+    });
+
     it("keeps source offsets accurate for multiple candidates and trailing prose", () => {
         const text =
             "prefix <https://example.com> and https://two.example/記事。続き）。 suffix";
