@@ -393,6 +393,30 @@ describe("ComposerTargetDialog", () => {
         ).toBe("false");
     });
 
+    it("未展開本文を2000文字以内に保ちつつ元イベント全文末尾のメディアを表示する", async () => {
+        const lateImageUrl = "https://example.com/late-image.jpg";
+        const content = `${"x".repeat(2_100)} ${lateImageUrl}`;
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", content),
+            }),
+        });
+
+        await enterNote();
+
+        expect(document.querySelector(".event-content")?.textContent?.length)
+            .toBeLessThanOrEqual(2_000);
+        expect(document.querySelectorAll(".post-history-image-cell"))
+            .toHaveLength(1);
+        expect(document.querySelector(".post-history-image-grid"))
+            .toBeTruthy();
+    });
+
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {
         const cancel = vi.fn();
         const resolver = {

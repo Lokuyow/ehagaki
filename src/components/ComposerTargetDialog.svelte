@@ -5,10 +5,11 @@
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostContentPreview from "./PostContentPreview.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
-    import TextLinkSegments from "./TextLinkSegments.svelte";
     import {
         createComposerTargetResolver,
         type ComposerResolvedTarget,
@@ -27,10 +28,11 @@
         type ComposerTargetPointer,
     } from "../lib/composerTargetUtils";
     import type { RelayProfileService } from "../lib/relayProfileService";
-    import type { RelayConfig } from "../lib/types";
+    import type { FullscreenMediaItem, RelayConfig } from "../lib/types";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
+    import { usePostContentEmojiState } from "../lib/hooks/usePostContentEmojiState.svelte";
+    import { buildPostContentRenderModel } from "../lib/postContentPreview";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
-    import { buildLinkifiedTextSegments } from "../lib/utils/linkifiedText";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     type DialogPhase =
@@ -89,6 +91,9 @@
     let generation = 0;
     let debounceId: ReturnType<typeof setTimeout> | undefined;
     let activeTask: ComposerTargetResolveTask | null = null;
+    let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
+    let fullscreenIndex = $state(-1);
+    let showImageFullscreen = $state(false);
 
     let actions = $derived(
         target
@@ -148,8 +153,12 @@
                 : collapsedContent.content,
         ),
     );
-    let displayedContentSegments = $derived(
-        buildLinkifiedTextSegments(displayedContent),
+    let previewRenderModel = $derived.by(() =>
+        buildPostContentRenderModel({
+            sourceContent: rawPreviewContent,
+            displayContent: displayedContent,
+            tags: previewEvent?.tags ?? [],
+        }),
     );
     let previewContentId = $derived(
         previewEvent ? `composer-target-preview-content-${previewEvent.id}` : "",
@@ -193,6 +202,11 @@
             phase === "channel-loading" ||
             phase === "profile-loading",
     );
+    const emojiState = usePostContentEmojiState({
+        getShow: () => show && previewRenderModel.previewContent.emojiUrls.length > 0,
+        getEmojiUrls: () => previewRenderModel.previewContent.emojiUrls,
+        onStateChanged: () => previewCollapse.remeasure(),
+    });
 
     function clearAsyncWork(): void {
         if (debounceId !== undefined) {
@@ -213,6 +227,10 @@
         partialEvent = null;
         partialAuthorProfile = null;
         retryRevision = 0;
+        emojiState.resetState();
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
+        showImageFullscreen = false;
     }
 
     function resolveStatusText(): string {
@@ -310,6 +328,44 @@
         inputElement?.focus({ preventScroll: true });
     }
 
+    function isFullscreenViewerTarget(target: EventTarget | null): boolean {
+        return (
+            target instanceof Element &&
+            target.closest(".ehagaki-pswp") !== null
+        );
+    }
+
+    function handleDialogInteractOutside(event: PointerEvent): void {
+        if (isFullscreenViewerTarget(event.target)) {
+            event.preventDefault();
+        }
+    }
+
+    function handleDialogEscapeKeydown(event: KeyboardEvent): void {
+        if (showImageFullscreen) {
+            event.preventDefault();
+        }
+    }
+
+    function handleImageOpen(params: {
+        index: number;
+        mediaList: FullscreenMediaItem[];
+    }): void {
+        fullscreenMediaItems = params.mediaList;
+        fullscreenIndex = params.index;
+        showImageFullscreen = true;
+    }
+
+    function handleFullscreenClose(): void {
+        showImageFullscreen = false;
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
+    }
+
+    function handleFullscreenNavigate(index: number): void {
+        fullscreenIndex = index;
+    }
+
     $effect(() => {
         if (!show) {
             resetState();
@@ -373,6 +429,8 @@
     contentClass="composer-target-dialog"
     footerVariant="close-button"
     onOpenAutoFocus={handleOpenAutoFocus}
+    onInteractOutside={handleDialogInteractOutside}
+    onEscapeKeydown={handleDialogEscapeKeydown}
 >
     <div class="composer-target-content">
         <h2>{$_("composerTarget.title")}</h2>
@@ -431,32 +489,34 @@
                     <span>{authorDisplay}</span>
                     <span class="event-kind">kind {previewEvent.kind}</span>
                 </div>
-                {#if displayedContent || collapsedContent.exceedsRenderLimit}
-                    <p
-                        id={previewContentId}
-                        class="event-content"
-                        class:event-content-collapsed={previewCollapsePost &&
-                            !isPreviewExpanded &&
-                            previewCollapse.shouldCollapsePost(
-                                previewCollapsePost,
-                            )}
-                        use:previewCollapseAction={previewEvent.id}
-                    >
-                        <TextLinkSegments
-                            segments={displayedContentSegments}
-                        />
-                    </p>
-                    {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
-                        <PostPreviewToggleButton
-                            expanded={isPreviewExpanded}
-                            controls={previewContentId}
-                            onToggle={() =>
-                                previewCollapse.togglePostExpanded(
-                                    previewCollapsePost.eventId,
-                                )}
-                        />
-                    {/if}
-                {/if}
+                <PostContentPreview
+                    model={previewRenderModel}
+                    density="dialog"
+                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                    {previewContentId}
+                    contentClass="event-content"
+                    collapsedContentClass="event-content-collapsed"
+                    isTextCollapsed={!!previewCollapsePost &&
+                        !isPreviewExpanded &&
+                        previewCollapse.shouldCollapsePost(previewCollapsePost)}
+                    {previewCollapseAction}
+                    previewCollapseEventId={previewEvent.id}
+                    onImageOpen={handleImageOpen}
+                >
+                    {#snippet betweenContentAndMedia()}
+                        {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
+                            <PostPreviewToggleButton
+                                expanded={isPreviewExpanded}
+                                controls={previewContentId}
+                                onToggle={() =>
+                                    previewCollapse.togglePostExpanded(
+                                        previewCollapsePost.eventId,
+                                    )}
+                            />
+                        {/if}
+                    {/snippet}
+                </PostContentPreview>
 
                 {#if target?.channelContext}
                     <div class="channel-preview">
@@ -544,6 +604,16 @@
     {/snippet}
 </DialogWrapper>
 
+<ImageFullscreen
+    bind:show={showImageFullscreen}
+    src={fullscreenMediaItems[fullscreenIndex]?.src ?? ""}
+    alt={fullscreenMediaItems[fullscreenIndex]?.alt ?? ""}
+    onClose={handleFullscreenClose}
+    mediaList={fullscreenMediaItems}
+    currentIndex={fullscreenIndex}
+    onNavigate={handleFullscreenNavigate}
+/>
+
 <style>
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -612,7 +682,6 @@
     }
 
     .target-status p,
-    .event-content,
     .channel-preview p,
     .unsupported-kind {
         margin: 0;
@@ -680,14 +749,14 @@
         border-radius: 50%;
     }
 
-    .event-content,
+    :global(.target-preview .event-content),
     .channel-preview p {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         line-height: 1.45;
     }
 
-    .event-content-collapsed {
+    :global(.target-preview .event-content-collapsed) {
         max-height: calc(5 * 1.45em);
         overflow: hidden;
     }

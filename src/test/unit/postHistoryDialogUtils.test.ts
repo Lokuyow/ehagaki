@@ -525,6 +525,35 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("buildPostHistoryImageGridRows preserves the established 1-10 image row contract", () => {
+        const expected = new Map<number, Array<{ itemCount: number; slotCount: number }>>([
+            [1, [{ itemCount: 1, slotCount: 1 }]],
+            [2, [{ itemCount: 2, slotCount: 2 }]],
+            [3, [{ itemCount: 3, slotCount: 3 }]],
+            [4, [{ itemCount: 2, slotCount: 2 }, { itemCount: 2, slotCount: 2 }]],
+            [5, [{ itemCount: 3, slotCount: 3 }, { itemCount: 2, slotCount: 2 }]],
+            [6, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }]],
+            [9, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }]],
+            [10, [{ itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 3, slotCount: 3 }, { itemCount: 1, slotCount: 3 }]],
+        ]);
+
+        for (const [count, expectedRows] of expected) {
+            const images = resolvePostHistoryMedia(
+                Array.from({ length: count }, (_, index) => ({
+                    url: `https://example.com/${index + 1}.jpg`,
+                    mimeType: "image/jpeg",
+                })),
+            );
+
+            expect(
+                buildPostHistoryImageGridRows(images).map((row) => ({
+                    itemCount: row.items.length,
+                    slotCount: row.slotCount,
+                })),
+            ).toEqual(expectedRows);
+        }
+    });
+
     it("buildPostHistoryMediaLayout returns image-only fullscreen items", () => {
         const result = buildPostHistoryMediaLayout([
             {

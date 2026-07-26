@@ -11,13 +11,12 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
-    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuoteLifecycleStatusBadge from "./PostHistoryQuoteLifecycleStatusBadge.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
-    import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
@@ -42,13 +41,14 @@
         postDeletionService,
     } from "../lib/postDeletionService";
     import {
-        buildPreviewContent,
         formatPostedAt,
         formatPostedAtExact,
-        type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import {
-        hasRenderablePostHistoryPreviewContent,
+        buildPostContentRenderModel,
+        type PostContentRenderModel,
+    } from "../lib/postContentPreview";
+    import {
         isPostHistoryFavoriteReactionContent,
         resolvePostHistoryCountSummaryState,
         resolvePostHistoryNavigationLabelKey,
@@ -296,11 +296,13 @@
         onStateChanged: () => previewCollapse.remeasure(),
     });
 
-    function buildDisplayPreviewContent(
+    function buildDisplayPreviewModel(
         post: PostHistoryRecord,
-    ): PostHistoryPreviewContentData {
-        return buildPreviewContent({
-            content: stripPostHistoryInlineQuoteUrisForDisplay(post),
+    ): PostContentRenderModel {
+        const displayContent = stripPostHistoryInlineQuoteUrisForDisplay(post);
+        return buildPostContentRenderModel({
+            sourceContent: displayContent,
+            displayContent,
             tags: post.tags,
             media: post.media,
         });
@@ -340,11 +342,11 @@
         ].join(" ");
     }
 
-    let previewContentByEventId = $derived.by(() => {
-        const nextContent: Record<string, PostHistoryPreviewContentData> = {};
+    let previewModelByEventId = $derived.by(() => {
+        const nextContent: Record<string, PostContentRenderModel> = {};
 
         for (const post of history.posts) {
-            nextContent[post.eventId] = buildDisplayPreviewContent(post);
+            nextContent[post.eventId] = buildDisplayPreviewModel(post);
         }
 
         return nextContent;
@@ -371,23 +373,81 @@
     let canUseJumpToOldest = $derived(
         history.canJumpToOldest || !historyViewport.isHistoryScrolledToBottom,
     );
+
+    function addRelatedPreviewModel(
+        event: NostrEvent,
+        models: Record<string, PostContentRenderModel>,
+    ): void {
+        if (models[event.id]) {
+            return;
+        }
+
+        models[event.id] = buildPostContentRenderModel({
+            sourceContent: event.content,
+            tags: event.tags,
+        });
+    }
+
+    function addThreadNodePreviewModels(
+        nodeState: PostHistoryThreadGraphNodeState | null,
+        models: Record<string, PostContentRenderModel>,
+    ): void {
+        if (!nodeState || models[nodeState.node.eventId]) {
+            return;
+        }
+
+        addRelatedPreviewModel(nodeState.node.event, models);
+        addThreadNodePreviewModels(
+            nodeState.parentNodeState,
+            models,
+        );
+        for (const replyState of nodeState.replyNodeStates) {
+            addThreadNodePreviewModels(replyState, models);
+        }
+    }
+
+    let relatedPreviewModelByEventId = $derived.by(() => {
+        const models: Record<string, PostContentRenderModel> = {};
+
+        for (const post of history.posts) {
+            for (const quotePreview of getQuotePreviewStates(post)) {
+                if (quotePreview.status === "resolved") {
+                    addRelatedPreviewModel(quotePreview.event, models);
+                }
+            }
+
+            const graphState = postHistoryThreadGraph.getAnchorState(post);
+            if (graphState.parentNode) {
+                addRelatedPreviewModel(graphState.parentNode.event, models);
+            }
+            addThreadNodePreviewModels(graphState.parentNodeState, models);
+            for (const replyState of graphState.replyNodeStates) {
+                addThreadNodePreviewModels(replyState, models);
+            }
+        }
+
+        return models;
+    });
+
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();
 
-        for (const previewContent of Object.values(previewContentByEventId)) {
-            for (const url of previewContent.emojiUrls) {
+        for (const previewModel of [
+            ...Object.values(previewModelByEventId),
+            ...Object.values(relatedPreviewModelByEventId),
+        ]) {
+            for (const url of previewModel.previewContent.emojiUrls) {
                 urls.add(url);
             }
         }
 
         for (const post of history.posts) {
+            const graphState = postHistoryThreadGraph.getAnchorState(post);
             if (!reactionsExpandedByEventId[post.eventId]) {
                 continue;
             }
 
-            for (const reactionGroup of postHistoryThreadGraph.getAnchorState(
-                post,
-            ).reactionReadModel.groups) {
+            for (const reactionGroup of graphState.reactionReadModel.groups) {
                 if (reactionGroup.emojiUrl) {
                     urls.add(reactionGroup.emojiUrl);
                 }
@@ -450,6 +510,12 @@
 
     function handleDialogInteractOutside(event: PointerEvent): void {
         if (isFullscreenViewerTarget(event.target)) {
+            event.preventDefault();
+        }
+    }
+
+    function handleDialogEscapeKeydown(event: KeyboardEvent): void {
+        if (showImageFullscreen) {
             event.preventDefault();
         }
     }
@@ -718,17 +784,16 @@
         }
     }
 
-    function getPreviewContent(
+    function getPreviewModel(
         post: PostHistoryRecord,
-    ): PostHistoryPreviewContentData {
+    ): PostContentRenderModel {
         return (
-            previewContentByEventId[post.eventId] ??
-            buildDisplayPreviewContent(post)
+            previewModelByEventId[post.eventId] ??
+            buildDisplayPreviewModel(post)
         );
     }
-
     function hasRenderablePostPreviewContent(post: PostHistoryRecord): boolean {
-        return hasRenderablePostHistoryPreviewContent(getPreviewContent(post));
+        return getPreviewModel(post).hasRenderableText;
     }
 
     function getQuotePreviewStates(post: PostHistoryRecord) {
@@ -1276,6 +1341,7 @@
     bind:open={show}
     onOpenChange={(open) => !open && handleClose()}
     onInteractOutside={handleDialogInteractOutside}
+    onEscapeKeydown={handleDialogEscapeKeydown}
     trapFocus={false}
     title={$_("postHistory.title")}
     description={$_("postHistory.description")}
@@ -1897,6 +1963,9 @@
                                 <PostHistoryThreadGraphPanel
                                     state={graphState}
                                     section="parent"
+                                    previewModelByEventId={relatedPreviewModelByEventId}
+                                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                     scrollRoot={historyContainer}
                                     onImageOpen={handleImageOpen}
                                     onToggleParent={() =>
@@ -1954,54 +2023,54 @@
                                     data-post-history-thread-anchor-event-id={post.eventId}
                                 >
                                     <div class="post-preview-body">
-                                        {#if hasRenderablePostPreviewContent(post)}
-                                            <div class="post-preview-content">
-                                                <PostHistoryPreviewContent
-                                                    previewContent={getPreviewContent(
-                                                        post,
-                                                    )}
-                                                    emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
-                                                    emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
-                                                    previewCollapseAction={previewCollapse.previewRef}
-                                                    previewCollapseEventId={post.eventId}
-                                                    previewContentId={"post-preview-content-" +
-                                                        post.eventId}
-                                                    isCollapsed={!previewCollapse.isPostExpanded(
-                                                        post,
-                                                    ) &&
-                                                        previewCollapse.shouldCollapsePost(
-                                                            post,
-                                                        )}
-                                                />
-                                            </div>
-                                        {/if}
-                                        {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
-                                            <PostPreviewToggleButton
-                                                expanded={previewCollapse.isPostExpanded(
+                                        <PostContentPreview
+                                            model={getPreviewModel(post)}
+                                            density="standard"
+                                            emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                            emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
+                                            scrollRoot={historyContainer}
+                                            previewCollapseAction={previewCollapse.previewRef}
+                                            previewCollapseEventId={post.eventId}
+                                            previewContentId={"post-preview-content-" +
+                                                post.eventId}
+                                            isTextCollapsed={!previewCollapse.isPostExpanded(
+                                                post,
+                                            ) &&
+                                                previewCollapse.shouldCollapsePost(
                                                     post,
                                                 )}
-                                                controls={"post-preview-content-" +
-                                                    post.eventId}
-                                                onToggle={() =>
-                                                    previewCollapse.togglePostExpanded(
-                                                        post.eventId,
-                                                    )}
-                                            />
-                                        {/if}
-                                        {#if post.media.length > 0}
-                                            <div class="post-preview-media">
-                                                <PostHistoryMediaList
-                                                    media={post.media}
-                                                    scrollRoot={historyContainer}
-                                                    onImageOpen={handleImageOpen}
-                                                />
-                                            </div>
-                                        {/if}
+                                            onImageOpen={handleImageOpen}
+                                        >
+                                            {#snippet betweenContentAndMedia()}
+                                                {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
+                                                    <PostPreviewToggleButton
+                                                        expanded={previewCollapse.isPostExpanded(
+                                                            post,
+                                                        )}
+                                                        controls={"post-preview-content-" +
+                                                            post.eventId}
+                                                        onToggle={() =>
+                                                            previewCollapse.togglePostExpanded(
+                                                                post.eventId,
+                                                            )}
+                                                    />
+                                                {/if}
+                                            {/snippet}
+                                        </PostContentPreview>
                                         {#if getQuotePreviewStates(post).length > 0}
                                             <div class="post-preview-quotes">
                                                 {#each getQuotePreviewStates(post) as quotePreview (quotePreview.eventId)}
                                                     <PostHistoryQuotePreview
                                                         preview={quotePreview}
+                                                        model={quotePreview.status ===
+                                                        "resolved"
+                                                            ? relatedPreviewModelByEventId[
+                                                                  quotePreview
+                                                                      .event.id
+                                                              ]
+                                                            : undefined}
+                                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                                         scrollRoot={historyContainer}
                                                         onImageOpen={handleImageOpen}
                                                         onRetry={() =>
@@ -2559,6 +2628,9 @@
                                     <PostHistoryThreadGraphPanel
                                         state={graphState}
                                         section="children"
+                                        previewModelByEventId={relatedPreviewModelByEventId}
+                                        emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
+                                        emojiImageMetaByUrl={emojiState.emojiImageMetaByUrl}
                                         scrollRoot={historyContainer}
                                         onImageOpen={handleImageOpen}
                                         onToggleNodeParent={(nodeEventId) =>

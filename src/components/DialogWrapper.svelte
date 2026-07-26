@@ -11,6 +11,8 @@
         onOpenChange?: (open: boolean) => void;
         /** 外側インタラクション発生時のコールバック */
         onInteractOutside?: (event: PointerEvent) => void;
+        /** Escapeキー押下時のコールバック */
+        onEscapeKeydown?: (event: KeyboardEvent) => void;
         /** フォーカストラップを有効にするか */
         trapFocus?: boolean;
         /** ダイアログのタイトル（スクリーンリーダー用） */
@@ -65,6 +67,7 @@
         open = $bindable(false),
         onOpenChange,
         onInteractOutside = undefined,
+        onEscapeKeydown = undefined,
         trapFocus = true,
         title,
         description,
@@ -127,6 +130,7 @@
             {trapFocus}
             preventScroll={false}
             {onInteractOutside}
+            {onEscapeKeydown}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >

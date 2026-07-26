@@ -2,6 +2,56 @@ import { describe, expect, it } from "vitest";
 import { extractPostHistoryMedia } from "../../lib/postHistoryMediaUtils";
 
 describe("postHistoryMediaUtils", () => {
+    it("preserves imeta tag order, keeps unmatched imeta for compatibility, then appends new content media", () => {
+        expect(
+            extractPostHistoryMedia({
+                content:
+                    "https://example.com/content.jpg https://example.com/duplicate.jpg https://example.com/video.mp4",
+                tags: [
+                    [
+                        "imeta",
+                        "url https://example.com/unmatched.jpg",
+                        "m image/jpeg",
+                        "alt unmatched",
+                    ],
+                    [
+                        "imeta",
+                        "url https://example.com/duplicate.jpg",
+                        "m image/webp",
+                        "dim 640x480",
+                    ],
+                ],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/unmatched.jpg",
+                mimeType: "image/jpeg",
+                alt: "unmatched",
+                blurhash: undefined,
+                dim: undefined,
+                size: undefined,
+                uploadProtocol: undefined,
+            },
+            {
+                url: "https://example.com/duplicate.jpg",
+                mimeType: "image/webp",
+                alt: undefined,
+                blurhash: undefined,
+                dim: "640x480",
+                size: undefined,
+                uploadProtocol: undefined,
+            },
+            {
+                url: "https://example.com/content.jpg",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "https://example.com/video.mp4",
+                mimeType: "video/mp4",
+            },
+        ]);
+    });
+
     it("uses shared trailing parsing for content media URLs", () => {
         expect(
             extractPostHistoryMedia({
@@ -151,5 +201,35 @@ describe("postHistoryMediaUtils", () => {
                 tags: [],
             }),
         ).toEqual([]);
+    });
+
+    it("uses imeta MIME hints before extension fallback when classifying media", () => {
+        expect(
+            extractPostHistoryMedia({
+                content:
+                    "https://example.com/extension.jpg https://example.com/hinted.bin",
+                tags: [
+                    [
+                        "imeta",
+                        "url https://example.com/hinted.bin",
+                        "m video/mp4",
+                    ],
+                ],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/hinted.bin",
+                mimeType: "video/mp4",
+                alt: undefined,
+                blurhash: undefined,
+                dim: undefined,
+                size: undefined,
+                uploadProtocol: undefined,
+            },
+            {
+                url: "https://example.com/extension.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
     });
 });

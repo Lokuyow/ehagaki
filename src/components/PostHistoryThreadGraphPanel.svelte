@@ -8,11 +8,25 @@
         PostHistoryThreadGraphAnchorState,
         PostHistoryThreadGraphNodeState,
     } from "../lib/hooks/usePostHistoryThreadGraph.svelte";
+    import type {
+        PostContentEmojiImageMeta,
+        PostContentEmojiLoadState,
+        PostContentRenderModel,
+    } from "../lib/postContentPreview";
     import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
         state: PostHistoryThreadGraphAnchorState;
         section: "parent" | "children";
+        previewModelByEventId?: Record<string, PostContentRenderModel>;
+        emojiLoadStateByUrl?: Record<
+            string,
+            PostContentEmojiLoadState | undefined
+        >;
+        emojiImageMetaByUrl?: Record<
+            string,
+            PostContentEmojiImageMeta | undefined
+        >;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: {
             index: number;
@@ -55,6 +69,9 @@
     let {
         state,
         section,
+        previewModelByEventId = {},
+        emojiLoadStateByUrl = {},
+        emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
         onToggleParent = undefined,
@@ -128,6 +145,9 @@
         {#if state.parentExpansion.visibleParent && state.parentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={state.parentNodeState}
+                {previewModelByEventId}
+                {emojiLoadStateByUrl}
+                {emojiImageMetaByUrl}
                 {scrollRoot}
                 {onImageOpen}
                 onToggleParent={onToggleNodeParent}
@@ -148,6 +168,9 @@
         {:else if state.parentExpansion.visibleParent && fallbackParentNodeState}
             <PostHistoryThreadGraphNodeView
                 state={fallbackParentNodeState}
+                {previewModelByEventId}
+                {emojiLoadStateByUrl}
+                {emojiImageMetaByUrl}
                 {scrollRoot}
                 {onImageOpen}
                 onToggleParent={onToggleNodeParent}
@@ -215,6 +238,9 @@
             {#each state.replyNodeStates as replyState (replyState.node.eventId)}
                 <PostHistoryThreadGraphNodeView
                     state={replyState}
+                    {previewModelByEventId}
+                    {emojiLoadStateByUrl}
+                    {emojiImageMetaByUrl}
                     {scrollRoot}
                     {onImageOpen}
                     onToggleParent={onToggleNodeParent}

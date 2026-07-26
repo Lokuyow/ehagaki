@@ -3,13 +3,25 @@
     import type { Snippet } from "svelte";
     import Button from "./Button.svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
-    import { extractPostHistoryMedia } from "../lib/postHistoryMediaUtils";
     import type { PostHistoryQuotePreviewState } from "../lib/hooks/usePostHistoryQuotePreviews.svelte";
-    import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
+    import type {
+        PostContentEmojiImageMeta,
+        PostContentEmojiLoadState,
+        PostContentRenderModel,
+    } from "../lib/postContentPreview";
     import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
         preview: PostHistoryQuotePreviewState;
+        model?: PostContentRenderModel;
+        emojiLoadStateByUrl?: Record<
+            string,
+            PostContentEmojiLoadState | undefined
+        >;
+        emojiImageMetaByUrl?: Record<
+            string,
+            PostContentEmojiImageMeta | undefined
+        >;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: {
             index: number;
@@ -21,17 +33,14 @@
 
     let {
         preview,
+        model = undefined,
+        emojiLoadStateByUrl = {},
+        emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
         onRetry = undefined,
         footerMenu = undefined,
     }: Props = $props();
-
-    function getMedia(): PostHistoryMediaRecord[] {
-        return preview.status === "resolved"
-            ? extractPostHistoryMedia(preview.event)
-            : [];
-    }
 
     function getStatusMessage(): string {
         switch (preview.status) {
@@ -51,7 +60,9 @@
     <PostHistoryRelatedEventCard
         event={preview.event}
         profile={preview.profile}
-        media={getMedia()}
+        {model}
+        {emojiLoadStateByUrl}
+        {emojiImageMetaByUrl}
         {scrollRoot}
         {onImageOpen}
         {footerMenu}

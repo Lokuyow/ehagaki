@@ -11,6 +11,7 @@ type HarnessState = {
         | "linkPost"
         | "exactlyFiveLinePost"
         | "oversizedPost"
+        | "mediaPost"
         | "namelessChannel"
         | "longNameChannel"
         | "unsupported"
@@ -126,6 +127,71 @@ test.describe("composer target dialog fixture", () => {
                 expect(overflow).toBeLessThanOrEqual(0);
             }
         }
+    });
+
+    test("長文末尾の4画像と動画を共通配置で表示し、狭幅でもはみ出さない", async ({
+        page,
+    }) => {
+        await page.route("**/preview-media-*", (route) => route.abort());
+        const harness = await gotoHarness(page);
+        await page.setViewportSize({ width: 320, height: 720 });
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.mediaPost);
+
+        const previewContent = page.locator(".event-content");
+        await expect(previewContent).toBeVisible();
+        expect(await previewContent.textContent()).toHaveLength(2_000);
+
+        const rows = page.locator(".post-history-image-row");
+        await expect(rows).toHaveCount(2);
+        await expect(rows.nth(0).locator(".post-history-image-cell"))
+            .toHaveCount(2);
+        await expect(rows.nth(1).locator(".post-history-image-cell"))
+            .toHaveCount(2);
+        await expect(page.locator(".post-history-video-card")).toHaveCount(1);
+        await expect(page.locator("video[autoplay]")).toHaveCount(0);
+
+        const overflow = await page.locator(".target-preview").evaluate(
+            (element) => element.scrollWidth - element.clientWidth,
+        );
+        expect(overflow).toBeLessThanOrEqual(1);
+    });
+
+    test("画像ビューアーをEscapeと戻るで閉じ、起点へフォーカスを戻す", async ({
+        page,
+    }) => {
+        const imageBody = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            "base64",
+        );
+        await page.route("**/preview-media-*.jpg", (route) =>
+            route.fulfill({
+                status: 200,
+                contentType: "image/png",
+                body: imageBody,
+            }),
+        );
+        await page.route("**/preview-media-video.mp4", (route) => route.abort());
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.mediaPost);
+
+        const firstImage = page.locator(".post-history-image-surface").first();
+        await expect(firstImage).toBeVisible();
+        await firstImage.focus();
+        await firstImage.press("Enter");
+        await expect(page.locator(".ehagaki-pswp")).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".ehagaki-pswp")).toBeHidden();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        await expect(firstImage).toBeFocused();
+
+        await firstImage.press("Enter");
+        await expect(page.locator(".ehagaki-pswp")).toBeVisible();
+        await page.goBack();
+        await expect(page.locator(".ehagaki-pswp")).toBeHidden();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        await expect(firstImage).toBeFocused();
     });
 
     test("実際の折り返しとResizeObserver再計測に応じて展開ボタンを切り替える", async ({

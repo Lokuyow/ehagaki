@@ -1,12 +1,25 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import PostHistoryRelatedEventCard from "./PostHistoryRelatedEventCard.svelte";
-    import { extractPostHistoryMedia } from "../lib/postHistoryMediaUtils";
+    import type {
+        PostContentEmojiImageMeta,
+        PostContentEmojiLoadState,
+        PostContentRenderModel,
+    } from "../lib/postContentPreview";
     import type { PostHistoryThreadGraphNode } from "../lib/postHistoryThreadGraphUtils";
     import type { FullscreenMediaItem } from "../lib/types";
 
     interface Props {
         node: PostHistoryThreadGraphNode;
+        model?: PostContentRenderModel;
+        emojiLoadStateByUrl?: Record<
+            string,
+            PostContentEmojiLoadState | undefined
+        >;
+        emojiImageMetaByUrl?: Record<
+            string,
+            PostContentEmojiImageMeta | undefined
+        >;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: {
             index: number;
@@ -20,6 +33,9 @@
 
     let {
         node,
+        model = undefined,
+        emojiLoadStateByUrl = {},
+        emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
         topActions = undefined,
@@ -28,13 +44,14 @@
         footerMenu = undefined,
     }: Props = $props();
 
-    let media = $derived.by(() => extractPostHistoryMedia(node.event));
 </script>
 
 <PostHistoryRelatedEventCard
     event={node.event}
     profile={node.profile}
-    {media}
+    {model}
+    {emojiLoadStateByUrl}
+    {emojiImageMetaByUrl}
     {scrollRoot}
     {onImageOpen}
     {topActions}

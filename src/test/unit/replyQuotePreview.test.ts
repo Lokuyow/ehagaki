@@ -155,6 +155,69 @@ describe('ReplyQuotePreview', () => {
         expect(onClear).not.toHaveBeenCalled();
     });
 
+    it('共通表示で4画像を2x2にまとめ、動画は自動再生しない別カードとして表示する', async () => {
+        const imageUrls = Array.from(
+            { length: 4 },
+            (_, index) => `https://example.com/${index + 1}.jpg`,
+        );
+        const videoUrl = 'https://example.com/movie.mp4';
+        render(ReplyQuotePreview, {
+            props: {
+                reference: createReference({
+                    referencedEvent: createReferencedEvent(
+                        [...imageUrls, videoUrl].join('\n'),
+                    ),
+                }),
+                mode: 'quote',
+                onClear: vi.fn(),
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '展開する' }));
+
+        const rows = document.querySelectorAll('.post-history-image-row');
+        expect(rows).toHaveLength(2);
+        expect(Array.from(rows).map((row) =>
+            row.querySelectorAll('.post-history-image-cell').length,
+        )).toEqual([2, 2]);
+        expect(document.querySelectorAll('.post-history-video-card')).toHaveLength(1);
+        expect(document.querySelector('video')?.hasAttribute('autoplay') ?? false)
+            .toBe(false);
+    });
+
+    it('共通表示でcustom emojiのready画像と失敗時shortcodeを切り替える', async () => {
+        const emojiUrl = 'https://example.com/blobcat.webp';
+        const reference = createReference({
+            referencedEvent: {
+                ...createReferencedEvent(':blobcat:'),
+                tags: [['emoji', 'blobcat', emojiUrl]],
+            },
+        });
+        const { rerender } = render(ReplyQuotePreview, {
+            props: {
+                reference,
+                mode: 'quote',
+                emojiLoadStateByUrl: { [emojiUrl]: 'ready' },
+                emojiImageMetaByUrl: { [emojiUrl]: { aspectRatio: 1.5 } },
+                onClear: vi.fn(),
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '展開する' }));
+        expect(screen.getByRole('img', { name: ':blobcat:' })).toBeTruthy();
+        expect(document.querySelector('.post-history-custom-emoji-slot')
+            ?.getAttribute('style')).toContain('45px');
+
+        await rerender({
+            reference,
+            mode: 'quote',
+            emojiLoadStateByUrl: { [emojiUrl]: 'failed' },
+            onClear: vi.fn(),
+        });
+        expect(screen.getByText(':blobcat:')).toBeTruthy();
+        expect(document.querySelector('.post-history-custom-emoji-slot')).toBeNull();
+    });
+
     it('quote では preview-label と author-name の間に通知ボタンを表示する', () => {
         const { container } = render(ReplyQuotePreview, {
             props: {

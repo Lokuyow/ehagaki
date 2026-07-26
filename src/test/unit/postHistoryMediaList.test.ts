@@ -804,6 +804,54 @@ describe('PostHistoryMediaList', () => {
         });
     });
 
+    it('複数画像の一部だけが失敗してもグリッドの行とセル数を維持する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockImplementation(async ({ url }: { url: string }) =>
+                url.endsWith('/2.jpg')
+                    ? null
+                    : {
+                          cacheKey: url,
+                          url,
+                          mimeType: 'image/jpeg',
+                          size: 6,
+                          source: 'network',
+                          kind: 'image',
+                      },
+            );
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockImplementation(async (url: string) => ({
+                cacheKey: url,
+                url,
+                mimeType: 'image/jpeg',
+                size: 6,
+                source: 'network',
+                kind: 'image',
+                objectUrl: `blob:${url}`,
+            }));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: Array.from({ length: 4 }, (_, index) => ({
+                    url: `https://example.com/${index + 1}.jpg`,
+                    mimeType: 'image/jpeg',
+                    alt: `image ${index + 1}`,
+                })),
+            },
+        });
+
+        await screen.findByRole('button', { name: '再取得して保存' });
+        const rows = container.querySelectorAll('.post-history-image-row');
+        expect(rows).toHaveLength(2);
+        expect(Array.from(rows).map((row) =>
+            row.querySelectorAll('.post-history-image-cell').length,
+        )).toEqual([2, 2]);
+        expect(container.querySelectorAll(
+            '.post-history-media-placeholder-failed',
+        )).toHaveLength(1);
+    });
+
     it('fetch が CORS で失敗した画像は元 URL を直接描画する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockResolvedValue(null);

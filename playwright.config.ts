@@ -32,5 +32,13 @@ export default defineConfig({
                 ...devices['iPhone 13'],
             },
         },
+        {
+            name: 'mobile-webkit',
+            testMatch: '**/composerTargetDialog.spec.ts',
+            use: {
+                ...devices['iPhone 13'],
+                browserName: 'webkit',
+            },
+        },
     ],
 });

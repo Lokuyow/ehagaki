@@ -113,4 +113,25 @@ describe("PostHistoryRelatedEventCard", () => {
             }),
         ).toBeNull();
     });
+
+    it("omitted media is extracted from event content and custom emoji uses compact sizing", () => {
+        const emojiUrl = "https://example.com/blobcat.webp";
+        render(PostHistoryRelatedEventCard, {
+            event: {
+                ...createEvent(
+                    ":blobcat: https://example.com/one.jpg https://example.com/two.jpg",
+                ),
+                tags: [["emoji", "blobcat", emojiUrl]],
+            },
+            profile: null,
+            emojiLoadStateByUrl: { [emojiUrl]: "ready" },
+            emojiImageMetaByUrl: { [emojiUrl]: { aspectRatio: 2 } },
+        });
+
+        expect(document.querySelectorAll(".post-history-image-cell"))
+            .toHaveLength(2);
+        expect(screen.getByRole("img", { name: ":blobcat:" })).toBeTruthy();
+        expect(document.querySelector(".post-history-custom-emoji-slot")
+            ?.getAttribute("style")).toContain("48px");
+    });
 });

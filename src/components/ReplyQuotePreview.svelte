@@ -4,16 +4,38 @@
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
+    import PostContentPreview from "./PostContentPreview.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
-    import TextLinkSegments from "./TextLinkSegments.svelte";
-    import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
+    import {
+        buildPostContentRenderModel,
+        type PostContentEmojiImageMeta,
+        type PostContentEmojiLoadState,
+        type PostContentRenderModel,
+    } from "../lib/postContentPreview";
+    import type {
+        FullscreenMediaItem,
+        ReplyQuoteMode,
+        ReplyQuoteState,
+    } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
-    import { buildLinkifiedTextSegments } from "../lib/utils/linkifiedText";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     interface Props {
         reference: ReplyQuoteState;
         mode: ReplyQuoteMode;
+        model?: PostContentRenderModel;
+        emojiLoadStateByUrl?: Record<
+            string,
+            PostContentEmojiLoadState | undefined
+        >;
+        emojiImageMetaByUrl?: Record<
+            string,
+            PostContentEmojiImageMeta | undefined
+        >;
+        onImageOpen?: (params: {
+            index: number;
+            mediaList: FullscreenMediaItem[];
+        }) => void;
         onClear: () => void;
         quoteNotificationEnabled?: boolean;
         onToggleQuoteNotification?: (enabled: boolean) => void;
@@ -25,6 +47,10 @@
     let {
         reference,
         mode,
+        model = undefined,
+        emojiLoadStateByUrl = {},
+        emojiImageMetaByUrl = {},
+        onImageOpen = undefined,
         onClear,
         quoteNotificationEnabled = undefined,
         onToggleQuoteNotification = undefined,
@@ -49,15 +75,28 @@
         return shortenMiddle(npub, 12, 4);
     });
 
-    let sanitizedContent = $derived.by(() => {
-        if (!reference.referencedEvent?.content) return "";
-        const raw = reference.referencedEvent.content;
-        return sanitizePlainText(raw);
+    let resolvedModel = $derived.by(() => {
+        if (model) {
+            return model;
+        }
+
+        const referencedEvent = reference.referencedEvent;
+        if (!referencedEvent) {
+            return buildPostContentRenderModel({
+                sourceContent: "",
+                tags: [],
+            });
+        }
+
+        return buildPostContentRenderModel({
+            sourceContent: referencedEvent.content,
+            displayContent: sanitizePlainText(referencedEvent.content),
+            tags: referencedEvent.tags,
+        });
     });
 
-    let canToggleExpand = $derived(!!sanitizedContent);
-    let contentSegments = $derived(
-        buildLinkifiedTextSegments(sanitizedContent),
+    let canToggleExpand = $derived(
+        resolvedModel.hasRenderableText || resolvedModel.hasRenderableMedia,
     );
 
     let showLoadingStatus = $derived(reference.loading && showDelayedLoading);
@@ -311,11 +350,13 @@
     {/snippet}
 
     {#snippet content()}
-        {#if sanitizedContent}
-            <p class="content-text">
-                <TextLinkSegments segments={contentSegments} />
-            </p>
-        {/if}
+        <PostContentPreview
+            model={resolvedModel}
+            density="reply"
+            {emojiLoadStateByUrl}
+            {emojiImageMetaByUrl}
+            {onImageOpen}
+        />
     {/snippet}
 </ComposerContextPreviewShell>
 
@@ -462,10 +503,4 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     }
 
-    .content-text {
-        margin: 0;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        line-height: 1.4;
-    }
 </style>

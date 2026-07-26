@@ -5,8 +5,6 @@
     } from "../lib/postHistoryDialogUtils";
     import TextLinkSegments from "./TextLinkSegments.svelte";
 
-    const POST_HISTORY_CUSTOM_EMOJI_SIZE = 30;
-
     type EmojiLoadState = "loading" | "ready" | "failed";
     type EmojiImageMeta = {
         aspectRatio: number;
@@ -24,6 +22,11 @@
         previewCollapseEventId?: string;
         previewContentId?: string;
         isCollapsed?: boolean;
+        emojiSize?: number;
+        fontSize?: string;
+        lineHeight?: number;
+        contentClass?: string;
+        collapsedContentClass?: string;
     }
 
     let {
@@ -34,6 +37,11 @@
         previewCollapseEventId = "",
         previewContentId = undefined,
         isCollapsed = false,
+        emojiSize = 30,
+        fontSize = "1rem",
+        lineHeight = 1.5,
+        contentClass = "",
+        collapsedContentClass = "",
     }: Props = $props();
 
     function isTextOrEmojiSegment(
@@ -79,23 +87,32 @@
             Number.isFinite(aspectRatio) &&
             aspectRatio > 0;
         const slotWidth = hasAspectRatio
-            ? POST_HISTORY_CUSTOM_EMOJI_SIZE * aspectRatio
-            : POST_HISTORY_CUSTOM_EMOJI_SIZE;
+            ? emojiSize * aspectRatio
+            : emojiSize;
 
         return [
             `width: ${formatPixelValue(slotWidth)}px;`,
-            `height: ${POST_HISTORY_CUSTOM_EMOJI_SIZE}px;`,
+            `height: ${emojiSize}px;`,
             "vertical-align: bottom;",
         ].join(" ");
     }
 </script>
 
-<div class="post-history-preview-content">
+<div
+    class="post-history-preview-content"
+    style={`--post-content-font-size: ${fontSize}; --post-content-line-height: ${lineHeight};`}
+>
     {#if hasRenderableText}
         <div
             id={previewContentId}
-            class="post-history-preview-text"
-            class:post-history-preview-text-collapsed={isCollapsed}
+            class={[
+                "post-history-preview-text",
+                contentClass,
+                isCollapsed ? "post-history-preview-text-collapsed" : "",
+                isCollapsed ? collapsedContentClass : "",
+            ]
+                .filter(Boolean)
+                .join(" ")}
             use:previewCollapseAction={previewCollapseEventId}
         >
             {#each textSegments as segment, index (index)}
@@ -141,12 +158,12 @@
     .post-history-preview-text {
         overflow-wrap: anywhere;
         white-space: pre-wrap;
-        font-size: 1rem;
-        line-height: 1.5;
+        font-size: var(--post-content-font-size, 1rem);
+        line-height: var(--post-content-line-height, 1.5);
     }
 
     .post-history-preview-text-collapsed {
-        max-height: calc(5 * 1.5em);
+        max-height: calc(5 * var(--post-content-line-height, 1.5) * 1em);
         overflow: hidden;
     }
 

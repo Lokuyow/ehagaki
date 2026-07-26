@@ -1,13 +1,15 @@
 <script lang="ts">
     import { nip19 } from "nostr-tools";
     import type { Snippet } from "svelte";
-    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
+    import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
-    import TextLinkSegments from "./TextLinkSegments.svelte";
+    import { formatPostedAt } from "../lib/postHistoryDialogUtils";
     import {
-        buildPreviewContent,
-        formatPostedAt,
-    } from "../lib/postHistoryDialogUtils";
+        buildPostContentRenderModel,
+        type PostContentEmojiImageMeta,
+        type PostContentEmojiLoadState,
+        type PostContentRenderModel,
+    } from "../lib/postContentPreview";
     import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
     import type {
         FullscreenMediaItem,
@@ -20,6 +22,15 @@
         event: NostrEvent;
         profile?: ProfileData | null;
         media?: PostHistoryMediaRecord[];
+        model?: PostContentRenderModel;
+        emojiLoadStateByUrl?: Record<
+            string,
+            PostContentEmojiLoadState | undefined
+        >;
+        emojiImageMetaByUrl?: Record<
+            string,
+            PostContentEmojiImageMeta | undefined
+        >;
         scrollRoot?: HTMLElement | null;
         onImageOpen?: (params: {
             index: number;
@@ -34,7 +45,10 @@
     let {
         event,
         profile = null,
-        media = [],
+        media = undefined,
+        model = undefined,
+        emojiLoadStateByUrl = {},
+        emojiImageMetaByUrl = {},
         scrollRoot = null,
         onImageOpen = undefined,
         topActions = undefined,
@@ -52,23 +66,13 @@
 
         return shortenMiddle(nip19.npubEncode(event.pubkey), 12, 4);
     });
-    let previewContent = $derived.by(() =>
-        buildPreviewContent({
-            content: event.content,
-            tags: event.tags,
-            media,
-        }),
-    );
-    let contentSegments = $derived(
-        previewContent.segments.filter((segment) => segment.type !== "media"),
-    );
-    let hasContent = $derived(
-        contentSegments.some(
-            (segment) =>
-                segment.type === "emoji" ||
-                segment.type === "link" ||
-                (segment.type === "text" && segment.text.trim().length > 0),
-        ),
+    let previewModel = $derived.by(() =>
+        model ??
+            buildPostContentRenderModel({
+                sourceContent: event.content,
+                tags: event.tags,
+                media,
+            }),
     );
     let postedAt = $derived(formatPostedAt(event.created_at * 1000));
 </script>
@@ -91,22 +95,15 @@
             {/if}
             <span class="post-history-related-author-name">{authorName}</span>
         </div>
-        {#if hasContent}
-            <p class="post-history-related-content">
-                {#each contentSegments as segment, index (index)}
-                    {#if segment.type === "emoji"}
-                        <span>{segment.rawShortcodeText}</span>
-                    {:else}
-                        <TextLinkSegments segments={[segment]} />
-                    {/if}
-                {/each}
-            </p>
-        {/if}
-        {#if media.length > 0}
-            <div class="post-history-related-media">
-                <PostHistoryMediaList {media} {scrollRoot} {onImageOpen} />
-            </div>
-        {/if}
+        <PostContentPreview
+            model={previewModel}
+            density="compact"
+            contentClass="post-history-related-content"
+            {emojiLoadStateByUrl}
+            {emojiImageMetaByUrl}
+            {scrollRoot}
+            {onImageOpen}
+        />
         <PostHistoryPreviewFooter
             formattedDate={postedAt}
             density="compact"
@@ -170,15 +167,11 @@
         font-weight: 600;
     }
 
-    .post-history-related-content {
+    :global(.post-history-related-card .post-history-related-content) {
         margin: 0;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         line-height: 1.45;
     }
 
-    .post-history-related-media {
-        display: block;
-        margin-top: 6px;
-    }
 </style>

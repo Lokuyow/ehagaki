@@ -18,6 +18,7 @@
         linkPost: "5".repeat(64),
         exactlyFiveLinePost: "7".repeat(64),
         oversizedPost: "3".repeat(64),
+        mediaPost: "0".repeat(64),
         namelessChannel: "8".repeat(64),
         longNameChannel: "9".repeat(64),
     };
@@ -30,6 +31,7 @@
         linkPost: nip19.noteEncode(ids.linkPost),
         exactlyFiveLinePost: nip19.noteEncode(ids.exactlyFiveLinePost),
         oversizedPost: nip19.noteEncode(ids.oversizedPost),
+        mediaPost: nip19.noteEncode(ids.mediaPost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
         longNameChannel: nip19.noteEncode(ids.longNameChannel),
         unsupported: nip19.npubEncode("b".repeat(64)),
@@ -53,6 +55,15 @@
         (_, index) => `Line ${index + 1}`,
     ).join("\n");
     const oversizedPostContent = "oversized-content-".repeat(2_000);
+    const mediaUrls = Array.from(
+        { length: 4 },
+        (_, index) => new URL(`preview-media-${index + 1}.jpg`, window.location.href).href,
+    );
+    const videoUrl = new URL("preview-media-video.mp4", window.location.href).href;
+    const mediaPostContent = `${"collapsed-prefix-".repeat(150)} ${[
+        ...mediaUrls,
+        videoUrl,
+    ].join(" ")}`;
 
     let show = $state(false);
     let applications = $state<
@@ -171,6 +182,17 @@
                     eventId,
                     "Fixture channel",
                     oversizedPostContent,
+                ),
+            };
+        }
+        if (eventId === ids.mediaPost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    mediaPostContent,
                 ),
             };
         }

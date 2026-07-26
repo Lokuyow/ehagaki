@@ -7,6 +7,7 @@
     import { usePostHistoryMediaCache } from "../lib/hooks/usePostHistoryMediaCache.svelte";
     import {
         buildPostHistoryMediaLayout,
+        type PostHistoryMediaLayout,
         type PostHistoryDisplayMediaKind,
         type PostHistoryMediaDimensionHints,
         type PostHistoryMediaRenderState,
@@ -26,6 +27,7 @@
             index: number;
             mediaList: FullscreenMediaItem[];
         }) => void;
+        mediaLayout?: PostHistoryMediaLayout;
     }
 
     type DisplayMediaItem = PostHistoryResolvedMedia & {
@@ -53,17 +55,24 @@
     const SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO =
         SINGLE_IMAGE_MIN_SIZE / SINGLE_IMAGE_MAX_HEIGHT;
 
-    let { media, scrollRoot = null, onImageOpen = undefined }: Props = $props();
+    let {
+        media,
+        scrollRoot = null,
+        onImageOpen = undefined,
+        mediaLayout = undefined,
+    }: Props = $props();
 
     let copyStateByUrl = $state<
         Record<string, "copied" | "failed" | undefined>
     >({});
     const autoRequestedUrls = new Set<string>();
 
-    const mediaLayout = $derived.by(() => buildPostHistoryMediaLayout(media));
+    const resolvedMediaLayout = $derived.by(
+        () => mediaLayout ?? buildPostHistoryMediaLayout(media),
+    );
 
     const mediaCache = usePostHistoryMediaCache({
-        getMedia: () => mediaLayout.items,
+        getMedia: () => resolvedMediaLayout.items,
     });
 
     const mediaStateByUrl = $derived.by(
@@ -74,16 +83,16 @@
     );
 
     const imageRows = $derived.by(() =>
-        mediaLayout.imageRows.map((row) => ({
+        resolvedMediaLayout.imageRows.map((row) => ({
             ...row,
             items: row.items.map((item) => toDisplayMediaItem(item)),
         })),
     );
     const videoItems = $derived.by(() =>
-        mediaLayout.videos.map((item) => toDisplayMediaItem(item)),
+        resolvedMediaLayout.videos.map((item) => toDisplayMediaItem(item)),
     );
     const otherItems = $derived.by(() =>
-        mediaLayout.others.map((item) => toDisplayMediaItem(item)),
+        resolvedMediaLayout.others.map((item) => toDisplayMediaItem(item)),
     );
 
     function getLinkLabel(item: { url: string; alt?: string }): string {
@@ -366,7 +375,7 @@
             return;
         }
 
-        const index = mediaLayout.fullscreenMediaItems.findIndex(
+        const index = resolvedMediaLayout.fullscreenMediaItems.findIndex(
             (candidate) => candidate.id === item.id,
         );
         if (index < 0) {
@@ -375,7 +384,7 @@
 
         onImageOpen?.({
             index,
-            mediaList: mediaLayout.fullscreenMediaItems,
+            mediaList: resolvedMediaLayout.fullscreenMediaItems,
         });
     }
 
@@ -435,7 +444,7 @@
         item: DisplayMediaItem,
         slotCount: number,
     ): string {
-        if (mediaLayout.images.length === 4) {
+        if (resolvedMediaLayout.images.length === 4) {
             return "4 / 3";
         }
 
@@ -536,12 +545,12 @@
     </div>
 {/snippet}
 
-{#if mediaLayout.items.length > 0}
+{#if resolvedMediaLayout.items.length > 0}
     <div class="post-history-media-section">
         {#if imageRows.length > 0}
             <div
                 class="post-history-image-grid"
-                class:post-history-image-grid-single={mediaLayout.images
+                class:post-history-image-grid-single={resolvedMediaLayout.images
                     .length === 1}
             >
                 {#each imageRows as row, rowIndex (rowIndex)}
@@ -551,7 +560,7 @@
                     >
                         {#each row.items as item (item.id)}
                             {@const isSingleImage =
-                                mediaLayout.images.length === 1}
+                                resolvedMediaLayout.images.length === 1}
                             {@const imagePresentation = getImagePresentation({
                                 item,
                                 slotCount: row.slotCount,

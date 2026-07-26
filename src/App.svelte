@@ -29,6 +29,7 @@
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
+  import ImageFullscreen from "./components/ImageFullscreen.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
@@ -78,7 +79,14 @@
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
   import { acknowledgeSharedMedia } from "./lib/utils/swCommunication";
-  import type { AuthResult, Draft, NostrEvent, PostResult } from "./lib/types";
+  import type {
+    AuthResult,
+    Draft,
+    FullscreenMediaItem,
+    NostrEvent,
+    PostResult,
+    ReplyQuoteState,
+  } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { editorState } from "./stores/editorStore.svelte";
@@ -185,6 +193,12 @@
   import { usePostHistoryForegroundPeriodicSync } from "./lib/hooks/usePostHistoryForegroundPeriodicSync.svelte";
   import { usePostHistoryVisibilityResumeSync } from "./lib/hooks/usePostHistoryVisibilityResumeSync.svelte";
   import { useComposerLayoutMetrics } from "./lib/hooks/useComposerLayoutMetrics.svelte";
+  import { usePostContentEmojiState } from "./lib/hooks/usePostContentEmojiState.svelte";
+  import {
+    buildPostContentRenderModel,
+    type PostContentRenderModel,
+  } from "./lib/postContentPreview";
+  import { sanitizePlainText } from "./lib/utils/domSanitizer";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -310,6 +324,71 @@
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerOpen = $state(false);
+  let referenceFullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
+  let referenceFullscreenIndex = $state(-1);
+  let showReferenceImageFullscreen = $state(false);
+
+  let composerReferencePreviewModels = $derived.by(() => {
+    const models: Record<string, PostContentRenderModel> = {};
+    const references = [
+      replyQuoteState.value.reply,
+      ...replyQuoteState.value.quotes,
+    ];
+
+    for (const reference of references) {
+      const event = reference?.referencedEvent;
+      if (!reference || !event) {
+        continue;
+      }
+
+      models[reference.eventId] = buildPostContentRenderModel({
+        sourceContent: event.content,
+        displayContent: sanitizePlainText(event.content),
+        tags: event.tags,
+      });
+    }
+
+    return models;
+  });
+  let composerReferenceEmojiUrls = $derived.by(() => {
+    const urls = new Set<string>();
+    for (const model of Object.values(composerReferencePreviewModels)) {
+      for (const url of model.previewContent.emojiUrls) {
+        urls.add(url);
+      }
+    }
+    return [...urls];
+  });
+  const composerReferenceEmojiState = usePostContentEmojiState({
+    getShow: () => composerReferenceEmojiUrls.length > 0,
+    getEmojiUrls: () => composerReferenceEmojiUrls,
+  });
+
+  function getComposerReferencePreviewModel(
+    reference: ReplyQuoteState,
+  ): PostContentRenderModel | undefined {
+    return composerReferencePreviewModels[reference.eventId];
+  }
+
+  function handleReferenceImageOpen(params: {
+    index: number;
+    mediaList: FullscreenMediaItem[];
+  }): void {
+    referenceFullscreenMediaItems = params.mediaList;
+    referenceFullscreenIndex = params.index;
+    showReferenceImageFullscreen = true;
+  }
+
+  function handleReferenceFullscreenClose(): void {
+    showReferenceImageFullscreen = false;
+    referenceFullscreenMediaItems = [];
+    referenceFullscreenIndex = -1;
+  }
+
+  function handleReferenceFullscreenNavigate(index: number): void {
+    referenceFullscreenIndex = index;
+  }
+
   const composerLayoutMetrics = useComposerLayoutMetrics({
     setupViewportListener,
     getComposerScrollRegionEl: () => composerScrollRegionEl,
@@ -1577,6 +1656,12 @@
                 <ReplyQuotePreview
                   reference={replyQuoteState.value.reply}
                   mode="reply"
+                  model={getComposerReferencePreviewModel(
+                    replyQuoteState.value.reply,
+                  )}
+                  emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
+                  emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
+                  onImageOpen={handleReferenceImageOpen}
                   onToggleReplyNotification={(pubkey, enabled) =>
                     setReplyNotificationRecipientEnabled(
                       replyQuoteState.value.reply!.eventId,
@@ -1633,6 +1718,10 @@
                 <ReplyQuotePreview
                   reference={quote}
                   mode="quote"
+                  model={getComposerReferencePreviewModel(quote)}
+                  emojiLoadStateByUrl={composerReferenceEmojiState.emojiLoadStateByUrl}
+                  emojiImageMetaByUrl={composerReferenceEmojiState.emojiImageMetaByUrl}
+                  onImageOpen={handleReferenceImageOpen}
                   quoteNotificationEnabled={quote.quoteNotificationEnabled}
                   onToggleQuoteNotification={(enabled) =>
                     setQuoteNotificationEnabled(quote.eventId, enabled)}
@@ -1842,6 +1931,17 @@
           {rxNostr}
         />
       {/if}
+      <ImageFullscreen
+        bind:show={showReferenceImageFullscreen}
+        src={referenceFullscreenMediaItems[referenceFullscreenIndex]?.src ??
+          ""}
+        alt={referenceFullscreenMediaItems[referenceFullscreenIndex]?.alt ??
+          ""}
+        onClose={handleReferenceFullscreenClose}
+        mediaList={referenceFullscreenMediaItems}
+        currentIndex={referenceFullscreenIndex}
+        onNavigate={handleReferenceFullscreenNavigate}
+      />
     </main>
   </Tooltip.Provider>
 {/if}

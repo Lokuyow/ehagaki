@@ -175,6 +175,17 @@
 - 関連テスト: `src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/uploadImetaUtils.test.ts`、`src/test/unit/postManager.test.ts`
 - 注意点: server descriptor、投稿用imeta、event kind 1063のpublishを同一機能とみなさない。未知tagを勝手にprotocol要件へ昇格させない。
 
+## 読み取り専用投稿コンテンツ表示
+
+- 機能: 投稿履歴本体、投稿履歴内の関連投稿カード、composerのreply/quote preview、composer target dialogで、本文、通常リンク、NIP-30 custom emoji、画像gallery、動画、その他mediaを同じrender modelから表示する。
+- 関連NIP: 本文と通常URLはNIP-01、custom emojiはNIP-30、`imeta`はNIP-92が関係する。
+- event kind: 主に`1`と`42`。composer targetは取得済みevent kindに従うが、kind 40のJSON contentは投稿本文previewとして表示しない。
+- 主なtag: `emoji`、`imeta`。
+- 主な実装ファイル: `src/lib/postContentPreview.ts`、`src/lib/postHistoryMediaUtils.ts`、`src/lib/postHistoryDialogUtils.ts`、`src/components/PostContentPreview.svelte`、`src/components/PostHistoryPreviewContent.svelte`、`src/components/PostHistoryMediaList.svelte`。
+- 主な関数または責務: `buildPostContentRenderModel`はmedia抽出用`sourceContent`と本文segment用`displayContent`を分離し、`media`省略時だけ`content`/`tags`からdescriptorを構築する。明示された`media`は空配列も含めて正とし、保存済みMIME、Blurhash、dim、alt、size、upload protocolを維持する。表示面はprofile、日時、操作、折りたたみ、fullscreen viewer状態を所有する。
+- 関連テスト: `src/test/unit/postContentPreview.test.ts`、`src/test/unit/postHistoryMediaUtils.test.ts`、`src/test/unit/postHistoryDialogUtils.test.ts`、`src/test/unit/postHistoryMediaList.test.ts`、`src/test/unit/postHistoryPreviewContent.test.ts`、`src/test/unit/replyQuotePreview.test.ts`、`src/test/unit/composerTargetDialog.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`。
+- 注意点: 現在は投稿内の全画像を1galleryへ集約し、既存の抽出順、URL重複排除、1〜10枚以上のrow構成、全画像を対象にするfullscreen順を維持する。本文に存在しない`imeta`も表示対象に残すのはNIP-92の必須動作ではなく、既存eHagaki dataとの互換性維持である。
+
 ## upload認証
 
 - 機能: NIP-96 endpoint discovery/uploadとNIP-98 Authorizationを行い、Blossomでは別の認証eventを使う。
