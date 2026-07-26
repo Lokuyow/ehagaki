@@ -101,6 +101,20 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("keeps prose after punctuation-confirmed media boundaries", () => {
+        expect(
+            extractPostHistoryMedia({
+                content: "(https://example.com/image.jpg.)next)",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
+    });
+
     it("extracts media without absorbing prose after an outer Japanese bracket", () => {
         expect(
             extractPostHistoryMedia({

@@ -80,8 +80,12 @@ type OuterBracketBoundary = {
     closingBracket: string;
 };
 
-const OUTER_URL_CONTINUATION_START_PATTERN = /^[A-Za-z0-9/?#%]/;
-const ASCII_PRINTABLE_PATTERN = /^[\x21-\x7e]+$/;
+type OuterUrlContinuationState = {
+    hasContent: boolean;
+    startsAsUrlSyntax: boolean;
+    isAsciiPrintable: boolean;
+    openingBrackets: string[];
+};
 
 function hasUnmatchedClosingBracket(
     value: string,
@@ -123,33 +127,62 @@ function isUrlDataComponentBracket(
         (fragmentIndex >= 0 && fragmentIndex < index);
 }
 
-function hasUnclosedOpeningBracket(value: string): boolean {
-    const openingBrackets: string[] = [];
-
-    for (const character of value) {
-        if (OPENING_BRACKET_TO_CLOSING.has(character)) {
-            openingBrackets.push(character);
-            continue;
-        }
-
-        const expectedOpeningBracket =
-            CLOSING_BRACKET_TO_OPENING.get(character);
-        if (expectedOpeningBracket === openingBrackets.at(-1)) {
-            openingBrackets.pop();
-        }
-    }
-
-    return openingBrackets.length > 0;
+function createOuterUrlContinuationState(): OuterUrlContinuationState {
+    return {
+        hasContent: false,
+        startsAsUrlSyntax: false,
+        isAsciiPrintable: true,
+        openingBrackets: [],
+    };
 }
 
-function isOuterUrlContinuation(value: string): boolean {
-    if (!value) {
-        return true;
+function appendOuterUrlContinuationCharacter(
+    state: OuterUrlContinuationState,
+    character: string,
+): void {
+    if (!state.hasContent) {
+        state.hasContent = true;
+        state.startsAsUrlSyntax = /[A-Za-z0-9/?#%]/.test(character);
     }
 
-    return ASCII_PRINTABLE_PATTERN.test(value) &&
-        OUTER_URL_CONTINUATION_START_PATTERN.test(value) &&
-        !hasUnclosedOpeningBracket(value);
+    if (character < "!" || character > "~") {
+        state.isAsciiPrintable = false;
+    }
+
+    if (OPENING_BRACKET_TO_CLOSING.has(character)) {
+        state.openingBrackets.push(character);
+        return;
+    }
+
+    const expectedOpeningBracket = CLOSING_BRACKET_TO_OPENING.get(character);
+    if (expectedOpeningBracket === state.openingBrackets.at(-1)) {
+        state.openingBrackets.pop();
+    }
+}
+
+function isOuterUrlContinuation(
+    state: OuterUrlContinuationState,
+): boolean {
+    return !state.hasContent ||
+        (state.startsAsUrlSyntax &&
+            state.isAsciiPrintable &&
+            state.openingBrackets.length === 0);
+}
+
+function getOuterBracketBoundaryInfo(
+    rawCandidate: string,
+    boundary: OuterBracketBoundary,
+): { isValid: boolean; hasTrailingText: boolean } {
+    const displayText = rawCandidate.slice(
+        0,
+        boundary.end - boundary.closingBracket.length,
+    );
+    const split = splitHttpUrlTrailingText(displayText);
+
+    return {
+        isValid: normalizeAbsoluteHttpUrl(split.displayText) !== null,
+        hasTrailingText: split.trailingText.length > 0,
+    };
 }
 
 function findOuterBracketBoundary(
@@ -172,35 +205,63 @@ function findOuterBracketBoundary(
 
     let depth = 1;
     let offset = 0;
-    let boundary: OuterBracketBoundary | null = null;
+    let firstBoundary: OuterBracketBoundary | null = null;
+    let latestContinuationBoundary: OuterBracketBoundary | null = null;
+    let continuationState: OuterUrlContinuationState | null = null;
     for (const character of rawCandidate) {
+        const wasTrackingContinuation = continuationState !== null;
         if (character === outerOpeningBracket) {
             depth += 1;
         } else if (character === outerClosingBracket) {
             if (depth > 0) {
                 depth -= 1;
             }
-            if (
-                depth === 0 &&
-                normalizeAbsoluteHttpUrl(rawCandidate.slice(0, offset))
-            ) {
+            if (depth === 0) {
                 const nextBoundary = {
                     end: offset + character.length,
                     closingBracket: character,
                 };
-                if (!boundary) {
-                    boundary = nextBoundary;
-                } else if (isOuterUrlContinuation(
-                    rawCandidate.slice(boundary.end, offset),
-                )) {
-                    boundary = nextBoundary;
+                if (!firstBoundary) {
+                    firstBoundary = nextBoundary;
+                    continuationState = createOuterUrlContinuationState();
+                } else if (
+                    continuationState &&
+                    isOuterUrlContinuation(continuationState)
+                ) {
+                    latestContinuationBoundary = nextBoundary;
                 }
             }
+        }
+
+        if (wasTrackingContinuation && continuationState) {
+            appendOuterUrlContinuationCharacter(continuationState, character);
         }
         offset += character.length;
     }
 
-    return boundary;
+    if (!firstBoundary) {
+        return null;
+    }
+
+    const firstBoundaryInfo = getOuterBracketBoundaryInfo(
+        rawCandidate,
+        firstBoundary,
+    );
+    if (firstBoundaryInfo.isValid && firstBoundaryInfo.hasTrailingText) {
+        return firstBoundary;
+    }
+
+    if (latestContinuationBoundary) {
+        const latestBoundaryInfo = getOuterBracketBoundaryInfo(
+            rawCandidate,
+            latestContinuationBoundary,
+        );
+        if (latestBoundaryInfo.isValid) {
+            return latestContinuationBoundary;
+        }
+    }
+
+    return firstBoundaryInfo.isValid ? firstBoundary : null;
 }
 
 export function splitHttpUrlTrailingText(

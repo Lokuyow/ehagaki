@@ -236,6 +236,26 @@ describe("httpUrlCandidates", () => {
             "https://example.com/path",
             "')",
         ],
+        [
+            "(https://example.com/path.)next)",
+            "https://example.com/path",
+            ".)",
+        ],
+        [
+            "(https://example.com/path')next)",
+            "https://example.com/path",
+            "')",
+        ],
+        [
+            "(https://example.com/path!)next)",
+            "https://example.com/path",
+            "!)",
+        ],
+        [
+            "（https://example.com/path。）。Next）",
+            "https://example.com/path",
+            "。）",
+        ],
     ])(
         "ends at the matching outer bracket in %s",
         (text, displayText, trailingText) => {
@@ -256,6 +276,25 @@ describe("httpUrlCandidates", () => {
             });
         },
     );
+
+    it("handles many matching outer-bracket candidates without changing the final URL boundary", () => {
+        const repeatedPath = "bar(x)".repeat(200);
+        const url = `https://example.com/foo)${repeatedPath}`;
+        const text = `(${url})`;
+        const [candidate] = scanHttpUrlCandidates(text);
+
+        expect(candidate).toMatchObject({
+            candidateStart: 1,
+            candidateEnd: text.length,
+            start: 1,
+            end: text.length - 1,
+            rawCandidate: `${url})`,
+            displayText: url,
+            trailingText: ")",
+            href: new URL(url).href,
+            isValidHttpUrl: true,
+        });
+    });
 
     it.each([
         "https://example.com/search?q=foo)",

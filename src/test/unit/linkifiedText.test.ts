@@ -154,6 +154,20 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps prose following a punctuation-confirmed outer boundary as text", () => {
+        expect(
+            buildLinkifiedTextSegments("(https://example.com/path.)next)"),
+        ).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: ".)next)" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

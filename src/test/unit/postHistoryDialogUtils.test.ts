@@ -288,6 +288,24 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps prose after a punctuation-confirmed outer boundary in preview text", () => {
+        const result = buildPreviewContent({
+            content: "(https://example.com/path.)next)",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: ".)next)" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:
