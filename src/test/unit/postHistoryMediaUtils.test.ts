@@ -35,6 +35,25 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("keeps URL-internal apostrophes and full-width punctuation in media URLs", () => {
+        expect(
+            extractPostHistoryMedia({
+                content:
+                    "https://example.com/foo'bar/image.jpg https://example.com/記事。続き/video.mp4",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/foo'bar/image.jpg",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "https://example.com/%E8%A8%98%E4%BA%8B%E3%80%82%E7%B6%9A%E3%81%8D/video.mp4",
+                mimeType: "video/mp4",
+            },
+        ]);
+    });
+
     it("ignores invalid, relative, and non-HTTP media-looking values", () => {
         expect(
             extractPostHistoryMedia({

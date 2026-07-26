@@ -55,6 +55,97 @@ describe("httpUrlCandidates", () => {
     });
 
     it.each([
+        ["https://example.com/foo'bar"],
+        ["https://example.com/記事。続き"],
+        ["https://example.com/項目、補足"],
+        ["https://example.com/path?q=値。続き"],
+        ["https://example.com/path#場所。詳細"],
+    ])("keeps URL-internal punctuation in %s", (input) => {
+        const [candidate] = scanHttpUrlCandidates(input);
+
+        expect(candidate.displayText).toBe(input);
+        expect(candidate.trailingText).toBe("");
+        expect(candidate.isValidHttpUrl).toBe(true);
+        expect(candidate.href).toBe(new URL(input).href);
+    });
+
+    it("keeps source offsets accurate for multiple candidates and trailing prose", () => {
+        const text =
+            "prefix <https://example.com> and https://two.example/記事。続き）。 suffix";
+        const candidates = scanHttpUrlCandidates(text);
+        const firstText = "https://example.com";
+        const secondText = "https://two.example/記事。続き";
+        const firstStart = text.indexOf(firstText);
+        const secondStart = text.indexOf(secondText);
+
+        expect(candidates).toHaveLength(2);
+        expect(candidates[0]).toMatchObject({
+            candidateStart: firstStart,
+            candidateEnd: firstStart + firstText.length,
+            start: firstStart,
+            end: firstStart + firstText.length,
+            rawCandidate: firstText,
+            displayText: firstText,
+            trailingText: "",
+        });
+        expect(candidates[1]).toMatchObject({
+            candidateStart: secondStart,
+            candidateEnd: secondStart + secondText.length + "）。".length,
+            start: secondStart,
+            end: secondStart + secondText.length,
+            rawCandidate: `${secondText}）。`,
+            displayText: secondText,
+            trailingText: "）。",
+        });
+        expect(
+            candidates.map((candidate) =>
+                text.slice(candidate.start, candidate.end)),
+        ).toEqual([firstText, secondText]);
+    });
+
+    it.each([
+        ["https://example.com</b>", "https://example.com"],
+        ["<https://example.com>", "https://example.com"],
+        ["https://example.com>後続", "https://example.com"],
+    ])("treats angle brackets as candidate boundaries in %s", (text, url) => {
+        const [candidate] = scanHttpUrlCandidates(text);
+        const start = text.indexOf(url);
+
+        expect(candidate).toMatchObject({
+            candidateStart: start,
+            candidateEnd: start + url.length,
+            start,
+            end: start + url.length,
+            rawCandidate: url,
+            displayText: url,
+            trailingText: "",
+            isValidHttpUrl: true,
+        });
+    });
+
+    it("keeps surrounding quotation marks outside the URL", () => {
+        const asciiText = '"https://example.com/path"';
+        const curvedText = "“https://example.com/path”";
+
+        expect(scanHttpUrlCandidates(asciiText)[0]).toMatchObject({
+            candidateStart: 1,
+            candidateEnd: asciiText.length - 1,
+            start: 1,
+            end: asciiText.length - 1,
+            displayText: "https://example.com/path",
+            trailingText: "",
+        });
+        expect(scanHttpUrlCandidates(curvedText)[0]).toMatchObject({
+            candidateStart: 1,
+            candidateEnd: curvedText.length,
+            start: 1,
+            end: curvedText.length - 1,
+            displayText: "https://example.com/path",
+            trailingText: "”",
+        });
+    });
+
+    it.each([
         ["https://example.com/path.,!?", "https://example.com/path", ".,!?"],
         [
             "https://example.com/path。、！？",

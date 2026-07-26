@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
 import { ContentTrackingExtension } from '../../lib/editor/contentTracking';
 
 // PWA関連のモック
@@ -154,6 +155,65 @@ describe('エディター・リンク判定統合テスト', () => {
             
             const html = editor.getHTML();
             expectLinkExists(html, 'https://example.com/page');
+        });
+
+        it.each([
+            "https://example.com/foo'bar",
+            'https://example.com/記事。続き',
+            'https://example.com/path?q=値。続き',
+            'https://example.com/path#場所。詳細',
+        ])('URL内部の句読点やアポストロフィを含む候補全体をリンク化する: %s', async (url) => {
+            editor.commands.setContent(`<p>${url}</p>`);
+            await waitForContentTracking();
+
+            const textNode = editor.getJSON().content?.[0]?.content?.[0] as
+                | {
+                    text?: string;
+                    marks?: Array<{
+                        type: string;
+                        attrs?: Record<string, unknown>;
+                    }>;
+                }
+                | undefined;
+            expect(textNode?.text).toBe(url);
+            expect(textNode?.marks?.find((mark) => mark.type === 'link')?.attrs?.href)
+                .toBe(url);
+        });
+    });
+
+    describe('画像URL変換', () => {
+        it('内部の全角句読点を含む画像URL候補を途中切断せず画像へ変換する', async () => {
+            const imageUrl = 'https://example.com/記事。続き/image.png';
+            const imageEditor = new Editor({
+                extensions: [
+                    StarterKit.configure({
+                        link: {
+                            autolink: false,
+                            linkOnPaste: false,
+                            openOnClick: false,
+                        },
+                    }),
+                    Image,
+                    ContentTrackingExtension.configure({
+                        enableAutoLink: false,
+                        enableImageConversion: true,
+                        enableHashtags: false,
+                    }),
+                ],
+                content: '',
+            });
+
+            try {
+                imageEditor.commands.setContent(`<p>${imageUrl}</p>`);
+                await waitForContentTracking();
+
+                const imageNode = imageEditor.getJSON().content?.find(
+                    (node) => node.type === 'image',
+                );
+                expect(imageNode?.attrs?.src).toBe(new URL(imageUrl).href);
+            } finally {
+                imageEditor.destroy();
+            }
         });
     });
 

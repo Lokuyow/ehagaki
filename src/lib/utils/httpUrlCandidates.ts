@@ -1,4 +1,4 @@
-const HTTP_URL_CANDIDATE_PATTERN = /https?:\/\/[^\s\u3000]+/gi;
+const HTTP_URL_CANDIDATE_PATTERN = /https?:\/\/[^\s\u3000<>"]+/gi;
 
 const TRAILING_PUNCTUATION = new Set([
     ".",
@@ -32,7 +32,6 @@ const CLOSING_BRACKET_TO_OPENING = new Map([
     [")", "("],
     ["]", "["],
     ["}", "{"],
-    [">", "<"],
     ["\uff09", "\uff08"],
     ["\uff3d", "\uff3b"],
     ["\uff5d", "\uff5b"],
@@ -84,37 +83,11 @@ function hasUnmatchedClosingBracket(
         countCharacter(value, openingBracket);
 }
 
-function isFullWidthTrailingPunctuation(character: string): boolean {
-    return TRAILING_PUNCTUATION.has(character) &&
-        character !== "." &&
-        character !== "," &&
-        character !== "!" &&
-        character !== "?" &&
-        character !== ":" &&
-        character !== ";";
-}
-
-function findInlineProseBoundary(rawCandidate: string): number {
+function findUnmatchedClosingBracketBoundary(rawCandidate: string): number {
     const bracketDepth = new Map<string, number>();
     let offset = 0;
 
     for (const character of rawCandidate) {
-        if (
-            TRAILING_QUOTES.has(character) ||
-            isFullWidthTrailingPunctuation(character)
-        ) {
-            return offset;
-        }
-
-        if (OPENING_BRACKETS.has(character)) {
-            bracketDepth.set(
-                character,
-                (bracketDepth.get(character) ?? 0) + 1,
-            );
-            offset += character.length;
-            continue;
-        }
-
         const openingBracket = CLOSING_BRACKET_TO_OPENING.get(character);
         if (openingBracket) {
             const depth = bracketDepth.get(openingBracket) ?? 0;
@@ -122,6 +95,11 @@ function findInlineProseBoundary(rawCandidate: string): number {
                 return offset;
             }
             bracketDepth.set(openingBracket, depth - 1);
+        } else if (OPENING_BRACKETS.has(character)) {
+            bracketDepth.set(
+                character,
+                (bracketDepth.get(character) ?? 0) + 1,
+            );
         }
 
         offset += character.length;
@@ -222,9 +200,9 @@ export function scanHttpUrlCandidates(text: string): HttpUrlCandidate[] {
             continue;
         }
 
-        const proseBoundary = findInlineProseBoundary(matchedText);
-        const trailingStart = candidateStart + proseBoundary;
-        const candidateEnd = proseBoundary < matchedText.length
+        const bracketBoundary = findUnmatchedClosingBracketBoundary(matchedText);
+        const trailingStart = candidateStart + bracketBoundary;
+        const candidateEnd = bracketBoundary < matchedText.length
             ? collectTrailingTextEnd(text, trailingStart)
             : candidateStart + matchedText.length;
         const rawCandidate = text.slice(candidateStart, candidateEnd);

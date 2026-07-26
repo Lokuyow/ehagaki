@@ -101,5 +101,17 @@ describe('ContentTracking 画像URL検出', () => {
             expect(matches).toHaveLength(1);
             expect(matches[0].displayText).toContain('#section');
         });
+
+        it.each([
+            "https://example.com/foo'bar",
+            'https://example.com/記事。続き',
+            'https://example.com/path?q=値。続き',
+            'https://example.com/path#場所。詳細',
+        ])('URL内部の文字で候補を途中切断しないこと: %s', (url) => {
+            const [candidate] = scanHttpUrlCandidates(`before ${url} after`);
+
+            expect(candidate.displayText).toBe(url);
+            expect(candidate.end - candidate.start).toBe(url.length);
+        });
     });
 });

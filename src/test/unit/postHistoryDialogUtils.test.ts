@@ -159,6 +159,36 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps internal punctuation in link segments and stops at angle brackets", () => {
+        const result = buildPreviewContent({
+            content:
+                "https://example.com/foo'bar https://example.com/記事。続き）。 <https://example.org/path>",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            {
+                type: "link",
+                text: "https://example.com/foo'bar",
+                href: "https://example.com/foo'bar",
+            },
+            { type: "text", text: " " },
+            {
+                type: "link",
+                text: "https://example.com/記事。続き",
+                href: "https://example.com/%E8%A8%98%E4%BA%8B%E3%80%82%E7%B6%9A%E3%81%8D",
+            },
+            { type: "text", text: "）。 <" },
+            {
+                type: "link",
+                text: "https://example.org/path",
+                href: "https://example.org/path",
+            },
+            { type: "text", text: ">" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:
