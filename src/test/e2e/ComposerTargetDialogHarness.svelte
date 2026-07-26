@@ -19,6 +19,7 @@
         exactlyFiveLinePost: "7".repeat(64),
         oversizedPost: "3".repeat(64),
         mediaPost: "0".repeat(64),
+        whitespacePost: "b".repeat(64),
         namelessChannel: "8".repeat(64),
         longNameChannel: "9".repeat(64),
     };
@@ -32,6 +33,7 @@
         exactlyFiveLinePost: nip19.noteEncode(ids.exactlyFiveLinePost),
         oversizedPost: nip19.noteEncode(ids.oversizedPost),
         mediaPost: nip19.noteEncode(ids.mediaPost),
+        whitespacePost: nip19.noteEncode(ids.whitespacePost),
         namelessChannel: nip19.noteEncode(ids.namelessChannel),
         longNameChannel: nip19.noteEncode(ids.longNameChannel),
         unsupported: nip19.npubEncode("b".repeat(64)),
@@ -55,6 +57,7 @@
         (_, index) => `Line ${index + 1}`,
     ).join("\n");
     const oversizedPostContent = "oversized-content-".repeat(2_000);
+    const whitespacePostContent = `${" \n".repeat(1_000)}Whitespace tail content`;
     const mediaUrls = Array.from(
         { length: 4 },
         (_, index) => new URL(`preview-media-${index + 1}.jpg`, window.location.href).href,
@@ -193,6 +196,17 @@
                     eventId,
                     "Fixture channel",
                     mediaPostContent,
+                ),
+            };
+        }
+        if (eventId === ids.whitespacePost) {
+            return {
+                status: "resolved",
+                target: makeTarget(
+                    1,
+                    eventId,
+                    "Fixture channel",
+                    whitespacePostContent,
                 ),
             };
         }

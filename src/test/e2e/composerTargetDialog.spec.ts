@@ -12,6 +12,7 @@ type HarnessState = {
         | "exactlyFiveLinePost"
         | "oversizedPost"
         | "mediaPost"
+        | "whitespacePost"
         | "namelessChannel"
         | "longNameChannel"
         | "unsupported"
@@ -371,6 +372,52 @@ test.describe("composer target dialog fixture", () => {
                 ),
             )
             .toBeLessThan(harness.oversizedPostContentLength);
+    });
+
+    test("先頭2000文字が空白でも同じトグルDOMとフォーカスを維持して展開・再折りたたみできる", async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page
+            .getByLabel("イベントID")
+            .fill(harness.inputs.whitespacePost);
+
+        const expandButton = page.getByRole("button", { name: "もっと見る" });
+        const controlledId = await expandButton.getAttribute("aria-controls");
+        expect(controlledId).toBeTruthy();
+        const collapsedTarget = page.locator(`#${controlledId}`);
+        await expect(collapsedTarget).toHaveCount(1);
+        await expect(collapsedTarget).toHaveAttribute("hidden", "");
+        expect(await collapsedTarget.boundingBox()).toBeNull();
+
+        await expandButton.evaluate((element) => {
+            element.setAttribute("data-focus-regression-node", "retained");
+        });
+        await expandButton.focus();
+        await expandButton.press("Enter");
+
+        const collapseButton = page.getByRole("button", { name: "折りたたむ" });
+        await expect(collapseButton).toBeFocused();
+        await expect(collapseButton).toHaveAttribute(
+            "data-focus-regression-node",
+            "retained",
+        );
+        await expect(page.getByText("Whitespace tail content")).toBeVisible();
+        await expect(page.locator(`#${controlledId}`)).toHaveCount(1);
+
+        await collapseButton.press("Enter");
+
+        await expect(expandButton).toBeFocused();
+        await expect(expandButton).toHaveAttribute(
+            "data-focus-regression-node",
+            "retained",
+        );
+        await expect(page.getByText("Whitespace tail content")).toBeHidden();
+        await expect(page.locator(`#${controlledId}`)).toHaveAttribute(
+            "hidden",
+            "",
+        );
     });
 
     test("スマートフォンの短い内容は上寄せし、長い内容はviewport全高を使う", async ({

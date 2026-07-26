@@ -525,6 +525,7 @@
                     {previewContentId}
                     contentClass="event-content"
                     collapsedContentClass="event-content-collapsed"
+                    renderWhenEmpty={shouldCollapsePreviewText}
                     isTextCollapsed={previewRenderModel.hasRenderableText &&
                         !isPreviewExpanded &&
                         shouldCollapsePreviewText}
@@ -552,21 +553,6 @@
                         {/if}
                     {/snippet}
                 </PostContentPreview>
-                {#if previewCollapsePost && shouldCollapsePreviewText && !previewRenderModel.hasRenderableText && !previewRenderModel.hasRenderableMedia}
-                    <span
-                        id={previewContentId}
-                        hidden
-                        aria-hidden="true"
-                    ></span>
-                    <PostPreviewToggleButton
-                        expanded={isPreviewExpanded}
-                        controls={previewContentId}
-                        onToggle={() =>
-                            previewCollapse.togglePostExpanded(
-                                previewCollapsePost.eventId,
-                            )}
-                    />
-                {/if}
 
                 {#if target?.channelContext}
                     <div class="channel-preview">

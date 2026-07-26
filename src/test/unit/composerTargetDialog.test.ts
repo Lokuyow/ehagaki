@@ -220,6 +220,8 @@ describe("ComposerTargetDialog", () => {
         expect(document.querySelector(".post-history-custom-emoji-slot")).toBeNull();
         expect(screen.queryByText(mediaUrl)).toBeNull();
         expect(screen.queryByText(":party:")).toBeNull();
+        expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
+        expect(document.querySelector("[aria-controls]")).toBeNull();
     });
 
     it("入力変更で古いtaskをcancelし、古い結果を表示しない", async () => {
@@ -511,6 +513,55 @@ describe("ComposerTargetDialog", () => {
         expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
         expect(screen.queryByRole("button", { name: "折りたたむ" })).toBeNull();
         expect(document.querySelector("[aria-controls]")).toBeNull();
+        expect(document.querySelector(".post-content-preview:empty")).toBeNull();
+    });
+
+    it("先頭2000文字が空白だけでも同じトグルDOMで後半本文を展開・再折りたたみできる", async () => {
+        const whitespacePrefix = " \n".repeat(1_000);
+        const hiddenText = "空白より後の本文";
+        expect(whitespacePrefix).toHaveLength(2_000);
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(
+                    1,
+                    "General",
+                    `${whitespacePrefix}${hiddenText}`,
+                ),
+            }),
+        });
+
+        await enterNote();
+
+        expect(screen.queryByText(hiddenText)).toBeNull();
+        const toggleButton = screen.getByRole("button", { name: "もっと見る" });
+        const controlledId = toggleButton.getAttribute("aria-controls");
+        expect(controlledId).toBeTruthy();
+        const collapsedControlTarget = document.getElementById(controlledId!);
+        expect(collapsedControlTarget?.hidden).toBe(true);
+        expect(collapsedControlTarget?.getBoundingClientRect().height).toBe(0);
+
+        toggleButton.focus();
+        await fireEvent.click(toggleButton);
+
+        const collapseButton = screen.getByRole("button", { name: "折りたたむ" });
+        expect(collapseButton).toBe(toggleButton);
+        expect(document.activeElement).toBe(toggleButton);
+        expect(screen.getByText(hiddenText)).toBeTruthy();
+        expect(document.querySelectorAll(`#${controlledId}`)).toHaveLength(1);
+
+        await fireEvent.click(toggleButton);
+
+        expect(screen.getByRole("button", { name: "もっと見る" })).toBe(
+            toggleButton,
+        );
+        expect(document.activeElement).toBe(toggleButton);
+        expect(screen.queryByText(hiddenText)).toBeNull();
+        expect(document.getElementById(controlledId!)?.hidden).toBe(true);
     });
 
     it("先頭2000文字が画像URLだけでも後半に通常テキストがあれば展開できる", async () => {
@@ -548,9 +599,14 @@ describe("ComposerTargetDialog", () => {
         expect(collapsedControlTarget?.hidden).toBe(true);
         expect(collapsedControlTarget?.getBoundingClientRect().height).toBe(0);
 
+        expandButton.focus();
         await fireEvent.click(expandButton);
 
         expect(screen.getByText(hiddenText)).toBeTruthy();
+        expect(screen.getByRole("button", { name: "折りたたむ" })).toBe(
+            expandButton,
+        );
+        expect(document.activeElement).toBe(expandButton);
         const expandedControlTargets = document.querySelectorAll(
             `#${controlledId}`,
         );

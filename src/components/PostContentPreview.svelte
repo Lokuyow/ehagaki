@@ -33,6 +33,7 @@
         previewCollapseEventId?: string;
         contentClass?: string;
         collapsedContentClass?: string;
+        renderWhenEmpty?: boolean;
         onImageOpen?: (params: {
             index: number;
             mediaList: FullscreenMediaItem[];
@@ -52,6 +53,7 @@
         previewCollapseEventId = "",
         contentClass = "",
         collapsedContentClass = "",
+        renderWhenEmpty = false,
         onImageOpen = undefined,
         betweenContentAndMedia = undefined,
     }: Props = $props();
@@ -90,7 +92,7 @@
     });
 </script>
 
-{#if model.hasRenderableText || model.hasRenderableMedia}
+{#if model.hasRenderableText || model.hasRenderableMedia || renderWhenEmpty}
     <div
         class={`post-content-preview post-content-preview-${density}`}
         style={`--post-content-block-gap: ${presentation.gap}px;`}
