@@ -1583,7 +1583,6 @@ describe('PostHistoryDialog', () => {
         });
 
         const historyItem = await findHistoryItem(post.eventId);
-        const queries = within(historyItem);
 
         await waitFor(() => {
             expectQuotePreviewStatus(historyItem, '引用投稿を読み込み中...');
