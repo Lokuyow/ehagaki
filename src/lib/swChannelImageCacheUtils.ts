@@ -2,7 +2,7 @@ import {
     isChannelEventId,
     normalizeChannelPictureUrl,
 } from "./channelPictureUrlUtils";
-import { CHANNEL_METADATA_SCHEMA_VERSION } from "./channelMetadataConstants";
+import { isCurrentChannelMetadataSchemaVersion } from "./channelMetadataConstants";
 import type { ChannelImageCacheMetaRecord } from "./storage/ehagakiDb";
 import type { ChannelImageMetaRepository } from "./swChannelImageMetaRepository";
 
@@ -93,7 +93,7 @@ export class ChannelImageCacheController {
         const channel = await this.deps.repository.getChannelMetadata(eventId);
         if (
             !channel
-            || channel.schemaVersion < CHANNEL_METADATA_SCHEMA_VERSION
+            || !isCurrentChannelMetadataSchemaVersion(channel.schemaVersion)
             || channel.resolutionQuality !== "verified-metadata"
         ) return false;
         const storedPicture = channel.picture
@@ -128,6 +128,25 @@ export class ChannelImageCacheController {
         } catch (error) {
             this.logger.error("Channel image cache lookup failed", error);
             return this.fetchWithoutSaving(parsed.normalizedUrl);
+        }
+
+        if (cachedResponse && !metadata) {
+            const pending = this.inFlight.get(parsed.normalizedUrl);
+            if (pending) {
+                try {
+                    return (await pending).clone();
+                } catch {
+                    try {
+                        [metadata, cachedResponse] = await Promise.all([
+                            this.deps.repository.get(parsed.normalizedUrl),
+                            cache.match(parsed.normalizedUrl),
+                        ]);
+                    } catch (error) {
+                        this.logger.error("Channel image cache recheck failed", error);
+                        return this.fetchWithoutSaving(parsed.normalizedUrl);
+                    }
+                }
+            }
         }
 
         if (cachedResponse && !metadata) {
@@ -236,6 +255,7 @@ export class ChannelImageCacheController {
             } catch (error) {
                 await this.recordFailedAttempt(
                     url,
+                    cache,
                     existingMetadata,
                     attemptedAt,
                     rollbackResponse !== null,
@@ -270,6 +290,7 @@ export class ChannelImageCacheController {
         if (!response.ok) {
             await this.recordFailedAttempt(
                 url,
+                cache,
                 existingMetadata,
                 attemptedAt,
                 rollbackResponse !== null,
@@ -281,6 +302,7 @@ export class ChannelImageCacheController {
         if (!contentType.startsWith("image/")) {
             await this.recordFailedAttempt(
                 url,
+                cache,
                 existingMetadata,
                 attemptedAt,
                 rollbackResponse !== null,
@@ -295,6 +317,7 @@ export class ChannelImageCacheController {
         ) {
             await this.recordReadableWithoutCache(
                 url,
+                cache,
                 attemptedAt,
                 null,
                 existingMetadata,
@@ -309,6 +332,7 @@ export class ChannelImageCacheController {
         } catch {
             await this.recordFailedAttempt(
                 url,
+                cache,
                 existingMetadata,
                 attemptedAt,
                 rollbackResponse !== null,
@@ -318,6 +342,7 @@ export class ChannelImageCacheController {
         if (verifiedSize > CHANNEL_IMAGE_CACHE_MAX_READABLE_IMAGE_BYTES) {
             await this.recordReadableWithoutCache(
                 url,
+                cache,
                 attemptedAt,
                 verifiedSize,
                 existingMetadata,
@@ -369,6 +394,7 @@ export class ChannelImageCacheController {
             this.logger.error("Channel image cache write failed", error);
             await this.recordFailedAttempt(
                 url,
+                cache,
                 existingMetadata,
                 metadata.lastAttemptAt,
                 rollbackResponse !== null,
@@ -394,22 +420,26 @@ export class ChannelImageCacheController {
                     });
                 }
                 await this.markAttempt(url, metadata.lastAttemptAt);
+                await this.enforceLimitsBestEffort(cache, url);
             } else {
                 await cache.delete(url).catch(() => false);
-                await this.recordFailedAttempt(url, existingMetadata, metadata.lastAttemptAt, false);
+                await this.recordFailedAttempt(
+                    url,
+                    cache,
+                    existingMetadata,
+                    metadata.lastAttemptAt,
+                    false,
+                );
             }
             return;
         }
 
-        try {
-            await this.enforceLimits(cache, url);
-        } catch (error) {
-            this.logger.error("Channel image cache limit enforcement failed", error);
-        }
+        await this.enforceLimitsBestEffort(cache, url);
     }
 
     private async recordReadableWithoutCache(
         url: string,
+        cache: Cache,
         attemptedAt: number,
         verifiedSize: number | null,
         existingMetadata: ChannelImageCacheMetaRecord | null,
@@ -417,6 +447,7 @@ export class ChannelImageCacheController {
     ): Promise<void> {
         if (cacheExists && existingMetadata?.responseType && existingMetadata.fetchedAt !== null) {
             await this.markAttempt(url, attemptedAt);
+            await this.enforceLimitsBestEffort(cache, url);
             return;
         }
         await this.safePut({
@@ -428,16 +459,19 @@ export class ChannelImageCacheController {
             lastAccessedAt: attemptedAt,
             schemaVersion: CHANNEL_IMAGE_CACHE_META_SCHEMA_VERSION,
         });
+        await this.enforceLimitsBestEffort(cache, url);
     }
 
     private async recordFailedAttempt(
         url: string,
+        cache: Cache,
         existingMetadata: ChannelImageCacheMetaRecord | null,
         attemptedAt: number,
         cacheExists: boolean,
     ): Promise<void> {
         if (cacheExists && existingMetadata?.responseType && existingMetadata.fetchedAt !== null) {
             await this.markAttempt(url, attemptedAt);
+            await this.enforceLimitsBestEffort(cache, url);
             return;
         }
         await this.safePut({
@@ -449,6 +483,7 @@ export class ChannelImageCacheController {
             lastAccessedAt: existingMetadata?.lastAccessedAt ?? attemptedAt,
             schemaVersion: CHANNEL_IMAGE_CACHE_META_SCHEMA_VERSION,
         });
+        await this.enforceLimitsBestEffort(cache, url);
     }
 
     private async safePut(metadata: ChannelImageCacheMetaRecord): Promise<void> {
@@ -498,6 +533,14 @@ export class ChannelImageCacheController {
     private async deletePair(cache: Cache, url: string): Promise<void> {
         await cache.delete(url).catch(() => false);
         await this.deps.repository.delete(url).catch(() => undefined);
+    }
+
+    private async enforceLimitsBestEffort(cache: Cache, currentUrl?: string): Promise<void> {
+        try {
+            await this.enforceLimits(cache, currentUrl);
+        } catch (error) {
+            this.logger.error("Channel image cache limit enforcement failed", error);
+        }
     }
 
     private async enforceLimits(cache: Cache, currentUrl?: string): Promise<void> {

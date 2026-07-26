@@ -1,7 +1,11 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
-import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
+import {
+    EHAGAKI_DB_NAME,
+    EHagakiDB,
+    type ChannelMetadataRecord,
+} from "../../lib/storage/ehagakiDb";
 import {
     CHANNEL_METADATA_RETRY_INTERVAL_MS,
     CHANNEL_METADATA_TTL_MS,
@@ -296,6 +300,32 @@ describe("DexieChannelMetadataRepository", () => {
             relayHints: ["wss://source.example.com/"],
         });
         expect(promoted.relayHints).not.toContain("wss://legacy-hint.example.com/");
+        db.close();
+    });
+
+    it.each([
+        ["欠落", undefined],
+        ["NaN", Number.NaN],
+        ["文字列", "2"],
+        ["非整数", 2.5],
+    ])("schemaVersionが%sの保存済みmetadataを未検証扱いにする", async (_label, raw) => {
+        const db = createTestDb();
+        await db.channelMetadata.put({
+            channelEventId: "channel-invalid-schema",
+            name: "Untrusted",
+            about: null,
+            picture: "https://images.example.com/channel.png",
+            relays: [],
+            relayHints: [],
+            resolutionQuality: "verified-metadata",
+            updatedAt: 1,
+            schemaVersion: raw,
+        } as unknown as ChannelMetadataRecord);
+
+        const repository = new DexieChannelMetadataRepository(db, () => 1000);
+        await expect(repository.get("channel-invalid-schema")).resolves.toMatchObject({
+            resolutionQuality: "legacy-seed",
+        });
         db.close();
     });
 });

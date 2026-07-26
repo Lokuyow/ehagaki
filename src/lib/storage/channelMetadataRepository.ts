@@ -1,7 +1,10 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { compareChannelMetadataEventVersions } from "../channelMetadataEventOrder";
 import { normalizeChannelPictureUrl } from "../channelPictureUrlUtils";
-import { CHANNEL_METADATA_SCHEMA_VERSION } from "../channelMetadataConstants";
+import {
+    CHANNEL_METADATA_SCHEMA_VERSION,
+    isCurrentChannelMetadataSchemaVersion,
+} from "../channelMetadataConstants";
 import {
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
     CHANNEL_VERIFIED_WRITE_RELAY_CACHE_LIMIT,
@@ -75,7 +78,7 @@ export interface ChannelMetadataRepository {
 }
 
 function getStoredQuality(record: ChannelMetadataRecord): ChannelCacheQuality | undefined {
-    if (record.schemaVersion >= CHANNEL_METADATA_SCHEMA_VERSION) {
+    if (isCurrentChannelMetadataSchemaVersion(record.schemaVersion)) {
         return record.resolutionQuality;
     }
     return "legacy-seed";

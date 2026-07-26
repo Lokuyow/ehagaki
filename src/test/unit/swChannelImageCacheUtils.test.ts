@@ -86,6 +86,13 @@ function verifiedChannel(overrides: Partial<ChannelMetadataRecord> = {}): Channe
     };
 }
 
+function channelWithRawSchemaVersion(schemaVersion: unknown): ChannelMetadataRecord {
+    return {
+        ...verifiedChannel(),
+        schemaVersion,
+    } as unknown as ChannelMetadataRecord;
+}
+
 function metadata(overrides: Partial<ChannelImageCacheMetaRecord> = {}): ChannelImageCacheMetaRecord {
     return {
         url: imageUrl,
@@ -157,6 +164,10 @@ describe("swChannelImageCacheUtils", () => {
 
     it.each([
         ["recordなし", null],
+        ["schemaVersion欠落", channelWithRawSchemaVersion(undefined)],
+        ["schemaVersionがNaN", channelWithRawSchemaVersion(Number.NaN)],
+        ["schemaVersionが文字列", channelWithRawSchemaVersion("2")],
+        ["schemaVersionが非整数", channelWithRawSchemaVersion(CHANNEL_METADATA_SCHEMA_VERSION + 0.5)],
         ["schemaVersion不一致", verifiedChannel({ schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION - 1 })],
         ["quality不一致", verifiedChannel({ resolutionQuality: "verified-root-only" })],
         ["picture不一致", verifiedChannel({ picture: "https://images.example.com/other.png" })],
@@ -172,7 +183,7 @@ describe("swChannelImageCacheUtils", () => {
 
     it("現行schemaVersionかつpicture一致なら認可して取得する", async () => {
         const { controller, repository, fetchRequest } = setup();
-        repository.channel = verifiedChannel({ schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION });
+        repository.channel = verifiedChannel({ schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION + 1 });
         expect((await controller.handle(eventFor().event)).status).toBe(200);
         expect(fetchRequest).toHaveBeenCalledTimes(1);
     });
@@ -353,6 +364,41 @@ describe("swChannelImageCacheUtils", () => {
         expect(repository.getChannelMetadata).toHaveBeenCalledTimes(2);
     });
 
+    it("初回missのCache保存後metadata保存中も孤立Cacheを削除せずin-flightを共有する", async () => {
+        const { controller, fetchRequest, repository, cache } = setup();
+        let releaseMetadataPut!: () => void;
+        let notifyMetadataPutStarted!: () => void;
+        const metadataPutStarted = new Promise<void>((resolve) => {
+            notifyMetadataPutStarted = resolve;
+        });
+        const pendingMetadataPut = new Promise<void>((resolve) => {
+            releaseMetadataPut = resolve;
+        });
+        repository.put.mockImplementationOnce(async (record) => {
+            notifyMetadataPutStarted();
+            await pendingMetadataPut;
+            repository.metadata.set(record.url, { ...record });
+        });
+
+        const first = controller.handle(eventFor().event);
+        await metadataPutStarted;
+        expect(await cache.match(imageUrl)).toBeTruthy();
+        expect(repository.metadata.has(imageUrl)).toBe(false);
+
+        const second = controller.handle(eventFor().event);
+        await vi.waitFor(() => expect(repository.get).toHaveBeenCalledTimes(2));
+        expect(cache.delete).not.toHaveBeenCalled();
+
+        releaseMetadataPut();
+        const [firstResponse, secondResponse] = await Promise.all([first, second]);
+        expect(await firstResponse.text()).toBe("image");
+        expect(await secondResponse.text()).toBe("image");
+        expect(fetchRequest).toHaveBeenCalledTimes(1);
+        expect(await cache.match(imageUrl)).toBeTruthy();
+        expect(repository.metadata.has(imageUrl)).toBe(true);
+        expect(cache.delete).not.toHaveBeenCalled();
+    });
+
     it("失敗したin-flight Promiseもfinallyで除去して次回試行を可能にする", async () => {
         const options = {
             now: 100,
@@ -436,6 +482,47 @@ describe("swChannelImageCacheUtils", () => {
             "Channel image cache limit enforcement failed",
             expect.any(Error),
         );
+    });
+
+    it("attempt-only metadataの上限整理失敗でも502契約を維持する", async () => {
+        const { controller, repository, logger } = setup({
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        });
+        repository.getAll.mockRejectedValueOnce(new Error("maintenance failed"));
+        const response = await controller.handle(eventFor().event);
+        expect(response.status).toBe(502);
+        expect(repository.metadata.get(imageUrl)).toMatchObject({
+            responseType: null,
+            fetchedAt: null,
+        });
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image cache limit enforcement failed",
+            expect.any(Error),
+        );
+    });
+
+    it("129件の取得失敗でもattempt-only metadataをLRU順で128件以下に保つ", async () => {
+        const options = {
+            now: 1,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        };
+        const { controller, repository, cache } = setup(options);
+        for (let index = 0; index < 129; index += 1) {
+            options.now = index + 1;
+            const url = `https://images.example.com/failure-${String(index).padStart(3, "0")}.png`;
+            repository.channel = verifiedChannel({ picture: url });
+            expect((await controller.handle(eventFor(proxyRequest(url)).event)).status).toBe(502);
+        }
+
+        expect(repository.metadata.size).toBeLessThanOrEqual(128);
+        expect(repository.metadata.has(
+            "https://images.example.com/failure-000.png",
+        )).toBe(false);
+        expect(repository.metadata.has(
+            "https://images.example.com/failure-128.png",
+        )).toBe(true);
+        expect(cache.put).not.toHaveBeenCalled();
+        expect(cache.entries.size).toBe(0);
     });
 
     it("同一時刻LRUはURLでtie-breakし、保存処理中URLをevictionしない", async () => {
