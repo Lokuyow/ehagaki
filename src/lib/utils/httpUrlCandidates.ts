@@ -80,26 +80,32 @@ type OuterBracketBoundary = {
     closingBracket: string;
 };
 
-const OUTER_URL_CONTINUATION_PATTERN =
-    /^(?:|[A-Za-z0-9][A-Za-z0-9/_~%=&#+:@;.\-]*)$/;
-
-function countCharacter(value: string, target: string): number {
-    let count = 0;
-    for (const character of value) {
-        if (character === target) {
-            count += 1;
-        }
-    }
-    return count;
-}
+const OUTER_URL_CONTINUATION_START_PATTERN = /^[A-Za-z0-9/?#%]/;
+const ASCII_PRINTABLE_PATTERN = /^[\x21-\x7e]+$/;
 
 function hasUnmatchedClosingBracket(
     value: string,
     closingBracket: string,
     openingBracket: string,
 ): boolean {
-    return countCharacter(value, closingBracket) >
-        countCharacter(value, openingBracket);
+    let openingDepth = 0;
+
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+        if (character === openingBracket) {
+            openingDepth += 1;
+        } else if (character === closingBracket) {
+            const isMatched = openingDepth > 0;
+            if (isMatched) {
+                openingDepth -= 1;
+            }
+            if (index === value.length - 1) {
+                return !isMatched;
+            }
+        }
+    }
+
+    return false;
 }
 
 function isUrlDataComponentBracket(
@@ -115,6 +121,35 @@ function isUrlDataComponentBracket(
     const fragmentIndex = value.indexOf("#");
     return (queryIndex >= 0 && queryIndex < index) ||
         (fragmentIndex >= 0 && fragmentIndex < index);
+}
+
+function hasUnclosedOpeningBracket(value: string): boolean {
+    const openingBrackets: string[] = [];
+
+    for (const character of value) {
+        if (OPENING_BRACKET_TO_CLOSING.has(character)) {
+            openingBrackets.push(character);
+            continue;
+        }
+
+        const expectedOpeningBracket =
+            CLOSING_BRACKET_TO_OPENING.get(character);
+        if (expectedOpeningBracket === openingBrackets.at(-1)) {
+            openingBrackets.pop();
+        }
+    }
+
+    return openingBrackets.length > 0;
+}
+
+function isOuterUrlContinuation(value: string): boolean {
+    if (!value) {
+        return true;
+    }
+
+    return ASCII_PRINTABLE_PATTERN.test(value) &&
+        OUTER_URL_CONTINUATION_START_PATTERN.test(value) &&
+        !hasUnclosedOpeningBracket(value);
 }
 
 function findOuterBracketBoundary(
@@ -155,14 +190,10 @@ function findOuterBracketBoundary(
                 };
                 if (!boundary) {
                     boundary = nextBoundary;
-                } else if (
-                    OUTER_URL_CONTINUATION_PATTERN.test(
-                        rawCandidate.slice(boundary.end, offset),
-                    )
-                ) {
+                } else if (isOuterUrlContinuation(
+                    rawCandidate.slice(boundary.end, offset),
+                )) {
                     boundary = nextBoundary;
-                } else {
-                    return boundary;
                 }
             }
         }

@@ -190,7 +190,7 @@ describe('エディター・リンク判定統合テスト', () => {
         });
 
         it('外側括弧があってもURL内部の同種閉じ括弧をリンクへ含める', async () => {
-            const url = 'https://example.com/foo)bar';
+            const url = 'https://example.com/foo)bar?q=1';
             editor.commands.setContent(`<p>(${url})</p>`);
             await waitForContentTracking();
 
@@ -299,7 +299,7 @@ describe('エディター・リンク判定統合テスト', () => {
         });
 
         it('外側括弧があっても画像URL内部の同種閉じ括弧を保持する', async () => {
-            const imageUrl = 'https://example.com/foo）bar/image.png';
+            const imageUrl = 'https://example.com/foo)bar/image.png';
             const imageEditor = new Editor({
                 extensions: [
                     StarterKit.configure({
@@ -320,7 +320,7 @@ describe('エディター・リンク判定統合テスト', () => {
             });
 
             try {
-                imageEditor.commands.setContent(`（${imageUrl}）`);
+                imageEditor.commands.setContent(`(${imageUrl})`);
                 await waitForContentTracking();
 
                 expect(imageEditor.getHTML()).toContain(

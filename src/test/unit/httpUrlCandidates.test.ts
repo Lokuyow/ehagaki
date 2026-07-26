@@ -157,6 +157,36 @@ describe("httpUrlCandidates", () => {
             ")",
         ],
         [
+            "(https://example.com/foo)bar?q=1)",
+            "https://example.com/foo)bar?q=1",
+            ")",
+        ],
+        [
+            "(https://example.com/foo)/bar)",
+            "https://example.com/foo)/bar",
+            ")",
+        ],
+        [
+            "(https://example.com/foo)#section)",
+            "https://example.com/foo)#section",
+            ")",
+        ],
+        [
+            "(https://example.com/foo)%20bar)",
+            "https://example.com/foo)%20bar",
+            ")",
+        ],
+        [
+            "(https://example.com/foo)bar'baz)",
+            "https://example.com/foo)bar'baz",
+            ")",
+        ],
+        [
+            "(https://example.com/foo)bar(baz))",
+            "https://example.com/foo)bar(baz)",
+            ")",
+        ],
+        [
             "(https://example.com/search?q=foo))",
             "https://example.com/search?q=foo)",
             ")",

@@ -87,6 +87,20 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("extracts media when URL syntax continues after an outer-bracket candidate", () => {
+        expect(
+            extractPostHistoryMedia({
+                content: "(https://example.com/foo)bar/image.jpg)",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/foo)bar/image.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
+    });
+
     it("extracts media without absorbing prose after an outer Japanese bracket", () => {
         expect(
             extractPostHistoryMedia({

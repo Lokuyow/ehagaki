@@ -255,6 +255,21 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps URL syntax continuing after an outer-bracket candidate", () => {
+        const url = "https://example.com/foo)bar?q=1";
+        const result = buildPreviewContent({
+            content: `(${url})`,
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "(" },
+            { type: "link", text: url, href: url },
+            { type: "text", text: ")" },
+        ]);
+    });
+
     it("does not include prose after an outer Japanese bracket in link segments", () => {
         const result = buildPreviewContent({
             content: "（https://example.com/path）。次の説明（補足）",

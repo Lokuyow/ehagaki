@@ -88,6 +88,28 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps URL syntax continuing after an internal outer-bracket candidate", () => {
+        const urls = [
+            "https://example.com/foo)bar?q=1",
+            "https://example.com/foo)/bar",
+            "https://example.com/foo)#section",
+            "https://example.com/foo)%20bar",
+            "https://example.com/foo)bar'baz",
+            "https://example.com/foo)bar(baz)",
+        ];
+
+        const segments = buildLinkifiedTextSegments(
+            urls.map((url) => `(${url})`).join(" "),
+        );
+
+        expect(segments.filter((segment) => segment.type === "link"))
+            .toEqual(urls.map((url) => ({
+                type: "link",
+                text: url,
+                href: new URL(url).href,
+            })));
+    });
+
     it("does not absorb Japanese prose after a confirmed outer bracket", () => {
         expect(
             buildLinkifiedTextSegments(
