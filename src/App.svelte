@@ -119,6 +119,7 @@
     setChannelContextRuntimeState,
     setChannelContextWithProvenance,
   } from "./stores/channelContextStore.svelte";
+  import { isChannelPictureCacheEligible } from "./lib/channelContextRuntime";
   import { relayConfigStore } from "./stores/relayStore.svelte";
   import {
     resolveInitialNip46ConnectionRelayCandidates,
@@ -1647,6 +1648,10 @@
                 <ChannelContextPreview
                   channel={effectiveChannelContextState.value}
                   runtime={channelContextRuntimeState.value}
+                  pictureCacheEligible={isChannelPictureCacheEligible(
+                    channelContextRuntimeState.value,
+                    channelContextProvenanceState.value,
+                  )}
                   onClear={() => channelContextApplyController.clear()}
                 />
               </div>

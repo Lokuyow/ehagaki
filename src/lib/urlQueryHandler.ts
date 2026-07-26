@@ -6,6 +6,7 @@ import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { EmbedComposerSetContextPayload } from './embedProtocol';
 import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from './types';
 import { decodeEventPointerValue } from './eventPointerUtils';
+import { normalizeChannelPictureUrl } from './channelPictureUrlUtils';
 
 export { decodeEventPointerValue } from './eventPointerUtils';
 
@@ -29,6 +30,22 @@ function readEmbedMetadataField(
     return { provided: false };
   }
   return { provided: true, value: trimToNull(channel[field]) };
+}
+
+function readEmbedPictureField(
+  channel: Record<string, unknown>,
+): { provided: false } | { provided: true; value: string | null } {
+  if (!Object.prototype.hasOwnProperty.call(channel, 'picture')) {
+    return { provided: false };
+  }
+  const value = channel.picture;
+  if (value === undefined) return { provided: false };
+  if (value === null) return { provided: true, value: null };
+  if (typeof value !== 'string') return { provided: false };
+  const normalized = normalizeChannelPictureUrl(value);
+  return normalized
+    ? { provided: true, value: normalized }
+    : { provided: false };
 }
 
 function parseChannelRelaysQuery(value: string | null): string[] {
@@ -118,7 +135,7 @@ export function getChannelFromEmbedPayload(
   const channel = payload.channel as unknown as Record<string, unknown>;
   const name = readEmbedMetadataField(channel, 'name');
   const about = readEmbedMetadataField(channel, 'about');
-  const picture = readEmbedMetadataField(channel, 'picture');
+  const picture = readEmbedPictureField(channel);
 
   return {
     eventId: decoded.eventId,
@@ -186,7 +203,8 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
   const channelRelays = parseChannelRelaysQuery(urlParams.get('channelRelays'));
   const name = trimToNull(urlParams.get('channelName'));
   const about = trimToNull(urlParams.get('channelAbout'));
-  const picture = trimToNull(urlParams.get('channelPicture'));
+  const rawPicture = trimToNull(urlParams.get('channelPicture'));
+  const picture = rawPicture ? normalizeChannelPictureUrl(rawPicture) : null;
 
   return {
     eventId: decoded.eventId,

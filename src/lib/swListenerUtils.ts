@@ -7,6 +7,7 @@ export interface ServiceWorkerLifecycleEventLike {
 export interface ServiceWorkerFetchEventLike {
     request: Request;
     respondWith: (response: Promise<Response | undefined>) => void;
+    waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export interface ServiceWorkerMessageEventLike {
@@ -34,18 +35,21 @@ export function createFetchEventListener({
     currentOrigin,
     isUploadRequest,
     isProfileImageRequest,
+    isChannelImageRequest,
     resolveServiceWorkerFetchRoute,
 }: {
     handleFetch: (event: ServiceWorkerFetchEventLike) => Promise<Response | undefined>;
     currentOrigin: string;
     isUploadRequest: (request: Request, url: URL) => boolean;
     isProfileImageRequest: (request: Request) => boolean;
+    isChannelImageRequest?: (request: Request, url: URL) => boolean;
     resolveServiceWorkerFetchRoute: (params: {
         request: Request;
         url: URL;
         currentOrigin: string;
         isUploadRequest: (request: Request, url: URL) => boolean;
         isProfileImageRequest: (request: Request) => boolean;
+        isChannelImageRequest?: (request: Request, url: URL) => boolean;
     }) => ServiceWorkerFetchRoute;
 }) {
     return (event: ServiceWorkerFetchEventLike) => {
@@ -56,6 +60,7 @@ export function createFetchEventListener({
             currentOrigin,
             isUploadRequest,
             isProfileImageRequest,
+            isChannelImageRequest,
         });
 
         if (route) {

@@ -132,9 +132,9 @@
 
 - **主な症状または責務:** injectManifest、prompt update、precache/runtime cache、share target POST、既存client focus/notify、新規client open、SW-client MessageChannelを扱う。
 - **主な実装ファイル:** `vite.config.ts`、`public/sw.js`、`src/main.ts`、`src/stores/swStore.svelte.ts`、`src/lib/shareHandler.ts`、`src/lib/utils/swCommunication.ts`、`src/lib/swClientUtils.ts`、`src/lib/swListenerUtils.ts`、`src/lib/swMessageDispatchUtils.ts`。
-- **主な関数、store、hook、controller:** VitePWA `injectManifest`、`useRegisterSW()`、`getSharedMediaWithFallback()`、`redirectToAvailableSharedClient()`、`focusAndNotifySharedClient()`、`registerServiceWorkerEventListeners()`。
+- **主な関数、store、hook、controller:** VitePWA `injectManifest`、`useRegisterSW()`、`getSharedMediaWithFallback()`、`redirectToAvailableSharedClient()`、`focusAndNotifySharedClient()`、`registerServiceWorkerEventListeners()`、`ChannelImageCacheController`、`ChannelPicture`。
 - **Event source:** SW `install/activate/fetch/message`、manifest share-target POST、`controllerchange`、registration update、MessageChannel response。
-- **StateまたはCSS変数:** SW version/cache names、precache manifest、`ServiceWorkerState.sharedMediaCache`、`swUpdateStatus`、shared media IndexedDB record。
+- **StateまたはCSS変数:** SW version/cache names、precache manifest、`ServiceWorkerState.sharedMediaCache`、`swUpdateStatus`、shared media IndexedDB record、`channelImageCacheMeta`。チャンネル画像はmount時のSW control状態を固定し、表示途中の`controllerchange`ではproxyへ切り替えない。
 - **Cleanup所有者:** SW event listenerはworker lifetime。MessageChannelはresponse/timeoutでportをcloseする。`controllerchange` listenerはresolve/timeoutで解除する。
 - **関連テスト:** `src/test/unit/sw.test.ts`、`src/test/unit/swListenerUtils.test.ts`、`src/test/unit/swMessageDispatchUtils.test.ts`、`src/test/unit/swClientUtils.test.ts`、`src/test/unit/shareHandler.test.ts`、`src/test/unit/fileUploadManager.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** install/update/offline/cache、share sheetからのPOST、standalone window reuse、stale worker/clientはinstalled PWAまたは専用browser環境が必要。

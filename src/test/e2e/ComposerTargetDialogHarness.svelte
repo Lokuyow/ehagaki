@@ -116,6 +116,7 @@
                 : null,
             channelCreatorPubkey: hasChannel ? "f".repeat(64) : null,
             channelCreatorProfile: null,
+            channelPictureCacheEligible: hasChannel,
             channelQuery: hasChannel
                 ? {
                       eventId: "e".repeat(64),

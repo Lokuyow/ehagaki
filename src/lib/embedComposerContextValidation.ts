@@ -51,7 +51,8 @@ function validateChannel(value: unknown): void {
     }
     validateMetadataField(value, "name");
     validateMetadataField(value, "about");
-    validateMetadataField(value, "picture");
+    // picture is an optional presentation hint. Invalid values are discarded
+    // by the channel input parser without rejecting the channel itself.
 }
 
 /** Validates the complete request before any composer state is mutated. */

@@ -102,6 +102,7 @@ function resolvedTarget(
             : null,
         channelCreatorPubkey: channel ? "7".repeat(64) : null,
         channelCreatorProfile: null,
+        channelPictureCacheEligible: channel,
         channelQuery: channel
             ? {
                 eventId: "4".repeat(64),
@@ -130,6 +131,36 @@ async function enterNote(): Promise<void> {
 }
 
 describe("ComposerTargetDialog", () => {
+    it("verified channel pictureを共通proxy componentで表示する", async () => {
+        const original = navigator.serviceWorker;
+        Object.defineProperty(navigator, "serviceWorker", {
+            configurable: true,
+            value: { controller: {} },
+        });
+        try {
+            const target = resolvedTarget(40);
+            target.channelContext!.picture = "https://images.example.com/channel.png";
+            target.channelPictureCacheEligible = true;
+            render(ComposerTargetDialog, {
+                show: true,
+                onClose: vi.fn(),
+                onApply: vi.fn(() => true),
+                rxNostr: {} as never,
+                resolver: createResolver({ status: "resolved", target }),
+            });
+
+            await enterNote();
+            const source = new URL(document.querySelector(".channel-picture")!.getAttribute("src")!);
+            expect(source.pathname).toContain("/__ehagaki-image/channel");
+            expect(source.searchParams.get("eventId")).toBe("4".repeat(64));
+        } finally {
+            Object.defineProperty(navigator, "serviceWorker", {
+                configurable: true,
+                value: original,
+            });
+        }
+    });
+
     beforeEach(() => {
         vi.useFakeTimers();
         customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({

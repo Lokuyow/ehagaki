@@ -31,6 +31,13 @@ import {
 } from "../src/lib/swListenerUtils";
 import { resolveServiceWorkerFetchRoute } from "../src/lib/swRoutingUtils";
 import {
+    ChannelImageCacheController,
+    isChannelImageProxyUrl,
+} from "../src/lib/swChannelImageCacheUtils";
+import {
+    ServiceWorkerChannelImageMetaRepository,
+} from "../src/lib/swChannelImageMetaRepository";
+import {
     processServiceWorkerUploadRequest,
     summarizeExtractedSharedMedia,
 } from "../src/lib/swUploadRequestUtils";
@@ -48,7 +55,7 @@ import {
 } from "../src/lib/swProfileCacheActionUtils";
 import {
     EHAGAKI_DB_NAME,
-    EHAGAKI_DB_VERSION,
+    EHAGAKI_DB_NATIVE_VERSION,
 } from "../src/lib/storage/ehagakiDbConstants";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
@@ -69,7 +76,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.24.0';
+const SW_VERSION = '1.25.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
@@ -77,7 +84,7 @@ const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = EHAGAKI_DB_NAME;
-const EHAGAKI_DB_OPEN_VERSION = EHAGAKI_DB_VERSION;
+const EHAGAKI_DB_OPEN_VERSION = EHAGAKI_DB_NATIVE_VERSION;
 const INDEXEDDB_VERSION = EHAGAKI_DB_OPEN_VERSION;
 const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
 const SHARED_MEDIA_RECORD_ID = 'latest';
@@ -635,6 +642,20 @@ class ServiceWorkerCore {
             this.clientManager,
             this.indexedDBManager
         );
+        this.channelImageMetaRepository = new ServiceWorkerChannelImageMetaRepository(
+            ServiceWorkerDependencies.indexedDB,
+            INDEXEDDB_NAME,
+            INDEXEDDB_VERSION,
+            (db) => ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME),
+        );
+        this.channelImageCacheController = new ChannelImageCacheController({
+            cacheStorage: ServiceWorkerDependencies.caches,
+            fetchRequest: (request) => ServiceWorkerDependencies.fetch(request),
+            repository: this.channelImageMetaRepository,
+            currentOrigin: ServiceWorkerDependencies.location.origin,
+            basePath: BASE_PATH,
+            logger: ServiceWorkerDependencies.console,
+        });
     }
 
     // インストールイベント処理
@@ -650,7 +671,17 @@ class ServiceWorkerCore {
         await processServiceWorkerActivate({
             logger: ServiceWorkerDependencies.console,
             version: SW_VERSION,
-            cleanupOldCaches: () => this.cacheManager.cleanupOldCaches(),
+            cleanupOldCaches: async () => {
+                await this.cacheManager.cleanupOldCaches();
+                try {
+                    await this.channelImageCacheController.reconcile();
+                } catch (error) {
+                    ServiceWorkerDependencies.console.error(
+                        'チャンネル画像キャッシュ整合処理エラー:',
+                        error,
+                    );
+                }
+            },
             claimClients: () => ServiceWorkerDependencies.clients.claim(),
         });
     }
@@ -664,6 +695,13 @@ class ServiceWorkerCore {
             currentOrigin: ServiceWorkerDependencies.location.origin,
             isUploadRequest: Utilities.isUploadRequest,
             isProfileImageRequest: Utilities.isProfileImageRequest,
+            isChannelImageRequest: (request, requestUrl) =>
+                request.method === 'GET'
+                && isChannelImageProxyUrl(
+                    requestUrl,
+                    ServiceWorkerDependencies.location.origin,
+                    BASE_PATH,
+                ),
         });
 
         logServiceWorkerFetchRoute({
@@ -678,6 +716,7 @@ class ServiceWorkerCore {
             route,
             uploadHandler: () => this.requestHandler.handleUploadRequest(event.request),
             profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request),
+            channelImageHandler: () => this.channelImageCacheController.handle(event),
             customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request),
         });
     }
@@ -713,7 +752,14 @@ registerServiceWorkerEventListeners({
         handleFetch: (event) => serviceWorkerCore.handleFetch(event),
         currentOrigin: self.location.origin,
         isUploadRequest: Utilities.isUploadRequest,
-        isProfileImageRequest: Utilities.isProfileImageRequest,
+    isProfileImageRequest: Utilities.isProfileImageRequest,
+    isChannelImageRequest: (request, url) =>
+        request.method === 'GET'
+        && isChannelImageProxyUrl(
+            url,
+            ServiceWorkerDependencies.location.origin,
+            BASE_PATH,
+        ),
         resolveServiceWorkerFetchRoute,
     }),
     messageListener: createMessageEventListener((event) =>

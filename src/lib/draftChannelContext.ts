@@ -6,6 +6,7 @@ import {
     buildEffectiveChannelContext,
     type ChannelContextProvenance,
 } from "./channelContextRuntime";
+import { normalizeChannelPictureUrl } from "./channelPictureUrlUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type {
     ChannelContextQueryTarget,
@@ -38,7 +39,16 @@ function cloneMetadataOverrides(
     const cloned: NonNullable<DraftChannelDataV2["overrides"]> = {};
     for (const field of ["name", "about", "picture"] as const) {
         if (Object.prototype.hasOwnProperty.call(overrides, field)) {
-            cloned[field] = overrides[field] ?? null;
+            if (field !== "picture") {
+                cloned[field] = overrides[field] ?? null;
+                continue;
+            }
+            if (overrides.picture === null) {
+                cloned.picture = null;
+                continue;
+            }
+            const picture = normalizeChannelPictureUrl(overrides.picture ?? "");
+            if (picture) cloned.picture = picture;
         }
     }
     return Object.keys(cloned).length > 0 ? cloned : undefined;
@@ -71,7 +81,9 @@ export function serializeDraftChannelContext(
         seedMetadata: {
             name: context.name,
             about: context.about,
-            picture: context.picture,
+            picture: context.picture
+                ? normalizeChannelPictureUrl(context.picture)
+                : null,
         },
         ...(overrides ? { overrides } : {}),
     };
@@ -94,7 +106,9 @@ export function decodeDraftChannelContext(
                     : {}),
                 name: data.seedMetadata?.name ?? null,
                 about: data.seedMetadata?.about ?? null,
-                picture: data.seedMetadata?.picture ?? null,
+                picture: data.seedMetadata?.picture
+                    ? normalizeChannelPictureUrl(data.seedMetadata.picture)
+                    : null,
             },
             provenance: overrides
                 ? {
@@ -116,7 +130,9 @@ export function decodeDraftChannelContext(
             // presentation value, so every field is a replaceable seed.
             name: data.name ?? null,
             about: data.about ?? null,
-            picture: data.picture ?? null,
+            picture: data.picture
+                ? normalizeChannelPictureUrl(data.picture)
+                : null,
         },
         provenance: null,
     };

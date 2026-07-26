@@ -42,6 +42,19 @@ describe('swRoutingUtils', () => {
         expect(result).toBe('custom-emoji-image');
     });
 
+    it('resolveServiceWorkerFetchRoute はchannel proxyをcustom emojiより先に扱う', () => {
+        const result = resolveServiceWorkerFetchRoute({
+            request: new Request('https://example.com/ehagaki/__ehagaki-image/channel'),
+            url: new URL('https://example.com/ehagaki/__ehagaki-image/channel'),
+            currentOrigin: 'https://example.com',
+            isUploadRequest: () => false,
+            isProfileImageRequest: () => false,
+            isChannelImageRequest: () => true,
+        });
+
+        expect(result).toBe('channel-image');
+    });
+
     it('resolveServiceWorkerMessageRoute は type を action より優先する', () => {
         expect(
             resolveServiceWorkerMessageRoute({

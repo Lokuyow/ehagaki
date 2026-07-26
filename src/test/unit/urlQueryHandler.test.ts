@@ -350,7 +350,7 @@ describe('urlQueryHandler', () => {
       });
     });
 
-    it('embed metadataはundefinedを省略し、明示nullを保持する', () => {
+    it('embed metadataはundefinedと不正pictureを省略し、明示nullを保持する', () => {
       expect(getChannelFromEmbedPayload({
         channel: {
           reference: validChannelNote,
@@ -361,7 +361,19 @@ describe('urlQueryHandler', () => {
         eventId: 'a'.repeat(64),
         relayHints: [],
         name: null,
-        picture: 'Picture',
+      });
+    });
+
+    it('embedの明示null pictureは保持する', () => {
+      expect(getChannelFromEmbedPayload({
+        channel: {
+          reference: validChannelNote,
+          picture: null,
+        },
+      })).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: [],
+        picture: null,
       });
     });
 

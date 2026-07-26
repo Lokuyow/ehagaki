@@ -235,6 +235,47 @@ describe("ChannelContextService", () => {
         }
     });
 
+    it("kind 41の不正pictureだけを省略しkind 40の検証済みpictureで補完する", async () => {
+        const rootEvent = createEvent({
+            content: JSON.stringify({
+                name: "General",
+                picture: "https://example.com/root.png",
+            }),
+        });
+        const metadataEvent = createEvent({
+            id: "c".repeat(64),
+            kind: 41,
+            created_at: 200,
+            tags: [["e", channelId]],
+            content: JSON.stringify({
+                about: "Updated",
+                picture: "javascript:alert(1)",
+            }),
+        });
+        const rxNostr = createRxNostr(
+            (observer) => {
+                observer.next({ event: rootEvent });
+                observer.complete();
+            },
+            (observer) => {
+                observer.next({ event: metadataEvent });
+                observer.complete();
+            },
+        );
+
+        await expect(service.resolveChannelMetadata({
+            eventId: channelId,
+            relayHints: [],
+        }, rxNostr, null)).resolves.toMatchObject({
+            status: "resolved",
+            metadata: {
+                name: "General",
+                about: "Updated",
+                picture: "https://example.com/root.png",
+            },
+        });
+    });
+
     it("kind 41検索ではroot取得元、直接hint、root content relayの順で8件に制限する", async () => {
         const rootSource = "wss://root-source.example.com";
         const directHint = "wss://direct-hint.example.com";

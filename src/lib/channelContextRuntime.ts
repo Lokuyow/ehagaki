@@ -1,4 +1,5 @@
 import { CHANNEL_ADDITIONAL_WRITE_RELAY_LIMIT } from "./channelContextConstants";
+import { normalizeChannelPictureUrl } from "./channelPictureUrlUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { ChannelContextQueryTarget, ChannelContextState } from "./types";
 
@@ -56,7 +57,16 @@ export function prepareExternalChannelContext(
     const metadataOverrides: ChannelMetadataOverrides = {};
     for (const field of METADATA_FIELDS) {
         if (hasOwn(query, field) && query[field] !== undefined) {
-            metadataOverrides[field] = query[field] ?? null;
+            if (field !== "picture") {
+                metadataOverrides[field] = query[field] ?? null;
+                continue;
+            }
+            if (query.picture === null) {
+                metadataOverrides.picture = null;
+                continue;
+            }
+            const picture = normalizeChannelPictureUrl(query.picture ?? "");
+            if (picture) metadataOverrides.picture = picture;
         }
     }
 
@@ -139,4 +149,12 @@ export function cloneChannelContextProvenance(
             ? { channelRelayOverrides: [...provenance.channelRelayOverrides] }
             : {}),
     };
+}
+
+export function isChannelPictureCacheEligible(
+    runtime: ChannelContextRuntimeState,
+    provenance: ChannelContextProvenance | null,
+): boolean {
+    return runtime.quality === "verified-metadata"
+        && !(provenance && hasOwn(provenance.metadataOverrides, "picture"));
 }

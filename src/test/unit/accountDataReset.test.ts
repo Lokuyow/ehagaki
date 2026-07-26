@@ -73,6 +73,7 @@ describe("resetManagedAccountData", () => {
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-profile-images");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-custom-emoji-images-v2");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-custom-emoji-images");
+        expect(caches.delete).toHaveBeenCalledWith("ehagaki-channel-images-v1");
     });
 
     it("削除失敗時は reject する", async () => {

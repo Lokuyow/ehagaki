@@ -35,6 +35,7 @@ export interface ComposerResolvedTarget {
     channelCreatorPubkey: string | null;
     channelCreatorProfile: ProfileData | null;
     channelQuery: ChannelContextQueryTarget | null;
+    channelPictureCacheEligible: boolean;
 }
 
 export type ComposerTargetResolveResult =
@@ -169,6 +170,7 @@ export function createComposerTargetResolver(
             let channelContext: ChannelContextState | null = null;
             let channelQuery: ChannelContextQueryTarget | null = null;
             let channelCreatorPubkey: string | null = null;
+            let channelPictureCacheEligible = false;
             if (event.kind === 40 || event.kind === 42) {
                 const references = event.kind === 42
                     ? parseKind42ThreadReferences(event)
@@ -224,6 +226,8 @@ export function createComposerTargetResolver(
                 }
 
                 channelContext = snapshot.context;
+                channelPictureCacheEligible =
+                    snapshot.cache?.resolutionQuality === "verified-metadata";
                 channelCreatorPubkey = snapshot.cache?.creatorPubkey ?? null;
                 channelQuery = {
                     eventId: channelEventId,
@@ -263,6 +267,7 @@ export function createComposerTargetResolver(
                     channelCreatorPubkey,
                     channelCreatorProfile,
                     channelQuery,
+                    channelPictureCacheEligible,
                 },
             };
         })().catch((): ComposerTargetResolveResult =>

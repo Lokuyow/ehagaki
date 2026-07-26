@@ -3,18 +3,21 @@
     import DOMPurify from "dompurify";
     import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import ChannelPicture from "./ChannelPicture.svelte";
     import type { ChannelContextState } from "../lib/types";
     import type { ChannelContextRuntimeState } from "../lib/channelContextRuntime";
 
     interface Props {
         channel: ChannelContextState;
         runtime?: ChannelContextRuntimeState;
+        pictureCacheEligible?: boolean;
         onClear: () => void;
     }
 
     let {
         channel,
         runtime = { phase: "ready", quality: null, source: null },
+        pictureCacheEligible = false,
         onClear,
     }: Props = $props();
 
@@ -93,10 +96,12 @@
             />
         {:else}
             {#if channel.picture}
-                <img
-                    class="channel-picture"
-                    src={channel.picture}
+                <ChannelPicture
+                    eventId={channel.eventId}
+                    pictureUrl={channel.picture}
+                    cacheEligible={pictureCacheEligible}
                     alt={channelName}
+                    className="channel-picture"
                 />
             {/if}
             <span class="channel-name">{channelName}</span>
@@ -183,7 +188,7 @@
         padding: 0;
     }
 
-    .channel-picture {
+    :global(.channel-context-preview .channel-picture) {
         width: 42px;
         height: 42px;
         object-fit: cover;

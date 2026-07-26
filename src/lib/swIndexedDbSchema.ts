@@ -126,8 +126,30 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'postedAt', keyPath: 'postedAt' },
         { name: 'updatedAt', keyPath: 'updatedAt' },
         { name: 'deletedAt', keyPath: 'deletedAt' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'lastSeenAt', keyPath: 'lastSeenAt' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
         { name: '[pubkeyHex+postedAt]', keyPath: ['pubkeyHex', 'postedAt'] },
+        { name: '[pubkeyHex+createdAt]', keyPath: ['pubkeyHex', 'createdAt'] },
+    ]);
+    createObjectStoreIfMissing(db, 'postHistoryChildInteractions', 'id', [
+        { name: 'eventId', keyPath: 'eventId' },
+        { name: 'parentEventId', keyPath: 'parentEventId' },
+        { name: 'rootEventId', keyPath: 'rootEventId' },
+        { name: 'authorPubkey', keyPath: 'authorPubkey' },
+        { name: 'kind', keyPath: 'kind' },
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' },
+        { name: '[parentEventId+createdAt]', keyPath: ['parentEventId', 'createdAt'] },
+    ]);
+    createObjectStoreIfMissing(db, 'postHistoryDeletionRequests', 'id', [
+        { name: 'targetEventId', keyPath: 'targetEventId' },
+        { name: 'targetAuthorPubkey', keyPath: 'targetAuthorPubkey' },
+        { name: 'deletionEventId', keyPath: 'deletionEventId' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: '[targetAuthorPubkey+targetEventId]', keyPath: ['targetAuthorPubkey', 'targetEventId'] },
     ]);
     createObjectStoreIfMissing(db, 'postMediaCache', 'cacheKey', [
         { name: 'url', keyPath: 'url' },
@@ -144,6 +166,13 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'metadataCreatedAt', keyPath: 'metadataCreatedAt' },
         { name: 'creatorPubkey', keyPath: 'creatorPubkey' },
         { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' },
+    ]);
+    createObjectStoreIfMissing(db, 'channelImageCacheMeta', 'url', [
+        { name: 'responseType', keyPath: 'responseType' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'lastAttemptAt', keyPath: 'lastAttemptAt' },
+        { name: 'lastAccessedAt', keyPath: 'lastAccessedAt' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
     ]);
 }

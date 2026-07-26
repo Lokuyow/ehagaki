@@ -12,6 +12,8 @@ const CUSTOM_EMOJI_CACHE_NAMES = [
     "ehagaki-custom-emoji-images",
 ] as const;
 
+const CHANNEL_IMAGE_CACHE_NAMES = ["ehagaki-channel-images-v1"] as const;
+
 const LOCAL_STORAGE_PREFIX_KEYS = [
     STORAGE_KEYS.NOSTR_RELAYS,
     STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX,
@@ -61,7 +63,11 @@ export async function resetManagedAccountData(
     await Dexie.delete(EHAGAKI_DB_NAME);
 
     await Promise.all(
-        [...PROFILE_CACHE_NAMES, ...CUSTOM_EMOJI_CACHE_NAMES].map((cacheName) =>
+        [
+            ...PROFILE_CACHE_NAMES,
+            ...CUSTOM_EMOJI_CACHE_NAMES,
+            ...CHANNEL_IMAGE_CACHE_NAMES,
+        ].map((cacheName) =>
             cacheStorage.delete(cacheName),
         ),
     );
@@ -72,5 +78,6 @@ export const accountDataResetInternals = {
     LOCAL_STORAGE_PREFIX_KEYS,
     PROFILE_CACHE_NAMES,
     CUSTOM_EMOJI_CACHE_NAMES,
+    CHANNEL_IMAGE_CACHE_NAMES,
     removeManagedLocalStorageKeys,
 };

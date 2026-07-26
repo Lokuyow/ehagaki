@@ -1,5 +1,6 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { compareChannelMetadataEventVersions } from "../channelMetadataEventOrder";
+import { normalizeChannelPictureUrl } from "../channelPictureUrlUtils";
 import {
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
     CHANNEL_VERIFIED_WRITE_RELAY_CACHE_LIMIT,
@@ -87,7 +88,9 @@ function toCache(record: ChannelMetadataRecord): ChannelMetadataCache {
         channelEventId: record.channelEventId,
         name: record.name,
         about: record.about,
-        picture: record.picture,
+        picture: record.picture
+            ? normalizeChannelPictureUrl(record.picture)
+            : null,
         relays: [...record.relays],
         relayHints: [...record.relayHints],
         creatorPubkey: record.creatorPubkey,

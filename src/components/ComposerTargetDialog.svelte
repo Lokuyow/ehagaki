@@ -10,6 +10,7 @@
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
+    import ChannelPicture from "./ChannelPicture.svelte";
     import {
         createComposerTargetResolver,
         type ComposerResolvedTarget,
@@ -557,10 +558,12 @@
                 {#if target?.channelContext}
                     <div class="channel-preview">
                         {#if target.channelContext.picture}
-                            <img
-                                src={target.channelContext.picture}
+                            <ChannelPicture
+                                eventId={target.channelContext.eventId}
+                                pictureUrl={target.channelContext.picture}
+                                cacheEligible={target.channelPictureCacheEligible}
                                 alt=""
-                                class="channel-picture"
+                                className="channel-picture"
                             />
                         {/if}
                         <div class="channel-text">
@@ -804,7 +807,7 @@
         border-top: 1px solid var(--border-hr);
     }
 
-    .channel-picture {
+    :global(.channel-preview .channel-picture) {
         width: 48px;
         height: 48px;
         flex: 0 0 auto;

@@ -2,6 +2,7 @@ import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
 import { compareChannelMetadataEventVersions } from "./channelMetadataEventOrder";
+import { normalizeChannelPictureUrl } from "./channelPictureUrlUtils";
 import {
     CHANNEL_TEMPORARY_READ_RELAY_LIMIT,
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
@@ -346,7 +347,9 @@ export class ChannelContextService {
                 metadata: {
                     name: sanitizeMetadataText(record.name),
                     about: sanitizeMetadataText(record.about),
-                    picture: sanitizeMetadataText(record.picture),
+                    picture: typeof record.picture === "string"
+                        ? normalizeChannelPictureUrl(record.picture) ?? undefined
+                        : undefined,
                     relays: RelayConfigUtils.sanitizeExternalRelayUrls(
                         Array.isArray(record.relays)
                             ? record.relays.filter((value): value is string => typeof value === "string")

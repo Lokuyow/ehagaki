@@ -82,6 +82,29 @@ describe('embedComposerContextPatch', () => {
         })).toThrow('invalid_composer_context');
     });
 
+    it('不正pictureだけを省略しchannel指定のほかの情報を維持する', () => {
+        const eventId = '11'.repeat(32);
+        const reference = encodeComposerContextReference({
+            eventId,
+            relayHints: ['wss://relay.example.com'],
+            authorPubkey: null,
+        });
+
+        expect(buildPatchedChannelContext({
+            channel: {
+                reference,
+                name: 'General',
+                about: 'Public chat',
+                picture: 'javascript:alert(1)',
+            },
+        })).toEqual({
+            eventId,
+            relayHints: ['wss://relay.example.com/'],
+            name: 'General',
+            about: 'Public chat',
+        });
+    });
+
     it('reply だけを差し替え、既存 quotes は維持する', () => {
         const nextReplyId = '33'.repeat(32);
         const existingQuoteId = '44'.repeat(32);

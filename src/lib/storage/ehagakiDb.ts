@@ -252,6 +252,16 @@ export interface ChannelMetadataRecord {
     schemaVersion: number;
 }
 
+export interface ChannelImageCacheMetaRecord {
+    url: string;
+    responseType: "readable" | "opaque" | null;
+    verifiedSize: number | null;
+    fetchedAt: number | null;
+    lastAttemptAt: number;
+    lastAccessedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -269,6 +279,7 @@ export class EHagakiDB extends Dexie {
     postHistoryDeletionRequests!: Table<PostHistoryDeletionRequestRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
+    channelImageCacheMeta!: Table<ChannelImageCacheMetaRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -290,6 +301,7 @@ export class EHagakiDB extends Dexie {
             postHistoryDeletionRequests: "id, targetEventId, targetAuthorPubkey, deletionEventId, fetchedAt, [targetAuthorPubkey+targetEventId]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
+            channelImageCacheMeta: "url, responseType, fetchedAt, lastAttemptAt, lastAccessedAt, schemaVersion",
         });
     }
 }

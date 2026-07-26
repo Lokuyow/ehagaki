@@ -45,6 +45,36 @@ function createChannel(overrides: Partial<{
 }
 
 describe('ChannelContextPreview', () => {
+    it('verified metadataの画像へchannel proxy情報を渡す', () => {
+        const original = navigator.serviceWorker;
+        Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            value: { controller: {} },
+        });
+        try {
+            const { container } = render(ChannelContextPreview, {
+                props: {
+                    channel: createChannel(),
+                    runtime: {
+                        phase: 'ready',
+                        quality: 'verified-metadata',
+                        source: 'cache',
+                    },
+                    pictureCacheEligible: true,
+                    onClear: vi.fn(),
+                },
+            });
+            const source = new URL(container.querySelector('.channel-picture')!.getAttribute('src')!);
+            expect(source.pathname).toContain('/__ehagaki-image/channel');
+            expect(source.searchParams.get('eventId')).toBe('11'.repeat(32));
+        } finally {
+            Object.defineProperty(navigator, 'serviceWorker', {
+                configurable: true,
+                value: original,
+            });
+        }
+    });
+
     it('channel 名を表示し、展開で metadata を見せる', async () => {
         render(ChannelContextPreview, {
             props: {

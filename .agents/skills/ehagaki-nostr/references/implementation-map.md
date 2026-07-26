@@ -82,10 +82,10 @@
 - 関連NIP: NIP-28。replyにはNIP-10、quoteにはNIP-18も関係する。
 - event kind: channel creation `40`、metadata `41`、channel message `42`
 - 主なtag: kind 41/42のchannelを指す`e`、kind 42 root/reply `e`、通知先`p`、引用`q`
-- 主な実装ファイル: `src/lib/channelContextService.ts`、`src/lib/channelContextCoordinator.ts`、`src/lib/channelContextApplyController.ts`、`src/lib/composerTargetResolver.ts`、`src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`
-- 主な関数または責務: `ChannelContextService.resolveChannelContext`とmetadata解決処理がkind 40/41を取得し、`createComposerTargetResolver`がkind 40/42 targetを検証し、`PostEventBuilder.buildEvent`がkind 42とchannel rootを構築する。
-- 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
-- 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。
+- 主な実装ファイル: `src/lib/channelContextService.ts`、`src/lib/channelContextCoordinator.ts`、`src/lib/channelContextApplyController.ts`、`src/lib/composerTargetResolver.ts`、`src/lib/channelPictureUrlUtils.ts`、`src/components/ChannelPicture.svelte`、`src/lib/postEventBuilder.ts`、`src/lib/postManager.ts`
+- 主な関数または責務: `ChannelContextService.resolveChannelContext`とmetadata解決処理がkind 40/41を取得し、`createComposerTargetResolver`がkind 40/42 targetを検証する。検証済みmetadataのpictureは`ChannelPicture`からevent ID付きsame-origin proxyへ渡し、SWが永続`channelMetadata`との一致を毎GETで再確認する。`PostEventBuilder.buildEvent`がkind 42とchannel rootを構築する。
+- 関連テスト: `src/test/unit/channelContextService.test.ts`、`src/test/unit/channelContextCoordinator.test.ts`、`src/test/unit/channelContextApplyController.test.ts`、`src/test/unit/composerTargetResolver.test.ts`、`src/test/unit/channelPictureUrlUtils.test.ts`、`src/test/unit/channelPicture.test.ts`、`src/test/unit/swChannelImageCacheUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`
+- 注意点: channel metadata由来relay hint、外部入力relay、write relayはprovenanceが異なる。kind 42のchannel rootをUI表示から推測せずparser結果を使う。URL query、iframe、draftのpicture overrideは検証済みmetadataと同一視せず、チャンネル画像キャッシュへ保存しない。
 
 ## Content Warning
 

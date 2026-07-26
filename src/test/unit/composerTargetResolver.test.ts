@@ -201,6 +201,7 @@ describe("createComposerTargetResolver", () => {
         expect(result).toMatchObject({
             status: "resolved",
             target: {
+                channelPictureCacheEligible: true,
                 channelQuery: {
                     eventId: channelId,
                     relayHints: ["wss://verified.example/"],

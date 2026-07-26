@@ -42,7 +42,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(14);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(17);
         expect(createdStores.get('meta')?.keyPath).toBe('key');
         expect(createdStores.get('emojiItems')?.createIndex).toHaveBeenCalledWith(
             '[pubkeyHex+identityKey]',
@@ -76,6 +76,16 @@ describe('swIndexedDbSchema', () => {
             '[pubkeyHex+postedAt]',
             ['pubkeyHex', 'postedAt'],
         );
+        expect(createdStores.get('postHistoryChildInteractions')?.createIndex)
+            .toHaveBeenCalledWith(
+                '[parentEventId+createdAt]',
+                ['parentEventId', 'createdAt'],
+            );
+        expect(createdStores.get('postHistoryDeletionRequests')?.createIndex)
+            .toHaveBeenCalledWith(
+                '[targetAuthorPubkey+targetEventId]',
+                ['targetAuthorPubkey', 'targetEventId'],
+            );
         expect(createdStores.get('postMediaCache')?.createIndex).toHaveBeenCalledWith(
             'schemaVersion',
             'schemaVersion',
@@ -83,6 +93,10 @@ describe('swIndexedDbSchema', () => {
         expect(createdStores.get('channelMetadata')?.createIndex).toHaveBeenCalledWith(
             'metadataCreatedAt',
             'metadataCreatedAt',
+        );
+        expect(createdStores.get('channelImageCacheMeta')?.createIndex).toHaveBeenCalledWith(
+            'lastAccessedAt',
+            'lastAccessedAt',
         );
     });
 });
