@@ -50,6 +50,22 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps surrounding brackets as text while linkifying their URL", () => {
+        expect(
+            buildLinkifiedTextSegments(
+                "（https://example.com/image.jpg）。動画",
+            ),
+        ).toEqual([
+            { type: "text", text: "（" },
+            {
+                type: "link",
+                text: "https://example.com/image.jpg",
+                href: "https://example.com/image.jpg",
+            },
+            { type: "text", text: "）。動画" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

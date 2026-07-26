@@ -89,6 +89,8 @@ describe('editorUrlUtils', () => {
             expect(isWordBoundary('\n')).toBe(true);
             expect(isWordBoundary('\u3000')).toBe(true);
             expect(isWordBoundary(undefined)).toBe(true);
+            expect(isWordBoundary('（')).toBe(true);
+            expect(isWordBoundary('【')).toBe(true);
             expect(isWordBoundary('a')).toBe(false);
         });
 

@@ -130,6 +130,48 @@ describe("httpUrlCandidates", () => {
         });
     });
 
+    it.each([
+        [
+            "（https://example.com/path）。次",
+            "https://example.com/path",
+            "）",
+        ],
+        [
+            "(https://example.com/path),next",
+            "https://example.com/path",
+            ")",
+        ],
+        [
+            "【https://example.com/path】次",
+            "https://example.com/path",
+            "】",
+        ],
+        [
+            "（https://example.com/wiki/Function_(mathematics)）。次",
+            "https://example.com/wiki/Function_(mathematics)",
+            "）",
+        ],
+    ])(
+        "ends at the matching outer bracket in %s",
+        (text, displayText, trailingText) => {
+            const [candidate] = scanHttpUrlCandidates(text);
+            const start = text.indexOf(displayText);
+            const rawCandidate = `${displayText}${trailingText}`;
+
+            expect(candidate).toMatchObject({
+                candidateStart: start,
+                candidateEnd: start + rawCandidate.length,
+                start,
+                end: start + displayText.length,
+                rawCandidate,
+                displayText,
+                trailingText,
+                href: new URL(displayText).href,
+                isValidHttpUrl: true,
+            });
+        },
+    );
+
     it("keeps source offsets accurate for multiple candidates and trailing prose", () => {
         const text =
             "prefix <https://example.com> and https://two.example/記事。続き）。 suffix";

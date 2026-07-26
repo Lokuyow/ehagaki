@@ -128,5 +128,16 @@ describe('ContentTracking 画像URL検出', () => {
                 .toBe(url.length);
             expect(candidate.end - candidate.start).toBe(url.length);
         });
+
+        it('外側の日本語括弧で囲まれたURLをその閉じ括弧で終端にすること', () => {
+            const text = '（https://example.com/image.jpg）。動画';
+            const [candidate] = scanHttpUrlCandidates(text);
+
+            expect(candidate).toMatchObject({
+                rawCandidate: 'https://example.com/image.jpg）',
+                displayText: 'https://example.com/image.jpg',
+                trailingText: '）',
+            });
+        });
     });
 });

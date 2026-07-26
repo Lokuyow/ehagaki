@@ -219,6 +219,24 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps surrounding Japanese brackets out of link segments", () => {
+        const result = buildPreviewContent({
+            content: "（https://example.com/image.jpg）。動画",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "（" },
+            {
+                type: "link",
+                text: "https://example.com/image.jpg",
+                href: "https://example.com/image.jpg",
+            },
+            { type: "text", text: "）。動画" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:

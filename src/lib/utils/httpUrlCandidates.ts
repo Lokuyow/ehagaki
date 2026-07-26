@@ -45,6 +45,18 @@ const CLOSING_BRACKET_TO_OPENING = new Map([
     ["\u3019", "\u3018"],
     ["\u301b", "\u301a"],
 ]);
+const OPENING_BRACKET_TO_CLOSING = new Map(
+    Array.from(CLOSING_BRACKET_TO_OPENING, ([closing, opening]) => [
+        opening,
+        closing,
+    ]),
+);
+
+export function isHttpUrlOuterOpeningBracket(
+    character: string | undefined,
+): boolean {
+    return !!character && OPENING_BRACKET_TO_CLOSING.has(character);
+}
 
 export interface HttpUrlCandidate {
     candidateStart: number;
@@ -92,6 +104,41 @@ function isClosingBracketOnlyQueryValue(
         queryIndex < index &&
         (fragmentIndex < 0 || fragmentIndex > index) &&
         value[index - 1] === "=";
+}
+
+function findOuterBracketBoundary(
+    text: string,
+    candidateStart: number,
+    rawCandidate: string,
+): number | null {
+    const outerOpeningBracket = candidateStart > 0
+        ? text.at(candidateStart - 1)
+        : undefined;
+    if (!outerOpeningBracket) {
+        return null;
+    }
+
+    const outerClosingBracket =
+        OPENING_BRACKET_TO_CLOSING.get(outerOpeningBracket);
+    if (!outerClosingBracket) {
+        return null;
+    }
+
+    let depth = 1;
+    let offset = 0;
+    for (const character of rawCandidate) {
+        if (character === outerOpeningBracket) {
+            depth += 1;
+        } else if (character === outerClosingBracket) {
+            depth -= 1;
+            if (depth === 0) {
+                return offset + character.length;
+            }
+        }
+        offset += character.length;
+    }
+
+    return null;
 }
 
 export function splitHttpUrlTrailingText(
@@ -172,8 +219,15 @@ export function scanHttpUrlCandidates(text: string): HttpUrlCandidate[] {
             continue;
         }
 
-        const candidateEnd = candidateStart + matchedText.length;
-        const rawCandidate = matchedText;
+        const outerBracketBoundary = findOuterBracketBoundary(
+            text,
+            candidateStart,
+            matchedText,
+        );
+        const candidateEnd = candidateStart +
+            (outerBracketBoundary ?? matchedText.length);
+        const rawCandidate = text.slice(candidateStart, candidateEnd);
+        pattern.lastIndex = candidateEnd;
 
         const { displayText, trailingText } =
             splitHttpUrlTrailingText(rawCandidate);

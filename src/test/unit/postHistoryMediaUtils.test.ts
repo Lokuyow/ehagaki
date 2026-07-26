@@ -6,7 +6,7 @@ describe("postHistoryMediaUtils", () => {
         expect(
             extractPostHistoryMedia({
                 content:
-                    "画像（https://example.com/image.jpg）。 動画 https://example.com/video.mp4!?",
+                    "画像（https://example.com/image.jpg）。動画 https://example.com/video.mp4!?",
                 tags: [],
             }),
         ).toEqual([

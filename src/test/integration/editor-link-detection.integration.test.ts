@@ -180,6 +180,15 @@ describe('エディター・リンク判定統合テスト', () => {
                 .toBe(url);
         });
 
+        it('外側の日本語括弧と後続文章をリンクへ含めない', async () => {
+            const url = 'https://example.com/path';
+            editor.commands.setContent(`<p>（${url}）。次</p>`);
+            await waitForContentTracking();
+
+            expect(editor.getHTML()).toContain(`href="${url}"`);
+            expect(editor.getText()).toBe(`（${url}）。次`);
+        });
+
         it.each([
             'https://example.com/foo)bar',
             'https://example.com/foo]bar',
@@ -237,6 +246,42 @@ describe('エディター・リンク判定統合テスト', () => {
                     (node) => node.type === 'image',
                 );
                 expect(imageNode?.attrs?.src).toBe(new URL(imageUrl).href);
+            } finally {
+                imageEditor.destroy();
+            }
+        });
+
+        it('外側の日本語括弧と後続文章を画像URLへ含めない', async () => {
+            const imageUrl = 'https://example.com/image.png';
+            const imageEditor = new Editor({
+                extensions: [
+                    StarterKit.configure({
+                        link: {
+                            autolink: false,
+                            linkOnPaste: false,
+                            openOnClick: false,
+                        },
+                    }),
+                    Image,
+                    ContentTrackingExtension.configure({
+                        enableAutoLink: false,
+                        enableImageConversion: true,
+                        enableHashtags: false,
+                    }),
+                ],
+                content: '',
+            });
+
+            try {
+                imageEditor.commands.setContent(`<p>（${imageUrl}）。動画</p>`);
+                await waitForContentTracking();
+
+                expect(imageEditor.getHTML()).toContain(
+                    `src="${imageUrl}"`,
+                );
+                expect(imageEditor.getText()).toContain('（');
+                expect(imageEditor.getText()).toContain('）。動画');
+                expect(imageEditor.getText()).not.toContain(imageUrl);
             } finally {
                 imageEditor.destroy();
             }

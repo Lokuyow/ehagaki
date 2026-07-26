@@ -4,7 +4,10 @@ import {
     ALLOWED_IMAGE_EXTENSIONS,
     ALLOWED_VIDEO_EXTENSIONS,
 } from '../constants';
-import { splitHttpUrlTrailingText } from './httpUrlCandidates';
+import {
+    isHttpUrlOuterOpeningBracket,
+    splitHttpUrlTrailingText,
+} from './httpUrlCandidates';
 
 export function normalizeUrl(url: string): string {
     return encodeURI(url.trim());
@@ -66,7 +69,8 @@ export function normalizeLineBreaks(text: string): string {
 }
 
 export function isWordBoundary(char: string | undefined): boolean {
-    return !char || /[\s\n\u3000]/.test(char);
+    return !char || /[\s\n\u3000]/.test(char) ||
+        isHttpUrlOuterOpeningBracket(char);
 }
 
 export function extractTrailingPunctuation(url: string): {
