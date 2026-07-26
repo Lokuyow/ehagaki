@@ -2410,6 +2410,120 @@ describe('PostHistoryDialog', () => {
         expect(screen.queryByText(parentImageUrl)).toBeNull();
     });
 
+    it('[thread-graph-related-emoji] 事前追加済みの直接親から親の親と返信を走査し共有emoji状態へ登録する', async () => {
+        const anchorEventId = '1'.repeat(64);
+        const parentEventId = '2'.repeat(64);
+        const grandParentEventId = '5'.repeat(64);
+        const parentReplyEventId = '6'.repeat(64);
+        const grandParentEmojiUrl = 'https://example.com/grand-parent.webp';
+        const parentReplyEmojiUrl = 'https://example.com/parent-reply.webp';
+        const post = createRecord({
+            eventId: anchorEventId,
+            rawEvent: {
+                id: anchorEventId,
+                pubkey: 'a'.repeat(64),
+                kind: 1,
+                content: '自分の返信',
+                tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+                created_at: 1_700_000_000,
+                sig: 'c'.repeat(128),
+            },
+            content: '自分の返信',
+            tags: [['e', parentEventId, 'wss://parent.example.com/', 'reply']],
+            media: [],
+        });
+        const parentEvent = {
+            id: parentEventId,
+            pubkey: 'd'.repeat(64),
+            kind: 1,
+            content: '直接の親',
+            tags: [['e', grandParentEventId, 'wss://grand.example.com/', 'reply']],
+            created_at: 1_699_999_000,
+            sig: 'e'.repeat(128),
+        };
+        const grandParentEvent = {
+            id: grandParentEventId,
+            pubkey: 'e'.repeat(64),
+            kind: 1,
+            content: '親の親 :grand:',
+            tags: [['emoji', 'grand', grandParentEmojiUrl]],
+            created_at: 1_699_998_000,
+            sig: 'f'.repeat(128),
+        };
+        const parentReply = createDirectReplyEventRecord({
+            eventId: parentReplyEventId,
+            parentEventId,
+            content: '親側の返信 :child:',
+            rawEvent: {
+                id: parentReplyEventId,
+                pubkey: 'f'.repeat(64),
+                kind: 1,
+                content: '親側の返信 :child:',
+                tags: [
+                    ['e', parentEventId, 'wss://parent.example.com/', 'reply'],
+                    ['emoji', 'child', parentReplyEmojiUrl],
+                ],
+                created_at: 1_699_999_500,
+                sig: 'a'.repeat(128),
+            },
+        });
+
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockResolvedValue(null);
+        replyEventsRepositoryMock.getDirectReplies.mockImplementation(async (eventId: string) =>
+            eventId === parentEventId ? [parentReply] : [],
+        );
+        contextFetchServiceMock.fetchEventById.mockImplementation((_rxNostr: any, params: any) => ({
+            promise: Promise.resolve({
+                event: params.eventId === parentEventId
+                    ? parentEvent
+                    : params.eventId === grandParentEventId
+                        ? grandParentEvent
+                        : null,
+                relayUrl: 'wss://relay.example.com/',
+            }),
+            cancel: vi.fn(),
+        }));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        const parentCard = (await screen.findByText('直接の親'))
+            .closest('.post-history-related-card') as HTMLElement;
+        expect(parentCard).toBeTruthy();
+
+        await fireEvent.click(within(parentCard).getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '返信を確認' }));
+        await waitFor(() => {
+            expect(screen.getByText('親側の返信')).toBeTruthy();
+        });
+
+        await fireEvent.click(within(parentCard).getByRole('button', { name: '返信先を見る' }));
+        await waitFor(() => {
+            expect(screen.getByText('親の親')).toBeTruthy();
+        });
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                grandParentEmojiUrl,
+            );
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                parentReplyEmojiUrl,
+            );
+            expect(screen.getByRole('img', { name: ':grand:' })).toBeTruthy();
+            expect(screen.getByRole('img', { name: ':child:' })).toBeTruthy();
+            expect(document.querySelectorAll('.post-history-custom-emoji-placeholder')).toHaveLength(0);
+        });
+    });
+
     it('[thread-graph-parent-scroll] 関連node内の返信先展開で起点nodeの表示位置を維持する', async () => {
         const parentEventId = '2'.repeat(64);
         const grandParentEventId = '5'.repeat(64);

@@ -45,6 +45,7 @@ function resolvedTarget(
     kind: number,
     channelName: string | null = "General",
     content = "Preview body",
+    tags: string[][] = [],
 ): ComposerResolvedTarget {
     const channel = kind === 40 || kind === 42;
     return {
@@ -53,7 +54,7 @@ function resolvedTarget(
             pubkey: "2".repeat(64),
             created_at: 1,
             kind,
-            tags: [],
+            tags,
             content: kind === 40
                 ? JSON.stringify({ name: "General", about: "Channel" })
                 : content,
@@ -155,6 +156,36 @@ describe("ComposerTargetDialog", () => {
         expect(screen.queryAllByRole("button", {
             name: /^(返信する|引用する|投稿する)$/,
         })).toHaveLength(labels.length);
+    });
+
+    it("kind 40はチャンネル情報を維持しつつ投稿本文・絵文字・imetaメディアを表示しない", async () => {
+        const mediaUrl = "https://example.com/channel-post-media.jpg";
+        const emojiUrl = "https://example.com/channel-emoji.webp";
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(40, "General", "ignored", [
+                    ["imeta", `url ${mediaUrl}`, "m image/jpeg"],
+                    ["emoji", "party", emojiUrl],
+                ]),
+            }),
+        });
+
+        await enterNote();
+
+        expect(document.querySelector(".channel-preview")).toBeTruthy();
+        expect(document.querySelector(".channel-name")?.textContent).toContain(
+            "General",
+        );
+        expect(document.querySelector(".post-content-preview")).toBeNull();
+        expect(document.querySelector(".post-history-media-section")).toBeNull();
+        expect(document.querySelector(".post-history-custom-emoji-slot")).toBeNull();
+        expect(screen.queryByText(mediaUrl)).toBeNull();
+        expect(screen.queryByText(":party:")).toBeNull();
     });
 
     it("入力変更で古いtaskをcancelし、古い結果を表示しない", async () => {
@@ -415,6 +446,37 @@ describe("ComposerTargetDialog", () => {
             .toHaveLength(1);
         expect(document.querySelector(".post-history-image-grid"))
             .toBeTruthy();
+    });
+
+    it("2000文字を超えるメディアURLだけの投稿は全メディアを表示し、展開操作を表示しない", async () => {
+        const mediaUrls = Array.from(
+            { length: 36 },
+            (_, index) =>
+                `https://example.com/${String(index).padStart(2, "0")}-${"media".repeat(8)}.jpg`,
+        );
+        const content = mediaUrls.join("\n");
+        expect(content.length).toBeGreaterThan(2_000);
+
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1, "General", content),
+            }),
+        });
+
+        await enterNote();
+
+        expect(document.querySelectorAll(".post-history-image-cell")).toHaveLength(
+            mediaUrls.length,
+        );
+        expect(document.querySelector(".event-content")).toBeNull();
+        expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "折りたたむ" })).toBeNull();
+        expect(document.querySelector("[aria-controls]")).toBeNull();
     });
 
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {

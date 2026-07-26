@@ -153,12 +153,41 @@
                 : collapsedContent.content,
         ),
     );
-    let previewRenderModel = $derived.by(() =>
-        buildPostContentRenderModel({
+    let sourcePreviewRenderModel = $derived.by(() =>
+        previewEvent?.kind === 40
+            ? buildPostContentRenderModel({
+                  sourceContent: "",
+                  displayContent: "",
+                  tags: [],
+                  media: [],
+              })
+            : buildPostContentRenderModel({
+                  sourceContent: rawPreviewContent,
+                  tags: previewEvent?.tags ?? [],
+              }),
+    );
+    let previewRenderModel = $derived.by(() => {
+        if (displayedContent === rawPreviewContent) {
+            return sourcePreviewRenderModel;
+        }
+
+        return buildPostContentRenderModel({
             sourceContent: rawPreviewContent,
-            displayContent: displayedContent,
+            displayContent: sourcePreviewRenderModel.hasRenderableText
+                ? displayedContent
+                : "",
             tags: previewEvent?.tags ?? [],
-        }),
+            media: sourcePreviewRenderModel.media,
+        });
+    });
+    let hasCollapsiblePreviewText = $derived(
+        sourcePreviewRenderModel.hasRenderableText &&
+            previewRenderModel.hasRenderableText,
+    );
+    let shouldCollapsePreviewText = $derived(
+        !!previewCollapsePost &&
+            hasCollapsiblePreviewText &&
+            previewCollapse.shouldCollapsePost(previewCollapsePost),
     );
     let previewContentId = $derived(
         previewEvent ? `composer-target-preview-content-${previewEvent.id}` : "",
@@ -497,15 +526,14 @@
                     {previewContentId}
                     contentClass="event-content"
                     collapsedContentClass="event-content-collapsed"
-                    isTextCollapsed={!!previewCollapsePost &&
-                        !isPreviewExpanded &&
-                        previewCollapse.shouldCollapsePost(previewCollapsePost)}
+                    isTextCollapsed={!isPreviewExpanded &&
+                        shouldCollapsePreviewText}
                     {previewCollapseAction}
                     previewCollapseEventId={previewEvent.id}
                     onImageOpen={handleImageOpen}
                 >
                     {#snippet betweenContentAndMedia()}
-                        {#if previewCollapsePost && previewCollapse.shouldCollapsePost(previewCollapsePost)}
+                        {#if previewCollapsePost && shouldCollapsePreviewText}
                             <PostPreviewToggleButton
                                 expanded={isPreviewExpanded}
                                 controls={previewContentId}

@@ -391,18 +391,21 @@
     function addThreadNodePreviewModels(
         nodeState: PostHistoryThreadGraphNodeState | null,
         models: Record<string, PostContentRenderModel>,
+        visitedEventIds: Set<string>,
     ): void {
-        if (!nodeState || models[nodeState.node.eventId]) {
+        if (!nodeState || visitedEventIds.has(nodeState.node.eventId)) {
             return;
         }
 
+        visitedEventIds.add(nodeState.node.eventId);
         addRelatedPreviewModel(nodeState.node.event, models);
         addThreadNodePreviewModels(
             nodeState.parentNodeState,
             models,
+            visitedEventIds,
         );
         for (const replyState of nodeState.replyNodeStates) {
-            addThreadNodePreviewModels(replyState, models);
+            addThreadNodePreviewModels(replyState, models, visitedEventIds);
         }
     }
 
@@ -410,6 +413,7 @@
         const models: Record<string, PostContentRenderModel> = {};
 
         for (const post of history.posts) {
+            const visitedEventIds = new Set<string>();
             for (const quotePreview of getQuotePreviewStates(post)) {
                 if (quotePreview.status === "resolved") {
                     addRelatedPreviewModel(quotePreview.event, models);
@@ -420,9 +424,17 @@
             if (graphState.parentNode) {
                 addRelatedPreviewModel(graphState.parentNode.event, models);
             }
-            addThreadNodePreviewModels(graphState.parentNodeState, models);
+            addThreadNodePreviewModels(
+                graphState.parentNodeState,
+                models,
+                visitedEventIds,
+            );
             for (const replyState of graphState.replyNodeStates) {
-                addThreadNodePreviewModels(replyState, models);
+                addThreadNodePreviewModels(
+                    replyState,
+                    models,
+                    visitedEventIds,
+                );
             }
         }
 
