@@ -139,5 +139,16 @@ describe('ContentTracking 画像URL検出', () => {
                 trailingText: '）',
             });
         });
+
+        it('外側括弧があっても内部の同種閉じ括弧を保持すること', () => {
+            const text = '（https://example.com/foo）bar）';
+            const [candidate] = scanHttpUrlCandidates(text);
+
+            expect(candidate).toMatchObject({
+                rawCandidate: 'https://example.com/foo）bar）',
+                displayText: 'https://example.com/foo）bar',
+                trailingText: '）',
+            });
+        });
     });
 });

@@ -75,6 +75,11 @@ export interface HttpUrlTrailingSplit {
     trailingText: string;
 }
 
+type OuterBracketBoundary = {
+    end: number;
+    closingBracket: string;
+};
+
 function countCharacter(value: string, target: string): number {
     let count = 0;
     for (const character of value) {
@@ -94,23 +99,26 @@ function hasUnmatchedClosingBracket(
         countCharacter(value, openingBracket);
 }
 
-function isClosingBracketOnlyQueryValue(
+function isUrlDataComponentBracket(
     value: string,
     index: number,
+    character: string,
 ): boolean {
+    if (character !== ")" && character !== "]" && character !== "}") {
+        return false;
+    }
+
     const queryIndex = value.indexOf("?");
     const fragmentIndex = value.indexOf("#");
-    return queryIndex >= 0 &&
-        queryIndex < index &&
-        (fragmentIndex < 0 || fragmentIndex > index) &&
-        value[index - 1] === "=";
+    return (queryIndex >= 0 && queryIndex < index) ||
+        (fragmentIndex >= 0 && fragmentIndex < index);
 }
 
 function findOuterBracketBoundary(
     text: string,
     candidateStart: number,
     rawCandidate: string,
-): number | null {
+): OuterBracketBoundary | null {
     const outerOpeningBracket = candidateStart > 0
         ? text.at(candidateStart - 1)
         : undefined;
@@ -126,19 +134,28 @@ function findOuterBracketBoundary(
 
     let depth = 1;
     let offset = 0;
+    let boundary: OuterBracketBoundary | null = null;
     for (const character of rawCandidate) {
         if (character === outerOpeningBracket) {
             depth += 1;
         } else if (character === outerClosingBracket) {
-            depth -= 1;
-            if (depth === 0) {
-                return offset + character.length;
+            if (depth > 0) {
+                depth -= 1;
+            }
+            if (
+                depth === 0 &&
+                normalizeAbsoluteHttpUrl(rawCandidate.slice(0, offset))
+            ) {
+                boundary = {
+                    end: offset + character.length,
+                    closingBracket: character,
+                };
             }
         }
         offset += character.length;
     }
 
-    return null;
+    return boundary;
 }
 
 export function splitHttpUrlTrailingText(
@@ -165,9 +182,10 @@ export function splitHttpUrlTrailingText(
             CLOSING_BRACKET_TO_OPENING.get(trailingCharacter);
         if (
             openingBracket &&
-            !isClosingBracketOnlyQueryValue(
+            !isUrlDataComponentBracket(
                 value,
                 value.length - trailingCharacter.length,
+                trailingCharacter,
             ) &&
             hasUnmatchedClosingBracket(
                 value,
@@ -225,12 +243,20 @@ export function scanHttpUrlCandidates(text: string): HttpUrlCandidate[] {
             matchedText,
         );
         const candidateEnd = candidateStart +
-            (outerBracketBoundary ?? matchedText.length);
+            (outerBracketBoundary?.end ?? matchedText.length);
         const rawCandidate = text.slice(candidateStart, candidateEnd);
         pattern.lastIndex = candidateEnd;
 
-        const { displayText, trailingText } =
-            splitHttpUrlTrailingText(rawCandidate);
+        const outerDisplayText = outerBracketBoundary
+            ? rawCandidate.slice(0, -outerBracketBoundary.closingBracket.length)
+            : null;
+        const { displayText, trailingText } = outerDisplayText &&
+                normalizeAbsoluteHttpUrl(outerDisplayText)
+            ? {
+                displayText: outerDisplayText,
+                trailingText: outerBracketBoundary!.closingBracket,
+            }
+            : splitHttpUrlTrailingText(rawCandidate);
         const href = normalizeAbsoluteHttpUrl(displayText);
 
         candidates.push({

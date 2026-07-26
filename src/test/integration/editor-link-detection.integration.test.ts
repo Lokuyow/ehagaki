@@ -189,6 +189,15 @@ describe('エディター・リンク判定統合テスト', () => {
             expect(editor.getText()).toBe(`（${url}）。次`);
         });
 
+        it('外側括弧があってもURL内部の同種閉じ括弧をリンクへ含める', async () => {
+            const url = 'https://example.com/foo)bar';
+            editor.commands.setContent(`<p>(${url})</p>`);
+            await waitForContentTracking();
+
+            expect(editor.getHTML()).toContain(`href="${url}"`);
+            expect(editor.getText()).toBe(`(${url})`);
+        });
+
         it.each([
             'https://example.com/foo)bar',
             'https://example.com/foo]bar',
@@ -281,6 +290,40 @@ describe('エディター・リンク判定統合テスト', () => {
                 );
                 expect(imageEditor.getText()).toContain('（');
                 expect(imageEditor.getText()).toContain('）。動画');
+                expect(imageEditor.getText()).not.toContain(imageUrl);
+            } finally {
+                imageEditor.destroy();
+            }
+        });
+
+        it('外側括弧があっても画像URL内部の同種閉じ括弧を保持する', async () => {
+            const imageUrl = 'https://example.com/foo）bar/image.png';
+            const imageEditor = new Editor({
+                extensions: [
+                    StarterKit.configure({
+                        link: {
+                            autolink: false,
+                            linkOnPaste: false,
+                            openOnClick: false,
+                        },
+                    }),
+                    Image,
+                    ContentTrackingExtension.configure({
+                        enableAutoLink: false,
+                        enableImageConversion: true,
+                        enableHashtags: false,
+                    }),
+                ],
+                content: '',
+            });
+
+            try {
+                imageEditor.commands.setContent(`（${imageUrl}）`);
+                await waitForContentTracking();
+
+                expect(imageEditor.getHTML()).toContain(
+                    `src="${new URL(imageUrl).href}"`,
+                );
                 expect(imageEditor.getText()).not.toContain(imageUrl);
             } finally {
                 imageEditor.destroy();

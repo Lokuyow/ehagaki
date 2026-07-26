@@ -66,6 +66,28 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps closing brackets inside an outer-bracketed URL", () => {
+        expect(
+            buildLinkifiedTextSegments(
+                "(https://example.com/foo)bar) (https://example.com/search?q=foo))",
+            ),
+        ).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/foo)bar",
+                href: "https://example.com/foo)bar",
+            },
+            { type: "text", text: ") (" },
+            {
+                type: "link",
+                text: "https://example.com/search?q=foo)",
+                href: "https://example.com/search?q=foo)",
+            },
+            { type: "text", text: ")" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

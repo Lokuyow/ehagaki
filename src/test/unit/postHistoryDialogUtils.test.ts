@@ -237,6 +237,24 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps closing brackets inside outer-bracketed link segments", () => {
+        const result = buildPreviewContent({
+            content: "（https://example.com/foo）bar）",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "（" },
+            {
+                type: "link",
+                text: "https://example.com/foo）bar",
+                href: "https://example.com/foo%EF%BC%89bar",
+            },
+            { type: "text", text: "）" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:

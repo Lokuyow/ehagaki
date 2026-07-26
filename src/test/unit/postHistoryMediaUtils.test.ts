@@ -73,6 +73,20 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("keeps closing brackets inside outer-bracketed media URLs", () => {
+        expect(
+            extractPostHistoryMedia({
+                content: "（https://example.com/foo）bar/image.jpg）",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/foo%EF%BC%89bar/image.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
+    });
+
     it("ignores invalid, relative, and non-HTTP media-looking values", () => {
         expect(
             extractPostHistoryMedia({

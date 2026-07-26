@@ -151,6 +151,31 @@ describe("httpUrlCandidates", () => {
             "https://example.com/wiki/Function_(mathematics)",
             "）",
         ],
+        [
+            "(https://example.com/foo)bar)",
+            "https://example.com/foo)bar",
+            ")",
+        ],
+        [
+            "(https://example.com/search?q=foo))",
+            "https://example.com/search?q=foo)",
+            ")",
+        ],
+        [
+            "(https://example.com/search?q=))",
+            "https://example.com/search?q=)",
+            ")",
+        ],
+        [
+            "（https://example.com/foo）bar）",
+            "https://example.com/foo）bar",
+            "）",
+        ],
+        [
+            "(https://example.com/wiki/Function_(mathematics))suffix)",
+            "https://example.com/wiki/Function_(mathematics))suffix",
+            ")",
+        ],
     ])(
         "ends at the matching outer bracket in %s",
         (text, displayText, trailingText) => {
@@ -171,6 +196,22 @@ describe("httpUrlCandidates", () => {
             });
         },
     );
+
+    it.each([
+        "https://example.com/search?q=foo)",
+        "https://example.com/search?q=foo]",
+        "https://example.com/#section]",
+    ])("keeps trailing ASCII brackets in URL data components: %s", (url) => {
+        const [candidate] = scanHttpUrlCandidates(url);
+
+        expect(candidate).toMatchObject({
+            rawCandidate: url,
+            displayText: url,
+            trailingText: "",
+            href: new URL(url).href,
+            isValidHttpUrl: true,
+        });
+    });
 
     it("keeps source offsets accurate for multiple candidates and trailing prose", () => {
         const text =
