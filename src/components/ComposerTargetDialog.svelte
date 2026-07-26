@@ -181,8 +181,7 @@
         });
     });
     let hasCollapsiblePreviewText = $derived(
-        sourcePreviewRenderModel.hasRenderableText &&
-            previewRenderModel.hasRenderableText,
+        sourcePreviewRenderModel.hasRenderableText,
     );
     let shouldCollapsePreviewText = $derived(
         !!previewCollapsePost &&
@@ -526,7 +525,8 @@
                     {previewContentId}
                     contentClass="event-content"
                     collapsedContentClass="event-content-collapsed"
-                    isTextCollapsed={!isPreviewExpanded &&
+                    isTextCollapsed={previewRenderModel.hasRenderableText &&
+                        !isPreviewExpanded &&
                         shouldCollapsePreviewText}
                     {previewCollapseAction}
                     previewCollapseEventId={previewEvent.id}
@@ -534,6 +534,13 @@
                 >
                     {#snippet betweenContentAndMedia()}
                         {#if previewCollapsePost && shouldCollapsePreviewText}
+                            {#if !previewRenderModel.hasRenderableText}
+                                <span
+                                    id={previewContentId}
+                                    hidden
+                                    aria-hidden="true"
+                                ></span>
+                            {/if}
                             <PostPreviewToggleButton
                                 expanded={isPreviewExpanded}
                                 controls={previewContentId}
@@ -545,6 +552,21 @@
                         {/if}
                     {/snippet}
                 </PostContentPreview>
+                {#if previewCollapsePost && shouldCollapsePreviewText && !previewRenderModel.hasRenderableText && !previewRenderModel.hasRenderableMedia}
+                    <span
+                        id={previewContentId}
+                        hidden
+                        aria-hidden="true"
+                    ></span>
+                    <PostPreviewToggleButton
+                        expanded={isPreviewExpanded}
+                        controls={previewContentId}
+                        onToggle={() =>
+                            previewCollapse.togglePostExpanded(
+                                previewCollapsePost.eventId,
+                            )}
+                    />
+                {/if}
 
                 {#if target?.channelContext}
                     <div class="channel-preview">

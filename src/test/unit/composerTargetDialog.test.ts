@@ -37,9 +37,37 @@ const translations: Record<string, string> = {
     "global.close": "閉じる",
 };
 
+const customEmojiMock = vi.hoisted(() => ({
+    preloadCustomEmojiImageWithMeta: vi.fn(),
+}));
+
 vi.mock("svelte-i18n", () => ({
     _: readable((key: string) => translations[key] ?? key),
 }));
+
+vi.mock("../../lib/customEmoji", async () => {
+    const actual = await vi.importActual<typeof import("../../lib/customEmoji")>(
+        "../../lib/customEmoji",
+    );
+    return {
+        ...actual,
+        preloadCustomEmojiImageWithMeta:
+            customEmojiMock.preloadCustomEmojiImageWithMeta,
+    };
+});
+
+function createMediaOnlyPrefix(length = 2_000): string[] {
+    const mediaUrls = Array.from(
+        { length: 10 },
+        (_, index) => `https://example.com/leading-${index}-${"media".repeat(4)}.jpg`,
+    );
+    const finalPrefix = "https://example.com/final-";
+    const finalSuffix = ".jpg";
+    const usedLength = mediaUrls.join("\n").length + 1;
+    const fillLength = length - usedLength - finalPrefix.length - finalSuffix.length;
+    mediaUrls.push(`${finalPrefix}${"x".repeat(fillLength)}${finalSuffix}`);
+    return mediaUrls;
+}
 
 function resolvedTarget(
     kind: number,
@@ -104,6 +132,12 @@ async function enterNote(): Promise<void> {
 describe("ComposerTargetDialog", () => {
     beforeEach(() => {
         vi.useFakeTimers();
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
+            ready: true,
+            width: 60,
+            height: 30,
+            aspectRatio: 2,
+        });
     });
 
     afterEach(() => {
@@ -477,6 +511,85 @@ describe("ComposerTargetDialog", () => {
         expect(screen.queryByRole("button", { name: "もっと見る" })).toBeNull();
         expect(screen.queryByRole("button", { name: "折りたたむ" })).toBeNull();
         expect(document.querySelector("[aria-controls]")).toBeNull();
+    });
+
+    it("先頭2000文字が画像URLだけでも後半に通常テキストがあれば展開できる", async () => {
+        const mediaUrls = createMediaOnlyPrefix();
+        const mediaPrefix = mediaUrls.join("\n");
+        const hiddenText = "2000文字より後の本文";
+        expect(mediaPrefix).toHaveLength(2_000);
+
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(
+                    1,
+                    "General",
+                    `${mediaPrefix}\n${hiddenText}`,
+                ),
+            }),
+        });
+
+        await enterNote();
+
+        expect(document.querySelectorAll(".post-history-image-cell")).toHaveLength(
+            mediaUrls.length,
+        );
+        expect(screen.queryByText(hiddenText)).toBeNull();
+        const expandButton = screen.getByRole("button", { name: "もっと見る" });
+        const controlledId = expandButton.getAttribute("aria-controls");
+        expect(controlledId).toBeTruthy();
+        const collapsedControlTarget = document.getElementById(controlledId!);
+        expect(collapsedControlTarget).toBeTruthy();
+        expect(collapsedControlTarget?.hidden).toBe(true);
+        expect(collapsedControlTarget?.getBoundingClientRect().height).toBe(0);
+
+        await fireEvent.click(expandButton);
+
+        expect(screen.getByText(hiddenText)).toBeTruthy();
+        const expandedControlTargets = document.querySelectorAll(
+            `#${controlledId}`,
+        );
+        expect(expandedControlTargets).toHaveLength(1);
+        expect(expandedControlTargets[0].classList).toContain("event-content");
+    });
+
+    it("先頭2000文字が画像URLだけでも後半のカスタム絵文字を展開して表示する", async () => {
+        const mediaUrls = createMediaOnlyPrefix();
+        const mediaPrefix = mediaUrls.join("\n");
+        const emojiUrl = "https://example.com/late-party.webp";
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(
+                    1,
+                    "General",
+                    `${mediaPrefix}\n:party:`,
+                    [["emoji", "party", emojiUrl]],
+                ),
+            }),
+        });
+
+        await enterNote();
+        expect(screen.queryByRole("img", { name: ":party:" })).toBeNull();
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "もっと見る" }),
+        );
+        await vi.runAllTicks();
+
+        expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+            emojiUrl,
+        );
+        expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
     });
 
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {
