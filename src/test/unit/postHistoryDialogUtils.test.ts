@@ -255,6 +255,24 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("does not include prose after an outer Japanese bracket in link segments", () => {
+        const result = buildPreviewContent({
+            content: "（https://example.com/path）。次の説明（補足）",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "（" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: "）。次の説明（補足）" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:

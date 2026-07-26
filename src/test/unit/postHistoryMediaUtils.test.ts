@@ -87,6 +87,20 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("extracts media without absorbing prose after an outer Japanese bracket", () => {
+        expect(
+            extractPostHistoryMedia({
+                content: "（https://example.com/image.jpg）。次の説明（補足）",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
+    });
+
     it("ignores invalid, relative, and non-HTTP media-looking values", () => {
         expect(
             extractPostHistoryMedia({

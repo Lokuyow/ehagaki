@@ -182,11 +182,11 @@ describe('エディター・リンク判定統合テスト', () => {
 
         it('外側の日本語括弧と後続文章をリンクへ含めない', async () => {
             const url = 'https://example.com/path';
-            editor.commands.setContent(`<p>（${url}）。次</p>`);
+            editor.commands.setContent(`<p>（${url}）。次の説明（補足）</p>`);
             await waitForContentTracking();
 
             expect(editor.getHTML()).toContain(`href="${url}"`);
-            expect(editor.getText()).toBe(`（${url}）。次`);
+            expect(editor.getText()).toBe(`（${url}）。次の説明（補足）`);
         });
 
         it('外側括弧があってもURL内部の同種閉じ括弧をリンクへ含める', async () => {
@@ -282,14 +282,16 @@ describe('エディター・リンク判定統合テスト', () => {
             });
 
             try {
-                imageEditor.commands.setContent(`<p>（${imageUrl}）。動画</p>`);
+                imageEditor.commands.setContent(
+                    `<p>（${imageUrl}）。次の説明（補足）</p>`,
+                );
                 await waitForContentTracking();
 
                 expect(imageEditor.getHTML()).toContain(
                     `src="${imageUrl}"`,
                 );
                 expect(imageEditor.getText()).toContain('（');
-                expect(imageEditor.getText()).toContain('）。動画');
+                expect(imageEditor.getText()).toContain('）。次の説明（補足）');
                 expect(imageEditor.getText()).not.toContain(imageUrl);
             } finally {
                 imageEditor.destroy();

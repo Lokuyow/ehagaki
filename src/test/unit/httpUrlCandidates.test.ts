@@ -176,6 +176,36 @@ describe("httpUrlCandidates", () => {
             "https://example.com/wiki/Function_(mathematics))suffix",
             ")",
         ],
+        [
+            "（https://example.com/path）。次の説明（補足）",
+            "https://example.com/path",
+            "）",
+        ],
+        [
+            "（https://example.com/path）次（補足）",
+            "https://example.com/path",
+            "）",
+        ],
+        [
+            "【https://example.com/path】説明【補足】",
+            "https://example.com/path",
+            "】",
+        ],
+        [
+            "(https://example.com/path.)",
+            "https://example.com/path",
+            ".)",
+        ],
+        [
+            "（https://example.com/path。）。次",
+            "https://example.com/path",
+            "。）",
+        ],
+        [
+            "(https://example.com/path')",
+            "https://example.com/path",
+            "')",
+        ],
     ])(
         "ends at the matching outer bracket in %s",
         (text, displayText, trailingText) => {

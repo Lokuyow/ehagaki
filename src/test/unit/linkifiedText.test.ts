@@ -88,6 +88,50 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("does not absorb Japanese prose after a confirmed outer bracket", () => {
+        expect(
+            buildLinkifiedTextSegments(
+                "（https://example.com/path）。次の説明（補足）",
+            ),
+        ).toEqual([
+            { type: "text", text: "（" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: "）。次の説明（補足）" },
+        ]);
+    });
+
+    it("separates punctuation and quotes inside outer brackets", () => {
+        expect(
+            buildLinkifiedTextSegments(
+                "(https://example.com/path.) （https://example.com/path。）。次 (https://example.com/path')",
+            ),
+        ).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: ".) （" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: "。）。次 (" },
+            {
+                type: "link",
+                text: "https://example.com/path",
+                href: "https://example.com/path",
+            },
+            { type: "text", text: "')" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

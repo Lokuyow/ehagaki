@@ -130,7 +130,7 @@ describe('ContentTracking 画像URL検出', () => {
         });
 
         it('外側の日本語括弧で囲まれたURLをその閉じ括弧で終端にすること', () => {
-            const text = '（https://example.com/image.jpg）。動画';
+            const text = '（https://example.com/image.jpg）。次の説明（補足）';
             const [candidate] = scanHttpUrlCandidates(text);
 
             expect(candidate).toMatchObject({

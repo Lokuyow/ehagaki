@@ -80,6 +80,9 @@ type OuterBracketBoundary = {
     closingBracket: string;
 };
 
+const OUTER_URL_CONTINUATION_PATTERN =
+    /^(?:|[A-Za-z0-9][A-Za-z0-9/_~%=&#+:@;.\-]*)$/;
+
 function countCharacter(value: string, target: string): number {
     let count = 0;
     for (const character of value) {
@@ -146,10 +149,21 @@ function findOuterBracketBoundary(
                 depth === 0 &&
                 normalizeAbsoluteHttpUrl(rawCandidate.slice(0, offset))
             ) {
-                boundary = {
+                const nextBoundary = {
                     end: offset + character.length,
                     closingBracket: character,
                 };
+                if (!boundary) {
+                    boundary = nextBoundary;
+                } else if (
+                    OUTER_URL_CONTINUATION_PATTERN.test(
+                        rawCandidate.slice(boundary.end, offset),
+                    )
+                ) {
+                    boundary = nextBoundary;
+                } else {
+                    return boundary;
+                }
             }
         }
         offset += character.length;
@@ -250,11 +264,15 @@ export function scanHttpUrlCandidates(text: string): HttpUrlCandidate[] {
         const outerDisplayText = outerBracketBoundary
             ? rawCandidate.slice(0, -outerBracketBoundary.closingBracket.length)
             : null;
-        const { displayText, trailingText } = outerDisplayText &&
-                normalizeAbsoluteHttpUrl(outerDisplayText)
+        const outerSplit = outerDisplayText
+            ? splitHttpUrlTrailingText(outerDisplayText)
+            : null;
+        const { displayText, trailingText } = outerSplit &&
+                normalizeAbsoluteHttpUrl(outerSplit.displayText)
             ? {
-                displayText: outerDisplayText,
-                trailingText: outerBracketBoundary!.closingBracket,
+                displayText: outerSplit.displayText,
+                trailingText: outerSplit.trailingText +
+                    outerBracketBoundary!.closingBracket,
             }
             : splitHttpUrlTrailingText(rawCandidate);
         const href = normalizeAbsoluteHttpUrl(displayText);
