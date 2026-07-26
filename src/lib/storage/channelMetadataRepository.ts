@@ -1,6 +1,7 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { compareChannelMetadataEventVersions } from "../channelMetadataEventOrder";
 import { normalizeChannelPictureUrl } from "../channelPictureUrlUtils";
+import { CHANNEL_METADATA_SCHEMA_VERSION } from "../channelMetadataConstants";
 import {
     CHANNEL_VERIFIED_SOURCE_RELAY_CACHE_LIMIT,
     CHANNEL_VERIFIED_WRITE_RELAY_CACHE_LIMIT,
@@ -11,7 +12,7 @@ import {
     type EHagakiDB,
 } from "./ehagakiDb";
 
-export const CHANNEL_METADATA_SCHEMA_VERSION = 2;
+export { CHANNEL_METADATA_SCHEMA_VERSION } from "../channelMetadataConstants";
 export const CHANNEL_METADATA_TTL_MS = 24 * 60 * 60 * 1000;
 export const CHANNEL_METADATA_RETRY_INTERVAL_MS = 15 * 60 * 1000;
 

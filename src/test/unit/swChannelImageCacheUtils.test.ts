@@ -3,6 +3,7 @@ import type {
     ChannelImageCacheMetaRecord,
     ChannelMetadataRecord,
 } from "../../lib/storage/ehagakiDb";
+import { CHANNEL_METADATA_SCHEMA_VERSION } from "../../lib/channelMetadataConstants";
 import {
     CHANNEL_IMAGE_CACHE_ACCESS_TOUCH_INTERVAL_MS,
     CHANNEL_IMAGE_CACHE_MAX_OPAQUE_ENTRIES,
@@ -27,9 +28,9 @@ class MemoryCache {
     readonly delete = vi.fn(async (request: RequestInfo | URL) =>
         this.entries.delete(this.key(request)));
 
-    async match(request: RequestInfo | URL): Promise<Response | undefined> {
+    readonly match = vi.fn(async (request: RequestInfo | URL): Promise<Response | undefined> => {
         return this.entries.get(this.key(request))?.clone();
-    }
+    });
 
     async keys(): Promise<Request[]> {
         return Array.from(this.entries.keys(), (url) => new Request(url));
@@ -53,6 +54,18 @@ class MemoryRepository implements ChannelImageMetaRepository {
     readonly put = vi.fn(async (record: ChannelImageCacheMetaRecord) => {
         this.metadata.set(record.url, { ...record });
     });
+    readonly touchLastAccessedAt = vi.fn(async (url: string, accessedAt: number) => {
+        const current = this.metadata.get(url);
+        if (current && accessedAt > current.lastAccessedAt) {
+            this.metadata.set(url, { ...current, lastAccessedAt: accessedAt });
+        }
+    });
+    readonly markAttempt = vi.fn(async (url: string, attemptedAt: number) => {
+        const current = this.metadata.get(url);
+        if (current && attemptedAt > current.lastAttemptAt) {
+            this.metadata.set(url, { ...current, lastAttemptAt: attemptedAt });
+        }
+    });
     readonly delete = vi.fn(async (url: string) => {
         this.metadata.delete(url);
     });
@@ -68,7 +81,7 @@ function verifiedChannel(overrides: Partial<ChannelMetadataRecord> = {}): Channe
         relayHints: [],
         resolutionQuality: "verified-metadata",
         updatedAt: 1,
-        schemaVersion: 2,
+        schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION,
         ...overrides,
     };
 }
@@ -103,16 +116,18 @@ function setup(options: {
         status: 200,
         headers: { "Content-Type": "image/png" },
     })));
+    const openCache = vi.fn(async () => cache);
+    const logger = { error: vi.fn() };
     const controller = new ChannelImageCacheController({
-        cacheStorage: { open: vi.fn(async () => cache) } as unknown as CacheStorage,
+        cacheStorage: { open: openCache } as unknown as CacheStorage,
         fetchRequest,
         repository,
         currentOrigin: origin,
         basePath,
         now: () => options.now ?? 100,
-        logger: { error: vi.fn() },
+        logger,
     });
-    return { cache, repository, fetchRequest, controller };
+    return { cache, repository, fetchRequest, controller, openCache, logger };
 }
 
 function eventFor(request = proxyRequest()) {
@@ -141,16 +156,25 @@ describe("swChannelImageCacheUtils", () => {
     });
 
     it.each([
-        null,
-        verifiedChannel({ resolutionQuality: "verified-root-only" }),
-        verifiedChannel({ picture: "https://images.example.com/other.png" }),
-    ])("永続verified metadataと一致しなければfetchしない", async (channel) => {
-        const { controller, repository, fetchRequest } = setup();
+        ["recordなし", null],
+        ["schemaVersion不一致", verifiedChannel({ schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION - 1 })],
+        ["quality不一致", verifiedChannel({ resolutionQuality: "verified-root-only" })],
+        ["picture不一致", verifiedChannel({ picture: "https://images.example.com/other.png" })],
+    ])("%sならfetchもCache API参照もしない", async (_label, channel) => {
+        const { controller, repository, fetchRequest, openCache } = setup();
         repository.channel = channel;
         const { event } = eventFor();
         const response = await controller.handle(event);
         expect(response.status).toBe(403);
         expect(fetchRequest).not.toHaveBeenCalled();
+        expect(openCache).not.toHaveBeenCalled();
+    });
+
+    it("現行schemaVersionかつpicture一致なら認可して取得する", async () => {
+        const { controller, repository, fetchRequest } = setup();
+        repository.channel = verifiedChannel({ schemaVersion: CHANNEL_METADATA_SCHEMA_VERSION });
+        expect((await controller.handle(eventFor().event)).status).toBe(200);
+        expect(fetchRequest).toHaveBeenCalledTimes(1);
     });
 
     it("認可済みmissを保存し、表示Response bodyを未消費で返す", async () => {
@@ -229,6 +253,88 @@ describe("swChannelImageCacheUtils", () => {
         expect(await (await cache.match(imageUrl))?.text()).toBe("stale");
     });
 
+    it("保留中touchが成功したstale再検証metadataを古い値へ戻さない", async () => {
+        const options = {
+            now: CHANNEL_IMAGE_CACHE_TTL_MS + 10,
+            fetchRequest: async () => new Response("new-image", {
+                headers: { "Content-Type": "image/png" },
+            }),
+        };
+        const { controller, repository, cache } = setup(options);
+        repository.metadata.set(imageUrl, metadata({
+            lastAttemptAt: options.now - 1,
+        }));
+        cache.entries.set(imageUrl, new Response("stale"));
+
+        let releaseTouch!: () => void;
+        const pendingTouch = new Promise<void>((resolve) => { releaseTouch = resolve; });
+        repository.touchLastAccessedAt.mockImplementationOnce(async (url, accessedAt) => {
+            await pendingTouch;
+            const current = repository.metadata.get(url);
+            if (current && accessedAt > current.lastAccessedAt) {
+                repository.metadata.set(url, { ...current, lastAccessedAt: accessedAt });
+            }
+        });
+
+        const suppressed = eventFor();
+        await controller.handle(suppressed.event);
+        expect(repository.touchLastAccessedAt).toHaveBeenCalledTimes(1);
+
+        options.now += CHANNEL_IMAGE_CACHE_RETRY_INTERVAL_MS + 1;
+        const refresh = eventFor();
+        await controller.handle(refresh.event);
+        await Promise.all(refresh.background);
+        const refreshedAt = options.now;
+
+        releaseTouch();
+        await Promise.all(suppressed.background);
+        expect(repository.metadata.get(imageUrl)).toMatchObject({
+            fetchedAt: refreshedAt,
+            lastAttemptAt: refreshedAt,
+            responseType: "readable",
+            verifiedSize: 9,
+        });
+    });
+
+    it("保留中touchがstale再検証失敗時のlastAttemptAtを古い値へ戻さない", async () => {
+        const options = {
+            now: CHANNEL_IMAGE_CACHE_TTL_MS + 10,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        };
+        const { controller, repository, cache, fetchRequest } = setup(options);
+        const successful = metadata({ lastAttemptAt: options.now - 1 });
+        repository.metadata.set(imageUrl, successful);
+        cache.entries.set(imageUrl, new Response("stale"));
+
+        let releaseTouch!: () => void;
+        const pendingTouch = new Promise<void>((resolve) => { releaseTouch = resolve; });
+        repository.touchLastAccessedAt.mockImplementationOnce(async (url, accessedAt) => {
+            await pendingTouch;
+            const current = repository.metadata.get(url);
+            if (current && accessedAt > current.lastAccessedAt) {
+                repository.metadata.set(url, { ...current, lastAccessedAt: accessedAt });
+            }
+        });
+
+        const suppressed = eventFor();
+        await controller.handle(suppressed.event);
+        options.now += CHANNEL_IMAGE_CACHE_RETRY_INTERVAL_MS + 1;
+        const refresh = eventFor();
+        await controller.handle(refresh.event);
+        await Promise.all(refresh.background);
+        expect(fetchRequest).toHaveBeenCalledTimes(2);
+        const attemptedAt = options.now;
+
+        releaseTouch();
+        await Promise.all(suppressed.background);
+        expect(repository.metadata.get(imageUrl)).toMatchObject({
+            fetchedAt: successful.fetchedAt,
+            lastAttemptAt: attemptedAt,
+            responseType: successful.responseType,
+            verifiedSize: successful.verifiedSize,
+        });
+    });
+
     it("同一URLの同時missを1 fetchへdedupeし各consumerへcloneを返す", async () => {
         let resolveFetch!: (response: Response) => void;
         const pending = new Promise<Response>((resolve) => { resolveFetch = resolve; });
@@ -287,6 +393,49 @@ describe("swChannelImageCacheUtils", () => {
         expect(cache.put).toHaveBeenCalledTimes(1);
         expect(cache.delete).toHaveBeenCalledWith(imageUrl);
         expect(await cache.match(imageUrl)).toBeUndefined();
+    });
+
+    it("stale再検証のmetadata保存失敗時は更新前Cache responseと成功metadataを復元する", async () => {
+        const now = CHANNEL_IMAGE_CACHE_TTL_MS + 10;
+        const { controller, repository, cache } = setup({
+            now,
+            fetchRequest: async () => new Response("fresh", {
+                headers: { "Content-Type": "image/png" },
+            }),
+        });
+        const previous = metadata();
+        repository.metadata.set(imageUrl, previous);
+        cache.entries.set(imageUrl, new Response("stale"));
+        repository.put.mockImplementation(async (record) => {
+            if (record.fetchedAt === now) throw new Error("idb failed");
+            repository.metadata.set(record.url, { ...record });
+        });
+
+        const request = eventFor();
+        expect(await (await controller.handle(request.event)).text()).toBe("stale");
+        await Promise.all(request.background);
+
+        expect(await (await cache.match(imageUrl))?.text()).toBe("stale");
+        expect(repository.metadata.get(imageUrl)).toMatchObject({
+            fetchedAt: previous.fetchedAt,
+            responseType: previous.responseType,
+            verifiedSize: previous.verifiedSize,
+            lastAttemptAt: now,
+        });
+    });
+
+    it("上限整理失敗でも保存済み画像を200で返す", async () => {
+        const { controller, repository, cache, logger } = setup();
+        repository.getAll.mockRejectedValueOnce(new Error("maintenance failed"));
+        const response = await controller.handle(eventFor().event);
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("image");
+        expect(await (await cache.match(imageUrl))?.text()).toBe("image");
+        expect(repository.metadata.get(imageUrl)?.responseType).toBe("readable");
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image cache limit enforcement failed",
+            expect.any(Error),
+        );
     });
 
     it("同一時刻LRUはURLでtie-breakし、保存処理中URLをevictionしない", async () => {

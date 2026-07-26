@@ -1,0 +1,1 @@
+export const CHANNEL_METADATA_SCHEMA_VERSION = 2;

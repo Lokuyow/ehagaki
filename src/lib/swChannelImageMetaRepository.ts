@@ -8,6 +8,8 @@ export interface ChannelImageMetaRepository {
     get(url: string): Promise<ChannelImageCacheMetaRecord | null>;
     getAll(): Promise<ChannelImageCacheMetaRecord[]>;
     put(record: ChannelImageCacheMetaRecord): Promise<void>;
+    touchLastAccessedAt(url: string, accessedAt: number): Promise<void>;
+    markAttempt(url: string, attemptedAt: number): Promise<void>;
     delete(url: string): Promise<void>;
 }
 
@@ -93,6 +95,46 @@ implements ChannelImageMetaRepository {
 
     async put(record: ChannelImageCacheMetaRecord): Promise<void> {
         await this.write((store) => store.put(record));
+    }
+
+    private async updateTimestamp(
+        url: string,
+        field: "lastAccessedAt" | "lastAttemptAt",
+        value: number,
+    ): Promise<void> {
+        const db = await this.open();
+        try {
+            const transaction = db.transaction("channelImageCacheMeta", "readwrite");
+            await new Promise<void>((resolve, reject) => {
+                const store = transaction.objectStore("channelImageCacheMeta");
+                const request = store.get(url);
+                request.onsuccess = () => {
+                    const current = request.result as ChannelImageCacheMetaRecord | undefined;
+                    if (!current || current[field] >= value) return;
+                    store.put({ ...current, [field]: value });
+                };
+                request.onerror = () => reject(
+                    request.error ?? new Error("IndexedDB timestamp read failed"),
+                );
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => reject(
+                    transaction.error ?? new Error("IndexedDB timestamp transaction failed"),
+                );
+                transaction.onabort = () => reject(
+                    transaction.error ?? new Error("IndexedDB timestamp transaction aborted"),
+                );
+            });
+        } finally {
+            db.close();
+        }
+    }
+
+    async touchLastAccessedAt(url: string, accessedAt: number): Promise<void> {
+        await this.updateTimestamp(url, "lastAccessedAt", accessedAt);
+    }
+
+    async markAttempt(url: string, attemptedAt: number): Promise<void> {
+        await this.updateTimestamp(url, "lastAttemptAt", attemptedAt);
     }
 
     async delete(url: string): Promise<void> {

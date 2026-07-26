@@ -55,6 +55,15 @@ describe("ServiceWorkerChannelImageMetaRepository", () => {
         await repository.put(metadata);
         await expect(repository.get(metadata.url)).resolves.toEqual(metadata);
         await expect(repository.getAll()).resolves.toEqual([metadata]);
+        await repository.touchLastAccessedAt(metadata.url, 20);
+        await repository.touchLastAccessedAt(metadata.url, 15);
+        await repository.markAttempt(metadata.url, 30);
+        await repository.markAttempt(metadata.url, 25);
+        await expect(repository.get(metadata.url)).resolves.toEqual({
+            ...metadata,
+            lastAccessedAt: 20,
+            lastAttemptAt: 30,
+        });
         await repository.delete(metadata.url);
         await expect(repository.get(metadata.url)).resolves.toBeNull();
     });
