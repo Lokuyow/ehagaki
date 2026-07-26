@@ -115,6 +115,20 @@ describe("postHistoryMediaUtils", () => {
         ]);
     });
 
+    it("keeps prose after the earliest natural media boundary", () => {
+        expect(
+            extractPostHistoryMedia({
+                content: "(https://example.com/foo)bar/image.jpg.)next)",
+                tags: [],
+            }),
+        ).toEqual([
+            {
+                url: "https://example.com/foo)bar/image.jpg",
+                mimeType: "image/jpeg",
+            },
+        ]);
+    });
+
     it("extracts media without absorbing prose after an outer Japanese bracket", () => {
         expect(
             extractPostHistoryMedia({

@@ -198,6 +198,15 @@ describe('エディター・リンク判定統合テスト', () => {
             expect(editor.getText()).toBe(`(${url})`);
         });
 
+        it('URL内部の閉じ括弧後にある自然終端でリンクを確定する', async () => {
+            const url = 'https://example.com/foo)bar';
+            editor.commands.setContent(`<p>(${url}.)next)</p>`);
+            await waitForContentTracking();
+
+            expect(editor.getHTML()).toContain(`href="${url}"`);
+            expect(editor.getText()).toBe(`(${url}.)next)`);
+        });
+
         it.each([
             'https://example.com/foo)bar',
             'https://example.com/foo]bar',
@@ -298,7 +307,7 @@ describe('エディター・リンク判定統合テスト', () => {
             }
         });
 
-        it('外側括弧があっても画像URL内部の同種閉じ括弧を保持する', async () => {
+        it('画像URL内部の閉じ括弧後にある自然終端で画像を確定する', async () => {
             const imageUrl = 'https://example.com/foo)bar/image.png';
             const imageEditor = new Editor({
                 extensions: [
@@ -320,13 +329,14 @@ describe('エディター・リンク判定統合テスト', () => {
             });
 
             try {
-                imageEditor.commands.setContent(`(${imageUrl})`);
+                imageEditor.commands.setContent(`(${imageUrl}.)next)`);
                 await waitForContentTracking();
 
                 expect(imageEditor.getHTML()).toContain(
                     `src="${new URL(imageUrl).href}"`,
                 );
                 expect(imageEditor.getText()).not.toContain(imageUrl);
+                expect(imageEditor.getText()).toContain('.)next)');
             } finally {
                 imageEditor.destroy();
             }

@@ -168,6 +168,20 @@ describe("linkifiedText", () => {
         ]);
     });
 
+    it("keeps the earliest natural boundary after a URL-internal closing bracket", () => {
+        expect(
+            buildLinkifiedTextSegments("(https://example.com/foo)bar.)next)"),
+        ).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/foo)bar",
+                href: "https://example.com/foo)bar",
+            },
+            { type: "text", text: ".)next)" },
+        ]);
+    });
+
     it.each([
         [
             "https://example.com</b>",

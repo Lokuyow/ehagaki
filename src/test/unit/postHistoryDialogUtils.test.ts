@@ -306,6 +306,24 @@ describe("postHistoryDialogUtils", () => {
         ]);
     });
 
+    it("keeps the earliest natural boundary after an internal closing bracket", () => {
+        const result = buildPreviewContent({
+            content: "(https://example.com/foo)bar.)next)",
+            tags: [],
+            media: [],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "(" },
+            {
+                type: "link",
+                text: "https://example.com/foo)bar",
+                href: "https://example.com/foo)bar",
+            },
+            { type: "text", text: ".)next)" },
+        ]);
+    });
+
     it("keeps invalid and non-HTTP values as text", () => {
         const result = buildPreviewContent({
             content:

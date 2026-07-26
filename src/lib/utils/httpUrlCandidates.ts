@@ -87,6 +87,12 @@ type OuterUrlContinuationState = {
     openingBrackets: string[];
 };
 
+type TrailingCharacterState = {
+    hasQueryOrFragment: boolean;
+    isNaturalTrailingCharacter: boolean;
+    openingBrackets: string[];
+};
+
 function hasUnmatchedClosingBracket(
     value: string,
     closingBracket: string,
@@ -134,6 +140,45 @@ function createOuterUrlContinuationState(): OuterUrlContinuationState {
         isAsciiPrintable: true,
         openingBrackets: [],
     };
+}
+
+function createTrailingCharacterState(): TrailingCharacterState {
+    return {
+        hasQueryOrFragment: false,
+        isNaturalTrailingCharacter: false,
+        openingBrackets: [],
+    };
+}
+
+function appendTrailingCharacterState(
+    state: TrailingCharacterState,
+    character: string,
+): void {
+    if (character === "?" || character === "#") {
+        state.hasQueryOrFragment = true;
+    }
+
+    state.isNaturalTrailingCharacter =
+        TRAILING_PUNCTUATION.has(character) || TRAILING_QUOTES.has(character);
+
+    if (OPENING_BRACKET_TO_CLOSING.has(character)) {
+        state.openingBrackets.push(character);
+        return;
+    }
+
+    const expectedOpeningBracket = CLOSING_BRACKET_TO_OPENING.get(character);
+    if (!expectedOpeningBracket) {
+        return;
+    }
+
+    const isMatched = expectedOpeningBracket === state.openingBrackets.at(-1);
+    if (isMatched) {
+        state.openingBrackets.pop();
+    }
+
+    const isUrlDataBracket = state.hasQueryOrFragment &&
+        (character === ")" || character === "]" || character === "}");
+    state.isNaturalTrailingCharacter = !isMatched && !isUrlDataBracket;
 }
 
 function appendOuterUrlContinuationCharacter(
@@ -206,8 +251,10 @@ function findOuterBracketBoundary(
     let depth = 1;
     let offset = 0;
     let firstBoundary: OuterBracketBoundary | null = null;
+    let earliestNaturalBoundary: OuterBracketBoundary | null = null;
     let latestContinuationBoundary: OuterBracketBoundary | null = null;
     let continuationState: OuterUrlContinuationState | null = null;
+    const trailingCharacterState = createTrailingCharacterState();
     for (const character of rawCandidate) {
         const wasTrackingContinuation = continuationState !== null;
         if (character === outerOpeningBracket) {
@@ -221,6 +268,12 @@ function findOuterBracketBoundary(
                     end: offset + character.length,
                     closingBracket: character,
                 };
+                if (
+                    !earliestNaturalBoundary &&
+                    trailingCharacterState.isNaturalTrailingCharacter
+                ) {
+                    earliestNaturalBoundary = nextBoundary;
+                }
                 if (!firstBoundary) {
                     firstBoundary = nextBoundary;
                     continuationState = createOuterUrlContinuationState();
@@ -236,6 +289,7 @@ function findOuterBracketBoundary(
         if (wasTrackingContinuation && continuationState) {
             appendOuterUrlContinuationCharacter(continuationState, character);
         }
+        appendTrailingCharacterState(trailingCharacterState, character);
         offset += character.length;
     }
 
@@ -243,12 +297,14 @@ function findOuterBracketBoundary(
         return null;
     }
 
-    const firstBoundaryInfo = getOuterBracketBoundaryInfo(
-        rawCandidate,
-        firstBoundary,
-    );
-    if (firstBoundaryInfo.isValid && firstBoundaryInfo.hasTrailingText) {
-        return firstBoundary;
+    if (earliestNaturalBoundary) {
+        const naturalBoundaryInfo = getOuterBracketBoundaryInfo(
+            rawCandidate,
+            earliestNaturalBoundary,
+        );
+        if (naturalBoundaryInfo.isValid && naturalBoundaryInfo.hasTrailingText) {
+            return earliestNaturalBoundary;
+        }
     }
 
     if (latestContinuationBoundary) {
@@ -261,6 +317,10 @@ function findOuterBracketBoundary(
         }
     }
 
+    const firstBoundaryInfo = getOuterBracketBoundaryInfo(
+        rawCandidate,
+        firstBoundary,
+    );
     return firstBoundaryInfo.isValid ? firstBoundary : null;
 }
 

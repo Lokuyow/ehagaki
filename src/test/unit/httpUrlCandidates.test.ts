@@ -256,6 +256,31 @@ describe("httpUrlCandidates", () => {
             "https://example.com/path",
             "。）",
         ],
+        [
+            "(https://example.com/foo)bar.)next)",
+            "https://example.com/foo)bar",
+            ".)",
+        ],
+        [
+            "(https://example.com/foo)bar')next)",
+            "https://example.com/foo)bar",
+            "')",
+        ],
+        [
+            "(https://example.com/foo)bar!)next)",
+            "https://example.com/foo)bar",
+            "!)",
+        ],
+        [
+            "（https://example.com/foo）bar。）。Next）",
+            "https://example.com/foo）bar",
+            "。）",
+        ],
+        [
+            "(https://example.com/foo)bar(baz).)next))",
+            "https://example.com/foo)bar(baz)",
+            ".)",
+        ],
     ])(
         "ends at the matching outer bracket in %s",
         (text, displayText, trailingText) => {
