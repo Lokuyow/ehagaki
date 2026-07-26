@@ -560,6 +560,21 @@ async function findHistoryItem(eventId: string): Promise<HTMLElement> {
     return historyItem;
 }
 
+function expectQuotePreviewStatus(
+    historyItem: HTMLElement,
+    statusLabel: string,
+): void {
+    const statusCard = historyItem.querySelector<HTMLElement>(
+        '.post-history-quote-status-card',
+    );
+
+    expect(statusCard).toBeTruthy();
+    expect(within(statusCard!).getByText(statusLabel)).toBeTruthy();
+    expect(
+        historyItem.querySelector('.post-history-quote-lifecycle-status'),
+    ).toBeNull();
+}
+
 function createReplyContextRecords() {
     const replyId = '2'.repeat(64);
     const rootId = '3'.repeat(64);
@@ -1493,7 +1508,7 @@ describe('PostHistoryDialog', () => {
         const queries = within(historyItem);
 
         await waitFor(() => {
-            expect(queries.getByText('引用元削除済み')).toBeTruthy();
+            expectQuotePreviewStatus(historyItem, '引用元削除済み');
         });
 
         expect(historyItem.textContent).not.toContain(quoteUri);
@@ -1534,7 +1549,7 @@ describe('PostHistoryDialog', () => {
         const queries = within(historyItem);
 
         await waitFor(() => {
-            expect(queries.getByText('引用投稿が見つかりませんでした')).toBeTruthy();
+            expectQuotePreviewStatus(historyItem, '引用投稿が見つかりませんでした');
         });
 
         expect(historyItem.textContent).not.toContain(quoteUri);
@@ -1571,7 +1586,7 @@ describe('PostHistoryDialog', () => {
         const queries = within(historyItem);
 
         await waitFor(() => {
-            expect(queries.getByText('引用投稿を読み込み中...')).toBeTruthy();
+            expectQuotePreviewStatus(historyItem, '引用投稿を読み込み中...');
         });
 
         expect(historyItem.textContent).toContain('導入');
@@ -1623,7 +1638,7 @@ describe('PostHistoryDialog', () => {
         const queries = within(historyItem);
 
         await waitFor(() => {
-            expect(queries.getByText('引用投稿を取得できませんでした')).toBeTruthy();
+            expectQuotePreviewStatus(historyItem, '引用投稿を取得できませんでした');
         });
 
         expect(historyItem.textContent).not.toContain(quoteUri);

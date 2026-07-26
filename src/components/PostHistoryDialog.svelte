@@ -13,7 +13,6 @@
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
-    import PostHistoryQuoteLifecycleStatusBadge from "./PostHistoryQuoteLifecycleStatusBadge.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
@@ -2247,8 +2246,6 @@
                                         {/if}
                                     </div>
                                     {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post) || canBroadcastPost(post) || graphState.reactionSummary.totalCount > 0 || (graphState.repliesActionState.status === "loaded" && graphState.repliesActionState.replyCount > 0)}
-                                        {@const quotePreviewStates =
-                                            getQuotePreviewStates(post)}
                                         {@const repliesActionLabel =
                                             getRepliesActionLabel(post)}
                                         {@const showRepliesBadge =
@@ -2307,31 +2304,24 @@
                                                     </div>
                                                 </div>
                                                 {#if onQuotePost}
-                                                    <div
-                                                        class="post-preview-quote-action-group"
-                                                    >
-                                                        <Button
-                                                            type="button"
-                                                            class="post-preview-action-button post-history-action-button"
-                                                            ariaLabel={$_(
-                                                                "replyQuote.quote_label",
+                                                    <Button
+                                                        type="button"
+                                                        class="post-preview-action-button post-history-action-button"
+                                                        ariaLabel={$_(
+                                                            "replyQuote.quote_label",
+                                                        )}
+                                                        contentLayout="icon"
+                                                        shape="circle"
+                                                        onClick={() =>
+                                                            handleQuotePost(
+                                                                post,
                                                             )}
-                                                            contentLayout="icon"
-                                                            shape="circle"
-                                                            onClick={() =>
-                                                                handleQuotePost(
-                                                                    post,
-                                                                )}
-                                                        >
-                                                            <div
-                                                                class="quote-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                        </Button>
-                                                        <PostHistoryQuoteLifecycleStatusBadge
-                                                            states={quotePreviewStates}
-                                                        />
-                                                    </div>
+                                                    >
+                                                        <div
+                                                            class="quote-icon svg-icon"
+                                                            aria-hidden="true"
+                                                        ></div>
+                                                    </Button>
                                                 {/if}
                                                 <div
                                                     class="post-preview-footer-reaction-slot"
@@ -3508,13 +3498,6 @@
     :global(.post-preview-action-buttons-group) {
         display: flex;
         align-items: stretch;
-    }
-
-    :global(.post-preview-quote-action-group) {
-        display: inline-flex;
-        align-items: center;
-        min-width: 0;
-        gap: 6px;
     }
 
     :global(.post-preview-footer-reaction-slot) {
