@@ -607,11 +607,13 @@ export class ChannelImageCacheController {
     private scheduleFinalLimitCleanupIfNeeded(
         registerBackground: (promise: Promise<unknown>) => void,
     ): void {
-        const cleanup = this.startFinalLimitCleanupIfNeeded();
+        const cleanup = this.startFinalLimitCleanupIfNeeded(registerBackground);
         if (cleanup) registerBackground(cleanup);
     }
 
-    private startFinalLimitCleanupIfNeeded(): Promise<void> | null {
+    private startFinalLimitCleanupIfNeeded(
+        registerBackground: (promise: Promise<unknown>) => void,
+    ): Promise<void> | null {
         if (
             this.inFlight.size !== 0
             || this.activeUrls.size !== 0
@@ -619,6 +621,7 @@ export class ChannelImageCacheController {
             || this.finalLimitCleanup
         ) return null;
 
+        let failed = false;
         const cleanup = (async () => {
             while (
                 this.inFlight.size === 0
@@ -632,11 +635,17 @@ export class ChannelImageCacheController {
                         this.pendingFinalLimitCleanupCache = cache;
                     }
                 } catch (error) {
+                    if (!this.pendingFinalLimitCleanupCache) {
+                        this.pendingFinalLimitCleanupCache = cache;
+                    }
+                    failed = true;
                     this.logger.error("Channel image final cache limit enforcement failed", error);
+                    break;
                 }
             }
         })().finally(() => {
             if (this.finalLimitCleanup === cleanup) this.finalLimitCleanup = null;
+            if (!failed) this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
         });
         this.finalLimitCleanup = cleanup;
         return cleanup;
