@@ -839,7 +839,7 @@
 
         :global(button) {
             min-width: 74px;
-            height: auto;
+            min-height: 50px;
             padding: 8px 10px;
             font-size: 0.875rem;
             font-weight: normal;

@@ -320,4 +320,5 @@ select {
   align-items: stretch;
   justify-content: flex-end;
   height: auto;
+  margin-block: auto;
 }
