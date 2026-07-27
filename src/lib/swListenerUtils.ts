@@ -12,6 +12,7 @@ export interface ServiceWorkerFetchEventLike {
 
 export interface ServiceWorkerMessageEventLike {
     data?: unknown;
+    waitUntil: (promise: Promise<unknown>) => void;
 }
 
 export function createInstallEventListener(
@@ -73,7 +74,15 @@ export function createMessageEventListener(
     handleMessage: (event: ServiceWorkerMessageEventLike) => Promise<void> | void,
 ) {
     return (event: ServiceWorkerMessageEventLike) => {
-        void handleMessage(event);
+        let messagePromise: Promise<void>;
+
+        try {
+            messagePromise = Promise.resolve(handleMessage(event));
+        } catch (error) {
+            messagePromise = Promise.reject(error);
+        }
+
+        event.waitUntil(messagePromise);
     };
 }
 

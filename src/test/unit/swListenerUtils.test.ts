@@ -90,12 +90,69 @@ describe('swListenerUtils', () => {
         expect(addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
     });
 
-    it('createMessageEventListener は handler を呼ぶ', async () => {
-        const handler = vi.fn(async () => { });
-        const event = { data: { type: 'GET_VERSION' } } as ServiceWorkerMessageEventLike;
+    it('createMessageEventListener は handler を1回実行し、処理全体の Promise を waitUntil へ渡す', async () => {
+        let completeHandler: (() => void) | undefined;
+        const handlerCompleted = new Promise<void>((resolve) => {
+            completeHandler = resolve;
+        });
+        const handler = vi.fn(() => handlerCompleted);
+        const waitUntil = vi.fn();
+        const event = {
+            data: { type: 'GET_VERSION' },
+            waitUntil,
+        } as ServiceWorkerMessageEventLike;
 
         createMessageEventListener(handler)(event);
 
+        expect(handler).toHaveBeenCalledTimes(1);
         expect(handler).toHaveBeenCalledWith(event);
+        expect(waitUntil).toHaveBeenCalledTimes(1);
+
+        const messagePromise = waitUntil.mock.calls[0][0] as Promise<void>;
+        let settled = false;
+        void messagePromise.finally(() => {
+            settled = true;
+        });
+
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        completeHandler?.();
+
+        await expect(messagePromise).resolves.toBeUndefined();
+        expect(settled).toBe(true);
+    });
+
+    it('createMessageEventListener は同期 handler の完了も waitUntil へ渡す', async () => {
+        const handler = vi.fn();
+        const waitUntil = vi.fn();
+        const event = {
+            data: { type: 'PING' },
+            waitUntil,
+        } as ServiceWorkerMessageEventLike;
+
+        createMessageEventListener(handler)(event);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(waitUntil).toHaveBeenCalledTimes(1);
+        await expect(waitUntil.mock.calls[0][0]).resolves.toBeUndefined();
+    });
+
+    it('createMessageEventListener は同期例外を waitUntil の Promise の reject として扱う', async () => {
+        const error = new Error('message handler failed');
+        const handler = vi.fn(() => {
+            throw error;
+        });
+        const waitUntil = vi.fn();
+        const event = {
+            data: { type: 'GET_VERSION' },
+            waitUntil,
+        } as ServiceWorkerMessageEventLike;
+
+        createMessageEventListener(handler)(event);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(waitUntil).toHaveBeenCalledTimes(1);
+        await expect(waitUntil.mock.calls[0][0]).rejects.toBe(error);
     });
 });
