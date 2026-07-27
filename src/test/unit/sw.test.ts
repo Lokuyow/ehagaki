@@ -128,7 +128,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     };
 
     // Service Worker実装をここに組み込み（実際のコードから抽出）
-    const SW_VERSION = '1.26.0';
+    const SW_VERSION = '1.26.1';
     const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
     const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
     const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];

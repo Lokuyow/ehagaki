@@ -32,7 +32,7 @@ function createTestWebPResponse(headers: Record<string, string> = {}): Response 
 type BatchParams = Omit<Parameters<typeof cacheCustomEmojiImagesBatch>[0], 'urls'>;
 
 function createBatchDependencies(overrides: {
-    cache?: { put: ReturnType<typeof vi.fn> };
+    cache?: { match?: ReturnType<typeof vi.fn>; put: ReturnType<typeof vi.fn> };
     fetchRequest?: (request: Request) => Promise<unknown>;
     cacheOpaqueImage?: BatchParams['cacheOpaqueImage'];
 } = {}) {
@@ -125,6 +125,28 @@ describe('swCustomEmojiCacheUtils', () => {
             deps.cache,
             'https://example.com/emoji.webp?variant=1',
         );
+    });
+
+    it('does not refetch an image that is already stored under a no-cors cache key', async () => {
+        const cachedResponse = { type: 'opaque' };
+        const cache = {
+            match: vi.fn(async (request: Request) =>
+                request.mode === 'no-cors' ? cachedResponse : undefined),
+            put: vi.fn().mockResolvedValue(undefined),
+        };
+        const deps = createBatchDependencies({ cache });
+
+        const result = await cacheCustomEmojiImagesBatch({
+            urls: ['https://example.com/already-cached.webp'],
+            ...deps.params,
+        });
+
+        expect(result).toEqual({ success: true, cached: 1, failed: 0 });
+        expect(cache.match).toHaveBeenCalledTimes(2);
+        expect(cache.match.mock.calls[0][0].mode).toBe('cors');
+        expect(cache.match.mock.calls[1][0].mode).toBe('no-cors');
+        expect(deps.fetchRequest).not.toHaveBeenCalled();
+        expect(cache.put).not.toHaveBeenCalled();
     });
 
     it('does not use opaque fallback for an observable HTTP error', async () => {

@@ -10,6 +10,7 @@
         CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT,
         CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP,
         CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT,
+        cacheCustomEmojiImages,
         readCustomEmojiPickerHeight,
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
@@ -69,6 +70,7 @@
     let usageSectionsHeight = $state(0);
     let lastLoadRxNostr: RxNostr | null | undefined = undefined;
     let lastLoadPubkey: string | null | undefined = undefined;
+    const requestedImageCacheUrls = new Set<string>();
 
     let items = $derived(customEmojiStore.items);
     let loading = $derived(customEmojiStore.loading);
@@ -148,6 +150,13 @@
         const viewportWidth =
             window.visualViewport?.width ?? window.innerWidth ?? 800;
         pickerWidth = Math.min(800, Math.max(1, viewportWidth));
+    }
+
+    function cacheLoadedEmojiImage(url: string): void {
+        if (requestedImageCacheUrls.has(url)) return;
+
+        requestedImageCacheUrls.add(url);
+        cacheCustomEmojiImages([url]);
     }
 
     function readRootPixelValue(name: string): number {
@@ -399,6 +408,7 @@
                                                     draggable="false"
                                                     loading="lazy"
                                                     decoding="async"
+                                                    onload={() => cacheLoadedEmojiImage(emoji.src)}
                                                 />
                                             </Command.Item>
                                         {/each}
@@ -433,6 +443,7 @@
                                                     draggable="false"
                                                     loading="lazy"
                                                     decoding="async"
+                                                    onload={() => cacheLoadedEmojiImage(emoji.src)}
                                                 />
                                             </Command.Item>
                                         {/each}
@@ -467,6 +478,7 @@
                                             draggable="false"
                                             loading="lazy"
                                             decoding="async"
+                                            onload={() => cacheLoadedEmojiImage(emoji.src)}
                                         />
                                     </Command.Item>
                                 {/each}

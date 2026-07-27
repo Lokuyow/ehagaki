@@ -3,6 +3,7 @@ interface CustomEmojiCacheLogger {
 }
 
 interface CacheWithPut {
+    match?: (request: Request) => Promise<unknown>;
     put: (request: Request, response: unknown) => Promise<void>;
 }
 
@@ -197,6 +198,20 @@ export async function cacheCustomEmojiImagesBatch({
             continue;
         }
         let response: Response;
+        if (typeof cache.match === 'function') {
+            try {
+                const cachedResponse = await cache.match(request) ?? await cache.match(
+                    createRequest(baseUrl, { mode: 'no-cors' }),
+                );
+                if (cachedResponse) {
+                    cached++;
+                    continue;
+                }
+            } catch {
+                // A lookup failure should not prevent a fresh cache attempt.
+            }
+        }
+
         try {
             response = await fetchRequest(request) as Response;
         } catch {
