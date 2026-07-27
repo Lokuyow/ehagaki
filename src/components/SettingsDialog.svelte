@@ -716,7 +716,7 @@
         padding: 16px;
         display: flex;
         flex-direction: column;
-        gap: 26px;
+        gap: 20px;
         width: 100%;
         overflow-y: auto;
     }
@@ -737,6 +737,7 @@
     .setting-label-group {
         gap: 4px;
         min-width: 0;
+        margin-block: auto;
     }
 
     .setting-label-row {
@@ -801,10 +802,6 @@
     }
     :global(.bui-switch[data-state="checked"] .bui-switch-thumb) {
         translate: 46px 0;
-    }
-
-    .hide-mascot-flavor-group {
-        gap: 4px;
     }
 
     .sw-update-section {
