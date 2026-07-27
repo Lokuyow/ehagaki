@@ -647,21 +647,36 @@ describe("swChannelImageCacheUtils", () => {
         let getAllStarted = 0;
         let notifyAllStarted!: () => void;
         let releaseGetAll!: () => void;
+        let notifyFinalCleanupStarted!: () => void;
+        let releaseFinalCleanup!: () => void;
         const allStarted = new Promise<void>((resolve) => { notifyAllStarted = resolve; });
         const getAllGate = new Promise<void>((resolve) => { releaseGetAll = resolve; });
+        const finalCleanupStarted = new Promise<void>((resolve) => {
+            notifyFinalCleanupStarted = resolve;
+        });
+        const finalCleanupGate = new Promise<void>((resolve) => {
+            releaseFinalCleanup = resolve;
+        });
         repository.getAll.mockImplementation(async () => {
             getAllStarted += 1;
             if (getAllStarted === 129) notifyAllStarted();
-            await getAllGate;
+            if (getAllStarted <= 129) await getAllGate;
+            else {
+                notifyFinalCleanupStarted();
+                await finalCleanupGate;
+            }
             return Array.from(repository.metadata.values());
         });
 
         const requests: Promise<Response>[] = [];
+        const events: ReturnType<typeof eventFor>[] = [];
         for (let index = 0; index < 129; index += 1) {
             const id = index.toString(16).padStart(64, "0");
             const url = `https://images.example.com/concurrent-${String(index).padStart(3, "0")}.png`;
             channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
-            requests.push(controller.handle(eventFor(proxyRequest(url, id)).event));
+            const requestEvent = eventFor(proxyRequest(url, id));
+            events.push(requestEvent);
+            requests.push(controller.handle(requestEvent.event));
         }
 
         await allStarted;
@@ -669,14 +684,204 @@ describe("swChannelImageCacheUtils", () => {
         expect(cache.entries.size).toBe(0);
         releaseGetAll();
 
+        await finalCleanupStarted;
         const responses = await Promise.all(requests);
         expect(responses.every((response) => response.status === 502)).toBe(true);
+        expect(repository.metadata.size).toBe(129);
+        const background = events.flatMap((requestEvent) => requestEvent.background);
+        expect(background).toHaveLength(1);
+
+        releaseFinalCleanup();
+        await Promise.all(background);
         expect(repository.metadata.size).toBeLessThanOrEqual(128);
         expect(repository.metadata.has(
             "https://images.example.com/concurrent-000.png",
         )).toBe(false);
         expect(repository.getAll).toHaveBeenCalledTimes(130);
         expect(cache.entries.size).toBe(0);
+    });
+
+    it("final cleanup失敗を502 Responseへ伝播させない", async () => {
+        const { controller, repository, logger } = setup({
+            now: 1,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        });
+        const channels = new Map<string, ChannelMetadataRecord>();
+        repository.getChannelMetadata.mockImplementation(async (id) =>
+            channels.get(id) ?? null);
+
+        let getAllStarted = 0;
+        let notifyAllStarted!: () => void;
+        let releaseGetAll!: () => void;
+        const allStarted = new Promise<void>((resolve) => { notifyAllStarted = resolve; });
+        const getAllGate = new Promise<void>((resolve) => { releaseGetAll = resolve; });
+        repository.getAll.mockImplementation(async () => {
+            getAllStarted += 1;
+            if (getAllStarted === 129) notifyAllStarted();
+            if (getAllStarted <= 129) {
+                await getAllGate;
+                return Array.from(repository.metadata.values());
+            }
+            throw new Error("final cleanup failed");
+        });
+
+        const events: ReturnType<typeof eventFor>[] = [];
+        const requests: Promise<Response>[] = [];
+        for (let index = 0; index < 129; index += 1) {
+            const id = (index + 256).toString(16).padStart(64, "0");
+            const url = `https://images.example.com/final-error-${String(index).padStart(3, "0")}.png`;
+            channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
+            const requestEvent = eventFor(proxyRequest(url, id));
+            events.push(requestEvent);
+            requests.push(controller.handle(requestEvent.event));
+        }
+
+        await allStarted;
+        releaseGetAll();
+        const responses = await Promise.all(requests);
+        expect(responses.every((response) => response.status === 502)).toBe(true);
+        const background = events.flatMap((requestEvent) => requestEvent.background);
+        expect(background).toHaveLength(1);
+        await Promise.all(background);
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image final cache limit enforcement failed",
+            expect.any(Error),
+        );
+    });
+
+    it("final cleanup中に開始したactive URLを守り完了後に別のLRUを削除する", async () => {
+        const options = {
+            now: CHANNEL_IMAGE_CACHE_TTL_MS + 10,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        };
+        const { controller, repository, cache } = setup(options);
+        const channels = new Map<string, ChannelMetadataRecord>();
+        repository.getChannelMetadata.mockImplementation(async (id) =>
+            channels.get(id) ?? null);
+
+        let getAllCount = 0;
+        let notifyInitialLimitsStarted!: () => void;
+        let releaseInitialLimits!: () => void;
+        let notifyFinalStarted!: () => void;
+        let releaseFinalGetAll!: () => void;
+        const initialLimitsStarted = new Promise<void>((resolve) => {
+            notifyInitialLimitsStarted = resolve;
+        });
+        const initialLimitsGate = new Promise<void>((resolve) => {
+            releaseInitialLimits = resolve;
+        });
+        const finalStarted = new Promise<void>((resolve) => { notifyFinalStarted = resolve; });
+        const finalGetAllGate = new Promise<void>((resolve) => {
+            releaseFinalGetAll = resolve;
+        });
+        repository.getAll.mockImplementation(async () => {
+            getAllCount += 1;
+            if (getAllCount === 129) notifyInitialLimitsStarted();
+            if (getAllCount <= 129) await initialLimitsGate;
+            else if (getAllCount === 130) {
+                notifyFinalStarted();
+                await finalGetAllGate;
+            }
+            return Array.from(repository.metadata.values());
+        });
+
+        const initialEvents: ReturnType<typeof eventFor>[] = [];
+        const initialRequests: Promise<Response>[] = [];
+        for (let index = 0; index < 129; index += 1) {
+            const id = (index + 512).toString(16).padStart(64, "0");
+            const url = `https://images.example.com/prepare-${String(index).padStart(3, "0")}.png`;
+            channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
+            const requestEvent = eventFor(proxyRequest(url, id));
+            initialEvents.push(requestEvent);
+            initialRequests.push(controller.handle(requestEvent.event));
+        }
+        await initialLimitsStarted;
+        releaseInitialLimits();
+        await finalStarted;
+        expect((await Promise.all(initialRequests)).every((response) =>
+            response.status === 502)).toBe(true);
+
+        repository.metadata.clear();
+        cache.entries.clear();
+        channels.clear();
+        const staleUrl = "https://images.example.com/active-oldest.png";
+        const staleId = "f".repeat(64);
+        repository.metadata.set(staleUrl, metadata({
+            url: staleUrl,
+            fetchedAt: 1,
+            lastAttemptAt: 1,
+            lastAccessedAt: 0,
+        }));
+        cache.entries.set(staleUrl, new Response("stale", {
+            headers: { "Content-Type": "image/png" },
+        }));
+        channels.set(staleId, verifiedChannel({ channelEventId: staleId, picture: staleUrl }));
+
+        const attemptTargets: Array<{ id: string; url: string }> = [];
+        for (let index = 0; index < 128; index += 1) {
+            const id = (index + 768).toString(16).padStart(64, "0");
+            const url = `https://images.example.com/active-attempt-${String(index).padStart(3, "0")}.png`;
+            repository.metadata.set(url, attemptMetadata({
+                url,
+                lastAttemptAt: options.now - 1,
+                lastAccessedAt: 1,
+            }));
+            channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
+            attemptTargets.push({ id, url });
+        }
+
+        let activeLookupsStarted = 0;
+        let notifyActiveLookupsStarted!: () => void;
+        let releaseAttemptLookups!: () => void;
+        let releaseStaleLookup!: () => void;
+        const activeLookupsStartedPromise = new Promise<void>((resolve) => {
+            notifyActiveLookupsStarted = resolve;
+        });
+        const attemptLookupGate = new Promise<void>((resolve) => {
+            releaseAttemptLookups = resolve;
+        });
+        const staleLookupGate = new Promise<void>((resolve) => {
+            releaseStaleLookup = resolve;
+        });
+        repository.get.mockImplementation(async (url) => {
+            activeLookupsStarted += 1;
+            if (activeLookupsStarted === 129) notifyActiveLookupsStarted();
+            if (url === staleUrl) await staleLookupGate;
+            else await attemptLookupGate;
+            return repository.metadata.get(url) ?? null;
+        });
+        const attemptRequests = attemptTargets.map(({ id, url }) =>
+            controller.handle(eventFor(proxyRequest(url, id)).event));
+        const staleEvent = eventFor(proxyRequest(staleUrl, staleId));
+        const staleRequest = controller.handle(staleEvent.event);
+
+        await activeLookupsStartedPromise;
+        releaseFinalGetAll();
+        await Promise.all(initialEvents.flatMap((requestEvent) => requestEvent.background));
+        expect(repository.metadata.has(staleUrl)).toBe(true);
+        expect(await cache.match(staleUrl)).toBeTruthy();
+
+        releaseAttemptLookups();
+        expect((await Promise.all(attemptRequests)).every((response) =>
+            response.status === 502)).toBe(true);
+        releaseStaleLookup();
+        expect(await (await staleRequest).text()).toBe("stale");
+        await staleEvent.background[0];
+        await Promise.all(staleEvent.background);
+
+        expect(repository.metadata.has(staleUrl)).toBe(true);
+        expect(await (await cache.match(staleUrl))?.text()).toBe("stale");
+        expect(repository.metadata.get(staleUrl)).toMatchObject({
+            fetchedAt: 1,
+            responseType: "readable",
+            verifiedSize: 5,
+            lastAttemptAt: options.now,
+        });
+        expect(repository.metadata.has(
+            "https://images.example.com/active-attempt-000.png",
+        )).toBe(false);
+        expect(repository.metadata.size).toBeLessThanOrEqual(128);
+        expect(getAllCount).toBe(132);
     });
 
     it("同一時刻LRUはURLでtie-breakし、保存処理中URLをevictionしない", async () => {

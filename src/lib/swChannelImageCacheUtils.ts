@@ -68,6 +68,7 @@ export class ChannelImageCacheController {
     private readonly now: () => number;
     private readonly logger: Pick<Console, "error">;
     private readonly inFlight = new Map<string, Promise<Response>>();
+    private readonly activeUrls = new Map<string, number>();
     private pendingFinalLimitCleanupCache: Cache | null = null;
     private finalLimitCleanup: Promise<void> | null = null;
 
@@ -119,40 +120,58 @@ export class ChannelImageCacheController {
             return errorResponse(503, "Channel image authorization unavailable");
         }
 
+        const registerBackground = (promise: Promise<unknown>) => event.waitUntil(promise);
+        this.retainActiveUrl(parsed.normalizedUrl);
+        try {
+            return await this.handleAuthorized(
+                event,
+                parsed.normalizedUrl,
+                registerBackground,
+            );
+        } finally {
+            this.releaseActiveUrl(parsed.normalizedUrl, registerBackground);
+        }
+    }
+
+    private async handleAuthorized(
+        event: ChannelImageFetchEventLike,
+        normalizedUrl: string,
+        registerBackground: (promise: Promise<unknown>) => void,
+    ): Promise<Response> {
         const cache = await this.deps.cacheStorage.open(CHANNEL_IMAGE_CACHE_NAME);
         let metadata: ChannelImageCacheMetaRecord | null = null;
         let cachedResponse: Response | undefined;
         try {
             [metadata, cachedResponse] = await Promise.all([
-                this.deps.repository.get(parsed.normalizedUrl),
-                cache.match(parsed.normalizedUrl),
+                this.deps.repository.get(normalizedUrl),
+                cache.match(normalizedUrl),
             ]);
         } catch (error) {
             this.logger.error("Channel image cache lookup failed", error);
-            return this.fetchWithoutSaving(parsed.normalizedUrl);
+            return this.fetchWithoutSaving(normalizedUrl);
         }
 
         if (cachedResponse && !metadata) {
-            const pending = this.inFlight.get(parsed.normalizedUrl);
+            const pending = this.inFlight.get(normalizedUrl);
             if (pending) {
                 try {
                     return (await pending).clone();
                 } catch {
                     try {
                         [metadata, cachedResponse] = await Promise.all([
-                            this.deps.repository.get(parsed.normalizedUrl),
-                            cache.match(parsed.normalizedUrl),
+                            this.deps.repository.get(normalizedUrl),
+                            cache.match(normalizedUrl),
                         ]);
                     } catch (error) {
                         this.logger.error("Channel image cache recheck failed", error);
-                        return this.fetchWithoutSaving(parsed.normalizedUrl);
+                        return this.fetchWithoutSaving(normalizedUrl);
                     }
                 }
             }
         }
 
         if (cachedResponse && !metadata) {
-            await cache.delete(parsed.normalizedUrl).catch(() => false);
+            await cache.delete(normalizedUrl).catch(() => false);
             cachedResponse = undefined;
         } else if (!cachedResponse && metadata?.responseType) {
             metadata = await this.resetMissingCacheMetadata(metadata);
@@ -171,13 +190,14 @@ export class ChannelImageCacheController {
             if (!retrySuppressed) {
                 const rollbackResponse = cachedResponse.clone();
                 const refresh = this.getOrCreateInFlight(
-                    parsed.normalizedUrl,
+                    normalizedUrl,
                     () => this.fetchAndStore(
-                        parsed.normalizedUrl,
+                        normalizedUrl,
                         cache,
                         metadata,
                         rollbackResponse,
                     ),
+                    registerBackground,
                 ).then(() => undefined).catch(() => undefined);
                 event.waitUntil(refresh);
             } else {
@@ -197,13 +217,14 @@ export class ChannelImageCacheController {
 
         try {
             const shared = await this.getOrCreateInFlight(
-                parsed.normalizedUrl,
+                normalizedUrl,
                 () => this.fetchAndStore(
-                    parsed.normalizedUrl,
+                    normalizedUrl,
                     cache,
                     metadata,
                     null,
                 ),
+                registerBackground,
             );
             return shared.clone();
         } catch {
@@ -211,16 +232,34 @@ export class ChannelImageCacheController {
         }
     }
 
-    private getOrCreateInFlight(url: string, factory: () => Promise<Response>): Promise<Response> {
+    private getOrCreateInFlight(
+        url: string,
+        factory: () => Promise<Response>,
+        registerBackground: (promise: Promise<unknown>) => void,
+    ): Promise<Response> {
         const existing = this.inFlight.get(url);
         if (existing) return existing;
 
-        const promise = factory().finally(async () => {
+        const promise = factory().finally(() => {
             if (this.inFlight.get(url) === promise) this.inFlight.delete(url);
-            await this.runFinalLimitCleanupIfNeeded();
+            this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
         });
         this.inFlight.set(url, promise);
         return promise;
+    }
+
+    private retainActiveUrl(url: string): void {
+        this.activeUrls.set(url, (this.activeUrls.get(url) ?? 0) + 1);
+    }
+
+    private releaseActiveUrl(
+        url: string,
+        registerBackground: (promise: Promise<unknown>) => void,
+    ): void {
+        const count = this.activeUrls.get(url) ?? 0;
+        if (count <= 1) this.activeUrls.delete(url);
+        else this.activeUrls.set(url, count - 1);
+        this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
     }
 
     private async fetchWithoutSaving(url: string): Promise<Response> {
@@ -565,33 +604,51 @@ export class ChannelImageCacheController {
         }
     }
 
-    private async runFinalLimitCleanupIfNeeded(): Promise<void> {
+    private scheduleFinalLimitCleanupIfNeeded(
+        registerBackground: (promise: Promise<unknown>) => void,
+    ): void {
+        const cleanup = this.startFinalLimitCleanupIfNeeded();
+        if (cleanup) registerBackground(cleanup);
+    }
+
+    private startFinalLimitCleanupIfNeeded(): Promise<void> | null {
         if (
             this.inFlight.size !== 0
+            || this.activeUrls.size !== 0
             || !this.pendingFinalLimitCleanupCache
-        ) return;
-        if (this.finalLimitCleanup) return this.finalLimitCleanup;
+            || this.finalLimitCleanup
+        ) return null;
 
-        const cache = this.pendingFinalLimitCleanupCache;
-        this.pendingFinalLimitCleanupCache = null;
         const cleanup = (async () => {
-            try {
-                if (!await this.enforceLimits(cache)) {
-                    this.pendingFinalLimitCleanupCache = cache;
+            while (
+                this.inFlight.size === 0
+                && this.activeUrls.size === 0
+                && this.pendingFinalLimitCleanupCache
+            ) {
+                const cache = this.pendingFinalLimitCleanupCache;
+                this.pendingFinalLimitCleanupCache = null;
+                try {
+                    if (!await this.enforceLimits(cache)) {
+                        this.pendingFinalLimitCleanupCache = cache;
+                    }
+                } catch (error) {
+                    this.logger.error("Channel image final cache limit enforcement failed", error);
                 }
-            } catch (error) {
-                this.logger.error("Channel image final cache limit enforcement failed", error);
             }
         })().finally(() => {
             if (this.finalLimitCleanup === cleanup) this.finalLimitCleanup = null;
         });
         this.finalLimitCleanup = cleanup;
-        await cleanup;
+        return cleanup;
+    }
+
+    private isUrlProtected(url: string, currentUrl?: string): boolean {
+        return url === currentUrl
+            || this.activeUrls.has(url)
+            || this.inFlight.has(url);
     }
 
     private async enforceLimits(cache: Cache, currentUrl?: string): Promise<boolean> {
-        const protectedUrls = new Set(this.inFlight.keys());
-        if (currentUrl) protectedUrls.add(currentUrl);
         const records = (await this.deps.repository.getAll()).sort(sortByAccessThenUrl);
         const entries: ChannelImageCacheMetaRecord[] = [];
         for (const record of records) {
@@ -603,7 +660,8 @@ export class ChannelImageCacheController {
             candidates: ChannelImageCacheMetaRecord[],
         ): Promise<ChannelImageCacheMetaRecord | null> => {
             const victim = candidates.find((record) =>
-                !protectedUrls.has(record.url) && !evicted.has(record.url));
+                !this.isUrlProtected(record.url, currentUrl)
+                && !evicted.has(record.url));
             if (!victim) return null;
             evicted.add(victim.url);
             await this.deletePair(cache, victim.url);
@@ -636,7 +694,8 @@ export class ChannelImageCacheController {
 
         const remainingMetadata = records.filter((record) => !evicted.has(record.url));
         while (remainingMetadata.length > CHANNEL_IMAGE_CACHE_META_MAX_RECORDS) {
-            const victim = remainingMetadata.find((record) => !protectedUrls.has(record.url));
+            const victim = remainingMetadata.find((record) =>
+                !this.isUrlProtected(record.url, currentUrl));
             if (!victim) break;
             remainingMetadata.splice(remainingMetadata.indexOf(victim), 1);
             await this.deletePair(cache, victim.url);
