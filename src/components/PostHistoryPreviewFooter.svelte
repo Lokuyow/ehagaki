@@ -115,6 +115,14 @@
         min-width: 36px;
     }
 
+    :global(.post-preview-footer-reaction-slot) {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        flex: 0 0 70px;
+        min-width: 70px;
+    }
+
     :global(.post-history-action-button),
     :global(.post-preview-reactions-button) {
         min-height: auto;

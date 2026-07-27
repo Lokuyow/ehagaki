@@ -762,8 +762,27 @@ describe("ComposerTargetDialog", () => {
         expect(document.querySelector(".target-preview-body")).toBeTruthy();
         expect(document.querySelector(".post-preview-footer")).toBeTruthy();
         expect(document.querySelector(".post-preview-date")?.textContent).toBeTruthy();
-        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
-        expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+        const replyButton = screen.getByRole("button", { name: "リプライ" });
+        const quoteButton = screen.getByRole("button", { name: "引用" });
+        const footerActions = document.querySelector(
+            ".post-preview-footer-actions",
+        );
+        const replyGroup = footerActions?.querySelector(
+            ":scope > .post-preview-action-buttons-group",
+        );
+        const repliesSlot = replyGroup?.querySelector(
+            ".post-preview-footer-replies-slot",
+        );
+        const reactionSlot = footerActions?.querySelector(
+            ":scope > .post-preview-footer-reaction-slot",
+        );
+
+        expect(replyGroup?.contains(replyButton)).toBe(true);
+        expect(replyGroup?.contains(quoteButton)).toBe(false);
+        expect(repliesSlot?.childElementCount).toBe(0);
+        expect(quoteButton.parentElement).toBe(footerActions);
+        expect(reactionSlot?.parentElement).toBe(footerActions);
+        expect(reactionSlot?.childElementCount).toBe(0);
 
         await openActionMenu();
         expect(document.querySelector(".post-history-menu-timestamp")?.textContent)
@@ -784,6 +803,40 @@ describe("ComposerTargetDialog", () => {
         });
         expect(rawJsonDialog.textContent).toContain('"content": "Preview body"');
         expect(screen.getByRole("dialog", { name: "宛先を指定" })).toBeTruthy();
+    });
+
+    it("kind 42も投稿履歴と同じ返信・引用・空スロット構造を使用する", async () => {
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(42),
+            }),
+        });
+
+        await enterNote();
+
+        const footerActions = document.querySelector(
+            ".post-preview-footer-actions",
+        );
+        const replyGroup = footerActions?.querySelector(
+            ":scope > .post-preview-action-buttons-group",
+        );
+        expect(replyGroup?.contains(
+            screen.getByRole("button", { name: "リプライ" }),
+        )).toBe(true);
+        expect(replyGroup?.contains(
+            screen.getByRole("button", { name: "引用" }),
+        )).toBe(false);
+        expect(replyGroup?.querySelector(
+            ".post-preview-footer-replies-slot",
+        )).toBeTruthy();
+        expect(footerActions?.querySelector(
+            ":scope > .post-preview-footer-reaction-slot",
+        )).toBeTruthy();
     });
 
     it("一時レコードはrelay由来を推測せずブロードキャストへ渡す", async () => {

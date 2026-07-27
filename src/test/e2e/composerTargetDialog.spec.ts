@@ -122,61 +122,152 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
     });
 
-    test("desktopと代表mobile幅でフッターの3領域が重ならずカード内に収まる", async ({
+    test("desktopと代表mobile幅で投稿履歴型のフッター配置とsurfaceを維持する", async ({
         page,
     }, testInfo) => {
         const harness = await gotoHarness(page);
         const width = testInfo.project.name === "desktop-chromium" ? 900 : 320;
+        if (testInfo.project.name === "desktop-chromium") {
+            await page.evaluate(() => {
+                document.documentElement.classList.add("light");
+            });
+        }
         await page.setViewportSize({ width, height: 720 });
         await openDialog(page);
-        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
-        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        for (const input of [harness.inputs.kind1, harness.inputs.kind42]) {
+            await page.getByLabel("イベントID").fill(input);
+            await expect(page.getByRole("button", { name: "リプライ" }))
+                .toBeVisible();
 
-        const geometry = await page.locator(".target-preview").evaluate((card) => {
+            const geometry = await page.locator(".target-preview").evaluate((card) => {
+                const footer = card.querySelector<HTMLElement>(".post-preview-footer")!;
+                const date = card.querySelector<HTMLElement>(".post-preview-date")!;
+                const actions = footer.querySelector<HTMLElement>(
+                    ":scope > .post-preview-footer-actions",
+                )!;
+                const replyGroup = actions.querySelector<HTMLElement>(
+                    ":scope > .post-preview-action-buttons-group",
+                )!;
+                const reply = replyGroup.querySelector<HTMLElement>(
+                    "button[aria-label='リプライ']",
+                )!;
+                const repliesSlot = replyGroup.querySelector<HTMLElement>(
+                    ".post-preview-footer-replies-slot",
+                )!;
+                const quote = actions.querySelector<HTMLElement>(
+                    ":scope > button[aria-label='引用']",
+                )!;
+                const reactionSlot = actions.querySelector<HTMLElement>(
+                    ":scope > .post-preview-footer-reaction-slot",
+                )!;
+                const menu = card.querySelector<HTMLElement>(
+                    ".post-history-menu-trigger",
+                )!;
+                const dialog = card.closest<HTMLElement>("[role='dialog']")!;
+                const toRect = (element: Element) => {
+                    const rect = element.getBoundingClientRect();
+                    return {
+                        left: rect.left,
+                        right: rect.right,
+                        width: rect.width,
+                        top: rect.top,
+                        bottom: rect.bottom,
+                    };
+                };
+                return {
+                    card: toRect(card),
+                    footer: toRect(footer),
+                    date: toRect(date),
+                    actions: toRect(actions),
+                    reply: toRect(reply),
+                    quote: toRect(quote),
+                    repliesSlot: toRect(repliesSlot),
+                    reactionSlot: toRect(reactionSlot),
+                    menu: toRect(menu),
+                    dialog: toRect(dialog),
+                    structure: {
+                        replyGroupContainsQuote: replyGroup.contains(quote),
+                        repliesSlotIsEmpty: repliesSlot.childElementCount === 0,
+                        reactionSlotIsEmpty: reactionSlot.childElementCount === 0,
+                    },
+                    backgrounds: {
+                        card: getComputedStyle(card).backgroundColor,
+                        reply: getComputedStyle(reply).backgroundColor,
+                        quote: getComputedStyle(quote).backgroundColor,
+                        menu: getComputedStyle(menu).backgroundColor,
+                    },
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                    horizontalOverflow:
+                        document.documentElement.scrollWidth -
+                        document.documentElement.clientWidth,
+                };
+            });
+
+            expect(geometry.structure.replyGroupContainsQuote).toBe(false);
+            expect(geometry.structure.repliesSlotIsEmpty).toBe(true);
+            expect(geometry.structure.reactionSlotIsEmpty).toBe(true);
+            expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
+            expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
+            expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
+            expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
+            expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
+            expect(geometry.reply.left).toBeLessThan(geometry.quote.left);
+            expect(geometry.quote.left).toBeLessThan(geometry.reactionSlot.left);
+            expect(
+                geometry.quote.left + geometry.quote.width / 2
+                    - (geometry.reply.left + geometry.reply.width / 2),
+            ).toBeGreaterThan(geometry.footer.width * 0.1);
+            expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
+            expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
+            expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);
+            expect(geometry.dialog.bottom).toBeLessThanOrEqual(
+                geometry.viewportHeight,
+            );
+            expect(geometry.backgrounds.reply).toBe(geometry.backgrounds.card);
+            expect(geometry.backgrounds.quote).toBe(geometry.backgrounds.card);
+            expect(geometry.backgrounds.menu).toBe(geometry.backgrounds.card);
+        }
+
+        await page.getByLabel("イベントID").fill(harness.inputs.kind40);
+        const channelButton = page.getByRole("button", { name: "投稿する" });
+        await expect(channelButton).toBeVisible();
+        const channelGeometry = await page.locator(".target-preview").evaluate((card) => {
             const footer = card.querySelector<HTMLElement>(".post-preview-footer")!;
-            const date = card.querySelector<HTMLElement>(".post-preview-date")!;
-            const actions = card.querySelector<HTMLElement>(
-                ".post-preview-action-buttons-group",
+            const actions = footer.querySelector<HTMLElement>(
+                ":scope > .post-preview-footer-actions",
             )!;
-            const menu = card.querySelector<HTMLElement>(
-                ".post-history-menu-trigger",
+            const button = actions.querySelector<HTMLElement>(
+                "button[aria-label='投稿する']",
             )!;
-            const dialog = card.closest<HTMLElement>("[role='dialog']")!;
             const toRect = (element: Element) => {
                 const rect = element.getBoundingClientRect();
-                return {
-                    left: rect.left,
-                    right: rect.right,
-                    top: rect.top,
-                    bottom: rect.bottom,
-                };
+                return { left: rect.left, width: rect.width };
             };
             return {
-                card: toRect(card),
-                footer: toRect(footer),
-                date: toRect(date),
                 actions: toRect(actions),
-                menu: toRect(menu),
-                dialog: toRect(dialog),
-                viewportWidth: window.innerWidth,
-                viewportHeight: window.innerHeight,
-                horizontalOverflow:
-                    document.documentElement.scrollWidth -
-                    document.documentElement.clientWidth,
+                button: toRect(button),
+                background: getComputedStyle(button).backgroundColor,
+                cardBackground: getComputedStyle(card).backgroundColor,
             };
         });
+        expect(
+            Math.abs(
+                channelGeometry.button.left + channelGeometry.button.width / 2
+                    - (channelGeometry.actions.left + channelGeometry.actions.width / 2),
+            ),
+        ).toBeLessThanOrEqual(1);
+        expect(channelGeometry.background).toBe(channelGeometry.cardBackground);
 
-        expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
-        expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
-        expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
-        expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
-        expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
-        expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
-        expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
-        expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);
-        expect(geometry.dialog.bottom).toBeLessThanOrEqual(
-            geometry.viewportHeight,
-        );
+        if (testInfo.project.name === "desktop-chromium") {
+            const normalBackground = await channelButton.evaluate(
+                (button) => getComputedStyle(button).backgroundColor,
+            );
+            await channelButton.hover();
+            await expect.poll(() => channelButton.evaluate(
+                (button) => getComputedStyle(button).backgroundColor,
+            )).not.toBe(normalBackground);
+        }
     });
 
     test("320pxと375pxで横方向にはみ出さない", async ({ page }, testInfo) => {

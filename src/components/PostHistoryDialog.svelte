@@ -3495,14 +3495,6 @@
 
     }
 
-    :global(.post-preview-footer-reaction-slot) {
-        display: flex;
-        align-items: stretch;
-        justify-content: center;
-        flex: 0 0 70px;
-        min-width: 70px;
-    }
-
     :global(.post-preview-reactions-button) {
         display: flex;
         align-items: stretch;

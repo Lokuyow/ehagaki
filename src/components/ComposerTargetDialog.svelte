@@ -840,33 +840,55 @@
                 >
                     {#snippet actions()}
                         {#if target}
-                            <div class="post-preview-action-buttons-group">
-                                {#each targetActions as action}
+                            {#if targetActions.includes("reply")}
+                                <div class="post-preview-action-buttons-group">
                                     <Button
                                         type="button"
                                         class="post-preview-action-button post-history-action-button"
-                                        ariaLabel={action === "reply"
-                                            ? $_("replyQuote.reply_label")
-                                            : action === "quote"
-                                              ? $_("replyQuote.quote_label")
-                                              : $_("composerTarget.post")}
+                                        ariaLabel={$_("replyQuote.reply_label")}
                                         contentLayout="icon"
                                         shape="circle"
-                                        onClick={() => handleApply(action)}
+                                        onClick={() => handleApply("reply")}
                                     >
                                         <div
-                                            class={`${
-                                                action === "reply"
-                                                    ? "reply-icon"
-                                                    : action === "quote"
-                                                      ? "quote-icon"
-                                                      : "post-icon"
-                                            } svg-icon`}
+                                            class="reply-icon svg-icon"
                                             aria-hidden="true"
                                         ></div>
                                     </Button>
-                                {/each}
-                            </div>
+                                    <div class="post-preview-footer-replies-slot"></div>
+                                </div>
+                            {/if}
+                            {#if targetActions.includes("quote")}
+                                <Button
+                                    type="button"
+                                    class="post-preview-action-button post-history-action-button"
+                                    ariaLabel={$_("replyQuote.quote_label")}
+                                    contentLayout="icon"
+                                    shape="circle"
+                                    onClick={() => handleApply("quote")}
+                                >
+                                    <div
+                                        class="quote-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                </Button>
+                                <div class="post-preview-footer-reaction-slot"></div>
+                            {/if}
+                            {#if targetActions.includes("channel")}
+                                <Button
+                                    type="button"
+                                    class="post-preview-action-button post-history-action-button"
+                                    ariaLabel={$_("composerTarget.post")}
+                                    contentLayout="icon"
+                                    shape="circle"
+                                    onClick={() => handleApply("channel")}
+                                >
+                                    <div
+                                        class="post-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                </Button>
+                            {/if}
                         {/if}
                     {/snippet}
                     {#snippet trailing()}
@@ -1126,6 +1148,10 @@
         display: grid;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
+    }
+
+    :global(.target-preview .post-preview-footer) {
+        --post-history-preview-footer-surface: var(--bg-input);
     }
 
     .target-preview-body {
