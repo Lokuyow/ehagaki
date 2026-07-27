@@ -254,7 +254,8 @@ select {
 }
 
 .post-preview-tooltip-content {
-  --tooltip-z-index: 102;
+  --tooltip-z-index: 10000;
+  z-index: 10000 !important;
 }
 
 :root:is(.light, .dark) button.selected:where(:not(:disabled)),

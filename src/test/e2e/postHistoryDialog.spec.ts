@@ -328,7 +328,13 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectTooltip(page, reactionButton, 'リアクション 1件を表示');
 
         await menuButton.focus();
-        await expect(page.locator('.tooltip-content:visible').filter({ hasText: 'アクションを表示' })).toHaveText('アクションを表示');
+        const tooltip = page.locator('.post-preview-tooltip-content:visible').filter({ hasText: 'アクションを表示' });
+        await expect(tooltip).toHaveText('アクションを表示');
+        const zIndexes = await Promise.all([
+            tooltip.evaluate((element) => getComputedStyle(element).zIndex),
+            page.locator('.post-history-dialog').evaluate((element) => getComputedStyle(element).zIndex),
+        ]);
+        expect(Number(zIndexes[0])).toBeGreaterThan(Number(zIndexes[1]));
         await expect(menuButton).toHaveAttribute('aria-label', 'アクションを表示');
         await expect(menuButton).not.toHaveAttribute('title');
 
