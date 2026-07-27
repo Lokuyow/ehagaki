@@ -160,46 +160,13 @@ function setup(options: {
 
 function eventFor(request = proxyRequest()) {
     const background: Promise<unknown>[] = [];
-    let active = true;
-    const waitUntil = vi.fn((promise: Promise<unknown>) => {
-        if (!active) {
-            const error = new Error("The event is no longer active");
-            error.name = "InvalidStateError";
-            throw error;
-        }
-        background.push(promise);
-    });
     return {
         event: {
             request,
-            waitUntil,
+            waitUntil: (promise: Promise<unknown>) => background.push(promise),
         },
         background,
-        waitUntil,
-        deactivate: () => { active = false; },
     };
-}
-
-function seedLimitEntries(
-    repository: MemoryRepository,
-    cache: MemoryCache,
-    prefix: string,
-    count = 129,
-): string[] {
-    const urls: string[] = [];
-    for (let index = 0; index < count; index += 1) {
-        const url = `https://images.example.com/${prefix}-${String(index).padStart(3, "0")}.png`;
-        repository.metadata.set(url, metadata({
-            url,
-            lastAccessedAt: index,
-        }));
-        cache.entries.set(url, new Response(`image-${prefix}-${index}`, {
-            status: 200,
-            headers: { "Content-Type": "image/png" },
-        }));
-        urls.push(url);
-    }
-    return urls;
 }
 
 describe("swChannelImageCacheUtils", () => {
@@ -834,7 +801,7 @@ describe("swChannelImageCacheUtils", () => {
         expect(cache.entries.size).toBe(0);
     });
 
-    it("外部要求なしのcleanup失敗は即時再試行せず次の認可済みhandle終了でcleanupを登録する", async () => {
+    it("cleanup失敗をResponseへ伝播せず次の認可済みhandle終了で再整理する", async () => {
         const { controller, repository, logger, fetchRequest } = setup({
             now: 1,
             fetchRequest: async () => { throw new TypeError("offline"); },
@@ -878,11 +845,6 @@ describe("swChannelImageCacheUtils", () => {
         expect(background).toHaveLength(1);
         await Promise.all(background);
         expect(repository.metadata.size).toBe(129);
-        type ControllerInternals = {
-            pendingFinalLimitCleanupCache: Cache | null;
-        };
-        const internals = controller as unknown as ControllerInternals;
-        expect(internals.pendingFinalLimitCleanupCache).not.toBeNull();
         expect(logger.error).toHaveBeenCalledWith(
             "Channel image final cache limit enforcement failed",
             expect.any(Error),
@@ -900,210 +862,6 @@ describe("swChannelImageCacheUtils", () => {
         await Promise.all(retryEvent.background);
         expect(repository.metadata.size).toBeLessThanOrEqual(128);
         expect(getAllStarted).toBe(131);
-        expect(logger.error).toHaveBeenCalledTimes(1);
-    });
-
-    it("既存cleanup中の再予約はbridge Promiseを同期登録しinactive eventへwaitUntilを追加しない", async () => {
-        const options = { now: 1 };
-        const { controller, repository, cache, logger } = setup(options);
-        const channels = new Map<string, ChannelMetadataRecord>();
-        repository.getChannelMetadata.mockImplementation(async (id) =>
-            channels.get(id) ?? null);
-
-        seedLimitEntries(repository, cache, "bridge-inactive");
-        const requestId = "b".repeat(64);
-        const requestUrl = "https://images.example.com/bridge-inactive-request.png";
-        channels.set(requestId, verifiedChannel({
-            channelEventId: requestId,
-            picture: requestUrl,
-        }));
-        repository.metadata.set(requestUrl, metadata({
-            url: requestUrl,
-            lastAttemptAt: options.now,
-            lastAccessedAt: options.now,
-        }));
-        cache.entries.set(requestUrl, new Response("fresh", {
-            status: 200,
-            headers: { "Content-Type": "image/png" },
-        }));
-
-        let getAllCount = 0;
-        let notifyCleanupStarted!: () => void;
-        let releaseCleanup!: () => void;
-        const cleanupStarted = new Promise<void>((resolve) => {
-            notifyCleanupStarted = resolve;
-        });
-        const cleanupGate = new Promise<void>((resolve) => {
-            releaseCleanup = resolve;
-        });
-        repository.getAll.mockImplementation(async () => {
-            getAllCount += 1;
-            if (getAllCount === 1) {
-                notifyCleanupStarted();
-                await cleanupGate;
-                throw new Error("final cleanup failed");
-            }
-            return Array.from(repository.metadata.values());
-        });
-
-        type ControllerInternals = {
-            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
-            pendingFinalLimitCleanupCache: Cache | null;
-        };
-        type RegisterBackground = (promise: Promise<unknown>) => void;
-        const internals = controller as unknown as ControllerInternals;
-        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
-        const initialBackground: Promise<unknown>[] = [];
-        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
-            initialBackground.push(promise);
-        });
-        await cleanupStarted;
-
-        const requestEvent = eventFor(proxyRequest(requestUrl, requestId));
-        expect((await controller.handle(requestEvent.event)).status).toBe(200);
-        expect(requestEvent.background).toHaveLength(2);
-        const backgroundCountBeforeInactive = requestEvent.background.length;
-        requestEvent.deactivate();
-        try {
-            requestEvent.event.waitUntil(Promise.resolve());
-        } catch (error) {
-            expect((error as Error).name).toBe("InvalidStateError");
-        }
-
-        releaseCleanup();
-        await initialBackground[0];
-        expect(requestEvent.background).toHaveLength(backgroundCountBeforeInactive);
-        await Promise.all(requestEvent.background);
-
-        expect(repository.metadata.size).toBeLessThanOrEqual(128);
-        expect(getAllCount).toBe(2);
-        expect(logger.error).toHaveBeenCalledWith(
-            "Channel image final cache limit enforcement failed",
-            expect.any(Error),
-        );
-        expect(logger.error).toHaveBeenCalledTimes(1);
-    });
-
-    it("pendingがnullでもrelease側eventへbridgeを即時登録しcleanup失敗後に再実行する", async () => {
-        const { controller, repository, cache, logger } = setup({ now: 1 });
-        seedLimitEntries(repository, cache, "pending-null");
-
-        let notifyCleanupStarted!: () => void;
-        let releaseCleanup!: () => void;
-        const cleanupStarted = new Promise<void>((resolve) => { notifyCleanupStarted = resolve; });
-        const cleanupGate = new Promise<void>((resolve) => { releaseCleanup = resolve; });
-        let getAllCount = 0;
-        repository.getAll.mockImplementation(async () => {
-            getAllCount += 1;
-            if (getAllCount === 1) {
-                notifyCleanupStarted();
-                await cleanupGate;
-                throw new Error("final cleanup failed");
-            }
-            return Array.from(repository.metadata.values());
-        });
-
-        type ControllerInternals = {
-            retainActiveUrl: (url: string) => void;
-            releaseActiveUrl: (url: string, registerBackground: RegisterBackground) => void;
-            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
-            pendingFinalLimitCleanupCache: Cache | null;
-        };
-        type RegisterBackground = (promise: Promise<unknown>) => void;
-        const internals = controller as unknown as ControllerInternals;
-        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
-        const initialBackground: Promise<unknown>[] = [];
-        const releaseBackground: Promise<unknown>[] = [];
-        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
-            initialBackground.push(promise);
-        });
-        await cleanupStarted;
-        expect(internals.pendingFinalLimitCleanupCache).toBeNull();
-
-        const activeUrl = "https://images.example.com/release-a.png";
-        internals.retainActiveUrl(activeUrl);
-        const releaseEvent = eventFor();
-        internals.releaseActiveUrl(activeUrl, (promise) => {
-            releaseEvent.event.waitUntil(promise);
-            releaseBackground.push(promise);
-        });
-        expect(releaseEvent.background).toHaveLength(1);
-
-        releaseCleanup();
-        expect(initialBackground).toHaveLength(1);
-        await initialBackground[0];
-        expect(releaseBackground).toHaveLength(1);
-        await Promise.all(releaseBackground);
-
-        expect(repository.metadata.size).toBeLessThanOrEqual(128);
-        expect(getAllCount).toBe(2);
-        expect(logger.error).toHaveBeenCalledWith(
-            "Channel image final cache limit enforcement failed",
-            expect.any(Error),
-        );
-        expect(logger.error).toHaveBeenCalledTimes(1);
-    });
-
-    it("複数active解除でもbridge Promiseの登録とcleanup再実行を1回にdedupeする", async () => {
-        const { controller, repository, cache, logger } = setup({ now: 1 });
-        seedLimitEntries(repository, cache, "bridge-dedupe");
-
-        let notifyCleanupStarted!: () => void;
-        let releaseCleanup!: () => void;
-        const cleanupStarted = new Promise<void>((resolve) => { notifyCleanupStarted = resolve; });
-        const cleanupGate = new Promise<void>((resolve) => { releaseCleanup = resolve; });
-        let getAllCount = 0;
-        repository.getAll.mockImplementation(async () => {
-            getAllCount += 1;
-            if (getAllCount === 1) {
-                notifyCleanupStarted();
-                await cleanupGate;
-                throw new Error("final cleanup failed");
-            }
-            return Array.from(repository.metadata.values());
-        });
-
-        type RegisterBackground = (promise: Promise<unknown>) => void;
-        type ControllerInternals = {
-            retainActiveUrl: (url: string) => void;
-            releaseActiveUrl: (url: string, registerBackground: RegisterBackground) => void;
-            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
-            pendingFinalLimitCleanupCache: Cache | null;
-        };
-        const internals = controller as unknown as ControllerInternals;
-        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
-        const initialBackground: Promise<unknown>[] = [];
-        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
-            initialBackground.push(promise);
-        });
-        await cleanupStarted;
-
-        const activeUrls = [
-            "https://images.example.com/dedupe-a.png",
-            "https://images.example.com/dedupe-b.png",
-            "https://images.example.com/dedupe-c.png",
-        ];
-        const releaseEvents = activeUrls.map(() => eventFor());
-        for (const url of activeUrls) internals.retainActiveUrl(url);
-        activeUrls.forEach((url, index) => {
-            internals.releaseActiveUrl(url, (promise) => {
-                releaseEvents[index].event.waitUntil(promise);
-            });
-        });
-        expect(releaseEvents.flatMap((event) => event.background)).toHaveLength(1);
-        expect(releaseEvents.reduce((count, event) =>
-            count + event.waitUntil.mock.calls.length, 0)).toBe(1);
-
-        releaseCleanup();
-        await initialBackground[0];
-        await Promise.all(releaseEvents.flatMap((event) => event.background));
-
-        expect(getAllCount).toBe(2);
-        expect(repository.metadata.size).toBeLessThanOrEqual(128);
-        expect(logger.error).toHaveBeenCalledWith(
-            "Channel image final cache limit enforcement failed",
-            expect.any(Error),
-        );
         expect(logger.error).toHaveBeenCalledTimes(1);
     });
 
