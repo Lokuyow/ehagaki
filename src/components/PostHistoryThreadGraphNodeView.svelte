@@ -277,6 +277,7 @@
                             count={state.repliesActionState.replyCount}
                             selected={state.repliesActionState.visible}
                             ariaLabel={getRepliesActionLabel()}
+                            tooltipContent={getRepliesActionLabel()}
                             onClick={handleRepliesAction}
                         />
                     {/if}
@@ -286,6 +287,8 @@
             {#snippet footerMenu()}
                 <PostHistoryActionMenu
                     triggerAriaLabel="アクションを表示"
+                    tooltipContent={$_("postHistory.openMenu") || "アクションを表示"}
+                    enableTooltip={true}
                     timestamp={postedAtExact}
                 >
                     {#snippet items()}

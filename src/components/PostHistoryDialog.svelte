@@ -16,6 +16,7 @@
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
+    import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
@@ -2264,9 +2265,9 @@
                                                     class="post-preview-action-buttons-group"
                                                 >
                                                     {#if onReplyPost}
-                                                        <Button
+                                                        <PostPreviewFooterActionButton
                                                             type="button"
-                                                            class="post-preview-action-button post-history-action-button"
+                                                            className="post-preview-action-button post-history-action-button"
                                                             ariaLabel={$_(
                                                                 "replyQuote.reply_label",
                                                             )}
@@ -2276,12 +2277,15 @@
                                                                 handleReplyPost(
                                                                     post,
                                                                 )}
+                                                            tooltipContent={$_(
+                                                                "replyQuote.reply_label",
+                                                            )}
                                                         >
                                                             <div
                                                                 class="reply-icon svg-icon"
                                                                 aria-hidden="true"
                                                             ></div>
-                                                        </Button>
+                                                        </PostPreviewFooterActionButton>
                                                     {/if}
                                                     <div
                                                         class="post-preview-footer-replies-slot"
@@ -2295,6 +2299,7 @@
                                                                     .repliesActionState
                                                                     .visible}
                                                                 ariaLabel={repliesActionLabel}
+                                                                tooltipContent={repliesActionLabel}
                                                                 onClick={() =>
                                                                     handleRepliesAction(
                                                                         post,
@@ -2304,9 +2309,9 @@
                                                     </div>
                                                 </div>
                                                 {#if onQuotePost}
-                                                    <Button
+                                                    <PostPreviewFooterActionButton
                                                         type="button"
-                                                        class="post-preview-action-button post-history-action-button"
+                                                        className="post-preview-action-button post-history-action-button"
                                                         ariaLabel={$_(
                                                             "replyQuote.quote_label",
                                                         )}
@@ -2316,20 +2321,23 @@
                                                             handleQuotePost(
                                                                 post,
                                                             )}
+                                                        tooltipContent={$_(
+                                                            "replyQuote.quote_label",
+                                                        )}
                                                     >
                                                         <div
                                                             class="quote-icon svg-icon"
                                                             aria-hidden="true"
                                                         ></div>
-                                                    </Button>
+                                                    </PostPreviewFooterActionButton>
                                                 {/if}
                                                 <div
                                                     class="post-preview-footer-reaction-slot"
                                                 >
                                                     {#if graphState.reactionSummary.totalCount > 0}
-                                                        <Button
+                                                        <PostPreviewFooterActionButton
                                                             type="button"
-                                                            class="post-preview-reactions-button"
+                                                            className="post-preview-reactions-button"
                                                             ariaLabel={getReactionsActionLabel(
                                                                 post,
                                                             )}
@@ -2341,6 +2349,9 @@
                                                                 toggleReactions(
                                                                     post,
                                                                 )}
+                                                            tooltipContent={getReactionsActionLabel(
+                                                                post,
+                                                            )}
                                                         >
                                                             <div
                                                                 class="favorite-icon svg-icon"
@@ -2351,7 +2362,7 @@
                                                                     .reactionSummary
                                                                     .totalCount}
                                                             </span>
-                                                        </Button>
+                                                        </PostPreviewFooterActionButton>
                                                     {/if}
                                                 </div>
                                             {/snippet}
@@ -2368,6 +2379,10 @@
                                                             open,
                                                         )}
                                                     triggerAriaLabel="アクションを表示"
+                                                    tooltipContent={$_(
+                                                        "postHistory.openMenu",
+                                                    ) || "アクションを表示"}
+                                                    enableTooltip={true}
                                                     timestamp={formatPostedAtExact(
                                                         post.postedAt,
                                                         $locale,

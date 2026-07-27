@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { DropdownMenu } from "bits-ui";
+    import { DropdownMenu, Tooltip } from "bits-ui";
     import type { Snippet } from "svelte";
 
     interface Props {
@@ -10,6 +10,8 @@
         align?: "start" | "center" | "end";
         timestamp?: string;
         items?: Snippet;
+        tooltipContent?: string;
+        enableTooltip?: boolean;
     }
 
     let {
@@ -20,6 +22,8 @@
         align = "start",
         timestamp = undefined,
         items = undefined,
+        tooltipContent = undefined,
+        enableTooltip = false,
     }: Props = $props();
 
     function handleOpenChange(nextOpen: boolean): void {
@@ -28,12 +32,41 @@
 </script>
 
 <DropdownMenu.Root {open} onOpenChange={handleOpenChange}>
-    <DropdownMenu.Trigger
-        class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
-        aria-label={triggerAriaLabel}
-    >
-        <div class="more-icon svg-icon"></div>
-    </DropdownMenu.Trigger>
+    {#if enableTooltip && tooltipContent}
+        <Tooltip.Provider>
+            <Tooltip.Root delayDuration={500}>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: tooltipOnclick, ...restProps } = props}
+                        <DropdownMenu.Trigger
+                            class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
+                            aria-label={triggerAriaLabel}
+                            {...restProps}
+                            onclick={(event) => {
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(event);
+                                }
+                            }}
+                        >
+                            <div class="more-icon svg-icon"></div>
+                        </DropdownMenu.Trigger>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                        {tooltipContent}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
+        </Tooltip.Provider>
+    {:else}
+        <DropdownMenu.Trigger
+            class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
+            aria-label={triggerAriaLabel}
+        >
+            <div class="more-icon svg-icon"></div>
+        </DropdownMenu.Trigger>
+    {/if}
     <DropdownMenu.Portal>
         <DropdownMenu.Content
             side="bottom"

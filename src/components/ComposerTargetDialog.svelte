@@ -15,6 +15,7 @@
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
+    import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import ChannelPicture from "./ChannelPicture.svelte";
@@ -871,52 +872,55 @@
                         {#if target}
                             {#if targetActions.includes("reply")}
                                 <div class="post-preview-action-buttons-group">
-                                    <Button
+                                    <PostPreviewFooterActionButton
                                         type="button"
-                                        class="post-preview-action-button post-history-action-button"
+                                        className="post-preview-action-button post-history-action-button"
                                         ariaLabel={$_("replyQuote.reply_label")}
                                         contentLayout="icon"
                                         shape="circle"
                                         onClick={() => handleApply("reply")}
+                                        tooltipContent={$_("replyQuote.reply_label")}
                                     >
                                         <div
                                             class="reply-icon svg-icon"
                                             aria-hidden="true"
                                         ></div>
-                                    </Button>
+                                    </PostPreviewFooterActionButton>
                                     <div class="post-preview-footer-replies-slot"></div>
                                 </div>
                             {/if}
                             {#if targetActions.includes("quote")}
-                                <Button
+                                <PostPreviewFooterActionButton
                                     type="button"
-                                    class="post-preview-action-button post-history-action-button"
+                                    className="post-preview-action-button post-history-action-button"
                                     ariaLabel={$_("replyQuote.quote_label")}
                                     contentLayout="icon"
                                     shape="circle"
                                     onClick={() => handleApply("quote")}
+                                    tooltipContent={$_("replyQuote.quote_label")}
                                 >
                                     <div
                                         class="quote-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                </Button>
+                                </PostPreviewFooterActionButton>
                                 <div class="post-preview-footer-reaction-slot"></div>
                             {/if}
                             {#if targetActions.includes("channel")}
-                                <Button
+                                <PostPreviewFooterActionButton
                                     type="button"
-                                    class="post-preview-action-button post-history-action-button"
+                                    className="post-preview-action-button post-history-action-button"
                                     ariaLabel={$_("composerTarget.post")}
                                     contentLayout="icon"
                                     shape="circle"
                                     onClick={() => handleApply("channel")}
+                                    tooltipContent={$_("composerTarget.post")}
                                 >
                                     <div
                                         class="post-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                </Button>
+                                </PostPreviewFooterActionButton>
                             {/if}
                         {/if}
                     {/snippet}
@@ -930,6 +934,8 @@
                                 onOpenChange={(open) =>
                                     setTargetMenuOpen(post.eventId, open)}
                                 triggerAriaLabel="アクションを表示"
+                                tooltipContent={$_("postHistory.openMenu") || "アクションを表示"}
+                                enableTooltip={true}
                                 timestamp={formatPostedAtExact(
                                     post.postedAt,
                                     $locale,
