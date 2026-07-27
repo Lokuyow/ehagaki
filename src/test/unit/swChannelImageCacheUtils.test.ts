@@ -160,13 +160,46 @@ function setup(options: {
 
 function eventFor(request = proxyRequest()) {
     const background: Promise<unknown>[] = [];
+    let active = true;
+    const waitUntil = vi.fn((promise: Promise<unknown>) => {
+        if (!active) {
+            const error = new Error("The event is no longer active");
+            error.name = "InvalidStateError";
+            throw error;
+        }
+        background.push(promise);
+    });
     return {
         event: {
             request,
-            waitUntil: (promise: Promise<unknown>) => background.push(promise),
+            waitUntil,
         },
         background,
+        waitUntil,
+        deactivate: () => { active = false; },
     };
+}
+
+function seedLimitEntries(
+    repository: MemoryRepository,
+    cache: MemoryCache,
+    prefix: string,
+    count = 129,
+): string[] {
+    const urls: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+        const url = `https://images.example.com/${prefix}-${String(index).padStart(3, "0")}.png`;
+        repository.metadata.set(url, metadata({
+            url,
+            lastAccessedAt: index,
+        }));
+        cache.entries.set(url, new Response(`image-${prefix}-${index}`, {
+            status: 200,
+            headers: { "Content-Type": "image/png" },
+        }));
+        urls.push(url);
+    }
+    return urls;
 }
 
 describe("swChannelImageCacheUtils", () => {
@@ -801,7 +834,7 @@ describe("swChannelImageCacheUtils", () => {
         expect(cache.entries.size).toBe(0);
     });
 
-    it("final cleanup失敗を502 Responseへ伝播させない", async () => {
+    it("外部要求なしのcleanup失敗は即時再試行せず次の認可済みhandle終了でcleanupを登録する", async () => {
         const { controller, repository, logger, fetchRequest } = setup({
             now: 1,
             fetchRequest: async () => { throw new TypeError("offline"); },
@@ -845,11 +878,17 @@ describe("swChannelImageCacheUtils", () => {
         expect(background).toHaveLength(1);
         await Promise.all(background);
         expect(repository.metadata.size).toBe(129);
+        type ControllerInternals = {
+            pendingFinalLimitCleanupCache: Cache | null;
+        };
+        const internals = controller as unknown as ControllerInternals;
+        expect(internals.pendingFinalLimitCleanupCache).not.toBeNull();
         expect(logger.error).toHaveBeenCalledWith(
             "Channel image final cache limit enforcement failed",
             expect.any(Error),
         );
         expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(getAllStarted).toBe(130);
 
         const retryUrl = "https://images.example.com/final-error-000.png";
         const retryId = (256).toString(16).padStart(64, "0");
@@ -864,128 +903,90 @@ describe("swChannelImageCacheUtils", () => {
         expect(logger.error).toHaveBeenCalledTimes(1);
     });
 
-    it("active解除がcleanupのfinally直前でもpending cleanupを再予約する", async () => {
+    it("既存cleanup中の再予約はbridge Promiseを同期登録しinactive eventへwaitUntilを追加しない", async () => {
         const options = { now: 1 };
-        const { controller, repository, cache } = setup(options);
+        const { controller, repository, cache, logger } = setup(options);
         const channels = new Map<string, ChannelMetadataRecord>();
         repository.getChannelMetadata.mockImplementation(async (id) =>
             channels.get(id) ?? null);
 
+        seedLimitEntries(repository, cache, "bridge-inactive");
+        const requestId = "b".repeat(64);
+        const requestUrl = "https://images.example.com/bridge-inactive-request.png";
+        channels.set(requestId, verifiedChannel({
+            channelEventId: requestId,
+            picture: requestUrl,
+        }));
+        repository.metadata.set(requestUrl, metadata({
+            url: requestUrl,
+            lastAttemptAt: options.now,
+            lastAccessedAt: options.now,
+        }));
+        cache.entries.set(requestUrl, new Response("fresh", {
+            status: 200,
+            headers: { "Content-Type": "image/png" },
+        }));
+
         let getAllCount = 0;
-        let notifyInitialLimitsStarted!: () => void;
-        let releaseInitialLimits!: () => void;
-        let notifyFinalStarted!: () => void;
-        let releaseFinalGetAll!: () => void;
-        const initialLimitsStarted = new Promise<void>((resolve) => {
-            notifyInitialLimitsStarted = resolve;
+        let notifyCleanupStarted!: () => void;
+        let releaseCleanup!: () => void;
+        const cleanupStarted = new Promise<void>((resolve) => {
+            notifyCleanupStarted = resolve;
         });
-        const initialLimitsGate = new Promise<void>((resolve) => {
-            releaseInitialLimits = resolve;
-        });
-        const finalStarted = new Promise<void>((resolve) => { notifyFinalStarted = resolve; });
-        const finalGetAllGate = new Promise<void>((resolve) => {
-            releaseFinalGetAll = resolve;
+        const cleanupGate = new Promise<void>((resolve) => {
+            releaseCleanup = resolve;
         });
         repository.getAll.mockImplementation(async () => {
             getAllCount += 1;
-            if (getAllCount === 129) notifyInitialLimitsStarted();
-            if (getAllCount <= 129) await initialLimitsGate;
-            else if (getAllCount === 130) {
-                notifyFinalStarted();
-                await finalGetAllGate;
+            if (getAllCount === 1) {
+                notifyCleanupStarted();
+                await cleanupGate;
+                throw new Error("final cleanup failed");
             }
             return Array.from(repository.metadata.values());
         });
 
-        const initialEvents: ReturnType<typeof eventFor>[] = [];
-        const initialRequests: Promise<Response>[] = [];
-        for (let index = 0; index < 129; index += 1) {
-            const id = (index + 1024).toString(16).padStart(64, "0");
-            const url = `https://images.example.com/reschedule-prepare-${String(index).padStart(3, "0")}.png`;
-            channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
-            const requestEvent = eventFor(proxyRequest(url, id));
-            initialEvents.push(requestEvent);
-            initialRequests.push(controller.handle(requestEvent.event));
-        }
-        await initialLimitsStarted;
-        releaseInitialLimits();
-        await finalStarted;
-        expect((await Promise.all(initialRequests)).every((response) =>
-            response.status === 200)).toBe(true);
-
-        repository.metadata.clear();
-        cache.entries.clear();
-        channels.clear();
-        const targetUrls: string[] = [];
-        for (let index = 0; index < 129; index += 1) {
-            const url = `https://images.example.com/reschedule-active-${String(index).padStart(3, "0")}.png`;
-            repository.metadata.set(url, attemptMetadata({
-                url,
-                lastAttemptAt: options.now,
-                lastAccessedAt: options.now,
-            }));
-            targetUrls.push(url);
-        }
-
         type ControllerInternals = {
-            retainActiveUrl: (url: string) => void;
-            releaseActiveUrl: (
-                url: string,
-                registerBackground: (promise: Promise<unknown>) => void,
-            ) => void;
+            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
             pendingFinalLimitCleanupCache: Cache | null;
         };
+        type RegisterBackground = (promise: Promise<unknown>) => void;
         const internals = controller as unknown as ControllerInternals;
-        for (const url of targetUrls) internals.retainActiveUrl(url);
-        const releaseBackground: Promise<unknown>[] = [];
-        let pendingCache: Cache | null = internals.pendingFinalLimitCleanupCache;
-        let releaseQueued = false;
-        Object.defineProperty(internals, "pendingFinalLimitCleanupCache", {
-            configurable: true,
-            get: () => pendingCache,
-            set: (value: Cache | null) => {
-                pendingCache = value;
-                if (value && !releaseQueued) {
-                    releaseQueued = true;
-                    // cleanupがpendingを戻してループを抜けた後、finallyより先にactiveを解除する。
-                    // release側では既存cleanupが残っているため、ここでは再cleanupを開始できない。
-                    queueMicrotask(() => {
-                        for (const targetUrl of targetUrls) {
-                            internals.releaseActiveUrl(
-                                targetUrl,
-                                (promise) => releaseBackground.push(promise),
-                            );
-                        }
-                    });
-                }
-            },
+        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
+        const initialBackground: Promise<unknown>[] = [];
+        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
+            initialBackground.push(promise);
         });
+        await cleanupStarted;
 
-        releaseFinalGetAll();
-        const firstCleanup = initialEvents.flatMap(
-            (requestEvent) => requestEvent.background,
-        )[0];
-        await firstCleanup;
-        expect(releaseBackground).toHaveLength(1);
-        const initialBackground = initialEvents.flatMap(
-            (requestEvent) => requestEvent.background,
-        );
-        expect(initialBackground).toHaveLength(1);
-        await Promise.all(releaseBackground);
+        const requestEvent = eventFor(proxyRequest(requestUrl, requestId));
+        expect((await controller.handle(requestEvent.event)).status).toBe(200);
+        expect(requestEvent.background).toHaveLength(2);
+        const backgroundCountBeforeInactive = requestEvent.background.length;
+        requestEvent.deactivate();
+        try {
+            requestEvent.event.waitUntil(Promise.resolve());
+        } catch (error) {
+            expect((error as Error).name).toBe("InvalidStateError");
+        }
+
+        releaseCleanup();
+        await initialBackground[0];
+        expect(requestEvent.background).toHaveLength(backgroundCountBeforeInactive);
+        await Promise.all(requestEvent.background);
 
         expect(repository.metadata.size).toBeLessThanOrEqual(128);
-        expect(getAllCount).toBe(131);
+        expect(getAllCount).toBe(2);
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image final cache limit enforcement failed",
+            expect.any(Error),
+        );
+        expect(logger.error).toHaveBeenCalledTimes(1);
     });
 
-    it("final cleanup失敗直後の外部reschedule要求をrelease側eventへ登録する", async () => {
+    it("pendingがnullでもrelease側eventへbridgeを即時登録しcleanup失敗後に再実行する", async () => {
         const { controller, repository, cache, logger } = setup({ now: 1 });
-        for (let index = 0; index < 129; index += 1) {
-            const url = `https://images.example.com/failed-reschedule-${String(index).padStart(3, "0")}.png`;
-            repository.metadata.set(url, attemptMetadata({
-                url,
-                lastAccessedAt: index,
-            }));
-        }
+        seedLimitEntries(repository, cache, "pending-null");
 
         let notifyCleanupStarted!: () => void;
         let releaseCleanup!: () => void;
@@ -1017,29 +1018,16 @@ describe("swChannelImageCacheUtils", () => {
             initialBackground.push(promise);
         });
         await cleanupStarted;
+        expect(internals.pendingFinalLimitCleanupCache).toBeNull();
 
-        const activeUrls = [
-            "https://images.example.com/release-a.png",
-            "https://images.example.com/release-b.png",
-        ];
-        for (const url of activeUrls) internals.retainActiveUrl(url);
-        let pendingCache: Cache | null = internals.pendingFinalLimitCleanupCache;
-        Object.defineProperty(internals, "pendingFinalLimitCleanupCache", {
-            configurable: true,
-            get: () => pendingCache,
-            set: (value: Cache | null) => {
-                pendingCache = value;
-                if (value) {
-                    queueMicrotask(() => {
-                        for (const url of activeUrls) {
-                            internals.releaseActiveUrl(url, (promise) => {
-                                releaseBackground.push(promise);
-                            });
-                        }
-                    });
-                }
-            },
+        const activeUrl = "https://images.example.com/release-a.png";
+        internals.retainActiveUrl(activeUrl);
+        const releaseEvent = eventFor();
+        internals.releaseActiveUrl(activeUrl, (promise) => {
+            releaseEvent.event.waitUntil(promise);
+            releaseBackground.push(promise);
         });
+        expect(releaseEvent.background).toHaveLength(1);
 
         releaseCleanup();
         expect(initialBackground).toHaveLength(1);
@@ -1049,6 +1037,69 @@ describe("swChannelImageCacheUtils", () => {
 
         expect(repository.metadata.size).toBeLessThanOrEqual(128);
         expect(getAllCount).toBe(2);
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image final cache limit enforcement failed",
+            expect.any(Error),
+        );
+        expect(logger.error).toHaveBeenCalledTimes(1);
+    });
+
+    it("複数active解除でもbridge Promiseの登録とcleanup再実行を1回にdedupeする", async () => {
+        const { controller, repository, cache, logger } = setup({ now: 1 });
+        seedLimitEntries(repository, cache, "bridge-dedupe");
+
+        let notifyCleanupStarted!: () => void;
+        let releaseCleanup!: () => void;
+        const cleanupStarted = new Promise<void>((resolve) => { notifyCleanupStarted = resolve; });
+        const cleanupGate = new Promise<void>((resolve) => { releaseCleanup = resolve; });
+        let getAllCount = 0;
+        repository.getAll.mockImplementation(async () => {
+            getAllCount += 1;
+            if (getAllCount === 1) {
+                notifyCleanupStarted();
+                await cleanupGate;
+                throw new Error("final cleanup failed");
+            }
+            return Array.from(repository.metadata.values());
+        });
+
+        type RegisterBackground = (promise: Promise<unknown>) => void;
+        type ControllerInternals = {
+            retainActiveUrl: (url: string) => void;
+            releaseActiveUrl: (url: string, registerBackground: RegisterBackground) => void;
+            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
+            pendingFinalLimitCleanupCache: Cache | null;
+        };
+        const internals = controller as unknown as ControllerInternals;
+        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
+        const initialBackground: Promise<unknown>[] = [];
+        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
+            initialBackground.push(promise);
+        });
+        await cleanupStarted;
+
+        const activeUrls = [
+            "https://images.example.com/dedupe-a.png",
+            "https://images.example.com/dedupe-b.png",
+            "https://images.example.com/dedupe-c.png",
+        ];
+        const releaseEvents = activeUrls.map(() => eventFor());
+        for (const url of activeUrls) internals.retainActiveUrl(url);
+        activeUrls.forEach((url, index) => {
+            internals.releaseActiveUrl(url, (promise) => {
+                releaseEvents[index].event.waitUntil(promise);
+            });
+        });
+        expect(releaseEvents.flatMap((event) => event.background)).toHaveLength(1);
+        expect(releaseEvents.reduce((count, event) =>
+            count + event.waitUntil.mock.calls.length, 0)).toBe(1);
+
+        releaseCleanup();
+        await initialBackground[0];
+        await Promise.all(releaseEvents.flatMap((event) => event.background));
+
+        expect(getAllCount).toBe(2);
+        expect(repository.metadata.size).toBeLessThanOrEqual(128);
         expect(logger.error).toHaveBeenCalledWith(
             "Channel image final cache limit enforcement failed",
             expect.any(Error),

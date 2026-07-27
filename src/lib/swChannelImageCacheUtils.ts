@@ -74,7 +74,8 @@ export class ChannelImageCacheController {
     private readonly evictionReservations = new Map<string, Promise<void>>();
     private pendingFinalLimitCleanupCache: Cache | null = null;
     private finalLimitCleanup: Promise<void> | null = null;
-    private finalLimitCleanupRescheduleRegistrar: RegisterBackground | null = null;
+    private finalLimitCleanupBridge: Promise<void> | null = null;
+    private finalLimitCleanupBridgeRequested = false;
 
     constructor(private readonly deps: ChannelImageCacheControllerDependencies) {
         this.now = deps.now ?? Date.now;
@@ -639,23 +640,69 @@ export class ChannelImageCacheController {
         registerBackground: RegisterBackground,
     ): void {
         if (this.finalLimitCleanup) {
-            if (
-                this.inFlight.size === 0
-                && this.activeUrls.size === 0
-                && this.pendingFinalLimitCleanupCache
-                && !this.finalLimitCleanupRescheduleRegistrar
-            ) {
-                this.finalLimitCleanupRescheduleRegistrar = registerBackground;
+            if (this.inFlight.size === 0 && this.activeUrls.size === 0) {
+                this.requestFinalLimitCleanupBridge(registerBackground);
             }
             return;
         }
-        const cleanup = this.startFinalLimitCleanupIfNeeded(registerBackground);
+        if (this.finalLimitCleanupBridge) {
+            if (this.inFlight.size === 0 && this.activeUrls.size === 0) {
+                this.finalLimitCleanupBridgeRequested = true;
+            }
+            return;
+        }
+        const cleanup = this.startFinalLimitCleanupIfNeeded();
         if (cleanup) registerBackground(cleanup);
     }
 
-    private startFinalLimitCleanupIfNeeded(
+    private requestFinalLimitCleanupBridge(
         registerBackground: RegisterBackground,
-    ): Promise<void> | null {
+    ): void {
+        this.finalLimitCleanupBridgeRequested = true;
+        if (this.finalLimitCleanupBridge) return;
+
+        const bridge = this.createFinalLimitCleanupBridge();
+        this.finalLimitCleanupBridge = bridge;
+        registerBackground(bridge);
+    }
+
+    private createFinalLimitCleanupBridge(): Promise<void> {
+        let bridge!: Promise<void>;
+        bridge = (async () => {
+            try {
+                while (true) {
+                    this.finalLimitCleanupBridgeRequested = false;
+
+                    const currentCleanup = this.finalLimitCleanup;
+                    if (currentCleanup) await currentCleanup;
+                    if (this.finalLimitCleanup) continue;
+
+                    if (this.inFlight.size !== 0 || this.activeUrls.size !== 0) {
+                        if (!this.finalLimitCleanupBridgeRequested) break;
+                        continue;
+                    }
+
+                    const cleanup = this.startFinalLimitCleanupIfNeeded();
+                    if (cleanup) {
+                        await cleanup;
+                        continue;
+                    }
+
+                    if (!this.finalLimitCleanupBridgeRequested) break;
+                }
+            } catch (error) {
+                this.logger.error("Channel image final cache cleanup bridge failed", error);
+            } finally {
+                if (this.finalLimitCleanupBridge === bridge) {
+                    this.finalLimitCleanupBridge = null;
+                    this.finalLimitCleanupBridgeRequested = false;
+                }
+            }
+        })();
+        return bridge;
+    }
+
+    private startFinalLimitCleanupIfNeeded(): Promise<void> | null {
         if (
             this.inFlight.size !== 0
             || this.activeUrls.size !== 0
@@ -663,7 +710,6 @@ export class ChannelImageCacheController {
             || this.finalLimitCleanup
         ) return null;
 
-        let failed = false;
         const cleanup = (async () => {
             while (
                 this.inFlight.size === 0
@@ -680,20 +726,12 @@ export class ChannelImageCacheController {
                     if (!this.pendingFinalLimitCleanupCache) {
                         this.pendingFinalLimitCleanupCache = cache;
                     }
-                    failed = true;
                     this.logger.error("Channel image final cache limit enforcement failed", error);
                     break;
                 }
             }
         })().finally(() => {
             if (this.finalLimitCleanup === cleanup) this.finalLimitCleanup = null;
-            const rescheduleRegistrar = this.finalLimitCleanupRescheduleRegistrar;
-            this.finalLimitCleanupRescheduleRegistrar = null;
-            if (rescheduleRegistrar) {
-                this.scheduleFinalLimitCleanupIfNeeded(rescheduleRegistrar);
-            } else if (!failed) {
-                this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
-            }
         });
         this.finalLimitCleanup = cleanup;
         return cleanup;
