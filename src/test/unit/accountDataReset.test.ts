@@ -71,6 +71,7 @@ describe("resetManagedAccountData", () => {
         expect(await Dexie.exists(EHAGAKI_DB_NAME)).toBe(false);
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-profile-images-v2");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-profile-images");
+        expect(caches.delete).toHaveBeenCalledWith("ehagaki-custom-emoji-images-v3");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-custom-emoji-images-v2");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-custom-emoji-images");
         expect(caches.delete).toHaveBeenCalledWith("ehagaki-channel-images-v1");

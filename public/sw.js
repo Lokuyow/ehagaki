@@ -76,12 +76,15 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.25.0';
+const SW_VERSION = '1.26.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
-const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
-const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
+const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v3';
+const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = [
+    'ehagaki-custom-emoji-images-v2',
+    'ehagaki-custom-emoji-images',
+];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = EHAGAKI_DB_NAME;
 const EHAGAKI_DB_OPEN_VERSION = EHAGAKI_DB_NATIVE_VERSION;
@@ -223,25 +226,6 @@ const Utilities = {
         return normalizeProfilePictureUrl(url, {
             currentOrigin: ServiceWorkerDependencies.location.origin
         });
-    },
-
-    async isCacheableCustomEmojiResponse(response) {
-        if (!response || !response.ok || response.type === 'opaque') return false;
-
-        const contentType = response.headers.get('Content-Type') || '';
-        if (!contentType.toLowerCase().startsWith('image/')) return false;
-
-        const contentLength = Number(response.headers.get('Content-Length'));
-        if (Number.isFinite(contentLength) && contentLength > CUSTOM_EMOJI_MAX_IMAGE_BYTES) {
-            return false;
-        }
-
-        try {
-            const blob = await response.clone().blob();
-            return blob.size <= CUSTOM_EMOJI_MAX_IMAGE_BYTES;
-        } catch {
-            return false;
-        }
     },
 
     // 共有メディアデータから FormData を抽出（複数メディア対応）
@@ -424,8 +408,7 @@ class CacheManager {
             fetchRequest: (request) => this.fetch(request),
             createRequest: Utilities.createCorsRequest,
             getBaseUrl: Utilities.getCustomEmojiBaseUrl,
-            isCacheableCustomEmojiResponse: (response) =>
-                Utilities.isCacheableCustomEmojiResponse(response),
+            maxImageBytes: CUSTOM_EMOJI_MAX_IMAGE_BYTES,
             cacheOpaqueImage: (cache, baseUrl) => this.cacheOpaqueCustomEmojiImage(cache, baseUrl),
             logger: this.console,
         });

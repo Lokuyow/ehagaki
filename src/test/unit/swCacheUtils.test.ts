@@ -13,20 +13,26 @@ describe('swCacheUtils', () => {
             [
                 'ehagaki-cache-1.2.0',
                 'ehagaki-profile-images',
+                'ehagaki-custom-emoji-images-v2',
                 'ehagaki-custom-emoji-images',
+                'ehagaki-custom-emoji-images-v3',
                 'ehagaki-profile-images-v2',
                 'workbox-precache-v2-example',
             ],
             {
                 legacyPrecachePrefix: 'ehagaki-cache-',
                 legacyProfileCacheNames: ['ehagaki-profile-images'],
-                legacyCustomEmojiCacheNames: ['ehagaki-custom-emoji-images'],
+                legacyCustomEmojiCacheNames: [
+                    'ehagaki-custom-emoji-images-v2',
+                    'ehagaki-custom-emoji-images',
+                ],
             },
         );
 
         expect(result).toEqual([
             'ehagaki-cache-1.2.0',
             'ehagaki-profile-images',
+            'ehagaki-custom-emoji-images-v2',
             'ehagaki-custom-emoji-images',
         ]);
     });

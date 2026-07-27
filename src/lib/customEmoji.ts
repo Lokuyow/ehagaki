@@ -663,10 +663,7 @@ export async function preloadCustomEmojiImage(
 
     const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
     try {
-        const cacheResult = await requestCache([url]);
-        if (cacheResult) {
-            return cacheResult.cached > 0 && cacheResult.failed === 0;
-        }
+        await requestCache([url]);
     } catch {
         // Fall through to a direct image load when SW communication is unavailable.
     }
@@ -684,14 +681,7 @@ export async function preloadCustomEmojiImageWithMeta(
 
     const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
     try {
-        const cacheResult = await requestCache([url]);
-        if (cacheResult) {
-            if (cacheResult.cached === 0 || cacheResult.failed > 0) {
-                return { ready: false };
-            }
-
-            return await loadCustomEmojiImageWithMeta(url, runtime.createImage);
-        }
+        await requestCache([url]);
     } catch {
         // Fall through to a direct image load when SW communication is unavailable.
     }

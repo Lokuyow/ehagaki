@@ -8,6 +8,7 @@ const PROFILE_CACHE_NAMES = [
 ] as const;
 
 const CUSTOM_EMOJI_CACHE_NAMES = [
+    "ehagaki-custom-emoji-images-v3",
     "ehagaki-custom-emoji-images-v2",
     "ehagaki-custom-emoji-images",
 ] as const;

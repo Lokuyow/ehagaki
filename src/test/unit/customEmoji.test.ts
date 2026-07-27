@@ -51,6 +51,34 @@ function emojiItem(
     return item;
 }
 
+function createTestImage({
+    succeeds,
+    width = 0,
+    height = 0,
+}: {
+    succeeds: boolean;
+    width?: number;
+    height?: number;
+}): HTMLImageElement {
+    const image = {
+        onload: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        decoding: 'auto',
+        naturalWidth: width,
+        naturalHeight: height,
+        set src(_value: string) {
+            queueMicrotask(() => {
+                if (succeeds) {
+                    image.onload?.();
+                } else {
+                    image.onerror?.();
+                }
+            });
+        },
+    };
+    return image as unknown as HTMLImageElement;
+}
+
 const emojiItems: CustomEmojiItem[] = [
     emojiItem('kubi', 'https://example.com/kubi.webp', { sortIndex: 0 }),
     emojiItem('kubi_spin', 'https://example.com/kubi-spin.webp', { sortIndex: 1 }),
@@ -404,6 +432,72 @@ describe('customEmoji', () => {
         await expect(
             preloadCustomEmojiImage('https://example.com/blobcat.webp', {
                 createImage: () => image,
+            }),
+        ).resolves.toBe(true);
+    });
+
+    it('returns true when direct loading succeeds even if the service worker cache result failed', async () => {
+        const requestCache = vi.fn().mockResolvedValue({
+            success: false,
+            cached: 0,
+            failed: 1,
+        });
+
+        await expect(
+            preloadCustomEmojiImage('https://example.com/online-only.webp', {
+                requestCache,
+                createImage: () => createTestImage({ succeeds: true }),
+            }),
+        ).resolves.toBe(true);
+        expect(requestCache).toHaveBeenCalledWith(['https://example.com/online-only.webp']);
+    });
+
+    it('returns dimensions when direct loading succeeds even if the service worker cache result failed', async () => {
+        await expect(
+            preloadCustomEmojiImageWithMeta('https://example.com/online-only.webp', {
+                requestCache: vi.fn().mockResolvedValue({
+                    success: false,
+                    cached: 0,
+                    failed: 1,
+                }),
+                createImage: () => createTestImage({ succeeds: true, width: 128, height: 64 }),
+            }),
+        ).resolves.toEqual({
+            ready: true,
+            width: 128,
+            height: 64,
+            aspectRatio: 2,
+        });
+    });
+
+    it('fails only when direct image loading also fails', async () => {
+        const requestCache = vi.fn().mockResolvedValue({
+            success: false,
+            cached: 0,
+            failed: 1,
+        });
+
+        await expect(
+            preloadCustomEmojiImage('https://example.com/unavailable.webp', {
+                requestCache,
+                createImage: () => createTestImage({ succeeds: false }),
+            }),
+        ).resolves.toBe(false);
+        await expect(
+            preloadCustomEmojiImageWithMeta('https://example.com/unavailable.webp', {
+                requestCache,
+                createImage: () => createTestImage({ succeeds: false }),
+            }),
+        ).resolves.toEqual({ ready: false });
+    });
+
+    it('continues to direct loading after a service worker communication timeout', async () => {
+        await expect(
+            preloadCustomEmojiImage('https://example.com/timeout.webp', {
+                requestCache: vi.fn().mockRejectedValue(
+                    new Error('ServiceWorker custom emoji cache request timed out'),
+                ),
+                createImage: () => createTestImage({ succeeds: true }),
             }),
         ).resolves.toBe(true);
     });
