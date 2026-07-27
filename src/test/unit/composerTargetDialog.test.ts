@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import {
+    fireEvent,
+    render,
+    screen,
+    within,
+} from "@testing-library/svelte";
 import { nip19 } from "nostr-tools";
 import { readable } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,9 +36,26 @@ const translations: Record<string, string> = {
     "composerTarget.channelUnavailable": "チャンネルを確認できませんでした。",
     "composerTarget.preview": "イベントのプレビュー",
     "composerTarget.creator": "作成者",
+    "replyQuote.reply_label": "リプライ",
+    "replyQuote.quote_label": "引用",
     "postHistory.expand": "もっと見る",
     "postHistory.collapse": "折りたたむ",
     "postHistory.contextRetry": "再試行",
+    "postHistory.rawJson": "イベントJSONを表示",
+    "postHistory.rawJsonTitle": "イベントJSON",
+    "postHistory.rawJsonDescription": "投稿イベントのイベントJSONを表示します。",
+    "postHistory.broadcast": "ブロードキャスト",
+    "postHistory.broadcastSent": "ブロードキャストしました",
+    "postHistory.broadcastPartial": "一部のリレーへブロードキャストしました",
+    "postHistory.broadcastFailed": "ブロードキャストに失敗しました",
+    "postHistory.delete": "削除",
+    "postHistory.deleteRequestTitle": "削除リクエストを送信",
+    "postHistory.deleteRequestDescription": "この投稿の削除リクエストをリレーへ送信します。",
+    "postHistory.deleteRequestWarning": "削除はリレーへのリクエストであり、完全な削除は保証されません。",
+    "postHistory.deleteConfirm": "送信",
+    "postHistory.deleteCancel": "キャンセル",
+    "postHistory.deleteSending": "送信中",
+    "postHistory.deleteFailed": "削除リクエストの送信に失敗しました",
     "global.close": "閉じる",
 };
 
@@ -43,7 +65,35 @@ const customEmojiMock = vi.hoisted(() => ({
 
 vi.mock("svelte-i18n", () => ({
     _: readable((key: string) => translations[key] ?? key),
+    locale: readable("ja-JP"),
 }));
+
+const postActionMocks = vi.hoisted(() => ({
+    broadcast: vi.fn(),
+    requestDeletion: vi.fn(),
+}));
+
+vi.mock("../../lib/postBroadcastService", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../lib/postBroadcastService")
+    >("../../lib/postBroadcastService");
+    return {
+        ...actual,
+        postBroadcastService: { broadcast: postActionMocks.broadcast },
+    };
+});
+
+vi.mock("../../lib/postDeletionService", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../lib/postDeletionService")
+    >("../../lib/postDeletionService");
+    return {
+        ...actual,
+        postDeletionService: {
+            requestDeletion: postActionMocks.requestDeletion,
+        },
+    };
+});
 
 vi.mock("../../lib/customEmoji", async () => {
     const actual = await vi.importActual<typeof import("../../lib/customEmoji")>(
@@ -130,6 +180,13 @@ async function enterNote(): Promise<void> {
     await vi.runAllTicks();
 }
 
+async function openActionMenu(): Promise<void> {
+    await fireEvent.click(
+        screen.getByRole("button", { name: "アクションを表示" }),
+    );
+    await vi.runAllTicks();
+}
+
 describe("ComposerTargetDialog", () => {
     it("verified channel pictureを共通proxy componentで表示する", async () => {
         const original = navigator.serviceWorker;
@@ -163,6 +220,14 @@ describe("ComposerTargetDialog", () => {
 
     beforeEach(() => {
         vi.useFakeTimers();
+        postActionMocks.broadcast.mockReset();
+        postActionMocks.requestDeletion.mockReset();
+        postActionMocks.broadcast.mockResolvedValue({ success: true });
+        postActionMocks.requestDeletion.mockResolvedValue({
+            success: true,
+            deletedAt: 1,
+            deletionEventId: "9".repeat(64),
+        });
         customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
             ready: true,
             width: 60,
@@ -193,15 +258,15 @@ describe("ComposerTargetDialog", () => {
         await vi.runAllTicks();
         expect(document.activeElement).toBe(screen.getByLabelText("Nostrイベント"));
         await enterNote();
-        expect(screen.getByRole("button", { name: "返信する" })).not.toBeNull();
-        expect(screen.getByRole("button", { name: "引用する" })).not.toBeNull();
+        expect(screen.getByRole("button", { name: "リプライ" })).not.toBeNull();
+        expect(screen.getByRole("button", { name: "引用" })).not.toBeNull();
         expect(onApply).not.toHaveBeenCalled();
     });
 
     it.each([
-        [1, ["返信する", "引用する"]],
+        [1, ["リプライ", "引用"]],
         [40, ["投稿する"]],
-        [42, ["返信する", "引用する"]],
+        [42, ["リプライ", "引用"]],
     ] as const)("kind %iに対応する操作だけを表示する", async (kind, labels) => {
         render(ComposerTargetDialog, {
             show: true,
@@ -219,7 +284,7 @@ describe("ComposerTargetDialog", () => {
             expect(screen.getByRole("button", { name: label })).not.toBeNull();
         }
         expect(screen.queryAllByRole("button", {
-            name: /^(返信する|引用する|投稿する)$/,
+            name: /^(リプライ|引用|投稿する)$/,
         })).toHaveLength(labels.length);
     });
 
@@ -295,7 +360,7 @@ describe("ComposerTargetDialog", () => {
             target: resolvedTarget(1),
         });
         await vi.runAllTicks();
-        expect(screen.queryByRole("button", { name: "返信する" }))
+        expect(screen.queryByRole("button", { name: "リプライ" }))
             .toBeNull();
     });
 
@@ -677,6 +742,282 @@ describe("ComposerTargetDialog", () => {
             emojiUrl,
         );
         expect(screen.getByRole("img", { name: ":party:" })).toBeTruthy();
+    });
+
+    it("投稿履歴形式のフッターへ日時・返信・引用・限定メニューだけを表示する", async () => {
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1),
+            }),
+        });
+
+        await enterNote();
+
+        expect(document.querySelector(".target-actions")).toBeNull();
+        expect(document.querySelector(".target-preview-body")).toBeTruthy();
+        expect(document.querySelector(".post-preview-footer")).toBeTruthy();
+        expect(document.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "引用" })).toBeTruthy();
+
+        await openActionMenu();
+        expect(document.querySelector(".post-history-menu-timestamp")?.textContent)
+            .toBeTruthy();
+        expect(screen.getByRole("menuitem", { name: "イベントJSONを表示" }))
+            .toBeTruthy();
+        expect(screen.getByRole("menuitem", { name: "ブロードキャスト" }))
+            .toBeTruthy();
+        expect(screen.queryByText(/コピー/)).toBeNull();
+        expect(screen.queryByText(/返信を確認|返信を表示|返信を隠す/)).toBeNull();
+
+        await fireEvent.click(
+            screen.getByRole("menuitem", { name: "イベントJSONを表示" }),
+        );
+        await vi.runAllTicks();
+        const rawJsonDialog = screen.getByRole("dialog", {
+            name: "イベントJSON",
+        });
+        expect(rawJsonDialog.textContent).toContain('"content": "Preview body"');
+        expect(screen.getByRole("dialog", { name: "宛先を指定" })).toBeTruthy();
+    });
+
+    it("一時レコードはrelay由来を推測せずブロードキャストへ渡す", async () => {
+        const resolved = resolvedTarget(42);
+        resolved.relayHints = ["wss://input-and-fetch.example.com/"];
+        resolved.channelContext!.relayHints = ["wss://read-only.example.com/"];
+        resolved.channelContext!.channelRelays = ["wss://channel-write.example.com/"];
+        resolved.channelQuery!.relayHints = ["wss://query.example.com/"];
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target: resolved }),
+        });
+
+        await enterNote();
+        await openActionMenu();
+        await fireEvent.click(
+            screen.getByRole("menuitem", { name: "ブロードキャスト" }),
+        );
+        await vi.runAllTicks();
+
+        const post = postActionMocks.broadcast.mock.calls[0][0].post;
+        expect(post.createdAt).toBe(1);
+        expect(post.postedAt).toBe(1_000);
+        expect(post.relayHints).toEqual([
+            "wss://input-and-fetch.example.com/",
+        ]);
+        expect(post.acceptedRelays).toEqual([]);
+        expect("fetchedRelays" in post).toBe(false);
+        expect(post.channelRelayHints).toEqual([
+            "wss://channel-write.example.com/",
+        ]);
+        expect(post.rawEvent).toStrictEqual(resolved.event);
+    });
+
+    it("部分解決では日時だけを表示し、完全解決済み未対応kindではメニューだけを表示する", async () => {
+        const partial = resolvedTarget(1).event;
+        const { unmount } = render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "error",
+                reason: "network",
+                event: partial,
+                authorProfile: null,
+            }),
+        });
+
+        await enterNote();
+        expect(document.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "リプライ" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "引用" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "アクションを表示" }))
+            .toBeNull();
+
+        unmount();
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(7),
+            }),
+        });
+        await enterNote();
+        expect(screen.queryByRole("button", { name: /リプライ|引用|投稿する/ }))
+            .toBeNull();
+        expect(screen.getByRole("button", { name: "アクションを表示" }))
+            .toBeTruthy();
+    });
+
+    it("削除は自己投稿だけに表示し、キャンセル・送信中・失敗・再試行を扱う", async () => {
+        const target = resolvedTarget(1);
+        let resolveDeletion: ((value: { success: boolean }) => void) | undefined;
+        postActionMocks.requestDeletion.mockReturnValueOnce(
+            new Promise((resolve) => {
+                resolveDeletion = resolve;
+            }),
+        );
+        const onClose = vi.fn();
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose,
+            onApply: vi.fn(() => true),
+            pubkeyHex: target.event.pubkey,
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target }),
+        });
+
+        await enterNote();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+        let confirmDialog = screen.getByRole("alertdialog");
+        await fireEvent.click(within(confirmDialog).getByRole("button", {
+            name: "キャンセル",
+        }));
+        expect(postActionMocks.requestDeletion).not.toHaveBeenCalled();
+
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+        confirmDialog = screen.getByRole("alertdialog");
+        const confirmButton = within(confirmDialog).getByRole("button", {
+            name: "送信",
+        });
+        const confirmClick = fireEvent.click(confirmButton);
+        void fireEvent.click(confirmButton);
+        await vi.runAllTicks();
+        expect(postActionMocks.requestDeletion).toHaveBeenCalledTimes(1);
+        expect(
+            (within(confirmDialog).getByRole("button", {
+                name: "送信中",
+            }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+
+        resolveDeletion?.({ success: false });
+        await confirmClick;
+        await vi.runAllTicks();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole("alertdialog").getAttribute("data-state"))
+            .toBe("closed");
+        expect(screen.getByText("削除リクエストの送信に失敗しました"))
+            .toBeTruthy();
+
+        postActionMocks.requestDeletion.mockResolvedValueOnce({
+            success: true,
+            deletedAt: 2,
+            deletionEventId: "8".repeat(64),
+        });
+        await openActionMenu();
+        expect(
+            screen.getByRole("menuitem", { name: "削除" }).hasAttribute(
+                "data-disabled",
+            ),
+        ).toBe(false);
+        await fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+        await fireEvent.click(
+            within(screen.getByRole("alertdialog")).getByRole("button", {
+                name: "送信",
+            }),
+        );
+        await vi.runAllTicks();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("他人の投稿では削除を表示せず、入力変更後の古い送信結果を反映しない", async () => {
+        let resolveBroadcast: ((value: { success: boolean }) => void) | undefined;
+        postActionMocks.broadcast.mockReturnValueOnce(
+            new Promise((resolve) => {
+                resolveBroadcast = resolve;
+            }),
+        );
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            pubkeyHex: "f".repeat(64),
+            rxNostr: {} as never,
+            resolver: createResolver({
+                status: "resolved",
+                target: resolvedTarget(1),
+            }),
+        });
+
+        await enterNote();
+        await openActionMenu();
+        expect(screen.queryByRole("menuitem", { name: "削除" })).toBeNull();
+        void fireEvent.click(
+            screen.getByRole("menuitem", { name: "ブロードキャスト" }),
+        );
+        await fireEvent.input(screen.getByLabelText("Nostrイベント"), {
+            target: { value: nip19.noteEncode("5".repeat(64)) },
+        });
+        await vi.advanceTimersByTimeAsync(250);
+        resolveBroadcast?.({ success: false });
+        await vi.runAllTicks();
+
+        expect(screen.queryByText("ブロードキャストに失敗しました")).toBeNull();
+        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
+    });
+
+    it("入力変更後に完了した古い削除結果では親ダイアログを閉じない", async () => {
+        const target = resolvedTarget(1);
+        let resolveDeletion:
+            | ((value: {
+                  success: boolean;
+                  deletedAt: number;
+                  deletionEventId: string;
+              }) => void)
+            | undefined;
+        postActionMocks.requestDeletion.mockReturnValueOnce(
+            new Promise((resolve) => {
+                resolveDeletion = resolve;
+            }),
+        );
+        const onClose = vi.fn();
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose,
+            onApply: vi.fn(() => true),
+            pubkeyHex: target.event.pubkey,
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target }),
+        });
+
+        await enterNote();
+        await openActionMenu();
+        await fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
+        const confirmClick = fireEvent.click(
+            within(screen.getByRole("alertdialog")).getByRole("button", {
+                name: "送信",
+            }),
+        );
+        await fireEvent.input(screen.getByLabelText("Nostrイベント"), {
+            target: { value: nip19.noteEncode("6".repeat(64)) },
+        });
+        await vi.advanceTimersByTimeAsync(250);
+        resolveDeletion?.({
+            success: true,
+            deletedAt: 2,
+            deletionEventId: "8".repeat(64),
+        });
+        await confirmClick;
+        await vi.runAllTicks();
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.queryByText("削除リクエストの送信に失敗しました"))
+            .toBeNull();
+        expect(screen.getByRole("button", { name: "リプライ" })).toBeTruthy();
     });
 
     it("通信失敗は再試行でき、閉じる時に進行中taskと入力を破棄する", async () => {

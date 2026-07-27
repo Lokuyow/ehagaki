@@ -47,7 +47,7 @@ async function openDialog(page: Page): Promise<void> {
 async function choose(
     page: Page,
     value: string,
-    action: "返信する" | "引用する" | "投稿する",
+    action: "リプライ" | "引用" | "投稿する",
 ): Promise<void> {
     await page.getByLabel("イベントID").fill(value);
     await page.getByRole("button", { name: action }).click();
@@ -61,11 +61,11 @@ test.describe("composer target dialog fixture", () => {
         await expect(headerButtons.last()).toHaveAttribute("aria-label", "宛先を指定");
 
         const cases = [
-            [harness.inputs.kind1, "返信する"],
-            [harness.inputs.kind1, "引用する"],
+            [harness.inputs.kind1, "リプライ"],
+            [harness.inputs.kind1, "引用"],
             [harness.inputs.kind40, "投稿する"],
-            [harness.inputs.kind42, "返信する"],
-            [harness.inputs.kind42, "引用する"],
+            [harness.inputs.kind42, "リプライ"],
+            [harness.inputs.kind42, "引用"],
         ] as const;
         for (const [input, action] of cases) {
             await openDialog(page);
@@ -94,7 +94,89 @@ test.describe("composer target dialog fixture", () => {
         await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
         await page.waitForTimeout(750);
         await expect(page.getByRole("button", { name: "投稿する" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "返信する" })).toBeHidden();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeHidden();
+    });
+
+    test("フッターメニューからJSON子ダイアログを開閉して親を維持する", async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
+
+        await expect(page.locator(".post-preview-date")).not.toBeEmpty();
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "引用" })).toBeVisible();
+        await page.getByRole("button", { name: "アクションを表示" }).click();
+        await expect(page.getByRole("menuitem", { name: "イベントJSONを表示" }))
+            .toBeVisible();
+        await expect(page.getByRole("menuitem", { name: /コピー/ })).toHaveCount(0);
+        await page.getByRole("menuitem", { name: "イベントJSONを表示" }).click();
+
+        const rawJsonDialog = page.getByRole("dialog", { name: "イベントJSON" });
+        await expect(rawJsonDialog).toBeVisible();
+        await expect(rawJsonDialog).toContainText('"kind": 1');
+        await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
+        await rawJsonDialog.getByRole("button", { name: "閉じる" }).click();
+        await expect(rawJsonDialog).toBeHidden();
+        await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
+    });
+
+    test("desktopと代表mobile幅でフッターの3領域が重ならずカード内に収まる", async ({
+        page,
+    }, testInfo) => {
+        const harness = await gotoHarness(page);
+        const width = testInfo.project.name === "desktop-chromium" ? 900 : 320;
+        await page.setViewportSize({ width, height: 720 });
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
+        await expect(page.getByRole("button", { name: "リプライ" })).toBeVisible();
+
+        const geometry = await page.locator(".target-preview").evaluate((card) => {
+            const footer = card.querySelector<HTMLElement>(".post-preview-footer")!;
+            const date = card.querySelector<HTMLElement>(".post-preview-date")!;
+            const actions = card.querySelector<HTMLElement>(
+                ".post-preview-action-buttons-group",
+            )!;
+            const menu = card.querySelector<HTMLElement>(
+                ".post-history-menu-trigger",
+            )!;
+            const dialog = card.closest<HTMLElement>("[role='dialog']")!;
+            const toRect = (element: Element) => {
+                const rect = element.getBoundingClientRect();
+                return {
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                };
+            };
+            return {
+                card: toRect(card),
+                footer: toRect(footer),
+                date: toRect(date),
+                actions: toRect(actions),
+                menu: toRect(menu),
+                dialog: toRect(dialog),
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+                horizontalOverflow:
+                    document.documentElement.scrollWidth -
+                    document.documentElement.clientWidth,
+            };
+        });
+
+        expect(geometry.footer.left).toBeGreaterThanOrEqual(geometry.card.left);
+        expect(geometry.footer.right).toBeLessThanOrEqual(geometry.card.right);
+        expect(geometry.horizontalOverflow).toBeLessThanOrEqual(0);
+        expect(geometry.date.right).toBeLessThanOrEqual(geometry.actions.left);
+        expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
+        expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
+        expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.dialog.bottom).toBeLessThanOrEqual(
+            geometry.viewportHeight,
+        );
     });
 
     test("320pxと375pxで横方向にはみ出さない", async ({ page }, testInfo) => {

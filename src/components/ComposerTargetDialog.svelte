@@ -1,13 +1,19 @@
 <script lang="ts">
-    import { _ } from "svelte-i18n";
+    import { onDestroy } from "svelte";
+    import { _, locale } from "svelte-i18n";
     import { nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
-    import { Dialog } from "bits-ui";
+    import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
+    import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
+    import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
+    import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import ChannelPicture from "./ChannelPicture.svelte";
@@ -29,10 +35,29 @@
         type ComposerTargetPointer,
     } from "../lib/composerTargetUtils";
     import type { RelayProfileService } from "../lib/relayProfileService";
-    import type { FullscreenMediaItem, RelayConfig } from "../lib/types";
+    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+    import type {
+        FullscreenMediaItem,
+        PostResult,
+        RelayConfig,
+    } from "../lib/types";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import { usePostContentEmojiState } from "../lib/hooks/usePostContentEmojiState.svelte";
+    import { usePostHistoryPostActionUiController } from "../lib/hooks/usePostHistoryPostActionUiController.svelte";
     import { buildPostContentRenderModel } from "../lib/postContentPreview";
+    import {
+        canRequestPostDeletion,
+        postDeletionService,
+    } from "../lib/postDeletionService";
+    import {
+        postBroadcastService,
+        resolveBroadcastEvent,
+    } from "../lib/postBroadcastService";
+    import {
+        formatPostedAt,
+        formatPostedAtExact,
+    } from "../lib/postHistoryDialogUtils";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
@@ -67,6 +92,7 @@
         relayConfig?: RelayConfig | null;
         profileService?: Pick<RelayProfileService, "fetchProfileRealtime">;
         resolver?: ComposerTargetResolver;
+        pubkeyHex?: string | null;
     }
 
     let {
@@ -77,6 +103,7 @@
         relayConfig = null,
         profileService = undefined,
         resolver = createComposerTargetResolver(),
+        pubkeyHex = null,
     }: Props = $props();
 
     let inputValue = $state("");
@@ -95,8 +122,30 @@
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
+    const postActionUi =
+        usePostHistoryPostActionUiController<PostHistoryRecord>();
+    let rawJsonDialogOpen = $state(false);
+    let selectedRawEvent = $state<unknown>(null);
+    let broadcastRequestState = $state<"sending" | undefined>(undefined);
+    let deleteRequestState = $state<"sending" | "failed" | undefined>(
+        undefined,
+    );
+    let showBroadcastFloatingMessage = $state(false);
+    let broadcastFloatingMessageX = $state(0);
+    let broadcastFloatingMessageY = $state(0);
+    let broadcastFloatingMessageKey = $state<
+        | "postHistory.broadcastSent"
+        | "postHistory.broadcastPartial"
+        | "postHistory.broadcastFailed"
+    >("postHistory.broadcastSent");
+    let broadcastFloatingMessageTimeout:
+        | ReturnType<typeof setTimeout>
+        | undefined;
+    let lastBroadcastPointerPosition = $state<
+        { eventId: string; x: number; y: number } | undefined
+    >(undefined);
 
-    let actions = $derived(
+    let targetActions = $derived(
         target
             ? getComposerTargetActions(
                   target.event.kind,
@@ -105,6 +154,18 @@
             : [],
     );
     let previewEvent = $derived(target?.event ?? partialEvent);
+    let previewPostedAt = $derived(
+        previewEvent ? previewEvent.created_at * 1000 : 0,
+    );
+    let targetPost = $derived.by(() =>
+        target ? buildTargetPostHistoryRecord(target) : null,
+    );
+    let canBroadcastTargetPost = $derived(
+        targetPost ? resolveBroadcastEvent(targetPost) !== null : false,
+    );
+    let canDeleteTargetPost = $derived(
+        targetPost ? canRequestPostDeletion(targetPost, pubkeyHex) : false,
+    );
     let authorProfile = $derived(target?.authorProfile ?? partialAuthorProfile);
     let authorDisplay = $derived.by(() => {
         const pubkey = previewEvent?.pubkey;
@@ -246,6 +307,24 @@
         activeTask = null;
     }
 
+    function hideBroadcastFloatingMessage(): void {
+        if (broadcastFloatingMessageTimeout !== undefined) {
+            clearTimeout(broadcastFloatingMessageTimeout);
+            broadcastFloatingMessageTimeout = undefined;
+        }
+        showBroadcastFloatingMessage = false;
+        lastBroadcastPointerPosition = undefined;
+    }
+
+    function resetTargetActionUiState(): void {
+        postActionUi.reset();
+        rawJsonDialogOpen = false;
+        selectedRawEvent = null;
+        broadcastRequestState = undefined;
+        deleteRequestState = undefined;
+        hideBroadcastFloatingMessage();
+    }
+
     function resetState(): void {
         generation += 1;
         clearAsyncWork();
@@ -256,6 +335,7 @@
         partialEvent = null;
         partialAuthorProfile = null;
         retryRevision = 0;
+        resetTargetActionUiState();
         emojiState.resetState();
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -347,6 +427,158 @@
         if (applied) handleClose();
     }
 
+    function buildTargetPostHistoryRecord(
+        resolvedTarget: ComposerResolvedTarget,
+    ): PostHistoryRecord {
+        const event = resolvedTarget.event;
+        const now = Date.now();
+        const channelRelayHints =
+            event.kind === 42 &&
+            resolvedTarget.channelContext?.channelRelays?.length
+                ? [...resolvedTarget.channelContext.channelRelays]
+                : undefined;
+
+        return {
+            id: event.id,
+            eventId: event.id,
+            pubkeyHex: event.pubkey,
+            kind: event.kind,
+            content: event.content,
+            tags: event.tags.map((tag) => [...tag]),
+            createdAt: event.created_at,
+            postedAt: event.created_at * 1000,
+            relayHints: [...resolvedTarget.relayHints],
+            acceptedRelays: [],
+            media: [],
+            rawEvent: event,
+            ...(channelRelayHints ? { channelRelayHints } : {}),
+            updatedAt: now,
+            schemaVersion: 1,
+        };
+    }
+
+    function setTargetMenuOpen(eventId: string, open: boolean): void {
+        if (open) postActionUi.closeAllPostItemMenus();
+        postActionUi.setPostMenuOpen(eventId, open);
+    }
+
+    function openRawJson(rawEvent: unknown): void {
+        postActionUi.closeAllPostItemMenus();
+        selectedRawEvent = rawEvent;
+        rawJsonDialogOpen = true;
+    }
+
+    function captureBroadcastPointerPosition(
+        post: PostHistoryRecord,
+        event: PointerEvent,
+    ): void {
+        lastBroadcastPointerPosition = {
+            eventId: post.eventId,
+            ...calculateContextMenuPosition(event.clientX, event.clientY),
+        };
+    }
+
+    function getBroadcastFloatingMessagePosition(
+        post: PostHistoryRecord,
+        event: Event,
+    ): { x: number; y: number } {
+        if (lastBroadcastPointerPosition?.eventId === post.eventId) {
+            return {
+                x: lastBroadcastPointerPosition.x,
+                y: lastBroadcastPointerPosition.y,
+            };
+        }
+
+        const targetElement = event.currentTarget;
+        const rect =
+            targetElement instanceof HTMLElement
+                ? targetElement.getBoundingClientRect()
+                : null;
+        return calculateContextMenuPosition(
+            rect ? rect.left + rect.width / 2 : 0,
+            rect ? rect.bottom + 8 : 0,
+        );
+    }
+
+    function showBroadcastResultMessage(
+        position: { x: number; y: number },
+        result: PostResult,
+    ): void {
+        hideBroadcastFloatingMessage();
+        broadcastFloatingMessageX = position.x;
+        broadcastFloatingMessageY = position.y;
+        broadcastFloatingMessageKey = !result.success
+            ? "postHistory.broadcastFailed"
+            : (result.rejectedRelays?.length ?? 0) > 0 ||
+                (result.timedOutRelays?.length ?? 0) > 0
+              ? "postHistory.broadcastPartial"
+              : "postHistory.broadcastSent";
+        showBroadcastFloatingMessage = true;
+        broadcastFloatingMessageTimeout = setTimeout(() => {
+            showBroadcastFloatingMessage = false;
+            broadcastFloatingMessageTimeout = undefined;
+        }, 1800);
+    }
+
+    async function handleBroadcastPost(
+        post: PostHistoryRecord,
+        event: Event,
+    ): Promise<void> {
+        if (broadcastRequestState === "sending") return;
+
+        const startedGeneration = generation;
+        const startedEventId = post.eventId;
+        const messagePosition = getBroadcastFloatingMessagePosition(post, event);
+        broadcastRequestState = "sending";
+        const result = await postBroadcastService.broadcast({ post, rxNostr });
+        if (
+            generation !== startedGeneration ||
+            target?.event.id !== startedEventId
+        ) {
+            return;
+        }
+
+        broadcastRequestState = undefined;
+        showBroadcastResultMessage(messagePosition, result);
+    }
+
+    function openDeleteConfirm(post: PostHistoryRecord): void {
+        if (!canRequestPostDeletion(post, pubkeyHex)) return;
+        postActionUi.openDeleteConfirm(post);
+    }
+
+    function handleDeleteCancel(): void {
+        postActionUi.cancelDeleteConfirm();
+    }
+
+    async function handleDeleteConfirm(): Promise<void> {
+        const post = postActionUi.deleteTargetPost;
+        if (!post || deleteRequestState === "sending") return;
+
+        const startedGeneration = generation;
+        const startedEventId = post.eventId;
+        deleteRequestState = "sending";
+        const result = await postDeletionService.requestDeletion({
+            post,
+            rxNostr,
+        });
+        if (
+            generation !== startedGeneration ||
+            target?.event.id !== startedEventId
+        ) {
+            return;
+        }
+
+        postActionUi.setDeleteConfirmOpen(false);
+        if (result.success) {
+            deleteRequestState = undefined;
+            handleClose();
+            return;
+        }
+
+        deleteRequestState = "failed";
+    }
+
     function handleClose(): void {
         resetState();
         onClose();
@@ -407,6 +639,7 @@
         retryRevision;
         const runGeneration = ++generation;
         clearAsyncWork();
+        resetTargetActionUiState();
         target = null;
         partialEvent = null;
         partialAuthorProfile = null;
@@ -447,6 +680,12 @@
                 debounceId = undefined;
             }
         };
+    });
+
+    onDestroy(() => {
+        generation += 1;
+        clearAsyncWork();
+        hideBroadcastFloatingMessage();
     });
 </script>
 
@@ -506,7 +745,8 @@
                 class="target-preview"
                 aria-label={$_("composerTarget.preview")}
             >
-                <div class="event-author">
+                <div class="target-preview-body">
+                    <div class="event-author">
                     <ProfileAvatar
                         src={authorProfile?.picture ?? ""}
                         alt=""
@@ -517,8 +757,8 @@
                     />
                     <span>{authorDisplay}</span>
                     <span class="event-kind">kind {previewEvent.kind}</span>
-                </div>
-                <PostContentPreview
+                    </div>
+                    <PostContentPreview
                     model={previewRenderModel}
                     density="dialog"
                     emojiLoadStateByUrl={emojiState.emojiLoadStateByUrl}
@@ -553,10 +793,10 @@
                             />
                         {/if}
                     {/snippet}
-                </PostContentPreview>
+                    </PostContentPreview>
 
-                {#if target?.channelContext}
-                    <div class="channel-preview">
+                    {#if target?.channelContext}
+                        <div class="channel-preview">
                         {#if target.channelContext.picture}
                             <ChannelPicture
                                 eventId={target.channelContext.eventId}
@@ -585,8 +825,127 @@
                                 </span>
                             {/if}
                         </div>
-                    </div>
-                {/if}
+                        </div>
+                    {/if}
+
+                    {#if deleteRequestState === "failed" && target}
+                        <p class="delete-failed">
+                            {$_("postHistory.deleteFailed")}
+                        </p>
+                    {/if}
+                </div>
+
+                <PostHistoryPreviewFooter
+                    formattedDate={formatPostedAt(previewPostedAt)}
+                >
+                    {#snippet actions()}
+                        {#if target}
+                            <div class="post-preview-action-buttons-group">
+                                {#each targetActions as action}
+                                    <Button
+                                        type="button"
+                                        class="post-preview-action-button post-history-action-button"
+                                        ariaLabel={action === "reply"
+                                            ? $_("replyQuote.reply_label")
+                                            : action === "quote"
+                                              ? $_("replyQuote.quote_label")
+                                              : $_("composerTarget.post")}
+                                        contentLayout="icon"
+                                        shape="circle"
+                                        onClick={() => handleApply(action)}
+                                    >
+                                        <div
+                                            class={`${
+                                                action === "reply"
+                                                    ? "reply-icon"
+                                                    : action === "quote"
+                                                      ? "quote-icon"
+                                                      : "post-icon"
+                                            } svg-icon`}
+                                            aria-hidden="true"
+                                        ></div>
+                                    </Button>
+                                {/each}
+                            </div>
+                        {/if}
+                    {/snippet}
+                    {#snippet trailing()}
+                        {#if targetPost}
+                            {@const post = targetPost}
+                            <PostHistoryActionMenu
+                                open={postActionUi.isPostMenuOpen(
+                                    post.eventId,
+                                )}
+                                onOpenChange={(open) =>
+                                    setTargetMenuOpen(post.eventId, open)}
+                                triggerAriaLabel="アクションを表示"
+                                timestamp={formatPostedAtExact(
+                                    post.postedAt,
+                                    $locale,
+                                )}
+                            >
+                                {#snippet items()}
+                                    <DropdownMenu.Item
+                                        class="menu-action-button"
+                                        onSelect={() =>
+                                            openRawJson(post.rawEvent)}
+                                    >
+                                        <div
+                                            class="raw-json-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                        <span>{$_("postHistory.rawJson")}</span>
+                                    </DropdownMenu.Item>
+                                    {#if canBroadcastTargetPost}
+                                        <DropdownMenu.Item
+                                            class="menu-action-button"
+                                            disabled={broadcastRequestState ===
+                                                "sending"}
+                                            onpointerdown={(event) =>
+                                                captureBroadcastPointerPosition(
+                                                    post,
+                                                    event,
+                                                )}
+                                            onSelect={(event) =>
+                                                void handleBroadcastPost(
+                                                    post,
+                                                    event,
+                                                )}
+                                        >
+                                            <div
+                                                class="broadcast-icon svg-icon"
+                                                aria-hidden="true"
+                                            ></div>
+                                            <span>{$_("postHistory.broadcast")}</span>
+                                        </DropdownMenu.Item>
+                                    {/if}
+                                    {#if canDeleteTargetPost}
+                                        <DropdownMenu.Separator
+                                            class="post-history-menu-separator"
+                                        />
+                                        <DropdownMenu.Item
+                                            class="menu-action-button menu-action-button-danger"
+                                            disabled={deleteRequestState ===
+                                                "sending"}
+                                            onSelect={() =>
+                                                openDeleteConfirm(post)}
+                                        >
+                                            <div
+                                                class="trash-icon svg-icon"
+                                                aria-hidden="true"
+                                            ></div>
+                                            <span>
+                                                {deleteRequestState === "sending"
+                                                    ? $_("postHistory.deleteSending")
+                                                    : $_("postHistory.delete")}
+                                            </span>
+                                        </DropdownMenu.Item>
+                                    {/if}
+                                {/snippet}
+                            </PostHistoryActionMenu>
+                        {/if}
+                    {/snippet}
+                </PostHistoryPreviewFooter>
             </section>
         {/if}
 
@@ -596,32 +955,6 @@
             </p>
         {/if}
 
-        {#if actions.length > 0}
-            <div class="target-actions">
-                {#each actions as action}
-                    <Button
-                        variant="primary"
-                        contentLayout="iconText"
-                        onClick={() => handleApply(action)}
-                    >
-                        {#if action === "reply"}
-                            <div class="action-icon reply-icon svg-icon"></div>
-                        {:else if action === "quote"}
-                            <div class="action-icon quote-icon svg-icon"></div>
-                        {:else}
-                            <div class="action-icon post-icon svg-icon"></div>
-                        {/if}
-                        <span class="btn-text">
-                            {action === "reply"
-                                ? $_("composerTarget.reply")
-                                : action === "quote"
-                                  ? $_("composerTarget.quote")
-                                  : $_("composerTarget.post")}
-                        </span>
-                    </Button>
-                {/each}
-            </div>
-        {/if}
     </div>
 
     {#snippet footer()}
@@ -643,6 +976,39 @@
     {/snippet}
 </DialogWrapper>
 
+<PostHistoryRawJsonDialog
+    open={rawJsonDialogOpen}
+    rawEvent={selectedRawEvent}
+    onOpenChange={(open) => (rawJsonDialogOpen = open)}
+/>
+
+<ConfirmDialog
+    open={postActionUi.deleteConfirmOpen}
+    onOpenChange={postActionUi.setDeleteConfirmOpen}
+    title={$_("postHistory.deleteRequestTitle")}
+    description={$_("postHistory.deleteRequestDescription")}
+    confirmLabel={deleteRequestState === "sending"
+        ? $_("postHistory.deleteSending")
+        : $_("postHistory.deleteConfirm")}
+    cancelLabel={$_("postHistory.deleteCancel")}
+    confirmVariant="danger"
+    confirmDisabled={deleteRequestState === "sending"}
+    onConfirm={handleDeleteConfirm}
+    onCancel={handleDeleteCancel}
+    contentClass="post-history-delete-confirm"
+>
+    {#snippet children()}
+        <div class="delete-confirm-body">
+            <p class="delete-confirm-description">
+                {$_("postHistory.deleteRequestDescription")}
+            </p>
+            <p class="delete-confirm-warning">
+                {$_("postHistory.deleteRequestWarning")}
+            </p>
+        </div>
+    {/snippet}
+</ConfirmDialog>
+
 <ImageFullscreen
     bind:show={showImageFullscreen}
     src={fullscreenMediaItems[fullscreenIndex]?.src ?? ""}
@@ -652,6 +1018,14 @@
     currentIndex={fullscreenIndex}
     onNavigate={handleFullscreenNavigate}
 />
+
+<FloatingMessage
+    show={showBroadcastFloatingMessage}
+    x={broadcastFloatingMessageX}
+    y={broadcastFloatingMessageY}
+>
+    <div>{$_(broadcastFloatingMessageKey)}</div>
+</FloatingMessage>
 
 <style>
     .xmark-icon {
@@ -750,10 +1124,14 @@
 
     .target-preview {
         display: grid;
-        gap: 10px;
-        padding: 12px;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
+    }
+
+    .target-preview-body {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
     }
 
     .event-author {
@@ -830,26 +1208,48 @@
         overflow-wrap: anywhere;
     }
 
-    .target-actions {
+    .delete-failed {
+        margin: 0;
+        color: var(--danger);
+    }
+
+    .delete-confirm-body {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-end;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.5rem;
+        margin: 10px 0 30px;
+        margin-inline: auto;
+        text-align: start;
     }
 
-    :global(.target-actions .reply-icon) {
-        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 26px;
-        height: 26px;
+    .delete-confirm-description,
+    .delete-confirm-warning {
+        margin: 0;
+        line-height: 1.5;
     }
 
-    :global(.target-actions .quote-icon) {
-        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 30px;
-        height: 30px;
+    .delete-confirm-warning {
+        color: var(--text-light);
+        font-size: 0.875rem;
     }
 
-    :global(.target-actions .post-icon) {
+    :global(.target-preview .post-icon) {
         mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-history-menu-content .menu-action-button .raw-json-icon) {
+        mask-image: url("/icons/data_object_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .broadcast-icon) {
+        mask-image: url("/icons/cell_tower_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .trash-icon) {
+        mask-image: url("/icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
     }
 </style>

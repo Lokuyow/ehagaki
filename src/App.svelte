@@ -1900,6 +1900,7 @@
           {rxNostr}
           relayConfig={relayConfigStore.value}
           profileService={relayProfileService}
+          pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}

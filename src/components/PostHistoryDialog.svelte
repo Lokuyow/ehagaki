@@ -3495,21 +3495,12 @@
 
     }
 
-    :global(.post-preview-action-buttons-group) {
-        display: flex;
-        align-items: stretch;
-    }
-
     :global(.post-preview-footer-reaction-slot) {
         display: flex;
         align-items: stretch;
         justify-content: center;
         flex: 0 0 70px;
         min-width: 70px;
-    }
-
-    :global(:where(.post-preview-action-button)) {
-        position: relative;
     }
 
     :global(.post-preview-reactions-button) {
@@ -3732,19 +3723,6 @@
 
     .repair-icon {
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-    }
-
-    .reply-icon.svg-icon {
-        width: 20px;
-        height: 20px;
-        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        margin-top: 2px;
-    }
-
-    .quote-icon.svg-icon {
-        width: 24px;
-        height: 24px;
-        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.trash-icon) {

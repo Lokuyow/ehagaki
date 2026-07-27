@@ -122,4 +122,34 @@
         --btn-bg: var(--post-history-preview-footer-surface);
         background-color: var(--post-history-preview-footer-surface);
     }
+
+    :global(.post-preview-action-buttons-group) {
+        display: flex;
+        align-items: stretch;
+    }
+
+    :global(.post-preview-action-button) {
+        position: relative;
+    }
+
+    :global(.post-history-action-button) {
+        color: var(--btn-post-preview-action);
+    }
+
+    :global(.post-history-action-button .svg-icon) {
+        --svg: currentColor;
+    }
+
+    :global(.post-preview-footer .reply-icon.svg-icon) {
+        width: 20px;
+        height: 20px;
+        margin-top: 2px;
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.post-preview-footer .quote-icon.svg-icon) {
+        width: 24px;
+        height: 24px;
+        mask-image: url("/icons/format_quote_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
 </style>
