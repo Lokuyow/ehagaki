@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
     import { _, locale } from "svelte-i18n";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { nip19 } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import { Dialog, DropdownMenu } from "bits-ui";
@@ -584,6 +585,14 @@
         onClose();
     }
 
+    function handleClearInput(): void {
+        if (inputValue.trim().length === 0) {
+            return;
+        }
+        inputValue = "";
+        inputElement?.focus({ preventScroll: true });
+    }
+
     function handleOpenAutoFocus(event: Event): void {
         event.preventDefault();
         inputElement?.focus({ preventScroll: true });
@@ -705,16 +714,36 @@
         <label class="target-input-label" for="composer-target-input">
             {$_("composerTarget.inputLabel")}
         </label>
-        <input
-            id="composer-target-input"
-            bind:this={inputElement}
-            bind:value={inputValue}
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder={$_("composerTarget.placeholder")}
-        />
+        <div class="composer-target-input-shell">
+            <input
+                id="composer-target-input"
+                bind:this={inputElement}
+                bind:value={inputValue}
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder={$_("composerTarget.placeholder")}
+            />
+            {#if inputValue.trim().length > 0}
+                <Button
+                    type="button"
+                    className="composer-target-clear-button"
+                    variant="default"
+                    shape="square"
+                    contentLayout="icon"
+                    ariaLabel={$_("composerTarget.clearInput")}
+                    onClick={handleClearInput}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                >
+                    <div
+                        class="clear-input-icon svg-icon"
+                        aria-hidden="true"
+                    ></div>
+                </Button>
+            {/if}
+        </div>
 
         {#if statusText}
             <div
@@ -1106,14 +1135,56 @@
         font-weight: 600;
     }
 
+    .composer-target-input-shell {
+        position: relative;
+    }
+
     input {
         width: 100%;
-        min-height: 44px;
-        padding: 8px 10px;
+        min-height: 50px;
+        padding: 8px 49px 8px 10px;
         border: 1px solid var(--border);
         background: var(--bg-input);
         color: var(--text);
         font: inherit;
+    }
+
+    :global(.composer-target-clear-button) {
+        position: absolute;
+        inset-block: 50%;
+        inset-inline-end: 2px;
+        transform: translateY(-50%);
+        width: 46px;
+        height: 46px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        z-index: 1;
+    }
+
+    :global(.composer-target-clear-button:hover:not(:disabled)),
+    :global(.composer-target-clear-button:focus-visible) {
+        background-color: var(--button-hover-bg);
+        color: var(--button-hover-color);
+    }
+
+    :global(.composer-target-clear-button:focus-visible) {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+    }
+
+    :global(.composer-target-clear-button .svg-icon) {
+        --svg: currentColor;
+        width: 24px;
+        height: 24px;
+    }
+
+    .clear-input-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .target-status p,

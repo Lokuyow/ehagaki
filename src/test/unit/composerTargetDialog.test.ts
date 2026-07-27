@@ -33,6 +33,7 @@ const translations: Record<string, string> = {
     "composerTarget.invalidFormat": "有効なnoteまたはneventを入力してください。",
     "composerTarget.secretKey": "秘密鍵は入力できません。",
     "composerTarget.mismatch": "ヒントとイベントが一致しません。",
+    "composerTarget.clearInput": "入力内容を消去",
     "composerTarget.channelUnavailable": "チャンネルを確認できませんでした。",
     "composerTarget.preview": "イベントのプレビュー",
     "composerTarget.creator": "作成者",
@@ -239,6 +240,68 @@ describe("ComposerTargetDialog", () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    it("入力値が空のときクリアボタンを表示しない", () => {
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target: resolvedTarget(1) }),
+        });
+
+        expect(screen.queryByRole("button", { name: "入力内容を消去" })).toBeNull();
+    });
+
+    it("入力するとクリアボタンが表示され、押すと入力値が空になってフォーカスが戻る", async () => {
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose: vi.fn(),
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target: resolvedTarget(1) }),
+        });
+
+        const input = screen.getByLabelText("Nostrイベント");
+        await fireEvent.input(input, { target: { value: "note" } });
+
+        const clearButton = screen.getByRole("button", { name: "入力内容を消去" });
+        expect(clearButton).not.toBeNull();
+        expect(clearButton.getAttribute("type")).toBe("button");
+        expect(clearButton.querySelector(".clear-input-icon")).not.toBeNull();
+
+        await fireEvent.click(clearButton);
+
+        expect((input as HTMLInputElement).value).toBe("");
+        expect(document.activeElement).toBe(input);
+        expect(screen.queryByRole("button", { name: "入力内容を消去" })).toBeNull();
+    });
+
+    it("クリアするとプレビューとエラー表示が消え、ダイアログは閉じない", async () => {
+        const onClose = vi.fn();
+        render(ComposerTargetDialog, {
+            show: true,
+            onClose,
+            onApply: vi.fn(() => true),
+            rxNostr: {} as never,
+            resolver: createResolver({ status: "resolved", target: resolvedTarget(1) }),
+        });
+
+        const input = screen.getByLabelText("Nostrイベント");
+        await fireEvent.input(input, { target: { value: nip19.noteEncode("1".repeat(64)) } });
+        await vi.advanceTimersByTimeAsync(250);
+        await vi.runAllTicks();
+
+        expect(screen.getByRole("region", { name: "イベントのプレビュー" })).not.toBeNull();
+
+        await fireEvent.input(input, { target: { value: "invalid" } });
+        const clearButton = screen.getByRole("button", { name: "入力内容を消去" });
+        await fireEvent.click(clearButton);
+
+        expect(screen.queryByRole("region", { name: "イベントのプレビュー" })).toBeNull();
+        expect(screen.queryByText("入力形式が正しくありません")).toBeNull();
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it("開いた時に入力へフォーカスし、操作前はcomposer callbackを呼ばない", async () => {

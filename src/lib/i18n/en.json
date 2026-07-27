@@ -520,7 +520,8 @@
     "mismatch": "The event information does not match the input",
     "channelUnavailable": "Could not verify the public chat",
     "preview": "Target preview",
-    "creator": "Creator"
+    "creator": "Creator",
+    "clearInput": "Clear input"
   },
   "replyQuote": {
     "reply_label": "Reply",

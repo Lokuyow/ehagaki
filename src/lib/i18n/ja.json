@@ -520,7 +520,8 @@
     "mismatch": "イベントの情報が入力内容と一致しません",
     "channelUnavailable": "パブリックチャットを確認できませんでした",
     "preview": "宛先プレビュー",
-    "creator": "作成者"
+    "creator": "作成者",
+    "clearInput": "入力内容を消去"
   },
   "replyQuote": {
     "reply_label": "リプライ",
