@@ -14,6 +14,7 @@ import type {
 } from "../../lib/composerTargetResolver";
 
 const translations: Record<string, string> = {
+    "common.showActions": "アクションを表示",
     "composerTarget.title": "宛先を指定",
     "composerTarget.description": "Nostrイベントを指定します。",
     "composerTarget.inputLabel": "Nostrイベント",

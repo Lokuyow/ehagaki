@@ -53,7 +53,10 @@
                     {/snippet}
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                    <Tooltip.Content
+                        sideOffset={8}
+                        class="tooltip-content post-preview-tooltip-content"
+                    >
                         {tooltipContent}
                     </Tooltip.Content>
                 </Tooltip.Portal>

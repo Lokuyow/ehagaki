@@ -38,10 +38,13 @@ async function gotoHarness(page: Page): Promise<HarnessState> {
     );
 }
 
-async function openDialog(page: Page): Promise<void> {
-    await page.getByRole("button", { name: "宛先を指定" }).click();
+async function openDialog(page: Page, language: "ja" | "en" = "ja"): Promise<void> {
+    const labels = language === "en"
+        ? { title: "Choose target", input: "Event ID" }
+        : { title: "宛先を指定", input: "イベントID" };
+    await page.getByRole("button", { name: labels.title }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByLabel("イベントID")).toBeFocused();
+    await expect(page.getByLabel(labels.input)).toBeFocused();
 }
 
 async function choose(
@@ -52,6 +55,15 @@ async function choose(
     await page.getByLabel("イベントID").fill(value);
     await page.getByRole("button", { name: action }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
+}
+
+async function expectTooltip(
+    page: Page,
+    trigger: ReturnType<Page["locator"]>,
+    text: string,
+) {
+    await trigger.hover();
+    await expect(page.locator('.tooltip-content:visible')).toHaveText(text);
 }
 
 test.describe("composer target dialog fixture", () => {
@@ -120,6 +132,38 @@ test.describe("composer target dialog fixture", () => {
         await rawJsonDialog.getByRole("button", { name: "閉じる" }).click();
         await expect(rawJsonDialog).toBeHidden();
         await expect(page.getByRole("dialog", { name: "宛先を指定" })).toBeVisible();
+    });
+
+    test("宛先指定フッターの各操作とメニューにツールチップを表示する", async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        await openDialog(page);
+        await page.getByLabel("イベントID").fill(harness.inputs.kind1);
+
+        await expectTooltip(page, page.getByRole("button", { name: "リプライ" }), "リプライ");
+        await expectTooltip(page, page.getByRole("button", { name: "引用" }), "引用");
+        const menu = page.getByRole("button", { name: "アクションを表示" });
+        await menu.focus();
+        await expect(page.locator('.tooltip-content:visible').filter({ hasText: "アクションを表示" })).toHaveText("アクションを表示");
+        await expect(menu).not.toHaveAttribute("title");
+        await menu.click();
+        await expect(page.getByRole("menuitem", { name: "イベントJSONを表示" })).toBeVisible();
+        await expect(page.locator('.tooltip-content:visible')).toHaveCount(0);
+
+        await page.getByRole("menuitem", { name: "イベントJSONを表示" }).press("Escape");
+        await page.getByLabel("イベントID").fill(harness.inputs.kind40);
+        await expectTooltip(page, page.getByRole("button", { name: "投稿する" }), "投稿する");
+    });
+
+    test("英語ロケールのアクションメニューはShow actionsになる", async ({ page }) => {
+        await page.addInitScript(() => localStorage.setItem("locale", "en"));
+        const harness = await gotoHarness(page);
+        await openDialog(page, "en");
+        await page.getByLabel("Event ID").fill(harness.inputs.kind1);
+        const menu = page.getByRole("button", { name: "Show actions" });
+        await expect(menu).toHaveAttribute("aria-label", "Show actions");
+        await expectTooltip(page, menu, "Show actions");
     });
 
     test("desktopと代表mobile幅で投稿履歴型のフッター配置とsurfaceを維持する", async ({

@@ -8,7 +8,8 @@
   "common": {
     "ok": "OK",
     "cancel": "キャンセル",
-    "copySuccess": "コピーしました"
+    "copySuccess": "コピーしました",
+    "showActions": "アクションを表示"
   },
   "welcomeDialog": {
     "title": "eHagaki へようこそ",

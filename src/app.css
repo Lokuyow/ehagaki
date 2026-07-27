@@ -239,7 +239,7 @@ select {
   --tooltip-padding: 12px;
   --tooltip-font-size: 1rem;
   --tooltip-line-height: normal;
-  --tooltip-z-index: 10000;
+  --tooltip-z-index: 100;
   --tooltip-max-width: none;
 
   background: var(--dialog-bg);
@@ -251,6 +251,10 @@ select {
   line-height: var(--tooltip-line-height);
   z-index: var(--tooltip-z-index);
   max-width: var(--tooltip-max-width);
+}
+
+.post-preview-tooltip-content {
+  --tooltip-z-index: 102;
 }
 
 :root:is(.light, .dark) button.selected:where(:not(:disabled)),

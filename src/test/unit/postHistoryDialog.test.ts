@@ -108,6 +108,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'replyQuote.reply_label': 'リプライ',
         'replyQuote.quote_label': '引用',
         'common.cancel': 'キャンセル',
+        'common.showActions': 'アクションを表示',
         'global.close': '閉じる',
     };
 

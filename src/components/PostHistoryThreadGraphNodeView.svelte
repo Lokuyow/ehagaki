@@ -285,9 +285,10 @@
             {/snippet}
 
             {#snippet footerMenu()}
+                {@const actionsLabel = $_("common.showActions")}
                 <PostHistoryActionMenu
-                    triggerAriaLabel="アクションを表示"
-                    tooltipContent={$_("postHistory.openMenu") || "アクションを表示"}
+                    triggerAriaLabel={actionsLabel}
+                    tooltipContent={actionsLabel}
                     enableTooltip={true}
                     timestamp={postedAtExact}
                 >

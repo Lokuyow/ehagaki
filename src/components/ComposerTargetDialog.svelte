@@ -927,14 +927,15 @@
                     {#snippet trailing()}
                         {#if targetPost}
                             {@const post = targetPost}
+                            {@const actionsLabel = $_("common.showActions")}
                             <PostHistoryActionMenu
                                 open={postActionUi.isPostMenuOpen(
                                     post.eventId,
                                 )}
                                 onOpenChange={(open) =>
                                     setTargetMenuOpen(post.eventId, open)}
-                                triggerAriaLabel="アクションを表示"
-                                tooltipContent={$_("postHistory.openMenu") || "アクションを表示"}
+                                triggerAriaLabel={actionsLabel}
+                                tooltipContent={actionsLabel}
                                 enableTooltip={true}
                                 timestamp={formatPostedAtExact(
                                     post.postedAt,

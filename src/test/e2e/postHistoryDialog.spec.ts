@@ -168,6 +168,17 @@ async function expectNoHorizontalOverflow(
     expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
+async function expectTooltip(
+    page: Page,
+    trigger: ReturnType<Page['locator']>,
+    text: string,
+) {
+    await trigger.hover();
+    const tooltip = page.locator('.tooltip-content:visible').filter({ hasText: text });
+    await expect(tooltip).toHaveText(text);
+    return tooltip;
+}
+
 test.describe('PostHistoryDialog Playwright', () => {
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
@@ -297,6 +308,61 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(footerBox!.height).toBeLessThanOrEqual(29);
         expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
         expect(width.scrollWidth).toBeLessThanOrEqual(width.clientWidth + 1);
+    });
+
+    test('post preview footer tooltips show the user-facing labels and close on menu open', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const replyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        const reactionItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`,
+        );
+        const replyButton = replyItem.getByRole('button', { name: '返信 1件を表示' });
+        const quoteButton = replyItem.getByRole('button', { name: '引用' });
+        const reactionButton = reactionItem.getByRole('button', { name: 'リアクション 1件を表示' });
+        const menuButton = replyItem.getByRole('button', { name: 'アクションを表示' });
+
+        await expectTooltip(page, replyButton, '返信 1件を表示');
+        await expectTooltip(page, quoteButton, '引用');
+        await expectTooltip(page, reactionButton, 'リアクション 1件を表示');
+
+        await menuButton.focus();
+        await expect(page.locator('.tooltip-content:visible').filter({ hasText: 'アクションを表示' })).toHaveText('アクションを表示');
+        await expect(menuButton).toHaveAttribute('aria-label', 'アクションを表示');
+        await expect(menuButton).not.toHaveAttribute('title');
+
+        await menuButton.click();
+        await expect(page.getByRole('menuitem', { name: 'イベントJSONを表示' })).toBeVisible();
+        await expect(page.locator('.tooltip-content:visible')).toHaveCount(0);
+    });
+
+    test('related card menus have tooltips', async ({ page }) => {
+        const harness = await gotoHarness(page);
+        const quoteItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        await expectTooltip(
+            page,
+            quoteCard.getByRole('button', { name: 'アクションを表示' }),
+            'アクションを表示',
+        );
+
+        const replyItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
+        );
+        await replyItem.getByRole('button', { name: '返信 1件を表示' }).click();
+        const replyCard = replyItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.replyContent });
+        await expectTooltip(
+            page,
+            replyCard.getByRole('button', { name: 'アクションを表示' }),
+            'アクションを表示',
+        );
     });
 
     test('desktop reference links open natively without toggling their parent previews', async ({

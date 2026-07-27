@@ -2101,6 +2101,8 @@
                                                                         post.eventId,
                                                                         quotePreviewPost.eventId,
                                                                     )}
+                                                                {@const actionsLabel =
+                                                                    $_("common.showActions")}
                                                                 <PostHistoryActionMenu
                                                                     open={postActionUi.isPostMenuOpen(
                                                                         quotePreviewMenuKey,
@@ -2112,7 +2114,9 @@
                                                                             quotePreviewMenuKey,
                                                                             open,
                                                                         )}
-                                                                    triggerAriaLabel="アクションを表示"
+                                                                    triggerAriaLabel={actionsLabel}
+                                                                    tooltipContent={actionsLabel}
+                                                                    enableTooltip={true}
                                                                     timestamp={formatPostedAtExact(
                                                                         quotePreviewPost.postedAt,
                                                                         $locale,
@@ -2367,6 +2371,8 @@
                                                 </div>
                                             {/snippet}
                                             {#snippet trailing()}
+                                                {@const actionsLabel =
+                                                    $_("common.showActions")}
                                                 <PostHistoryActionMenu
                                                     open={postActionUi.isPostMenuOpen(
                                                         post.eventId,
@@ -2378,10 +2384,8 @@
                                                             post.eventId,
                                                             open,
                                                         )}
-                                                    triggerAriaLabel="アクションを表示"
-                                                    tooltipContent={$_(
-                                                        "postHistory.openMenu",
-                                                    ) || "アクションを表示"}
+                                                    triggerAriaLabel={actionsLabel}
+                                                    tooltipContent={actionsLabel}
                                                     enableTooltip={true}
                                                     timestamp={formatPostedAtExact(
                                                         post.postedAt,

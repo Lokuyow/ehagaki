@@ -8,7 +8,8 @@
   "common": {
     "ok": "OK",
     "cancel": "Cancel",
-    "copySuccess": "Copied"
+    "copySuccess": "Copied",
+    "showActions": "Show actions"
   },
   "welcomeDialog": {
     "title": "Welcome to eHagaki",

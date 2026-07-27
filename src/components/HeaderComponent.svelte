@@ -303,7 +303,7 @@
         --tooltip-padding: 12px;
         --tooltip-font-size: 1rem;
         --tooltip-line-height: normal;
-        --tooltip-z-index: 10000;
+        --tooltip-z-index: 100;
         --tooltip-max-width: none;
         font-weight: 600;
     }
