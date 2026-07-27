@@ -807,10 +807,6 @@
         gap: 4px;
     }
 
-    .notification-group {
-        gap: 4px;
-    }
-
     .sw-update-section {
         border-radius: 8px;
         background: rgba(var(--theme-rgb), 0.05);
