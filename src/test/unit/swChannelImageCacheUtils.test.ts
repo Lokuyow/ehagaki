@@ -48,7 +48,7 @@ class MemoryCache {
 class MemoryRepository implements ChannelImageMetaRepository {
     channel: ChannelMetadataRecord | null = verifiedChannel();
     readonly metadata = new Map<string, ChannelImageCacheMetaRecord>();
-    readonly getChannelMetadata = vi.fn(async () => this.channel);
+    readonly getChannelMetadata = vi.fn(async (_eventId: string) => this.channel);
     readonly get = vi.fn(async (url: string) => this.metadata.get(url) ?? null);
     readonly getAll = vi.fn(async () => Array.from(this.metadata.values()));
     readonly put = vi.fn(async (record: ChannelImageCacheMetaRecord) => {
@@ -64,6 +64,16 @@ class MemoryRepository implements ChannelImageMetaRepository {
         const current = this.metadata.get(url);
         if (current && attemptedAt > current.lastAttemptAt) {
             this.metadata.set(url, { ...current, lastAttemptAt: attemptedAt });
+        }
+    });
+    readonly markAttemptAndAccess = vi.fn(async (url: string, attemptedAt: number) => {
+        const current = this.metadata.get(url);
+        if (current) {
+            this.metadata.set(url, {
+                ...current,
+                lastAttemptAt: Math.max(current.lastAttemptAt, attemptedAt),
+                lastAccessedAt: Math.max(current.lastAccessedAt, attemptedAt),
+            });
         }
     });
     readonly delete = vi.fn(async (url: string) => {
@@ -104,6 +114,17 @@ function metadata(overrides: Partial<ChannelImageCacheMetaRecord> = {}): Channel
         schemaVersion: 1,
         ...overrides,
     };
+}
+
+function attemptMetadata(
+    overrides: Partial<ChannelImageCacheMetaRecord> = {},
+): ChannelImageCacheMetaRecord {
+    return metadata({
+        responseType: null,
+        verifiedSize: null,
+        fetchedAt: null,
+        ...overrides,
+    });
 }
 
 function proxyRequest(url = imageUrl, id = eventId): Request {
@@ -431,6 +452,95 @@ describe("swChannelImageCacheUtils", () => {
         expect(repository.metadata.get(imageUrl)?.lastAccessedAt).toBe(options.now);
     });
 
+    it("attempt-only metadataのネットワーク再試行時にattemptとaccessを同時更新する", async () => {
+        const options = {
+            now: CHANNEL_IMAGE_CACHE_RETRY_INTERVAL_MS + 10,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        };
+        const { controller, repository } = setup(options);
+        repository.metadata.set(imageUrl, attemptMetadata({
+            lastAttemptAt: 1,
+            lastAccessedAt: 2,
+        }));
+
+        expect((await controller.handle(eventFor().event)).status).toBe(502);
+        expect(repository.markAttemptAndAccess).toHaveBeenCalledWith(imageUrl, options.now);
+        expect(repository.metadata.get(imageUrl)).toMatchObject({
+            lastAttemptAt: options.now,
+            lastAccessedAt: options.now,
+            responseType: null,
+            fetchedAt: null,
+        });
+    });
+
+    it("attempt-onlyのretry抑制中は1時間throttleを満たすaccessだけ更新する", async () => {
+        const options = { now: CHANNEL_IMAGE_CACHE_ACCESS_TOUCH_INTERVAL_MS + 10 };
+        const { controller, repository, fetchRequest } = setup(options);
+        repository.metadata.set(imageUrl, attemptMetadata({
+            lastAttemptAt: options.now - 1,
+            lastAccessedAt: 1,
+        }));
+
+        const first = eventFor();
+        expect((await controller.handle(first.event)).status).toBe(502);
+        await Promise.all(first.background);
+        expect(fetchRequest).not.toHaveBeenCalled();
+        expect(repository.touchLastAccessedAt).toHaveBeenCalledTimes(1);
+        expect(repository.metadata.get(imageUrl)?.lastAccessedAt).toBe(options.now);
+
+        options.now += 100;
+        const second = eventFor();
+        expect((await controller.handle(second.event)).status).toBe(502);
+        await Promise.all(second.background);
+        expect(fetchRequest).not.toHaveBeenCalled();
+        expect(repository.touchLastAccessedAt).toHaveBeenCalledTimes(1);
+        expect(repository.metadata.get(imageUrl)?.lastAccessedAt)
+            .toBe(options.now - 100);
+    });
+
+    it("最近アクセスしたattempt-only metadataをLRUから守りretry抑制を維持する", async () => {
+        const activeUrl = "https://images.example.com/active-failure.png";
+        const newUrl = "https://images.example.com/new-failure.png";
+        const options = {
+            now: 2 * CHANNEL_IMAGE_CACHE_ACCESS_TOUCH_INTERVAL_MS,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        };
+        const { controller, repository, fetchRequest } = setup(options);
+        repository.channel = verifiedChannel({ picture: activeUrl });
+        repository.metadata.set(activeUrl, attemptMetadata({
+            url: activeUrl,
+            lastAttemptAt: options.now - 1,
+            lastAccessedAt: 1,
+        }));
+        for (let index = 0; index < 127; index += 1) {
+            const url = `https://images.example.com/unused-${String(index).padStart(3, "0")}.png`;
+            repository.metadata.set(url, attemptMetadata({
+                url,
+                lastAttemptAt: 1,
+                lastAccessedAt: index + 2,
+            }));
+        }
+
+        const access = eventFor(proxyRequest(activeUrl));
+        expect((await controller.handle(access.event)).status).toBe(502);
+        await Promise.all(access.background);
+        expect(fetchRequest).not.toHaveBeenCalled();
+
+        options.now += 1;
+        repository.channel = verifiedChannel({ picture: newUrl });
+        expect((await controller.handle(eventFor(proxyRequest(newUrl)).event)).status).toBe(502);
+        expect(repository.metadata.has(activeUrl)).toBe(true);
+        expect(repository.metadata.has(
+            "https://images.example.com/unused-000.png",
+        )).toBe(false);
+
+        repository.channel = verifiedChannel({ picture: activeUrl });
+        const fetchCount = fetchRequest.mock.calls.length;
+        expect((await controller.handle(eventFor(proxyRequest(activeUrl)).event)).status).toBe(502);
+        expect(fetchRequest).toHaveBeenCalledTimes(fetchCount);
+        expect(repository.metadata.has(activeUrl)).toBe(true);
+    });
+
     it("metadata保存失敗時は直前のCache entryをrollbackする", async () => {
         const { controller, repository, cache } = setup();
         repository.put.mockRejectedValue(new Error("idb failed"));
@@ -522,6 +632,50 @@ describe("swChannelImageCacheUtils", () => {
             "https://images.example.com/failure-128.png",
         )).toBe(true);
         expect(cache.put).not.toHaveBeenCalled();
+        expect(cache.entries.size).toBe(0);
+    });
+
+    it("129件が同時in-flightでも完了後の最終上限整理を1回だけ実行する", async () => {
+        const { controller, repository, cache } = setup({
+            now: 1,
+            fetchRequest: async () => { throw new TypeError("offline"); },
+        });
+        const channels = new Map<string, ChannelMetadataRecord>();
+        repository.getChannelMetadata.mockImplementation(async (id) =>
+            channels.get(id) ?? null);
+
+        let getAllStarted = 0;
+        let notifyAllStarted!: () => void;
+        let releaseGetAll!: () => void;
+        const allStarted = new Promise<void>((resolve) => { notifyAllStarted = resolve; });
+        const getAllGate = new Promise<void>((resolve) => { releaseGetAll = resolve; });
+        repository.getAll.mockImplementation(async () => {
+            getAllStarted += 1;
+            if (getAllStarted === 129) notifyAllStarted();
+            await getAllGate;
+            return Array.from(repository.metadata.values());
+        });
+
+        const requests: Promise<Response>[] = [];
+        for (let index = 0; index < 129; index += 1) {
+            const id = index.toString(16).padStart(64, "0");
+            const url = `https://images.example.com/concurrent-${String(index).padStart(3, "0")}.png`;
+            channels.set(id, verifiedChannel({ channelEventId: id, picture: url }));
+            requests.push(controller.handle(eventFor(proxyRequest(url, id)).event));
+        }
+
+        await allStarted;
+        expect(repository.metadata.size).toBe(129);
+        expect(cache.entries.size).toBe(0);
+        releaseGetAll();
+
+        const responses = await Promise.all(requests);
+        expect(responses.every((response) => response.status === 502)).toBe(true);
+        expect(repository.metadata.size).toBeLessThanOrEqual(128);
+        expect(repository.metadata.has(
+            "https://images.example.com/concurrent-000.png",
+        )).toBe(false);
+        expect(repository.getAll).toHaveBeenCalledTimes(130);
         expect(cache.entries.size).toBe(0);
     });
 

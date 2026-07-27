@@ -68,6 +68,8 @@ export class ChannelImageCacheController {
     private readonly now: () => number;
     private readonly logger: Pick<Console, "error">;
     private readonly inFlight = new Map<string, Promise<Response>>();
+    private pendingFinalLimitCleanupCache: Cache | null = null;
+    private finalLimitCleanup: Promise<void> | null = null;
 
     constructor(private readonly deps: ChannelImageCacheControllerDependencies) {
         this.now = deps.now ?? Date.now;
@@ -189,6 +191,7 @@ export class ChannelImageCacheController {
             && metadata.fetchedAt === null
             && now - metadata.lastAttemptAt < CHANNEL_IMAGE_CACHE_RETRY_INTERVAL_MS
         ) {
+            event.waitUntil(this.touchMetadata(metadata, now));
             return errorResponse(502, "Channel image fetch is temporarily suppressed");
         }
 
@@ -212,8 +215,9 @@ export class ChannelImageCacheController {
         const existing = this.inFlight.get(url);
         if (existing) return existing;
 
-        const promise = factory().finally(() => {
+        const promise = factory().finally(async () => {
             if (this.inFlight.get(url) === promise) this.inFlight.delete(url);
+            await this.runFinalLimitCleanupIfNeeded();
         });
         this.inFlight.set(url, promise);
         return promise;
@@ -474,6 +478,14 @@ export class ChannelImageCacheController {
             await this.enforceLimitsBestEffort(cache, url);
             return;
         }
+        if (
+            existingMetadata?.responseType === null
+            && existingMetadata.fetchedAt === null
+        ) {
+            await this.markAttemptAndAccess(url, attemptedAt);
+            await this.enforceLimitsBestEffort(cache, url);
+            return;
+        }
         await this.safePut({
             url,
             responseType: null,
@@ -517,6 +529,14 @@ export class ChannelImageCacheController {
         }
     }
 
+    private async markAttemptAndAccess(url: string, attemptedAt: number): Promise<void> {
+        try {
+            await this.deps.repository.markAttemptAndAccess(url, attemptedAt);
+        } catch (error) {
+            this.logger.error("Channel image metadata attempt/access update failed", error);
+        }
+    }
+
     private async resetMissingCacheMetadata(
         metadata: ChannelImageCacheMetaRecord,
     ): Promise<ChannelImageCacheMetaRecord> {
@@ -537,13 +557,39 @@ export class ChannelImageCacheController {
 
     private async enforceLimitsBestEffort(cache: Cache, currentUrl?: string): Promise<void> {
         try {
-            await this.enforceLimits(cache, currentUrl);
+            if (!await this.enforceLimits(cache, currentUrl)) {
+                this.pendingFinalLimitCleanupCache = cache;
+            }
         } catch (error) {
             this.logger.error("Channel image cache limit enforcement failed", error);
         }
     }
 
-    private async enforceLimits(cache: Cache, currentUrl?: string): Promise<void> {
+    private async runFinalLimitCleanupIfNeeded(): Promise<void> {
+        if (
+            this.inFlight.size !== 0
+            || !this.pendingFinalLimitCleanupCache
+        ) return;
+        if (this.finalLimitCleanup) return this.finalLimitCleanup;
+
+        const cache = this.pendingFinalLimitCleanupCache;
+        this.pendingFinalLimitCleanupCache = null;
+        const cleanup = (async () => {
+            try {
+                if (!await this.enforceLimits(cache)) {
+                    this.pendingFinalLimitCleanupCache = cache;
+                }
+            } catch (error) {
+                this.logger.error("Channel image final cache limit enforcement failed", error);
+            }
+        })().finally(() => {
+            if (this.finalLimitCleanup === cleanup) this.finalLimitCleanup = null;
+        });
+        this.finalLimitCleanup = cleanup;
+        await cleanup;
+    }
+
+    private async enforceLimits(cache: Cache, currentUrl?: string): Promise<boolean> {
         const protectedUrls = new Set(this.inFlight.keys());
         if (currentUrl) protectedUrls.add(currentUrl);
         const records = (await this.deps.repository.getAll()).sort(sortByAccessThenUrl);
@@ -595,6 +641,18 @@ export class ChannelImageCacheController {
             remainingMetadata.splice(remainingMetadata.indexOf(victim), 1);
             await this.deletePair(cache, victim.url);
         }
+        const remainingEntries = entries.filter((record) => !evicted.has(record.url));
+        const remainingReadableTotal = remainingEntries.reduce(
+            (sum, record) => sum + (
+                record.responseType === "readable" ? record.verifiedSize ?? 0 : 0
+            ),
+            0,
+        );
+        return remainingEntries.length <= CHANNEL_IMAGE_CACHE_MAX_ENTRIES
+            && remainingEntries.filter((record) => record.responseType === "opaque").length
+                <= CHANNEL_IMAGE_CACHE_MAX_OPAQUE_ENTRIES
+            && remainingReadableTotal <= CHANNEL_IMAGE_CACHE_MAX_READABLE_TOTAL_BYTES
+            && remainingMetadata.length <= CHANNEL_IMAGE_CACHE_META_MAX_RECORDS;
     }
 
     async reconcile(): Promise<void> {

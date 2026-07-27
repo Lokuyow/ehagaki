@@ -10,6 +10,7 @@ export interface ChannelImageMetaRepository {
     put(record: ChannelImageCacheMetaRecord): Promise<void>;
     touchLastAccessedAt(url: string, accessedAt: number): Promise<void>;
     markAttempt(url: string, attemptedAt: number): Promise<void>;
+    markAttemptAndAccess(url: string, attemptedAt: number): Promise<void>;
     delete(url: string): Promise<void>;
 }
 
@@ -97,10 +98,12 @@ implements ChannelImageMetaRepository {
         await this.write((store) => store.put(record));
     }
 
-    private async updateTimestamp(
+    private async updateTimestamps(
         url: string,
-        field: "lastAccessedAt" | "lastAttemptAt",
-        value: number,
+        updates: Partial<Pick<
+            ChannelImageCacheMetaRecord,
+            "lastAccessedAt" | "lastAttemptAt"
+        >>,
     ): Promise<void> {
         const db = await this.open();
         try {
@@ -110,8 +113,20 @@ implements ChannelImageMetaRepository {
                 const request = store.get(url);
                 request.onsuccess = () => {
                     const current = request.result as ChannelImageCacheMetaRecord | undefined;
-                    if (!current || current[field] >= value) return;
-                    store.put({ ...current, [field]: value });
+                    if (!current) return;
+                    const lastAccessedAt = Math.max(
+                        current.lastAccessedAt,
+                        updates.lastAccessedAt ?? current.lastAccessedAt,
+                    );
+                    const lastAttemptAt = Math.max(
+                        current.lastAttemptAt,
+                        updates.lastAttemptAt ?? current.lastAttemptAt,
+                    );
+                    if (
+                        lastAccessedAt === current.lastAccessedAt
+                        && lastAttemptAt === current.lastAttemptAt
+                    ) return;
+                    store.put({ ...current, lastAccessedAt, lastAttemptAt });
                 };
                 request.onerror = () => reject(
                     request.error ?? new Error("IndexedDB timestamp read failed"),
@@ -130,11 +145,18 @@ implements ChannelImageMetaRepository {
     }
 
     async touchLastAccessedAt(url: string, accessedAt: number): Promise<void> {
-        await this.updateTimestamp(url, "lastAccessedAt", accessedAt);
+        await this.updateTimestamps(url, { lastAccessedAt: accessedAt });
     }
 
     async markAttempt(url: string, attemptedAt: number): Promise<void> {
-        await this.updateTimestamp(url, "lastAttemptAt", attemptedAt);
+        await this.updateTimestamps(url, { lastAttemptAt: attemptedAt });
+    }
+
+    async markAttemptAndAccess(url: string, attemptedAt: number): Promise<void> {
+        await this.updateTimestamps(url, {
+            lastAttemptAt: attemptedAt,
+            lastAccessedAt: attemptedAt,
+        });
     }
 
     async delete(url: string): Promise<void> {
