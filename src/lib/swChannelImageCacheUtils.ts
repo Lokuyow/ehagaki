@@ -38,6 +38,8 @@ type ParsedProxyRequest =
     | { ok: true; eventId: string; normalizedUrl: string }
     | { ok: false };
 
+type RegisterBackground = (promise: Promise<unknown>) => void;
+
 function errorResponse(status: number, message: string): Response {
     return new Response(message, {
         status,
@@ -69,8 +71,10 @@ export class ChannelImageCacheController {
     private readonly logger: Pick<Console, "error">;
     private readonly inFlight = new Map<string, Promise<Response>>();
     private readonly activeUrls = new Map<string, number>();
+    private readonly evictionReservations = new Map<string, Promise<void>>();
     private pendingFinalLimitCleanupCache: Cache | null = null;
     private finalLimitCleanup: Promise<void> | null = null;
+    private finalLimitCleanupRescheduleRegistrar: RegisterBackground | null = null;
 
     constructor(private readonly deps: ChannelImageCacheControllerDependencies) {
         this.now = deps.now ?? Date.now;
@@ -136,8 +140,9 @@ export class ChannelImageCacheController {
     private async handleAuthorized(
         event: ChannelImageFetchEventLike,
         normalizedUrl: string,
-        registerBackground: (promise: Promise<unknown>) => void,
+        registerBackground: RegisterBackground,
     ): Promise<Response> {
+        await this.waitForEviction(normalizedUrl);
         const cache = await this.deps.cacheStorage.open(CHANNEL_IMAGE_CACHE_NAME);
         let metadata: ChannelImageCacheMetaRecord | null = null;
         let cachedResponse: Response | undefined;
@@ -235,7 +240,7 @@ export class ChannelImageCacheController {
     private getOrCreateInFlight(
         url: string,
         factory: () => Promise<Response>,
-        registerBackground: (promise: Promise<unknown>) => void,
+        registerBackground: RegisterBackground,
     ): Promise<Response> {
         const existing = this.inFlight.get(url);
         if (existing) return existing;
@@ -254,7 +259,7 @@ export class ChannelImageCacheController {
 
     private releaseActiveUrl(
         url: string,
-        registerBackground: (promise: Promise<unknown>) => void,
+        registerBackground: RegisterBackground,
     ): void {
         const count = this.activeUrls.get(url) ?? 0;
         if (count <= 1) this.activeUrls.delete(url);
@@ -594,6 +599,32 @@ export class ChannelImageCacheController {
         await this.deps.repository.delete(url).catch(() => undefined);
     }
 
+    private reserveEviction(
+        url: string,
+        currentUrl?: string,
+    ): (() => void) | null {
+        if (this.isUrlProtected(url, currentUrl) || this.evictionReservations.has(url)) {
+            return null;
+        }
+        let resolve!: () => void;
+        const completion = new Promise<void>((complete) => { resolve = complete; });
+        this.evictionReservations.set(url, completion);
+        return () => {
+            if (this.evictionReservations.get(url) === completion) {
+                this.evictionReservations.delete(url);
+            }
+            resolve();
+        };
+    }
+
+    private async waitForEviction(url: string): Promise<void> {
+        let eviction = this.evictionReservations.get(url);
+        while (eviction) {
+            await eviction;
+            eviction = this.evictionReservations.get(url);
+        }
+    }
+
     private async enforceLimitsBestEffort(cache: Cache, currentUrl?: string): Promise<void> {
         try {
             if (!await this.enforceLimits(cache, currentUrl)) {
@@ -605,14 +636,25 @@ export class ChannelImageCacheController {
     }
 
     private scheduleFinalLimitCleanupIfNeeded(
-        registerBackground: (promise: Promise<unknown>) => void,
+        registerBackground: RegisterBackground,
     ): void {
+        if (this.finalLimitCleanup) {
+            if (
+                this.inFlight.size === 0
+                && this.activeUrls.size === 0
+                && this.pendingFinalLimitCleanupCache
+                && !this.finalLimitCleanupRescheduleRegistrar
+            ) {
+                this.finalLimitCleanupRescheduleRegistrar = registerBackground;
+            }
+            return;
+        }
         const cleanup = this.startFinalLimitCleanupIfNeeded(registerBackground);
         if (cleanup) registerBackground(cleanup);
     }
 
     private startFinalLimitCleanupIfNeeded(
-        registerBackground: (promise: Promise<unknown>) => void,
+        registerBackground: RegisterBackground,
     ): Promise<void> | null {
         if (
             this.inFlight.size !== 0
@@ -645,7 +687,13 @@ export class ChannelImageCacheController {
             }
         })().finally(() => {
             if (this.finalLimitCleanup === cleanup) this.finalLimitCleanup = null;
-            if (!failed) this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
+            const rescheduleRegistrar = this.finalLimitCleanupRescheduleRegistrar;
+            this.finalLimitCleanupRescheduleRegistrar = null;
+            if (rescheduleRegistrar) {
+                this.scheduleFinalLimitCleanupIfNeeded(rescheduleRegistrar);
+            } else if (!failed) {
+                this.scheduleFinalLimitCleanupIfNeeded(registerBackground);
+            }
         });
         this.finalLimitCleanup = cleanup;
         return cleanup;
@@ -668,13 +716,22 @@ export class ChannelImageCacheController {
         const evictOldest = async (
             candidates: ChannelImageCacheMetaRecord[],
         ): Promise<ChannelImageCacheMetaRecord | null> => {
-            const victim = candidates.find((record) =>
-                !this.isUrlProtected(record.url, currentUrl)
-                && !evicted.has(record.url));
-            if (!victim) return null;
-            evicted.add(victim.url);
-            await this.deletePair(cache, victim.url);
-            return victim;
+            for (const candidate of candidates) {
+                if (evicted.has(candidate.url)) continue;
+                const releaseReservation = this.reserveEviction(
+                    candidate.url,
+                    currentUrl,
+                );
+                if (!releaseReservation) continue;
+                evicted.add(candidate.url);
+                try {
+                    await this.deletePair(cache, candidate.url);
+                    return candidate;
+                } finally {
+                    releaseReservation();
+                }
+            }
+            return null;
         };
 
         while (entries.length - evicted.size > CHANNEL_IMAGE_CACHE_MAX_ENTRIES) {
@@ -703,11 +760,9 @@ export class ChannelImageCacheController {
 
         const remainingMetadata = records.filter((record) => !evicted.has(record.url));
         while (remainingMetadata.length > CHANNEL_IMAGE_CACHE_META_MAX_RECORDS) {
-            const victim = remainingMetadata.find((record) =>
-                !this.isUrlProtected(record.url, currentUrl));
+            const victim = await evictOldest(remainingMetadata);
             if (!victim) break;
             remainingMetadata.splice(remainingMetadata.indexOf(victim), 1);
-            await this.deletePair(cache, victim.url);
         }
         const remainingEntries = entries.filter((record) => !evicted.has(record.url));
         const remainingReadableTotal = remainingEntries.reduce(

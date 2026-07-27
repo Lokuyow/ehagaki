@@ -420,6 +420,106 @@ describe("swChannelImageCacheUtils", () => {
         expect(cache.delete).not.toHaveBeenCalled();
     });
 
+    it("eviction予約中のhandleは削除完了後に整合した空状態から再取得する", async () => {
+        const targetUrl = "https://images.example.com/eviction-oldest.png";
+        const options = { now: 100 };
+        const { controller, repository, cache, fetchRequest } = setup(options);
+        repository.channel = verifiedChannel({ picture: targetUrl });
+        for (let index = 0; index < 129; index += 1) {
+            const url = index === 0
+                ? targetUrl
+                : `https://images.example.com/eviction-${String(index).padStart(3, "0")}.png`;
+            repository.metadata.set(url, metadata({
+                url,
+                lastAccessedAt: index,
+            }));
+            cache.entries.set(url, new Response(`old-${index}`, {
+                headers: { "Content-Type": "image/png" },
+            }));
+        }
+
+        let notifyDeleteStarted!: () => void;
+        let releaseDelete!: () => void;
+        const deleteStarted = new Promise<void>((resolve) => { notifyDeleteStarted = resolve; });
+        const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve; });
+        let targetDeleteCount = 0;
+        cache.delete.mockImplementation(async (request) => {
+            const url = typeof request === "string"
+                ? request
+                : request instanceof URL ? request.toString() : request.url;
+            if (url === targetUrl) {
+                targetDeleteCount += 1;
+                notifyDeleteStarted();
+                await deleteGate;
+            }
+            return cache.entries.delete(url);
+        });
+
+        const cleanup = controller.reconcile();
+        await deleteStarted;
+        const requestEvent = eventFor(proxyRequest(targetUrl));
+        const response = controller.handle(requestEvent.event);
+        await vi.waitFor(() => expect(repository.getChannelMetadata).toHaveBeenCalledTimes(1));
+        await Promise.resolve();
+        expect(repository.get).not.toHaveBeenCalled();
+        expect(fetchRequest).not.toHaveBeenCalled();
+
+        releaseDelete();
+        await cleanup;
+        expect(await (await response).text()).toBe("image");
+        await Promise.all(requestEvent.background);
+
+        expect(fetchRequest).toHaveBeenCalledTimes(1);
+        expect(targetDeleteCount).toBe(1);
+        expect(repository.delete.mock.calls.filter(([url]) => url === targetUrl)).toHaveLength(1);
+        expect(repository.metadata.get(targetUrl)).toMatchObject({
+            responseType: "readable",
+            fetchedAt: options.now,
+        });
+        expect(await (await cache.match(targetUrl))?.text()).toBe("image");
+    });
+
+    it("handleが先にactiveなら同じURLをeviction予約しない", async () => {
+        const targetUrl = "https://images.example.com/active-before-eviction.png";
+        const { controller, repository, cache } = setup({ now: 2 });
+        repository.channel = verifiedChannel({ picture: targetUrl });
+        for (let index = 0; index < 129; index += 1) {
+            const url = index === 0
+                ? targetUrl
+                : `https://images.example.com/active-before-${String(index).padStart(3, "0")}.png`;
+            repository.metadata.set(url, metadata({
+                url,
+                lastAccessedAt: index,
+            }));
+            cache.entries.set(url, new Response(`cached-${index}`, {
+                headers: { "Content-Type": "image/png" },
+            }));
+        }
+
+        let notifyLookupStarted!: () => void;
+        let releaseLookup!: () => void;
+        const lookupStarted = new Promise<void>((resolve) => { notifyLookupStarted = resolve; });
+        const lookupGate = new Promise<void>((resolve) => { releaseLookup = resolve; });
+        repository.get.mockImplementationOnce(async (url) => {
+            notifyLookupStarted();
+            await lookupGate;
+            return repository.metadata.get(url) ?? null;
+        });
+
+        const requestEvent = eventFor(proxyRequest(targetUrl));
+        const response = controller.handle(requestEvent.event);
+        await lookupStarted;
+        await controller.reconcile();
+
+        expect(repository.delete.mock.calls.some(([url]) => url === targetUrl)).toBe(false);
+        expect(await cache.match(targetUrl)).toBeTruthy();
+        expect(repository.metadata.has(targetUrl)).toBe(true);
+
+        releaseLookup();
+        expect(await (await response).text()).toBe("cached-0");
+        await Promise.all(requestEvent.background);
+    });
+
     it("失敗したin-flight Promiseもfinallyで除去して次回試行を可能にする", async () => {
         const options = {
             now: 100,
@@ -838,7 +938,7 @@ describe("swChannelImageCacheUtils", () => {
         const internals = controller as unknown as ControllerInternals;
         for (const url of targetUrls) internals.retainActiveUrl(url);
         const releaseBackground: Promise<unknown>[] = [];
-        let pendingCache = internals.pendingFinalLimitCleanupCache;
+        let pendingCache: Cache | null = internals.pendingFinalLimitCleanupCache;
         let releaseQueued = false;
         Object.defineProperty(internals, "pendingFinalLimitCleanupCache", {
             configurable: true,
@@ -866,15 +966,94 @@ describe("swChannelImageCacheUtils", () => {
             (requestEvent) => requestEvent.background,
         )[0];
         await firstCleanup;
-        expect(releaseBackground).toHaveLength(0);
-        const background = initialEvents.flatMap(
+        expect(releaseBackground).toHaveLength(1);
+        const initialBackground = initialEvents.flatMap(
             (requestEvent) => requestEvent.background,
         );
-        expect(background).toHaveLength(2);
-        await Promise.all(background);
+        expect(initialBackground).toHaveLength(1);
+        await Promise.all(releaseBackground);
 
         expect(repository.metadata.size).toBeLessThanOrEqual(128);
         expect(getAllCount).toBe(131);
+    });
+
+    it("final cleanup失敗直後の外部reschedule要求をrelease側eventへ登録する", async () => {
+        const { controller, repository, cache, logger } = setup({ now: 1 });
+        for (let index = 0; index < 129; index += 1) {
+            const url = `https://images.example.com/failed-reschedule-${String(index).padStart(3, "0")}.png`;
+            repository.metadata.set(url, attemptMetadata({
+                url,
+                lastAccessedAt: index,
+            }));
+        }
+
+        let notifyCleanupStarted!: () => void;
+        let releaseCleanup!: () => void;
+        const cleanupStarted = new Promise<void>((resolve) => { notifyCleanupStarted = resolve; });
+        const cleanupGate = new Promise<void>((resolve) => { releaseCleanup = resolve; });
+        let getAllCount = 0;
+        repository.getAll.mockImplementation(async () => {
+            getAllCount += 1;
+            if (getAllCount === 1) {
+                notifyCleanupStarted();
+                await cleanupGate;
+                throw new Error("final cleanup failed");
+            }
+            return Array.from(repository.metadata.values());
+        });
+
+        type ControllerInternals = {
+            retainActiveUrl: (url: string) => void;
+            releaseActiveUrl: (url: string, registerBackground: RegisterBackground) => void;
+            scheduleFinalLimitCleanupIfNeeded: (registerBackground: RegisterBackground) => void;
+            pendingFinalLimitCleanupCache: Cache | null;
+        };
+        type RegisterBackground = (promise: Promise<unknown>) => void;
+        const internals = controller as unknown as ControllerInternals;
+        internals.pendingFinalLimitCleanupCache = cache as unknown as Cache;
+        const initialBackground: Promise<unknown>[] = [];
+        const releaseBackground: Promise<unknown>[] = [];
+        internals.scheduleFinalLimitCleanupIfNeeded((promise) => {
+            initialBackground.push(promise);
+        });
+        await cleanupStarted;
+
+        const activeUrls = [
+            "https://images.example.com/release-a.png",
+            "https://images.example.com/release-b.png",
+        ];
+        for (const url of activeUrls) internals.retainActiveUrl(url);
+        let pendingCache: Cache | null = internals.pendingFinalLimitCleanupCache;
+        Object.defineProperty(internals, "pendingFinalLimitCleanupCache", {
+            configurable: true,
+            get: () => pendingCache,
+            set: (value: Cache | null) => {
+                pendingCache = value;
+                if (value) {
+                    queueMicrotask(() => {
+                        for (const url of activeUrls) {
+                            internals.releaseActiveUrl(url, (promise) => {
+                                releaseBackground.push(promise);
+                            });
+                        }
+                    });
+                }
+            },
+        });
+
+        releaseCleanup();
+        expect(initialBackground).toHaveLength(1);
+        await initialBackground[0];
+        expect(releaseBackground).toHaveLength(1);
+        await Promise.all(releaseBackground);
+
+        expect(repository.metadata.size).toBeLessThanOrEqual(128);
+        expect(getAllCount).toBe(2);
+        expect(logger.error).toHaveBeenCalledWith(
+            "Channel image final cache limit enforcement failed",
+            expect.any(Error),
+        );
+        expect(logger.error).toHaveBeenCalledTimes(1);
     });
 
     it("final cleanup中に開始したactive URLを守り完了後に別のLRUを削除する", async () => {
