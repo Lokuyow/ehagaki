@@ -192,15 +192,16 @@
                     color-mix(in srgb, var(--btn-bg), black 7%)
                 );
 
-                :global(.svg-icon) {
-                    background-color: currentColor;
-                }
-
                 :global(.btn-text) {
                     color: currentColor;
                 }
             }
         }
+    }
+
+    :global(:root.light) button.primary:hover:not(:disabled) :global(.svg-icon),
+    :global(:root.dark) button.primary:hover:not(:disabled) :global(.svg-icon) {
+        background-color: currentColor;
     }
 
     :global(html body :where(.secondary)) {
