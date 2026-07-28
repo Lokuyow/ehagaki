@@ -625,7 +625,7 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
-        color: var(--text-light);
+        color: var(--text-muted);
         font-size: 0.9rem;
         line-height: 1.3;
     }
@@ -634,7 +634,10 @@
         width: 18px;
         height: 18px;
         flex-shrink: 0;
-        color: var(--theme);
+        color: inherit;
+        --svg: currentColor;
+        --icon-hover-color: currentColor;
+        --icon-selected-hover-color: currentColor;
     }
 
     .channel-context .preview-mode-icon {
