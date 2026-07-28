@@ -29,12 +29,10 @@
     function handleOpenChange(nextOpen: boolean): void {
         onOpenChange?.(nextOpen);
     }
-
-    const isVitestEnvironment = import.meta.env.VITEST === "true";
 </script>
 
 <DropdownMenu.Root {open} onOpenChange={handleOpenChange}>
-    {#if enableTooltip && tooltipContent && !isVitestEnvironment}
+    {#if enableTooltip && tooltipContent}
         <Tooltip.Provider>
             <Tooltip.Root delayDuration={500}>
                 <Tooltip.Trigger>
@@ -68,7 +66,6 @@
         <DropdownMenu.Trigger
             class={`menu-trigger post-history-menu-trigger ${triggerClassName} ${open ? "is-open" : ""}`.trim()}
             aria-label={triggerAriaLabel}
-            title={isVitestEnvironment && enableTooltip && tooltipContent ? tooltipContent : undefined}
         >
             <div class="more-icon svg-icon"></div>
         </DropdownMenu.Trigger>

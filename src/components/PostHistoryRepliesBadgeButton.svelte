@@ -11,57 +11,39 @@
     }
 
     let { count, selected, ariaLabel, onClick, tooltipContent = ariaLabel }: Props = $props();
-    const isVitestEnvironment = import.meta.env.VITEST === "true";
 </script>
 
-{#if isVitestEnvironment}
-    <Button
-        type="button"
-        class="post-preview-replies-badge-button"
-        {ariaLabel}
-        title={tooltipContent}
-        contentLayout="icon"
-        shape="circle"
-        {selected}
-        onClick={() => {
-            onClick();
-        }}
-    >
-        <span class="post-preview-replies-badge" aria-hidden="true">{count}</span>
-    </Button>
-{:else}
-    <Tooltip.Provider>
-        <Tooltip.Root delayDuration={500}>
-            <Tooltip.Trigger>
-                {#snippet child({ props })}
-                    {@const { onclick: tooltipOnclick, ...restProps } = props}
-                    <Button
-                        type="button"
-                        class="post-preview-replies-badge-button"
-                        {ariaLabel}
-                        contentLayout="icon"
-                        shape="circle"
-                        {selected}
-                        onClick={(event) => {
-                            onClick();
-                            if (typeof tooltipOnclick === "function") {
-                                tooltipOnclick(event);
-                            }
-                        }}
-                        {...restProps}
-                    >
-                        <span class="post-preview-replies-badge" aria-hidden="true">{count}</span>
-                    </Button>
-                {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-                <Tooltip.Content sideOffset={8} class="tooltip-content post-preview-tooltip-content">
-                    {tooltipContent}
-                </Tooltip.Content>
-            </Tooltip.Portal>
-        </Tooltip.Root>
-    </Tooltip.Provider>
-{/if}
+<Tooltip.Provider>
+    <Tooltip.Root delayDuration={500}>
+        <Tooltip.Trigger>
+            {#snippet child({ props })}
+                {@const { onclick: tooltipOnclick, ...restProps } = props}
+                <Button
+                    type="button"
+                    class="post-preview-replies-badge-button"
+                    {ariaLabel}
+                    contentLayout="icon"
+                    shape="circle"
+                    {selected}
+                    onClick={(event) => {
+                        onClick();
+                        if (typeof tooltipOnclick === "function") {
+                            tooltipOnclick(event);
+                        }
+                    }}
+                    {...restProps}
+                >
+                    <span class="post-preview-replies-badge" aria-hidden="true">{count}</span>
+                </Button>
+            {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+            <Tooltip.Content sideOffset={8} class="tooltip-content post-preview-tooltip-content">
+                {tooltipContent}
+            </Tooltip.Content>
+        </Tooltip.Portal>
+    </Tooltip.Root>
+</Tooltip.Provider>
 
 <style>
     :global(.post-preview-replies-badge-button) {
