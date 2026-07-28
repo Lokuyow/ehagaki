@@ -24,6 +24,9 @@ export default defineConfig({
   assetsInclude: ['**/*.wasm'],
   build: {
     emptyOutDir: true,
+    // Appは起動・投稿・認証・iframe同期に必要なコードで構成されるため、
+    // 遅延化で初期転送量を減らせない残存サイズ673.37 kBに対して最小限の閾値を設定する。
+    chunkSizeWarningLimit: 680,
     rollupOptions: {
       external: [],
       output: {
@@ -58,6 +61,13 @@ export default defineConfig({
           // bits-ui
           if (id.includes('node_modules/bits-ui')) {
             return 'vendor-ui';
+          }
+          // i18n runtime and message-formatting dependencies
+          if (id.includes('node_modules/svelte-i18n') ||
+              id.includes('node_modules/intl-messageformat') ||
+              id.includes('node_modules/@formatjs/') ||
+              id.includes('node_modules/deepmerge')) {
+            return 'vendor-i18n';
           }
         }
       }

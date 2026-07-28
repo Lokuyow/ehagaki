@@ -1,4 +1,3 @@
-import QRCode from 'qrcode';
 import { getNip46ConnectRelaysStorageKey } from './authStorageKeys';
 import { sanitizeNip46NostrConnectRelays } from './nip46Service';
 
@@ -162,6 +161,7 @@ export function extractNip46ConnectionUriRelays(
 export async function generateNip46ConnectionQrSvg(
     value: string,
 ): Promise<string> {
+    const { default: QRCode } = await import('qrcode');
     return await QRCode.toString(value, {
         type: 'svg',
         errorCorrectionLevel: 'M',
