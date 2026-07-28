@@ -79,6 +79,33 @@ function createTestImage({
     return image as unknown as HTMLImageElement;
 }
 
+function createControlledTestImage({
+    width = 0,
+    height = 0,
+}: {
+    width?: number;
+    height?: number;
+} = {}) {
+    let assignedSrc: string | null = null;
+    const image = {
+        onload: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        decoding: 'auto',
+        naturalWidth: width,
+        naturalHeight: height,
+        set src(value: string) {
+            assignedSrc = value;
+        },
+    };
+
+    return {
+        image: image as unknown as HTMLImageElement,
+        getAssignedSrc: () => assignedSrc,
+        load: () => image.onload?.(),
+        error: () => image.onerror?.(),
+    };
+}
+
 const emojiItems: CustomEmojiItem[] = [
     emojiItem('kubi', 'https://example.com/kubi.webp', { sortIndex: 0 }),
     emojiItem('kubi_spin', 'https://example.com/kubi-spin.webp', { sortIndex: 1 }),
@@ -409,155 +436,197 @@ describe('customEmoji', () => {
         expect(postMessage).not.toHaveBeenCalled();
     });
 
-    it('falls back to a direct image load when service worker caching is unavailable', async () => {
-        Object.defineProperty(navigator, 'serviceWorker', {
-            value: {
-                controller: null,
+    it('keeps a MessageChannel request pending until the service worker responds', async () => {
+        const port1 = {
+            onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+            addEventListener: vi.fn(),
+            close: vi.fn(),
+        };
+        const controller = {
+            postMessage: vi.fn(),
+        } as unknown as ServiceWorker;
+        let settled = false;
+
+        const request = requestCustomEmojiImagesCache(
+            ['https://example.com/blobcat.webp'],
+            {
+                navigatorObj: {
+                    serviceWorker: { controller },
+                } as Pick<Navigator, 'serviceWorker'>,
+                createMessageChannel: () => ({ port1, port2: {} as MessagePort }),
             },
-            configurable: true,
-            writable: true,
+        );
+        void request.then(() => {
+            settled = true;
+        }, () => {
+            settled = true;
         });
 
-        const image = {
-            onload: null as (() => void) | null,
-            onerror: null as (() => void) | null,
-            decoding: 'auto',
-            set src(_value: string) {
-                queueMicrotask(() => {
-                    image.onload?.(new Event('load') as never);
-                });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        port1.onmessage?.({
+            data: { success: true, cached: 1, failed: 0 },
+        } as MessageEvent<unknown>);
+
+        await expect(request).resolves.toEqual({ success: true, cached: 1, failed: 0 });
+    });
+
+    it('rejects a MessageChannel request when the service worker reports an error', async () => {
+        let onError: ((event: Event) => void) | undefined;
+        const port1 = {
+            onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+            addEventListener: vi.fn((_type: string, listener: (event: Event) => void) => {
+                onError = listener;
+            }),
+            close: vi.fn(),
+        };
+        const controller = {
+            postMessage: vi.fn(),
+        } as unknown as ServiceWorker;
+
+        const request = requestCustomEmojiImagesCache(
+            ['https://example.com/blobcat.webp'],
+            {
+                navigatorObj: {
+                    serviceWorker: { controller },
+                } as Pick<Navigator, 'serviceWorker'>,
+                createMessageChannel: () => ({ port1, port2: {} as MessagePort }),
             },
-        } as unknown as HTMLImageElement;
+        );
+        const expectation = expect(request).rejects.toBeInstanceOf(Event);
 
-        await expect(
-            preloadCustomEmojiImage('https://example.com/blobcat.webp', {
-                createImage: () => image,
-            }),
-        ).resolves.toBe(true);
+        onError?.(new Event('error'));
+
+        await expectation;
+        expect(port1.close).toHaveBeenCalledTimes(1);
     });
 
-    it('returns true when direct loading succeeds even if the service worker cache result failed', async () => {
-        const requestCache = vi.fn().mockResolvedValue({
-            success: false,
-            cached: 0,
-            failed: 1,
-        });
+    it('rejects a MessageChannel request after the configured timeout', async () => {
+        let timeoutCallback: (() => void) | undefined;
+        const clearTimeoutFn = vi.fn();
+        const port1 = {
+            onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+            addEventListener: vi.fn(),
+            close: vi.fn(),
+        };
+        const controller = {
+            postMessage: vi.fn(),
+        } as unknown as ServiceWorker;
 
-        await expect(
-            preloadCustomEmojiImage('https://example.com/online-only.webp', {
-                requestCache,
-                createImage: () => createTestImage({ succeeds: true }),
-            }),
-        ).resolves.toBe(true);
-        expect(requestCache).toHaveBeenCalledWith(['https://example.com/online-only.webp']);
-    });
-
-    it('returns dimensions when direct loading succeeds even if the service worker cache result failed', async () => {
-        await expect(
-            preloadCustomEmojiImageWithMeta('https://example.com/online-only.webp', {
-                requestCache: vi.fn().mockResolvedValue({
-                    success: false,
-                    cached: 0,
-                    failed: 1,
-                }),
-                createImage: () => createTestImage({ succeeds: true, width: 128, height: 64 }),
-            }),
-        ).resolves.toEqual({
-            ready: true,
-            width: 128,
-            height: 64,
-            aspectRatio: 2,
-        });
-    });
-
-    it('fails only when direct image loading also fails', async () => {
-        const requestCache = vi.fn().mockResolvedValue({
-            success: false,
-            cached: 0,
-            failed: 1,
-        });
-
-        await expect(
-            preloadCustomEmojiImage('https://example.com/unavailable.webp', {
-                requestCache,
-                createImage: () => createTestImage({ succeeds: false }),
-            }),
-        ).resolves.toBe(false);
-        await expect(
-            preloadCustomEmojiImageWithMeta('https://example.com/unavailable.webp', {
-                requestCache,
-                createImage: () => createTestImage({ succeeds: false }),
-            }),
-        ).resolves.toEqual({ ready: false });
-    });
-
-    it('continues to direct loading after a service worker communication timeout', async () => {
-        await expect(
-            preloadCustomEmojiImage('https://example.com/timeout.webp', {
-                requestCache: vi.fn().mockRejectedValue(
-                    new Error('ServiceWorker custom emoji cache request timed out'),
-                ),
-                createImage: () => createTestImage({ succeeds: true }),
-            }),
-        ).resolves.toBe(true);
-    });
-
-    it('preloadCustomEmojiImageWithMeta reads dimensions after service worker caching succeeds', async () => {
-        const image = {
-            onload: null as (() => void) | null,
-            onerror: null as (() => void) | null,
-            decoding: 'auto',
-            naturalWidth: 120,
-            naturalHeight: 60,
-            set src(_value: string) {
-                queueMicrotask(() => {
-                    image.onload?.(new Event('load') as never);
-                });
+        const request = requestCustomEmojiImagesCache(
+            ['https://example.com/blobcat.webp'],
+            {
+                navigatorObj: {
+                    serviceWorker: { controller },
+                } as Pick<Navigator, 'serviceWorker'>,
+                createMessageChannel: () => ({ port1, port2: {} as MessagePort }),
+                setTimeoutFn: ((callback: () => void) => {
+                    timeoutCallback = callback;
+                    return 1 as unknown as ReturnType<typeof setTimeout>;
+                }) as typeof setTimeout,
+                clearTimeoutFn: clearTimeoutFn as unknown as typeof clearTimeout,
+                timeoutMs: CUSTOM_EMOJI_CACHE_REQUEST_TIMEOUT,
             },
-        } as unknown as HTMLImageElement;
+        );
+        const expectation = expect(request).rejects.toThrow(
+            'ServiceWorker custom emoji cache request timed out',
+        );
 
-        await expect(
-            preloadCustomEmojiImageWithMeta('https://example.com/blobcat.webp', {
-                requestCache: vi.fn().mockResolvedValue({
-                    success: true,
-                    cached: 1,
-                    failed: 0,
-                }),
-                createImage: () => image,
-            }),
-        ).resolves.toEqual({
+        timeoutCallback?.();
+
+        await expectation;
+        expect(port1.close).toHaveBeenCalledTimes(1);
+        expect(clearTimeoutFn).not.toHaveBeenCalled();
+    });
+
+    it('sets Image.src immediately and caches once after the image loads', async () => {
+        const controlledImage = createControlledTestImage();
+        const cacheAfterLoad = vi.fn();
+        const preload = preloadCustomEmojiImage('https://example.com/blobcat.webp', {
+            cacheAfterLoad,
+            createImage: () => controlledImage.image,
+        });
+
+        expect(controlledImage.getAssignedSrc()).toBe('https://example.com/blobcat.webp');
+        expect(cacheAfterLoad).not.toHaveBeenCalled();
+
+        controlledImage.load();
+
+        await expect(preload).resolves.toBe(true);
+        expect(cacheAfterLoad).toHaveBeenCalledTimes(1);
+        expect(cacheAfterLoad).toHaveBeenCalledWith(['https://example.com/blobcat.webp']);
+    });
+
+    it('does not wait for a pending load-after cache request', async () => {
+        const controlledImage = createControlledTestImage();
+        const cacheAfterLoad = vi.fn(() => new Promise<void>(() => {}));
+        const preload = preloadCustomEmojiImage('https://example.com/blobcat.webp', {
+            cacheAfterLoad,
+            createImage: () => controlledImage.image,
+        });
+
+        controlledImage.load();
+
+        await expect(preload).resolves.toBe(true);
+        expect(cacheAfterLoad).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache an image that fails to load', async () => {
+        const controlledImage = createControlledTestImage();
+        const cacheAfterLoad = vi.fn();
+        const preload = preloadCustomEmojiImage('https://example.com/unavailable.webp', {
+            cacheAfterLoad,
+            createImage: () => controlledImage.image,
+        });
+
+        controlledImage.error();
+
+        await expect(preload).resolves.toBe(false);
+        expect(cacheAfterLoad).not.toHaveBeenCalled();
+    });
+
+    it('keeps a successful image result when load-after caching rejects', async () => {
+        const controlledImage = createControlledTestImage();
+        const cacheAfterLoad = vi.fn().mockRejectedValue(new Error('cache failed'));
+        const preload = preloadCustomEmojiImage('https://example.com/online-only.webp', {
+            cacheAfterLoad,
+            createImage: () => controlledImage.image,
+        });
+
+        controlledImage.load();
+
+        await expect(preload).resolves.toBe(true);
+        await Promise.resolve();
+        expect(cacheAfterLoad).toHaveBeenCalledTimes(1);
+    });
+
+    it('preloadCustomEmojiImageWithMeta preserves dimensions and caches after loading', async () => {
+        const controlledImage = createControlledTestImage({ width: 120, height: 60 });
+        const cacheAfterLoad = vi.fn();
+        const preload = preloadCustomEmojiImageWithMeta('https://example.com/blobcat.webp', {
+            cacheAfterLoad,
+            createImage: () => controlledImage.image,
+        });
+
+        expect(controlledImage.getAssignedSrc()).toBe('https://example.com/blobcat.webp');
+        expect(cacheAfterLoad).not.toHaveBeenCalled();
+
+        controlledImage.load();
+
+        await expect(preload).resolves.toEqual({
             ready: true,
             width: 120,
             height: 60,
             aspectRatio: 2,
         });
+        expect(cacheAfterLoad).toHaveBeenCalledWith(['https://example.com/blobcat.webp']);
     });
 
-    it('preloadCustomEmojiImageWithMeta falls back to direct loading and omits invalid dimensions', async () => {
-        Object.defineProperty(navigator, 'serviceWorker', {
-            value: {
-                controller: null,
-            },
-            configurable: true,
-            writable: true,
-        });
-
-        const image = {
-            onload: null as (() => void) | null,
-            onerror: null as (() => void) | null,
-            decoding: 'auto',
-            naturalWidth: 0,
-            naturalHeight: 0,
-            set src(_value: string) {
-                queueMicrotask(() => {
-                    image.onload?.(new Event('load') as never);
-                });
-            },
-        } as unknown as HTMLImageElement;
-
+    it('preloadCustomEmojiImageWithMeta omits invalid dimensions', async () => {
         await expect(
             preloadCustomEmojiImageWithMeta('https://example.com/blobcat.webp', {
-                createImage: () => image,
+                createImage: () => createTestImage({ succeeds: true }),
             }),
         ).resolves.toEqual({ ready: true });
     });

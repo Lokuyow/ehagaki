@@ -79,9 +79,7 @@ interface RequestCustomEmojiImagesCacheRuntime {
 }
 
 interface PreloadCustomEmojiImageRuntime {
-    requestCache?: (
-        urls: string[],
-    ) => Promise<CacheCustomEmojiImagesResult | null>;
+    cacheAfterLoad?: (urls: string[]) => void | Promise<unknown>;
     createImage?: () => HTMLImageElement;
 }
 
@@ -661,14 +659,12 @@ export async function preloadCustomEmojiImage(
         return false;
     }
 
-    const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
-    try {
-        await requestCache([url]);
-    } catch {
-        // Fall through to a direct image load when SW communication is unavailable.
+    const ready = await loadCustomEmojiImage(url, runtime.createImage);
+    if (ready) {
+        cacheCustomEmojiImageAfterLoad(url, runtime.cacheAfterLoad);
     }
 
-    return await loadCustomEmojiImage(url, runtime.createImage);
+    return ready;
 }
 
 export async function preloadCustomEmojiImageWithMeta(
@@ -679,14 +675,25 @@ export async function preloadCustomEmojiImageWithMeta(
         return { ready: false };
     }
 
-    const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
-    try {
-        await requestCache([url]);
-    } catch {
-        // Fall through to a direct image load when SW communication is unavailable.
+    const result = await loadCustomEmojiImageWithMeta(url, runtime.createImage);
+    if (result.ready) {
+        cacheCustomEmojiImageAfterLoad(url, runtime.cacheAfterLoad);
     }
 
-    return await loadCustomEmojiImageWithMeta(url, runtime.createImage);
+    return result;
+}
+
+function cacheCustomEmojiImageAfterLoad(
+    url: string,
+    cacheAfterLoad: ((urls: string[]) => void | Promise<unknown>) | undefined,
+): void {
+    try {
+        void Promise.resolve((cacheAfterLoad ?? cacheCustomEmojiImages)([url])).catch(() => {
+            // Service worker caching is an optimization.
+        });
+    } catch {
+        // Service worker caching is an optimization.
+    }
 }
 
 async function requestCustomEmojiImagesCacheBatch(
