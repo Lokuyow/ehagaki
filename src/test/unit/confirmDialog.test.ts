@@ -79,6 +79,23 @@ describe('ConfirmDialog', () => {
         expect(screen.getByText('キャンセル')).toBeTruthy();
     });
 
+    it('表示テキスト付き確認・キャンセルボタンに空の aria-label を付けない', () => {
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+                onCancel: mockOnCancel,
+            },
+        });
+
+        const confirmButton = screen.getByRole('button', { name: 'OK' });
+        const cancelButton = screen.getByRole('button', { name: 'キャンセル' });
+
+        expect(confirmButton.getAttribute('aria-label')).toBeNull();
+        expect(cancelButton.getAttribute('aria-label')).toBeNull();
+    });
+
     it('カスタムラベルで正しくレンダリングされる', () => {
         render(ConfirmDialog, {
             props: {

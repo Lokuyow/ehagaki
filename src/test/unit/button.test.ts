@@ -2,6 +2,32 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Button from '../../components/Button.svelte';
+import ButtonTextHarness from '../helpers/ButtonTextHarness.svelte';
+
+describe('Button', () => {
+    it('表示テキスト付きボタンでは ariaLabel 未指定時に空の aria-label を付けない', () => {
+        render(ButtonTextHarness, {
+            props: {
+                text: '保存',
+            },
+        });
+
+        const button = screen.getByRole('button', { name: '保存' });
+
+        expect(button.getAttribute('aria-label')).toBeNull();
+    });
+
+    it('ariaLabel を明示した場合はその名前で取得できる', () => {
+        render(ButtonTextHarness, {
+            props: {
+                ariaLabel: 'コピー',
+                text: '保存',
+            },
+        });
+
+        expect(screen.getByRole('button', { name: 'コピー' })).toBeTruthy();
+    });
+});
 
 describe('Button floatingMessage', () => {
     afterEach(() => {

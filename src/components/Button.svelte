@@ -33,7 +33,7 @@
         class: classAttr = "",
         disabled = false,
         type = "button",
-        ariaLabel = "",
+        ariaLabel = undefined,
         style = "",
         variant = undefined,
         shape = undefined,
@@ -117,7 +117,7 @@
     {type}
     class={`${computedClassName} ${variantClass} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
     {disabled}
-    aria-label={ariaLabel}
+    aria-label={ariaLabel || undefined}
     {style}
     onclick={handleClick}
     {...restProps}
