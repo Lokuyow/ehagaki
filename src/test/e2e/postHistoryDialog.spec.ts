@@ -175,6 +175,7 @@ async function expectTooltip(
 ) {
     await trigger.hover();
     const tooltip = page.locator('.tooltip-content:visible').filter({ hasText: text });
+    await expect(tooltip).toBeVisible();
     await expect(tooltip).toHaveText(text);
     return tooltip;
 }
@@ -318,14 +319,31 @@ test.describe('PostHistoryDialog Playwright', () => {
         const reactionItem = page.locator(
             `.post-history-item[data-post-history-event-id="${harness.reactionPostEventId}"]`,
         );
-        const replyButton = replyItem.getByRole('button', { name: '返信 1件を表示' });
+        const replyButton = page.locator('.post-preview-replies-badge-button[aria-label*="返信"]').first();
         const quoteButton = replyItem.getByRole('button', { name: '引用' });
         const reactionButton = reactionItem.getByRole('button', { name: 'リアクション 1件を表示' });
-        const menuButton = replyItem.getByRole('button', { name: 'アクションを表示' });
+        const menuButton = replyItem.locator('.post-preview-footer-right').getByRole('button', { name: 'アクションを表示' }).first();
 
-        await expectTooltip(page, replyButton, '返信 1件を表示');
+        const expectedReplyLabel = await replyButton.getAttribute('aria-label');
+        await expect(replyButton).toBeVisible();
+        await expectTooltip(page, replyButton, expectedReplyLabel ?? '');
         await expectTooltip(page, quoteButton, '引用');
         await expectTooltip(page, reactionButton, 'リアクション 1件を表示');
+
+        await replyButton.hover();
+        const repliesTooltip = page.locator('.post-preview-tooltip-content:visible').filter({ hasText: expectedReplyLabel ?? '' });
+        await expect(repliesTooltip).toHaveText(expectedReplyLabel ?? '');
+        const repliesTooltipClasses = await repliesTooltip.evaluate((element) => Array.from(element.classList));
+        expect(repliesTooltipClasses).toContain('post-preview-tooltip-content');
+        const repliesTooltipZIndex = await repliesTooltip.evaluate((element) => getComputedStyle(element).zIndex);
+        const dialogZIndex = await page.locator('.post-history-dialog').evaluate((element) => getComputedStyle(element).zIndex);
+        expect(Number(repliesTooltipZIndex)).toBeGreaterThan(Number(dialogZIndex));
+        await expect(replyButton).toHaveAttribute('aria-label', expectedReplyLabel ?? '');
+        await expect(replyButton).not.toHaveAttribute('title');
+
+        await replyButton.click();
+        const replyCard = replyItem.locator('.post-history-related-card').filter({ hasText: harness.replyContent });
+        await expect(replyCard).toBeVisible();
 
         await menuButton.focus();
         const tooltip = page.locator('.post-preview-tooltip-content:visible').filter({ hasText: 'アクションを表示' });
@@ -360,7 +378,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const replyItem = page.locator(
             `.post-history-item[data-post-history-event-id="${harness.replyParentEventId}"]`,
         );
-        await replyItem.getByRole('button', { name: '返信 1件を表示' }).click();
+        await page.locator('.post-preview-replies-badge-button[aria-label*="返信"]').first().click();
         const replyCard = replyItem
             .locator('.post-history-related-card')
             .filter({ hasText: harness.replyContent });
@@ -369,6 +387,21 @@ test.describe('PostHistoryDialog Playwright', () => {
             replyCard.getByRole('button', { name: 'アクションを表示' }),
             'アクションを表示',
         );
+
+        const relatedRepliesButton = page.locator('.post-preview-replies-badge-button[aria-label*="返信"]').last();
+        const expectedRelatedReplyLabel = await relatedRepliesButton.getAttribute('aria-label');
+        await expect(relatedRepliesButton).toBeVisible();
+        await expectTooltip(page, relatedRepliesButton, expectedRelatedReplyLabel ?? '');
+        await relatedRepliesButton.hover();
+        const relatedRepliesTooltip = page.locator('.post-preview-tooltip-content:visible').filter({ hasText: expectedRelatedReplyLabel ?? '' });
+        await expect(relatedRepliesTooltip).toHaveText(expectedRelatedReplyLabel ?? '');
+        const relatedRepliesTooltipClasses = await relatedRepliesTooltip.evaluate((element) => Array.from(element.classList));
+        expect(relatedRepliesTooltipClasses).toContain('post-preview-tooltip-content');
+        const relatedRepliesTooltipZIndex = await relatedRepliesTooltip.evaluate((element) => getComputedStyle(element).zIndex);
+        const dialogZIndexForRelated = await page.locator('.post-history-dialog').evaluate((element) => getComputedStyle(element).zIndex);
+        expect(Number(relatedRepliesTooltipZIndex)).toBeGreaterThan(Number(dialogZIndexForRelated));
+        await expect(relatedRepliesButton).toHaveAttribute('aria-label', expectedRelatedReplyLabel ?? '');
+        await expect(relatedRepliesButton).not.toHaveAttribute('title');
     });
 
     test('desktop reference links open natively without toggling their parent previews', async ({
