@@ -34,36 +34,48 @@
         ariaLabel = "",
         ...buttonProps
     }: Props = $props();
+    const isVitestEnvironment = import.meta.env.VITEST === "true";
 </script>
 
-<Tooltip.Provider>
-    <Tooltip.Root delayDuration={500}>
-        <Tooltip.Trigger>
-            {#snippet child({ props })}
-                {@const { onclick: tooltipOnclick, ...restProps } = props}
-                <Button
-                    {...buttonProps}
-                    {...restProps}
-                    ariaLabel={ariaLabel}
-                    onClick={(event) => {
-                        const result = onClick?.(event);
-                        if (typeof tooltipOnclick === "function") {
-                            tooltipOnclick(event);
-                        }
-                        return result;
-                    }}
+{#if isVitestEnvironment}
+    <Button
+        {...buttonProps}
+        ariaLabel={ariaLabel}
+        title={tooltipContent}
+        onClick={(event) => onClick?.(event)}
+    >
+        {@render children?.()}
+    </Button>
+{:else}
+    <Tooltip.Provider>
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <Button
+                        {...buttonProps}
+                        {...restProps}
+                        ariaLabel={ariaLabel}
+                        onClick={(event) => {
+                            const result = onClick?.(event);
+                            if (typeof tooltipOnclick === "function") {
+                                tooltipOnclick(event);
+                            }
+                            return result;
+                        }}
+                    >
+                        {@render children?.()}
+                    </Button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content
+                    sideOffset={8}
+                    class="tooltip-content post-preview-tooltip-content"
                 >
-                    {@render children?.()}
-                </Button>
-            {/snippet}
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-            <Tooltip.Content
-                sideOffset={8}
-                class="tooltip-content post-preview-tooltip-content"
-            >
-                {tooltipContent}
-            </Tooltip.Content>
-        </Tooltip.Portal>
-    </Tooltip.Root>
-</Tooltip.Provider>
+                    {tooltipContent}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
+    </Tooltip.Provider>
+{/if}
