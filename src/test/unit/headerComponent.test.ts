@@ -5,7 +5,7 @@ import { readable } from 'svelte/store';
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
         'postComponent.clear_editor': 'エディターをクリア',
-        'draft.list_title': '下書き一覧',
+        'draft.list_title': '下書き',
         'draft.save': '下書き保存',
         'draft.saved': '下書きを保存しました',
         'balloonMessage.success.compact_post_success': '投稿完了',
@@ -43,7 +43,7 @@ describe('HeaderComponent', () => {
         expect(container.querySelector('.choose-target-icon')).toBeTruthy();
         expect(container.textContent).not.toContain('@');
 
-        await fireEvent.click(screen.getByRole('button', { name: '下書き一覧' }));
+        await fireEvent.click(screen.getByRole('button', { name: '下書き' }));
         expect(onShowDraftList).toHaveBeenCalledOnce();
 
         await fireEvent.click(screen.getByRole('button', { name: '宛先を指定' }));
@@ -66,7 +66,7 @@ describe('HeaderComponent', () => {
 
         expect(container.querySelector('.header-actions')).toBeTruthy();
 
-        const button = screen.getByRole('button', { name: '下書き一覧' });
+        const button = screen.getByRole('button', { name: '下書き' });
         const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
 
         expect(button.dispatchEvent(event)).toBe(false);

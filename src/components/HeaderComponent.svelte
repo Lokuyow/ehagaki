@@ -126,7 +126,7 @@
                                     }
                                 }}
                                 ariaLabel={$_("draft.list_title") ||
-                                    "下書き一覧"}
+                                    "下書き"}
                                 {...restProps}
                             >
                                 <div class="list-icon svg-icon"></div>
@@ -135,7 +135,7 @@
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
-                            {$_("draft.list_title") || "下書き一覧"}
+                            {$_("draft.list_title") || "下書き"}
                         </Tooltip.Content>
                     </Tooltip.Portal>
                 </Tooltip.Root>

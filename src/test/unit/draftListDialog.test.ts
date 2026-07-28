@@ -8,7 +8,7 @@ import { editorState } from '../../stores/editorStore.svelte';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
-        'draft.list_title': '下書き一覧',
+        'draft.list_title': '下書き',
         'draft.list_description': '保存した下書きを選択して復元',
         'draft.title': '下書き',
         'draft.info': '下書き情報',

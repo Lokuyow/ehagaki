@@ -379,7 +379,7 @@
   },
   "draft": {
     "title": "下書き",
-    "list_title": "下書き一覧",
+    "list_title": "下書き",
     "list_description": "保存した下書きを選択して復元",
     "no_drafts": "下書きがありません",
     "delete": "削除",

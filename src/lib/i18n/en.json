@@ -379,7 +379,7 @@
   },
   "draft": {
     "title": "Draft",
-    "list_title": "Drafts",
+    "list_title": "Draft",
     "list_description": "Select a saved draft to restore",
     "no_drafts": "No drafts",
     "delete": "Delete",
