@@ -1232,6 +1232,16 @@
         --post-history-preview-footer-surface: var(--bg-input);
     }
 
+    :global(.target-preview .post-preview-footer-replies-slot) {
+        flex: 0 1 36px;
+        min-width: 0;
+    }
+
+    :global(.target-preview .post-preview-footer-reaction-slot) {
+        flex: 0 1 70px;
+        min-width: 0;
+    }
+
     .target-preview-body {
         display: grid;
         gap: 10px;

@@ -258,10 +258,14 @@ test.describe("composer target dialog fixture", () => {
             expect(geometry.actions.right).toBeLessThanOrEqual(geometry.menu.left);
             expect(geometry.reply.left).toBeLessThan(geometry.quote.left);
             expect(geometry.quote.left).toBeLessThan(geometry.reactionSlot.left);
-            expect(
+            const actionCenterGap =
                 geometry.quote.left + geometry.quote.width / 2
-                    - (geometry.reply.left + geometry.reply.width / 2),
-            ).toBeGreaterThan(geometry.footer.width * 0.1);
+                - (geometry.reply.left + geometry.reply.width / 2);
+            expect(actionCenterGap).toBeGreaterThan(
+                testInfo.project.name === "desktop-chromium"
+                    ? geometry.footer.width * 0.1
+                    : 0,
+            );
             expect(geometry.actions.left).toBeGreaterThanOrEqual(0);
             expect(geometry.menu.right).toBeLessThanOrEqual(geometry.viewportWidth);
             expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import PhotoSwipe from "photoswipe";
     import { _ } from "svelte-i18n";
     import type { FullscreenMediaItem } from "../lib/types";
@@ -19,7 +19,7 @@
         onNavigate?: (index: number) => void;
     }
 
-    type CloseMode = "history" | "internal" | null;
+    type CloseMode = "popstate" | "internal" | null;
 
     const VIEWER_PADDING = { top: 24, bottom: 88, left: 24, right: 24 };
 
@@ -36,6 +36,9 @@
     let activePhotoSwipe: any = null;
     let historyPushed = false;
     let closeMode: CloseMode = null;
+    let closeFinalizing = false;
+    let focusOrigin: HTMLElement | null = null;
+    let focusOriginDialog: HTMLElement | null = null;
     let openRequestToken = 0;
 
     let resolvedMediaList = $derived.by<FullscreenMediaItem[]>(() => {
@@ -62,11 +65,20 @@
         return 0;
     });
 
-    function finalizeClose(shouldGoBack: boolean) {
-        const shouldPopHistory = shouldGoBack && historyPushed;
+    async function finalizeClose() {
+        if (closeFinalizing) {
+            return;
+        }
+
+        closeFinalizing = true;
+        const shouldPopHistory = closeMode !== "popstate" && historyPushed;
+        const origin = focusOrigin;
+        const originDialog = focusOriginDialog;
 
         historyPushed = false;
         activePhotoSwipe = null;
+        focusOrigin = null;
+        focusOriginDialog = null;
 
         if (show) {
             show = false;
@@ -74,26 +86,40 @@
 
         onClose();
 
+        await tick();
+
+        if (
+            origin?.isConnected &&
+            (!originDialog || originDialog.isConnected)
+        ) {
+            try {
+                origin.focus({ preventScroll: true });
+            } catch {
+                // The origin may have been removed between the connection check and focus.
+            }
+        }
+
         if (shouldPopHistory) {
             history.back();
         }
+
+        closeMode = null;
+        closeFinalizing = false;
     }
 
-    function requestClose(shouldGoBack: boolean) {
-        if (closeMode) {
+    function requestClose(mode: "popstate" | "internal") {
+        if (closeMode || closeFinalizing) {
             return;
         }
 
-        closeMode = shouldGoBack ? "history" : "internal";
+        closeMode = mode;
 
         if (activePhotoSwipe) {
             activePhotoSwipe.close();
             return;
         }
 
-        const shouldPopHistory = closeMode === "history";
-        closeMode = null;
-        finalizeClose(shouldPopHistory);
+        void finalizeClose();
     }
 
     function bindCustomContentEvents(instance: any) {
@@ -198,9 +224,10 @@
         });
 
         instance.on("destroy", () => {
-            const shouldGoBack = closeMode === "history";
-            closeMode = null;
-            finalizeClose(shouldGoBack);
+            if (!closeMode) {
+                closeMode = "internal";
+            }
+            void finalizeClose();
         });
 
         activePhotoSwipe = instance;
@@ -212,9 +239,8 @@
             return;
         }
 
-        event.preventDefault();
         historyPushed = false;
-        requestClose(false);
+        requestClose("popstate");
     }
 
     $effect(() => {
@@ -226,6 +252,12 @@
         ) {
             history.pushState({ imageFullscreen: true }, "");
             historyPushed = true;
+            const activeElement = document.activeElement;
+            focusOrigin =
+                activeElement instanceof HTMLElement ? activeElement : null;
+            focusOriginDialog = focusOrigin?.closest<HTMLElement>(
+                '[role="dialog"]',
+            ) ?? null;
         }
     });
 
@@ -238,7 +270,7 @@
 
         if (!isVisible || items.length === 0 || targetIndex < 0) {
             if (activePhotoSwipe) {
-                requestClose(false);
+                requestClose("internal");
             }
             return;
         }
@@ -274,6 +306,7 @@
     onDestroy(() => {
         closeMode = null;
         historyPushed = false;
+        closeFinalizing = true;
         activePhotoSwipe?.destroy?.();
         activePhotoSwipe = null;
     });
