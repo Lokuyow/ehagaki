@@ -769,13 +769,48 @@
             </div>
         {/if}
 
+        {#snippet channelPreview()}
+            <div class="channel-preview">
+                {#if target?.channelContext?.picture}
+                    <ChannelPicture
+                        eventId={target.channelContext.eventId}
+                        pictureUrl={target.channelContext.picture}
+                        cacheEligible={target.channelPictureCacheEligible}
+                        alt=""
+                        className="channel-picture"
+                    />
+                {/if}
+                <div class="channel-text">
+                    <strong class="channel-name">{channelDisplayName}</strong>
+                    {#if channelAbout}<p>{channelAbout}</p>{/if}
+                    {#if channelCreatorDisplay}
+                        <span class="channel-creator">
+                            {$_("composerTarget.creator")}: {channelCreatorDisplay}
+                        </span>
+                    {/if}
+                    {#if target?.channelContext?.channelRelays?.length}
+                        <span class="channel-relays">
+                            {target.channelContext.channelRelays.join("\n")}
+                        </span>
+                    {/if}
+                </div>
+            </div>
+        {/snippet}
+
         {#if previewEvent}
             <section
                 bind:this={targetPreviewElement}
                 class="target-preview"
                 aria-label={$_("composerTarget.preview")}
             >
-                <div class="target-preview-body">
+                <div
+                    class="target-preview-body"
+                    class:channel-first={previewEvent.kind === 42 &&
+                        !!target?.channelContext}
+                >
+                    {#if previewEvent.kind === 42 && target?.channelContext}
+                        {@render channelPreview()}
+                    {/if}
                     <div class="event-author">
                     <ProfileAvatar
                         src={authorProfile?.picture ?? ""}
@@ -825,37 +860,8 @@
                     {/snippet}
                     </PostContentPreview>
 
-                    {#if target?.channelContext}
-                        <div class="channel-preview">
-                        {#if target.channelContext.picture}
-                            <ChannelPicture
-                                eventId={target.channelContext.eventId}
-                                pictureUrl={target.channelContext.picture}
-                                cacheEligible={target.channelPictureCacheEligible}
-                                alt=""
-                                className="channel-picture"
-                            />
-                        {/if}
-                        <div class="channel-text">
-                            <strong class="channel-name">
-                                {channelDisplayName}
-                            </strong>
-                            {#if channelAbout}<p>{channelAbout}</p>{/if}
-                            {#if channelCreatorDisplay}
-                                <span class="channel-creator">
-                                    {$_("composerTarget.creator")}:
-                                    {channelCreatorDisplay}
-                                </span>
-                            {/if}
-                            {#if target.channelContext.channelRelays?.length}
-                                <span class="channel-relays">
-                                    {target.channelContext.channelRelays.join(
-                                        "\n",
-                                    )}
-                                </span>
-                            {/if}
-                        </div>
-                        </div>
+                    {#if previewEvent.kind !== 42 && target?.channelContext}
+                        {@render channelPreview()}
                     {/if}
 
                     {#if deleteRequestState === "failed" && target}
@@ -1295,6 +1301,16 @@
     .channel-preview {
         display: flex;
         gap: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-hr);
+    }
+
+    .target-preview-body.channel-first .channel-preview {
+        padding-top: 0;
+        border-top: 0;
+    }
+
+    .target-preview-body.channel-first .event-author {
         padding-top: 10px;
         border-top: 1px solid var(--border-hr);
     }

@@ -883,6 +883,28 @@ describe("ComposerTargetDialog", () => {
 
         await enterNote();
 
+        const channelPreview = document.querySelector(".channel-preview");
+        const author = document.querySelector(".event-author");
+        const content = document.querySelector(".event-content");
+        expect(channelPreview).toBeTruthy();
+        expect(author).toBeTruthy();
+        expect(content).toBeTruthy();
+        expect(
+            channelPreview!.compareDocumentPosition(author!) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(
+            author!.compareDocumentPosition(content!) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        const footer = document.querySelector(".post-preview-footer");
+        expect(footer).toBeTruthy();
+        expect(
+            content!.compareDocumentPosition(footer!) &
+                Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(document.querySelector(".post-preview-date")?.textContent).toBeTruthy();
+
         const footerActions = document.querySelector(
             ".post-preview-footer-actions",
         );
