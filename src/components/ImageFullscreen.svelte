@@ -269,7 +269,7 @@
         const requestToken = ++openRequestToken;
 
         if (!isVisible || items.length === 0 || targetIndex < 0) {
-            if (activePhotoSwipe) {
+            if (activePhotoSwipe || historyPushed) {
                 requestClose("internal");
             }
             return;
