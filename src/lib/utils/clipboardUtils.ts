@@ -173,29 +173,13 @@ export function analyzeLineBreaks(text: string): LineBreakAnalysis {
  * @param type - テキストの種類（ログ出力用）
  * @param navigatorObj - Navigatorオブジェクト（テスト用）
  */
-export async function copyToClipboard(text: string, type: "npub" | "nprofile" | string = "", navigatorObj?: Navigator, windowObj?: Window): Promise<void> {
-    const nav = navigatorObj ?? navigator;
-    // 1) 標準Clipboard APIをまず試す
-    try {
-        if (nav?.clipboard && typeof nav.clipboard.writeText === "function") {
-            await nav.clipboard.writeText(text);
-            console.log(`${type} copied to clipboard`);
-            return;
-        }
-    } catch (err) {
-        console.error(`Failed to copy ${type}:`, err);
-        // フォールバックを試す
-        await fallbackCopy(text, type, windowObj);
-        return;
-    }
-
-    // 2) フォールバック: textarea + execCommand('copy')
-    await fallbackCopy(text, type, windowObj);
+export async function copyToClipboard(text: string, type: string = "", navigatorObj?: Navigator, windowObj?: Window): Promise<void> {
+    await tryCopyToClipboard(text, type, navigatorObj, windowObj);
 }
 
 export async function tryCopyToClipboard(
     text: string,
-    type: "npub" | "nprofile" | string = "",
+    type: string = "",
     navigatorObj?: Navigator,
     windowObj?: Window,
 ): Promise<boolean> {
@@ -220,10 +204,12 @@ export async function tryCopyToClipboard(
  * @param type - テキストの種類（ログ出力用）
  * @param windowObj - Windowオブジェクト（テスト用）
  */
-async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "", windowObj?: Window): Promise<boolean> {
+async function fallbackCopy(text: string, type: string = "", windowObj?: Window): Promise<boolean> {
     const win = windowObj ?? window;
+    const doc = win?.document ?? document;
+    const textarea = doc.createElement("textarea");
+
     try {
-        const doc = (win && (win as any).document) || document;
         const activeElement = doc.activeElement;
         const activeHtmlElement =
             activeElement instanceof HTMLElement ? activeElement : null;
@@ -231,7 +217,7 @@ async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "
             activeHtmlElement?.closest(
                 "dialog, [role='dialog'], .dialog",
             ) ?? doc.body;
-        const textarea = doc.createElement("textarea");
+
         textarea.value = text;
         // ページ表示を汚さないため off-screen に配置
         textarea.style.position = "fixed";
@@ -244,16 +230,17 @@ async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "
 
         // execCommandの戻りを確認
         const successful = doc.execCommand && doc.execCommand("copy");
-        fallbackHost.removeChild(textarea);
 
         if (successful) {
             console.log(`${type} copied to clipboard (fallback)`);
             return true;
-        } else {
-            throw new Error("fallback_copy_failed");
         }
+
+        throw new Error("fallback_copy_failed");
     } catch (error) {
         console.warn(`Failed to copy ${type} (both clipboard API and fallback failed):`, error);
         return false;
+    } finally {
+        textarea.remove();
     }
 }

@@ -237,6 +237,36 @@ describe('clipboardUtils', () => {
     });
 
     describe('tryCopyToClipboard', () => {
+        it('execCommand が例外を投げても false を返し、temporary textarea を残さない', async () => {
+            const button = document.createElement('button');
+            document.body.appendChild(button);
+            button.focus();
+
+            const execCommand = vi.fn(() => {
+                const textarea = document.body.querySelector('textarea');
+
+                expect(textarea).not.toBeNull();
+                expect(textarea?.value).toBe('https://example.com/image.jpg');
+                throw new Error('copy failed');
+            });
+
+            Object.defineProperty(document, 'execCommand', {
+                configurable: true,
+                value: execCommand,
+            });
+
+            const copied = await tryCopyToClipboard(
+                'https://example.com/image.jpg',
+                'URL',
+                { clipboard: undefined } as unknown as Navigator,
+                window,
+            );
+
+            expect(copied).toBe(false);
+            expect(execCommand).toHaveBeenCalledWith('copy');
+            expect(document.body.querySelector('textarea')).toBeNull();
+        });
+
         it('ダイアログ内のボタンから実行した fallback copy は一時 textarea をダイアログ内に配置する', async () => {
             const dialog = document.createElement('div');
             dialog.className = 'dialog';
