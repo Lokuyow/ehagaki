@@ -220,6 +220,11 @@ describe('Nip46Service', () => {
         const { nip44 } = await import('nostr-tools');
         vi.mocked(nip44.decrypt).mockReset();
 
+        const { SimplePool } = await import('nostr-tools/pool');
+        (SimplePool as any).mockReset().mockImplementation(function () {
+            return mockPool;
+        });
+
         const { BunkerSigner, parseBunkerInput, createNostrConnectURI } = await import('nostr-tools/nip46');
         (BunkerSigner.fromBunker as any).mockReset();
         (parseBunkerInput as any).mockReset();
@@ -2473,6 +2478,267 @@ describe('Nip46Service', () => {
         it('未接続時はfalseを返す', async () => {
             const result = await service.ensureConnection();
             expect(result).toBe(false);
+        });
+    });
+
+    describe('getSignerForSession', () => {
+        it('operationなしでは同一sessionのruntime signerを即時返す', async () => {
+            const { pubkey } = await connectService();
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            const signer = await service.getSignerForSession(pubkey);
+
+            expect(signer).toBe(service.getSigner());
+            expect(ensureSpy).not.toHaveBeenCalled();
+        });
+
+        it('expectedPubkey不一致またはcurrentSessionなしでは再接続しない', async () => {
+            await connectService();
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            expect(await service.getSignerForSession('different-pubkey')).toBeNull();
+            await service.disconnect();
+            expect(await service.getSignerForSession('user-pubkey-hex')).toBeNull();
+            expect(ensureSpy).not.toHaveBeenCalled();
+        });
+
+        it('auto recovery失敗を待った要求は同じ呼び出し内で1回だけ再接続して新しいsignerを返す', async () => {
+            const { mockBp, pubkey, BunkerSigner } = await connectService();
+            const failedRecovery = createDeferred<unknown>();
+            mockPool.ensureRelay
+                .mockReturnValueOnce(failedRecovery.promise)
+                .mockResolvedValue({});
+            const rebuiltSigner = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue(pubkey),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            const visibilityRecovery = service.ensureConnection();
+            const signerPromise = service.getSignerForSession(pubkey);
+            failedRecovery.reject(new Error('android websocket not ready'));
+
+            await expect(visibilityRecovery).resolves.toBe(false);
+            await expect(signerPromise).resolves.toBe(service.getSigner());
+            expect(service.getSigner()).not.toBeNull();
+            expect(ensureSpy).toHaveBeenCalledTimes(2);
+        });
+
+        it('auto recovery失敗後の同時取得要求は限定再接続を共有する', async () => {
+            const { mockBp, pubkey, BunkerSigner } = await connectService();
+            const failedRecovery = createDeferred<unknown>();
+            const limitedRecovery = createDeferred<unknown>();
+            mockPool.ensureRelay
+                .mockReturnValueOnce(failedRecovery.promise)
+                .mockReturnValueOnce(limitedRecovery.promise);
+            const rebuiltSigner = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue(pubkey),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            const callCountBeforeRecovery = (BunkerSigner.fromBunker as any).mock.calls.length;
+            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
+
+            const visibilityRecovery = service.ensureConnection();
+            const firstSigner = service.getSignerForSession(pubkey);
+            const secondSigner = service.getSignerForSession(pubkey);
+            failedRecovery.reject(new Error('background connection failed'));
+            await expect(visibilityRecovery).resolves.toBe(false);
+            limitedRecovery.resolve({});
+
+            const [first, second] = await Promise.all([firstSigner, secondSigner]);
+            expect(first).toBe(second);
+            expect(first).toBe(service.getSigner());
+            expect((BunkerSigner.fromBunker as any).mock.calls.length - callCountBeforeRecovery).toBe(1);
+        });
+
+        it('auto recovery後の限定再接続も失敗した場合はnullを返し、別操作は再試行できる', async () => {
+            const { pubkey } = await connectService();
+            mockPool.ensureRelay
+                .mockRejectedValueOnce(new Error('auto failed'))
+                .mockRejectedValueOnce(new Error('limited failed'))
+                .mockResolvedValue({});
+
+            const visibilityRecovery = service.ensureConnection();
+            await expect(service.getSignerForSession(pubkey)).resolves.toBeNull();
+            await expect(visibilityRecovery).resolves.toBe(false);
+            await expect(service.getSignerForSession(pubkey)).resolves.not.toBeNull();
+        });
+
+        it('manual check失敗を待った要求は古いsignerを返さず同じ呼び出し内で再接続しない', async () => {
+            const manualPing = createDeferred<string>();
+            const { sessionData } = await reconnectService({
+                pingVerified: true,
+                signerOverrides: {
+                    sendRequest: vi
+                        .fn()
+                        .mockResolvedValueOnce('ack')
+                        .mockReturnValueOnce(manualPing.promise),
+                },
+            });
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            const manualCheck = service.runManualConnectionCheck();
+            const signerPromise = service.getSignerForSession(sessionData.userPubkey);
+            manualPing.resolve('not-pong');
+
+            await expect(manualCheck).resolves.toEqual({ success: false });
+            await expect(signerPromise).resolves.toBeNull();
+            expect(ensureSpy).not.toHaveBeenCalled();
+            await expect(
+                service.getSignerForSession(sessionData.userPubkey),
+            ).resolves.toBe(service.getSigner());
+        });
+
+        it('manual check失敗後の別操作でsignerがなければensureConnectionを1回試す', async () => {
+            const { sessionData, BunkerSigner } = await reconnectService({
+                signerOverrides: {
+                    sendRequest: vi
+                        .fn()
+                        .mockResolvedValueOnce('ack')
+                        .mockResolvedValueOnce('not-pong'),
+                },
+            });
+            await expect(service.runManualConnectionCheck()).resolves.toEqual({
+                success: false,
+            });
+            (service as any).signerAdapter = null;
+            const rebuiltSigner = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue(sessionData.userPubkey),
+                bp: {
+                    pubkey: sessionData.remoteSignerPubkey,
+                    relays: sessionData.relays,
+                    secret: null,
+                },
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
+            const ensureSpy = vi.spyOn(service, 'ensureConnection');
+
+            await expect(
+                service.getSignerForSession(sessionData.userPubkey),
+            ).resolves.not.toBeNull();
+            expect(ensureSpy).toHaveBeenCalledOnce();
+        });
+
+        it('rebuild開始直後から古いsignerを共有runtimeから取得できない', async () => {
+            const closeDeferred = createDeferred<void>();
+            const { mockBp, mockSigner, BunkerSigner } = await connectService({
+                signerOverrides: {
+                    close: vi.fn().mockReturnValue(closeDeferred.promise),
+                },
+            });
+            const rebuiltSigner = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
+
+            const recovery = service.ensureConnection();
+
+            expect(mockSigner.close).toHaveBeenCalledOnce();
+            expect(service.getSigner()).toBeNull();
+            expect(service.getUserPubkey()).toBeNull();
+            closeDeferred.resolve();
+            await expect(recovery).resolves.toBe(true);
+        });
+
+        it('rebuild待機中にlogoutした場合は候補をcommitせずsignerを返さない', async () => {
+            const { mockBp, pubkey, BunkerSigner } = await connectService();
+            const relayConnection = createDeferred<unknown>();
+            mockPool.ensureRelay.mockReturnValueOnce(relayConnection.promise);
+            const staleCandidate = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue(pubkey),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(staleCandidate);
+
+            const recovery = service.ensureConnection();
+            const signerPromise = service.getSignerForSession(pubkey);
+            await vi.waitFor(() => {
+                expect(mockPool.ensureRelay).toHaveBeenCalledTimes(2);
+            });
+            await service.disconnect();
+            relayConnection.resolve({});
+
+            await expect(recovery).resolves.toBe(false);
+            await expect(signerPromise).resolves.toBeNull();
+            expect(service.getSigner()).toBeNull();
+            expect(staleCandidate.close).toHaveBeenCalledOnce();
+        });
+
+        it('session切替中に完了した古いrebuild候補をcommitせず候補資源を閉じる', async () => {
+            const { pubkey, BunkerSigner } = await connectService();
+            const { SimplePool } = await import('nostr-tools/pool');
+            const oldRelay = createDeferred<unknown>();
+            const stalePool = {
+                ensureRelay: vi.fn().mockReturnValue(oldRelay.promise),
+                subscribe: vi.fn(),
+                destroy: vi.fn(),
+            };
+            const currentPool = {
+                ensureRelay: vi.fn().mockResolvedValue({}),
+                subscribe: vi.fn(),
+                destroy: vi.fn(),
+            };
+            (SimplePool as any)
+                .mockImplementationOnce(function () {
+                    return stalePool;
+                })
+                .mockImplementationOnce(function () {
+                    return currentPool;
+                });
+            const currentSigner = {
+                sendRequest: vi.fn().mockResolvedValue('ack'),
+                getPublicKey: vi.fn().mockResolvedValue('new-user-pubkey'),
+                bp: {
+                    pubkey: 'e'.repeat(64),
+                    relays: ['wss://new.example'],
+                    secret: null,
+                },
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            const staleSigner = {
+                sendRequest: vi.fn(),
+                getPublicKey: vi.fn().mockResolvedValue(pubkey),
+                bp: {
+                    pubkey: 'a'.repeat(64),
+                    relays: ['wss://relay.example.com'],
+                    secret: null,
+                },
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any)
+                .mockReturnValueOnce(currentSigner)
+                .mockReturnValueOnce(staleSigner);
+
+            const staleRecovery = service.ensureConnection();
+            await vi.waitFor(() => expect(stalePool.ensureRelay).toHaveBeenCalled());
+            await service.reconnect({
+                clientSecretKeyHex: 'cd'.repeat(32),
+                remoteSignerPubkey: 'e'.repeat(64),
+                relays: ['wss://new.example'],
+                userPubkey: 'new-user-pubkey',
+                pingVerified: false,
+            });
+            oldRelay.resolve({});
+
+            await expect(staleRecovery).resolves.toBe(false);
+            expect(service.getUserPubkey()).toBe('new-user-pubkey');
+            expect(await service.getSignerForSession('new-user-pubkey')).toBe(service.getSigner());
+            expect(staleSigner.close).toHaveBeenCalledOnce();
+            expect(stalePool.destroy).toHaveBeenCalledOnce();
+            expect(currentSigner.close).not.toHaveBeenCalled();
+            expect(currentPool.destroy).not.toHaveBeenCalled();
         });
     });
 

@@ -1892,12 +1892,12 @@ describe('PostManager統合テスト', () => {
             }));
         });
 
-        it('NIP-46投稿前にpending recovery完了を待つ', async () => {
+        it('NIP-46投稿前に共有signer取得完了を待つ', async () => {
             const mockIframeService = {
                 notifyPostSuccess: vi.fn().mockReturnValue(true),
                 notifyPostError: vi.fn().mockReturnValue(true)
             };
-            const waitForNip46ReadyFn = vi.fn().mockResolvedValue(true);
+            const getNip46SignerForSessionFn = vi.fn().mockResolvedValue(null);
             const mockNip46Signer = {
                 signEvent: vi.fn().mockResolvedValue({
                     id: 'nip46-signed-event-id',
@@ -1910,8 +1910,8 @@ describe('PostManager統合テスト', () => {
 
             mockAuthState.type = 'nip46';
             mockAuthState.pubkey = 'a'.repeat(64);
-            mockDeps.waitForNip46ReadyFn = waitForNip46ReadyFn;
-            mockDeps.getNip46SignerFn = () => mockNip46Signer;
+            getNip46SignerForSessionFn.mockResolvedValue(mockNip46Signer);
+            mockDeps.getNip46SignerForSessionFn = getNip46SignerForSessionFn;
             mockDeps.iframeMessageService = mockIframeService;
             manager = new PostManager(mockRxNostr, mockDeps);
 
@@ -1936,28 +1936,59 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(true);
-            expect(waitForNip46ReadyFn).toHaveBeenCalledOnce();
+            expect(getNip46SignerForSessionFn).toHaveBeenCalledWith('a'.repeat(64));
             expect(mockNip46Signer.signEvent).toHaveBeenCalledOnce();
         });
 
-        it('NIP-46 recovery失敗時は投稿せずsigner取得前に止める', async () => {
+        it('NIP-46 signer取得不能時は投稿しない', async () => {
             const mockIframeService = {
                 notifyPostSuccess: vi.fn().mockReturnValue(true),
                 notifyPostError: vi.fn().mockReturnValue(true)
             };
-            const getNip46SignerFn = vi.fn();
+            const getNip46SignerForSessionFn = vi.fn().mockResolvedValue(null);
 
             mockAuthState.type = 'nip46';
             mockAuthState.pubkey = 'a'.repeat(64);
-            mockDeps.waitForNip46ReadyFn = vi.fn().mockResolvedValue(false);
-            mockDeps.getNip46SignerFn = getNip46SignerFn;
+            mockDeps.getNip46SignerForSessionFn = getNip46SignerForSessionFn;
             mockDeps.iframeMessageService = mockIframeService;
             manager = new PostManager(mockRxNostr, mockDeps);
 
             const result = await manager.submitPost('Test post content');
 
             expect(result).toEqual({ success: false, error: 'nip46_signer_not_available' });
-            expect(getNip46SignerFn).not.toHaveBeenCalled();
+            expect(getNip46SignerForSessionFn).toHaveBeenCalledWith('a'.repeat(64));
+            expect(mockRxNostr.send).not.toHaveBeenCalled();
+        });
+
+        it('NIP-46 signer取得待機中に認証が変わった場合はsignerを使用しない', async () => {
+            let resolveSigner!: (signer: any) => void;
+            const signerPromise = new Promise<any>((resolve) => {
+                resolveSigner = resolve;
+            });
+            const signEvent = vi.fn();
+            const getNip46SignerForSessionFn = vi.fn().mockReturnValue(signerPromise);
+
+            mockAuthState.type = 'nip46';
+            mockAuthState.pubkey = 'a'.repeat(64);
+            mockDeps.getNip46SignerForSessionFn = getNip46SignerForSessionFn;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const resultPromise = manager.submitPost('Test post content');
+            await vi.waitFor(() => {
+                expect(getNip46SignerForSessionFn).toHaveBeenCalledWith('a'.repeat(64));
+            });
+            mockDeps.authStateStore!.value = {
+                ...mockAuthState,
+                type: 'nip46',
+                pubkey: 'b'.repeat(64),
+            };
+            resolveSigner({ signEvent });
+
+            await expect(resultPromise).resolves.toEqual({
+                success: false,
+                error: 'nip46_signer_not_available',
+            });
+            expect(signEvent).not.toHaveBeenCalled();
             expect(mockRxNostr.send).not.toHaveBeenCalled();
         });
     });

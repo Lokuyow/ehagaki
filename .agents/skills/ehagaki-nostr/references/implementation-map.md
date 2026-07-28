@@ -127,7 +127,7 @@
 - event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`42`、`10063`、`22242`、`27235`、`24242`。
 - 主なtag: NIP-46接続で利用する`p`、Nostr Connect URIのrelay/secret/metadata、各署名対象eventのtag
 - 主な実装ファイル: `src/lib/nip46Service.ts`、`src/lib/nip46AuthFlowCoordinator.ts`、`src/lib/nip46PendingOperationUtils.ts`、`src/lib/nip46ConnectUiUtils.ts`、`src/lib/authService.ts`
-- 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続とSigner adapterを分担する。`NIP46_REQUESTED_PERMISSIONS`が要求権限のsource of truthである。
+- 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`getSignerForSession`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続、同一sessionのruntime signer復旧、Signer adapterを分担する。`NIP46_REQUESTED_PERMISSIONS`が要求権限のsource of truthである。
 - 関連テスト: `src/test/unit/nip46Service.test.ts`、`src/test/unit/nip46AuthFlowCoordinator.test.ts`、`src/test/unit/nip46PendingOperationUtils.test.ts`、`src/test/unit/nip46ConnectUiUtils.test.ts`、`src/test/unit/loginDialog.test.ts`
 - 注意点: 接続確認と`get_public_key`検証を混同しない。payload、secret、署名要求本文をログやfixtureへ残さない。`Nip46WebSocket`にはrelay互換目的の`limit:0`補正があるため、根拠なく一般化しない。
 

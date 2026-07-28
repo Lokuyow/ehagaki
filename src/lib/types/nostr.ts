@@ -185,8 +185,7 @@ export interface PostManagerDeps {
     createImetaTagFn?: (meta: any) => Promise<string[]>;
     getClientTagFn?: () => string[] | null;
     seckeySignerFn?: (key: string) => any;
-    getNip46SignerFn?: () => any;
-    waitForNip46ReadyFn?: () => Promise<boolean>;
+    getNip46SignerForSessionFn?: (expectedPubkey: string) => Promise<any>;
     getParentClientSignerFn?: () => any;
     savePostHistoryFn?: (input: {
         event: NostrEvent;

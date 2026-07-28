@@ -2,7 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImageCompressionService } from '../../lib/imageCompressionService';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { NostrAuthService } from '../../lib/nostrAuthService';
+import {
+    NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS,
+    registerNip46VisibilityHandler,
+} from '../../lib/bootstrap/appInitializationBootstrap';
+import { Nip96UploadAdapter } from '../../lib/upload/Nip96UploadAdapter';
+import { BlossomUploadAdapter } from '../../lib/upload/BlossomUploadAdapter';
 import type { FileValidationResult } from '../../lib/types';
+
+const nip46RuntimeMocks = vi.hoisted(() => ({
+    ensureConnection: vi.fn<() => Promise<boolean>>(),
+    getSignerForSession: vi.fn(),
+}));
+
+vi.mock('../../lib/nip46Service', () => ({
+    nip46Service: {
+        hasRecoverableSession: vi.fn(() => true),
+        isManualCheckInProgress: vi.fn(() => false),
+        ensureConnection: nip46RuntimeMocks.ensureConnection,
+        getSignerForSession: nip46RuntimeMocks.getSignerForSession,
+    },
+}));
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -53,7 +73,19 @@ vi.mock("browser-image-compression", () => ({
 }));
 
 vi.mock("nostr-tools/nip98", () => ({
-    getToken: vi.fn(async () => "Bearer mock-nip98-token")
+    getToken: vi.fn(async (
+        url: string,
+        method: string,
+        signEvent: (event: any) => Promise<any>,
+    ) => {
+        await signEvent({
+            kind: 27235,
+            created_at: Math.floor(Date.now() / 1000),
+            content: "",
+            tags: [["u", url], ["method", method]],
+        });
+        return "Bearer mock-nip98-token";
+    })
 }));
 
 vi.mock("@rx-nostr/crypto", () => ({
@@ -238,6 +270,271 @@ describe('ファイルアップロードフロー統合テスト', () => {
             if (originalNostr) {
                 (window as any).nostr = originalNostr;
             }
+        });
+    });
+
+    describe('Android復帰時のNIP-46画像アップロード復旧', () => {
+        function createDeferred<T>() {
+            let resolve!: (value: T) => void;
+            const promise = new Promise<T>((resolvePromise) => {
+                resolve = resolvePromise;
+            });
+            return { promise, resolve };
+        }
+
+        function createVisibilityDocument() {
+            let handler: (() => void) | undefined;
+            const document = {
+                visibilityState: 'visible' as Document['visibilityState'],
+                addEventListener: vi.fn((event: string, listener: () => void) => {
+                    if (event === 'visibilitychange') handler = listener;
+                }),
+                removeEventListener: vi.fn(),
+            };
+            return {
+                document,
+                setVisibility: (state: Document['visibilityState']) => {
+                    document.visibilityState = state;
+                    handler?.();
+                },
+            };
+        }
+
+        function createDestination(protocol: 'nip96' | 'blossom'): any {
+            const blossom = protocol === 'blossom';
+            return {
+                id: `${protocol}-test`,
+                pubkeyHex: null,
+                name: `${protocol} test`,
+                protocol,
+                serverUrl: blossom
+                    ? 'https://blossom.example'
+                    : 'https://upload.example/api/v1/upload',
+                resolvedUploadUrl: blossom
+                    ? undefined
+                    : 'https://upload.example/api/v1/upload',
+                presetId: null,
+                isDefault: false,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 1,
+                capabilities: {
+                    maxUploadSize: null,
+                    supportedMimeTypes: [],
+                    supportsDelete: blossom,
+                    supportsList: blossom,
+                    supportsMirror: false,
+                    supportsMediaOptimization: false,
+                    authRequired: true,
+                    source: 'test',
+                },
+                auth: { type: blossom ? 'blossom-bud11' : 'nip98' },
+                schemaVersion: 1,
+            };
+        }
+
+        function mockUploadedImageAvailable() {
+            return vi.spyOn(window, 'Image').mockImplementation(function () {
+                const image = {
+                    onload: null as (() => void) | null,
+                    onerror: null as (() => void) | null,
+                    set src(_value: string) {
+                        setTimeout(() => this.onload?.(), 0);
+                    },
+                };
+                return image as unknown as HTMLImageElement;
+            });
+        }
+
+        async function prepareRecovery(signer: any) {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            const visibilityRecovery = createDeferred<boolean>();
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'testpubkey123',
+            };
+            (keyManager.getFromStore as any).mockReturnValue(null);
+            (keyManager.loadFromStorage as any).mockReturnValue(null);
+            nip46RuntimeMocks.ensureConnection
+                .mockReturnValueOnce(visibilityRecovery.promise)
+                .mockResolvedValueOnce(true);
+            nip46RuntimeMocks.getSignerForSession.mockImplementation(
+                async (expectedPubkey: string) => {
+                    if (expectedPubkey !== 'testpubkey123') return null;
+                    await visibilityRecovery.promise;
+                    return await nip46RuntimeMocks.ensureConnection()
+                        ? signer
+                        : null;
+                },
+            );
+
+            let nowMs = 0;
+            const visibility = createVisibilityDocument();
+            const cleanup = registerNip46VisibilityHandler({
+                document: visibility.document as never,
+                authState,
+                nip46Service: {
+                    hasRecoverableSession: () => true,
+                    isManualCheckInProgress: () => false,
+                    ensureConnection: nip46RuntimeMocks.ensureConnection,
+                },
+                console: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+                now: () => nowMs,
+            });
+            visibility.setVisibility('hidden');
+            nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+            visibility.setVisibility('visible');
+            expect(nip46RuntimeMocks.ensureConnection).toHaveBeenCalledOnce();
+
+            return { visibilityRecovery, cleanup };
+        }
+
+        beforeEach(() => {
+            nip46RuntimeMocks.ensureConnection.mockReset();
+            nip46RuntimeMocks.getSignerForSession.mockReset();
+            mockUploadedImageAvailable();
+        });
+
+        afterEach(async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
+            (keyManager.getFromStore as any).mockReturnValue('nsec1test');
+            vi.restoreAllMocks();
+        });
+
+        it('visibility復旧失敗後の同じNIP-96 upload操作で再接続しkind 27235を署名する', async () => {
+            const signEvent = vi.fn(async (event) => ({
+                ...event,
+                id: 'nip98-event-id',
+                pubkey: 'testpubkey123',
+                sig: 'sig',
+            }));
+            const { visibilityRecovery, cleanup } = await prepareRecovery({ signEvent });
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce(new Response(JSON.stringify({
+                    status: 'success',
+                    nip94_event: {
+                        tags: [['url', 'https://upload.example/photo.png']],
+                    },
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                }))
+                .mockResolvedValue(new Response(null, {
+                    status: 200,
+                    headers: { 'content-type': 'image/png' },
+                }));
+
+            const uploadPromise = new Nip96UploadAdapter().upload({
+                file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
+                destination: createDestination('nip96'),
+                authService: new NostrAuthService(),
+                fetch: fetchMock as unknown as typeof fetch,
+            });
+            visibilityRecovery.resolve(false);
+            const result = await uploadPromise;
+
+            expect(result).toEqual(expect.objectContaining({ success: true }));
+            expect(nip46RuntimeMocks.ensureConnection).toHaveBeenCalledTimes(2);
+            expect(nip46RuntimeMocks.getSignerForSession).toHaveBeenCalledWith('testpubkey123');
+            expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 27235 }));
+            expect(fetchMock).toHaveBeenCalledWith(
+                'https://upload.example/api/v1/upload',
+                expect.objectContaining({
+                    method: 'POST',
+                    headers: expect.objectContaining({ Authorization: 'Bearer mock-nip98-token' }),
+                }),
+            );
+            cleanup();
+        });
+
+        it('visibility復旧失敗後の同じBlossom upload操作で再接続しkind 24242を署名する', async () => {
+            const signEvent = vi.fn(async (event) => ({
+                ...event,
+                id: 'blossom-event-id',
+                pubkey: 'testpubkey123',
+                sig: 'sig',
+            }));
+            const signer = {
+                getPublicKey: vi.fn(async () => 'testpubkey123'),
+                signEvent,
+            };
+            const { visibilityRecovery, cleanup } = await prepareRecovery(signer);
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce(new Response(JSON.stringify({
+                    url: 'https://blossom.example/photo.png',
+                    sha256: 'a'.repeat(64),
+                    size: 3,
+                    type: 'image/png',
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                }))
+                .mockResolvedValue(new Response(null, {
+                    status: 200,
+                    headers: { 'content-type': 'image/png' },
+                }));
+
+            const uploadPromise = new BlossomUploadAdapter().upload({
+                file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
+                destination: createDestination('blossom'),
+                authService: new NostrAuthService(),
+                fetch: fetchMock as unknown as typeof fetch,
+            });
+            visibilityRecovery.resolve(false);
+            const result = await uploadPromise;
+
+            expect(result).toEqual(expect.objectContaining({ success: true }));
+            expect(nip46RuntimeMocks.ensureConnection).toHaveBeenCalledTimes(2);
+            expect(nip46RuntimeMocks.getSignerForSession).toHaveBeenCalledWith('testpubkey123');
+            expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 24242 }));
+            expect(fetchMock).toHaveBeenCalledWith(
+                'https://blossom.example/upload',
+                expect.objectContaining({ method: 'PUT' }),
+            );
+            cleanup();
+        });
+
+        it('nsecのNIP-96 upload成功経路を維持する', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
+            (keyManager.getFromStore as any).mockReturnValue('nsec1test');
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce(new Response(JSON.stringify({
+                    status: 'success',
+                    nip94_event: {
+                        tags: [['url', 'https://upload.example/nsec-photo.png']],
+                    },
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                }))
+                .mockResolvedValue(new Response(null, {
+                    status: 200,
+                    headers: { 'content-type': 'image/png' },
+                }));
+
+            const result = await new Nip96UploadAdapter().upload({
+                file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
+                destination: createDestination('nip96'),
+                authService: new NostrAuthService(),
+                fetch: fetchMock as unknown as typeof fetch,
+            });
+
+            expect(result).toEqual(expect.objectContaining({ success: true }));
+            expect(nip46RuntimeMocks.getSignerForSession).not.toHaveBeenCalled();
         });
     });
 

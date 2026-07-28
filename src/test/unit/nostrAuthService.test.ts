@@ -46,8 +46,7 @@ vi.mock('../../lib/keyManager.svelte', async () => {
 // nip46Service をモック
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
-        getSigner: vi.fn().mockReturnValue(null),
-        waitForPendingOperation: vi.fn().mockResolvedValue(true),
+        getSignerForSession: vi.fn().mockResolvedValue(null),
     },
 }));
 
@@ -90,6 +89,14 @@ describe('nostr-tools/nip98 インポート整合性', () => {
 // =============================================================================
 describe('NostrAuthService', () => {
     let service: NostrAuthService;
+
+    function createDeferred<T>() {
+        let resolve!: (value: T) => void;
+        const promise = new Promise<T>((resolvePromise) => {
+            resolve = resolvePromise;
+        });
+        return { promise, resolve };
+    }
 
     beforeEach(() => {
         service = new NostrAuthService();
@@ -176,8 +183,7 @@ describe('NostrAuthService', () => {
             const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
             (authState as any).value = { ...authState.value, type: 'nip46' };
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
-            vi.mocked(nip46Service.getSigner).mockReturnValue({
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue({
                 signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
             } as any);
 
@@ -195,23 +201,21 @@ describe('NostrAuthService', () => {
                 expect.any(Function),
                 true
             );
-            expect(nip46Service.waitForPendingOperation).toHaveBeenCalledOnce();
+            expect(nip46Service.getSignerForSession).toHaveBeenCalledWith('testpubkey123');
 
             // クリーンアップ
             (authState as any).value = { ...authState.value, type: 'nsec' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue(null);
         });
 
-        it('NIP-46認証状態でpending recovery完了を待ってからトークン生成', async () => {
+        it('NIP-46認証状態で共有signer取得完了を待ってからトークン生成', async () => {
             const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
 
             (authState as any).value = { ...authState.value, type: 'nip46' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue({
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue({
                 signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
             } as any);
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
 
             const result = await service.buildAuthHeader(
                 'https://example.com/upload',
@@ -219,12 +223,11 @@ describe('NostrAuthService', () => {
             );
 
             expect(result).toBe('Nostr mock-nip98-token');
-            expect(nip46Service.waitForPendingOperation).toHaveBeenCalledOnce();
+            expect(nip46Service.getSignerForSession).toHaveBeenCalledOnce();
 
             // クリーンアップ
             (authState as any).value = { ...authState.value, type: 'nsec' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue(null);
         });
 
         it('NIP-46以外の認証ではstaleなnip46 signerを使わない', async () => {
@@ -232,7 +235,7 @@ describe('NostrAuthService', () => {
             const { nip46Service } = await import('../../lib/nip46Service');
 
             (authState as any).value = { ...authState.value, type: 'parentClient' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue({
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue({
                 signEvent: vi.fn(),
             } as any);
 
@@ -240,30 +243,84 @@ describe('NostrAuthService', () => {
                 service.buildAuthHeader('https://example.com/upload', 'POST')
             ).rejects.toThrow('Authentication required');
 
-            expect(nip46Service.waitForPendingOperation).not.toHaveBeenCalled();
+            expect(nip46Service.getSignerForSession).not.toHaveBeenCalled();
             (authState as any).value = { ...authState.value, type: 'nsec' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue(null);
         });
 
-        it('NIP-46 signerが既にあってもpending recovery失敗時は利用しない', async () => {
+        it('NIP-46 signerを取得できない場合はAuthentication requiredになる', async () => {
             const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
 
             (authState as any).value = { ...authState.value, type: 'nip46' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue({
-                signEvent: vi.fn().mockResolvedValue({ id: 'stale-signed', sig: 'sig' }),
-            } as any);
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(false);
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue(null);
 
             await expect(
                 service.buildAuthHeader('https://example.com/upload', 'POST')
             ).rejects.toThrow('Authentication required');
 
-            expect(nip46Service.waitForPendingOperation).toHaveBeenCalledOnce();
+            expect(nip46Service.getSignerForSession).toHaveBeenCalledOnce();
 
             (authState as any).value = { ...authState.value, type: 'nsec' };
-            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
-            vi.mocked(nip46Service.waitForPendingOperation).mockResolvedValue(true);
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue(null);
+        });
+
+        it('NIP-46 signer取得待機中のログアウト後は取得済みsignerを使用しない', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+            const { getToken } = await import('nostr-tools/nip98');
+            const deferred = createDeferred<any>();
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'testpubkey123',
+            };
+            vi.mocked(nip46Service.getSignerForSession).mockReturnValue(deferred.promise);
+
+            const headerPromise = service.buildAuthHeader('https://example.com/upload', 'POST');
+            (authState as any).value = {
+                isAuthenticated: false,
+                type: null,
+                pubkey: null,
+            };
+            deferred.resolve({ signEvent: vi.fn() });
+
+            await expect(headerPromise).rejects.toThrow('Authentication required');
+            expect(getToken).not.toHaveBeenCalled();
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
+        });
+
+        it('NIP-46 signer取得待機中のアカウント切替後は取得済みsignerを使用しない', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+            const { getToken } = await import('nostr-tools/nip98');
+            const deferred = createDeferred<any>();
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'testpubkey123',
+            };
+            vi.mocked(nip46Service.getSignerForSession).mockReturnValue(deferred.promise);
+
+            const headerPromise = service.buildAuthHeader('https://example.com/upload', 'POST');
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'different-pubkey',
+            };
+            deferred.resolve({ signEvent: vi.fn() });
+
+            await expect(headerPromise).rejects.toThrow('Authentication required');
+            expect(getToken).not.toHaveBeenCalled();
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
         });
 
         it('親クライアント連携接続時にparent signer使用→トークン生成', async () => {
@@ -315,6 +372,37 @@ describe('NostrAuthService', () => {
             expect(token).toBe(btoa(JSON.stringify(event)));
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
+        });
+
+        it('NIP-46 Blossom認証も共有signer取得APIでkind 24242を署名する', async () => {
+            const { authState } = await import('../../stores/authStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+            const signEvent = vi.fn(async (event) => ({
+                ...event,
+                id: 'blossom-event-id',
+                pubkey: 'testpubkey123',
+                sig: 'sig',
+            }));
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nip46',
+                pubkey: 'testpubkey123',
+            };
+            vi.mocked(nip46Service.getSignerForSession).mockResolvedValue({ signEvent } as any);
+
+            await service.buildBlossomAuthorizationHeader({
+                serverUrl: 'https://blossom.example',
+                method: 'upload',
+                sha256: 'a'.repeat(64),
+            });
+
+            expect(nip46Service.getSignerForSession).toHaveBeenCalledWith('testpubkey123');
+            expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 24242 }));
+            (authState as any).value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
         });
 
         it('generic Blossom にも同じ非 scoped Base64 token を返す', async () => {

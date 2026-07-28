@@ -173,14 +173,19 @@ describe('registerNip46VisibilityHandler', () => {
         const nip46Service = {
             hasRecoverableSession: vi.fn(() => true),
             isManualCheckInProgress: vi.fn(() => false),
-            ensureConnection: vi.fn().mockResolvedValue(undefined),
+            ensureConnection: vi.fn().mockResolvedValue(true),
+        };
+        const recoveryConsole = {
+            debug: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
         };
 
         const cleanup = registerNip46VisibilityHandler({
             document: document as never,
             authState: { value: { type: 'nip46' } },
             nip46Service,
-            console: { error: vi.fn() },
+            console: recoveryConsole,
             now: () => nowMs,
         });
 
@@ -192,8 +197,82 @@ describe('registerNip46VisibilityHandler', () => {
         await Promise.resolve();
 
         expect(nip46Service.ensureConnection).toHaveBeenCalledOnce();
+        expect(recoveryConsole.debug).toHaveBeenCalledWith(
+            'NIP-46 visibility auto recovery succeeded',
+        );
+        expect(recoveryConsole.warn).not.toHaveBeenCalled();
         cleanup();
         expect(document.removeEventListener).toHaveBeenCalledOnce();
+    });
+
+    it('visibility起点のensureConnectionがfalseなら通常の復旧失敗として記録する', async () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
+        const recoveryConsole = {
+            debug: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        };
+
+        registerNip46VisibilityHandler({
+            document: document as never,
+            authState: { value: { type: 'nip46' } },
+            nip46Service: {
+                hasRecoverableSession: () => true,
+                isManualCheckInProgress: () => false,
+                ensureConnection: vi.fn().mockResolvedValue(false),
+            },
+            console: recoveryConsole,
+            now: () => nowMs,
+        });
+
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+        setVisibilityState('visible');
+        triggerVisibilityChange();
+        await Promise.resolve();
+
+        expect(recoveryConsole.warn).toHaveBeenCalledWith(
+            'NIP-46 visibility auto recovery failed',
+        );
+        expect(recoveryConsole.error).not.toHaveBeenCalled();
+    });
+
+    it('visibility起点のensureConnectionのthrowは予期しない失敗として記録する', async () => {
+        const { document, setVisibilityState, triggerVisibilityChange } = createDocumentMock();
+        let nowMs = 0;
+        const error = new Error('unexpected');
+        const recoveryConsole = {
+            debug: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        };
+
+        registerNip46VisibilityHandler({
+            document: document as never,
+            authState: { value: { type: 'nip46' } },
+            nip46Service: {
+                hasRecoverableSession: () => true,
+                isManualCheckInProgress: () => false,
+                ensureConnection: vi.fn().mockRejectedValue(error),
+            },
+            console: recoveryConsole,
+            now: () => nowMs,
+        });
+
+        setVisibilityState('hidden');
+        triggerVisibilityChange();
+        nowMs += NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS;
+        setVisibilityState('visible');
+        triggerVisibilityChange();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(recoveryConsole.error).toHaveBeenCalledWith(
+            'NIP-46 visibility auto recovery threw unexpectedly:',
+            error,
+        );
     });
 
     it('hidden経由でないvisibleでは再接続しない', () => {

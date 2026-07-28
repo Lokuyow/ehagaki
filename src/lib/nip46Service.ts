@@ -76,6 +76,11 @@ type SessionPersistenceBinding = {
 
 type Nip46OperationKind = 'manual-check' | 'auto-recovery';
 
+type Nip46SessionIdentity = Pick<
+    Nip46SessionData,
+    'clientSecretKeyHex' | 'remoteSignerPubkey' | 'userPubkey'
+>;
+
 export interface Nip46ConnectionOperationState {
     kind: Nip46OperationKind | 'idle';
     inProgress: boolean;
@@ -1108,6 +1113,33 @@ export class Nip46Service {
         }
     }
 
+    private isCurrentSession(
+        identity: Nip46SessionIdentity,
+        expectedPubkey: string = identity.userPubkey,
+    ): boolean {
+        return this.currentSession !== null
+            && expectedPubkey === identity.userPubkey
+            && this.currentSession.userPubkey === identity.userPubkey
+            && this.currentSession.remoteSignerPubkey === identity.remoteSignerPubkey
+            && this.currentSession.clientSecretKeyHex === identity.clientSecretKeyHex;
+    }
+
+    private getRuntimeSignerForSession(
+        expectedPubkey: string,
+    ): Nip46SignerAdapter | null {
+        if (
+            !this.currentSession
+            || this.currentSession.userPubkey !== expectedPubkey
+            || this.userPubkey !== expectedPubkey
+            || !this.bunkerSigner
+            || !this.signerAdapter
+        ) {
+            return null;
+        }
+
+        return this.signerAdapter;
+    }
+
     private async pingWithTimeout(timeoutMs: number): Promise<boolean> {
         if (!this.bunkerSigner) {
             return false;
@@ -1133,17 +1165,30 @@ export class Nip46Service {
         }
 
         const session = { ...this.currentSession };
+        let candidatePool: SimplePool | null = null;
+        let candidateBunkerSigner: BunkerSigner | null = null;
+
+        const closeCandidateResources = async (): Promise<void> => {
+            if (candidateBunkerSigner) {
+                try {
+                    await candidateBunkerSigner.close();
+                } catch {
+                    // noop
+                }
+                candidateBunkerSigner = null;
+            }
+
+            candidatePool?.destroy();
+            candidatePool = null;
+        };
 
         try {
             await this.closeRuntimeResources();
 
             const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
             const { pool, connectedRelays } = await createConnectedPool(session.relays);
-
-            this.pool = pool;
-            this.clientSecretKeyHex = session.clientSecretKeyHex;
-            this.userPubkey = session.userPubkey;
-            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
+            candidatePool = pool;
+            candidateBunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
                 pubkey: session.remoteSignerPubkey,
                 relays: connectedRelays,
                 secret: null,
@@ -1151,19 +1196,36 @@ export class Nip46Service {
                 pool,
                 onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
             });
-            this.signerAdapter = new Nip46SignerAdapter(
-                this.bunkerSigner,
-                this.userPubkey,
+            const candidateSignerAdapter = new Nip46SignerAdapter(
+                candidateBunkerSigner,
+                session.userPubkey,
             );
+
+            if (!this.isCurrentSession(session)) {
+                console.warn('[NIP-46] rebuildConnection: session changed; discarding candidate runtime');
+                await closeCandidateResources();
+                return false;
+            }
+
+            this.pool = candidatePool;
+            this.clientSecretKeyHex = session.clientSecretKeyHex;
+            this.userPubkey = session.userPubkey;
+            this.bunkerSigner = candidateBunkerSigner;
+            this.signerAdapter = candidateSignerAdapter;
             this.setCurrentSession({
                 ...session,
                 relays: connectedRelays,
             });
             this.persistBoundSession();
+            candidatePool = null;
+            candidateBunkerSigner = null;
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
-        } catch {
-            await this.closeRuntimeResources();
+        } catch (error) {
+            await closeCandidateResources();
+            console.warn('[NIP-46] rebuildConnection failed', {
+                message: error instanceof Error ? error.message : 'Unknown error',
+            });
             return false;
         }
     }
@@ -1253,8 +1315,6 @@ export class Nip46Service {
 
         const clientSecretKey = generateSecretKey();
         this.clientSecretKeyHex = bytesToHex(clientSecretKey);
-        console.debug('[NIP-46] connect: clientSecretKeyHex =', this.clientSecretKeyHex.substring(0, 8) + '…');
-
         this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
             pool,
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
@@ -2085,9 +2145,9 @@ export class Nip46Service {
         this.operationKind = null;
         this.operationPromise = null;
         this.emitOperationState();
-        await this.closeRuntimeResources();
         this.setCurrentSession(null);
         this.persistenceBinding = null;
+        await this.closeRuntimeResources();
     }
 
     isConnected(): boolean {
@@ -2143,6 +2203,92 @@ export class Nip46Service {
 
             return await this.rebuildConnection();
         });
+    }
+
+    async getSignerForSession(
+        expectedPubkey: string,
+    ): Promise<Nip46SignerAdapter | null> {
+        const session = this.currentSession;
+        if (!session || session.userPubkey !== expectedPubkey) {
+            return null;
+        }
+
+        const sessionIdentity: Nip46SessionIdentity = {
+            clientSecretKeyHex: session.clientSecretKeyHex,
+            remoteSignerPubkey: session.remoteSignerPubkey,
+            userPubkey: session.userPubkey,
+        };
+        const pendingOperationPromise = this.operationPromise;
+        const pendingOperationKind = this.operationKind;
+        let pendingOperationSucceeded: boolean | null = null;
+
+        if (pendingOperationPromise) {
+            try {
+                pendingOperationSucceeded = await pendingOperationPromise;
+            } catch (error) {
+                pendingOperationSucceeded = false;
+                console.warn('[NIP-46] signer request: pending operation failed unexpectedly', {
+                    operationKind: pendingOperationKind,
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                });
+            }
+        }
+
+        if (!this.isCurrentSession(sessionIdentity, expectedPubkey)) {
+            return null;
+        }
+
+        if (
+            pendingOperationPromise
+            && pendingOperationKind === 'manual-check'
+            && pendingOperationSucceeded === false
+        ) {
+            console.warn('[NIP-46] signer request: manual check failed');
+            return null;
+        }
+
+        if (!pendingOperationPromise || pendingOperationSucceeded === true) {
+            const signer = this.getRuntimeSignerForSession(expectedPubkey);
+            if (signer) {
+                return signer;
+            }
+        }
+
+        console.debug('[NIP-46] signer request: starting limited reconnect', {
+            operationKind: pendingOperationKind,
+            hasRecoverableSession: this.hasRecoverableSession(),
+            hasRuntimeSigner: this.signerAdapter !== null,
+        });
+
+        let recovered: boolean;
+        try {
+            recovered = await this.ensureConnection();
+        } catch (error) {
+            console.error('[NIP-46] signer request: reconnect threw unexpectedly', {
+                operationKind: pendingOperationKind,
+                message: error instanceof Error ? error.message : 'Unknown error',
+            });
+            return null;
+        }
+
+        if (!recovered) {
+            console.warn('[NIP-46] signer request: limited reconnect failed', {
+                operationKind: pendingOperationKind,
+            });
+            return null;
+        }
+
+        if (!this.isCurrentSession(sessionIdentity, expectedPubkey)) {
+            return null;
+        }
+
+        const signer = this.getRuntimeSignerForSession(expectedPubkey);
+        if (signer) {
+            console.debug('[NIP-46] signer request: limited reconnect succeeded', {
+                operationKind: pendingOperationKind,
+            });
+        }
+        return signer;
     }
 
     async runManualConnectionCheck(): Promise<Nip46ManualConnectionCheckResult> {

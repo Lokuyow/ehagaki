@@ -189,8 +189,8 @@
     if (rxNostr) {
       if (!postManager)
         postManager = new PostManager(rxNostr as RxNostr, {
-          getNip46SignerFn: () => nip46Service.getSigner(),
-          waitForNip46ReadyFn: () => nip46Service.waitForPendingOperation(),
+          getNip46SignerForSessionFn: (expectedPubkey) =>
+            nip46Service.getSignerForSession(expectedPubkey),
           getParentClientSignerFn: () => parentClientAuthService.getSigner(),
           channelContextState: effectiveChannelContextState,
           replyQuoteState,

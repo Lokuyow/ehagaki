@@ -22,8 +22,11 @@ interface AuthStateLike {
 interface Nip46VisibilityServiceLike {
     hasRecoverableSession(): boolean;
     isManualCheckInProgress(): boolean;
-    ensureConnection(): Promise<unknown>;
+    ensureConnection(): Promise<boolean>;
 }
+
+type Nip46RecoveryConsole = Pick<Console, "error">
+    & Partial<Pick<Console, "debug" | "warn">>;
 
 interface RunAppInitializationBootstrapParams {
     reloadSettings: () => void;
@@ -41,14 +44,14 @@ interface RunAppInitializationBootstrapParams {
     refreshAccountList: () => void;
     markAuthInitialized: () => void;
     getExternalInputBootstrapParams: () => Omit<RunExternalInputBootstrapParams, "sharedError">;
-    console: Pick<Console, "error">;
+    console: Nip46RecoveryConsole;
 }
 
 interface RegisterNip46VisibilityHandlerParams {
     document: DocumentLike;
     authState: AuthStateLike;
     nip46Service: Nip46VisibilityServiceLike;
-    console: Pick<Console, "error">;
+    console: Nip46RecoveryConsole;
     now?: () => number;
 }
 
@@ -124,6 +127,7 @@ export function registerNip46VisibilityHandler({
     function handleVisibilityChange() {
         if (document.visibilityState === "hidden") {
             hiddenAt = now();
+            console.debug?.("NIP-46 visibility hidden");
             return;
         }
 
@@ -141,9 +145,20 @@ export function registerNip46VisibilityHandler({
             && nip46Service.hasRecoverableSession()
             && !nip46Service.isManualCheckInProgress()
         ) {
-            nip46Service.ensureConnection().catch((error) => {
-                console.error("NIP-46 reconnection failed:", error);
+            console.debug?.("NIP-46 visibility auto recovery started", {
+                hiddenDuration,
             });
+            nip46Service.ensureConnection()
+                .then((recovered) => {
+                    if (recovered) {
+                        console.debug?.("NIP-46 visibility auto recovery succeeded");
+                    } else {
+                        console.warn?.("NIP-46 visibility auto recovery failed");
+                    }
+                })
+                .catch((error) => {
+                    console.error("NIP-46 visibility auto recovery threw unexpectedly:", error);
+                });
         }
     }
 

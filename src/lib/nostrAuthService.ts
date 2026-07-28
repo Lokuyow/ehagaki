@@ -39,12 +39,9 @@ export class NostrAuthService implements AuthService {
         }
 
         if (authState.value.type === 'nip46') {
-            const connected = await nip46Service.waitForPendingOperation();
-            if (connected) {
-                const signer = nip46Service.getSigner();
-                if (signer) {
-                    return signer;
-                }
+            const expectedPubkey = authState.value.pubkey;
+            if (authState.value.isAuthenticated && expectedPubkey) {
+                return await this.getCurrentNip46Signer(expectedPubkey);
             }
             throw new Error('Authentication required');
         }
@@ -95,11 +92,7 @@ export class NostrAuthService implements AuthService {
         }
 
         if (auth.type === 'nip46') {
-            if (await nip46Service.waitForPendingOperation()) {
-                const signer = nip46Service.getSigner();
-                if (signer) return signer;
-            }
-            throw new Error('Authentication required');
+            return await this.getCurrentNip46Signer(sessionPubkey);
         }
 
         if (auth.type === 'parentClient') {
@@ -124,6 +117,30 @@ export class NostrAuthService implements AuthService {
         }
 
         throw new Error('Authentication required');
+    }
+
+    private async getCurrentNip46Signer(expectedPubkey: string): Promise<Signer> {
+        const authBefore = authState.value;
+        if (
+            !authBefore.isAuthenticated
+            || authBefore.type !== 'nip46'
+            || authBefore.pubkey !== expectedPubkey
+        ) {
+            throw new Error('Authentication required');
+        }
+
+        const signer = await nip46Service.getSignerForSession(expectedPubkey);
+        const authAfter = authState.value;
+        if (
+            !signer
+            || !authAfter.isAuthenticated
+            || authAfter.type !== 'nip46'
+            || authAfter.pubkey !== expectedPubkey
+        ) {
+            throw new Error('Authentication required');
+        }
+
+        return signer;
     }
 
     private async getSignFunction(): Promise<(event: any) => Promise<any>> {

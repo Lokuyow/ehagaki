@@ -250,7 +250,7 @@ describe("PostDeletionService", () => {
 
         const nip46ServiceInstance = new PostDeletionService({
             authStateStore: { value: createAuthState({ type: "nip46" }) },
-            getNip46SignerFn: () => ({ signEvent: nip46SignEvent }),
+            getNip46SignerForSessionFn: vi.fn().mockResolvedValue({ signEvent: nip46SignEvent }),
             postHistoryRepository: { markDeleted: vi.fn().mockResolvedValue(undefined) },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 20_000,
@@ -277,12 +277,11 @@ describe("PostDeletionService", () => {
         expect(sendEvent).toHaveBeenCalledTimes(2);
     });
 
-    it("NIP-46 recovery失敗時は署名せずエラーを返す", async () => {
+    it("NIP-46 signer取得不能時は署名せずエラーを返す", async () => {
         const nip46SignEvent = vi.fn();
         const service = new PostDeletionService({
             authStateStore: { value: createAuthState({ type: "nip46" }) },
-            waitForNip46ReadyFn: vi.fn().mockResolvedValue(false),
-            getNip46SignerFn: () => ({ signEvent: nip46SignEvent }),
+            getNip46SignerForSessionFn: vi.fn().mockResolvedValue(null),
         });
 
         const result = await service.requestDeletion({
@@ -295,6 +294,35 @@ describe("PostDeletionService", () => {
             error: "nip46_signer_not_available",
         });
         expect(nip46SignEvent).not.toHaveBeenCalled();
+    });
+
+    it("NIP-46 signer取得待機中に認証が変わった場合はsignerを使用しない", async () => {
+        let resolveSigner!: (signer: any) => void;
+        const signerPromise = new Promise<any>((resolve) => {
+            resolveSigner = resolve;
+        });
+        const signEvent = vi.fn();
+        const authStateStore = { value: createAuthState({ type: "nip46" }) };
+        const service = new PostDeletionService({
+            authStateStore,
+            getNip46SignerForSessionFn: vi.fn().mockReturnValue(signerPromise),
+        });
+
+        const resultPromise = service.requestDeletion({
+            post: createRecord(),
+            rxNostr: {} as any,
+        });
+        authStateStore.value = createAuthState({
+            type: "nip46",
+            pubkey: "b".repeat(64),
+        });
+        resolveSigner({ signEvent });
+
+        await expect(resultPromise).resolves.toEqual({
+            success: false,
+            error: "nip46_signer_not_available",
+        });
+        expect(signEvent).not.toHaveBeenCalled();
     });
 
     it("signEvent を持たない signer では送信しない", async () => {

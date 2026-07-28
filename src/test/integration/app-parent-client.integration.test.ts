@@ -354,6 +354,7 @@ vi.mock('../../lib/bootstrap/authBootstrap', () => ({
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
         disconnect: vi.fn().mockResolvedValue(undefined),
+        getSignerForSession: vi.fn().mockResolvedValue(null),
         getSigner: vi.fn().mockReturnValue(null),
         waitForPendingOperation: vi.fn().mockResolvedValue(true),
         runManualConnectionCheck: vi.fn().mockResolvedValue({ success: false }),

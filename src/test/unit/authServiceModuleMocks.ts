@@ -17,6 +17,7 @@ vi.mock('../../lib/nip46Service', () => ({
         hasRecoverableSession: vi.fn().mockReturnValue(false),
         isManualCheckInProgress: vi.fn().mockReturnValue(false),
         ensureConnection: vi.fn().mockResolvedValue(true),
+        getSignerForSession: vi.fn().mockResolvedValue(null),
         waitForPendingOperation: vi.fn().mockResolvedValue(true),
         runManualConnectionCheck: vi.fn().mockResolvedValue({ success: false }),
         getOperationState: vi.fn().mockReturnValue({ kind: 'idle', inProgress: false }),
