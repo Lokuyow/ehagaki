@@ -70,6 +70,9 @@
     let usageSectionsHeight = $state(0);
     let lastLoadRxNostr: RxNostr | null | undefined = undefined;
     let lastLoadPubkey: string | null | undefined = undefined;
+    let previousOpen = false;
+    let previousSearch: string | undefined = undefined;
+    let previousPubkey: string | null | undefined = undefined;
     const requestedImageCacheUrls = new Set<string>();
 
     let items = $derived(customEmojiStore.items);
@@ -261,9 +264,18 @@
     });
 
     $effect(() => {
-        search;
-        open;
-        items.length;
+        const shouldResetScroll =
+            open &&
+            (!previousOpen ||
+                search !== previousSearch ||
+                pubkey !== previousPubkey);
+
+        previousOpen = open;
+        previousSearch = search;
+        previousPubkey = pubkey;
+
+        if (!shouldResetScroll) return;
+
         scrollTop = 0;
         pickerElement
             ?.querySelector<HTMLElement>(".custom-emoji-scroll-viewport")
