@@ -240,6 +240,8 @@
     "quality_high": "Hi",
     "quality_medium": "Mid",
     "quality_low": "Lo",
+    "quote_notification_description": "Quote notification settings description",
+    "reply_notification_description": "Reply notification settings description",
     "upload_destination": "Upload Destination",
     "uploadDestinationNone": "Not set",
     "uploadDestinationUnknown": "Unknown size",

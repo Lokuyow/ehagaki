@@ -46,7 +46,7 @@
               ? profileData.name
               : profileData?.npub
                 ? profileData.npub
-                : "User";
+                : $_("profileDialog.profile_image_alt");
 
     function handleAvatarLoadingStatusChange(
         status: "loading" | "loaded" | "error",

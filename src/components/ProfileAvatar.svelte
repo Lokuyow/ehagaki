@@ -60,6 +60,9 @@
     let avatarLoadingStatus = $state<AvatarImageStatus>(
         getInitialAvatarStatus(),
     );
+    let shouldExposeFallbackAsImage = $derived(
+        avatarLoadingStatus === "error" && Boolean(fallbackAriaLabel),
+    );
 
     function setAvatarLoadingStatus(status: AvatarImageStatus) {
         if (avatarLoadingStatus === status) return;
@@ -123,8 +126,9 @@
     <Avatar.Fallback
         class={`profile-avatar-fallback ${fallbackClassName}`}
         style={`--profile-avatar-fallback-delay: ${fallbackDelayMs}ms;`}
-        role="img"
-        aria-label={fallbackAriaLabel}
+        role={shouldExposeFallbackAsImage ? "img" : undefined}
+        aria-label={shouldExposeFallbackAsImage ? fallbackAriaLabel : undefined}
+        aria-hidden={shouldExposeFallbackAsImage ? undefined : "true"}
     >
         <div
             class="profile-avatar-fallback-icon svg-icon"

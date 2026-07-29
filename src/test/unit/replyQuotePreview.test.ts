@@ -267,7 +267,7 @@ describe('ReplyQuotePreview', () => {
         expect(Array.from(author.children)[0].classList).toContain('reply-quote-profile-avatar');
         expect(image.getAttribute('src')).toBe('https://example.com/alice.png?profile=true');
         expect(image.getAttribute('alt')).toBe('');
-        expect(author.querySelector('.profile-avatar-fallback-icon')?.getAttribute('aria-label')).toBe('');
+        expect(author.querySelector('.profile-avatar-fallback-icon')?.getAttribute('aria-label')).toBeNull();
 
         await rerender({
             reference: createReference({
@@ -298,6 +298,23 @@ describe('ReplyQuotePreview', () => {
         expect(container.querySelector('.author-profile img')).toBeNull();
         expect(container.querySelector('.author-profile .profile-avatar-fallback')).toBeTruthy();
         expect(container.querySelector('.author-name')?.textContent).toMatch(/^npub1/);
+    });
+
+    it('loaded状態ではプロフィール画像のみが公開され、fallbackは非公開になる', async () => {
+        const { container } = render(ReplyQuotePreview, {
+            props: {
+                reference: createReference({
+                    authorDisplayName: 'Alice',
+                    authorPicture: 'https://example.com/alice.png',
+                }),
+                mode: 'quote',
+                onClear: vi.fn(),
+            },
+        });
+
+        const fallback = container.querySelector('.profile-avatar-fallback');
+        expect(fallback?.getAttribute('role')).toBeNull();
+        expect(fallback?.getAttribute('aria-label')).toBeNull();
     });
 
     it('通知ON状態ではsolid bellを表示し、クリックで反転値を返す', async () => {

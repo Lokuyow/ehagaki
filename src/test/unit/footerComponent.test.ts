@@ -17,6 +17,16 @@ const profileStoreState = vi.hoisted(() => ({
     profileLoaded: false,
 }));
 
+const profileDataState = vi.hoisted(() => ({
+    profileData: {
+        name: '',
+        displayName: '',
+        picture: '',
+        npub: '',
+        nprofile: '',
+    },
+}));
+
 vi.mock('../../lib/hooks/useFooterMiddleDisplay.svelte', () => ({
     useFooterMiddleDisplay: vi.fn(() => footerDisplayState),
 }));
@@ -24,7 +34,7 @@ vi.mock('../../lib/hooks/useFooterMiddleDisplay.svelte', () => ({
 vi.mock('../../stores/profileStore.svelte', () => ({
     profileDataStore: {
         get value() {
-            return { name: '', displayName: '', picture: '', npub: '', nprofile: '' };
+            return profileDataState.profileData;
         },
         set: vi.fn(),
     },
@@ -59,6 +69,13 @@ describe('FooterComponent', () => {
         footerDisplayState.handleAbortAll.mockClear();
         profileStoreState.isLoadingProfile = false;
         profileStoreState.profileLoaded = false;
+        profileDataState.profileData = {
+            name: '',
+            displayName: '',
+            picture: '',
+            npub: '',
+            nprofile: '',
+        };
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
         locale.set('ja');
@@ -179,6 +196,39 @@ describe('FooterComponent', () => {
 
         expect(screen.getByRole('button', { name: 'Profile' })).toBeTruthy();
         expect(screen.getByLabelText('Profile image')).toBeTruthy();
+    });
+
+    it('プロフィール名・画像名が日本語と英語で切り替わる', async () => {
+        profileDataState.profileData = {
+            name: '',
+            displayName: '',
+            picture: 'https://example.com/avatar.png',
+            npub: '',
+            nprofile: '',
+        };
+
+        profileStoreState.isLoadingProfile = false;
+        profileStoreState.profileLoaded = true;
+        isLoadingProfileStore.set(false);
+        profileLoadedStore.set(true);
+        cleanup();
+        renderFooter({
+            isAuthenticated: true,
+            isAuthInitialized: true,
+        });
+
+        expect(screen.getByAltText('プロフィール')).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale();
+        cleanup();
+        renderFooter({
+            isAuthenticated: true,
+            isAuthInitialized: true,
+        });
+
+        expect(screen.getByAltText('Profile')).toBeTruthy();
+        expect(screen.queryByAltText('User')).toBeNull();
     });
 
     it('プロフィール読込中でも profile-display ボタン押下でログアウトダイアログを開ける', async () => {

@@ -80,6 +80,33 @@ describe('SettingsDialog accessibility', () => {
         ).toBeTruthy();
     });
 
+    it('英語ロケールで通知説明ボタンが自然な英語名を持つ', async () => {
+        locale.set('en');
+        await waitLocale('en');
+        cleanup();
+
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        const quoteButton = screen.getByRole('button', {
+            name: 'Quote notification settings description',
+        });
+        const replyButton = screen.getByRole('button', {
+            name: 'Reply notification settings description',
+        });
+
+        expect(quoteButton).toBeTruthy();
+        expect(replyButton).toBeTruthy();
+        expect(quoteButton.getAttribute('aria-label')).not.toMatch(/[一-龯ぁ-んァ-ヶ]/);
+        expect(replyButton.getAttribute('aria-label')).not.toMatch(/[一-龯ぁ-んァ-ヶ]/);
+    });
+
     it('テーマと設定スイッチが表示ラベルをアクセシブルネームとして持つ', async () => {
         render(SettingsDialog, {
             props: {
