@@ -41,6 +41,7 @@ const appUrlInput = document.getElementById("app-url");
 const initialQueryModeSelect = document.getElementById("initial-query-mode");
 const initialLocaleSelect = document.getElementById("initial-locale");
 const initialThemeSelect = document.getElementById("initial-theme");
+const initialReplyNotificationSelect = document.getElementById("initial-reply-notification");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
 const syncRuntimeSettingsButton = document.getElementById("sync-runtime-settings");
 const resetInitialSettingsButton = document.getElementById("reset-initial-settings");
@@ -88,6 +89,7 @@ const INITIAL_SETTINGS_RESET_KEYS = [
     "showMascot",
     "showFlavorText",
     "settingsPreferenceMetadata",
+    "replyNotificationEnabled",
 ];
 
 const EMBED_STORAGE_KEYS = new Set([
@@ -96,6 +98,7 @@ const EMBED_STORAGE_KEYS = new Set([
     "darkMode",
     "clientTagEnabled",
     "quoteNotificationEnabled",
+    "replyNotificationEnabled",
     "imageQualityLevel",
     "videoQualityLevel",
     "imageCompressionLevel",
@@ -1221,6 +1224,10 @@ function resolveInitialTheme(value) {
     return normalizeInitialTheme(value);
 }
 
+function normalizeInitialReplyNotification(value) {
+    return value === "true" || value === "false" ? value : "";
+}
+
 function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
@@ -1230,6 +1237,7 @@ function syncInitialSettingsControlsFromAppUrl() {
             "defaultTheme",
             "defaultShowMascot",
             "defaultShowFlavorText",
+            "defaultReplyNotification",
         ].some((key) => url.searchParams.has(key));
         initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
         if (hasDefaultSettings) {
@@ -1242,6 +1250,9 @@ function syncInitialSettingsControlsFromAppUrl() {
         initialHideMascotInput.checked = url.searchParams.get(
             hasDefaultSettings ? "defaultShowMascot" : "embedShowMascot",
         ) === "false";
+        initialReplyNotificationSelect.value = normalizeInitialReplyNotification(
+            url.searchParams.get(hasDefaultSettings ? "defaultReplyNotification" : "embedReplyNotification"),
+        );
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
     }
@@ -1270,10 +1281,12 @@ function buildEmbedUrl() {
     url.searchParams.delete("embedTheme");
     url.searchParams.delete("embedShowMascot");
     url.searchParams.delete("embedShowFlavorText");
+    url.searchParams.delete("embedReplyNotification");
     url.searchParams.delete("defaultLocale");
     url.searchParams.delete("defaultTheme");
     url.searchParams.delete("defaultShowMascot");
     url.searchParams.delete("defaultShowFlavorText");
+    url.searchParams.delete("defaultReplyNotification");
 
     const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
     const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
@@ -1295,6 +1308,11 @@ function buildEmbedUrl() {
 
     if (initialHideMascotInput.checked) {
         url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
+    }
+
+    const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
+    if (replyNotification) {
+        url.searchParams.set(`${queryPrefix}ReplyNotification`, replyNotification);
     }
 
     const content = getComposerContentValue();
@@ -1348,6 +1366,11 @@ function buildRuntimeSettingsPayload() {
 
     if (initialHideMascotInput.checked) {
         payload.showMascot = false;
+    }
+
+    const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
+    if (replyNotification) {
+        payload.replyNotificationEnabled = replyNotification === "true";
     }
 
     return payload;
