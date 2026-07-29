@@ -323,6 +323,14 @@ describe('accessibility component tests', () => {
 
         locale.set('en');
         await waitLocale();
+        (profileDataStore as any).value = {
+            name: '',
+            displayName: '',
+            picture: 'https://example.com/current.png',
+            npub: 'npub1testprofile',
+            nprofile: 'nprofile1testprofile',
+        };
+
         cleanup();
         render(ProfileComponent, {
             show: true,
@@ -335,7 +343,7 @@ describe('accessibility component tests', () => {
             ]]),
         });
         await tick();
-        expect(screen.getByAltText('Profile')).toBeTruthy();
+        expect(screen.getAllByAltText('Profile')).toHaveLength(2);
 
         (profileDataStore as any).value = {
             name: '',
@@ -350,10 +358,13 @@ describe('accessibility component tests', () => {
             show: true,
             onClose: vi.fn(),
             onLogout: vi.fn(),
-            accounts: [],
-            accountProfiles: new Map(),
+            accounts: createProfileAccounts(),
+            accountProfiles: new Map([[
+                'a'.repeat(64),
+                { name: '', displayName: '', picture: '' },
+            ]]),
         });
         await tick();
-        expect(screen.getAllByLabelText('Profile image')).toHaveLength(1);
+        expect(screen.getAllByLabelText('Profile image')).toHaveLength(2);
     });
 });
