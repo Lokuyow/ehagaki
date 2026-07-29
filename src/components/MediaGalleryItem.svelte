@@ -113,6 +113,15 @@
         event.preventDefault();
         onDrop(index);
     }
+
+    function handleImageKeyDown(event: KeyboardEvent) {
+        if (item.type !== "image" || item.isPlaceholder) return;
+
+        if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+            event.preventDefault();
+            handleImageClick();
+        }
+    }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -140,14 +149,7 @@
             : undefined}
         tabindex={item.type === "image" && !item.isPlaceholder ? 0 : undefined}
         aria-label={item.alt || item.src}
-        onkeydown={(e) => {
-            if (
-                e.key === "Enter" &&
-                item.type === "image" &&
-                !item.isPlaceholder
-            )
-                handleImageClick();
-        }}
+        onkeydown={handleImageKeyDown}
     >
         {#if item.isPlaceholder}
             <!-- プレースホルダー（アップロード中） -->
