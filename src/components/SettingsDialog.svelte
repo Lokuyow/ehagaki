@@ -201,6 +201,7 @@
                 <span>{$_("settingsDialog.author_info") || "制作："}</span><a
                     href="https://lokuyow.github.io/"
                     target="_blank"
+                    rel="noopener noreferrer"
                     >{$_("settingsDialog.author_name") || " Lokuyow"}</a
                 >
             </div>
@@ -216,17 +217,17 @@
                 }}
                 ariaLabel="Help"
             >
-                <div class="help-icon svg-icon" aria-label="Help"></div>
+                <div class="help-icon svg-icon" aria-hidden="true"></div>
             </Button>
             <Button
                 shape="circle"
                 variant="default"
                 className="github-link-btn"
                 onClick={() =>
-                    window.open("https://github.com/Lokuyow/ehagaki", "_blank")}
+                    window.open("https://github.com/Lokuyow/ehagaki", "_blank", "noopener")}
                 ariaLabel="GitHub Repository"
             >
-                <div class="github-icon svg-icon" aria-label="GitHub"></div>
+                <div class="github-icon svg-icon" aria-hidden="true"></div>
             </Button>
             <div>
                 <div class="zap-view-btn-group">
@@ -295,8 +296,7 @@
                             {:else}
                                 <div
                                     class="rotate-right-icon svg-icon"
-                                    aria-label={$_("settingsDialog.refresh") ||
-                                        "更新"}
+                                    aria-hidden="true"
                                 ></div>
                                 <span class="btn-text">
                                     {$_("settingsDialog.update_app") || "更新"}
@@ -322,7 +322,7 @@
                     >
                         <div
                             class="lang-icon-btn svg-icon"
-                            aria-label={$_("settingsDialog.change") || "変更"}
+                            aria-hidden="true"
                         ></div>
                         <span class="btn-text"
                             >{$_("settingsDialog.change") || "変更"}</span
@@ -349,7 +349,7 @@
         <!-- テーマ設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"
+                <span id="theme-mode-label" class="setting-label"
                     >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
                 >
                 <RadioGroup.Root
@@ -357,6 +357,7 @@
                     name="themeMode"
                     orientation="horizontal"
                     value={themeMode}
+                    aria-labelledby="theme-mode-label"
                     onValueChange={(value) => {
                         themeMode = value as ThemeMode;
                     }}
@@ -393,13 +394,14 @@
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"
+                <span id="media-free-placement-label" class="setting-label"
                     >{$_("settingsDialog.media_bottom_mode") ||
                         "メディア自由配置モード"}</span
                 >
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
+                        aria-labelledby="media-free-placement-label"
                         bind:checked={settingsStore.mediaFreePlacement}
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
@@ -413,7 +415,7 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span class="setting-label"
+                            <span id="hide-mascot-label" class="setting-label"
                                 >{$_("settingsDialog.hide_mascot_label") ||
                                     "左上マスコットを非表示"}</span
                             >
@@ -432,6 +434,7 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
+                            aria-labelledby="hide-mascot-label"
                             bind:checked={hideMascot}
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -444,7 +447,7 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span class="setting-label"
+                            <span id="hide-flavor-text-label" class="setting-label"
                                 >{$_("settingsDialog.hide_flavor_text_label") ||
                                     "フレーバーテキストを非表示"}</span
                             >
@@ -471,6 +474,7 @@
                         {#if hideMascot}
                             <Switch.Root
                                 class="bui-switch"
+                                aria-labelledby="hide-flavor-text-label"
                                 checked={effectiveHideFlavorText}
                                 disabled
                             >
@@ -479,6 +483,7 @@
                         {:else}
                             <Switch.Root
                                 class="bui-switch"
+                                aria-labelledby="hide-flavor-text-label"
                                 bind:checked={hideFlavorText}
                             >
                                 <Switch.Thumb class="bui-switch-thumb" />
@@ -495,7 +500,7 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span class="setting-label"
+                            <span id="quote-notification-label" class="setting-label"
                                 >{$_(
                                     "settingsDialog.quote_notification_label",
                                 ) || "引用元の投稿者に通知"}</span
@@ -515,6 +520,7 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
+                            aria-labelledby="quote-notification-label"
                             bind:checked={quoteNotificationEnabled}
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -527,7 +533,7 @@
                 <div class="setting-row setting-row-with-note">
                     <div class="setting-label-group">
                         <div class="setting-label-row">
-                            <span class="setting-label"
+                            <span id="reply-notification-label" class="setting-label"
                                 >{$_(
                                     "settingsDialog.reply_notification_label",
                                 ) || "返信先以外にも通知"}</span
@@ -547,6 +553,7 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
+                            aria-labelledby="reply-notification-label"
                             bind:checked={replyNotificationEnabled}
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
@@ -559,13 +566,14 @@
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"
+                <span id="client-tag-label" class="setting-label"
                     >{$_("settingsDialog.client_tag_label") ||
                         "投稿詳細にクライアント名をつける（Client tag）"}</span
                 >
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
+                        aria-labelledby="client-tag-label"
                         bind:checked={clientTagEnabled}
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
@@ -592,7 +600,7 @@
                     shape="square"
                     ariaLabel="閉じる"
                 >
-                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                    <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
             {/snippet}
         </Dialog.Close>

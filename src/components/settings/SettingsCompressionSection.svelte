@@ -109,6 +109,7 @@
             name="compression"
             orientation="horizontal"
             value={selectedCompression}
+            aria-label={$_("settingsDialog.image_quality_setting")}
             onValueChange={onCompressionChange}
         >
             {#each compressionPairs as pair}
@@ -175,6 +176,7 @@
             name="videoCompression"
             orientation="horizontal"
             value={selectedVideoCompression}
+            aria-label={$_("settingsDialog.video_quality_setting")}
             onValueChange={onVideoCompressionChange}
         >
             {#each videoCompressionPairs as pair}
