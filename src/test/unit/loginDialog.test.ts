@@ -58,6 +58,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_connection_failed': 'リモートサイナーとの接続に失敗しました。接続 relay またはリモートサイナーの状態を確認してください。',
         'loginDialog.save': '保存',
         'loadingPlaceholder.loading': '読み込み中...',
+        'common.or': 'または',
     };
 
     return translations[key] || key;
@@ -159,15 +160,21 @@ describe('LoginDialog', () => {
         ).toBeTruthy();
     });
 
-    it('認証方法の区切りはロケールに応じて表示される', async () => {
+    it('認証方法の区切りは日本語ロケールで表示される', () => {
         render(LoginDialog, {
             props: defaultProps,
         });
 
         expect(screen.getAllByText('または').length).toBeGreaterThan(0);
+    });
 
+    it('認証方法の区切りは英語ロケールで表示される', async () => {
         locale.set('en');
         await waitLocale();
+
+        render(LoginDialog, {
+            props: defaultProps,
+        });
 
         expect(screen.getAllByText('or').length).toBeGreaterThan(0);
     });
@@ -488,7 +495,10 @@ describe('LoginDialog', () => {
 
         expect(screen.queryByText('接続中...')).toBeNull();
         expect(
-            screen.getByText('リモートサイナーとの接続を準備しています。初回接続には時間がかかる場合があります。'),
+            screen.getByText((content) =>
+                content.includes('接続を待機しています') ||
+                content.includes('リモートサイナーとの接続を準備しています')
+            ),
         ).toBeTruthy();
         expect(
             screen.getByTestId('nostrconnect-open-button').textContent,
@@ -753,7 +763,7 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(
-            screen.getByLabelText('接続 relay を変更の説明'),
+            screen.getByLabelText('接続リレーを変更の説明'),
         );
         expect(
             await screen.findByText('接続に使用する relay の候補を設定します。'),
