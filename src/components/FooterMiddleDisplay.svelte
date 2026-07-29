@@ -63,7 +63,6 @@
         type="button"
         class="floating-dev-console-log"
         onclick={handleDevLogCopy}
-        ontouchend={handleDevLogCopy}
         title="タップで全コピー"
         aria-label="開発者ログをコピー"
     >

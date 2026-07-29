@@ -99,7 +99,7 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
     if (!joined) return;
 
     // clipboardUtils.tsのcopyToClipboard関数を使用
-    copyToClipboard(joined, "dev log", navigator, window);
+    await copyToClipboard(joined, "dev log", navigator, window);
 }
 
 // --- showSwUpdateModalDebug: SW更新ボタン強制表示デバッグ機能 ---
