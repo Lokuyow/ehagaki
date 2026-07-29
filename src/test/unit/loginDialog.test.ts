@@ -47,6 +47,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.nostrconnect_handshake_started': '接続中...',
         'loginDialog.nostrconnect_direct_open_hint': 'リモートサイナーが開かない場合は、QRコードを読み取るか、接続URIをコピーしてください。',
         'loginDialog.nostrconnect_edit_relays': '接続 relay を変更',
+        'loginDialog.nostrconnect_relay_settings_description': 'Nostr Connect接続リレー設定の説明',
         'loginDialog.nostrconnect_add_relay': 'relay を追加',
         'loginDialog.nostrconnect_remove_relay': 'relay を削除',
         'loginDialog.nostrconnect_reset_relays': '初期値に戻す',
@@ -808,7 +809,7 @@ describe('LoginDialog', () => {
         });
 
         await fireEvent.click(
-            screen.getByLabelText('接続リレーを変更の説明'),
+            screen.getByLabelText('Nostr Connect接続リレー設定の説明'),
         );
         expect(
             await screen.findByText('接続に使用する relay の候補を設定します。'),
