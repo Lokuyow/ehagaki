@@ -357,7 +357,7 @@
                     name="themeMode"
                     orientation="horizontal"
                     value={themeMode}
-                    aria-labelledby="theme-mode-label"
+                    aria-label="カラーテーマ"
                     onValueChange={(value) => {
                         themeMode = value as ThemeMode;
                     }}
@@ -401,8 +401,8 @@
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
-                        aria-labelledby="media-free-placement-label"
                         bind:checked={settingsStore.mediaFreePlacement}
+                        aria-labelledby="media-free-placement-label"
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>
@@ -434,8 +434,8 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            aria-labelledby="hide-mascot-label"
                             bind:checked={hideMascot}
+                            aria-labelledby="hide-mascot-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
                         </Switch.Root>
@@ -474,17 +474,17 @@
                         {#if hideMascot}
                             <Switch.Root
                                 class="bui-switch"
-                                aria-labelledby="hide-flavor-text-label"
                                 checked={effectiveHideFlavorText}
                                 disabled
+                                aria-labelledby="hide-flavor-text-label"
                             >
                                 <Switch.Thumb class="bui-switch-thumb" />
                             </Switch.Root>
                         {:else}
                             <Switch.Root
                                 class="bui-switch"
-                                aria-labelledby="hide-flavor-text-label"
                                 bind:checked={hideFlavorText}
+                                aria-labelledby="hide-flavor-text-label"
                             >
                                 <Switch.Thumb class="bui-switch-thumb" />
                             </Switch.Root>
@@ -520,8 +520,8 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            aria-labelledby="quote-notification-label"
                             bind:checked={quoteNotificationEnabled}
+                            aria-labelledby="quote-notification-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
                         </Switch.Root>
@@ -553,8 +553,8 @@
                     <div class="setting-control">
                         <Switch.Root
                             class="bui-switch"
-                            aria-labelledby="reply-notification-label"
                             bind:checked={replyNotificationEnabled}
+                            aria-labelledby="reply-notification-label"
                         >
                             <Switch.Thumb class="bui-switch-thumb" />
                         </Switch.Root>
@@ -573,8 +573,8 @@
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
-                        aria-labelledby="client-tag-label"
                         bind:checked={clientTagEnabled}
+                        aria-labelledby="client-tag-label"
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>

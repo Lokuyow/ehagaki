@@ -38,8 +38,8 @@ describe('SettingsDialog accessibility', () => {
         ).toBeTruthy();
     });
 
-    it('設定スイッチが表示ラベルをアクセシブルネームとして持つ', async () => {
-        const { container } = render(SettingsDialog, {
+    it('テーマと設定スイッチが表示ラベルをアクセシブルネームとして持つ', async () => {
+        render(SettingsDialog, {
             props: {
                 show: true,
                 onClose: () => {},
@@ -48,12 +48,58 @@ describe('SettingsDialog accessibility', () => {
 
         await tick();
 
-        expect(document.body.querySelector('#media-free-placement-label')).not.toBeNull();
-        expect(document.body.querySelector('#hide-mascot-label')).not.toBeNull();
-        expect(document.body.querySelector('#hide-flavor-text-label')).not.toBeNull();
-        expect(document.body.querySelector('#quote-notification-label')).not.toBeNull();
-        expect(document.body.querySelector('#reply-notification-label')).not.toBeNull();
-        expect(document.body.querySelector('#client-tag-label')).not.toBeNull();
+        const mediaFreePlacementLabel = document.body.querySelector(
+            '#media-free-placement-label',
+        )?.textContent?.trim();
+        const hideMascotLabel = document.body.querySelector('#hide-mascot-label')
+            ?.textContent?.trim();
+        const hideFlavorTextLabel = document.body.querySelector(
+            '#hide-flavor-text-label',
+        )?.textContent?.trim();
+        const quoteNotificationLabel = document.body.querySelector(
+            '#quote-notification-label',
+        )?.textContent?.trim();
+        const replyNotificationLabel = document.body.querySelector(
+            '#reply-notification-label',
+        )?.textContent?.trim();
+        const clientTagLabel = document.body.querySelector('#client-tag-label')
+            ?.textContent?.trim();
+
+        expect(
+            screen.getByRole('radiogroup', {
+                name: 'カラーテーマ',
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: mediaFreePlacementLabel,
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: hideMascotLabel,
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: hideFlavorTextLabel,
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: quoteNotificationLabel,
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: replyNotificationLabel,
+            }),
+        ).toBeTruthy();
+        expect(
+            screen.getByRole('switch', {
+                name: /client name|クライアント名|Client tag/i,
+            }),
+        ).toBeTruthy();
 
         expect(
             document.body.querySelector('.help-icon')?.getAttribute('aria-hidden'),
@@ -76,7 +122,7 @@ describe('SettingsDialog accessibility', () => {
     });
 
     it('作者リンクとGitHubボタンの外部リンク属性が適切に設定される', async () => {
-        const { container } = render(SettingsDialog, {
+        render(SettingsDialog, {
             props: {
                 show: true,
                 onClose: () => {},
