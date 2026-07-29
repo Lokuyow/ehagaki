@@ -8,7 +8,7 @@ import {
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
-    isNonPwaIPhoneSafari,
+    isIPhoneSafari,
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
 import { isPostEditorFocusActive } from "../lib/utils/keyboardFocusUtils";
@@ -284,7 +284,7 @@ export function setupViewportListener(): (() => void) | undefined {
         return undefined;
     }
 
-    const isSafariViewportMode = isNonPwaIPhoneSafari();
+    const isSafariViewportMode = isIPhoneSafari();
     const virtualKeyboard = (
         navigator as Navigator & { virtualKeyboard?: VirtualKeyboardInfo }
     ).virtualKeyboard;

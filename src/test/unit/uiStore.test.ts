@@ -507,7 +507,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('非PWAの iPhone Safari でも Android と同じ visual viewport レイアウトへ切り替える', async () => {
+    it('iPhone Safari では visual viewport レイアウトへ切り替える', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1');
 
         const requestAnimationFrameSpy = vi
@@ -585,7 +585,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('非PWAの iPhone Safari では auto-pan 後もキーボード表示レイアウトを維持する', async () => {
+    it('iPhone Safari では auto-pan 後もキーボード表示レイアウトを維持する', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
         setDocumentClientHeight(549);
 
@@ -712,6 +712,153 @@ describe('uiStore', () => {
         );
         expect(getRootPixelValue('--mobile-dialog-viewport-height')).toBeCloseTo(
             549,
+        );
+
+        cleanup?.();
+
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('standalone PWA の iPhone Safari でも auto-pan 後は同じ visual viewport レイアウトを維持する', async () => {
+        setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
+        setDocumentClientHeight(549);
+        Object.defineProperty(window, 'matchMedia', {
+            configurable: true,
+            value: createMatchMediaMock(true),
+        });
+        Object.defineProperty(navigator, 'standalone', {
+            configurable: true,
+            value: true,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 549,
+        });
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        const viewport = createVisualViewportMock(314, 0);
+        const {
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(keyboardHeightStore.value).toBe(235);
+        expect(bottomPositionStore.value).toBe(235);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('314px');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('314px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 318,
+        });
+        viewport.visualViewport.offsetTop = 231;
+        window.dispatchEvent(new Event('scroll'));
+
+        expect(keyboardHeightStore.value).toBe(235);
+        expect(bottomPositionStore.value).toBe(4);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('314px');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('314px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('4px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            231 + 314 * 0.43,
+        );
+
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 549,
+        });
+        viewport.visualViewport.height = 549;
+        viewport.visualViewport.offsetTop = 0;
+        viewport.emit('resize');
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('116px');
+
+        cleanup?.();
+
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('standalone PWA の iPhone Safari でも通常入力欄では composer 用キーボードレイアウトを有効にしない', async () => {
+        setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
+        setDocumentClientHeight(549);
+        Object.defineProperty(window, 'matchMedia', {
+            configurable: true,
+            value: createMatchMediaMock(true),
+        });
+        Object.defineProperty(navigator, 'standalone', {
+            configurable: true,
+            value: true,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 549,
+        });
+        focusDialogInput('settings-dialog');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        const viewport = createVisualViewportMock(314, 0);
+        const {
+            FOOTER_HEIGHT,
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('116px');
+        expect(getRootPixelValue('--mobile-dialog-viewport-height')).toBeCloseTo(314);
+
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 318,
+        });
+        viewport.visualViewport.offsetTop = 231;
+        window.dispatchEvent(new Event('scroll'));
+
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(getRootPixelValue('--mobile-dialog-center-y')).toBeCloseTo(
+            231 + 314 * 0.43,
         );
 
         cleanup?.();

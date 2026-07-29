@@ -5,7 +5,7 @@ import {
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
     isNonPwaAndroidChrome,
-    isNonPwaIPhoneSafari,
+    isIPhoneSafari,
 } from '../../lib/utils/viewportLayout';
 
 function setUserAgent(userAgent: string) {
@@ -72,12 +72,30 @@ describe('viewportLayout', () => {
         expect(getEffectiveViewportOffsetTop(window.visualViewport)).toBe(56);
     });
 
-    it('非PWA iPhone Safari だけを true にする', () => {
+    it('iPhone Safari は standalone を含めて true にする', () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1');
-        expect(isNonPwaIPhoneSafari()).toBe(true);
+        expect(isIPhoneSafari()).toBe(true);
+
+        Object.defineProperty(window, 'matchMedia', {
+            configurable: true,
+            value: vi.fn().mockImplementation((query: string) => ({
+                matches: query === '(display-mode: standalone)',
+            })),
+        });
+        expect(isIPhoneSafari()).toBe(true);
+
+        Object.defineProperty(window, 'matchMedia', {
+            configurable: true,
+            value: vi.fn().mockReturnValue({ matches: false }),
+        });
+        Object.defineProperty(navigator, 'standalone', {
+            configurable: true,
+            value: true,
+        });
+        expect(isIPhoneSafari()).toBe(true);
 
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
-        expect(isNonPwaIPhoneSafari()).toBe(false);
+        expect(isIPhoneSafari()).toBe(false);
     });
 
     it('非PWA Android Chrome だけを true にする', () => {

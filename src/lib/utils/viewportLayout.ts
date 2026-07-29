@@ -26,7 +26,7 @@ export function getEffectiveViewportOffsetTop(
     );
 }
 
-export function isNonPwaIPhoneSafari(): boolean {
+export function isIPhoneSafari(): boolean {
     if (typeof window === "undefined" || typeof navigator === "undefined") {
         return false;
     }
@@ -37,11 +37,7 @@ export function isNonPwaIPhoneSafari(): boolean {
     const isCriOS = /CriOS/i.test(userAgent);
     const isFxiOS = /FxiOS/i.test(userAgent);
     const isEdgiOS = /EdgiOS/i.test(userAgent);
-    const isStandalone =
-        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-        (navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-    return isIPhone && isWebKit && !isCriOS && !isFxiOS && !isEdgiOS && !isStandalone;
+    return isIPhone && isWebKit && !isCriOS && !isFxiOS && !isEdgiOS;
 }
 
 export function isNonPwaAndroidChrome(): boolean {
