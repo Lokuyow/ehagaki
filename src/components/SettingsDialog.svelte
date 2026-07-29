@@ -357,7 +357,7 @@
                     name="themeMode"
                     orientation="horizontal"
                     value={themeMode}
-                    aria-label="カラーテーマ"
+                    aria-labelledby="theme-mode-label"
                     onValueChange={(value) => {
                         themeMode = value as ThemeMode;
                     }}

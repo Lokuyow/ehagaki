@@ -62,12 +62,20 @@ describe('SettingsDialog accessibility', () => {
         const replyNotificationLabel = document.body.querySelector(
             '#reply-notification-label',
         )?.textContent?.trim();
-        const clientTagLabel = document.body.querySelector('#client-tag-label')
+
+        expect(mediaFreePlacementLabel).toBeTruthy();
+        expect(hideMascotLabel).toBeTruthy();
+        expect(hideFlavorTextLabel).toBeTruthy();
+        expect(quoteNotificationLabel).toBeTruthy();
+        expect(replyNotificationLabel).toBeTruthy();
+
+        const themeModeLabel = document.body.querySelector('#theme-mode-label')
             ?.textContent?.trim();
 
+        expect(themeModeLabel).toBeTruthy();
         expect(
             screen.getByRole('radiogroup', {
-                name: 'カラーテーマ',
+                name: themeModeLabel,
             }),
         ).toBeTruthy();
         expect(
@@ -119,6 +127,26 @@ describe('SettingsDialog accessibility', () => {
         expect(
             document.body.querySelector('.xmark-icon')?.getAttribute('aria-hidden'),
         ).toBe('true');
+    });
+
+    it('英語ロケールでもテーマのラジオグループが表示ラベルに合わせて取得できる', async () => {
+        locale.set('en');
+        await waitLocale('en');
+
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        expect(
+            screen.getByRole('radiogroup', {
+                name: 'Mode',
+            }),
+        ).toBeTruthy();
     });
 
     it('作者リンクとGitHubボタンの外部リンク属性が適切に設定される', async () => {
