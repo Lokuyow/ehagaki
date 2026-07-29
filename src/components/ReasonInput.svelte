@@ -32,7 +32,6 @@
             type="text"
             placeholder={$_("postComponent.content_warning_reason_placeholder")}
             value={contentWarningReason}
-            onchange={handleReasonInput}
             oninput={handleReasonInput}
             aria-label={$_("postComponent.content_warning_reason_label")}
             class="reason-input"
