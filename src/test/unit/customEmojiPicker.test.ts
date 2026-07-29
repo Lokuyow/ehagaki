@@ -44,6 +44,34 @@ const freshEmoji = (shortcode: string) => ({
 });
 
 const originalScrollTo = HTMLElement.prototype.scrollTo;
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+function installAnimationFrameHarness() {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let nextId = 1;
+
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        const id = nextId++;
+        callbacks.set(id, callback);
+        return id;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+        callbacks.delete(id);
+    });
+
+    return {
+        get pendingCount() {
+            return callbacks.size;
+        },
+        flush(): void {
+            const pending = [...callbacks.values()];
+            callbacks.clear();
+            for (const callback of pending) {
+                callback(0);
+            }
+        },
+    };
+}
 
 beforeEach(() => {
     customEmojiStore.reset();
@@ -59,6 +87,10 @@ beforeEach(() => {
         configurable: true,
         value: vi.fn(),
     });
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: vi.fn(),
+    });
 });
 
 afterEach(() => {
@@ -69,6 +101,14 @@ afterEach(() => {
         });
     } else {
         Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+    }
+    if (originalScrollIntoView) {
+        Object.defineProperty(Element.prototype, 'scrollIntoView', {
+            configurable: true,
+            value: originalScrollIntoView,
+        });
+    } else {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
     }
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -126,6 +166,54 @@ describe('CustomEmojiPicker image cache', () => {
 
         expect(scrollViewport.scrollTop).toBe(120);
         expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalledWith({ top: 0 });
+    });
+
+    it('keeps cached picker content rendered while the first relay result replaces it', async () => {
+        const animationFrames = installAnimationFrameHarness();
+        let resolveFetch!: (items: Array<typeof cachedEmoji>) => void;
+        pickerMocks.fetchCustomEmojiList.mockReturnValue(
+            new Promise((resolve) => {
+                resolveFetch = resolve;
+            }),
+        );
+
+        await customEmojiStore.prefetchCache({ pubkey: 'pubkey' });
+        expect(customEmojiStore.items).toEqual([cachedEmoji]);
+
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        await vi.waitFor(() => {
+            expect(animationFrames.pendingCount).toBeGreaterThan(0);
+        });
+        animationFrames.flush();
+
+        await screen.findByAltText(':inukoukaijidai:');
+        const viewport = document.querySelector<HTMLElement>(
+            '.custom-emoji-scroll-viewport',
+        )!;
+        viewport.scrollTop = 120;
+        await fireEvent.scroll(viewport);
+        (HTMLElement.prototype.scrollTo as ReturnType<typeof vi.fn>).mockClear();
+        (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
+
+        resolveFetch([cachedEmoji, freshEmoji('fresh')]);
+
+        await vi.waitFor(() => {
+            expect(customEmojiStore.items).toHaveLength(2);
+        });
+
+        expect(document.querySelector('.custom-emoji-loading')).toBeNull();
+        expect(document.querySelector('.custom-emoji-scroll-viewport')).toBe(viewport);
+        expect(viewport.scrollTop).toBe(120);
+        expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+        expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+        expect(pickerMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(1);
     });
 
     it('resets the viewport when search changes and when the picker reopens', async () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, untrack } from "svelte";
     import { Command, ScrollArea, Toolbar } from "bits-ui";
     import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
@@ -70,6 +70,9 @@
     let usageSectionsHeight = $state(0);
     let lastLoadRxNostr: RxNostr | null | undefined = undefined;
     let lastLoadPubkey: string | null | undefined = undefined;
+    let previousRenderOpen = false;
+    let previousRenderRxNostr: RxNostr | null | undefined = undefined;
+    let previousRenderPubkey: string | null | undefined = undefined;
     let previousOpen = false;
     let previousSearch: string | undefined = undefined;
     let previousPubkey: string | null | undefined = undefined;
@@ -232,24 +235,56 @@
     });
 
     $effect(() => {
-        if (renderItemsFrameId !== null) {
-            cancelAnimationFrame(renderItemsFrameId);
-            renderItemsFrameId = null;
-        }
+        const currentOpen = open;
+        const currentRxNostr = rxNostr;
+        const currentPubkey = pubkey;
 
-        renderItems = false;
-        if (!open) {
+        if (!currentOpen) {
             lastLoadRxNostr = undefined;
             lastLoadPubkey = undefined;
             return;
         }
 
-        if (rxNostr !== lastLoadRxNostr || pubkey !== lastLoadPubkey) {
-            lastLoadRxNostr = rxNostr;
-            lastLoadPubkey = pubkey;
-            void customEmojiStore.load({ rxNostr, pubkey });
+        if (
+            currentRxNostr !== lastLoadRxNostr ||
+            currentPubkey !== lastLoadPubkey
+        ) {
+            lastLoadRxNostr = currentRxNostr;
+            lastLoadPubkey = currentPubkey;
+            void untrack(() =>
+                customEmojiStore.load({
+                    rxNostr: currentRxNostr,
+                    pubkey: currentPubkey,
+                }),
+            );
         }
         schedulePickerLayoutUpdate();
+    });
+
+    $effect(() => {
+        const shouldDelayRender =
+            open &&
+            (!previousRenderOpen ||
+                rxNostr !== previousRenderRxNostr ||
+                pubkey !== previousRenderPubkey);
+
+        previousRenderOpen = open;
+        previousRenderRxNostr = rxNostr;
+        previousRenderPubkey = pubkey;
+
+        if (renderItemsFrameId !== null) {
+            cancelAnimationFrame(renderItemsFrameId);
+            renderItemsFrameId = null;
+        }
+
+        if (!open || !shouldDelayRender) {
+            if (!open) {
+                renderItems = false;
+            }
+            return;
+        }
+
+        renderItems = false;
         renderItemsFrameId = requestAnimationFrame(() => {
             renderItemsFrameId = null;
             renderItems = true;
