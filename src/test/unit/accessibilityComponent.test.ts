@@ -296,7 +296,30 @@ describe('accessibility component tests', () => {
         });
         await tick();
 
-        expect(screen.getAllByLabelText('プロフィール画像').length).toBeGreaterThan(0);
+        expect(screen.getAllByAltText('プロフィール')).toHaveLength(2);
+
+        (profileDataStore as any).value = {
+            name: '',
+            displayName: '',
+            picture: '',
+            npub: 'npub1testprofile',
+            nprofile: 'nprofile1testprofile',
+        };
+
+        cleanup();
+        render(ProfileComponent, {
+            show: true,
+            onClose: vi.fn(),
+            onLogout: vi.fn(),
+            accounts: createProfileAccounts(),
+            accountProfiles: new Map([[
+                'a'.repeat(64),
+                { name: '', displayName: '', picture: '' },
+            ]]),
+        });
+        await tick();
+
+        expect(screen.getAllByLabelText('プロフィール画像')).toHaveLength(2);
 
         locale.set('en');
         await waitLocale();
@@ -312,7 +335,15 @@ describe('accessibility component tests', () => {
             ]]),
         });
         await tick();
-        expect(screen.getAllByLabelText('Profile image').length).toBeGreaterThan(0);
+        expect(screen.getByAltText('Profile')).toBeTruthy();
+
+        (profileDataStore as any).value = {
+            name: '',
+            displayName: '',
+            picture: '',
+            npub: 'npub1testprofile',
+            nprofile: 'nprofile1testprofile',
+        };
 
         cleanup();
         render(ProfileComponent, {
@@ -323,6 +354,6 @@ describe('accessibility component tests', () => {
             accountProfiles: new Map(),
         });
         await tick();
-        expect(screen.getAllByLabelText('Profile image').length).toBeGreaterThan(0);
+        expect(screen.getAllByLabelText('Profile image')).toHaveLength(1);
     });
 });
