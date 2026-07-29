@@ -708,7 +708,7 @@
     use:pasteAction
     use:touchAction
     use:keydownAction
-    aria-label="テキスト入力エリア"
+    aria-label={$_("postComponent.editor_label")}
     role="textbox"
     tabindex="-1"
     bind:this={editorContainerEl}

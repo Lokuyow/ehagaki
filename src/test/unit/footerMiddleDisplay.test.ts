@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { readable } from 'svelte/store';
-
-const mockTranslate = vi.hoisted(() => (key: string) => key);
+import '../../i18n';
+import { locale, waitLocale } from 'svelte-i18n';
 const hideImageSizeInfo = vi.hoisted(() => vi.fn());
 const copyDevLogWithFallback = vi.hoisted(() => vi.fn());
 const shouldShowDevLog = vi.hoisted(() => vi.fn(() => true));
@@ -41,10 +40,6 @@ const footerDisplayState = {
     hideImageSizeInfo,
 };
 
-vi.mock('svelte-i18n', () => ({
-    _: readable(mockTranslate),
-}));
-
 vi.mock('../../lib/hooks/useFooterMiddleDisplay.svelte', () => ({
     useFooterMiddleDisplay: vi.fn(() => footerDisplayState),
 }));
@@ -59,21 +54,33 @@ import FooterMiddleDisplay from '../../components/FooterMiddleDisplay.svelte';
 import { devLog } from '../../lib/debug';
 
 describe('FooterMiddleDisplay', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         hideImageSizeInfo.mockClear();
         copyDevLogWithFallback.mockReset();
         copyDevLogWithFallback.mockResolvedValue(undefined);
         devLog.set([]);
         shouldShowDevLog.mockReturnValue(true);
+        locale.set('ja');
+        await waitLocale();
     });
 
     it('hides image size info when the footer center is clicked', async () => {
         render(FooterMiddleDisplay);
 
-        const footerCenter = screen.getByRole('button');
+        const footerCenter = screen.getByRole('button', { name: '送信サイズ表示を閉じる' });
         await fireEvent.click(footerCenter);
 
         expect(hideImageSizeInfo).toHaveBeenCalledOnce();
+    });
+
+    it('hides image size info when Enter or Space is pressed', async () => {
+        render(FooterMiddleDisplay);
+
+        const footerCenter = screen.getByRole('button', { name: '送信サイズ表示を閉じる' });
+        await fireEvent.keyDown(footerCenter, { key: 'Enter' });
+        await fireEvent.keyDown(footerCenter, { key: ' ' });
+
+        expect(hideImageSizeInfo).toHaveBeenCalledTimes(2);
     });
 
     it('copies the dev log once when the button is clicked', async () => {

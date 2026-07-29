@@ -53,6 +53,9 @@
 
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
+    let resolvedImageAlt = $derived(
+        node.attrs.alt ? node.attrs.alt : $_("imageNode.default_alt"),
+    );
 
     // プレースホルダーの表示サイズ（寸法情報がない場合はデフォルト値にフォールバック）
     let placeholderWidth = $derived(imageDimensions?.displayWidth ?? 240);
@@ -102,7 +105,7 @@
             selected,
             selectionState.justSelected,
             node.attrs.src,
-            node.attrs.alt || "Image",
+            resolvedImageAlt,
             node.attrs.id,
             getPos,
         );
@@ -201,7 +204,7 @@
             data-dragging={dragState.isDragging}
             onclick={handleClick}
             tabindex="0"
-            aria-label={node?.attrs?.alt || "Image"}
+            aria-label={resolvedImageAlt}
             draggable={!isTouchCapable}
             ondragstart={(e) => handleDragRelatedEvent("start", e)}
             ondragend={() => handleDragRelatedEvent("end")}
@@ -217,7 +220,7 @@
             {#if showActualImage}
                 <img
                     src={node?.attrs?.src}
-                    alt={node?.attrs?.alt || ""}
+                    alt={resolvedImageAlt}
                     class="editor-image"
                     class:image-loading={!mediaLoad.isLoaded}
                     draggable="false"

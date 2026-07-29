@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { readable } from 'svelte/store';
+import '../../i18n';
+import { locale, waitLocale } from 'svelte-i18n';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
@@ -61,10 +62,6 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
 
     return translations[key] || key;
 });
-
-vi.mock('svelte-i18n', () => ({
-    _: readable(mockTranslate),
-}));
 
 vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
     useDialogHistory: vi.fn(),
@@ -135,8 +132,10 @@ describe('LoginDialog', () => {
         isAddAccountMode: false,
     };
 
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
+        locale.set('ja');
+        await waitLocale();
     });
 
     afterEach(() => {
@@ -158,6 +157,19 @@ describe('LoginDialog', () => {
         expect(
             screen.getByText('親ページ側でログインを許可すると接続します'),
         ).toBeTruthy();
+    });
+
+    it('認証方法の区切りはロケールに応じて表示される', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        expect(screen.getAllByText('または').length).toBeGreaterThan(0);
+
+        locale.set('en');
+        await waitLocale();
+
+        expect(screen.getAllByText('or').length).toBeGreaterThan(0);
     });
 
     it('親クライアント連携ログイン失敗時にローカライズ済みエラーを表示する', async () => {

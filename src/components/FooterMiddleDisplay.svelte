@@ -81,6 +81,7 @@
         onkeydown={handleFooterCenterKeyDown}
         role="button"
         tabindex="0"
+        aria-label={$_("footerInfoDisplay.close_size_info")}
     >
         {#if showingInfo}
             {#if sharedMediaError}

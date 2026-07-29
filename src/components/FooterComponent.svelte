@@ -151,9 +151,9 @@
         contentLayout="icon"
         className="settings-btn {swNeedRefresh ? 'has-update' : ''}"
         onClick={onOpenSettingsDialog}
-        ariaLabel="設定"
+        ariaLabel={$_("settingsDialog.info_header_setting")}
     >
-        <div class="settings-icon svg-icon" aria-label="Settings"></div>
+        <div class="settings-icon svg-icon" aria-hidden="true"></div>
         {#if swNeedRefresh}
             <div class="update-indicator"></div>
         {/if}

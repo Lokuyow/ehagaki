@@ -1,15 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { readable } from 'svelte/store';
-
-const mockTranslate = vi.hoisted(() => (key: string) => {
-    const translations: Record<string, string> = {
-        'app.login': 'ログイン',
-        'postHistory.open': '投稿履歴を開く',
-    };
-
-    return translations[key] || key;
-});
+import '../../i18n';
+import { locale, waitLocale } from 'svelte-i18n';
 
 const footerDisplayState = vi.hoisted(() => ({
     sharedMediaError: null as string | null,
@@ -22,10 +14,6 @@ const footerDisplayState = vi.hoisted(() => ({
 const profileStoreState = vi.hoisted(() => ({
     isLoadingProfile: false,
     profileLoaded: false,
-}));
-
-vi.mock('svelte-i18n', () => ({
-    _: readable(mockTranslate),
 }));
 
 vi.mock('../../lib/hooks/useFooterMiddleDisplay.svelte', () => ({
@@ -62,7 +50,7 @@ import { isLoadingProfileStore, profileLoadedStore } from '../../stores/profileS
 import FooterComponent from '../../components/FooterComponent.svelte';
 
 describe('FooterComponent', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         footerDisplayState.sharedMediaError = null;
         footerDisplayState.progressDisplay = null;
         footerDisplayState.imageSizeDisplay = null;
@@ -72,6 +60,8 @@ describe('FooterComponent', () => {
         profileStoreState.profileLoaded = false;
         isLoadingProfileStore.set(false);
         profileLoadedStore.set(false);
+        locale.set('ja');
+        await waitLocale();
     });
 
     function renderFooter(props?: Partial<Parameters<typeof render>[1]['props']>) {
@@ -98,6 +88,17 @@ describe('FooterComponent', () => {
 
         expect(screen.queryByRole('button', { name: '投稿履歴を開く' })).toBeNull();
         expect(screen.getByText('共有メディアエラー')).toBeTruthy();
+    });
+
+    it('設定ボタンは現在のロケールの名前で取得できる', async () => {
+        renderFooter();
+
+        expect(screen.getByRole('button', { name: '設定' })).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale();
+
+        expect(screen.getByRole('button', { name: 'Setting' })).toBeTruthy();
     });
 
     it('情報表示なし、かつ認証済みなら投稿履歴ボタンを表示して押下できる', async () => {

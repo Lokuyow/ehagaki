@@ -35,6 +35,7 @@
                 ? (getPos() ?? "unknown").toString()
                 : "unknown"),
     );
+    let videoSelectionAriaLabel = $derived($_("videoNode.select"));
 
     // 全画面状態を判定
     function isFullscreen(): boolean {
@@ -144,6 +145,7 @@
             onkeydown={handleWrapperKeydown}
             role="button"
             tabindex="0"
+            aria-label={videoSelectionAriaLabel}
         >
             {#if isPlaceholder}
                 <!-- アップロード中のローディング表示 -->

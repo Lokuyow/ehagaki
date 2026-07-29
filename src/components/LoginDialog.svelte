@@ -644,7 +644,7 @@
         </div>
 
         <div class="divider">
-            <span>or</span>
+            <span>{$_("common.or")}</span>
         </div>
     {/if}
 
@@ -680,7 +680,7 @@
     </div>
 
     <div class="divider">
-        <span>or</span>
+        <span>{$_("common.or")}</span>
     </div>
 
     <div class="remote-signer-section">
@@ -1027,7 +1027,7 @@
     </div>
 
     <div class="divider">
-        <span>or</span>
+        <span>{$_("common.or")}</span>
     </div>
 
     <div class="secret-key-section">

@@ -90,6 +90,14 @@
         displayedProfile.npub ||
             (currentPubkeyHex ? formatNpub(currentPubkeyHex) : ""),
     );
+    let currentProfileAlt = $derived(
+        displayedProfile.displayName || displayedProfile.name
+            ? displayedProfile.displayName || displayedProfile.name
+            : $_("profileDialog.profile_image_alt"),
+    );
+    let profileAvatarFallbackLabel = $derived(
+        $_("profileDialog.profile_image_fallback"),
+    );
     let showRecoveryActions = $derived(
         accounts.length === 0 && !!currentPubkeyHex,
     );
@@ -135,13 +143,11 @@
                 <!-- プロフィール画像 -->
                 <ProfileAvatar
                     src={displayedProfile.picture}
-                    alt={displayedProfile.displayName ||
-                        displayedProfile.name ||
-                        "Profile"}
+                    alt={currentProfileAlt}
                     rootClassName="profile-image-container"
                     imageClassName="profile-image"
                     fallbackClassName="profile-image-placeholder"
-                    fallbackAriaLabel="Profile image placeholder"
+                    fallbackAriaLabel={profileAvatarFallbackLabel}
                 />
 
                 <!-- 名前 -->
@@ -265,11 +271,11 @@
                                         src={cachedProfile?.picture}
                                         alt={cachedProfile?.displayName ||
                                             cachedProfile?.name ||
-                                            ""}
+                                            $_("profileDialog.profile_image_alt")}
                                         rootClassName="account-avatar"
                                         imageClassName="account-avatar-img"
                                         fallbackClassName="account-avatar-placeholder"
-                                        fallbackAriaLabel="Profile image placeholder"
+                                        fallbackAriaLabel={profileAvatarFallbackLabel}
                                     />
                                     <div class="account-details">
                                         <div class="account-name-row">
