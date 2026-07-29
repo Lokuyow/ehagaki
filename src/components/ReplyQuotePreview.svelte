@@ -428,8 +428,8 @@
     }
 
     :global(.reply-quote-profile-avatar) {
-        width: 24px;
-        height: 24px;
+        width: 36px;
+        height: 36px;
         flex: 0 0 auto;
         overflow: hidden;
         border-radius: 50%;
