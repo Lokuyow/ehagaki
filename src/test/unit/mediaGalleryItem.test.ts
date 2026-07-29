@@ -109,11 +109,10 @@ describe('MediaGalleryItem', () => {
         });
 
         const target = screen.getByRole('button', { name: 'gallery image' });
-        const event = createEvent('keydown', { key: ' ' });
-        const prevented = await fireEvent.keyDown(target, event);
+        const dispatched = await fireEvent.keyDown(target, { key: ' ' });
 
-        expect(prevented).toBe(true);
-        expect(showImageFullscreen).not.toHaveBeenCalled();
+        expect(dispatched).toBe(false);
+        expect(showImageFullscreen).toHaveBeenCalledTimes(1);
     });
 
     it('does not open fullscreen for a placeholder image', async () => {
@@ -132,17 +131,23 @@ describe('MediaGalleryItem', () => {
         const target = screen.queryByRole('button', { name: 'gallery image' });
 
         expect(target).toBeNull();
-        await fireEvent.keyDown(document.body, { key: 'Enter' });
+
+        const { container } = render(MediaGalleryItemComponent, {
+            props: {
+                item: createImageItem({ isPlaceholder: true }),
+                index: 0,
+                onDelete: vi.fn(),
+                onDragStart: vi.fn(),
+                onDragOver: vi.fn(),
+                onDragEnd: vi.fn(),
+                onDrop: vi.fn(),
+            },
+        });
+        const media = container.querySelector('.gallery-item-media');
+
+        expect(media).not.toBeNull();
+        await fireEvent.keyDown(media!, { key: 'Enter' });
 
         expect(showImageFullscreen).not.toHaveBeenCalled();
     });
 });
-
-function createEvent(type: string, init: KeyboardEventInit = {}) {
-    const event = new KeyboardEvent(type, init);
-    Object.defineProperty(event, 'defaultPrevented', {
-        value: false,
-        configurable: true,
-    });
-    return event;
-}
