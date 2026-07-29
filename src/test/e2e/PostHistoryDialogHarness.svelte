@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
     import type { RxNostr } from "rx-nostr";
     import PostHistoryDialog from "../../components/PostHistoryDialog.svelte";
     import type { NostrEvent } from "../../lib/types";
@@ -14,11 +15,19 @@
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
 
-    const HARNESS_PUBKEY = "f".repeat(64);
+    const HARNESS_SECRET_KEY = generateSecretKey();
+    const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const TOTAL_POSTS = 70;
     const SEARCH_MATCHING_POSTS = 55;
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
+    const IMPORT_POST_CONTENT = "playwright imported JSONL post";
+    const IMPORT_EVENT_JSONL = JSON.stringify(finalizeEvent({
+        kind: 1,
+        content: IMPORT_POST_CONTENT,
+        tags: [],
+        created_at: Math.floor(Date.now() / 1000),
+    }, HARNESS_SECRET_KEY));
 
     let ready = $state(false);
 
@@ -42,6 +51,8 @@
         replyParentEventId: string;
         replyContent: string;
         threadParentPostEventId: string;
+        importPostContent: string;
+        importEventJsonl: string;
     };
 
     type HarnessWindow = Window &
@@ -266,6 +277,8 @@
         replyParentEventId: linkPost.eventId,
         replyContent,
         threadParentPostEventId: threadParentPost.eventId,
+        importPostContent: IMPORT_POST_CONTENT,
+        importEventJsonl: IMPORT_EVENT_JSONL,
     };
 
     onMount(async () => {
@@ -313,6 +326,8 @@
             replyParentEventId: linkPost.eventId,
             replyContent,
             threadParentPostEventId: threadParentPost.eventId,
+            importPostContent: IMPORT_POST_CONTENT,
+            importEventJsonl: IMPORT_EVENT_JSONL,
         };
     });
 </script>

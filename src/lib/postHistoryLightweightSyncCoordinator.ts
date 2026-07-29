@@ -106,6 +106,7 @@ const EMPTY_UPSERT_SUMMARY: PostHistoryUpsertFetchedEventsResult = {
     insertedCount: 0,
     updatedCount: 0,
     unchangedCount: 0,
+    appliedDeletionCount: 0,
 };
 
 function fetchedEventIds(result: PostHistoryRelayFetchResult): string[] {

@@ -60,6 +60,7 @@ describe("PostHistoryInboundReplyReconciliationService", () => {
                 insertedCount: 1,
                 updatedCount: 0,
                 unchangedCount: 0,
+                appliedDeletionCount: 0,
             })),
         };
         const upsertChildInteractions = vi.fn(async () => ({

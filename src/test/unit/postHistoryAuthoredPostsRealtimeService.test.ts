@@ -54,6 +54,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
                 insertedCount: 1,
                 updatedCount: 0,
                 unchangedCount: 0,
+                appliedDeletionCount: 0,
             })),
         };
         const onSavedSelfPosts = vi.fn();
@@ -108,6 +109,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
             insertedCount: 1,
             updatedCount: 0,
             unchangedCount: 0,
+            appliedDeletionCount: 0,
             ignoredCount: 0,
         }));
         const replyEventsRepository = {
@@ -159,6 +161,7 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
                     insertedCount: 1,
                     updatedCount: 0,
                     unchangedCount: 0,
+                    appliedDeletionCount: 0,
                 })),
             },
             now: () => 1_700_000_000_000,

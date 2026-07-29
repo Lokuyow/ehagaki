@@ -1,6 +1,11 @@
 import {
     buildPostHistoryDeletionRequestRecordId,
+    comparePostHistoryDeletionRequests,
+    isPostHistoryDeletionTargetVerified,
+    POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+    toPostHistoryDeletionRequestReferenceRecord,
     toPostHistoryDeletionRequestRecord,
+    toPostHistoryDeletionState,
 } from "../postHistoryDeletionUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
@@ -33,10 +38,27 @@ export interface UpsertPostHistoryDeletionRequestsResult {
     ignoredCount: number;
 }
 
+export interface UpsertImportedPostHistoryDeletionEventsInput {
+    ownerPubkeyHex: string;
+    deletionEvents: NostrEvent[];
+    fetchedAt?: number;
+}
+
+export interface UpsertImportedPostHistoryDeletionEventsResult {
+    insertedCount: number;
+    updatedCount: number;
+    unchangedCount: number;
+    ignoredCount: number;
+    appliedDeletionCount: number;
+}
+
 export interface PostHistoryDeletionRequestsRepository {
     getDeletedTargets(targets: PostHistoryDeletionTarget[]): Promise<Map<string, Set<string>>>;
     upsertValidDeletionRequests(input: UpsertPostHistoryDeletionRequestsInput): Promise<UpsertPostHistoryDeletionRequestsResult>;
+    upsertImportedDeletionEvents(input: UpsertImportedPostHistoryDeletionEventsInput): Promise<UpsertImportedPostHistoryDeletionEventsResult>;
 }
+
+const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 
 function makeTargetMap(targetEvents: NostrEvent[]): Map<string, NostrEvent> {
     const targetsByEventId = new Map<string, NostrEvent>();
@@ -76,9 +98,30 @@ function hasMaterialDeletionRequestChanges(
         || existingRecord.targetEventId !== nextRecord.targetEventId
         || existingRecord.deletionEventId !== nextRecord.deletionEventId
         || existingRecord.deletionEventPubkey !== nextRecord.deletionEventPubkey
+        || isPostHistoryDeletionTargetVerified(existingRecord)
+            !== isPostHistoryDeletionTargetVerified(nextRecord)
         || existingRecord.deletedAt !== nextRecord.deletedAt
         || existingRecord.reason !== nextRecord.reason
         || !areStringArraysEqual(existingRecord.relayUrls, nextRecord.relayUrls);
+}
+
+function mergeDeletionRequestRecord(
+    existingRecord: PostHistoryDeletionRequestRecord,
+    nextRecord: PostHistoryDeletionRequestRecord,
+    now: () => number,
+): PostHistoryDeletionRequestRecord {
+    return {
+        ...nextRecord,
+        targetVerified: isPostHistoryDeletionTargetVerified(existingRecord)
+            || isPostHistoryDeletionTargetVerified(nextRecord),
+        relayUrls: RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...existingRecord.relayUrls,
+            ...nextRecord.relayUrls,
+        ]),
+        fetchedAt: Math.max(existingRecord.fetchedAt, nextRecord.fetchedAt),
+        updatedAt: now(),
+        schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+    };
 }
 
 export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDeletionRequestsRepository {
@@ -107,7 +150,9 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                 .equals([target.targetAuthorPubkey, target.targetEventId])
                 .toArray();
             for (const record of records) {
-                addDeletedTarget(deletedTargets, record);
+                if (isPostHistoryDeletionTargetVerified(record)) {
+                    addDeletedTarget(deletedTargets, record);
+                }
             }
         }
 
@@ -200,15 +245,11 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     return record;
                 }
 
-                const mergedRecord = {
-                    ...record,
-                    relayUrls: RelayConfigUtils.sanitizeExternalRelayUrls([
-                        ...existingRecord.relayUrls,
-                        ...record.relayUrls,
-                    ]),
-                    fetchedAt: Math.max(existingRecord.fetchedAt, record.fetchedAt),
-                    updatedAt: this.now(),
-                };
+                const mergedRecord = mergeDeletionRequestRecord(
+                    existingRecord,
+                    record,
+                    this.now,
+                );
                 if (hasMaterialDeletionRequestChanges(existingRecord, mergedRecord)) {
                     updatedCount += 1;
                 } else {
@@ -226,6 +267,151 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             updatedCount,
             unchangedCount,
             ignoredCount,
+        };
+    }
+
+    async upsertImportedDeletionEvents(
+        input: UpsertImportedPostHistoryDeletionEventsInput,
+    ): Promise<UpsertImportedPostHistoryDeletionEventsResult> {
+        const fetchedAt = input.fetchedAt ?? this.now();
+        const nextRecordsById = new Map<string, PostHistoryDeletionRequestRecord>();
+        let ignoredCount = 0;
+
+        for (const deletionEvent of input.deletionEvents) {
+            if (
+                deletionEvent.kind !== 5
+                || deletionEvent.pubkey !== input.ownerPubkeyHex
+                || !NOSTR_EVENT_ID_PATTERN.test(deletionEvent.id)
+            ) {
+                ignoredCount += 1;
+                continue;
+            }
+
+            const targetEventIds = deletionEvent.tags
+                .filter((tag) => tag[0] === "e"
+                    && typeof tag[1] === "string"
+                    && NOSTR_EVENT_ID_PATTERN.test(tag[1]))
+                .map((tag) => tag[1]);
+            const uniqueTargetEventIds = Array.from(new Set(targetEventIds));
+            if (uniqueTargetEventIds.length === 0) {
+                ignoredCount += 1;
+                continue;
+            }
+
+            for (const targetEventId of uniqueTargetEventIds) {
+                const record = toPostHistoryDeletionRequestReferenceRecord({
+                    deletionEvent,
+                    targetEventId,
+                    targetVerified: false,
+                    relayUrls: [],
+                    fetchedAt,
+                }, this.now);
+                nextRecordsById.set(record.id, record);
+            }
+        }
+
+        const nextRecords = Array.from(nextRecordsById.values());
+        if (nextRecords.length === 0) {
+            return {
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                ignoredCount,
+                appliedDeletionCount: 0,
+            };
+        }
+
+        let insertedCount = 0;
+        let updatedCount = 0;
+        let unchangedCount = 0;
+        let appliedDeletionCount = 0;
+
+        await this.db.transaction(
+            "rw",
+            this.db.postHistoryDeletionRequests,
+            this.db.postHistory,
+            async () => {
+                const existingRecords = await this.db.postHistoryDeletionRequests.bulkGet(
+                    nextRecords.map((record) => record.id),
+                );
+                const targetEventIds = Array.from(new Set(
+                    nextRecords.map((record) => record.targetEventId),
+                ));
+                const targetRecords = await this.db.postHistory.bulkGet(targetEventIds);
+                const targetRecordsById = new Map(
+                    targetRecords
+                        .filter((record) => !!record)
+                        .map((record) => [record!.eventId, record!] as const),
+                );
+                const mergedRecords: PostHistoryDeletionRequestRecord[] = [];
+
+                nextRecords.forEach((record, index) => {
+                    const targetRecord = targetRecordsById.get(record.targetEventId);
+                    const targetMatches = !!targetRecord
+                        && (targetRecord.kind === 1 || targetRecord.kind === 42)
+                        && targetRecord.pubkeyHex === record.targetAuthorPubkey
+                        && targetRecord.pubkeyHex === record.deletionEventPubkey;
+                    const nextRecord = {
+                        ...record,
+                        targetVerified: targetMatches,
+                    };
+                    const existingRecord = existingRecords[index];
+                    if (!existingRecord) {
+                        insertedCount += 1;
+                        mergedRecords.push(nextRecord);
+                        return;
+                    }
+
+                    const mergedRecord = mergeDeletionRequestRecord(
+                        existingRecord,
+                        nextRecord,
+                        this.now,
+                    );
+                    if (hasMaterialDeletionRequestChanges(existingRecord, mergedRecord)) {
+                        updatedCount += 1;
+                    } else {
+                        unchangedCount += 1;
+                    }
+                    mergedRecords.push(mergedRecord);
+                });
+
+                await this.db.postHistoryDeletionRequests.bulkPut(mergedRecords);
+
+                for (const targetEventId of targetEventIds) {
+                    const targetRecord = targetRecordsById.get(targetEventId);
+                    if (!targetRecord || targetRecord.deletedAt !== undefined) {
+                        continue;
+                    }
+
+                    const deletionRequests = await this.db.postHistoryDeletionRequests
+                        .where("targetEventId")
+                        .equals(targetEventId)
+                        .toArray();
+                    const applicableRequest = deletionRequests
+                        .filter((record) => isPostHistoryDeletionTargetVerified(record)
+                            && record.targetAuthorPubkey === targetRecord.pubkeyHex
+                            && record.deletionEventPubkey === targetRecord.pubkeyHex)
+                        .sort(comparePostHistoryDeletionRequests)[0];
+                    if (!applicableRequest) {
+                        continue;
+                    }
+
+                    const deletionState = toPostHistoryDeletionState(applicableRequest);
+                    await this.db.postHistory.update(targetEventId, {
+                        ...deletionState,
+                        updatedAt: this.now(),
+                    });
+                    appliedDeletionCount += 1;
+                }
+            },
+        );
+
+        return {
+            insertedCount,
+            updatedCount,
+            unchangedCount,
+            ignoredCount,
+            appliedDeletionCount,
         };
     }
 }

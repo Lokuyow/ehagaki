@@ -19,6 +19,8 @@ type HarnessState = {
     replyParentEventId: string;
     replyContent: string;
     threadParentPostEventId: string;
+    importPostContent: string;
+    importEventJsonl: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -181,6 +183,31 @@ async function expectTooltip(
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
+    test('desktop JSONL import saves a post and refreshes the local history', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoHarness(page);
+        await expectSummary(page, harness.totalPosts);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '投稿履歴を読み込む' }).click();
+
+        const importDialog = page.locator('.post-history-import-dialog');
+        await expect(importDialog).toBeVisible();
+        await importDialog.locator('input[type="file"]').setInputFiles({
+            name: 'post-history.jsonl',
+            mimeType: 'application/x-ndjson',
+            buffer: Buffer.from(harness.importEventJsonl),
+        });
+
+        await expect(importDialog.getByText('読み込みが完了しました')).toBeVisible();
+        await expect(importDialog.getByText('新規追加').locator('..')).toContainText('1');
+        await importDialog.getByRole('button', { name: '閉じる' }).click();
+
+        await expectSummary(page, harness.totalPosts + 1);
+        await expect(page.getByText(harness.importPostContent, { exact: true })).toBeVisible();
+    });
+
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
 

@@ -4,11 +4,22 @@ import {
     extractPostHistoryChannelReference,
     isSameSignedNostrEvent,
 } from "../postHistoryEventUtils";
+import {
+    comparePostHistoryDeletionRequests,
+    isPostHistoryDeletionTargetVerified,
+    POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+    toPostHistoryDeletionState,
+} from "../postHistoryDeletionUtils";
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
-import type { PostHistoryRecord, PostHistoryMediaRecord, EHagakiDB } from "./ehagakiDb";
+import type {
+    PostHistoryDeletionRequestRecord,
+    PostHistoryRecord,
+    PostHistoryMediaRecord,
+    EHagakiDB,
+} from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
@@ -78,6 +89,7 @@ export type PostHistoryUpsertFetchedEventsResult = {
     insertedCount: number;
     updatedCount: number;
     unchangedCount: number;
+    appliedDeletionCount: number;
 };
 
 export type PostHistoryRepositoryOptions = {
@@ -507,6 +519,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 insertedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
+                appliedDeletionCount: 0,
             };
         }
 
@@ -515,100 +528,156 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         let insertedCount = 0;
         let updatedCount = 0;
         let unchangedCount = 0;
+        let appliedDeletionCount = 0;
 
-        await this.db.transaction("rw", this.db.postHistory, async () => {
-            const existingRecords = await this.db.postHistory.bulkGet(eventIds);
-            const existingMap = new Map<string, PostHistoryRecord>();
+        await this.db.transaction(
+            "rw",
+            this.db.postHistory,
+            this.db.postHistoryDeletionRequests,
+            async () => {
+                const existingRecords = await this.db.postHistory.bulkGet(eventIds);
+                const existingMap = new Map<string, PostHistoryRecord>();
+                const deletionRequestsByTargetEventId = new Map<
+                    string,
+                    PostHistoryDeletionRequestRecord[]
+                >();
 
-            existingRecords.forEach((record) => {
-                if (record) {
-                    existingMap.set(record.eventId, record);
-                }
-            });
-
-            const nextRecords = normalizedItems.map((item) => {
-                const existingRecord = existingMap.get(item.event.id);
-                const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
-                    ...(existingRecord?.fetchedRelays ?? []),
-                    ...item.relayUrls,
-                ]);
-                const rawEventChanged = !!existingRecord
-                    && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
-
-                if (rawEventChanged) {
-                    this.console.warn("post_history_raw_event_conflict", item.event.id);
-                }
-
-                const channelReference = rawEventChanged && existingRecord
-                    ? {
-                        channelEventId: existingRecord.channelEventId,
-                        channelRelayHints: existingRecord.channelRelayHints,
+                existingRecords.forEach((record) => {
+                    if (record) {
+                        existingMap.set(record.eventId, record);
                     }
-                    : extractPostHistoryChannelReference(item.event);
-                const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
-                    ...(existingRecord?.relayHints ?? []),
-                    ...item.relayUrls,
-                    ...(existingRecord?.acceptedRelays ?? []),
-                ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
-
-                const nextRecord = {
-                    id: item.event.id,
-                    eventId: item.event.id,
-                    pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
-                    kind: rawEventChanged && existingRecord ? existingRecord.kind : item.event.kind,
-                    content: rawEventChanged && existingRecord ? existingRecord.content : item.event.content,
-                    tags: rawEventChanged && existingRecord
-                        ? existingRecord.tags.map((tag) => [...tag])
-                        : item.event.tags.map((tag) => [...tag]),
-                    createdAt: rawEventChanged && existingRecord ? existingRecord.createdAt : item.event.created_at,
-                    postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
-                    relayHints,
-                    acceptedRelays: existingRecord?.acceptedRelays ?? [],
-                    ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                    media: rawEventChanged && existingRecord
-                        ? cloneMedia(existingRecord.media)
-                        : extractPostHistoryMedia(item.event),
-                    rawEvent: rawEventChanged && existingRecord
-                        ? existingRecord.rawEvent
-                        : cloneNostrEvent(item.event),
-                    fetchedAt,
-                    lastSeenAt: fetchedAt,
-                    ...(channelReference.channelEventId
-                        ? { channelEventId: channelReference.channelEventId }
-                        : existingRecord?.channelEventId
-                            ? { channelEventId: existingRecord.channelEventId }
-                            : {}),
-                    ...(channelReference.channelRelayHints
-                        ? { channelRelayHints: channelReference.channelRelayHints }
-                        : existingRecord?.channelRelayHints
-                            ? { channelRelayHints: [...existingRecord.channelRelayHints] }
-                            : {}),
-                    ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
-                    ...(existingRecord?.deletionEventId
-                        ? { deletionEventId: existingRecord.deletionEventId }
-                        : {}),
-                    updatedAt: this.now(),
-                    schemaVersion: POST_HISTORY_SCHEMA_VERSION,
-                } satisfies PostHistoryRecord;
-
-                if (!existingRecord) {
-                    insertedCount += 1;
-                } else if (hasMaterialPostHistoryChanges(existingRecord, nextRecord)) {
-                    updatedCount += 1;
-                } else {
-                    unchangedCount += 1;
+                });
+                for (const eventId of eventIds) {
+                    deletionRequestsByTargetEventId.set(
+                        eventId,
+                        await this.db.postHistoryDeletionRequests
+                            .where("targetEventId")
+                            .equals(eventId)
+                            .toArray(),
+                    );
                 }
 
-                return nextRecord;
-            });
+                const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
+                const nextRecords = normalizedItems.map((item) => {
+                    const existingRecord = existingMap.get(item.event.id);
+                    const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+                        ...(existingRecord?.fetchedRelays ?? []),
+                        ...item.relayUrls,
+                    ]);
+                    const rawEventChanged = !!existingRecord
+                        && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
 
-            await this.db.postHistory.bulkPut(nextRecords);
-        });
+                    if (rawEventChanged) {
+                        this.console.warn("post_history_raw_event_conflict", item.event.id);
+                    }
+
+                    const channelReference = rawEventChanged && existingRecord
+                        ? {
+                            channelEventId: existingRecord.channelEventId,
+                            channelRelayHints: existingRecord.channelRelayHints,
+                        }
+                        : extractPostHistoryChannelReference(item.event);
+                    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
+                        ...(existingRecord?.relayHints ?? []),
+                        ...item.relayUrls,
+                        ...(existingRecord?.acceptedRelays ?? []),
+                    ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
+
+                    const baseRecord = {
+                        id: item.event.id,
+                        eventId: item.event.id,
+                        pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
+                        kind: rawEventChanged && existingRecord ? existingRecord.kind : item.event.kind,
+                        content: rawEventChanged && existingRecord ? existingRecord.content : item.event.content,
+                        tags: rawEventChanged && existingRecord
+                            ? existingRecord.tags.map((tag) => [...tag])
+                            : item.event.tags.map((tag) => [...tag]),
+                        createdAt: rawEventChanged && existingRecord ? existingRecord.createdAt : item.event.created_at,
+                        postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
+                        relayHints,
+                        acceptedRelays: existingRecord?.acceptedRelays ?? [],
+                        ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
+                        media: rawEventChanged && existingRecord
+                            ? cloneMedia(existingRecord.media)
+                            : extractPostHistoryMedia(item.event),
+                        rawEvent: rawEventChanged && existingRecord
+                            ? existingRecord.rawEvent
+                            : cloneNostrEvent(item.event),
+                        fetchedAt,
+                        lastSeenAt: fetchedAt,
+                        ...(channelReference.channelEventId
+                            ? { channelEventId: channelReference.channelEventId }
+                            : existingRecord?.channelEventId
+                                ? { channelEventId: existingRecord.channelEventId }
+                                : {}),
+                        ...(channelReference.channelRelayHints
+                            ? { channelRelayHints: channelReference.channelRelayHints }
+                            : existingRecord?.channelRelayHints
+                                ? { channelRelayHints: [...existingRecord.channelRelayHints] }
+                                : {}),
+                        ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
+                        ...(existingRecord?.deletionEventId
+                            ? { deletionEventId: existingRecord.deletionEventId }
+                            : {}),
+                        updatedAt: this.now(),
+                        schemaVersion: POST_HISTORY_SCHEMA_VERSION,
+                    } satisfies PostHistoryRecord;
+
+                    if (!existingRecord) {
+                        insertedCount += 1;
+                    } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
+                        updatedCount += 1;
+                    } else {
+                        unchangedCount += 1;
+                    }
+
+                    const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
+                        .flatMap((request) => {
+                            const targetMatches = (baseRecord.kind === 1 || baseRecord.kind === 42)
+                                && baseRecord.pubkeyHex === request.targetAuthorPubkey
+                                && baseRecord.pubkeyHex === request.deletionEventPubkey;
+                            if (!targetMatches) {
+                                return [];
+                            }
+
+                            if (!isPostHistoryDeletionTargetVerified(request)) {
+                                const verifiedRequest = {
+                                    ...request,
+                                    targetVerified: true,
+                                    updatedAt: this.now(),
+                                    schemaVersion: POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+                                } satisfies PostHistoryDeletionRequestRecord;
+                                verifiedRequestUpdates.push(verifiedRequest);
+                                return [verifiedRequest];
+                            }
+
+                            return [request];
+                        })
+                        .sort(comparePostHistoryDeletionRequests);
+                    if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
+                        return baseRecord;
+                    }
+
+                    appliedDeletionCount += 1;
+                    return {
+                        ...baseRecord,
+                        ...toPostHistoryDeletionState(applicableRequests[0]),
+                        updatedAt: this.now(),
+                    } satisfies PostHistoryRecord;
+                });
+
+                if (verifiedRequestUpdates.length > 0) {
+                    await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
+                }
+                await this.db.postHistory.bulkPut(nextRecords);
+            },
+        );
 
         return {
             insertedCount,
             updatedCount,
             unchangedCount,
+            appliedDeletionCount,
         };
     }
 

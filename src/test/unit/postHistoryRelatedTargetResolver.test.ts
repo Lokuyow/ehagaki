@@ -1,5 +1,11 @@
+import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
+import { EHAGAKI_DB_NAME, EHagakiDB, type PostHistoryRecord } from "../../lib/storage/ehagakiDb";
+import {
+    DexiePostHistoryDeletionRequestsRepository,
+    type PostHistoryDeletionRequestsRepository,
+} from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import {
     createPostHistoryRelatedTargetResolver,
     type RelatedTargetDescriptor,
@@ -88,6 +94,10 @@ function createDescriptor(
 
 function createResolver(options: {
     profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
+    deletionRequestsRepositoryImpl?: Pick<
+        PostHistoryDeletionRequestsRepository,
+        "getDeletedTargets" | "upsertValidDeletionRequests"
+    >;
 } = {}) {
     const rxNostr = createMockRxNostr();
     const postHistoryRepositoryImpl = {
@@ -102,7 +112,7 @@ function createResolver(options: {
             cancel: vi.fn(),
         }),
     };
-    const deletionRequestsRepositoryImpl = {
+    const defaultDeletionRequestsRepositoryImpl = {
         getDeletedTargets: vi.fn().mockResolvedValue(new Map()),
         upsertValidDeletionRequests: vi.fn().mockResolvedValue({
             insertedCount: 0,
@@ -111,6 +121,8 @@ function createResolver(options: {
             ignoredCount: 0,
         }),
     };
+    const deletionRequestsRepositoryImpl = options.deletionRequestsRepositoryImpl
+        ?? defaultDeletionRequestsRepositoryImpl;
     const deletionFetchService = {
         fetchDeletionRequests: vi.fn().mockReturnValue({
             promise: Promise.resolve({
@@ -566,5 +578,48 @@ describe("createPostHistoryRelatedTargetResolver", () => {
         expect(firstSnapshot?.status).toBe("resolved");
         expect(secondSnapshot?.status).toBe("resolved");
         expect(resolver.getTargetSnapshot(event.id)?.status).toBe("resolved");
+    });
+
+    it("未検証pendingがauthorHintに一致しても取得前に削除済みと判定しない", async () => {
+        const dbName = `${EHAGAKI_DB_NAME}-related-target-pending-${Date.now()}`;
+        const db = new EHagakiDB(dbName);
+        const deletionRepository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const event = createEvent();
+        await deletionRepository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: event.pubkey,
+            deletionEvents: [{
+                id: "5".repeat(64),
+                pubkey: event.pubkey,
+                kind: 5,
+                content: "",
+                tags: [["e", event.id]],
+                created_at: 200,
+                sig: "c".repeat(128),
+            }],
+        });
+        const { resolver, contextFetchService } = createResolver({
+            deletionRequestsRepositoryImpl: deletionRepository,
+        });
+        contextFetchService.fetchEventById.mockReturnValue({
+            promise: Promise.resolve({
+                event,
+                relayUrl: "wss://relay.example.com/",
+            }),
+            cancel: vi.fn(),
+        });
+
+        try {
+            const snapshot = await resolver.ensureTarget(createDescriptor({
+                targetEventId: event.id,
+                authorHint: event.pubkey,
+            }));
+
+            expect(contextFetchService.fetchEventById).toHaveBeenCalledTimes(1);
+            expect(snapshot?.status).toBe("resolved");
+            expect(snapshot?.event?.id).toBe(event.id);
+        } finally {
+            db.close();
+            await Dexie.delete(dbName);
+        }
     });
 });

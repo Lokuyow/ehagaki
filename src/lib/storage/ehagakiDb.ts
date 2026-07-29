@@ -207,6 +207,7 @@ export interface PostHistoryDeletionRequestRecord {
     targetEventId: string;
     deletionEventId: string;
     deletionEventPubkey: string;
+    targetVerified?: boolean;
     deletedAt: number;
     reason: string | null;
     rawEvent: unknown;

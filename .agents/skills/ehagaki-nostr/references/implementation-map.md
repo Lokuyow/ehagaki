@@ -1,6 +1,6 @@
 # eHagaki Nostr implementation map
 
-この文書は2026-07-26時点のcheckoutをコードとテストから対応付けた調査用索引である。現在のコードと差がある場合は現在のコードを優先する。
+この文書は2026-07-30時点のcheckoutをコードとテストから対応付けた調査用索引である。現在のコードと差がある場合は現在のコードを優先する。
 
 ## 使用中のNostr関連ライブラリ
 
@@ -152,6 +152,17 @@
 - 主な関数または責務: discovery adapterが`RelatedTargetDescriptor`を生成し、`createPostHistoryRelatedTargetResolver`がlocal-first lookup、network fetch、deletion check、profile sync、scope cancelを調整する。
 - 関連テスト: `src/test/unit/postHistoryRelatedTargetDiscoveryAdapter.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryRelatedEventCard.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`
 - 注意点: discovery、descriptor、fetch、cache、renderingの境界を維持する。target ID単位のpending共有とscope generationでstale completionを防ぐ。
+
+## 投稿履歴JSONLインポートと削除要求
+
+- 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42を投稿履歴へ統合し、kind 5の有効な`e`タグを削除要求として保存する。対象未取得の削除要求はpendingとして保持し、実際の対象eventとauthorが一致した時点で検証済みへ昇格する。
+- 関連NIP: NIP-01、NIP-09、NIP-28。
+- event kind: 投稿履歴対象`1`/`42`、deletion request `5`。
+- 主なtag: kind 5の`e`。Phase 1のJSONLインポートでは64文字の小文字16進event IDだけを受理する。
+- 主な実装ファイル: `src/lib/postHistoryJsonlImportService.ts`、`src/lib/postHistoryDeletionUtils.ts`、`src/lib/storage/postHistoryRepository.ts`、`src/lib/storage/postHistoryDeletionRequestsRepository.ts`、`src/components/PostHistoryImportDialog.svelte`、`src/components/PostHistoryDialog.svelte`。
+- 主な関数または責務: `PostHistoryJsonlImportService.importFile`がfatal UTF-8 decode、行分類、ファイル全体のevent ID重複排除、100 event単位のflushを担う。`upsertImportedDeletionEvents`がJSONL由来kind 5をpendingまたは検証済みとして保存し、`upsertFetchedEvents`が別JSONL・通常relay同期の双方で後着投稿とpendingを照合する。`getDeletedTargets`は`targetVerified !== false`の削除要求だけを既存resolverへ返す。
+- 関連テスト: `src/test/unit/postHistoryJsonlImportService.test.ts`、`src/test/unit/postHistoryDeletionRequestsRepository.test.ts`、`src/test/unit/postHistoryRepository.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryImportDialog.test.ts`、`src/test/unit/postHistoryDialog.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`。
+- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。JSONL由来relay URLは追加せず、object store・索引・DB versionを増やさない。
 
 ## relay管理
 

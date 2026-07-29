@@ -2445,6 +2445,7 @@ export function usePostHistoryListing({
             insertedCount: 0,
             updatedCount: 0,
             unchangedCount: 0,
+            appliedDeletionCount: 0,
         };
 
         if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
@@ -2799,6 +2800,7 @@ export function usePostHistoryListing({
                 insertedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
+                appliedDeletionCount: 0,
             };
 
             const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
@@ -3287,6 +3289,19 @@ export function usePostHistoryListing({
         return true;
     }
 
+    async function refreshAfterLocalImport(): Promise<void> {
+        if (!getPubkeyHex()) {
+            return;
+        }
+
+        if (state.searchQuery) {
+            await loadSearchPage(state.searchPage, state.searchQuery);
+            return;
+        }
+
+        await loadLatestVisiblePosts();
+    }
+
     function patchDeletedPost(
         eventId: string,
         deletedAt: number,
@@ -3594,6 +3609,7 @@ export function usePostHistoryListing({
         goToLastPage,
         refetchAroundCurrentView,
         resetSearchState,
+        refreshAfterLocalImport,
         deleteLocalHistory,
         patchDeletedPost,
     };

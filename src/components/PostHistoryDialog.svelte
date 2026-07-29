@@ -14,6 +14,7 @@
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
+    import PostHistoryImportDialog from "./PostHistoryImportDialog.svelte";
     import PostHistoryRawJsonDialog from "./PostHistoryRawJsonDialog.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
@@ -248,6 +249,7 @@
     let jumpDatePickerOpen = $state(false);
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
+    let importDialogOpen = $state(false);
     let rawJsonDialogOpen = $state(false);
     let selectedRawEvent = $state<unknown>(null);
     let deleteRequestState = $state<
@@ -474,6 +476,7 @@
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
         postActionUi.resetDeleteConfirmation();
+        importDialogOpen = false;
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
@@ -500,6 +503,7 @@
         channelDisplay.cancelCurrentChannelResolution();
         postHistoryThreadGraph.cancelCurrentGraphFetches();
         postActionUi.resetDeleteConfirmation();
+        importDialogOpen = false;
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
@@ -1239,6 +1243,18 @@
         headingMenuOpen = false;
     }
 
+    function openImportDialog(): void {
+        importDialogOpen = true;
+        headingMenuOpen = false;
+    }
+
+    async function handleImportedPostHistory(): Promise<void> {
+        await history.refreshAfterLocalImport();
+        if (!history.isSearchMode) {
+            historyViewport.resetHistoryScrollSoon();
+        }
+    }
+
     function handleRefetchAroundCurrentViewFromMenu(): void {
         headingMenuOpen = false;
         void history.refetchAroundCurrentView();
@@ -1480,6 +1496,17 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.repair")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!pubkeyHex}
+                                onSelect={openImportDialog}
+                            >
+                                <div
+                                    class="import-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.import")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button menu-action-button-danger"
@@ -2786,6 +2813,14 @@
         </div>
     {/if}
 
+    <PostHistoryImportDialog
+        open={importDialogOpen}
+        ownerPubkeyHex={pubkeyHex}
+        getCurrentPubkeyHex={() => pubkeyHex}
+        onOpenChange={(open) => (importDialogOpen = open)}
+        onImported={handleImportedPostHistory}
+    />
+
     <PostHistoryRawJsonDialog
         open={rawJsonDialogOpen}
         rawEvent={selectedRawEvent}
@@ -3734,6 +3769,10 @@
 
     .repair-icon {
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .import-icon {
+        mask-image: url("/icons/cloud_download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.trash-icon) {

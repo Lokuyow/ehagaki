@@ -41,6 +41,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairNoChanges': '追加なし',
         'postHistory.repairPartialFailure': '一部未確認',
         'postHistory.repairFetchFailed': '取得失敗',
+        'postHistory.import': '投稿履歴を読み込む',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.rawJson': 'イベントJSONを表示',
@@ -1079,6 +1080,27 @@ describe('PostHistoryDialog', () => {
         expect(heading).toBeTruthy();
         expect(headingActions?.textContent).not.toContain('表示中の投稿付近を再取得');
         expect(repairButton).toBeTruthy();
+    });
+
+    it('[import-menu-button] repairの後、履歴クリアの前にimportを表示する', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await openPostHistoryMenu();
+        const menuItems = await screen.findAllByRole('menuitem');
+        const labels = menuItems.map((item) => item.textContent?.trim());
+        expect(labels.indexOf('投稿履歴を読み込む')).toBeGreaterThan(
+            labels.indexOf('表示中の投稿付近を再取得'),
+        );
+        expect(labels.indexOf('投稿履歴を読み込む')).toBeLessThan(
+            labels.indexOf('保存済み投稿履歴をクリア'),
+        );
     });
 
     it('[reply-context] 履歴内の返信投稿の上に返信先を表示し、再表示時は取得済み event を再利用する', async () => {
