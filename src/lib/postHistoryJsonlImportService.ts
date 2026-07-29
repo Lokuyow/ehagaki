@@ -120,6 +120,10 @@ export class PostHistoryJsonlImportService {
         const processedEventIds = new Set<string>();
         const buffer: BufferedImportEvent[] = [];
         let hadSaveFailure = false;
+        const hasInputRejections = (): boolean =>
+            result.invalidJsonCount > 0
+            || result.invalidStructureCount > 0
+            || result.invalidIdOrSignatureCount > 0;
 
         const getStopStatus = (): PostHistoryJsonlImportStatus | null => {
             if (input.signal?.aborted) {
@@ -331,7 +335,7 @@ export class PostHistoryJsonlImportService {
             result.status = stopStatus;
             return result;
         }
-        result.status = hadSaveFailure ? "partial" : "completed";
+        result.status = hadSaveFailure || hasInputRejections() ? "partial" : "completed";
         emitProgress();
         return result;
     }

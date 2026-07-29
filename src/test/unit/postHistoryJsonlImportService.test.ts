@@ -106,6 +106,62 @@ describe("PostHistoryJsonlImportService", () => {
         expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
     });
 
+    it("有効なkind 1と不正JSONが混在すると保存後もpartialになる", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const event = createSignedEvent(secretKey);
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(`${JSON.stringify(event)}\nnot-json`),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result).toMatchObject({
+            status: "partial",
+            insertedPostCount: 1,
+            invalidJsonCount: 1,
+        });
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        {
+            name: "不正JSON",
+            line: "not-json",
+            field: "invalidJsonCount" as const,
+        },
+        {
+            name: "不正構造",
+            line: JSON.stringify({ kind: 1 }),
+            field: "invalidStructureCount" as const,
+        },
+        {
+            name: "不正IDまたは署名",
+            line: JSON.stringify({
+                ...createSignedEvent(generateSecretKey()),
+                sig: "0".repeat(128),
+            }),
+            field: "invalidIdOrSignatureCount" as const,
+        },
+    ])("$nameだけのファイルはcompletedにならない", async ({ line, field }) => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(line),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result.status).toBe("partial");
+        expect(result[field]).toBe(1);
+        expect(result.nonEmptyLineCount).toBe(1);
+    });
+
     it("既存投稿と同じ1行はrepositoryのunchangedだけへ数える", async () => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);
@@ -218,6 +274,7 @@ describe("PostHistoryJsonlImportService", () => {
         });
 
         expect(result).toMatchObject({
+            status: "partial",
             nonEmptyLineCount: 6,
             invalidJsonCount: 1,
             invalidStructureCount: 1,
@@ -225,6 +282,27 @@ describe("PostHistoryJsonlImportService", () => {
             otherAccountCount: 1,
             unsupportedKindCount: 1,
             insertedPostCount: 1,
+        });
+    });
+
+    it("別アカウントまたは対象外kindだけなら情報分類のcompletedを維持する", async () => {
+        const secretKey = generateSecretKey();
+        const otherSecretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const otherEvent = createSignedEvent(otherSecretKey);
+        const unsupportedEvent = createSignedEvent(secretKey, { kind: 7 });
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(`${JSON.stringify(otherEvent)}\n${JSON.stringify(unsupportedEvent)}`),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result).toMatchObject({
+            status: "completed",
+            otherAccountCount: 1,
+            unsupportedKindCount: 1,
         });
     });
 
