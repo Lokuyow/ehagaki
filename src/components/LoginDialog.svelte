@@ -859,8 +859,8 @@
                                         side="top"
                                         sideOffset={8}
                                         ariaLabel={$_(
-                                            "loginDialog.nostrconnect_edit_relays",
-                                        ) + "の説明"}
+                                            "loginDialog.nostrconnect_relay_settings_description",
+                                        )}
                                     >
                                         <div class="nostrconnect-relay-popover">
                                             <div>
@@ -1051,9 +1051,6 @@
                     maxlength="63"
                     bind:this={inputEl}
                     title={$_("loginDialog.hint_input_secret")}
-                    onkeydown={(e) => {
-                        if (e.key === "Enter") handleSave();
-                    }}
                     oninput={() => {
                         // 入力時はエラーをクリアするだけ
                         if (inputEl) inputEl.setCustomValidity("");
@@ -1079,9 +1076,9 @@
                     {...props}
                     className="modal-close"
                     shape="square"
-                    ariaLabel="閉じる"
+                    ariaLabel={$_("global.close")}
                 >
-                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                    <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
             {/snippet}
         </Dialog.Close>

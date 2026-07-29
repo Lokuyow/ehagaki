@@ -434,9 +434,9 @@
                     {...props}
                     className="modal-close"
                     shape="square"
-                    ariaLabel="閉じる"
+                    ariaLabel={$_("global.close")}
                 >
-                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                    <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
             {/snippet}
         </Dialog.Close>

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import '../../i18n';
 import { locale, waitLocale } from 'svelte-i18n';
 
@@ -133,6 +134,51 @@ describe('FooterComponent', () => {
         renderFooter({ isAuthenticated: false });
 
         expect(screen.queryByRole('button', { name: '投稿履歴を開く' })).toBeNull();
+    });
+
+    it('プロフィールボタンは初期化中・読込中・読込済みでローカライズされた名前を持つ', async () => {
+        renderFooter({
+            isAuthInitialized: false,
+            isAuthenticated: true,
+        });
+
+        expect(screen.getByRole('button', { name: 'プロフィール' })).toBeTruthy();
+
+        profileStoreState.isLoadingProfile = true;
+        profileStoreState.profileLoaded = true;
+        isLoadingProfileStore.set(true);
+        profileLoadedStore.set(true);
+        cleanup();
+        renderFooter({
+            isAuthenticated: true,
+            isAuthInitialized: true,
+        });
+
+        expect(screen.getByRole('button', { name: 'プロフィール' })).toBeTruthy();
+
+        profileStoreState.isLoadingProfile = false;
+        profileStoreState.profileLoaded = true;
+        isLoadingProfileStore.set(false);
+        profileLoadedStore.set(true);
+        cleanup();
+        renderFooter({
+            isAuthenticated: true,
+            isAuthInitialized: true,
+        });
+
+        expect(screen.getByRole('button', { name: 'プロフィール' })).toBeTruthy();
+        expect(screen.getByLabelText('プロフィール画像')).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale();
+        cleanup();
+        renderFooter({
+            isAuthenticated: true,
+            isAuthInitialized: true,
+        });
+
+        expect(screen.getByRole('button', { name: 'Profile' })).toBeTruthy();
+        expect(screen.getByLabelText('Profile image')).toBeTruthy();
     });
 
     it('プロフィール読込中でも profile-display ボタン押下でログアウトダイアログを開ける', async () => {

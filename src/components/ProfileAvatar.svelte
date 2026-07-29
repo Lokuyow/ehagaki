@@ -123,10 +123,12 @@
     <Avatar.Fallback
         class={`profile-avatar-fallback ${fallbackClassName}`}
         style={`--profile-avatar-fallback-delay: ${fallbackDelayMs}ms;`}
+        role="img"
+        aria-label={fallbackAriaLabel}
     >
         <div
             class="profile-avatar-fallback-icon svg-icon"
-            aria-label={fallbackAriaLabel}
+            aria-hidden="true"
         ></div>
     </Avatar.Fallback>
 </Avatar.Root>

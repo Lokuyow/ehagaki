@@ -179,6 +179,51 @@ describe('LoginDialog', () => {
         expect(screen.getAllByText('or').length).toBeGreaterThan(0);
     });
 
+    it('Enter で送信した場合は保存処理を1回だけ実行する', async () => {
+        const onSave = vi.fn();
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+            },
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        const form = secretInput.closest('form');
+        const validSecret = 'nsec1' + 'a'.repeat(58);
+
+        await fireEvent.input(secretInput, {
+            target: { value: validSecret },
+        });
+        await fireEvent.keyDown(secretInput, { key: 'Enter', code: 'Enter' });
+        await fireEvent.submit(form as HTMLFormElement);
+
+        expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('保存ボタンを押した場合は保存処理を1回だけ実行する', async () => {
+        const onSave = vi.fn();
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+            },
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        const saveButton = screen.getByRole('button', { name: '保存' });
+        const validSecret = 'nsec1' + 'a'.repeat(58);
+
+        await fireEvent.input(secretInput, {
+            target: { value: validSecret },
+        });
+        await fireEvent.click(saveButton);
+
+        expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
     it('親クライアント連携ログイン失敗時にローカライズ済みエラーを表示する', async () => {
         const onParentClientLogin = vi
             .fn<() => Promise<string | undefined>>()

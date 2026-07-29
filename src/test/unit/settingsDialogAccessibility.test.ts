@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { locale, waitLocale } from 'svelte-i18n';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,6 +34,48 @@ describe('SettingsDialog accessibility', () => {
         expect(
             screen.getByRole('radiogroup', {
                 name: '動画品質',
+            }),
+        ).toBeTruthy();
+    });
+
+    it('圧縮説明ボタンはロケールに応じた名前を持つ', async () => {
+        render(SettingsCompressionSection, {
+            props: {
+                compressionPairs: [[{ value: 'high', label: '高' }]],
+                selectedCompression: 'high',
+                onCompressionChange: () => {},
+                videoCompressionPairs: [[{ value: 'high', label: '高' }]],
+                selectedVideoCompression: 'high',
+                onVideoCompressionChange: () => {},
+            },
+        });
+
+        await tick();
+
+        expect(
+            screen.getByRole('button', {
+                name: '画像圧縮設定の説明',
+            }),
+        ).toBeTruthy();
+
+        locale.set('en');
+        await waitLocale('en');
+        cleanup();
+        render(SettingsCompressionSection, {
+            props: {
+                compressionPairs: [[{ value: 'high', label: 'High' }]],
+                selectedCompression: 'high',
+                onCompressionChange: () => {},
+                videoCompressionPairs: [[{ value: 'high', label: 'High' }]],
+                selectedVideoCompression: 'high',
+                onVideoCompressionChange: () => {},
+            },
+        });
+        await tick();
+
+        expect(
+            screen.getByRole('button', {
+                name: 'Image compression settings description',
             }),
         ).toBeTruthy();
     });

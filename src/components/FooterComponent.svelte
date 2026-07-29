@@ -80,6 +80,7 @@
             shape="circle"
             className="profile-display loading"
             onClick={onOpenLogoutDialog}
+            ariaLabel={$_("profileDialog.title")}
         >
             <LoadingPlaceholder showLoader={true} />
         </Button>
@@ -89,6 +90,7 @@
             shape="circle"
             className="profile-display loading"
             onClick={onOpenLogoutDialog}
+            ariaLabel={$_("profileDialog.title")}
         >
             <LoadingPlaceholder showLoader={true} />
         </Button>
@@ -98,6 +100,7 @@
             shape="circle"
             className="profile-display"
             onClick={onOpenLogoutDialog}
+            ariaLabel={$_("profileDialog.title")}
         >
             <ProfileAvatar
                 src={profileData?.picture || ""}
@@ -105,7 +108,7 @@
                 rootClassName="profile-picture"
                 imageClassName="profile-picture-image"
                 fallbackClassName="profile-picture-fallback"
-                fallbackAriaLabel="User"
+                fallbackAriaLabel={$_("profileDialog.profile_image_fallback")}
                 onLoadingStatusChange={handleAvatarLoadingStatusChange}
             />
         </Button>
@@ -138,7 +141,7 @@
                 >
                     <div
                         class="post-history-icon svg-icon"
-                        aria-label={$_("postHistory.open")}
+                        aria-hidden="true"
                     ></div>
                 </Button>
             {/if}

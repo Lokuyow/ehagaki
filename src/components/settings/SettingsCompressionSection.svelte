@@ -40,7 +40,10 @@
             <span class="setting-label">
                 {$_("settingsDialog.image_quality_setting")}
             </span>
-            <InfoPopoverButton side="top" ariaLabel="画像圧縮設定の説明">
+            <InfoPopoverButton
+                side="top"
+                ariaLabel={$_("settingsDialog.image_compression_settings_description")}
+            >
                 <table class="popover-table">
                     <thead>
                         <tr>
@@ -137,7 +140,10 @@
             <span class="setting-label">
                 {$_("settingsDialog.video_quality_setting")}
             </span>
-            <InfoPopoverButton side="top" ariaLabel="動画圧縮設定の説明">
+            <InfoPopoverButton
+                side="top"
+                ariaLabel={$_("settingsDialog.video_compression_settings_description")}
+            >
                 <table class="popover-table">
                     <thead>
                         <tr>

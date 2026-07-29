@@ -422,9 +422,9 @@
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
-                                ariaLabel={($_(
-                                    "settingsDialog.hide_mascot_label",
-                                ) || "左上マスコットを非表示") + "の説明"}
+                                ariaLabel={$_(
+                                    "settingsDialog.hide_mascot_description",
+                                )}
                             >
                                 {$_("settingsDialog.hide_mascot_note") ||
                                     "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}
@@ -454,9 +454,9 @@
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
-                                ariaLabel={($_(
-                                    "settingsDialog.hide_flavor_text_label",
-                                ) || "フレーバーテキストを非表示") + "の説明"}
+                                ariaLabel={$_(
+                                    "settingsDialog.hide_flavor_text_description",
+                                )}
                             >
                                 {hideMascot
                                     ? $_(
@@ -508,9 +508,9 @@
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
-                                ariaLabel={($_(
-                                    "settingsDialog.quote_notification_label",
-                                ) || "引用元の投稿者に通知") + "の説明"}
+                                ariaLabel={$_(
+                                    "settingsDialog.quote_notification_description",
+                                )}
                             >
                                 {$_("settingsDialog.quote_notification_note") ||
                                     "引用投稿時、引用元の投稿者への通知をデフォルトで有効にします"}
@@ -541,9 +541,9 @@
                             <InfoPopoverButton
                                 side="top"
                                 sideOffset={8}
-                                ariaLabel={($_(
-                                    "settingsDialog.reply_notification_label",
-                                ) || "返信先以外にも通知") + "の説明"}
+                                ariaLabel={$_(
+                                    "settingsDialog.reply_notification_description",
+                                )}
                             >
                                 {$_("settingsDialog.reply_notification_note") ||
                                     "リプライ時にリプライツリー内のほかの参加者をデフォルトで通知対象に含めます"}
@@ -598,7 +598,7 @@
                     {...props}
                     className="modal-close"
                     shape="square"
-                    ariaLabel="閉じる"
+                    ariaLabel={$_("global.close")}
                 >
                     <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
