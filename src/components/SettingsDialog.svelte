@@ -665,8 +665,10 @@
     }
     :global(.github-link-btn.circle),
     :global(.help-btn.circle) {
-        width: 38px;
-        height: 38px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
         --btn-bg: var(--dialog-bg);
     }
 
@@ -686,11 +688,14 @@
     }
     .zap-view-btn-group {
         display: inline-flex;
-        height: 38px;
+        height: 44px;
+        min-height: 44px;
 
         .zap-btn,
         .view-btn {
             min-width: 70px;
+            min-height: 44px;
+            height: 44px;
             background: var(--btn-bg);
         }
 

@@ -756,7 +756,7 @@
 
         :global(button.nip46-connection-button) {
             width: fit-content;
-            min-height: 40px;
+            min-height: 44px;
             display: inline-flex;
             align-items: center;
             gap: 8px;
@@ -795,7 +795,7 @@
 
         :global(.recovery-logout-btn) {
             width: 100%;
-            min-height: 42px;
+            min-height: 44px;
             display: inline-flex;
             align-items: center;
             gap: 8px;
