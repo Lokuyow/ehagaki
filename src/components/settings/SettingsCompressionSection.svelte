@@ -207,7 +207,7 @@
     .setting-label-wrapper {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
         flex-wrap: wrap;
         flex-shrink: 0;
     }
