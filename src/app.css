@@ -213,6 +213,14 @@ button:active:not(:disabled),
   transition: scale 0.1s cubic-bezier(0, 1, 0.5, 1);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled),
+  [role="button"]:active {
+    scale: 1;
+    transition: none;
+  }
+}
+
 span {
   -webkit-tap-highlight-color: transparent;
 }

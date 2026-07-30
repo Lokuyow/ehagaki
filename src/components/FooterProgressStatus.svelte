@@ -133,4 +133,10 @@
         background-color: var(--theme);
         transition: translate 0.3s ease;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+        :global(.footer-progress-indicator) {
+            transition: none;
+        }
+    }
 </style>

@@ -191,4 +191,21 @@
         height: calc(var(--loader-size) * 0.45);
         animation-delay: -2s;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+        .loading-text {
+            animation: none;
+            opacity: 0.8;
+        }
+
+        :global(.shimmer) {
+            animation: none;
+            left: 0;
+        }
+
+        .square {
+            animation: none;
+            transform: translate(-25%, -25%) scale(1) rotate(0deg);
+        }
+    }
 </style>

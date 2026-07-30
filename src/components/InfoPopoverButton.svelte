@@ -97,6 +97,13 @@
         }
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        :global(.popover-content[data-state="open"]),
+        :global(.popover-content[data-state="closed"]) {
+            animation: none;
+        }
+    }
+
     .popover-body {
         display: inline-flex;
         align-items: center;

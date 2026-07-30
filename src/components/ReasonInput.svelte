@@ -78,4 +78,10 @@
         border-color: var(--border-active, #2196f3);
         box-shadow: 0 0 4px rgba(33, 150, 243, 0.3);
     }
+
+    @media (prefers-reduced-motion: reduce) {
+        .reason-input-container {
+            transition: none;
+        }
+    }
 </style>
