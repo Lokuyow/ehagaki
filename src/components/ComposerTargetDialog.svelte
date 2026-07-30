@@ -1157,9 +1157,17 @@
         min-height: 50px;
         padding: 8px 49px 8px 10px;
         border: 1px solid var(--border);
+        border-radius: 4px;
         background: var(--bg-input);
         color: var(--text);
         font: inherit;
+        outline: none;
+    }
+
+    input:focus-visible {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+        border-color: var(--theme);
     }
 
     :global(.composer-target-clear-button) {

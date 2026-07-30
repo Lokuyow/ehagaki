@@ -643,7 +643,7 @@
     .mime-toggle {
         border: none;
         background: transparent;
-        color: var(--link-color, var(--primary-color));
+        color: var(--link);
         cursor: pointer;
         font: inherit;
         padding: 0;
@@ -780,13 +780,25 @@
         min-height: 24px;
         margin: 0;
         padding: 0;
-        accent-color: var(--primary-color);
+        accent-color: var(--theme);
     }
 
     input,
     select {
+        width: 100%;
         min-height: 42px;
-        padding: 6px;
-        font-size: 1rem;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg-input);
+        color: var(--text);
+        font: inherit;
+    }
+
+    input:focus-visible,
+    select:focus-visible {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+        border-color: var(--theme);
     }
 </style>

@@ -61,22 +61,23 @@
         width: 100%;
         height: 38px;
         padding: 0 10px;
-        border: 1px solid var(--border-color, #ccc);
+        border: 1px solid var(--border);
         border-radius: 4px;
-        background: var(--bg-input, #fff);
-        color: var(--text-primary);
+        background: var(--bg-input);
+        color: var(--text);
         font-size: 1.125rem;
         font-family: inherit;
+        outline: none;
     }
 
     .reason-input::placeholder {
-        color: var(--text-secondary, #999);
+        color: var(--text-muted);
     }
 
-    .reason-input:focus {
-        outline: none;
-        border-color: var(--border-active, #2196f3);
-        box-shadow: 0 0 4px rgba(33, 150, 243, 0.3);
+    .reason-input:focus-visible {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+        border-color: var(--theme);
     }
 
     @media (prefers-reduced-motion: reduce) {
