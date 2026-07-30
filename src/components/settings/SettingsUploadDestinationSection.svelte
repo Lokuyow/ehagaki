@@ -793,6 +793,7 @@
         background: var(--bg-input);
         color: var(--text);
         font: inherit;
+        font-size: 1rem;
     }
 
     input:focus-visible,
