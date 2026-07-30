@@ -2,6 +2,7 @@ import {
     buildPostHistoryDeletionRequestRecordId,
     comparePostHistoryDeletionRequests,
     isPostHistoryDeletionTargetVerified,
+    isSupportedPostHistoryDeletionTargetKind,
     POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
     toPostHistoryDeletionRequestReferenceRecord,
     toPostHistoryDeletionRequestRecord,
@@ -59,6 +60,38 @@ export interface PostHistoryDeletionRequestsRepository {
 }
 
 const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
+const NOSTR_KIND_TAG_PATTERN = /^(0|[1-9]\d{0,4})$/;
+
+interface ImportedDeletionRequestCandidate {
+    record: PostHistoryDeletionRequestRecord;
+    shouldStoreWithoutTarget: boolean;
+}
+
+function parseNostrKindTagValue(value: unknown): number | null {
+    if (typeof value !== "string" || !NOSTR_KIND_TAG_PATTERN.test(value)) {
+        return null;
+    }
+
+    const kind = Number(value);
+    return Number.isInteger(kind) && kind >= 0 && kind <= 65_535
+        ? kind
+        : null;
+}
+
+function shouldStoreImportedDeletionWithoutTarget(deletionEvent: NostrEvent): boolean {
+    const kindTags = deletionEvent.tags.filter((tag) => tag[0] === "k");
+    if (kindTags.length === 0) {
+        return true;
+    }
+
+    const targetKinds = kindTags.map((tag) => parseNostrKindTagValue(tag[1]));
+    if (targetKinds.some((kind) => kind === null)) {
+        return true;
+    }
+
+    return targetKinds.some((kind) =>
+        kind !== null && isSupportedPostHistoryDeletionTargetKind(kind));
+}
 
 function makeTargetMap(targetEvents: NostrEvent[]): Map<string, NostrEvent> {
     const targetsByEventId = new Map<string, NostrEvent>();
@@ -274,7 +307,8 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         input: UpsertImportedPostHistoryDeletionEventsInput,
     ): Promise<UpsertImportedPostHistoryDeletionEventsResult> {
         const fetchedAt = input.fetchedAt ?? this.now();
-        const nextRecordsById = new Map<string, PostHistoryDeletionRequestRecord>();
+        const candidatesById = new Map<string, ImportedDeletionRequestCandidate>();
+        const candidateDeletionEventIds = new Set<string>();
         let ignoredCount = 0;
 
         for (const deletionEvent of input.deletionEvents) {
@@ -298,6 +332,10 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                 continue;
             }
 
+            const shouldStoreWithoutTarget = shouldStoreImportedDeletionWithoutTarget(
+                deletionEvent,
+            );
+            candidateDeletionEventIds.add(deletionEvent.id);
             for (const targetEventId of uniqueTargetEventIds) {
                 const record = toPostHistoryDeletionRequestReferenceRecord({
                     deletionEvent,
@@ -306,12 +344,15 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     relayUrls: [],
                     fetchedAt,
                 }, this.now);
-                nextRecordsById.set(record.id, record);
+                candidatesById.set(record.id, {
+                    record,
+                    shouldStoreWithoutTarget,
+                });
             }
         }
 
-        const nextRecords = Array.from(nextRecordsById.values());
-        if (nextRecords.length === 0) {
+        const candidates = Array.from(candidatesById.values());
+        if (candidates.length === 0) {
             return {
                 insertedCount: 0,
                 updatedCount: 0,
@@ -332,10 +373,10 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             this.db.postHistory,
             async () => {
                 const existingRecords = await this.db.postHistoryDeletionRequests.bulkGet(
-                    nextRecords.map((record) => record.id),
+                    candidates.map((candidate) => candidate.record.id),
                 );
                 const targetEventIds = Array.from(new Set(
-                    nextRecords.map((record) => record.targetEventId),
+                    candidates.map((candidate) => candidate.record.targetEventId),
                 ));
                 const targetRecords = await this.db.postHistory.bulkGet(targetEventIds);
                 const targetRecordsById = new Map(
@@ -344,17 +385,28 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                         .map((record) => [record!.eventId, record!] as const),
                 );
                 const mergedRecords: PostHistoryDeletionRequestRecord[] = [];
+                const storedDeletionEventIds = new Set<string>();
 
-                nextRecords.forEach((record, index) => {
+                candidates.forEach((candidate, index) => {
+                    const { record } = candidate;
                     const targetRecord = targetRecordsById.get(record.targetEventId);
+                    if (
+                        (targetRecord
+                            && !isSupportedPostHistoryDeletionTargetKind(targetRecord.kind))
+                        || (!targetRecord && !candidate.shouldStoreWithoutTarget)
+                    ) {
+                        return;
+                    }
+
                     const targetMatches = !!targetRecord
-                        && (targetRecord.kind === 1 || targetRecord.kind === 42)
+                        && isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
                         && targetRecord.pubkeyHex === record.targetAuthorPubkey
                         && targetRecord.pubkeyHex === record.deletionEventPubkey;
                     const nextRecord = {
                         ...record,
                         targetVerified: targetMatches,
                     };
+                    storedDeletionEventIds.add(record.deletionEventId);
                     const existingRecord = existingRecords[index];
                     if (!existingRecord) {
                         insertedCount += 1;
@@ -375,11 +427,23 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     mergedRecords.push(mergedRecord);
                 });
 
-                await this.db.postHistoryDeletionRequests.bulkPut(mergedRecords);
+                for (const deletionEventId of candidateDeletionEventIds) {
+                    if (!storedDeletionEventIds.has(deletionEventId)) {
+                        ignoredCount += 1;
+                    }
+                }
+
+                if (mergedRecords.length > 0) {
+                    await this.db.postHistoryDeletionRequests.bulkPut(mergedRecords);
+                }
 
                 for (const targetEventId of targetEventIds) {
                     const targetRecord = targetRecordsById.get(targetEventId);
-                    if (!targetRecord || targetRecord.deletedAt !== undefined) {
+                    if (
+                        !targetRecord
+                        || !isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
+                        || targetRecord.deletedAt !== undefined
+                    ) {
                         continue;
                     }
 

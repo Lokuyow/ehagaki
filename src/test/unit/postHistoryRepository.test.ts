@@ -695,6 +695,41 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("kind 42の対象イベントが後着した場合もpendingを検証済みにして削除適用する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 2000);
+        const deletionRepository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const event = createSignedEvent({ id: "b".repeat(64), kind: 42 });
+        const deletionEvent = {
+            id: "c".repeat(64),
+            pubkey: event.pubkey,
+            kind: 5,
+            content: "",
+            tags: [["e", event.id], ["k", "42"]],
+            created_at: 700,
+            sig: "d".repeat(128),
+        };
+        await deletionRepository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        const result = await repository.upsertFetchedEvents({
+            events: [{ event }],
+        });
+
+        expect(result.appliedDeletionCount).toBe(1);
+        await expect(db.postHistory.get(event.id)).resolves.toMatchObject({
+            deletedAt: 700_000,
+            deletionEventId: deletionEvent.id,
+        });
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+            { targetVerified: true },
+        ]);
+
+        db.close();
+    });
+
     it("既存同一投稿へpending削除だけを適用してunchangedを維持する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 2000);
@@ -800,6 +835,38 @@ describe("DexiePostHistoryRepository", () => {
             content: "",
             tags: [["e", event.id]],
             created_at: 500,
+            sig: "c".repeat(128),
+        };
+        await deletionRepository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        const result = await repository.upsertFetchedEvents({
+            events: [{ event }],
+        });
+
+        expect(result.appliedDeletionCount).toBe(0);
+        await expect(db.postHistory.get(event.id)).resolves.not.toHaveProperty("deletedAt");
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+            { targetVerified: false },
+        ]);
+
+        db.close();
+    });
+
+    it("保存対象外kindの後着イベントではpendingを検証済みにせず削除適用しない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 2000);
+        const deletionRepository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const event = createSignedEvent({ id: "a".repeat(64), kind: 31234 });
+        const deletionEvent = {
+            id: "f".repeat(64),
+            pubkey: event.pubkey,
+            kind: 5,
+            content: "",
+            tags: [["e", event.id]],
+            created_at: 600,
             sig: "c".repeat(128),
         };
         await deletionRepository.upsertImportedDeletionEvents({

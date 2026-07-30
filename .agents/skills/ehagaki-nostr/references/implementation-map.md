@@ -157,12 +157,12 @@
 
 - 機能: Nostr JSONLをstreamingで検証し、現在のアカウントによるkind 1/42を投稿履歴へ統合し、kind 5の有効な`e`タグを削除要求として保存する。対象未取得の削除要求はpendingとして保持し、実際の対象eventとauthorが一致した時点で検証済みへ昇格する。
 - 関連NIP: NIP-01、NIP-09、NIP-28。
-- event kind: 投稿履歴対象`1`/`42`、deletion request `5`。
-- 主なtag: kind 5の`e`。Phase 1のJSONLインポートでは64文字の小文字16進event IDだけを受理する。
+- event kind: 投稿履歴対象`1`/`42`、将来の削除要求保持対象`6`/`7`/`16`/`20`/`21`/`22`、deletion request `5`。
+- 主なtag: kind 5の`e`と任意の`k`。Phase 1のJSONLインポートでは`e`に64文字の小文字16進event IDだけを受理し、対象未取得時は正常な`k`がすべて保存対象外kindの場合だけ削除要求を除外する。
 - 主な実装ファイル: `src/lib/postHistoryJsonlImportService.ts`、`src/lib/postHistoryDeletionUtils.ts`、`src/lib/storage/postHistoryRepository.ts`、`src/lib/storage/postHistoryDeletionRequestsRepository.ts`、`src/components/PostHistoryImportDialog.svelte`、`src/components/PostHistoryDialog.svelte`。
 - 主な関数または責務: `PostHistoryJsonlImportService.importFile`がfatal UTF-8 decode、行分類、ファイル全体のevent ID重複排除、100 event単位のflushを担う。`upsertImportedDeletionEvents`がJSONL由来kind 5をpendingまたは検証済みとして保存し、`upsertFetchedEvents`が別JSONL・通常relay同期の双方で後着投稿とpendingを照合する。`getDeletedTargets`は`targetVerified !== false`の削除要求だけを既存resolverへ返す。
 - 関連テスト: `src/test/unit/postHistoryJsonlImportService.test.ts`、`src/test/unit/postHistoryDeletionRequestsRepository.test.ts`、`src/test/unit/postHistoryRepository.test.ts`、`src/test/unit/postHistoryRelatedTargetResolver.test.ts`、`src/test/unit/postHistoryImportDialog.test.ts`、`src/test/unit/postHistoryDialog.test.ts`、`src/test/e2e/postHistoryDialog.spec.ts`。
-- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。JSONL由来relay URLは追加せず、object store・索引・DB versionを増やさない。
+- 注意点: 削除要求の`deletedAt`はNostr秒、投稿履歴の`deletedAt`はミリ秒であり、適用境界だけで1000倍する。`k`なし、不正`k`あり、保存対象kindと対象外kindの混在は対象kind不明としてpending保存し、対象event実体があれば申告`k`より実kindを優先する。`targetVerified`なしの既存recordは後方互換上検証済みとして扱い、pendingを`authorHint`だけの事前削除判定へ流さない。JSONL由来relay URLは追加せず、object store・索引・DB versionを増やさない。
 
 ## relay管理
 

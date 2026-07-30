@@ -47,7 +47,7 @@ const translations: Record<string, string> = {
     "postHistory.importDeletionRequestsInserted": "削除要求を追加",
     "postHistory.importDeletionRequestsUpdated": "削除要求を更新",
     "postHistory.importDeletionRequestsUnchanged": "削除要求と同一",
-    "postHistory.importUnsupportedDeletion": "有効なeタグなし",
+    "postHistory.importUnsupportedDeletion": "対象外の削除要求",
     "postHistory.importDeletionFailures": "削除要求保存失敗",
     "global.close": "閉じる",
 };
@@ -140,6 +140,7 @@ describe("PostHistoryImportDialog", () => {
             uniqueDeletionEventCount: 1,
             validDeletionETagCount: 2,
             insertedDeletionRequestCount: 2,
+            unsupportedDeletionEventCount: 1,
             appliedDeletionPostCount: 1,
         }));
         await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
@@ -150,6 +151,7 @@ describe("PostHistoryImportDialog", () => {
         expect(within(dialog).getByRole("heading", { name: "削除要求" })).toBeTruthy();
         expect(dialog.textContent).toContain("ファイル内重複");
         expect(dialog.textContent).toContain("削除状態を反映");
+        expect(dialog.textContent).toContain("対象外の削除要求");
         expect(onImported).toHaveBeenCalledTimes(1);
     });
 

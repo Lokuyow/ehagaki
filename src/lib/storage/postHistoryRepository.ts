@@ -7,6 +7,7 @@ import {
 import {
     comparePostHistoryDeletionRequests,
     isPostHistoryDeletionTargetVerified,
+    isSupportedPostHistoryDeletionTargetKind,
     POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
     toPostHistoryDeletionState,
 } from "../postHistoryDeletionUtils";
@@ -633,7 +634,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
                     const applicableRequests = (deletionRequestsByTargetEventId.get(item.event.id) ?? [])
                         .flatMap((request) => {
-                            const targetMatches = (baseRecord.kind === 1 || baseRecord.kind === 42)
+                            const targetMatches = isSupportedPostHistoryDeletionTargetKind(
+                                baseRecord.kind,
+                            )
                                 && baseRecord.pubkeyHex === request.targetAuthorPubkey
                                 && baseRecord.pubkeyHex === request.deletionEventPubkey;
                             if (!targetMatches) {

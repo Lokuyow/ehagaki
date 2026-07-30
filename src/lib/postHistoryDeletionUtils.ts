@@ -4,6 +4,16 @@ import type { PostHistoryDeletionRequestRecord } from "./storage/ehagakiDb";
 import type { NostrEvent } from "./types";
 
 export const POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION = 2;
+export const POST_HISTORY_SUPPORTED_DELETION_TARGET_KINDS: ReadonlySet<number> = new Set([
+    1,
+    6,
+    7,
+    16,
+    20,
+    21,
+    22,
+    42,
+]);
 
 export interface PostHistoryDeletionRequestRecordInput {
     deletionEvent: NostrEvent;
@@ -23,6 +33,10 @@ export interface PostHistoryDeletionRequestReferenceRecordInput {
 export interface PostHistoryDeletionState {
     deletedAt: number;
     deletionEventId: string;
+}
+
+export function isSupportedPostHistoryDeletionTargetKind(kind: number): boolean {
+    return POST_HISTORY_SUPPORTED_DELETION_TARGET_KINDS.has(kind);
 }
 
 export function extractDeletionTargetEventIds(

@@ -244,6 +244,40 @@ describe("PostHistoryJsonlImportService", () => {
         });
     });
 
+    it("保存対象外kindだけの削除要求を正常除外として数えcompletedを維持する", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const deletionEvent = createSignedEvent(secretKey, {
+            kind: 5,
+            tags: [["e", "1".repeat(64)], ["k", "31234"]],
+        });
+        const deps = createRepositoryMocks();
+        deps.deletionRequestsRepository.upsertImportedDeletionEvents.mockResolvedValueOnce({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 1,
+            appliedDeletionCount: 0,
+        });
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(JSON.stringify(deletionEvent)),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result).toMatchObject({
+            status: "completed",
+            uniqueDeletionEventCount: 1,
+            validDeletionETagCount: 1,
+            insertedDeletionRequestCount: 0,
+            updatedDeletionRequestCount: 0,
+            unchangedDeletionRequestCount: 0,
+            unsupportedDeletionEventCount: 1,
+        });
+    });
+
     it("不正行・別アカウント・対象外kindを分類し有効な最終行を保存する", async () => {
         const secretKey = generateSecretKey();
         const otherSecretKey = generateSecretKey();

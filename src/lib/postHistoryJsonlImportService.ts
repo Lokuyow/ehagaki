@@ -188,6 +188,7 @@ export class PostHistoryJsonlImportService {
                     result.insertedDeletionRequestCount += summary.insertedCount;
                     result.updatedDeletionRequestCount += summary.updatedCount;
                     result.unchangedDeletionRequestCount += summary.unchangedCount;
+                    result.unsupportedDeletionEventCount += summary.ignoredCount;
                     result.appliedDeletionPostCount += summary.appliedDeletionCount;
                 } catch {
                     result.failedDeletionEventCount += deletionEvents.length;

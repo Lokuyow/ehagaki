@@ -166,6 +166,179 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
         db.close();
     });
 
+    it.each([1, 6, 7, 16, 20, 21, 22, 42])(
+        "対象未取得でk=%iのJSONL由来kind:5をpending保存する",
+        async (targetKind) => {
+            const db = createTestDb();
+            const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+            const deletionEvent = createDeletionEvent({
+                tags: [
+                    ["e", "2".repeat(64)],
+                    ["k", String(targetKind)],
+                ],
+            });
+
+            const result = await repository.upsertImportedDeletionEvents({
+                ownerPubkeyHex: deletionEvent.pubkey,
+                deletionEvents: [deletionEvent],
+            });
+
+            expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
+            await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+                { targetVerified: false },
+            ]);
+
+            db.close();
+        },
+    );
+
+    it.each([
+        {
+            name: "保存対象外kindが1件",
+            kindTags: [["k", "31234"]],
+        },
+        {
+            name: "保存対象外kindが複数",
+            kindTags: [["k", "31234"], ["k", "43"]],
+        },
+    ])("対象未取得で$nameなら削除要求を保存しない", async ({ kindTags }) => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const deletionEvent = createDeletionEvent({
+            tags: [["e", "2".repeat(64)], ...kindTags],
+        });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        expect(result).toEqual({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 1,
+            appliedDeletionCount: 0,
+        });
+        await expect(db.postHistoryDeletionRequests.count()).resolves.toBe(0);
+
+        db.close();
+    });
+
+    it("保存対象kindと保存対象外kindが混在する場合はpending保存する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const deletionEvent = createDeletionEvent({
+            tags: [
+                ["e", "2".repeat(64)],
+                ["k", "7"],
+                ["k", "31234"],
+            ],
+        });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+            { targetVerified: false },
+        ]);
+
+        db.close();
+    });
+
+    it.each([
+        {
+            name: "不正なkタグだけ",
+            kindTags: [
+                ["k", "not-a-kind"],
+                ["k", ""],
+                ["k", "-1"],
+                ["k", "1.5"],
+                ["k", "65536"],
+            ],
+        },
+        {
+            name: "不正なkタグと保存対象外kindの混在",
+            kindTags: [["k", "invalid"], ["k", "31234"]],
+        },
+    ])("対象未取得で$nameなら対象kind不明としてpending保存する", async ({ kindTags }) => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const deletionEvent = createDeletionEvent({
+            tags: [["e", "2".repeat(64)], ...kindTags],
+        });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        expect(result).toMatchObject({ insertedCount: 1, ignoredCount: 0 });
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+            { targetVerified: false },
+        ]);
+
+        db.close();
+    });
+
+    it("対象実体が保存対象kindなら対象外kタグより実kindを優先する", async () => {
+        const db = createTestDb();
+        const postRepository = new DexiePostHistoryRepository(db, () => 1000);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const targetEvent = createSignedEvent({ kind: 1 });
+        const deletionEvent = createDeletionEvent({
+            tags: [["e", targetEvent.id], ["k", "31234"]],
+        });
+        await postRepository.putPostedEvent({ event: targetEvent });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        expect(result).toMatchObject({
+            insertedCount: 1,
+            ignoredCount: 0,
+            appliedDeletionCount: 1,
+        });
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
+            { targetVerified: true },
+        ]);
+
+        db.close();
+    });
+
+    it("対象実体が保存対象外kindなら対象kタグに関係なく保存しない", async () => {
+        const db = createTestDb();
+        const postRepository = new DexiePostHistoryRepository(db, () => 1000);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const targetEvent = createSignedEvent({ kind: 31234 });
+        const deletionEvent = createDeletionEvent({
+            tags: [["e", targetEvent.id], ["k", "1"]],
+        });
+        await postRepository.putPostedEvent({ event: targetEvent });
+
+        const result = await repository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: deletionEvent.pubkey,
+            deletionEvents: [deletionEvent],
+        });
+
+        expect(result).toEqual({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+            ignoredCount: 1,
+            appliedDeletionCount: 0,
+        });
+        await expect(db.postHistoryDeletionRequests.count()).resolves.toBe(0);
+        await expect(db.postHistory.get(targetEvent.id)).resolves.not.toHaveProperty("deletedAt");
+
+        db.close();
+    });
+
     it("対象投稿が先に存在すればJSONL由来kind:5を検証済みにしてミリ秒で削除適用する", async () => {
         const db = createTestDb();
         const postRepository = new DexiePostHistoryRepository(db, () => 1000);

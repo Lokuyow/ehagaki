@@ -186,7 +186,7 @@
     "importDeletionRequestsInserted": "Requests added",
     "importDeletionRequestsUpdated": "Requests updated",
     "importDeletionRequestsUnchanged": "Requests unchanged",
-    "importUnsupportedDeletion": "No valid e tag",
+    "importUnsupportedDeletion": "Unsupported deletion requests",
     "importDeletionFailures": "Request save failures",
     "delete": "Delete",
     "deleteRequest": "Deletion request",

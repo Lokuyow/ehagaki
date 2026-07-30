@@ -186,7 +186,7 @@
     "importDeletionRequestsInserted": "削除要求を追加",
     "importDeletionRequestsUpdated": "削除要求を更新",
     "importDeletionRequestsUnchanged": "削除要求と同一",
-    "importUnsupportedDeletion": "有効なeタグなし",
+    "importUnsupportedDeletion": "対象外の削除要求",
     "importDeletionFailures": "削除要求保存失敗",
     "delete": "削除",
     "deleteRequest": "削除リクエスト",
