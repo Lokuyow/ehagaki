@@ -3,6 +3,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import {
+  fixedLegacyBridgeEmitPlugin,
+  loadFixedLegacyBridgeManifest,
+} from './scripts/fixedLegacyBridge';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -11,6 +15,8 @@ const isPreview = process.argv.some(arg => arg.includes('preview')) ||
 
 // Vercel環境ではルートパス、それ以外では /ehagaki/ を使用
 const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
+const fixedLegacyBridgeManifest = loadFixedLegacyBridgeManifest();
+const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => asset.path);
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -30,6 +36,12 @@ export default defineConfig({
     rollupOptions: {
       external: [],
       output: {
+        // The first bridge release uses a permanent namespace distinct from the
+        // fixed pre-handler asset URLs. This prevents a same-name collision even
+        // when Vite retains an old hash while rendered CSS bytes have changed.
+        entryFileNames: 'assets/[name]-bridge-[hash].js',
+        chunkFileNames: 'assets/[name]-bridge-[hash].js',
+        assetFileNames: 'assets/[name]-bridge-[hash][extname]',
         manualChunks: (id) => {
           // Tiptap + ProseMirror (エディタコア)
           if (id.includes('node_modules/@tiptap/') ||
@@ -74,6 +86,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
     viteStaticCopy({
       targets: [
         {
@@ -160,8 +173,13 @@ export default defineConfig({
           '**/node_modules/**/*',
           'ffmpeg-core/**/*',
           'sw.js',
-          'workbox-*.js'
-        ]
+          'workbox-*.js',
+          ...fixedLegacyBridgePaths
+        ],
+        additionalManifestEntries: fixedLegacyBridgePaths.map(url => ({
+          url,
+          revision: null,
+        }))
       }
     })
   ],

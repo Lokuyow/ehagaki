@@ -5,7 +5,9 @@ const testState = vi.hoisted(() => ({
     needRefreshListener: undefined as undefined | ((needRefresh: boolean) => void),
     registerOptions: undefined as undefined | {
         onNeedRefresh?: () => void;
+        onNeedReload?: () => void;
     },
+    updateServiceWorker: vi.fn(),
 }));
 
 vi.unmock("../../stores/swStore.svelte");
@@ -20,7 +22,7 @@ vi.mock("virtual:pwa-register/svelte", () => ({
                     return () => undefined;
                 },
             },
-            updateServiceWorker: vi.fn(),
+            updateServiceWorker: testState.updateServiceWorker,
         };
     }),
 }));
@@ -42,6 +44,7 @@ describe("swStore DB upgrade blocked state", () => {
         testState.dbUpgradeStateListener = undefined;
         testState.needRefreshListener = undefined;
         testState.registerOptions = undefined;
+        testState.updateServiceWorker.mockReset();
         serviceWorkerEvents = new EventTarget();
         originalServiceWorker = Object.getOwnPropertyDescriptor(navigator, "serviceWorker");
         Object.defineProperty(navigator, "serviceWorker", {
@@ -81,5 +84,25 @@ describe("swStore DB upgrade blocked state", () => {
 
         expect(statuses.at(-1)).toBe("idle");
         expect(refreshStates.at(-1)).toBe(false);
+    });
+
+    it("未承認controllerchangeは一度だけstale化し、更新操作をreload promptへ振り分ける", async () => {
+        const store = await import("../../stores/swStore.svelte");
+        const staleStore = await import(
+            "../../stores/staleAssetReloadStore.svelte"
+        );
+
+        testState.registerOptions?.onNeedReload?.();
+
+        expect(staleStore.staleAssetReloadState.required).toBe(true);
+        expect(staleStore.staleAssetReloadState.promptRevision).toBe(1);
+
+        testState.registerOptions?.onNeedReload?.();
+        expect(staleStore.staleAssetReloadState.promptRevision).toBe(1);
+
+        await store.handleSwUpdate();
+
+        expect(staleStore.staleAssetReloadState.promptRevision).toBe(2);
+        expect(testState.updateServiceWorker).not.toHaveBeenCalled();
     });
 });

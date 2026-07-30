@@ -50,6 +50,10 @@
   } from "./stores/dialogStore.svelte";
   import { swNeedRefresh } from "./stores/swStore.svelte";
   import {
+    requestStaleReloadPrompt,
+    staleAssetReloadState,
+  } from "./stores/staleAssetReloadStore.svelte";
+  import {
     profileDataStore,
     profileLoadedStore,
     isLoadingProfileStore,
@@ -161,7 +165,11 @@
     createAppEmbedController,
     type AppEmbedAppliedSettingKey,
   } from "./lib/appEmbedController";
-  import { createAppComponentLoaders } from "./lib/appComponentLoaders";
+  import {
+    createAppComponentLoaders,
+    type AppComponentKey,
+    type AppComponentLoadFailure,
+  } from "./lib/appComponentLoaders";
   import { createNip46AuthFlowController } from "./lib/nip46AuthFlowCoordinator";
   import { createDialogVisibilityHandlers } from "./lib/appDialogUtils";
   import {
@@ -233,6 +241,92 @@
     $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
     $state(null);
+  let transientComponentLoadFailure: AppComponentKey | null = $state(null);
+  let showStaleAssetReloadPrompt = $state(false);
+  let handledStalePromptRevision = 0;
+  let staleAssetReloadRequired = $derived(staleAssetReloadState.required);
+
+  function closeFailedComponentSurface(componentKey: AppComponentKey): void {
+    switch (componentKey) {
+      case "login":
+        if (showLoginDialogStore.value) showLoginDialogStore.set(false);
+        if (showAddAccountDialogStore.value) showAddAccountDialogStore.set(false);
+        break;
+      case "profile":
+        showLogoutDialogStore.set(false);
+        break;
+      case "settings":
+        showSettingsDialogStore.set(false);
+        break;
+      case "welcome":
+        showWelcomeDialogStore.set(false);
+        break;
+      case "draft-list":
+        showDraftListDialogStore.set(false);
+        break;
+      case "post-history":
+        showPostHistoryDialogStore.set(false);
+        break;
+      case "composer-target":
+        showComposerTargetDialogStore.set(false);
+        break;
+      case "custom-emoji-picker":
+        customEmojiPickerOpen = false;
+        break;
+      case "post":
+        break;
+    }
+  }
+
+  function handleAppComponentLoadFailure(
+    failure: AppComponentLoadFailure,
+  ): void {
+    closeFailedComponentSurface(failure.componentKey);
+    if (failure.failureKind === "stale") {
+      requestStaleReloadPrompt();
+      return;
+    }
+    console.warn(
+      `Failed to load app component: ${failure.componentKey}`,
+      failure.error,
+    );
+    transientComponentLoadFailure = failure.componentKey;
+  }
+
+  function blockUnloadedComponentWhileStale(
+    component: unknown,
+    closeSurface: () => void,
+  ): boolean {
+    if (component || !staleAssetReloadRequired) {
+      return false;
+    }
+    closeSurface();
+    requestStaleReloadPrompt();
+    return true;
+  }
+
+  function handleReloadConfirmation(): void {
+    window.location.reload();
+  }
+
+  function handleOpenSettingsFromFooter(): void {
+    if (staleAssetReloadRequired) {
+      requestStaleReloadPrompt();
+      return;
+    }
+    settingsDialog.open();
+  }
+
+  $effect(() => {
+    const revision = staleAssetReloadState.promptRevision;
+    if (revision <= handledStalePromptRevision) {
+      return;
+    }
+    handledStalePromptRevision = revision;
+    if (!showStaleAssetReloadPrompt) {
+      showStaleAssetReloadPrompt = true;
+    }
+  });
 
   const {
     loadPostComponent,
@@ -245,6 +339,8 @@
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
   } = createAppComponentLoaders({
+    isStaleAssetReloadRequired: () => staleAssetReloadState.required,
+    onLoadFailure: handleAppComponentLoadFailure,
     setPostComponent: (component) => {
       PostComponent = component;
     },
@@ -814,42 +910,78 @@
 
   $effect(() => {
     if (showLoginDialogStore.value || showAddAccountDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(LoginDialogComponent, () => {
+          showLoginDialogStore.set(false);
+          showAddAccountDialogStore.set(false);
+        })
+      ) return;
       void loadLoginDialog();
     }
   });
 
   $effect(() => {
     if (showLogoutDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(ProfileComponent, () =>
+          showLogoutDialogStore.set(false),
+        )
+      ) return;
       void loadProfileDialog();
     }
   });
 
   $effect(() => {
     if (showSettingsDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(SettingsDialogComponent, () =>
+          showSettingsDialogStore.set(false),
+        )
+      ) return;
       void loadSettingsDialog();
     }
   });
 
   $effect(() => {
     if (showWelcomeDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(WelcomeDialogComponent, () =>
+          showWelcomeDialogStore.set(false),
+        )
+      ) return;
       void loadWelcomeDialog();
     }
   });
 
   $effect(() => {
     if (showDraftListDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(DraftListDialogComponent, () =>
+          showDraftListDialogStore.set(false),
+        )
+      ) return;
       void loadDraftListDialog();
     }
   });
 
   $effect(() => {
     if (showPostHistoryDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(PostHistoryDialogComponent, () =>
+          showPostHistoryDialogStore.set(false),
+        )
+      ) return;
       void loadPostHistoryDialog();
     }
   });
 
   $effect(() => {
     if (showComposerTargetDialogStore.value) {
+      if (
+        blockUnloadedComponentWhileStale(ComposerTargetDialogComponent, () =>
+          showComposerTargetDialogStore.set(false),
+        )
+      ) return;
       void loadComposerTargetDialog();
     }
   });
@@ -870,6 +1002,11 @@
 
   $effect(() => {
     if (customEmojiPickerOpen) {
+      if (
+        blockUnloadedComponentWhileStale(CustomEmojiPickerComponent, () => {
+          customEmojiPickerOpen = false;
+        })
+      ) return;
       void loadCustomEmojiPicker();
     }
   });
@@ -1747,12 +1884,38 @@
       <FooterComponent
         {isAuthenticated}
         {isAuthInitialized}
-        swNeedRefresh={$swNeedRefresh}
+        swNeedRefresh={$swNeedRefresh || staleAssetReloadRequired}
         onShowLoginDialog={loginDialog.open}
         onWarmPostHistoryDialog={handleWarmPostHistoryDialog}
         onOpenPostHistoryDialog={postHistoryDialog.open}
-        onOpenSettingsDialog={settingsDialog.open}
+        onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
+      />
+      <ConfirmDialog
+        open={showStaleAssetReloadPrompt}
+        onOpenChange={(open) => (showStaleAssetReloadPrompt = open)}
+        title={$_("staleAsset.reload_required_title")}
+        description={$_("staleAsset.reload_required_description")}
+        confirmLabel={$_("staleAsset.reload")}
+        cancelLabel={$_("common.cancel")}
+        confirmVariant="primary"
+        closeOnConfirm={false}
+        onConfirm={handleReloadConfirmation}
+        onCancel={() => (showStaleAssetReloadPrompt = false)}
+      />
+      <ConfirmDialog
+        open={transientComponentLoadFailure !== null}
+        onOpenChange={(open) => {
+          if (!open) transientComponentLoadFailure = null;
+        }}
+        title={$_("staleAsset.temporary_error_title")}
+        description={$_("staleAsset.temporary_error_description")}
+        confirmLabel={$_("staleAsset.reload")}
+        cancelLabel={$_("common.cancel")}
+        confirmVariant="secondary"
+        closeOnConfirm={false}
+        onConfirm={handleReloadConfirmation}
+        onCancel={() => (transientComponentLoadFailure = null)}
       />
       {#if showLoginDialogStore.value && LoginDialogComponent}
         <LoginDialogComponent

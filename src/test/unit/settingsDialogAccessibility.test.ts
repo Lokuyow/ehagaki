@@ -27,12 +27,30 @@ const swStoreState = vi.hoisted(() => {
     };
 });
 
+const staleAssetState = vi.hoisted(() => ({
+    required: false,
+    promptRevision: 0,
+    requestPrompt: vi.fn(),
+}));
+
 vi.mock('../../stores/swStore.svelte', () => ({
     ...swStoreState,
     swUpdateServiceWorker: vi.fn(),
     swVersionStore: { value: null, set: vi.fn() },
     handleSwUpdate: vi.fn(),
     fetchSwVersion: vi.fn(async () => null),
+}));
+
+vi.mock('../../stores/staleAssetReloadStore.svelte', () => ({
+    staleAssetReloadState: {
+        get required() {
+            return staleAssetState.required;
+        },
+        get promptRevision() {
+            return staleAssetState.promptRevision;
+        },
+    },
+    requestStaleReloadPrompt: staleAssetState.requestPrompt,
 }));
 
 import '../../i18n';
@@ -46,6 +64,9 @@ import {
 
 describe('SettingsDialog accessibility', () => {
     beforeEach(async () => {
+        staleAssetState.required = false;
+        staleAssetState.promptRevision = 0;
+        staleAssetState.requestPrompt.mockReset();
         locale.set('ja');
         await waitLocale('ja');
     });
@@ -310,5 +331,24 @@ describe('SettingsDialog accessibility', () => {
         swNeedRefresh.set(false);
         await tick();
         expect(screen.queryByText('A new update is available')).toBeNull();
+    });
+
+    it('stale中の更新ボタンは通常更新を呼ばずreload promptを要求する', async () => {
+        staleAssetState.required = true;
+        swUpdateStatus.set('ready');
+        swNeedRefresh.set(true);
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+        await tick();
+
+        expect(screen.getByText('Reload to use the new version')).toBeTruthy();
+        const reloadButton = screen.getByRole('button', { name: 'Reload' });
+        await fireEvent.click(reloadButton);
+
+        expect(staleAssetState.requestPrompt).toHaveBeenCalledOnce();
     });
 });

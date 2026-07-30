@@ -15,6 +15,10 @@
         handleSwUpdate,
     } from "../stores/swStore.svelte";
     import {
+        requestStaleReloadPrompt,
+        staleAssetReloadState,
+    } from "../stores/staleAssetReloadStore.svelte";
+    import {
         relayConfigStore,
         showRelaysStore,
         isSwUpdatingStore,
@@ -82,8 +86,12 @@
     let isUpdating = $derived(isSwUpdatingStore.value);
     let isSwInstalling = $derived($swUpdateStatus === "installing");
     let isDbUpgradeBlocked = $derived($dbUpgradeBlocked);
+    let isStaleAssetReloadRequired = $derived(
+        staleAssetReloadState.required,
+    );
     let canApplySwUpdate = $derived(
-        $swUpdateStatus === "ready" && !isDbUpgradeBlocked,
+        isStaleAssetReloadRequired ||
+            ($swUpdateStatus === "ready" && !isDbUpgradeBlocked),
     );
 
     $effect(() => {
@@ -93,6 +101,10 @@
     });
 
     function handleSwRefresh() {
+        if (isStaleAssetReloadRequired) {
+            requestStaleReloadPrompt();
+            return;
+        }
         handleServiceWorkerRefresh(
             handleSwUpdate,
             (value) => isSwUpdatingStore.set(value),
@@ -257,11 +269,13 @@
 
     <div class="modal-body">
         <!-- SW更新セクション -->
-        {#if $swNeedRefresh}
+        {#if $swNeedRefresh || isStaleAssetReloadRequired}
             <div class="setting-section sw-update-section">
                 <div class="setting-row">
                     <span class="setting-label sw-update-label">
-                        {#if isDbUpgradeBlocked}
+                        {#if isStaleAssetReloadRequired}
+                            {$_("settingsDialog.reload_required")}
+                        {:else if isDbUpgradeBlocked}
                             {$_("settingsDialog.db_upgrade_blocked") ||
                                 "ほかのeHagakiタブを閉じるか再読み込みしてください"}
                         {:else if isSwInstalling}
@@ -278,15 +292,18 @@
                             shape="rounded"
                             contentLayout="iconText"
                             className="sw-update-btn {isUpdating ||
-                            isSwInstalling
+                            (isSwInstalling && !isStaleAssetReloadRequired)
                                 ? 'loading'
                                 : ''}"
                             onClick={handleSwRefresh}
                             disabled={isUpdating || !canApplySwUpdate}
-                            ariaLabel={$_("settingsDialog.update_app") ||
-                                "アプリを更新"}
+                            ariaLabel={isStaleAssetReloadRequired
+                                ? $_("staleAsset.reload")
+                                : $_("settingsDialog.update_app") ||
+                                  "アプリを更新"}
                         >
-                            {#if isUpdating || isSwInstalling}
+                            {#if isUpdating ||
+                            (isSwInstalling && !isStaleAssetReloadRequired)}
                                 <LoadingPlaceholder
                                     showLoader={true}
                                     loaderSize={32}
@@ -303,7 +320,10 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span class="btn-text">
-                                    {$_("settingsDialog.update_app") || "更新"}
+                                    {isStaleAssetReloadRequired
+                                        ? $_("staleAsset.reload")
+                                        : $_("settingsDialog.update_app") ||
+                                          "更新"}
                                 </span>
                             {/if}
                         </Button>

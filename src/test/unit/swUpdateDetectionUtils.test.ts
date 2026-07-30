@@ -41,11 +41,24 @@ describe("swUpdateDetectionUtils", () => {
         const reload = vi.fn();
         const controller = createAcceptedServiceWorkerUpdateReloadController(reload);
 
-        expect(controller.handleControlChange()).toBe(false);
         controller.markAccepted();
-        expect(controller.handleControlChange()).toBe(true);
-        expect(controller.handleControlChange()).toBe(false);
+        expect(controller.handleControlChange()).toBe("reloaded");
+        expect(controller.handleControlChange()).toBe("ignored");
         expect(reload).toHaveBeenCalledOnce();
+    });
+
+    it("未承認ページは一度だけstale化し、reloadしない", () => {
+        const reload = vi.fn();
+        const markStale = vi.fn();
+        const controller = createAcceptedServiceWorkerUpdateReloadController(
+            reload,
+            markStale,
+        );
+
+        expect(controller.handleControlChange()).toBe("stale");
+        expect(controller.handleControlChange()).toBe("ignored");
+        expect(markStale).toHaveBeenCalledOnce();
+        expect(reload).not.toHaveBeenCalled();
     });
 
     it("Service Worker の state から更新UI状態を返す", () => {

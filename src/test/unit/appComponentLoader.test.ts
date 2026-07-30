@@ -1,32 +1,124 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from "vitest";
 
-import { createComponentLoader } from '../../lib/appComponentLoader';
+import { createComponentLoader } from "../../lib/appComponentLoader";
 
-describe('createComponentLoader', () => {
-    it('lazy loader は最初の呼び出しで 1 回だけ importer を評価し、結果を再利用する', async () => {
-        const importer = vi.fn(async () => ({
-            default: { id: 'lazy-component' },
-        }));
+function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
 
-        const loadComponent = createComponentLoader(importer);
+describe("createComponentLoader", () => {
+    it("成功時はcomponentとPromiseをcacheする", async () => {
+        const component = { id: "lazy-component" };
+        const importer = vi.fn(async () => ({ default: component }));
+        const loadComponent = createComponentLoader("settings", importer);
 
-        await expect(loadComponent()).resolves.toEqual({ id: 'lazy-component' });
-        await expect(loadComponent()).resolves.toEqual({ id: 'lazy-component' });
+        await expect(loadComponent()).resolves.toEqual({
+            status: "loaded",
+            component,
+        });
+        await expect(loadComponent()).resolves.toEqual({
+            status: "loaded",
+            component,
+        });
 
         expect(importer).toHaveBeenCalledTimes(1);
     });
 
-    it('eager loader は作成時に importer を先読みし、以後は同じ結果を返す', async () => {
-        const importer = vi.fn(async () => ({
-            default: { id: 'eager-component' },
-        }));
+    it("同時loadは同じin-flight Promiseを共有する", async () => {
+        const deferred = createDeferred<{ default: { id: string } }>();
+        const importer = vi.fn(() => deferred.promise);
+        const loadComponent = createComponentLoader("profile", importer);
 
-        const loadComponent = createComponentLoader(importer, { eager: true });
+        const first = loadComponent();
+        const second = loadComponent();
 
-        expect(importer).toHaveBeenCalledTimes(1);
-        await expect(loadComponent()).resolves.toEqual({ id: 'eager-component' });
-        await expect(loadComponent()).resolves.toEqual({ id: 'eager-component' });
+        expect(first).toBe(second);
+        deferred.resolve({ default: { id: "profile" } });
+        await expect(first).resolves.toMatchObject({ status: "loaded" });
+        expect(importer).toHaveBeenCalledOnce();
+    });
 
-        expect(importer).toHaveBeenCalledTimes(1);
+    it("失敗後はPromise cacheを解除してimporterを再度呼べる", async () => {
+        const importer = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("temporary"))
+            .mockResolvedValueOnce({ default: { id: "recovered" } });
+        const loadComponent = createComponentLoader("draft-list", importer);
+
+        await expect(loadComponent()).resolves.toMatchObject({
+            status: "failed",
+            componentKey: "draft-list",
+            failureKind: "transient",
+        });
+        await expect(loadComponent()).resolves.toEqual({
+            status: "loaded",
+            component: { id: "recovered" },
+        });
+
+        expect(importer).toHaveBeenCalledTimes(2);
+    });
+
+    it("importerの同期throwもresolved failureへ変換する", async () => {
+        const importer = vi.fn(() => {
+            throw new Error("synchronous importer failure");
+        });
+        const loadComponent = createComponentLoader("settings", importer);
+
+        await expect(loadComponent()).resolves.toMatchObject({
+            status: "failed",
+            componentKey: "settings",
+            failureKind: "transient",
+        });
+        expect(importer).toHaveBeenCalledOnce();
+    });
+
+    it("失敗時点でstaleならstale failureとして返す", async () => {
+        const importer = vi.fn().mockRejectedValue(new Error("missing chunk"));
+        const loadComponent = createComponentLoader("composer-target", importer, {
+            isStale: () => true,
+        });
+
+        await expect(loadComponent()).resolves.toMatchObject({
+            status: "failed",
+            componentKey: "composer-target",
+            failureKind: "stale",
+        });
+    });
+
+    it("defaultがundefinedならloaded結果を返さない", async () => {
+        const importer = vi.fn(async () => ({ default: undefined }));
+        const loadComponent = createComponentLoader("settings", importer);
+
+        await expect(loadComponent()).resolves.toMatchObject({
+            status: "failed",
+            failureKind: "transient",
+        });
+    });
+
+    it("eager import失敗は作成直後から処理され、次回に再試行できる", async () => {
+        const importer = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("eager failure"))
+            .mockResolvedValueOnce({ default: { id: "post" } });
+        const loadComponent = createComponentLoader("post", importer, {
+            eager: true,
+        });
+
+        expect(importer).toHaveBeenCalledOnce();
+        await expect(loadComponent()).resolves.toMatchObject({
+            status: "failed",
+            componentKey: "post",
+        });
+        await expect(loadComponent()).resolves.toEqual({
+            status: "loaded",
+            component: { id: "post" },
+        });
+        expect(importer).toHaveBeenCalledTimes(2);
     });
 });

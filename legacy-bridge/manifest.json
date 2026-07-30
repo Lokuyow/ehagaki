@@ -1,0 +1,399 @@
+{
+  "sourceDeploymentId": "ehagaki-mszetyk2g",
+  "sourceBaseUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app",
+  "totalBytes": 4103544,
+  "assets": [
+    {
+      "path": "assets/App-C2viYnaR.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/App-C2viYnaR.css",
+      "contentType": "text/css",
+      "byteSize": 47706,
+      "sha256": "01b24a37cc6e639b8f1cd5acf91d2eaf2bbc35ffaa909d8aee0c2379ed9da7f9"
+    },
+    {
+      "path": "assets/App-g4k_eF4X.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/App-g4k_eF4X.js",
+      "contentType": "application/javascript",
+      "byteSize": 681432,
+      "sha256": "93262d02ea37623feee6f3d3f2649fc49ae3053943a1986edf022f5a119a3754"
+    },
+    {
+      "path": "assets/baseCompression-D8-8JKjb.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/baseCompression-D8-8JKjb.js",
+      "contentType": "application/javascript",
+      "byteSize": 463,
+      "sha256": "2beac1f4e788e59332ecbd170638dbeafc4efd000d05f00bc00e5267246fe625"
+    },
+    {
+      "path": "assets/browser-Cdx4ff-4.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/browser-Cdx4ff-4.js",
+      "contentType": "application/javascript",
+      "byteSize": 25783,
+      "sha256": "fa3f7a21376f04b94adeb3c61db529bf56c762db77e2bc3619b968c81889d6e7"
+    },
+    {
+      "path": "assets/ComposerTargetDialog-C0NoiZwB.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ComposerTargetDialog-C0NoiZwB.js",
+      "contentType": "application/javascript",
+      "byteSize": 23980,
+      "sha256": "c71f8ceb17f658e70f40c9c4f80a9ceedaf988fff597a598314fb2128700ede0"
+    },
+    {
+      "path": "assets/ComposerTargetDialog-DFUETcGF.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ComposerTargetDialog-DFUETcGF.css",
+      "contentType": "text/css",
+      "byteSize": 5619,
+      "sha256": "350325ee9af43b4214197e8e74e04ca9f289f238027619b9c2b57726c18ca88b"
+    },
+    {
+      "path": "assets/CustomEmojiPicker-D0CVv7El.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/CustomEmojiPicker-D0CVv7El.js",
+      "contentType": "application/javascript",
+      "byteSize": 11551,
+      "sha256": "4a0ea99df30149d068ae078ec24506999f251ab2f71c0d93583902f9749dda51"
+    },
+    {
+      "path": "assets/CustomEmojiPicker-DfOuNOfD.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/CustomEmojiPicker-DfOuNOfD.css",
+      "contentType": "text/css",
+      "byteSize": 4513,
+      "sha256": "e5ddbf14bc1e4f6d976bcbf5daf15bd5bb7889593a63c8eaaf888445e9bc4a7d"
+    },
+    {
+      "path": "assets/customEmojiUsageRepository-7noZXD2C.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/customEmojiUsageRepository-7noZXD2C.js",
+      "contentType": "application/javascript",
+      "byteSize": 1322,
+      "sha256": "5f0536471ea92ed7f2b98d7a87d30d0e8d3bb63ffd0b75850cb483b9b867ba9d"
+    },
+    {
+      "path": "assets/DialogWrapper-BAzSFjYv.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/DialogWrapper-BAzSFjYv.js",
+      "contentType": "application/javascript",
+      "byteSize": 4980,
+      "sha256": "0b1c9a7c4adf21e93a81043c09bf96780cddc6ca42d3e2cf89d3ec9619aa5f57"
+    },
+    {
+      "path": "assets/DialogWrapper-BCEwG1wP.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/DialogWrapper-BCEwG1wP.css",
+      "contentType": "text/css",
+      "byteSize": 3147,
+      "sha256": "3792e3ff6027469dbca6e23e550ced0dafc70f1d45f98ebfa5677e9f3070271a"
+    },
+    {
+      "path": "assets/DraftListDialog-bFhbJ6KL.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/DraftListDialog-bFhbJ6KL.js",
+      "contentType": "application/javascript",
+      "byteSize": 10627,
+      "sha256": "1a90667ec72eba5680b75ef159b88109147f2ad6580a2136d10229d347a2f759"
+    },
+    {
+      "path": "assets/DraftListDialog-BfoKxHnG.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/DraftListDialog-BfoKxHnG.css",
+      "contentType": "text/css",
+      "byteSize": 4423,
+      "sha256": "2d6a8944823251847b8aae15f66661c85669a43ac5e77234d1b26e29697521b0"
+    },
+    {
+      "path": "assets/emojisRepository-BGBVLSak.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/emojisRepository-BGBVLSak.js",
+      "contentType": "application/javascript",
+      "byteSize": 1717,
+      "sha256": "eb8fd5abe58a4d5e02244df4914131a8def575aa08d100b57e71a39ba9c024fa"
+    },
+    {
+      "path": "assets/en-Clc5CVbL.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/en-Clc5CVbL.js",
+      "contentType": "application/javascript",
+      "byteSize": 24615,
+      "sha256": "779fcff2fcd1d6a017bd51e69eaa48384c95e254d2ee3e0c63101716ee7bc4c2"
+    },
+    {
+      "path": "assets/ffmpegCompression-3fHOF3zv.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ffmpegCompression-3fHOF3zv.js",
+      "contentType": "application/javascript",
+      "byteSize": 4424,
+      "sha256": "988bc9e7b668fb39b99f07a988b4e81641ad94c604340928ef27633422bfa9b1"
+    },
+    {
+      "path": "assets/index-BCk_PrFt.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/index-BCk_PrFt.css",
+      "contentType": "text/css",
+      "byteSize": 13406,
+      "sha256": "0e7df78c6c4cf462134b2fb5336a7563cf4c4d931796152ded648fd097cf8d13"
+    },
+    {
+      "path": "assets/index-CaVOpWjO.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/index-CaVOpWjO.js",
+      "contentType": "application/javascript",
+      "byteSize": 6210,
+      "sha256": "8821b3b4cb2b2dfc7075fbf5a04ad05de6a8e194ae9ba20877f5fb521c55e903"
+    },
+    {
+      "path": "assets/index-otufjQh2.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/index-otufjQh2.js",
+      "contentType": "application/javascript",
+      "byteSize": 19888,
+      "sha256": "7a620a593708af4b175a9393c14fb1f062feb0d25ab2cf41a1aeecf8319b2b73"
+    },
+    {
+      "path": "assets/InfoPopoverButton-CWIjkRsP.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/InfoPopoverButton-CWIjkRsP.css",
+      "contentType": "text/css",
+      "byteSize": 1287,
+      "sha256": "87e5f55584ceaba40c28a268cd8aa1e0af793d1ce329e291fabf01cd0f0f2d22"
+    },
+    {
+      "path": "assets/InfoPopoverButton-lybu8Wn2.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/InfoPopoverButton-lybu8Wn2.js",
+      "contentType": "application/javascript",
+      "byteSize": 1089,
+      "sha256": "3951b1b87b7e178943d3eba5f5eebc4573a1208422edfaec3815a7cf0801a1ff"
+    },
+    {
+      "path": "assets/ja-Cq4pjm9o.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ja-Cq4pjm9o.js",
+      "contentType": "application/javascript",
+      "byteSize": 30598,
+      "sha256": "b373d4c085e2428fc87077133972010ffaf7be66634eea7585326521a5277f3f"
+    },
+    {
+      "path": "assets/LoginDialog-ByYEfO1U.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/LoginDialog-ByYEfO1U.js",
+      "contentType": "application/javascript",
+      "byteSize": 21439,
+      "sha256": "206efe8a4732797ccca87efd2e4a2d9e3516770a442429dee9f99ec63052e763"
+    },
+    {
+      "path": "assets/LoginDialog-DtTMzfPu.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/LoginDialog-DtTMzfPu.css",
+      "contentType": "text/css",
+      "byteSize": 7464,
+      "sha256": "7d5142d475a08068dab5f8f05b2a03225fbbee9c35481d2853ff65ae7315730b"
+    },
+    {
+      "path": "assets/mediabunnyCompression-DNLNHhr7.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/mediabunnyCompression-DNLNHhr7.js",
+      "contentType": "application/javascript",
+      "byteSize": 8860,
+      "sha256": "f2076a80ddcb37e076b0d033f8c7f57d855f44728e4e763b30cce8e1d3035011"
+    },
+    {
+      "path": "assets/postBroadcastService-C7tSt275.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/postBroadcastService-C7tSt275.css",
+      "contentType": "text/css",
+      "byteSize": 7775,
+      "sha256": "470e2f13b596fc4533ecf11d9ceee6068fb9fb336a9ce011ddbf1f98edba0742"
+    },
+    {
+      "path": "assets/postBroadcastService-CLkA5K_O.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/postBroadcastService-CLkA5K_O.js",
+      "contentType": "application/javascript",
+      "byteSize": 13158,
+      "sha256": "1069847aa222c801f703e5281952432bc9c5c0c292419a0a8100138cda2bc575"
+    },
+    {
+      "path": "assets/PostComponent-BV-lOcgm.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/PostComponent-BV-lOcgm.css",
+      "contentType": "text/css",
+      "byteSize": 5179,
+      "sha256": "05f209f4ae7dd56d106d33a692b8a4f6671bc457383fe4b2d63321e13a3196a3"
+    },
+    {
+      "path": "assets/PostComponent-CkRXVKDX.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/PostComponent-CkRXVKDX.js",
+      "contentType": "application/javascript",
+      "byteSize": 54258,
+      "sha256": "af490d89b4b624dea94dbb2ca4953991739c3e4856ff3a37d81b596198d6f667"
+    },
+    {
+      "path": "assets/postEventBuilder-CUP1AWih.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/postEventBuilder-CUP1AWih.js",
+      "contentType": "application/javascript",
+      "byteSize": 3822,
+      "sha256": "962be3cf569d3879db7da4bec6b784bf1c023f53123a792e8b75a9d83c3e8ab5"
+    },
+    {
+      "path": "assets/PostHistoryDialog-BjSGzGgS.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/PostHistoryDialog-BjSGzGgS.js",
+      "contentType": "application/javascript",
+      "byteSize": 219276,
+      "sha256": "32184fd6061bb0a8664b4d69b7dc71b3abaed6f51a9b596ff24a15241471b0a4"
+    },
+    {
+      "path": "assets/PostHistoryDialog-C7qgWfyn.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/PostHistoryDialog-C7qgWfyn.css",
+      "contentType": "text/css",
+      "byteSize": 27052,
+      "sha256": "ad0f9b53283d186f53518f8cbf0f5a5a5b5bb1b1f9884d777be20e6975b6f1fa"
+    },
+    {
+      "path": "assets/ProfileComponent-5nJPQRea.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ProfileComponent-5nJPQRea.css",
+      "contentType": "text/css",
+      "byteSize": 8170,
+      "sha256": "740dbd9352f1b4ff62e11912a01232014175e35e15a2791dce96e11800ace93c"
+    },
+    {
+      "path": "assets/ProfileComponent-CRBn2pYf.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/ProfileComponent-CRBn2pYf.js",
+      "contentType": "application/javascript",
+      "byteSize": 10287,
+      "sha256": "a970e07fd975a08a74250361f02ec4440fc22c00df063e47378d9762489e3217"
+    },
+    {
+      "path": "assets/SettingsDialog-D6KnC11b.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/SettingsDialog-D6KnC11b.css",
+      "contentType": "text/css",
+      "byteSize": 10137,
+      "sha256": "6c1428b7d7a11ca1340c5e48c402f3ae4375c6aca6209af7a67a55e31ac61295"
+    },
+    {
+      "path": "assets/SettingsDialog-D7aqY06J.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/SettingsDialog-D7aqY06J.js",
+      "contentType": "application/javascript",
+      "byteSize": 43917,
+      "sha256": "5336585f104caff0a34fc8bfefde52bc41d379b128c1560fc93bf8773c306278"
+    },
+    {
+      "path": "assets/settingsStorage-ClsDVpw3.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/settingsStorage-ClsDVpw3.js",
+      "contentType": "application/javascript",
+      "byteSize": 9622,
+      "sha256": "cea716201a701d14461797373ca067fb4d1bdcc5a714bd3c1a5f5f3188aad091"
+    },
+    {
+      "path": "assets/uploadDestinationResolver-DnGb_ZFs.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/uploadDestinationResolver-DnGb_ZFs.js",
+      "contentType": "application/javascript",
+      "byteSize": 514,
+      "sha256": "2949671fb5fcef52f6e0798e8017313b968ec57ebb7482188c4e8f33cc6cef21"
+    },
+    {
+      "path": "assets/uploadDestinationsRepository-D2mEw3wz.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/uploadDestinationsRepository-D2mEw3wz.js",
+      "contentType": "application/javascript",
+      "byteSize": 118447,
+      "sha256": "5b18877f559a650f2467c718cce7e56c06c413d8698ccf9b3329331a7ea14c5c"
+    },
+    {
+      "path": "assets/vendor-editor-UZDwPJW0.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-editor-UZDwPJW0.js",
+      "contentType": "application/javascript",
+      "byteSize": 377959,
+      "sha256": "239d71d49dbfccd60b73d51c9aaacbb345003105f1d39026dfcfcb595169f247"
+    },
+    {
+      "path": "assets/vendor-i18n-DopeThSE.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-i18n-DopeThSE.js",
+      "contentType": "application/javascript",
+      "byteSize": 81217,
+      "sha256": "6dcee2d6ecd7923d4a21de359033c07193b172f3b704f53550c084b6bfba46f5"
+    },
+    {
+      "path": "assets/vendor-image-CiLMlS2Y.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-image-CiLMlS2Y.js",
+      "contentType": "application/javascript",
+      "byteSize": 56588,
+      "sha256": "a4ff6563147abdc91a0ae59068ef320194a7307d8bc0e18deae857f4bba720f6"
+    },
+    {
+      "path": "assets/vendor-nostr-C1TcmqfU.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-nostr-C1TcmqfU.js",
+      "contentType": "application/javascript",
+      "byteSize": 222495,
+      "sha256": "1e7c6623c296e7460c2417366f5d9a01ea46d693d38e600aa2e1dc3f2559bdff"
+    },
+    {
+      "path": "assets/vendor-ui-BpcL6yKj.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-ui-BpcL6yKj.css",
+      "contentType": "text/css",
+      "byteSize": 633,
+      "sha256": "4530c0902fa42e047900fa6f474804a804e5ebf6849545f5622d006e8ad36333"
+    },
+    {
+      "path": "assets/vendor-ui-NCF7quQI.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-ui-NCF7quQI.js",
+      "contentType": "application/javascript",
+      "byteSize": 323322,
+      "sha256": "c0bae60be80e5d831b2ff492458196d9abc27d1df291a7bb7e1c4d6756d715b2"
+    },
+    {
+      "path": "assets/vendor-video-WtMSlRje.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-video-WtMSlRje.js",
+      "contentType": "application/javascript",
+      "byteSize": 375950,
+      "sha256": "89c1eb98a184737da862e53e749256cdc89daff28077662d87aafc4c0134724a"
+    },
+    {
+      "path": "assets/vendor-zap-Sb7BkpY8.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/vendor-zap-Sb7BkpY8.js",
+      "contentType": "application/javascript",
+      "byteSize": 351350,
+      "sha256": "5deb7a00ceeaaa62d5a62b30cce58fcb38f3ac8eb3e56eb9044d645a08902b2c"
+    },
+    {
+      "path": "assets/webp_dec-C990n7mh.wasm",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/webp_dec-C990n7mh.wasm",
+      "contentType": "application/wasm",
+      "byteSize": 137960,
+      "sha256": "30fb52fa2a80166d25ba7debf902218904ba1f05ccce9f959f722beff9e2f344"
+    },
+    {
+      "path": "assets/webp_enc_simd-CFvKQ_80.wasm",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/webp_enc_simd-CFvKQ_80.wasm",
+      "contentType": "application/wasm",
+      "byteSize": 345584,
+      "sha256": "39c279269ec1163b987b6d69749458e3d5b03b9585f58b6ca5455b76b504a305"
+    },
+    {
+      "path": "assets/webp_enc_simd-D5IXDjAy.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/webp_enc_simd-D5IXDjAy.js",
+      "contentType": "application/javascript",
+      "byteSize": 20163,
+      "sha256": "c49c1c413a9f8712dacfbbc2c439d945550fea49469b487dae003ce298673499"
+    },
+    {
+      "path": "assets/webp_enc-BpZvKflB.wasm",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/webp_enc-BpZvKflB.wasm",
+      "contentType": "application/wasm",
+      "byteSize": 281261,
+      "sha256": "b6085bb6702f144e9dc6016d58d230b34a84976bf0d080b7390b4b4b137d6ab7"
+    },
+    {
+      "path": "assets/webp_enc-DIy7VB-T.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/webp_enc-DIy7VB-T.js",
+      "contentType": "application/javascript",
+      "byteSize": 20208,
+      "sha256": "2fd3028fa8715af57651f2839b3d0fcda3fb361e9a2e310b1c6dc91afe1da731"
+    },
+    {
+      "path": "assets/WelcomeDialog-CEQerjqe.css",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/WelcomeDialog-CEQerjqe.css",
+      "contentType": "text/css",
+      "byteSize": 622,
+      "sha256": "7498f7e727b0aac2b45bcc4022932de87a07eb7dcabd91bee1b22df5d5bd6433"
+    },
+    {
+      "path": "assets/WelcomeDialog-D8UPj2QH.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/WelcomeDialog-D8UPj2QH.js",
+      "contentType": "application/javascript",
+      "byteSize": 1821,
+      "sha256": "97453e60bcd37efdd8a2446385e13ccf38bec0e80112eca4e31bd53a5e52a6e7"
+    },
+    {
+      "path": "assets/workbox-window.prod.es5-BBnX5xw4.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/workbox-window.prod.es5-BBnX5xw4.js",
+      "contentType": "application/javascript",
+      "byteSize": 5748,
+      "sha256": "cadd21be4a88598a4dec91a26a025df0a5790ff6baec54a884e401c3f5c95557"
+    },
+    {
+      "path": "assets/worker-DYSz7Krg.js",
+      "sourceUrl": "https://ehagaki-mszetyk2g-lokuyows-projects.vercel.app/assets/worker-DYSz7Krg.js",
+      "contentType": "application/javascript",
+      "byteSize": 2506,
+      "sha256": "e0a67260df485c224837991e3ea12d721a43c2511a594946fe7d176b8884c429"
+    }
+  ]
+}

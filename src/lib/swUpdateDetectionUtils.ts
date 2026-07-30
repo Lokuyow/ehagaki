@@ -1,25 +1,33 @@
 export type SwUpdateStatus = "idle" | "installing" | "ready";
+export type SwControlChangeResult = "reloaded" | "stale" | "ignored";
 
 export function createAcceptedServiceWorkerUpdateReloadController(
     reload: () => void,
+    markStale: () => void = () => {},
 ): {
     markAccepted: () => void;
-    handleControlChange: () => boolean;
+    handleControlChange: () => SwControlChangeResult;
 } {
     let accepted = false;
+    let handled = false;
 
     return {
         markAccepted() {
             accepted = true;
         },
         handleControlChange() {
-            if (!accepted) {
-                return false;
+            if (handled) {
+                return "ignored";
             }
 
+            handled = true;
+            if (!accepted) {
+                markStale();
+                return "stale";
+            }
             accepted = false;
             reload();
-            return true;
+            return "reloaded";
         },
     };
 }

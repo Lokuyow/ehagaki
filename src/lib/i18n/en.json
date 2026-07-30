@@ -12,6 +12,13 @@
     "showActions": "Show actions",
     "or": "or"
   },
+  "staleAsset": {
+    "reload_required_title": "Reload required",
+    "reload_required_description": "A new version is now active. Check any unsaved content before reloading.",
+    "temporary_error_title": "Unable to load this screen",
+    "temporary_error_description": "A temporary loading error occurred. Cancel and try again, or reload the app.",
+    "reload": "Reload"
+  },
   "welcomeDialog": {
     "title": "Welcome to eHagaki",
     "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
@@ -341,6 +348,7 @@
     "sw_update_available": "A new update is available",
     "sw_update_installing": "Installing app update",
     "sw_update_installing_short": "Installing...",
+    "reload_required": "Reload to use the new version",
     "update_app": "Update app",
     "updating": "Updating...",
     "author_info": "Author by:",

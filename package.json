@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host",
     "prebuild": "npx rimraf dist",
-    "build": "vite build",
+    "build": "vite build && node scripts/verifyLegacyBridgeBuild.mjs",
+    "verify:legacy-bridge-remote": "node scripts/verifyLegacyBridgeRemote.mjs",
     "preview": "vite preview --host",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "complexity:thread-graph": "node scripts/threadGraphComplexityCheck.mjs",

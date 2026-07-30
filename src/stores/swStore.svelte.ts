@@ -7,6 +7,11 @@ import {
     type SwUpdateStatus,
 } from "../lib/swUpdateDetectionUtils";
 import { subscribeEHagakiDbUpgradeState } from "../lib/storage/ehagakiDb";
+import {
+    markStaleAssetReloadRequired,
+    requestStaleReloadPrompt,
+    staleAssetReloadState,
+} from "./staleAssetReloadStore.svelte";
 
 type StoreSubscriber<T> = (value: T) => void;
 
@@ -17,6 +22,11 @@ let dbUpgradeBlockedValue = false;
 const swNeedRefreshSubscribers = new Set<StoreSubscriber<boolean>>();
 const updateReloadController = createAcceptedServiceWorkerUpdateReloadController(
     () => window.location.reload(),
+    () => {
+        if (markStaleAssetReloadRequired()) {
+            requestStaleReloadPrompt();
+        }
+    },
 );
 
 function setSwUpdateStatus(value: SwUpdateStatus) {
@@ -161,6 +171,10 @@ export const swVersionStore = {
 };
 
 export function handleSwUpdate() {
+    if (staleAssetReloadState.required) {
+        requestStaleReloadPrompt();
+        return Promise.resolve();
+    }
     updateReloadController.markAccepted();
     return swUpdateServiceWorker(true);
 }

@@ -12,6 +12,13 @@
     "showActions": "アクションを表示",
     "or": "または"
   },
+  "staleAsset": {
+    "reload_required_title": "再読み込みが必要です",
+    "reload_required_description": "新しいバージョンに切り替わりました。編集中の内容を確認してから再読み込みしてください。",
+    "temporary_error_title": "画面を読み込めませんでした",
+    "temporary_error_description": "一時的な読み込みエラーが発生しました。キャンセルしてもう一度操作するか、再読み込みしてください。",
+    "reload": "再読み込み"
+  },
   "welcomeDialog": {
     "title": "eHagaki へようこそ",
     "description": "eHagaki（えはがき）は投稿専用のNostrクライアントです。画像、動画を圧縮してから送信できます。",
@@ -341,6 +348,7 @@
     "sw_update_available": "アプリの更新があります",
     "sw_update_installing": "アプリの更新をインストール中です",
     "sw_update_installing_short": "インストール中...",
+    "reload_required": "新しいバージョンを使用するには再読み込みが必要です",
     "update_app": "アプリを更新",
     "updating": "更新中...",
     "author_info": "制作:",
