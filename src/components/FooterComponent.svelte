@@ -48,6 +48,12 @@
                 ? profileData.npub
                 : $_("profileDialog.profile_image_alt");
 
+    let settingsButtonAriaLabel = $derived(
+        swNeedRefresh
+            ? `${$_("settingsDialog.info_header_setting")}, ${$_("settingsDialog.sw_update_available")}`
+            : $_("settingsDialog.info_header_setting"),
+    );
+
     function handleAvatarLoadingStatusChange(
         status: "loading" | "loaded" | "error",
     ) {
@@ -154,7 +160,7 @@
         contentLayout="icon"
         className="settings-btn {swNeedRefresh ? 'has-update' : ''}"
         onClick={onOpenSettingsDialog}
-        ariaLabel={$_("settingsDialog.info_header_setting")}
+        ariaLabel={settingsButtonAriaLabel}
     >
         <div class="settings-icon svg-icon" aria-hidden="true"></div>
         {#if swNeedRefresh}

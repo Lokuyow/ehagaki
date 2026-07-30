@@ -108,15 +108,34 @@ describe('FooterComponent', () => {
         expect(screen.getByText('共有メディアエラー')).toBeTruthy();
     });
 
-    it('設定ボタンは現在のロケールの名前で取得できる', async () => {
-        renderFooter();
+    it('更新通知がないときの設定ボタンは通常のアクセシブルネームを持つ', () => {
+        const { container } = renderFooter();
 
-        expect(screen.getByRole('button', { name: '設定' })).toBeTruthy();
+        const button = screen.getByRole('button', { name: '設定' });
+        expect(button).toBeTruthy();
+        expect(button.getAttribute('aria-label')).toBe('設定');
+        expect(container.querySelector('.update-indicator')).toBeNull();
+    });
 
-        locale.set('en');
-        await waitLocale();
+    it('更新通知があるときの設定ボタンは更新通知を含むアクセシブルネームを持つ', async () => {
+        const onOpenSettingsDialog = vi.fn();
+        const { container } = renderFooter({
+            swNeedRefresh: true,
+            onOpenSettingsDialog,
+        });
 
-        expect(screen.getByRole('button', { name: 'Setting' })).toBeTruthy();
+        const button = screen.getByRole('button', {
+            name: '設定, アプリの更新があります',
+        });
+        expect(button).toBeTruthy();
+        expect(button.getAttribute('aria-label')).toBe(
+            '設定, アプリの更新があります',
+        );
+        expect(container.querySelector('.update-indicator')).toBeTruthy();
+
+        await fireEvent.click(button);
+
+        expect(onOpenSettingsDialog).toHaveBeenCalledOnce();
     });
 
     it('情報表示なし、かつ認証済みなら投稿履歴ボタンを表示して押下できる', async () => {
