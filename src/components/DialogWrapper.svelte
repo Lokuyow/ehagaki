@@ -308,14 +308,14 @@
         flex: 1 0 auto;
 
         :global(.dialog-page-icon-button) {
-            width: 40px;
+            width: 44px;
         }
 
         :global(.dialog-page-button) {
             --icon-size: 32px;
-            min-width: 40px;
+            min-width: 44px;
             height: auto;
-            min-height: 40px;
+            min-height: 44px;
             flex: 1 0 auto;
         }
     }
@@ -389,7 +389,7 @@
             border-radius: 50px;
             width: 100%;
             min-width: 72px;
-            min-height: 34px;
+            min-height: 44px;
         }
     }
 
