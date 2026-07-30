@@ -101,4 +101,33 @@ describe("ServiceWorkerChannelImageMetaRepository", () => {
         );
         db.close();
     });
+
+    it("blocked 後に同じ open が成功した場合だけ解除を通知する", async () => {
+        const request = {
+            result: { close: () => undefined } as unknown as IDBDatabase,
+            transaction: null,
+            onupgradeneeded: null as null | (() => void),
+            onblocked: null as null | (() => void),
+            onsuccess: null as null | (() => void),
+            onerror: null as null | (() => void),
+        };
+        const onBlocked = vi.fn();
+        const onBlockedResolved = vi.fn();
+        const repository = new ServiceWorkerChannelImageMetaRepository(
+            { open: () => request } as unknown as IDBFactory,
+            "test",
+            EHAGAKI_DB_NATIVE_VERSION,
+            () => undefined,
+            onBlocked,
+            onBlockedResolved,
+        );
+
+        const opening = (repository as unknown as { open: () => Promise<IDBDatabase> }).open();
+        request.onblocked?.();
+        request.onsuccess?.();
+
+        await expect(opening).resolves.toBe(request.result);
+        expect(onBlocked).toHaveBeenCalledOnce();
+        expect(onBlockedResolved).toHaveBeenCalledOnce();
+    });
 });

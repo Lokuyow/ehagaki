@@ -2,9 +2,47 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { locale, waitLocale } from 'svelte-i18n';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const swStoreState = vi.hoisted(() => {
+    const createStore = <T>(initialValue: T) => {
+        let value = initialValue;
+        const subscribers = new Set<(nextValue: T) => void>();
+        return {
+            subscribe(run: (nextValue: T) => void) {
+                run(value);
+                subscribers.add(run);
+                return () => subscribers.delete(run);
+            },
+            set(nextValue: T) {
+                value = nextValue;
+                subscribers.forEach((subscriber) => subscriber(value));
+            },
+        };
+    };
+
+    return {
+        swNeedRefresh: createStore(false),
+        swUpdateStatus: createStore<'idle' | 'installing' | 'ready'>('idle'),
+        dbUpgradeBlocked: createStore(false),
+    };
+});
+
+vi.mock('../../stores/swStore.svelte', () => ({
+    ...swStoreState,
+    swUpdateServiceWorker: vi.fn(),
+    swVersionStore: { value: null, set: vi.fn() },
+    handleSwUpdate: vi.fn(),
+    fetchSwVersion: vi.fn(async () => null),
+}));
+
 import '../../i18n';
 import SettingsDialog from '../../components/SettingsDialog.svelte';
 import SettingsCompressionSection from '../../components/settings/SettingsCompressionSection.svelte';
+import {
+    dbUpgradeBlocked,
+    swNeedRefresh,
+    swUpdateStatus,
+} from '../../stores/swStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
     beforeEach(async () => {
@@ -245,5 +283,32 @@ describe('SettingsDialog accessibility', () => {
             '_blank',
             'noopener',
         );
+    });
+
+    it('DB blocked解除後は待機中のSW更新表示とボタンを復元する', async () => {
+        swUpdateStatus.set('ready');
+        dbUpgradeBlocked.set(true);
+        swNeedRefresh.set(true);
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+        await tick();
+
+        expect(screen.getByText('settingsDialog.db_upgrade_blocked')).toBeTruthy();
+        expect(document.body.querySelector('.sw-update-btn')?.hasAttribute('disabled')).toBe(true);
+
+        dbUpgradeBlocked.set(false);
+        await tick();
+
+        expect(screen.getByText('A new update is available')).toBeTruthy();
+        expect(document.body.querySelector('.sw-update-btn')?.hasAttribute('disabled')).toBe(false);
+
+        swUpdateStatus.set('idle');
+        swNeedRefresh.set(false);
+        await tick();
+        expect(screen.queryByText('A new update is available')).toBeNull();
     });
 });

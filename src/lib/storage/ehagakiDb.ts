@@ -15,12 +15,35 @@ export const SHARED_MEDIA_RECORD_ID = "latest";
 
 type EHagakiDbUpgradeBlockedListener = () => void;
 const ehagakiDbUpgradeBlockedListeners = new Set<EHagakiDbUpgradeBlockedListener>();
+type EHagakiDbUpgradeStateListener = (blocked: boolean) => void;
+const ehagakiDbUpgradeStateListeners = new Set<EHagakiDbUpgradeStateListener>();
+let ehagakiDbUpgradeBlocked = false;
+
+function setEHagakiDbUpgradeBlocked(blocked: boolean) {
+    if (ehagakiDbUpgradeBlocked === blocked) {
+        return;
+    }
+
+    ehagakiDbUpgradeBlocked = blocked;
+    ehagakiDbUpgradeStateListeners.forEach((listener) => listener(blocked));
+    if (blocked) {
+        ehagakiDbUpgradeBlockedListeners.forEach((listener) => listener());
+    }
+}
 
 export function subscribeEHagakiDbUpgradeBlocked(
     listener: EHagakiDbUpgradeBlockedListener,
 ): () => void {
     ehagakiDbUpgradeBlockedListeners.add(listener);
     return () => ehagakiDbUpgradeBlockedListeners.delete(listener);
+}
+
+export function subscribeEHagakiDbUpgradeState(
+    listener: EHagakiDbUpgradeStateListener,
+): () => void {
+    listener(ehagakiDbUpgradeBlocked);
+    ehagakiDbUpgradeStateListeners.add(listener);
+    return () => ehagakiDbUpgradeStateListeners.delete(listener);
 }
 
 export interface MetaRecord {
@@ -297,8 +320,9 @@ export class EHagakiDB extends Dexie {
         super(databaseName);
 
         this.on("blocked", () => {
-            ehagakiDbUpgradeBlockedListeners.forEach((listener) => listener());
+            setEHagakiDbUpgradeBlocked(true);
         });
+        this.on("ready", () => setEHagakiDbUpgradeBlocked(false));
 
         this.version(EHAGAKI_DB_VERSION).stores({
             meta: "key, updatedAt",

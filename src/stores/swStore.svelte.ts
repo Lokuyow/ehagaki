@@ -6,12 +6,15 @@ import {
     watchServiceWorkerUpdateInstallation,
     type SwUpdateStatus,
 } from "../lib/swUpdateDetectionUtils";
-import { subscribeEHagakiDbUpgradeBlocked } from "../lib/storage/ehagakiDb";
+import { subscribeEHagakiDbUpgradeState } from "../lib/storage/ehagakiDb";
 
 type StoreSubscriber<T> = (value: T) => void;
 
 const swUpdateStatusSubscribers = new Set<StoreSubscriber<SwUpdateStatus>>();
 let swUpdateStatusValue: SwUpdateStatus = "idle";
+const dbUpgradeBlockedSubscribers = new Set<StoreSubscriber<boolean>>();
+let dbUpgradeBlockedValue = false;
+const swNeedRefreshSubscribers = new Set<StoreSubscriber<boolean>>();
 const updateReloadController = createAcceptedServiceWorkerUpdateReloadController(
     () => window.location.reload(),
 );
@@ -27,6 +30,26 @@ function setSwUpdateStatus(value: SwUpdateStatus) {
 
     swUpdateStatusValue = value;
     swUpdateStatusSubscribers.forEach((subscriber) => subscriber(value));
+    notifySwNeedRefreshSubscribers();
+}
+
+function setDbUpgradeBlocked(value: boolean) {
+    if (dbUpgradeBlockedValue === value) {
+        return;
+    }
+
+    dbUpgradeBlockedValue = value;
+    dbUpgradeBlockedSubscribers.forEach((subscriber) => subscriber(value));
+    notifySwNeedRefreshSubscribers();
+}
+
+function getSwNeedRefreshValue() {
+    return swUpdateStatusValue !== "idle" || dbUpgradeBlockedValue;
+}
+
+function notifySwNeedRefreshSubscribers() {
+    const value = getSwNeedRefreshValue();
+    swNeedRefreshSubscribers.forEach((subscriber) => subscriber(value));
 }
 
 export const swUpdateStatus = {
@@ -40,11 +63,22 @@ export const swUpdateStatus = {
 
 export const swNeedRefresh = {
     subscribe(run: StoreSubscriber<boolean>) {
-        return swUpdateStatus.subscribe((value) => run(value !== "idle"));
+        run(getSwNeedRefreshValue());
+        swNeedRefreshSubscribers.add(run);
+        return () => swNeedRefreshSubscribers.delete(run);
     },
     set(value: boolean) {
         setSwUpdateStatus(value ? "ready" : "idle");
     },
+};
+
+export const dbUpgradeBlocked = {
+    subscribe(run: StoreSubscriber<boolean>) {
+        run(dbUpgradeBlockedValue);
+        dbUpgradeBlockedSubscribers.add(run);
+        return () => dbUpgradeBlockedSubscribers.delete(run);
+    },
+    set: setDbUpgradeBlocked,
 };
 
 function watchRegistrationUpdate(registration: ServiceWorkerRegistration | undefined) {
@@ -59,12 +93,14 @@ function watchRegistrationUpdate(registration: ServiceWorkerRegistration | undef
     });
 }
 
-subscribeEHagakiDbUpgradeBlocked(() => setSwUpdateStatus("blocked"));
+subscribeEHagakiDbUpgradeState(setDbUpgradeBlocked);
 
 if (typeof navigator !== "undefined" && navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener("message", (event) => {
         if (event.data?.type === "EHAGAKI_DB_UPGRADE_BLOCKED") {
-            setSwUpdateStatus("blocked");
+            setDbUpgradeBlocked(true);
+        } else if (event.data?.type === "EHAGAKI_DB_UPGRADE_UNBLOCKED") {
+            setDbUpgradeBlocked(false);
         }
     });
 }

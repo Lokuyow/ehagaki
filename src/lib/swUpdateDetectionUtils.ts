@@ -1,4 +1,4 @@
-export type SwUpdateStatus = "idle" | "installing" | "ready" | "blocked";
+export type SwUpdateStatus = "idle" | "installing" | "ready";
 
 export function createAcceptedServiceWorkerUpdateReloadController(
     reload: () => void,

@@ -11,6 +11,7 @@
         fetchSwVersion,
         swNeedRefresh,
         swUpdateStatus,
+        dbUpgradeBlocked,
         handleSwUpdate,
     } from "../stores/swStore.svelte";
     import {
@@ -80,8 +81,10 @@
     let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
     let isSwInstalling = $derived($swUpdateStatus === "installing");
-    let isDbUpgradeBlocked = $derived($swUpdateStatus === "blocked");
-    let canApplySwUpdate = $derived($swUpdateStatus === "ready");
+    let isDbUpgradeBlocked = $derived($dbUpgradeBlocked);
+    let canApplySwUpdate = $derived(
+        $swUpdateStatus === "ready" && !isDbUpgradeBlocked,
+    );
 
     $effect(() => {
         if (themeMode !== themeModeStore.value) {

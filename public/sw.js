@@ -261,6 +261,19 @@ class IndexedDBManager {
         });
     }
 
+    notifyUpgradeUnblocked() {
+        void this.clients?.matchAll?.({
+            type: 'window',
+            includeUncontrolled: true,
+        }).then((clients) => {
+            clients.forEach((client) => client.postMessage?.({
+                type: 'EHAGAKI_DB_UPGRADE_UNBLOCKED',
+            }));
+        }).catch((error) => {
+            this.console.warn('Failed to notify clients about unblocked IndexedDB upgrade', error);
+        });
+    }
+
     // IndexedDB操作の共通処理
     async executeOperation(operation) {
         return await executeServiceWorkerIndexedDbOperation({
@@ -275,6 +288,7 @@ class IndexedDBManager {
                 );
             },
             onBlocked: () => this.notifyUpgradeBlocked(),
+            onBlockedResolved: () => this.notifyUpgradeUnblocked(),
             operation,
         });
     }
@@ -657,6 +671,7 @@ class ServiceWorkerCore {
                 transaction,
             ),
             () => this.indexedDBManager.notifyUpgradeBlocked(),
+            () => this.indexedDBManager.notifyUpgradeUnblocked(),
         );
         this.channelImageCacheController = new ChannelImageCacheController({
             cacheStorage: ServiceWorkerDependencies.caches,

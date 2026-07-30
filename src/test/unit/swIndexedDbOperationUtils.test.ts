@@ -49,6 +49,7 @@ describe('swIndexedDbOperationUtils', () => {
         };
         const db = { close: vi.fn() };
         const onBlocked = vi.fn();
+        const onBlockedResolved = vi.fn();
         const operation = vi.fn((_database, resolve) => resolve());
 
         queueMicrotask(() => {
@@ -61,11 +62,43 @@ describe('swIndexedDbOperationUtils', () => {
             dbName: 'eHagakiDB',
             dbVersion: 150,
             onBlocked,
+            onBlockedResolved,
             operation,
         });
 
         expect(onBlocked).toHaveBeenCalledOnce();
+        expect(onBlockedResolved).toHaveBeenCalledOnce();
         expect(operation).toHaveBeenCalledWith(db, expect.any(Function), expect.any(Function));
+    });
+
+    it('blocked 後に open error なら解除通知を送らない', async () => {
+        const openError = new Error('open failed');
+        const request = {
+            error: openError,
+            onupgradeneeded: null as any,
+            onblocked: null as null | (() => void),
+            onerror: null as null | (() => void),
+            onsuccess: null as any,
+        };
+        const onBlocked = vi.fn();
+        const onBlockedResolved = vi.fn();
+
+        queueMicrotask(() => {
+            request.onblocked?.();
+            request.onerror?.();
+        });
+
+        await expect(executeServiceWorkerIndexedDbOperation({
+            indexedDb: { open: vi.fn(() => request) },
+            dbName: 'eHagakiDB',
+            dbVersion: 150,
+            onBlocked,
+            onBlockedResolved,
+            operation: vi.fn(),
+        })).rejects.toBe(openError);
+
+        expect(onBlocked).toHaveBeenCalledOnce();
+        expect(onBlockedResolved).not.toHaveBeenCalled();
     });
 
     it('VersionError を保持して reject し DB reset へ変換しない', async () => {

@@ -238,6 +238,17 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             });
         }
 
+        notifyUpgradeUnblocked() {
+            void this.dependencies.clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true,
+            }).then((clients: Array<{ postMessage?: (message: unknown) => void }>) => {
+                clients.forEach((client) => client.postMessage?.({
+                    type: 'EHAGAKI_DB_UPGRADE_UNBLOCKED',
+                }));
+            });
+        }
+
         async executeOperation(operation: any) {
             const mockRequest = {
                 onupgradeneeded: null as any,
@@ -295,6 +306,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                     );
                 },
                 onBlocked: () => this.notifyUpgradeBlocked(),
+                onBlockedResolved: () => this.notifyUpgradeUnblocked(),
                 operation,
             });
         }
@@ -773,6 +785,19 @@ describe('Service Worker Tests', () => {
             await vi.waitFor(() => {
                 expect(postMessage).toHaveBeenCalledWith({
                     type: 'EHAGAKI_DB_UPGRADE_BLOCKED',
+                });
+            });
+        });
+
+        it('notifies controlled clients when a blocked IndexedDB upgrade completes', async () => {
+            const postMessage = vi.fn();
+            swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([{ postMessage }]);
+            const manager = new swModule.IndexedDBManager();
+
+            manager.notifyUpgradeUnblocked();
+            await vi.waitFor(() => {
+                expect(postMessage).toHaveBeenCalledWith({
+                    type: 'EHAGAKI_DB_UPGRADE_UNBLOCKED',
                 });
             });
         });

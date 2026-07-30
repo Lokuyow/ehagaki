@@ -5,6 +5,7 @@ import {
     EHAGAKI_DB_NAME,
     EHagakiDB,
     subscribeEHagakiDbUpgradeBlocked,
+    subscribeEHagakiDbUpgradeState,
 } from "../../lib/storage/ehagakiDb";
 import {
     EHAGAKI_DB_NATIVE_VERSION,
@@ -233,7 +234,11 @@ describe("EHagakiDB", () => {
 
         const v15 = new EHagakiDB(name);
         const blockedSubscriber = vi.fn();
+        const upgradeStates: boolean[] = [];
         const unsubscribeBlocked = subscribeEHagakiDbUpgradeBlocked(blockedSubscriber);
+        const unsubscribeUpgradeState = subscribeEHagakiDbUpgradeState((blocked) => {
+            upgradeStates.push(blocked);
+        });
         const blocked = new Promise<void>((resolve) => {
             v15.on("blocked", () => resolve());
         });
@@ -241,12 +246,15 @@ describe("EHagakiDB", () => {
         await blocked;
         expect(v15.isOpen()).toBe(false);
         expect(blockedSubscriber).toHaveBeenCalledOnce();
+        expect(upgradeStates).toEqual([false, true]);
 
         blocker.close();
         await opening;
         expect(v15.backendDB().version).toBe(150);
         await expect(v15.meta.get("fixture")).resolves.toEqual(V14_FIXTURES.meta);
+        expect(upgradeStates).toEqual([false, true, false]);
         unsubscribeBlocked();
+        unsubscribeUpgradeState();
         v15.close();
     });
 

@@ -32,17 +32,27 @@ implements ChannelImageMetaRepository {
             transaction: IDBTransaction | null,
         ) => void,
         private readonly onBlocked: () => void = () => undefined,
+        private readonly onBlockedResolved: () => void = () => undefined,
     ) {}
 
     private open(): Promise<IDBDatabase> {
         return new Promise((resolve, reject) => {
             const request = this.indexedDb.open(this.dbName, this.dbVersion);
+            let wasBlocked = false;
             request.onupgradeneeded = () => this.ensureSchema(
                 request.result,
                 request.transaction,
             );
-            request.onblocked = () => this.onBlocked();
-            request.onsuccess = () => resolve(request.result);
+            request.onblocked = () => {
+                wasBlocked = true;
+                this.onBlocked();
+            };
+            request.onsuccess = () => {
+                if (wasBlocked) {
+                    this.onBlockedResolved();
+                }
+                resolve(request.result);
+            };
             request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
         });
     }

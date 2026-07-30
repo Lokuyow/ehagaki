@@ -41,6 +41,7 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
     dbVersion,
     onUpgradeNeeded,
     onBlocked,
+    onBlockedResolved,
     operation,
 }: {
     indexedDb: IndexedDbOpenLike<TDb>;
@@ -48,17 +49,22 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
     dbVersion: number;
     onUpgradeNeeded?: (db: TDb, transaction?: unknown) => void;
     onBlocked?: () => void;
+    onBlockedResolved?: () => void;
     operation: IndexedDbOperation<TDb>;
 }): Promise<void> {
     return new Promise((resolve, reject) => {
         try {
             const request = indexedDb.open(dbName, dbVersion);
+            let wasBlocked = false;
 
             request.onupgradeneeded = (event) => {
                 onUpgradeNeeded?.(event.target.result, event.target.transaction);
             };
 
-            request.onblocked = () => onBlocked?.();
+            request.onblocked = () => {
+                wasBlocked = true;
+                onBlocked?.();
+            };
 
             request.onerror = () => reject(
                 request.error ?? new Error('IndexedDB open failed'),
@@ -66,6 +72,9 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
 
             request.onsuccess = (event) => {
                 const db = event.target.result;
+                if (wasBlocked) {
+                    onBlockedResolved?.();
+                }
                 try {
                     operation(db, resolve, reject);
                 } catch (error) {
