@@ -718,6 +718,7 @@
         .nip46-connection-panel {
             display: flex;
             flex-direction: column;
+            gap: 2px;
             padding: 8px;
             border: 1px solid var(--border);
             border-radius: 8px;
