@@ -132,21 +132,21 @@
 
 - **主な症状または責務:** injectManifest、prompt update、precache/runtime cache、share target POST、既存client focus/notify、新規client open、SW-client MessageChannelを扱う。
 - **主な実装ファイル:** `vite.config.ts`、`public/sw.js`、`src/main.ts`、`src/stores/swStore.svelte.ts`、`src/lib/shareHandler.ts`、`src/lib/utils/swCommunication.ts`、`src/lib/swClientUtils.ts`、`src/lib/swListenerUtils.ts`、`src/lib/swMessageDispatchUtils.ts`。
-- **主な関数、store、hook、controller:** VitePWA `injectManifest`、`useRegisterSW()`、`getSharedMediaWithFallback()`、`redirectToAvailableSharedClient()`、`focusAndNotifySharedClient()`、`registerServiceWorkerEventListeners()`、`ChannelImageCacheController`、`ChannelPicture`。
+- **主な関数、store、hook、controller:** VitePWA `injectManifest`、`useRegisterSW()`、`createAcceptedServiceWorkerUpdateReloadController()`、`getSharedMediaWithFallback()`、`redirectToAvailableSharedClient()`、`focusAndNotifySharedClient()`、`registerServiceWorkerEventListeners()`、`ChannelImageCacheController`、`ChannelPicture`。
 - **Event source:** SW `install/activate/fetch/message`、manifest share-target POST、`controllerchange`、registration update、MessageChannel response。
-- **StateまたはCSS変数:** SW version/cache names、precache manifest、`ServiceWorkerState.sharedMediaCache`、`swUpdateStatus`、shared media IndexedDB record、`channelImageCacheMeta`。チャンネル画像はmount時のSW control状態を固定し、表示途中の`controllerchange`ではproxyへ切り替えない。
+- **StateまたはCSS変数:** SW version/cache names、precache manifest、`ServiceWorkerState.sharedMediaCache`、`swUpdateStatus`、更新を承認した現在ページだけが保持するreload許可、shared media IndexedDB record、`channelImageCacheMeta`。チャンネル画像はmount時のSW control状態を固定し、表示途中の`controllerchange`ではproxyへ切り替えない。
 - **Cleanup所有者:** SW event listenerはworker lifetime。MessageChannelはresponse/timeoutでportをcloseする。`controllerchange` listenerはresolve/timeoutで解除する。
 - **関連テスト:** `src/test/unit/sw.test.ts`、`src/test/unit/swListenerUtils.test.ts`、`src/test/unit/swMessageDispatchUtils.test.ts`、`src/test/unit/swClientUtils.test.ts`、`src/test/unit/shareHandler.test.ts`、`src/test/unit/fileUploadManager.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** install/update/offline/cache、share sheetからのPOST、standalone window reuse、stale worker/clientはinstalled PWAまたは専用browser環境が必要。
-- **注意点:** `vite.config.ts`のbaseはVercel以外`/ehagaki/`。`ffmpeg-core/**/*`はprecache対象外。SW変更ではmirrored unit testsと`npm run build`を必ず確認する。
+- **注意点:** `vite.config.ts`のbaseはVercel以外`/ehagaki/`。`ffmpeg-core/**/*`はprecache対象外。prompt更新は固定timerではなくWorkboxのcontrol change完了後に、承認したページだけをreloadする。SW変更ではmirrored unit testsと`npm run build`を必ず確認する。
 
 ## IndexedDB、Dexie、複数context
 
 - **主な症状または責務:** appとservice workerで同一DB schemaを共有し、draft/profile/relay/shared media/post history/cache等を永続化する。iframeではupload destination snapshotを親へ委譲できる。
 - **主な実装ファイル:** `src/lib/storage/ehagakiDb.ts`、`src/lib/storage/ehagakiDbConstants.ts`、各`src/lib/storage/*Repository.ts`、`src/lib/swIndexedDbSchema.ts`、`src/lib/swIndexedDbOperationUtils.ts`、`public/sw.js`、`src/lib/embedIndexedDbService.ts`。
-- **主な関数、store、hook、controller:** `EHagakiDB`、`ehagakiDb`、`EHAGAKI_DB_NAME`、`EHAGAKI_DB_VERSION`、repository methods、`ensureEhagakiObjectStores()`、SW IndexedDB manager、`EmbedIndexedDbService`。
-- **Event source:** Dexie query/transaction、raw IndexedDB `open/upgradeneeded/success/error`、SW fetch/message、iframe request/response、account reset。
-- **StateまたはCSS変数:** DB name `eHagakiDB`、version `13`、object stores/indexes、fixed shared media record `latest`、repository caches/pending requests。
+- **主な関数、store、hook、controller:** `EHagakiDB`、`ehagakiDb`、`EHAGAKI_DB_NAME`、`EHAGAKI_DB_VERSION`、`POST_HISTORY_TIMELINE_INDEX`、repository methods、`ensureCurrentEHagakiDbSchema()`、SW IndexedDB manager、`EmbedIndexedDbService`。
+- **Event source:** Dexie query/transaction/`versionchange`/`blocked`、raw IndexedDB `open/upgradeneeded/blocked/success/error`、SW fetch/message、iframe request/response、account reset。
+- **StateまたはCSS変数:** DB name `eHagakiDB`、logical version `15`／native version `150`、postHistory timeline index `[pubkeyHex+postedAt+createdAt+eventId]`、object stores/indexes、fixed shared media record `latest`、repository caches/pending requests。
 - **Cleanup所有者:** repository testsとaccount resetはDBをcloseする。SW raw IndexedDB helperはoperation完了時にcloseする。iframe request timeoutはserviceがclearする。
 - **関連テスト:** `src/test/unit/ehagakiDb.test.ts`、各repository test、`src/test/unit/swIndexedDbSchema.test.ts`、`src/test/unit/swIndexedDbOperationUtils.test.ts`、`src/test/unit/sw.test.ts`、`src/test/unit/embedIndexedDbService.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** upgrade中の複数tab、stale worker、versionchange/blocked、storage partitioning、iframe delegation、reload後の永続化はbrowser integrationが必要。

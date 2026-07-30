@@ -19,8 +19,10 @@ describe('swIndexedDbOperationUtils', () => {
             resolve();
         });
 
+        const transaction = { objectStore: vi.fn() };
+        const onUpgradeNeeded = vi.fn();
         queueMicrotask(() => {
-            request.onupgradeneeded?.({ target: { result: db } });
+            request.onupgradeneeded?.({ target: { result: db, transaction } });
             request.onsuccess?.({ target: { result: db } });
         });
 
@@ -30,11 +32,62 @@ describe('swIndexedDbOperationUtils', () => {
             },
             dbName: 'eHagakiDB',
             dbVersion: 1,
-            onUpgradeNeeded: vi.fn(),
+            onUpgradeNeeded,
             operation,
         });
 
         expect(operation).toHaveBeenCalledTimes(1);
+        expect(onUpgradeNeeded).toHaveBeenCalledWith(db, transaction);
+    });
+
+    it('blocked を通知した後も同じ open request の成功を待つ', async () => {
+        const request = {
+            onupgradeneeded: null as any,
+            onblocked: null as null | (() => void),
+            onerror: null as any,
+            onsuccess: null as any,
+        };
+        const db = { close: vi.fn() };
+        const onBlocked = vi.fn();
+        const operation = vi.fn((_database, resolve) => resolve());
+
+        queueMicrotask(() => {
+            request.onblocked?.();
+            request.onsuccess?.({ target: { result: db } });
+        });
+
+        await executeServiceWorkerIndexedDbOperation({
+            indexedDb: { open: vi.fn(() => request) },
+            dbName: 'eHagakiDB',
+            dbVersion: 150,
+            onBlocked,
+            operation,
+        });
+
+        expect(onBlocked).toHaveBeenCalledOnce();
+        expect(operation).toHaveBeenCalledWith(db, expect.any(Function), expect.any(Function));
+    });
+
+    it('VersionError を保持して reject し DB reset へ変換しない', async () => {
+        const versionError = Object.assign(new Error('Requested version is lower'), {
+            name: 'VersionError',
+        });
+        const request = {
+            error: versionError,
+            onupgradeneeded: null as any,
+            onblocked: null as null | (() => void),
+            onerror: null as null | (() => void),
+            onsuccess: null as any,
+        };
+
+        queueMicrotask(() => request.onerror?.());
+
+        await expect(executeServiceWorkerIndexedDbOperation({
+            indexedDb: { open: vi.fn(() => request) },
+            dbName: 'eHagakiDB',
+            dbVersion: 140,
+            operation: vi.fn(),
+        })).rejects.toBe(versionError);
     });
 
     it('createPutSharedMediaDbOperation persists into the shared media store', async () => {

@@ -35,7 +35,11 @@ describe("ServiceWorkerChannelImageMetaRepository", () => {
             indexedDB,
             name,
             EHAGAKI_DB_NATIVE_VERSION,
-            ensureCurrentEHagakiDbSchema,
+            (db, transaction) => ensureCurrentEHagakiDbSchema(
+                db,
+                "sharedMedia",
+                transaction,
+            ),
         );
         await expect(repository.getChannelMetadata("a".repeat(64)))
             .resolves.toMatchObject({
@@ -77,7 +81,11 @@ describe("ServiceWorkerChannelImageMetaRepository", () => {
             indexedDB,
             name,
             EHAGAKI_DB_NATIVE_VERSION,
-            ensureCurrentEHagakiDbSchema,
+            (db, transaction) => ensureCurrentEHagakiDbSchema(
+                db,
+                "sharedMedia",
+                transaction,
+            ),
         );
         await expect(repository.getChannelMetadata("b".repeat(64)))
             .resolves.toBeNull();

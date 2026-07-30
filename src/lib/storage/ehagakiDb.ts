@@ -4,6 +4,7 @@ import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDes
 import {
     EHAGAKI_DB_NAME,
     EHAGAKI_DB_VERSION,
+    POST_HISTORY_TIMELINE_INDEX,
 } from "./ehagakiDbConstants";
 
 export {
@@ -11,6 +12,16 @@ export {
     EHAGAKI_DB_VERSION,
 };
 export const SHARED_MEDIA_RECORD_ID = "latest";
+
+type EHagakiDbUpgradeBlockedListener = () => void;
+const ehagakiDbUpgradeBlockedListeners = new Set<EHagakiDbUpgradeBlockedListener>();
+
+export function subscribeEHagakiDbUpgradeBlocked(
+    listener: EHagakiDbUpgradeBlockedListener,
+): () => void {
+    ehagakiDbUpgradeBlockedListeners.add(listener);
+    return () => ehagakiDbUpgradeBlockedListeners.delete(listener);
+}
 
 export interface MetaRecord {
     key: string;
@@ -285,6 +296,10 @@ export class EHagakiDB extends Dexie {
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
 
+        this.on("blocked", () => {
+            ehagakiDbUpgradeBlockedListeners.forEach((listener) => listener());
+        });
+
         this.version(EHAGAKI_DB_VERSION).stores({
             meta: "key, updatedAt",
             emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
@@ -297,7 +312,7 @@ export class EHagakiDB extends Dexie {
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
-            postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
+            postHistory: `id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt], ${POST_HISTORY_TIMELINE_INDEX}`,
             postHistoryChildInteractions: "id, eventId, parentEventId, rootEventId, authorPubkey, kind, createdAt, fetchedAt, updatedAt, schemaVersion, [parentEventId+createdAt]",
             postHistoryDeletionRequests: "id, targetEventId, targetAuthorPubkey, deletionEventId, fetchedAt, [targetAuthorPubkey+targetEventId]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",

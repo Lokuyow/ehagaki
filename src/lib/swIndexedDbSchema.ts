@@ -1,10 +1,22 @@
+import {
+    POST_HISTORY_TIMELINE_INDEX,
+    POST_HISTORY_TIMELINE_KEY_PATH,
+} from './storage/ehagakiDbConstants';
+
 export interface IndexedDbSchemaIndexDefinition {
     name: string;
     keyPath: string | string[];
 }
 
 export interface IndexedDbObjectStoreLike {
+    indexNames?: {
+        contains: (name: string) => boolean;
+    };
     createIndex: (name: string, keyPath: string | string[]) => void;
+}
+
+export interface IndexedDbUpgradeTransactionLike {
+    objectStore: (name: string) => IndexedDbObjectStoreLike;
 }
 
 export interface IndexedDbLike {
@@ -36,7 +48,9 @@ export function createObjectStoreIfMissing(
 export function ensureCurrentEHagakiDbSchema(
     db: IndexedDbLike,
     sharedMediaStoreName = 'sharedMedia',
+    upgradeTransaction?: IndexedDbUpgradeTransactionLike | null,
 ): void {
+    const postHistoryAlreadyExists = db.objectStoreNames.contains('postHistory');
     createObjectStoreIfMissing(db, 'meta', 'key', [
         { name: 'updatedAt', keyPath: 'updatedAt' },
     ]);
@@ -131,7 +145,17 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
         { name: '[pubkeyHex+postedAt]', keyPath: ['pubkeyHex', 'postedAt'] },
         { name: '[pubkeyHex+createdAt]', keyPath: ['pubkeyHex', 'createdAt'] },
+        { name: POST_HISTORY_TIMELINE_INDEX, keyPath: POST_HISTORY_TIMELINE_KEY_PATH },
     ]);
+    if (postHistoryAlreadyExists && upgradeTransaction) {
+        const postHistoryStore = upgradeTransaction.objectStore('postHistory');
+        if (!postHistoryStore.indexNames?.contains(POST_HISTORY_TIMELINE_INDEX)) {
+            postHistoryStore.createIndex(
+                POST_HISTORY_TIMELINE_INDEX,
+                POST_HISTORY_TIMELINE_KEY_PATH,
+            );
+        }
+    }
     createObjectStoreIfMissing(db, 'postHistoryChildInteractions', 'id', [
         { name: 'eventId', keyPath: 'eventId' },
         { name: 'parentEventId', keyPath: 'parentEventId' },

@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import Dexie from "dexie";
+import Dexie, { cmp } from "dexie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     clearPostHistoryShouldReturnToLatestAfterLocalPost,
@@ -8,7 +8,11 @@ import {
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
-import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
+import {
+    comparePostHistoryTimelineOrder,
+    DexiePostHistoryRepository,
+} from "../../lib/storage/postHistoryRepository";
+import { POST_HISTORY_TIMELINE_INDEX } from "../../lib/storage/ehagakiDbConstants";
 
 const testDbNames = new Set<string>();
 
@@ -63,6 +67,115 @@ function createPostHistoryRecord(input: {
         rawEvent: null,
         updatedAt: input.postedAt,
         schemaVersion: 2,
+    };
+}
+
+function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
+    const timelineKey = (record: PostHistoryRecord) => [
+        record.pubkeyHex,
+        record.postedAt,
+        record.createdAt,
+        record.eventId,
+    ];
+    const ascending = [...records].sort((left, right) =>
+        cmp(timelineKey(left), timelineKey(right))
+    );
+    const materializedCounts: number[] = [];
+    const queriedIndexes: string[] = [];
+
+    class InstrumentedCollection {
+        private reversed = false;
+        private maximum = Number.POSITIVE_INFINITY;
+        private predicates: Array<(record: PostHistoryRecord) => boolean> = [];
+
+        constructor(
+            private readonly lower: unknown,
+            private readonly upper: unknown,
+            private readonly includeLower: boolean,
+            private readonly includeUpper: boolean,
+        ) {}
+
+        reverse() {
+            this.reversed = !this.reversed;
+            return this;
+        }
+
+        filter(predicate: (record: PostHistoryRecord) => boolean) {
+            this.predicates.push(predicate);
+            return this;
+        }
+
+        limit(limit: number) {
+            this.maximum = Math.min(this.maximum, limit);
+            return this;
+        }
+
+        private materialize(): PostHistoryRecord[] {
+            const result: PostHistoryRecord[] = [];
+            const source = this.reversed ? [...ascending].reverse() : ascending;
+            for (const record of source) {
+                const key = timelineKey(record);
+                const lowerComparison = cmp(key, this.lower);
+                const upperComparison = cmp(key, this.upper);
+                if (
+                    (lowerComparison < 0 || (!this.includeLower && lowerComparison === 0))
+                    || (upperComparison > 0 || (!this.includeUpper && upperComparison === 0))
+                    || this.predicates.some((predicate) => !predicate(record))
+                ) {
+                    continue;
+                }
+
+                result.push(record);
+                if (result.length >= this.maximum) break;
+            }
+            materializedCounts.push(result.length);
+            return result;
+        }
+
+        async toArray() {
+            return this.materialize();
+        }
+
+        async first() {
+            const previousMaximum = this.maximum;
+            this.maximum = 1;
+            const [first] = this.materialize();
+            this.maximum = previousMaximum;
+            return first;
+        }
+    }
+
+    const postHistory = {
+        where(index: string) {
+            queriedIndexes.push(index);
+            return {
+                between(
+                    lower: unknown,
+                    upper: unknown,
+                    includeLower = true,
+                    includeUpper = true,
+                ) {
+                    return new InstrumentedCollection(
+                        lower,
+                        upper,
+                        includeLower,
+                        includeUpper,
+                    );
+                },
+            };
+        },
+        async get(eventId: string) {
+            return records.find((record) => record.eventId === eventId);
+        },
+    };
+
+    return {
+        db: {
+            postHistory,
+            transaction: async (_mode: string, _table: unknown, callback: () => unknown) => callback(),
+        },
+        materializedCounts,
+        queriedIndexes,
     };
 }
 
@@ -678,6 +791,151 @@ describe("DexiePostHistoryRepository", () => {
         expect(record.deletionEventId).toBe("d".repeat(64));
 
         db.close();
+    });
+
+    it("canonical comparator と compound cursor は tie group の全文字列キーを同じ順序でページングする", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const otherPubkey = "c".repeat(64);
+        const eventIds = [
+            "0".repeat(64),
+            "9".repeat(64),
+            "a".repeat(64),
+            "f".repeat(64),
+            "A".repeat(64),
+            "g".repeat(64),
+        ];
+        const records = eventIds.map((eventId) => createPostHistoryRecord({
+            eventId,
+            pubkeyHex: pubkey,
+            postedAt: 5_000,
+            createdAt: 1_000,
+        }));
+        await db.postHistory.bulkPut([
+            ...records,
+            createPostHistoryRecord({
+                eventId: "z".repeat(64),
+                pubkeyHex: otherPubkey,
+                postedAt: 5_000,
+                createdAt: 1_000,
+            }),
+        ]);
+
+        const expected = [...records].sort(comparePostHistoryTimelineOrder);
+        const indexOrder = await db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between([pubkey], [pubkey, Dexie.maxKey])
+            .reverse()
+            .toArray();
+        expect(indexOrder.map((record) => record.eventId)).toEqual(
+            expected.map((record) => record.eventId),
+        );
+
+        for (const limit of [1, 3, eventIds.length]) {
+            await expect(repository.getLatestVisibleChunk({
+                pubkeyHex: pubkey,
+                limit,
+            })).resolves.toEqual(expected.slice(0, limit));
+        }
+        await expect(repository.getPage({
+            pubkeyHex: pubkey,
+            page: 1,
+            pageSize: 3,
+        })).resolves.toEqual(expected.slice(0, 3));
+
+        const paged: PostHistoryRecord[] = [];
+        let cursor: PostHistoryRecord | undefined;
+        do {
+            const chunk = cursor
+                ? await repository.getOlderVisibleChunk({
+                    pubkeyHex: pubkey,
+                    cursor,
+                    limit: 2,
+                })
+                : await repository.getLatestVisibleChunk({
+                    pubkeyHex: pubkey,
+                    limit: 2,
+                });
+            paged.push(...chunk);
+            cursor = chunk[chunk.length - 1];
+            if (chunk.length < 2) break;
+        } while (cursor);
+
+        expect(paged).toEqual(expected);
+        expect(new Set(paged.map((record) => record.eventId)).size).toBe(expected.length);
+
+        const boundary = expected[4]!;
+        await expect(repository.getNewerVisibleChunk({
+            pubkeyHex: pubkey,
+            cursor: boundary,
+            limit: 2,
+        })).resolves.toEqual(expected.slice(2, 4));
+        await expect(repository.getVisibleChunkAroundEventId({
+            pubkeyHex: pubkey,
+            eventId: boundary.eventId,
+            keepAbove: 2,
+            limit: 4,
+        })).resolves.toEqual(expected.slice(2, 6));
+
+        db.close();
+    });
+
+    it("67,000件でも通常window queryは全件取得APIを経由せずlimit内を返す", async () => {
+        const pubkey = "b".repeat(64);
+        const total = 67_000;
+        const records = Array.from({ length: total }, (_, index) => {
+            const order = total - index;
+            return createPostHistoryRecord({
+                eventId: order.toString(16).padStart(64, "0"),
+                pubkeyHex: pubkey,
+                postedAt: order,
+                createdAt: order,
+            });
+        });
+        const { db, materializedCounts, queriedIndexes } = createInstrumentedTimelineDb(records);
+        const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+        const getVisibleAll = vi.spyOn(repository, "getVisibleAll");
+
+        const latest = await repository.getLatestVisibleChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1,
+            limit: 25,
+        });
+        const older = await repository.getOlderVisibleChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1,
+            cursor: latest.at(-1)!,
+            limit: 25,
+        });
+        const newer = await repository.getNewerVisibleChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1,
+            cursor: older[0]!,
+            limit: 10,
+        });
+        const dateChunk = await repository.getVisibleChunkFromCreatedAt({
+            pubkeyHex: pubkey,
+            visibleUntil: 1,
+            createdAt: 33_500,
+            limit: 25,
+        });
+        const around = await repository.getVisibleChunkAroundEventId({
+            pubkeyHex: pubkey,
+            visibleUntil: 1,
+            eventId: records[33_500]!.eventId,
+            keepAbove: 5,
+            limit: 25,
+        });
+
+        expect([latest, older, dateChunk, around].map((chunk) => chunk.length))
+            .toEqual([25, 25, 25, 25]);
+        expect(newer).toHaveLength(10);
+        expect(getVisibleAll).not.toHaveBeenCalled();
+        expect(queriedIndexes).not.toContain("[pubkeyHex+postedAt]");
+        expect(queriedIndexes.every((index) => index === POST_HISTORY_TIMELINE_INDEX))
+            .toBe(true);
+        expect(Math.max(...materializedCounts)).toBeLessThanOrEqual(25);
     });
 
     it("visibleUntil より古い保存投稿を index で検出し、sparse chunk を前後へ移動できる", async () => {

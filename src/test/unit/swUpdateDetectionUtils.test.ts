@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+    createAcceptedServiceWorkerUpdateReloadController,
     getStatusForServiceWorkerState,
     watchServiceWorkerUpdateInstallation,
     type ServiceWorkerLike,
@@ -36,6 +37,17 @@ class MockServiceWorkerRegistration
 }
 
 describe("swUpdateDetectionUtils", () => {
+    it("更新を承認したページだけが control change 後に一度reloadする", () => {
+        const reload = vi.fn();
+        const controller = createAcceptedServiceWorkerUpdateReloadController(reload);
+
+        expect(controller.handleControlChange()).toBe(false);
+        controller.markAccepted();
+        expect(controller.handleControlChange()).toBe(true);
+        expect(controller.handleControlChange()).toBe(false);
+        expect(reload).toHaveBeenCalledOnce();
+    });
+
     it("Service Worker の state から更新UI状態を返す", () => {
         expect(getStatusForServiceWorkerState("parsed")).toBe("installing");
         expect(getStatusForServiceWorkerState("installing")).toBe(

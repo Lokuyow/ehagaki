@@ -1,5 +1,12 @@
 export interface IndexedDbOpenRequest<TDb> {
-    onupgradeneeded: ((event: { target: { result: TDb } }) => void) | null;
+    error?: Error | DOMException | null;
+    onupgradeneeded: ((event: {
+        target: {
+            result: TDb;
+            transaction?: unknown;
+        };
+    }) => void) | null;
+    onblocked?: (() => void) | null;
     onerror: (() => void) | null;
     onsuccess: ((event: { target: { result: TDb } }) => void) | null;
 }
@@ -33,12 +40,14 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
     dbName,
     dbVersion,
     onUpgradeNeeded,
+    onBlocked,
     operation,
 }: {
     indexedDb: IndexedDbOpenLike<TDb>;
     dbName: string;
     dbVersion: number;
-    onUpgradeNeeded?: (db: TDb) => void;
+    onUpgradeNeeded?: (db: TDb, transaction?: unknown) => void;
+    onBlocked?: () => void;
     operation: IndexedDbOperation<TDb>;
 }): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -46,10 +55,14 @@ export function executeServiceWorkerIndexedDbOperation<TDb>({
             const request = indexedDb.open(dbName, dbVersion);
 
             request.onupgradeneeded = (event) => {
-                onUpgradeNeeded?.(event.target.result);
+                onUpgradeNeeded?.(event.target.result, event.target.transaction);
             };
 
-            request.onerror = () => reject(new Error('IndexedDB open failed'));
+            request.onblocked = () => onBlocked?.();
+
+            request.onerror = () => reject(
+                request.error ?? new Error('IndexedDB open failed'),
+            );
 
             request.onsuccess = (event) => {
                 const db = event.target.result;

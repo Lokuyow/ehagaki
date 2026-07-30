@@ -21,7 +21,7 @@
     } from "../stores/relayStore.svelte";
     import { themeModeStore } from "../stores/themeStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
-    import { getCompressionLevels, SW_UPDATE_TIMEOUT } from "../lib/constants";
+    import { getCompressionLevels } from "../lib/constants";
     import {
         handleServiceWorkerRefresh,
         chunkArray,
@@ -80,6 +80,7 @@
     let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
     let isSwInstalling = $derived($swUpdateStatus === "installing");
+    let isDbUpgradeBlocked = $derived($swUpdateStatus === "blocked");
     let canApplySwUpdate = $derived($swUpdateStatus === "ready");
 
     $effect(() => {
@@ -92,9 +93,6 @@
         handleServiceWorkerRefresh(
             handleSwUpdate,
             (value) => isSwUpdatingStore.set(value),
-            {
-                timeout: SW_UPDATE_TIMEOUT,
-            },
         );
     }
 
@@ -260,7 +258,10 @@
             <div class="setting-section sw-update-section">
                 <div class="setting-row">
                     <span class="setting-label sw-update-label">
-                        {#if isSwInstalling}
+                        {#if isDbUpgradeBlocked}
+                            {$_("settingsDialog.db_upgrade_blocked") ||
+                                "ほかのeHagakiタブを閉じるか再読み込みしてください"}
+                        {:else if isSwInstalling}
                             {$_("settingsDialog.sw_update_installing") ||
                                 "アプリの更新をインストール中です"}
                         {:else}

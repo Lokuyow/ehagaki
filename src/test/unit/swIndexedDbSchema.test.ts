@@ -4,6 +4,10 @@ import {
     createObjectStoreIfMissing,
     ensureCurrentEHagakiDbSchema,
 } from '../../lib/swIndexedDbSchema';
+import {
+    POST_HISTORY_TIMELINE_INDEX,
+    POST_HISTORY_TIMELINE_KEY_PATH,
+} from '../../lib/storage/ehagakiDbConstants';
 
 function createMockDb(existingStores: string[] = []) {
     const createdStores = new Map<string, { keyPath: string; createIndex: ReturnType<typeof vi.fn> }>();
@@ -76,6 +80,10 @@ describe('swIndexedDbSchema', () => {
             '[pubkeyHex+postedAt]',
             ['pubkeyHex', 'postedAt'],
         );
+        expect(createdStores.get('postHistory')?.createIndex).toHaveBeenCalledWith(
+            POST_HISTORY_TIMELINE_INDEX,
+            POST_HISTORY_TIMELINE_KEY_PATH,
+        );
         expect(createdStores.get('postHistoryChildInteractions')?.createIndex)
             .toHaveBeenCalledWith(
                 '[parentEventId+createdAt]',
@@ -98,5 +106,42 @@ describe('swIndexedDbSchema', () => {
             'lastAccessedAt',
             'lastAccessedAt',
         );
+    });
+
+    it('既存 postHistory store には upgrade transaction から timeline index だけを追加する', () => {
+        const { db } = createMockDb(['postHistory']);
+        const existingStore = {
+            indexNames: {
+                contains: vi.fn().mockReturnValue(false),
+            },
+            createIndex: vi.fn(),
+        };
+        const upgradeTransaction = {
+            objectStore: vi.fn().mockReturnValue(existingStore),
+        };
+
+        ensureCurrentEHagakiDbSchema(db, 'sharedMedia', upgradeTransaction);
+
+        expect(upgradeTransaction.objectStore).toHaveBeenCalledWith('postHistory');
+        expect(existingStore.createIndex).toHaveBeenCalledWith(
+            POST_HISTORY_TIMELINE_INDEX,
+            POST_HISTORY_TIMELINE_KEY_PATH,
+        );
+    });
+
+    it('既存 timeline index を再作成しない', () => {
+        const { db } = createMockDb(['postHistory']);
+        const existingStore = {
+            indexNames: {
+                contains: vi.fn().mockReturnValue(true),
+            },
+            createIndex: vi.fn(),
+        };
+
+        ensureCurrentEHagakiDbSchema(db, 'sharedMedia', {
+            objectStore: vi.fn().mockReturnValue(existingStore),
+        });
+
+        expect(existingStore.createIndex).not.toHaveBeenCalled();
     });
 });

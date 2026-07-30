@@ -1,4 +1,28 @@
-export type SwUpdateStatus = "idle" | "installing" | "ready";
+export type SwUpdateStatus = "idle" | "installing" | "ready" | "blocked";
+
+export function createAcceptedServiceWorkerUpdateReloadController(
+    reload: () => void,
+): {
+    markAccepted: () => void;
+    handleControlChange: () => boolean;
+} {
+    let accepted = false;
+
+    return {
+        markAccepted() {
+            accepted = true;
+        },
+        handleControlChange() {
+            if (!accepted) {
+                return false;
+            }
+
+            accepted = false;
+            reload();
+            return true;
+        },
+    };
+}
 
 export interface ServiceWorkerLike extends EventTarget {
     state: ServiceWorkerState;

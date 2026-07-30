@@ -1,7 +1,6 @@
 import type {
   StorageAdapter,
   NavigatorAdapter,
-  WindowAdapter,
   TimeoutAdapter,
 } from "../types";
 import {
@@ -21,12 +20,6 @@ export const defaultStorageAdapter: StorageAdapter = {
 
 export const defaultNavigatorAdapter: NavigatorAdapter = {
   language: navigator.language
-};
-
-export const defaultWindowAdapter: WindowAdapter = {
-  location: {
-    reload: () => window.location.reload()
-  }
 };
 
 export const defaultTimeoutAdapter: TimeoutAdapter = {
@@ -90,25 +83,11 @@ export function initializeSettingsValues(
  * Service Worker更新処理
  */
 export function handleServiceWorkerRefresh(
-  handleSwUpdate: () => void,
+  handleSwUpdate: () => void | Promise<void>,
   setUpdating: (value: boolean) => void,
-  options: {
-    timeout?: number;
-    windowAdapter?: WindowAdapter;
-    timeoutAdapter?: TimeoutAdapter;
-  } = {}
 ) {
-  const {
-    timeout = 1000,
-    windowAdapter = defaultWindowAdapter,
-    timeoutAdapter = defaultTimeoutAdapter
-  } = options;
-
   setUpdating(true);
-  handleSwUpdate();
-  timeoutAdapter.setTimeout(() => {
-    windowAdapter.location.reload();
-  }, timeout);
+  return handleSwUpdate();
 }
 
 /**

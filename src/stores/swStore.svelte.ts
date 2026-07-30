@@ -2,14 +2,19 @@
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import {
+    createAcceptedServiceWorkerUpdateReloadController,
     watchServiceWorkerUpdateInstallation,
     type SwUpdateStatus,
 } from "../lib/swUpdateDetectionUtils";
+import { subscribeEHagakiDbUpgradeBlocked } from "../lib/storage/ehagakiDb";
 
 type StoreSubscriber<T> = (value: T) => void;
 
 const swUpdateStatusSubscribers = new Set<StoreSubscriber<SwUpdateStatus>>();
 let swUpdateStatusValue: SwUpdateStatus = "idle";
+const updateReloadController = createAcceptedServiceWorkerUpdateReloadController(
+    () => window.location.reload(),
+);
 
 function setSwUpdateStatus(value: SwUpdateStatus) {
     if (swUpdateStatusValue === "ready" && value === "installing") {
@@ -54,6 +59,16 @@ function watchRegistrationUpdate(registration: ServiceWorkerRegistration | undef
     });
 }
 
+subscribeEHagakiDbUpgradeBlocked(() => setSwUpdateStatus("blocked"));
+
+if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data?.type === "EHAGAKI_DB_UPGRADE_BLOCKED") {
+            setSwUpdateStatus("blocked");
+        }
+    });
+}
+
 // --- Service Worker管理 ---
 const swRegister = (() => {
     try {
@@ -69,6 +84,9 @@ const swRegister = (() => {
                 onNeedRefresh() {
                     console.log("SW needs refresh - showing prompt");
                     setSwUpdateStatus("ready");
+                },
+                onNeedReload() {
+                    updateReloadController.handleControlChange();
                 },
                 immediate: true,
                 onOfflineReady() {
@@ -107,7 +125,8 @@ export const swVersionStore = {
 };
 
 export function handleSwUpdate() {
-    swUpdateServiceWorker(true);
+    updateReloadController.markAccepted();
+    return swUpdateServiceWorker(true);
 }
 
 export function fetchSwVersion(): Promise<string | null> {

@@ -1,4 +1,4 @@
-import Dexie from "dexie";
+import Dexie, { cmp } from "dexie";
 import {
     cloneNostrEvent,
     extractPostHistoryChannelReference,
@@ -22,6 +22,7 @@ import type {
     EHagakiDB,
 } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
+import { POST_HISTORY_TIMELINE_INDEX } from "./ehagakiDbConstants";
 
 export const POST_HISTORY_SCHEMA_VERSION = 2;
 
@@ -171,7 +172,7 @@ function normalizePostHistoryDateChunkQuery(
     };
 }
 
-function comparePostHistoryTimelineOrder(
+export function comparePostHistoryTimelineOrder(
     left: Pick<PostHistoryRecord, "eventId" | "postedAt" | "createdAt">,
     right: Pick<PostHistoryRecord, "eventId" | "postedAt" | "createdAt">,
 ): number {
@@ -183,7 +184,7 @@ function comparePostHistoryTimelineOrder(
         return right.createdAt - left.createdAt;
     }
 
-    return right.eventId.localeCompare(left.eventId);
+    return cmp(right.eventId, left.eventId);
 }
 
 function isOlderThanTimelineCursor(
@@ -202,6 +203,32 @@ function isNewerThanTimelineCursor(
 
 function sortPostHistoryRecords(records: PostHistoryRecord[]): PostHistoryRecord[] {
     return records.sort(comparePostHistoryTimelineOrder);
+}
+
+type PostHistoryTimelineKey = [string, number, number, string];
+
+function toTimelineKey(
+    pubkeyHex: string,
+    cursor: PostHistoryTimelineCursor,
+): PostHistoryTimelineKey {
+    return [pubkeyHex, cursor.postedAt, cursor.createdAt, cursor.eventId];
+}
+
+function getTimelineBounds(pubkeyHex: string): {
+    lower: [string];
+    upper: [string, typeof Dexie.maxKey];
+} {
+    return {
+        lower: [pubkeyHex],
+        upper: [pubkeyHex, Dexie.maxKey],
+    };
+}
+
+function matchesVisibleUntil(
+    record: PostHistoryRecord,
+    visibleUntil: number | null,
+): boolean {
+    return visibleUntil === null || record.createdAt >= visibleUntil;
 }
 
 function toPostedAtFromCreatedAt(createdAt: number): number {
@@ -392,10 +419,11 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         const page = normalizePageNumber(options.page);
         const pageSize = normalizePageSize(options.pageSize);
+        const bounds = getTimelineBounds(options.pubkeyHex);
 
         return this.db.postHistory
-            .where("[pubkeyHex+postedAt]")
-            .between([options.pubkeyHex, Dexie.minKey], [options.pubkeyHex, Dexie.maxKey])
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, bounds.upper)
             .reverse()
             .offset((page - 1) * pageSize)
             .limit(pageSize)
@@ -413,84 +441,176 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async getLatestVisibleChunk(
         options: PostHistoryVisibleChunkOptions,
     ): Promise<PostHistoryRecord[]> {
-        const limit = normalizeChunkLimit(options.limit);
-        const records = await this.getVisibleAll(options);
+        if (!options.pubkeyHex) return [];
 
-        return records.slice(0, limit);
+        const limit = normalizeChunkLimit(options.limit);
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const bounds = getTimelineBounds(options.pubkeyHex);
+
+        return this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, bounds.upper)
+            .reverse()
+            .filter((record) => matchesVisibleUntil(record, visibleUntil))
+            .limit(limit)
+            .toArray();
     }
 
     async getOlderVisibleChunk(
         options: PostHistoryVisibleChunkCursorOptions,
     ): Promise<PostHistoryRecord[]> {
-        const limit = normalizeChunkLimit(options.limit);
-        const records = await this.getVisibleAll(options);
+        if (!options.pubkeyHex) return [];
 
-        return records.filter((record) =>
-            isOlderThanTimelineCursor(record, options.cursor)
-        ).slice(0, limit);
+        const limit = normalizeChunkLimit(options.limit);
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        const cursorKey = toTimelineKey(options.pubkeyHex, options.cursor);
+
+        return this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, cursorKey, true, false)
+            .reverse()
+            .filter((record) => matchesVisibleUntil(record, visibleUntil))
+            .limit(limit)
+            .toArray();
     }
 
     async getNewerVisibleChunk(
         options: PostHistoryVisibleChunkCursorOptions,
     ): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
         const limit = normalizeChunkLimit(options.limit);
-        const records = await this.getVisibleAll(options);
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        const cursorKey = toTimelineKey(options.pubkeyHex, options.cursor);
 
-        const newerRecords = records.filter((record) =>
-            isNewerThanTimelineCursor(record, options.cursor)
-        );
+        const records = await this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(cursorKey, bounds.upper, false, true)
+            .filter((record) => matchesVisibleUntil(record, visibleUntil))
+            .limit(limit)
+            .toArray();
 
-        return newerRecords.slice(Math.max(0, newerRecords.length - limit));
+        return records.reverse();
     }
 
     async getVisibleChunkFromCreatedAt(
         options: PostHistoryVisibleChunkFromCreatedAtOptions,
     ): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
         const limit = normalizeChunkLimit(options.limit);
         const targetCreatedAt = normalizeCreatedAtValue(options.createdAt);
         const query = normalizePostHistoryDateChunkQuery(options.query);
-        const records = query.contiguous
-            ? await this.getVisibleAll(options)
-            : await this.getAll(options);
+        const visibleUntil = query.contiguous
+            ? normalizeVisibleUntil(options.visibleUntil)
+            : null;
+        const bounds = getTimelineBounds(options.pubkeyHex);
 
-        if (records.length === 0) {
-            return [];
-        }
+        return this.db.transaction("r", this.db.postHistory, async () => {
+            const anchor = await this.db.postHistory
+                .where(POST_HISTORY_TIMELINE_INDEX)
+                .between(bounds.lower, bounds.upper)
+                .reverse()
+                .filter((record) =>
+                    matchesVisibleUntil(record, visibleUntil)
+                    && record.createdAt <= targetCreatedAt
+                )
+                .first();
 
-        const anchorIndex = records.findIndex((record) =>
-            record.createdAt <= targetCreatedAt
-        );
+            if (!anchor) {
+                const oldestRecords = await this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(bounds.lower, bounds.upper)
+                    .filter((record) => matchesVisibleUntil(record, visibleUntil))
+                    .limit(limit)
+                    .toArray();
 
-        if (anchorIndex < 0) {
-            return records.slice(Math.max(0, records.length - limit));
-        }
+                return oldestRecords.reverse();
+            }
 
-        return records.slice(anchorIndex, anchorIndex + limit);
+            if (limit === 1) {
+                return [anchor];
+            }
+
+            const olderRecords = await this.db.postHistory
+                .where(POST_HISTORY_TIMELINE_INDEX)
+                .between(bounds.lower, toTimelineKey(options.pubkeyHex!, anchor), true, false)
+                .reverse()
+                .filter((record) => matchesVisibleUntil(record, visibleUntil))
+                .limit(limit - 1)
+                .toArray();
+
+            return [anchor, ...olderRecords];
+        });
     }
 
     async getVisibleChunkAroundEventId(
         options: PostHistoryVisibleChunkAroundEventIdOptions,
     ): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
         const limit = normalizeChunkLimit(options.limit);
         const keepAbove = Number.isFinite(options.keepAbove)
-            ? Math.max(0, Math.trunc(options.keepAbove ?? 0))
+            ? Math.min(limit - 1, Math.max(0, Math.trunc(options.keepAbove ?? 0)))
             : 0;
-        const records = await this.getVisibleAll(options);
-        const anchorIndex = records.findIndex(
-            (record) => record.eventId === options.eventId,
-        );
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        const bounds = getTimelineBounds(options.pubkeyHex);
 
-        if (anchorIndex < 0) {
-            return [];
-        }
+        return this.db.transaction("r", this.db.postHistory, async () => {
+            const anchor = await this.db.postHistory.get(options.eventId);
+            if (
+                !anchor
+                || anchor.pubkeyHex !== options.pubkeyHex
+                || !matchesVisibleUntil(anchor, visibleUntil)
+            ) {
+                return [];
+            }
 
-        const maxStartIndex = Math.max(0, records.length - limit);
-        const startIndex = Math.min(
-            maxStartIndex,
-            Math.max(0, anchorIndex - keepAbove),
-        );
+            const anchorKey = toTimelineKey(options.pubkeyHex!, anchor);
+            const newerAscending = keepAbove === 0
+                ? []
+                : await this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(anchorKey, bounds.upper, false, true)
+                    .filter((record) => matchesVisibleUntil(record, visibleUntil))
+                    .limit(keepAbove)
+                    .toArray();
+            const olderLimit = limit - 1 - newerAscending.length;
+            const olderRecords = olderLimit === 0
+                ? []
+                : await this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(bounds.lower, anchorKey, true, false)
+                    .reverse()
+                    .filter((record) => matchesVisibleUntil(record, visibleUntil))
+                    .limit(olderLimit)
+                    .toArray();
+            const missingCount = limit - 1 - newerAscending.length - olderRecords.length;
 
-        return records.slice(startIndex, startIndex + limit);
+            if (missingCount > 0) {
+                const newerBoundary = newerAscending[newerAscending.length - 1] ?? anchor;
+                const additionalNewer = await this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(
+                        toTimelineKey(options.pubkeyHex!, newerBoundary),
+                        bounds.upper,
+                        false,
+                        true,
+                    )
+                    .filter((record) => matchesVisibleUntil(record, visibleUntil))
+                    .limit(missingCount)
+                    .toArray();
+                newerAscending.push(...additionalNewer);
+            }
+
+            return [
+                ...newerAscending.reverse(),
+                anchor,
+                ...olderRecords,
+            ];
+        });
     }
 
     async hasPostsBeforeCreatedAt(

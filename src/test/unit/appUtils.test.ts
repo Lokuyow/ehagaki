@@ -28,8 +28,6 @@ import {
 import type {
     StorageAdapter,
     NavigatorAdapter,
-    WindowAdapter,
-    TimeoutAdapter,
     UploadHelperDependencies,
     ImageDimensions
 } from '../../lib/types';
@@ -336,8 +334,6 @@ describe('Nostr Key Utilities', () => {
 describe('Settings Utilities', () => {
     let mockStorage: StorageAdapter;
     let mockNavigator: NavigatorAdapter;
-    let mockWindow: WindowAdapter;
-    let mockTimeout: TimeoutAdapter;
 
     beforeEach(() => {
         mockStorage = {
@@ -346,14 +342,6 @@ describe('Settings Utilities', () => {
         };
         mockNavigator = {
             language: 'en-US'
-        };
-        mockWindow = {
-            location: {
-                reload: vi.fn()
-            }
-        };
-        mockTimeout = {
-            setTimeout: vi.fn()
         };
     });
 
@@ -417,37 +405,14 @@ describe('Settings Utilities', () => {
     });
 
     describe('handleServiceWorkerRefresh', () => {
-        it('should handle service worker refresh', () => {
-            const handleSwUpdate = vi.fn();
+        it('starts the accepted service worker update without scheduling a reload timer', async () => {
+            const handleSwUpdate = vi.fn(async () => undefined);
             const setUpdating = vi.fn();
 
-            handleServiceWorkerRefresh(handleSwUpdate, setUpdating, {
-                timeout: 500,
-                windowAdapter: mockWindow,
-                timeoutAdapter: mockTimeout
-            });
+            await handleServiceWorkerRefresh(handleSwUpdate, setUpdating);
 
             expect(setUpdating).toHaveBeenCalledWith(true);
             expect(handleSwUpdate).toHaveBeenCalled();
-            expect(mockTimeout.setTimeout).toHaveBeenCalledWith(expect.any(Function), 500);
-
-            // Execute timeout callback
-            const callback = (mockTimeout.setTimeout as any).mock.calls[0][0];
-            callback();
-
-            expect(mockWindow.location.reload).toHaveBeenCalled();
-        });
-
-        it('should use default timeout', () => {
-            const handleSwUpdate = vi.fn();
-            const setUpdating = vi.fn();
-
-            handleServiceWorkerRefresh(handleSwUpdate, setUpdating, {
-                windowAdapter: mockWindow,
-                timeoutAdapter: mockTimeout
-            });
-
-            expect(mockTimeout.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
         });
     });
 });

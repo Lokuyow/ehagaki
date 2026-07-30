@@ -341,6 +341,7 @@
     "sw_update_available": "アプリの更新があります",
     "sw_update_installing": "アプリの更新をインストール中です",
     "sw_update_installing_short": "インストール中...",
+    "db_upgrade_blocked": "ほかのeHagakiタブを閉じるか再読み込みしてください",
     "update_app": "アプリを更新",
     "updating": "更新中...",
     "author_info": "制作:",

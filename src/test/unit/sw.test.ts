@@ -38,6 +38,7 @@ import {
     executeServiceWorkerIndexedDbOperation,
 } from '../../lib/swIndexedDbOperationUtils';
 import { ensureCurrentEHagakiDbSchema } from '../../lib/swIndexedDbSchema';
+import { EHAGAKI_DB_NATIVE_VERSION } from '../../lib/storage/ehagakiDbConstants';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
 import { persistSharedMediaIndexedDbRecord } from '../../lib/swSharedMediaPersistence';
@@ -139,7 +140,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     ];
     const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
     const INDEXEDDB_NAME = 'eHagakiDB';
-    const INDEXEDDB_VERSION = 5;
+    const INDEXEDDB_VERSION = EHAGAKI_DB_NATIVE_VERSION;
     const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
     const SHARED_MEDIA_RECORD_ID = 'latest';
     const SHARED_MEDIA_SCHEMA_VERSION = 1;
@@ -223,9 +224,24 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     class IndexedDBManager {
         constructor(public dependencies = ServiceWorkerDependencies) { }
 
+        notifyUpgradeBlocked() {
+            this.dependencies.console.warn(
+                'IndexedDB upgrade blocked; close or reload other eHagaki tabs',
+            );
+            void this.dependencies.clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true,
+            }).then((clients: Array<{ postMessage?: (message: unknown) => void }>) => {
+                clients.forEach((client) => client.postMessage?.({
+                    type: 'EHAGAKI_DB_UPGRADE_BLOCKED',
+                }));
+            });
+        }
+
         async executeOperation(operation: any) {
             const mockRequest = {
                 onupgradeneeded: null as any,
+                onblocked: null as any,
                 onerror: null as any,
                 onsuccess: null as any,
             };
@@ -248,9 +264,17 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 }),
                 close: vi.fn(),
             };
+            const upgradeTransaction = {
+                objectStore: vi.fn().mockReturnValue({
+                    indexNames: { contains: vi.fn().mockReturnValue(false) },
+                    createIndex: vi.fn(),
+                }),
+            };
 
             queueMicrotask(() => {
-                mockRequest.onupgradeneeded?.({ target: { result: mockDb } });
+                mockRequest.onupgradeneeded?.({
+                    target: { result: mockDb, transaction: upgradeTransaction },
+                });
                 mockRequest.onsuccess?.({ target: { result: mockDb } });
             });
 
@@ -263,9 +287,14 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 },
                 dbName: INDEXEDDB_NAME,
                 dbVersion: INDEXEDDB_VERSION,
-                onUpgradeNeeded: (db: any) => {
-                    ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME);
+                onUpgradeNeeded: (db: any, transaction) => {
+                    ensureCurrentEHagakiDbSchema(
+                        db,
+                        SHARED_MEDIA_STORE_NAME,
+                        transaction as any,
+                    );
                 },
+                onBlocked: () => this.notifyUpgradeBlocked(),
                 operation,
             });
         }
@@ -714,6 +743,10 @@ describe('Service Worker Tests', () => {
     });
 
     describe('IndexedDBManager', () => {
+        it('uses the shared native IndexedDB version', () => {
+            expect(swModule.INDEXEDDB_VERSION).toBe(150);
+        });
+
         it('should save shared media in the app database', async () => {
             const manager = new swModule.IndexedDBManager();
             await manager.putSharedMedia({ id: swModule.SHARED_MEDIA_RECORD_ID, images: [] });
@@ -730,6 +763,19 @@ describe('Service Worker Tests', () => {
 
             expect(swModule.ServiceWorkerDependencies.indexedDB.open).toHaveBeenCalled();
         }, 5000); // タイムアウトを5秒に短縮
+
+        it('notifies controlled clients when an IndexedDB upgrade is blocked', async () => {
+            const postMessage = vi.fn();
+            swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([{ postMessage }]);
+            const manager = new swModule.IndexedDBManager();
+
+            manager.notifyUpgradeBlocked();
+            await vi.waitFor(() => {
+                expect(postMessage).toHaveBeenCalledWith({
+                    type: 'EHAGAKI_DB_UPGRADE_BLOCKED',
+                });
+            });
+        });
     });
 
     describe('CacheManager', () => {

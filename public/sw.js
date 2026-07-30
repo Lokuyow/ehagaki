@@ -242,6 +242,23 @@ class IndexedDBManager {
     constructor(dependencies = ServiceWorkerDependencies) {
         this.indexedDB = dependencies.indexedDB;
         this.console = dependencies.console;
+        this.clients = dependencies.clients;
+    }
+
+    notifyUpgradeBlocked() {
+        this.console.warn(
+            'IndexedDB upgrade blocked; close or reload other eHagaki tabs',
+        );
+        void this.clients?.matchAll?.({
+            type: 'window',
+            includeUncontrolled: true,
+        }).then((clients) => {
+            clients.forEach((client) => client.postMessage?.({
+                type: 'EHAGAKI_DB_UPGRADE_BLOCKED',
+            }));
+        }).catch((error) => {
+            this.console.warn('Failed to notify clients about blocked IndexedDB upgrade', error);
+        });
     }
 
     // IndexedDB操作の共通処理
@@ -250,9 +267,14 @@ class IndexedDBManager {
             indexedDb: this.indexedDB,
             dbName: INDEXEDDB_NAME,
             dbVersion: INDEXEDDB_VERSION,
-            onUpgradeNeeded: (db) => {
-                ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME);
+            onUpgradeNeeded: (db, transaction) => {
+                ensureCurrentEHagakiDbSchema(
+                    db,
+                    SHARED_MEDIA_STORE_NAME,
+                    transaction,
+                );
             },
+            onBlocked: () => this.notifyUpgradeBlocked(),
             operation,
         });
     }
@@ -629,7 +651,12 @@ class ServiceWorkerCore {
             ServiceWorkerDependencies.indexedDB,
             INDEXEDDB_NAME,
             INDEXEDDB_VERSION,
-            (db) => ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME),
+            (db, transaction) => ensureCurrentEHagakiDbSchema(
+                db,
+                SHARED_MEDIA_STORE_NAME,
+                transaction,
+            ),
+            () => this.indexedDBManager.notifyUpgradeBlocked(),
         );
         this.channelImageCacheController = new ChannelImageCacheController({
             cacheStorage: ServiceWorkerDependencies.caches,

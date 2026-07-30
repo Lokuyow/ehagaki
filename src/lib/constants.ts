@@ -154,7 +154,6 @@ export const VALID_COMPRESSION_LEVELS = ["none", "low", "medium", "high"] as con
 export const MAX_DRAFTS = 100; // 下書きの最大保存数
 export const DRAFT_PREVIEW_LENGTH = 50; // 下書きプレビューの最大文字数
 
-export const SW_UPDATE_TIMEOUT = 1000;
 export const RELAY_LIST_REFRESH_DELAY = 0;
 
 export const uploadEndpoints = [

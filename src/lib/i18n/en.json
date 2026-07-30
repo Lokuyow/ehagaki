@@ -341,6 +341,7 @@
     "sw_update_available": "A new update is available",
     "sw_update_installing": "Installing app update",
     "sw_update_installing_short": "Installing...",
+    "db_upgrade_blocked": "Close or reload other eHagaki tabs to finish the update",
     "update_app": "Update app",
     "updating": "Updating...",
     "author_info": "Author by:",
