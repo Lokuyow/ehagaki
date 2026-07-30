@@ -845,6 +845,404 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('saved sparse を閉じて reopen すると最新 contiguous chunk から開き直し、saved sparse window を復元しない', async () => {
+        const newest = createRecord({
+            eventId: 'saved-reopen-newest',
+            content: 'saved reopen 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const savedOlder = createRecord({
+            eventId: 'saved-reopen-sparse',
+            content: 'saved reopen sparse',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const onClose = vi.fn();
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(true);
+        repositoryMock.getSparseChunk.mockImplementation(async ({ direction }: Record<string, any>) => {
+            if (direction === 'latest') {
+                return [savedOlder];
+            }
+
+            return [];
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved reopen 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('saved reopen sparse')).toBeTruthy();
+            expect(screen.getByText('保存済みの古い投稿を表示中です。')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: savedOlder.eventId,
+                offsetTop: 64,
+            },
+            savedAt: 1234,
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        repositoryMock.getSparseChunk.mockClear();
+        repositoryMock.getVisibleChunkAroundEventId.mockClear();
+        repositoryMock.countForPubkey.mockClear();
+        repositoryMock.hasPostsBeforeCreatedAt.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved reopen 最新')).toBeTruthy();
+            expect(screen.queryByText('saved reopen sparse')).toBeNull();
+            expect(screen.queryByText('保存済みの古い投稿を表示中です。')).toBeNull();
+            expect(screen.getByText('この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。')).toBeTruthy();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.hasPostsBeforeCreatedAt).toHaveBeenCalledWith(
+            PUBKEY_HEX,
+            1_000,
+        );
+
+        view.unmount();
+    });
+
+    it('jump sparse を閉じて reopen すると jump window を復元せず最新 contiguous chunk から開く', async () => {
+        const newest = createRecord({
+            eventId: 'jump-reopen-newest',
+            content: 'jump reopen 最新',
+            createdAt: 1_700_000_000,
+            postedAt: 1_700_000_000_000,
+        });
+        const jumpTarget = createRecord({
+            eventId: 'jump-reopen-target',
+            content: 'jump reopen 対象',
+            createdAt: 1_600_000_000,
+            postedAt: 1_600_000_000_000,
+        });
+        const onClose = vi.fn();
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_650_000_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest])
+            .mockResolvedValueOnce([jumpTarget]);
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === jumpTarget.eventId ? [newest] : [],
+        );
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('jump reopen 最新')).toBeTruthy();
+        });
+
+        await clickMenuAction('日付へ移動');
+        await setJumpDateValue('2020-09-13');
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('jump reopen 対象')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '最新へ戻る' })).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: jumpTarget.eventId,
+                offsetTop: 72,
+            },
+            savedAt: 5678,
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        repositoryMock.getVisibleChunkFromCreatedAt.mockClear();
+        repositoryMock.getVisibleChunkAroundEventId.mockClear();
+        repositoryMock.countForPubkey.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('jump reopen 最新')).toBeTruthy();
+            expect(screen.queryByText('jump reopen 対象')).toBeNull();
+            expect(screen.queryByRole('button', { name: '最新へ戻る' })).toBeNull();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+
+        view.unmount();
+    });
+
+    it('saved sparse 読み込み中に close と reopen を挟んでも遅延結果を次回一覧へ適用しない', async () => {
+        const newest = createRecord({
+            eventId: 'saved-stale-newest',
+            content: 'saved stale 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const staleSparse = createRecord({
+            eventId: 'saved-stale-sparse',
+            content: 'saved stale sparse',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const sparseDeferred = createDeferred<any[]>();
+        const onClose = vi.fn();
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(true);
+        repositoryMock.getSparseChunk.mockImplementation(({ direction }: Record<string, any>) => {
+            if (direction === 'latest') {
+                return sparseDeferred.promise;
+            }
+
+            return Promise.resolve([]);
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved stale 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+        await waitFor(() => {
+            expect(repositoryMock.getSparseChunk).toHaveBeenCalledTimes(1);
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved stale 最新')).toBeTruthy();
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        });
+
+        sparseDeferred.resolve([staleSparse]);
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(screen.getByText('saved stale 最新')).toBeTruthy();
+        expect(screen.queryByText('saved stale sparse')).toBeNull();
+
+        view.unmount();
+    });
+
+    it('sparse 表示中に別アカウントへ切り替えても古い window や scroll anchor を引き継がない', async () => {
+        const otherPubkeyHex = 'b'.repeat(64);
+        const accountALatest = createRecord({
+            eventId: 'account-a-newest',
+            content: 'account A 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const accountASavedOlder = createRecord({
+            eventId: 'account-a-sparse',
+            content: 'account A sparse',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const accountBLatest = createRecord({
+            eventId: 'account-b-newest',
+            content: 'account B 最新',
+            createdAt: 2_700,
+            postedAt: 2_700_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockImplementation(async (pubkeyHex: string) =>
+            pubkeyHex === PUBKEY_HEX
+                ? {
+                    pubkeyHex: PUBKEY_HEX,
+                    kindsKey: '1,42',
+                    visibleUntil: 1_000,
+                    updatedAt: 1,
+                }
+                : null,
+        );
+        repositoryMock.countForPubkey.mockImplementation(async (pubkeyHex: string) =>
+            pubkeyHex === PUBKEY_HEX ? 2 : 1,
+        );
+        repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex }: Record<string, any>) =>
+            pubkeyHex === PUBKEY_HEX ? [accountALatest] : [accountBLatest],
+        );
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockImplementation(async (pubkeyHex: string, visibleUntil: number) =>
+            pubkeyHex === PUBKEY_HEX && visibleUntil === 1_000,
+        );
+        repositoryMock.getSparseChunk.mockImplementation(async ({ pubkeyHex, direction }: Record<string, any>) => {
+            if (pubkeyHex === PUBKEY_HEX && direction === 'latest') {
+                return [accountASavedOlder];
+            }
+
+            return [];
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('account A 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('account A sparse')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: accountASavedOlder.eventId,
+                offsetTop: 64,
+            },
+            savedAt: 4321,
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        repositoryMock.getSparseChunk.mockClear();
+        repositoryMock.getVisibleChunkAroundEventId.mockClear();
+        repositoryMock.countForPubkey.mockClear();
+
+        await view.rerender({
+            show: true,
+            onClose: vi.fn(),
+            pubkeyHex: otherPubkeyHex,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('account B 最新')).toBeTruthy();
+            expect(screen.queryByText('account A sparse')).toBeNull();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith(
+            expect.objectContaining({
+                pubkeyHex: otherPubkeyHex,
+            }),
+        );
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(otherPubkeyHex);
+
+        view.unmount();
+    });
+
     it('メニューの最古へ移動はリレー同期せずローカル最古ページへ移動する', async () => {
         const newest = createRecord({
             eventId: 'oldest-menu-newest',

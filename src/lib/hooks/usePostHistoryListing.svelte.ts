@@ -1205,9 +1205,67 @@ export function usePostHistoryListing({
         hasStartedInitialSync = true;
     }
 
-    function resetState(): void {
+    function isSparseListingRestoreStateActive(): boolean {
+        return state.listingMode === "sparse"
+            && (state.sparseSource === "saved" || state.sparseSource === "jump");
+    }
+
+    function discardSparseListingRestoreState(): boolean {
+        if (!isSparseListingRestoreStateActive()) {
+            return false;
+        }
+
+        state.loadedPosts = [];
+        state.totalCount = 0;
+        state.hasMoreRemote = false;
+        state.nextUntil = null;
+        state.lastDialogOpenRefreshAt = null;
+        state.visibleUntil = null;
+        state.hasJumpCacheAnchors = false;
+        state.hasOlderLocal = false;
+        state.hasNewerLocal = false;
+        state.listingMode = "contiguous";
+        state.sparseSource = null;
+        state.hasSavedPostsOutsideVisibleRange = false;
+        state.latestOlderBackfillUiResult = null;
+
+        writePersistedListingSnapshot(getPubkeyHex(), {
+            loadedPosts: [],
+            searchPosts: state.searchPosts,
+            totalCount: 0,
+            searchTotalCount: state.searchTotalCount,
+            searchHasNext: state.searchHasNext,
+            hasMoreRemote: false,
+            nextUntil: null,
+            lastDialogOpenRefreshAt: null,
+            visibleUntil: null,
+            hasJumpCacheAnchors: false,
+            hasOlderLocal: false,
+            hasNewerLocal: false,
+        });
+
+        return true;
+    }
+
+    function invalidatePendingLoadRequests(): void {
+        loadRequestId += 1;
+        searchLoadRequestId += 1;
+    }
+
+    function prepareForClose(): boolean {
+        const shouldClearNormalSessionScrollState = discardSparseListingRestoreState();
         cancelCurrentSync();
         cancelCurrentViewRefetch();
+        invalidatePendingLoadRequests();
+        clearOlderRevealChildInteractionRepairState();
+        return shouldClearNormalSessionScrollState;
+    }
+
+    function resetState(): void {
+        discardSparseListingRestoreState();
+        cancelCurrentSync();
+        cancelCurrentViewRefetch();
+        invalidatePendingLoadRequests();
         clearOlderRevealChildInteractionRepairState();
         state.syncStatus = "idle";
         resetOlderBackfillSearchState();
@@ -3842,6 +3900,7 @@ export function usePostHistoryListing({
         get currentViewRefetchStatusMessageValues() {
             return currentViewRefetchStatusMessageValues;
         },
+        prepareForClose,
         cancelCurrentSync,
         cancelCurrentViewRefetch,
         loadOlder,

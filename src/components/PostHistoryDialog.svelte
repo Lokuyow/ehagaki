@@ -497,9 +497,12 @@
     }
 
     function handleClose() {
-        historyViewport.saveCurrentSessionScrollAnchor();
-        history.cancelCurrentSync();
-        history.cancelCurrentViewRefetch();
+        const shouldClearNormalSessionScrollState = history.prepareForClose();
+        if (shouldClearNormalSessionScrollState) {
+            historyViewport.clearCurrentSessionScrollAnchor();
+        } else {
+            historyViewport.saveCurrentSessionScrollAnchor();
+        }
         channelDisplay.cancelCurrentChannelResolution();
         postHistoryThreadGraph.cancelCurrentGraphFetches();
         postActionUi.resetDeleteConfirmation();
