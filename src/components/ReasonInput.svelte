@@ -76,8 +76,7 @@
 
     .reason-input:focus-visible {
         outline: 2px solid var(--theme);
-        outline-offset: 2px;
-        border-color: var(--theme);
+        outline-offset: -1px;
     }
 
     @media (prefers-reduced-motion: reduce) {
