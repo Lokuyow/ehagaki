@@ -185,6 +185,17 @@
         z-index: 99;
         transition: bottom 0.2s ease;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+        .footer-bar {
+            transition: none;
+        }
+
+        .update-indicator {
+            animation: none;
+            opacity: 1;
+        }
+    }
     :global(.login-btn) {
         width: 140px;
         font-size: 1.1rem;

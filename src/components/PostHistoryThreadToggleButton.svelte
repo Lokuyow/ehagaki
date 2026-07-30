@@ -102,6 +102,12 @@
         animation: post-history-thread-toggle-spinner 0.8s linear infinite;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        .post-history-thread-toggle-spinner {
+            animation: none;
+        }
+    }
+
     @keyframes post-history-thread-toggle-spinner {
         to {
             rotate: 360deg;

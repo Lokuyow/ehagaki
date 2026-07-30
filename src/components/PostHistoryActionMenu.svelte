@@ -179,6 +179,13 @@
         animation: post-history-menu-popover-out 100ms ease-in;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        :global(.post-history-menu-content[data-state="open"]),
+        :global(.post-history-menu-content[data-state="closed"]) {
+            animation: none;
+        }
+    }
+
     :global(.post-history-menu-content .post-history-menu-separator) {
         height: 1px;
         margin: 4px 0;

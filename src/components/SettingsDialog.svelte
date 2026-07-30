@@ -821,6 +821,16 @@
         translate: 46px 0;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        :global(.bui-switch) {
+            transition: none;
+        }
+
+        :global(.bui-switch-thumb) {
+            transition: none;
+        }
+    }
+
     .sw-update-section {
         border-radius: 8px;
         background: rgba(var(--theme-rgb), 0.05);
