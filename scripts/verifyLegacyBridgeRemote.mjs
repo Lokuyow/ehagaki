@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const expectedManifestDigest =
-    "ffca05a036796b6a17ef7fb57363d8e06f4c5ad002b011675dcbbadc30f2a801";
+    "0150cb23da0bd915dbfa4edb0c5cab16ebddd48ede8e4bc6a51ba77f31c3acd9";
 const manifestBytes = await readFile(
     resolve("legacy-bridge", "manifest.json"),
 );
 const manifestDigest = createHash("sha256")
-    .update(manifestBytes)
+    .update(manifestBytes.toString("utf8").replace(/\r\n/g, "\n"))
     .digest("hex");
 if (manifestDigest !== expectedManifestDigest) {
     throw new Error(

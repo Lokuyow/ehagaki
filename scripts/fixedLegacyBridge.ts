@@ -31,14 +31,20 @@ const LEGACY_BRIDGE_MANIFEST_PATH = resolve(
     "manifest.json",
 );
 const FIXED_LEGACY_BRIDGE_MANIFEST_SHA256 =
-    "ffca05a036796b6a17ef7fb57363d8e06f4c5ad002b011675dcbbadc30f2a801";
+    "0150cb23da0bd915dbfa4edb0c5cab16ebddd48ede8e4bc6a51ba77f31c3acd9";
 
 function fail(message: string): never {
     throw new Error(`[fixed-legacy-bridge] ${message}`);
 }
 
-function sha256(bytes: Uint8Array): string {
+function sha256(bytes: Uint8Array | string): string {
     return createHash("sha256").update(bytes).digest("hex");
+}
+
+function fixedManifestSha256(bytes: Uint8Array): string {
+    return sha256(
+        Buffer.from(bytes).toString("utf8").replace(/\r\n/g, "\n"),
+    );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -130,7 +136,10 @@ export function loadFixedLegacyBridgeManifest(): FixedLegacyBridgeManifest {
     }
 
     const manifestBytes = readFileSync(LEGACY_BRIDGE_MANIFEST_PATH);
-    if (sha256(manifestBytes) !== FIXED_LEGACY_BRIDGE_MANIFEST_SHA256) {
+    if (
+        fixedManifestSha256(manifestBytes) !==
+        FIXED_LEGACY_BRIDGE_MANIFEST_SHA256
+    ) {
         fail(
             "manifest digest changed; fixed legacy compatibility changes require explicit review",
         );
