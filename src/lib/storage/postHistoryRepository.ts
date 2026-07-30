@@ -501,7 +501,12 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
         return await this.db.postHistory
             .where("[pubkeyHex+createdAt]")
-            .below([pubkeyHex, Math.trunc(createdAt)])
+            .between(
+                [pubkeyHex, Dexie.minKey],
+                [pubkeyHex, Math.trunc(createdAt)],
+                true,
+                false,
+            )
             .limit(1)
             .count() > 0;
     }
@@ -514,31 +519,72 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         }
 
         const limit = normalizeChunkLimit(options.limit);
-        const records = sortPostHistoryRecords(
-            await this.db.postHistory
-                .where("[pubkeyHex+createdAt]")
-                .below([options.pubkeyHex, Math.trunc(options.visibleUntil)])
-                .toArray(),
-        );
-
-        if (options.direction === "latest") {
-            return records.slice(0, limit);
-        }
-
-        if (!options.cursor) {
+        const visibleUntil = Math.trunc(options.visibleUntil);
+        if (options.direction !== "latest" && !options.cursor) {
             return [];
         }
 
-        if (options.direction === "older") {
-            return records.filter((record) =>
-                isOlderThanTimelineCursor(record, options.cursor as PostHistoryTimelineCursor)
-            ).slice(0, limit);
+        const cursor = options.cursor;
+        const matchesSparseRange = (record: PostHistoryRecord): boolean =>
+            record.createdAt < visibleUntil
+            && (
+                options.direction === "latest"
+                || (
+                    options.direction === "older"
+                    && !!cursor
+                    && isOlderThanTimelineCursor(record, cursor)
+                )
+                || (
+                    options.direction === "newer"
+                    && !!cursor
+                    && isNewerThanTimelineCursor(record, cursor)
+                )
+            );
+
+        const lowerPostedAt = options.direction === "newer" && cursor
+            ? cursor.postedAt
+            : Dexie.minKey;
+        const upperPostedAt = options.direction === "older" && cursor
+            ? cursor.postedAt
+            : Dexie.maxKey;
+        const postedAtRange = this.db.postHistory
+            .where("[pubkeyHex+postedAt]")
+            .between(
+                [options.pubkeyHex, lowerPostedAt],
+                [options.pubkeyHex, upperPostedAt],
+                true,
+                true,
+            );
+        const candidates = await (
+            options.direction === "newer"
+                ? postedAtRange
+                : postedAtRange.reverse()
+        )
+            .filter(matchesSparseRange)
+            .limit(limit)
+            .toArray();
+
+        if (candidates.length === 0) {
+            return [];
         }
 
-        const newerRecords = records.filter((record) =>
-            isNewerThanTimelineCursor(record, options.cursor as PostHistoryTimelineCursor)
-        );
-        return newerRecords.slice(Math.max(0, newerRecords.length - limit));
+        const boundaryPostedAt = candidates[candidates.length - 1]!.postedAt;
+        const boundaryRecords = candidates.length < limit
+            ? []
+            : await this.db.postHistory
+                .where("[pubkeyHex+postedAt]")
+                .equals([options.pubkeyHex, boundaryPostedAt])
+                .filter(matchesSparseRange)
+                .toArray();
+        const recordsByEventId = new Map<string, PostHistoryRecord>();
+        for (const record of [...candidates, ...boundaryRecords]) {
+            recordsByEventId.set(record.eventId, record);
+        }
+        const records = sortPostHistoryRecords(Array.from(recordsByEventId.values()));
+
+        return options.direction === "newer"
+            ? records.slice(Math.max(0, records.length - limit))
+            : records.slice(0, limit);
     }
 
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {

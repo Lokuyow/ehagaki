@@ -219,6 +219,148 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('数値の visibleUntil で日付ジャンプした後は jump 用 sparse 経路で前後移動する', async () => {
+        const newest = createRecord({
+            eventId: 'jump-route-newest',
+            content: 'jump route 最新',
+            createdAt: 1_700_000_000,
+            postedAt: 1_700_000_000_000,
+        });
+        const jumpTarget = createRecord({
+            eventId: 'jump-route-target',
+            content: 'jump route 対象',
+            createdAt: 1_600_000_000,
+            postedAt: 1_600_000_000_000,
+        });
+        const older = createRecord({
+            eventId: 'jump-route-older',
+            content: 'jump route 古い投稿',
+            createdAt: 1_599_900_000,
+            postedAt: 1_599_900_000_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_650_000_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest])
+            .mockResolvedValueOnce([jumpTarget])
+            .mockResolvedValueOnce([older]);
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === newest.eventId ? [] : [newest],
+        );
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === jumpTarget.eventId ? [older] : [],
+        );
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => expect(screen.getByText('jump route 最新')).toBeTruthy());
+        await clickMenuAction('日付へ移動');
+        await setJumpDateValue('2020-09-13');
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('jump route 対象')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('jump route 古い投稿')).toBeTruthy();
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    createdAt: jumpTarget.createdAt - 1,
+                    query: { contiguous: false },
+                }),
+            );
+            expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '新しい投稿を表示' }));
+
+        await waitFor(() => expect(screen.getByText('jump route 最新')).toBeTruthy());
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+
+        await fireEvent.click(screen.getByRole('button', { name: '最新へ戻る' }));
+        await waitFor(() => expect(screen.getByText('jump route 最新')).toBeTruthy());
+
+        view.unmount();
+    });
+
+    it('visibleUntil が null の日付ジャンプ後も jump 用 sparse 経路で古い投稿を読む', async () => {
+        const newest = createRecord({
+            eventId: 'jump-null-newest',
+            content: 'null frontier 最新',
+            createdAt: 1_700_000_000,
+            postedAt: 1_700_000_000_000,
+        });
+        const jumpTarget = createRecord({
+            eventId: 'jump-null-target',
+            content: 'null frontier 対象',
+            createdAt: 1_600_000_000,
+            postedAt: 1_600_000_000_000,
+        });
+        const older = createRecord({
+            eventId: 'jump-null-older',
+            content: 'null frontier 古い投稿',
+            createdAt: 1_599_900_000,
+            postedAt: 1_599_900_000_000,
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest])
+            .mockResolvedValueOnce([jumpTarget])
+            .mockResolvedValueOnce([older]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === jumpTarget.eventId ? [older] : [],
+        );
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => expect(screen.getByText('null frontier 最新')).toBeTruthy());
+        await clickMenuAction('日付へ移動');
+        await setJumpDateValue('2020-09-13');
+        await fireEvent.click(getJumpDateSubmitButton());
+        await waitFor(() => expect(screen.getByText('null frontier 対象')).toBeTruthy());
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => expect(screen.getByText('null frontier 古い投稿')).toBeTruthy());
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                createdAt: jumpTarget.createdAt - 1,
+                visibleUntil: null,
+                query: { contiguous: false },
+            }),
+        );
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
     it('先頭付近の投稿に応じて月ラベルを更新し、件数は総件数だけを表示する', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(Date.UTC(2024, 4, 15, 12, 0, 0));

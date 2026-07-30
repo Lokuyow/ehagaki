@@ -1669,6 +1669,7 @@ export function usePostHistoryListing({
         pubkeyHex: string,
         visibleUntil: number | null,
         expectedRequestId: number | null = null,
+        expectedFetchRequestId: number | null = null,
     ): Promise<void> {
         const hasSavedPostsOutsideVisibleRange = typeof visibleUntil === "number"
             ? await postHistoryRepository.hasPostsBeforeCreatedAt(
@@ -1680,6 +1681,10 @@ export function usePostHistoryListing({
             !getShow()
             || getPubkeyHex() !== pubkeyHex
             || (expectedRequestId !== null && expectedRequestId !== loadRequestId)
+            || (
+                expectedFetchRequestId !== null
+                && !isCurrentFetchRequest(expectedFetchRequestId)
+            )
         ) {
             return;
         }
@@ -1768,7 +1773,7 @@ export function usePostHistoryListing({
         const oldestCursor = toTimelineCursor(currentPosts[currentPosts.length - 1]);
         const visibleUntil = state.visibleUntil;
         const [newerPosts, olderPosts] = await Promise.all(
-            state.listingMode === "sparse" && typeof visibleUntil === "number"
+            state.sparseSource === "saved" && typeof visibleUntil === "number"
                 ? [
                     newestCursor
                         ? postHistoryRepository.getSparseChunk({
@@ -2789,12 +2794,22 @@ export function usePostHistoryListing({
             return goToNextPage();
         }
 
-        if (state.listingMode === "sparse") {
+        if (state.sparseSource === "saved") {
             const pubkeyHex = getPubkeyHex();
             if (!pubkeyHex) {
                 return false;
             }
             return loadOlderSavedPosts(pubkeyHex, ++loadRequestId, {
+                reason: "normal-older-reveal",
+            });
+        }
+
+        if (state.sparseSource === "jump") {
+            const pubkeyHex = getPubkeyHex();
+            if (!pubkeyHex) {
+                return false;
+            }
+            return loadOlderSparsePosts(pubkeyHex, ++loadRequestId, {
                 reason: "normal-older-reveal",
             });
         }
@@ -3065,6 +3080,16 @@ export function usePostHistoryListing({
             }
 
             const nextStoredCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+            if (!isCurrentFetchRequest(requestId) || !getShow()) {
+                return batchChanged;
+            }
+
+            await refreshSavedPostsOutsideVisibleRange(
+                pubkeyHex,
+                effectiveVisibleUntil,
+                null,
+                requestId,
+            );
             if (!isCurrentFetchRequest(requestId) || !getShow()) {
                 return batchChanged;
             }

@@ -6,6 +6,7 @@ import {
     consumePostHistoryShouldReturnToLatestAfterLocalPost,
 } from "../../lib/postHistoryLatestRequest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
+import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 
@@ -38,6 +39,30 @@ function createSignedEvent(overrides: Record<string, any> = {}) {
         created_at: 100,
         sig: "c".repeat(128),
         ...overrides,
+    };
+}
+
+function createPostHistoryRecord(input: {
+    eventId: string;
+    pubkeyHex: string;
+    createdAt: number;
+    postedAt: number;
+}): PostHistoryRecord {
+    return {
+        id: input.eventId,
+        eventId: input.eventId,
+        pubkeyHex: input.pubkeyHex,
+        kind: 1,
+        content: input.eventId,
+        tags: [],
+        createdAt: input.createdAt,
+        postedAt: input.postedAt,
+        relayHints: [],
+        acceptedRelays: [],
+        media: [],
+        rawEvent: null,
+        updatedAt: input.postedAt,
+        schemaVersion: 2,
     };
 }
 
@@ -695,6 +720,97 @@ describe("DexiePostHistoryRepository", () => {
             limit: 1,
         });
         expect(newer).toMatchObject([{ eventId: "3".repeat(64), createdAt: 900 }]);
+        db.close();
+    });
+
+    it("sparse query を対象pubkeyへ限定し、大量投稿と同一時刻をchunk単位で往復する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const smallerPubkey = "a".repeat(64);
+        const pubkey = "b".repeat(64);
+        const largerPubkey = "c".repeat(64);
+        const id = (value: number) => value.toString(16).padStart(64, "0");
+        const targetRecords: PostHistoryRecord[] = [
+            createPostHistoryRecord({ eventId: "f".repeat(64), pubkeyHex: pubkey, createdAt: 900, postedAt: 5_000 }),
+            createPostHistoryRecord({ eventId: "e".repeat(64), pubkeyHex: pubkey, createdAt: 900, postedAt: 5_000 }),
+            createPostHistoryRecord({ eventId: "d".repeat(64), pubkeyHex: pubkey, createdAt: 800, postedAt: 5_000 }),
+            ...Array.from({ length: 2_000 }, (_, index) => createPostHistoryRecord({
+                eventId: id(index + 1),
+                pubkeyHex: pubkey,
+                createdAt: 700 - index,
+                postedAt: 4_000 - index,
+            })),
+        ];
+        const foreignRecords = [
+            createPostHistoryRecord({ eventId: "8".repeat(64), pubkeyHex: smallerPubkey, createdAt: 950, postedAt: 9_000 }),
+            createPostHistoryRecord({ eventId: "9".repeat(64), pubkeyHex: largerPubkey, createdAt: 940, postedAt: 8_000 }),
+        ];
+        await db.postHistory.bulkPut([...targetRecords, ...foreignRecords]);
+
+        const latest = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1_000,
+            direction: "latest",
+            limit: 2,
+        });
+        expect(latest.map((record) => record.eventId)).toEqual([
+            "f".repeat(64),
+            "e".repeat(64),
+        ]);
+
+        const older = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1_000,
+            direction: "older",
+            cursor: latest[1]!,
+            limit: 2,
+        });
+        expect(older.map((record) => record.eventId)).toEqual([
+            "d".repeat(64),
+            id(1),
+        ]);
+
+        const newer = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1_000,
+            direction: "newer",
+            cursor: older[0]!,
+            limit: 2,
+        });
+        expect(newer.map((record) => record.eventId)).toEqual([
+            "f".repeat(64),
+            "e".repeat(64),
+        ]);
+
+        for (const chunk of [latest, older, newer]) {
+            expect(chunk).toHaveLength(2);
+            expect(chunk.every((record) => record.pubkeyHex === pubkey)).toBe(true);
+            expect(new Set(chunk.map((record) => record.eventId)).size).toBe(chunk.length);
+        }
+
+        db.close();
+    });
+
+    it("範囲外投稿の存在判定へ辞書順が前後する別pubkeyを混入させない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        await db.postHistory.bulkPut([
+            createPostHistoryRecord({ eventId: "1".repeat(64), pubkeyHex: "a".repeat(64), createdAt: 100, postedAt: 100 }),
+            createPostHistoryRecord({ eventId: "2".repeat(64), pubkeyHex: "c".repeat(64), createdAt: 100, postedAt: 100 }),
+            createPostHistoryRecord({ eventId: "3".repeat(64), pubkeyHex: pubkey, createdAt: 1_100, postedAt: 1_100 }),
+        ]);
+
+        await expect(repository.hasPostsBeforeCreatedAt(pubkey, 1_000)).resolves.toBe(false);
+
+        await db.postHistory.put(createPostHistoryRecord({
+            eventId: "4".repeat(64),
+            pubkeyHex: pubkey,
+            createdAt: 900,
+            postedAt: 900,
+        }));
+        await expect(repository.hasPostsBeforeCreatedAt(pubkey, 1_000)).resolves.toBe(true);
+
         db.close();
     });
 
