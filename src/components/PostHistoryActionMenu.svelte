@@ -198,7 +198,7 @@
         justify-content: flex-start;
         gap: 10px;
         width: 100%;
-        min-height: 40px;
+        min-height: 44px;
         padding: 10px 12px;
         border: none;
         border-radius: 6px;
