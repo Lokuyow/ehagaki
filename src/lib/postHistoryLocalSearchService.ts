@@ -14,7 +14,6 @@ export interface SearchLocalPostsOptions {
     query: string;
     page: number;
     pageSize: number;
-    visibleUntil?: number | null;
 }
 
 export interface SearchLocalPostsResult {
@@ -76,7 +75,7 @@ function extractChannelEventIds(posts: PostHistoryRecord[]): string[] {
 
 export class PostHistoryLocalSearchService {
     constructor(
-        private postHistoryRepositoryImpl: Pick<PostHistoryRepository, "getAll" | "getVisibleAll"> =
+        private postHistoryRepositoryImpl: Pick<PostHistoryRepository, "getAll"> =
             postHistoryRepository,
         private channelMetadataRepositoryImpl: Pick<
             ChannelMetadataRepository,
@@ -98,14 +97,9 @@ export class PostHistoryLocalSearchService {
 
         const page = normalizePageNumber(options.page);
         const pageSize = normalizePageSize(options.pageSize);
-        const posts = typeof options.visibleUntil === "number"
-            ? await this.postHistoryRepositoryImpl.getVisibleAll({
-                pubkeyHex: options.pubkeyHex,
-                visibleUntil: options.visibleUntil,
-            })
-            : await this.postHistoryRepositoryImpl.getAll({
-                pubkeyHex: options.pubkeyHex,
-            });
+        const posts = await this.postHistoryRepositoryImpl.getAll({
+            pubkeyHex: options.pubkeyHex,
+        });
         const channelEventIds = extractChannelEventIds(posts);
         const channelMetadataById = new Map<string, ChannelMetadataCache>();
 

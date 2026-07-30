@@ -655,6 +655,49 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("visibleUntil より古い保存投稿を index で検出し、sparse chunk を前後へ移動できる", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+
+        for (const [id, createdAt] of [["1", 1200], ["2", 1100], ["3", 900], ["4", 800], ["5", 700]] as const) {
+            await repository.putPostedEvent({
+                event: createSignedEvent({ id: id.repeat(64), pubkey, created_at: createdAt }),
+                postedAt: createdAt * 1000,
+            });
+        }
+
+        await expect(repository.hasPostsBeforeCreatedAt(pubkey, 1000)).resolves.toBe(true);
+        await expect(repository.hasPostsBeforeCreatedAt(pubkey, 700)).resolves.toBe(false);
+
+        const nearest = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            direction: "latest",
+            limit: 1,
+        });
+        expect(nearest).toMatchObject([{ eventId: "3".repeat(64), createdAt: 900 }]);
+
+        const older = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            direction: "older",
+            cursor: nearest[0]!,
+            limit: 1,
+        });
+        expect(older).toMatchObject([{ eventId: "4".repeat(64), createdAt: 800 }]);
+
+        const newer = await repository.getSparseChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            direction: "newer",
+            cursor: older[0]!,
+            limit: 1,
+        });
+        expect(newer).toMatchObject([{ eventId: "3".repeat(64), createdAt: 900 }]);
+        db.close();
+    });
+
     it("後着した新規投稿とpending削除を同時適用して基本分類と削除件数を分離する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 2000);

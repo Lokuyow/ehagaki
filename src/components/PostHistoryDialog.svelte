@@ -710,6 +710,13 @@
         await history.loadOlder();
     }
 
+    async function handleShowSavedOlderPosts(): Promise<void> {
+        const changed = await history.showSavedOlderPosts();
+        if (changed) {
+            historyViewport.resetHistoryScrollSoon();
+        }
+    }
+
     async function handleFetchOlderFromRelays(): Promise<void> {
         const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
@@ -1249,9 +1256,14 @@
     }
 
     async function handleImportedPostHistory(): Promise<void> {
+        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+        const previousScrollTop = historyContainer?.scrollTop ?? null;
         await history.refreshAfterLocalImport();
-        if (!history.isSearchMode) {
-            historyViewport.resetHistoryScrollSoon();
+        if (!history.isSearchMode && historyContainer) {
+            const restored = historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+            if (!restored && previousScrollTop !== null) {
+                historyContainer.scrollTop = previousScrollTop;
+            }
         }
     }
 
@@ -1408,7 +1420,7 @@
                     }`}
                 />
             {/if}
-            {#if history.posts.length > 0 && buildVisibleCountLabel()}
+            {#if buildVisibleCountLabel()}
                 <div class="post-history-heading-summary">
                     <div class="post-history-summary-row">
                         <span
@@ -2742,7 +2754,50 @@
                 {/each}
             </ul>
 
-            {#if history.isSearchMode ? history.canLoadOlder : history.state.hasOlderLocal}
+            {#if history.isShowingSavedOlderPosts}
+                <div class="post-history-sparse-state" role="status">
+                    <p>{$_("postHistory.savedOlderPostsShowing")}</p>
+                    <p>{$_("postHistory.savedOlderPostsGapNotice")}</p>
+                </div>
+            {/if}
+
+            {#if history.showSavedPostsBoundary}
+                <div class="post-history-saved-boundary" role="status">
+                    <p>{$_("postHistory.savedOlderPostsBoundary")}</p>
+                    <div class="post-history-saved-boundary-actions">
+                        {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays}
+                            <Button
+                                type="button"
+                                variant="primary"
+                                className="post-history-nav-button"
+                                contentLayout="iconText"
+                                disabled={history.isFetchingFromRelays ||
+                                    history.isRefetchingAroundCurrentView}
+                                onClick={() => void handleFetchOlderFromRelays()}
+                            >
+                                <div
+                                    class="cloud-download-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                {$_("postHistory.fetchOlderFromRelays")}
+                            </Button>
+                        {/if}
+                        <Button
+                            type="button"
+                            variant="default"
+                            className="post-history-nav-button"
+                            contentLayout="iconText"
+                            onClick={() => void handleShowSavedOlderPosts()}
+                        >
+                            <div
+                                class="keyboard-arrow-down-icon svg-icon"
+                                aria-hidden="true"
+                            ></div>
+                            {$_("postHistory.showSavedOlderPosts")}
+                        </Button>
+                    </div>
+                </div>
+            {:else if history.isSearchMode ? history.canLoadOlder : history.state.hasOlderLocal}
                 <div class="post-history-nav-row post-history-nav-row-bottom">
                     <Button
                         type="button"
@@ -3769,6 +3824,29 @@
 
     .repair-icon {
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    .post-history-saved-boundary,
+    .post-history-sparse-state {
+        display: grid;
+        gap: 8px;
+        margin: 16px 0;
+        padding: 12px;
+        border: 1px solid var(--border-hr);
+        border-radius: 10px;
+        color: var(--text-muted);
+        background: color-mix(in srgb, var(--bg-input) 72%, transparent);
+    }
+
+    .post-history-saved-boundary p,
+    .post-history-sparse-state p {
+        margin: 0;
+    }
+
+    .post-history-saved-boundary-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
     .import-icon {

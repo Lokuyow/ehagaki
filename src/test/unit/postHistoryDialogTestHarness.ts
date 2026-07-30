@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { readable } from 'svelte/store';
 import { vi } from 'vitest';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
+import { postHistoryLightweightSyncCoordinator } from '../../lib/postHistoryLightweightSyncCoordinator';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
@@ -32,6 +33,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',
             'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
             'postHistory.fetchOlderFromRelaysLoading': 'リレーから取得中...',
+            'postHistory.showSavedOlderPosts': '保存済みの古い投稿を表示',
+            'postHistory.savedOlderPostsBoundary': 'この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。',
+            'postHistory.savedOlderPostsShowing': '保存済みの古い投稿を表示中です。',
+            'postHistory.savedOlderPostsGapNotice': '最近の投稿との間に未取得の期間がある可能性があります。',
             'postHistory.repair': '表示中の投稿付近を再取得',
             'postHistory.repairing': '再取得中...',
             'postHistory.empty': '投稿履歴はありません',
@@ -60,6 +65,8 @@ const hoisted = vi.hoisted(() => {
             getNewerVisibleChunk: vi.fn(),
             getVisibleChunkFromCreatedAt: vi.fn(),
             getVisibleChunkAroundEventId: vi.fn(),
+            hasPostsBeforeCreatedAt: vi.fn(),
+            getSparseChunk: vi.fn(),
             countForPubkey: vi.fn(),
             countVisibleForPubkey: vi.fn(),
             getOldestCreatedAt: vi.fn(),
@@ -365,6 +372,7 @@ export async function waitForSearchDebounce(): Promise<void> {
 }
 
 export function resetPostHistoryDialogHarness(): void {
+    postHistoryLightweightSyncCoordinator.cancelOwnerTasks(PUBKEY_HEX);
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
     clearPostHistoryDialogScrollStates();
@@ -377,6 +385,8 @@ export function resetPostHistoryDialogHarness(): void {
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
     repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([]);
     repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+    repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(false);
+    repositoryMock.getSparseChunk.mockResolvedValue([]);
     repositoryMock.countForPubkey.mockResolvedValue(0);
     repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
         repositoryMock.countForPubkey(pubkeyHex),
@@ -458,6 +468,7 @@ export function resetPostHistoryDialogHarness(): void {
 }
 
 export function cleanupPostHistoryDialogHarness(): void {
+    postHistoryLightweightSyncCoordinator.cancelOwnerTasks(PUBKEY_HEX);
     cleanup();
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();

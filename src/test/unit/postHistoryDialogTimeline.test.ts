@@ -16,6 +16,7 @@ import {
     repositoryMock,
     resetPostHistoryDialogHarness,
     relayFetchServiceMock,
+    visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
 import { writePostHistoryDialogScrollState } from '../../lib/postHistoryDialogScrollState';
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
@@ -155,6 +156,65 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('4件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
+
+        view.unmount();
+    });
+
+    it('連続範囲の末尾で保存済みの古い投稿を明示的に表示し、relay を呼ばない', async () => {
+        const newest = createRecord({
+            eventId: 'boundary-newest',
+            content: '連続範囲の投稿',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const savedOlder = createRecord({
+            eventId: 'boundary-saved-older',
+            content: 'インポートした古い投稿',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(true);
+        repositoryMock.getSparseChunk.mockImplementation(async ({ direction, cursor }: Record<string, any>) => {
+            if (direction === 'latest') return [savedOlder];
+            if (direction === 'older') return [];
+            return cursor?.eventId === savedOlder.eventId ? [] : [];
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('インポートした古い投稿')).toBeTruthy();
+            expect(screen.getByText('保存済みの古い投稿を表示中です。')).toBeTruthy();
+            expect(screen.queryByText('連続範囲の投稿')).toBeNull();
+        });
+        expect(visibleRangeRepositoryMock.save).not.toHaveBeenCalled();
 
         view.unmount();
     });

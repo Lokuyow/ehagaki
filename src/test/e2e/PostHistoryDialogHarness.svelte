@@ -19,6 +19,7 @@
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const TOTAL_POSTS = 70;
     const SEARCH_MATCHING_POSTS = 55;
+    const isSparseScenario = new URLSearchParams(window.location.search).has("sparse");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
     const IMPORT_POST_CONTENT = "playwright imported JSONL post";
@@ -53,6 +54,8 @@
         threadParentPostEventId: string;
         importPostContent: string;
         importEventJsonl: string;
+        sparseVisiblePostContent: string;
+        sparseStoredPostContent: string;
     };
 
     type HarnessWindow = Window &
@@ -248,6 +251,8 @@
     ];
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
+    const sparseVisiblePost = posts[29];
+    const sparseStoredPost = posts[31];
     const initialMonthLabel = formatPostHistoryMonthLabel(
         posts[0].postedAt,
         "ja",
@@ -279,6 +284,8 @@
         threadParentPostEventId: threadParentPost.eventId,
         importPostContent: IMPORT_POST_CONTENT,
         importEventJsonl: IMPORT_EVENT_JSONL,
+        sparseVisiblePostContent: sparseVisiblePost.content,
+        sparseStoredPostContent: sparseStoredPost.content,
     };
 
     onMount(async () => {
@@ -294,6 +301,13 @@
         await ehagakiDb.postHistoryChildInteractions.bulkPut(
             interactionRecords,
         );
+        if (isSparseScenario) {
+            await postHistoryVisibleRangeRepository.save({
+                pubkeyHex: HARNESS_PUBKEY,
+                kindsKey: "1,42",
+                visibleUntil: sparseVisiblePost.createdAt,
+            });
+        }
         await postHistoryChildInteractionsRepository.upsertChildInteractions({
             parentEventId: linkPost.eventId,
             events: [
@@ -328,6 +342,8 @@
             threadParentPostEventId: threadParentPost.eventId,
             importPostContent: IMPORT_POST_CONTENT,
             importEventJsonl: IMPORT_EVENT_JSONL,
+            sparseVisiblePostContent: sparseVisiblePost.content,
+            sparseStoredPostContent: sparseStoredPost.content,
         };
     });
 </script>

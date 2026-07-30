@@ -59,7 +59,7 @@ describe("PostHistoryLocalSearchService", () => {
             }),
         ]);
         const service = new PostHistoryLocalSearchService(
-            { getAll, getVisibleAll: getAll },
+            { getAll },
             { getMany },
         );
 
@@ -102,7 +102,7 @@ describe("PostHistoryLocalSearchService", () => {
             }),
         ]);
         const service = new PostHistoryLocalSearchService(
-            { getAll, getVisibleAll: getAll },
+            { getAll },
             { getMany: vi.fn().mockResolvedValue([]) },
         );
 
@@ -170,7 +170,7 @@ describe("PostHistoryLocalSearchService", () => {
             ),
         );
         const service = new PostHistoryLocalSearchService(
-            { getAll, getVisibleAll: getAll },
+            { getAll },
             { getMany: vi.fn().mockResolvedValue([]) },
         );
 
@@ -199,7 +199,7 @@ describe("PostHistoryLocalSearchService", () => {
         const getAll = vi.fn();
         const getMany = vi.fn();
         const service = new PostHistoryLocalSearchService(
-            { getAll, getVisibleAll: getAll },
+            { getAll },
             { getMany },
         );
 
@@ -224,33 +224,30 @@ describe("PostHistoryLocalSearchService", () => {
         expect(getMany).not.toHaveBeenCalled();
     });
 
-    it("visibleUntil 指定時は visible 集合だけを検索対象にする", async () => {
-        const getAll = vi.fn();
-        const getVisibleAll = vi.fn().mockResolvedValue([
+    it("visibleUntil の有無に関係なく全保存投稿を検索対象にする", async () => {
+        const getAll = vi.fn().mockResolvedValue([
             createRecord({ eventId: "event-1", content: "visible post", createdAt: 1000 }),
+            createRecord({ eventId: "event-2", content: "imported old post", createdAt: 100 }),
         ]);
         const service = new PostHistoryLocalSearchService(
-            { getAll, getVisibleAll },
+            { getAll },
             { getMany: vi.fn().mockResolvedValue([]) },
         );
 
         const result = await service.searchLocalPosts({
             pubkeyHex: "a".repeat(64),
-            query: "visible",
+            query: "old",
             page: 1,
             pageSize: 50,
-            visibleUntil: 1000,
         });
 
         expect(result).toMatchObject({
             total: 1,
-            items: [expect.objectContaining({ eventId: "event-1" })],
+            items: [expect.objectContaining({ eventId: "event-2" })],
             hasNext: false,
         });
-        expect(getAll).not.toHaveBeenCalled();
-        expect(getVisibleAll).toHaveBeenCalledWith({
+        expect(getAll).toHaveBeenCalledWith({
             pubkeyHex: "a".repeat(64),
-            visibleUntil: 1000,
         });
     });
 });

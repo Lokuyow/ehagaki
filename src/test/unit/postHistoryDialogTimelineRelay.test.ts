@@ -499,7 +499,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 updatedAt: 1000,
             };
         });
-        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.countVisibleForPubkey.mockImplementation(async (_pubkeyHex: string, rangeUntil?: number | null) =>
             rangeUntil === 180 ? 1 : 2,
         );
@@ -571,7 +571,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             });
             expect(screen.getByText('初回表示できる投稿')).toBeTruthy();
             expect(screen.queryByText('初回ではまだ表示しない投稿')).toBeNull();
-            expect(screen.getByText('1件')).toBeTruthy();
+            expect(screen.getByText('2件')).toBeTruthy();
         });
 
         view.unmount();

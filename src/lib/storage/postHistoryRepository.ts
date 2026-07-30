@@ -76,6 +76,15 @@ export type PostHistoryVisibleChunkAroundEventIdOptions =
         keepAbove?: number;
     };
 
+export type PostHistorySparseChunkDirection = "latest" | "older" | "newer";
+
+export type PostHistorySparseChunkOptions = PostHistoryRepositoryOptions & {
+    visibleUntil: number;
+    limit: number;
+    direction: PostHistorySparseChunkDirection;
+    cursor?: PostHistoryTimelineCursor;
+};
+
 export type PostHistoryFetchedEventItem = {
     event: NostrEvent;
     relayUrls?: string[];
@@ -112,6 +121,8 @@ export interface PostHistoryRepository {
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkFromCreatedAt(options: PostHistoryVisibleChunkFromCreatedAtOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkAroundEventId(options: PostHistoryVisibleChunkAroundEventIdOptions): Promise<PostHistoryRecord[]>;
+    hasPostsBeforeCreatedAt(pubkeyHex: string | null | undefined, createdAt: number): Promise<boolean>;
+    getSparseChunk(options: PostHistorySparseChunkOptions): Promise<PostHistoryRecord[]>;
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
@@ -480,6 +491,54 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         );
 
         return records.slice(startIndex, startIndex + limit);
+    }
+
+    async hasPostsBeforeCreatedAt(
+        pubkeyHex: string | null | undefined,
+        createdAt: number,
+    ): Promise<boolean> {
+        if (!pubkeyHex || !Number.isFinite(createdAt)) return false;
+
+        return await this.db.postHistory
+            .where("[pubkeyHex+createdAt]")
+            .below([pubkeyHex, Math.trunc(createdAt)])
+            .limit(1)
+            .count() > 0;
+    }
+
+    async getSparseChunk(
+        options: PostHistorySparseChunkOptions,
+    ): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex || !Number.isFinite(options.visibleUntil)) {
+            return [];
+        }
+
+        const limit = normalizeChunkLimit(options.limit);
+        const records = sortPostHistoryRecords(
+            await this.db.postHistory
+                .where("[pubkeyHex+createdAt]")
+                .below([options.pubkeyHex, Math.trunc(options.visibleUntil)])
+                .toArray(),
+        );
+
+        if (options.direction === "latest") {
+            return records.slice(0, limit);
+        }
+
+        if (!options.cursor) {
+            return [];
+        }
+
+        if (options.direction === "older") {
+            return records.filter((record) =>
+                isOlderThanTimelineCursor(record, options.cursor as PostHistoryTimelineCursor)
+            ).slice(0, limit);
+        }
+
+        const newerRecords = records.filter((record) =>
+            isNewerThanTimelineCursor(record, options.cursor as PostHistoryTimelineCursor)
+        );
+        return newerRecords.slice(Math.max(0, newerRecords.length - limit));
     }
 
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {

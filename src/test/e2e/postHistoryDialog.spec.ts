@@ -21,6 +21,8 @@ type HarnessState = {
     threadParentPostEventId: string;
     importPostContent: string;
     importEventJsonl: string;
+    sparseVisiblePostContent: string;
+    sparseStoredPostContent: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -29,6 +31,12 @@ type HarnessWindow = Window & typeof globalThis & {
 
 async function gotoHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html');
+    await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function gotoSparseHarness(page: Page) {
+    await page.goto('post-history-dialog-playwright.html?sparse=1');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
@@ -206,6 +214,21 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await expectSummary(page, harness.totalPosts + 1);
         await expect(page.getByText(harness.importPostContent, { exact: true })).toBeVisible();
+    });
+
+    test('saved posts outside the visible range can be viewed without changing the range', async ({ page }) => {
+        const harness = await gotoSparseHarness(page);
+
+        await expectSummary(page, harness.totalPosts);
+        await expect(page.getByText(harness.sparseVisiblePostContent, { exact: true })).toBeVisible();
+        await expect(page.getByText('保存済みの古い投稿を表示', { exact: true })).toBeVisible();
+
+        await page.getByRole('button', { name: '保存済みの古い投稿を表示' }).click();
+
+        await expect(page.getByText('保存済みの古い投稿を表示中です。', { exact: true })).toBeVisible();
+        await expect(page.getByText(harness.sparseStoredPostContent, { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: '最新へ戻る' }).click();
+        await expect(page.getByText(harness.sparseVisiblePostContent, { exact: true })).toBeVisible();
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
