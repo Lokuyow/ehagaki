@@ -647,7 +647,7 @@
     .second-row {
         justify-content: flex-end;
         width: 100%;
-        gap: 10px;
+        gap: 4px;
     }
     .site-title {
         display: flex;
