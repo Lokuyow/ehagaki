@@ -43,13 +43,22 @@
 
 <style>
     :global(button.info-trigger) {
-        height: 32px;
-        width: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        box-sizing: border-box;
+        flex-shrink: 0;
         --btn-bg: transparent;
         border-radius: 50%;
     }
 
     .info-icon {
+        display: block;
         mask-image: url("/icons/info_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 24px;
         height: 24px;

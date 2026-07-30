@@ -679,12 +679,13 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 8px;
+        flex-wrap: wrap;
     }
 
     .destination-content {
         min-width: 0;
         display: flex;
-        flex: 1;
+        flex: 1 1 220px;
         flex-direction: column;
         gap: 4px;
     }
@@ -695,10 +696,13 @@
         gap: 4px;
 
         :global(.destination-order-button) {
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
-            min-height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            min-height: 44px;
             padding: 0;
         }
     }
