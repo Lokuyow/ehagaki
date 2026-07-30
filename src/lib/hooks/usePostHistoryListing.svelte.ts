@@ -548,6 +548,12 @@ function readPersistedListingSnapshot(
     );
 }
 
+export function readPersistedPostHistoryListingSnapshotForPubkey(
+    pubkeyHex: string | null | undefined,
+): PersistedPostHistoryListingSnapshot {
+    return readPersistedListingSnapshot(pubkeyHex);
+}
+
 function writePersistedListingSnapshot(
     pubkeyHex: string | null | undefined,
     snapshot: PersistedPostHistoryListingSnapshot,
@@ -629,6 +635,8 @@ export function usePostHistoryListing({
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
     let activePubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
+    let stateOwnerPubkeyKey = $state<string | null>(activePubkeyKey);
+    let forceLatestInitialLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
@@ -1178,6 +1186,34 @@ export function usePostHistoryListing({
         appliedSearchQuery = "";
     }
 
+    function clearCurrentListingState(): void {
+        state.loadedPosts = [];
+        state.totalCount = 0;
+        state.currentPage = 1;
+        state.syncStatus = "idle";
+        state.hasMoreRemote = false;
+        state.nextUntil = null;
+        state.lastDialogOpenRefreshAt = null;
+        state.visibleUntil = null;
+        state.hasJumpCacheAnchors = false;
+        state.hasOlderLocal = false;
+        state.hasNewerLocal = false;
+        state.listingMode = "contiguous";
+        state.sparseSource = null;
+        state.hasSavedPostsOutsideVisibleRange = false;
+        state.latestOlderBackfillUiResult = null;
+        resetSearchState();
+    }
+
+    function canPersistStateForCurrentPubkey(): boolean {
+        const currentPubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
+        return !!currentPubkeyKey && currentPubkeyKey === stateOwnerPubkeyKey;
+    }
+
+    function markStateOwner(pubkeyHex: string | null | undefined): void {
+        stateOwnerPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
+    }
+
     function resetListingStateAfterLocalDelete(): void {
         clearOlderRevealChildInteractionRepairState();
         state.loadedPosts = [];
@@ -1215,33 +1251,16 @@ export function usePostHistoryListing({
             return false;
         }
 
-        state.loadedPosts = [];
-        state.totalCount = 0;
-        state.hasMoreRemote = false;
-        state.nextUntil = null;
-        state.lastDialogOpenRefreshAt = null;
-        state.visibleUntil = null;
-        state.hasJumpCacheAnchors = false;
-        state.hasOlderLocal = false;
-        state.hasNewerLocal = false;
-        state.listingMode = "contiguous";
-        state.sparseSource = null;
-        state.hasSavedPostsOutsideVisibleRange = false;
-        state.latestOlderBackfillUiResult = null;
+        const pubkeyHex = getPubkeyHex();
 
-        writePersistedListingSnapshot(getPubkeyHex(), {
-            loadedPosts: [],
-            searchPosts: state.searchPosts,
-            totalCount: 0,
-            searchTotalCount: state.searchTotalCount,
-            searchHasNext: state.searchHasNext,
-            hasMoreRemote: false,
-            nextUntil: null,
-            lastDialogOpenRefreshAt: null,
-            visibleUntil: null,
-            hasJumpCacheAnchors: false,
-            hasOlderLocal: false,
-            hasNewerLocal: false,
+        clearCurrentListingState();
+        resetOlderBackfillSearchState();
+        clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
+
+        clearPersistedPostHistoryViewStateForPubkey(pubkeyHex);
+        writePersistedListingSnapshot(pubkeyHex, {
+            ...DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
         });
 
         return true;
@@ -1253,12 +1272,12 @@ export function usePostHistoryListing({
     }
 
     function prepareForClose(): boolean {
-        const shouldClearNormalSessionScrollState = discardSparseListingRestoreState();
+        const shouldClearAllSessionScrollState = discardSparseListingRestoreState();
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         invalidatePendingLoadRequests();
         clearOlderRevealChildInteractionRepairState();
-        return shouldClearNormalSessionScrollState;
+        return shouldClearAllSessionScrollState;
     }
 
     function resetState(): void {
@@ -1887,15 +1906,8 @@ export function usePostHistoryListing({
     async function loadLatestVisiblePosts(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
-            state.loadedPosts = [];
-            state.totalCount = 0;
-            state.visibleUntil = null;
-            state.hasJumpCacheAnchors = false;
-            state.hasOlderLocal = false;
-            state.hasNewerLocal = false;
-            state.listingMode = "contiguous";
-            state.sparseSource = null;
-            state.hasSavedPostsOutsideVisibleRange = false;
+            stateOwnerPubkeyKey = null;
+            clearCurrentListingState();
             return;
         }
 
@@ -1915,6 +1927,7 @@ export function usePostHistoryListing({
             return;
         }
 
+        markStateOwner(pubkeyHex);
         state.totalCount = count;
         state.listingMode = "contiguous";
         state.sparseSource = null;
@@ -3628,9 +3641,19 @@ export function usePostHistoryListing({
         }
 
         activePubkeyKey = nextPubkeyKey;
-        state.lastDialogOpenRefreshAt = null;
+        stateOwnerPubkeyKey = null;
+        forceLatestInitialLoadKey = nextPubkeyKey;
+        cancelCurrentSync();
+        cancelCurrentViewRefetch();
+        invalidatePendingLoadRequests();
+        clearCurrentListingState();
+        clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
         resetOlderBackfillSearchState();
         clearOlderRevealChildInteractionRepairState();
+        hasStartedInitialSync = false;
+        hasAttemptedInitialLocalLoad = false;
+        initialLocalLoadKey = null;
     });
 
     $effect(() => {
@@ -3644,6 +3667,10 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
+        if (!canPersistStateForCurrentPubkey()) {
+            return;
+        }
+
         writePersistedPostHistoryViewState(getPubkeyHex(), {
             searchInput: state.searchInput,
             searchQuery: state.searchQuery,
@@ -3653,6 +3680,10 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
+        if (!canPersistStateForCurrentPubkey()) {
+            return;
+        }
+
         writePersistedListingSnapshot(getPubkeyHex(), {
             loadedPosts: state.loadedPosts,
             searchPosts: state.searchPosts,
@@ -3735,6 +3766,12 @@ export function usePostHistoryListing({
 
         hasAttemptedInitialLocalLoad = true;
         initialLocalLoadKey = nextInitialLoadKey;
+
+        if (forceLatestInitialLoadKey === nextInitialLoadKey) {
+            forceLatestInitialLoadKey = null;
+            void loadLatestVisiblePosts();
+            return;
+        }
 
         const sessionScrollState = getNormalSessionScrollStateForCurrentPubkey();
         const pendingLatestRequest =

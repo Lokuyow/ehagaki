@@ -497,9 +497,9 @@
     }
 
     function handleClose() {
-        const shouldClearNormalSessionScrollState = history.prepareForClose();
-        if (shouldClearNormalSessionScrollState) {
-            historyViewport.clearCurrentSessionScrollAnchor();
+        const shouldClearAllSessionScrollState = history.prepareForClose();
+        if (shouldClearAllSessionScrollState) {
+            historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
         } else {
             historyViewport.saveCurrentSessionScrollAnchor();
         }

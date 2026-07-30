@@ -14,6 +14,7 @@ import {
     resetPostHistoryDialogHarness,
     waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
+import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 
 describe('PostHistoryDialog timeline search', () => {
     beforeEach(() => {
@@ -291,6 +292,77 @@ describe('PostHistoryDialog timeline search', () => {
             });
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
             expect(screen.getByText('日付ジャンプ後')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
+
+    it('contiguous 表示中の検索を閉じて reopen した場合は既存の検索復元を維持する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-reopen-normal', content: '検索復元前の通常一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [createRecord({ eventId: 'search-reopen-hit', content: 'reopen 検索結果' })],
+            total: 1,
+            hasNext: false,
+        });
+
+        const onClose = vi.fn();
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+
+        await waitFor(() => {
+            expect(screen.getByText('reopen 検索結果')).toBeTruthy();
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        localSearchServiceMock.searchLocalPosts.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
+            currentPage: 1,
+            searchPage: 1,
+            searchInput: 'alpha',
+            searchQuery: 'alpha',
+        });
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('reopen 検索結果')).toBeTruthy();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+        expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
+            pubkeyHex: PUBKEY_HEX,
+            query: 'alpha',
+            page: 1,
+            pageSize: 50,
         });
 
         view.unmount();

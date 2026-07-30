@@ -10,15 +10,23 @@ import {
     createRecord,
     getHistoryContainer,
     jumpCacheAnchorRepositoryMock,
+    localSearchServiceMock,
     openPostHistoryMenu,
+    openSearchBar,
     postMediaCacheServiceMock,
     replyRepairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
     relayFetchServiceMock,
     visibleRangeRepositoryMock,
+    waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
-import { writePostHistoryDialogScrollState } from '../../lib/postHistoryDialogScrollState';
+import {
+    readPostHistoryDialogScrollState,
+    writePostHistoryDialogScrollState,
+} from '../../lib/postHistoryDialogScrollState';
+import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
+import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 
 function createMockRect(top: number, height: number) {
@@ -1050,6 +1058,292 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('saved sparse を基礎状態として検索中に閉じても次回は検索を復元せず最新 contiguous chunk から開く', async () => {
+        const newest = createRecord({
+            eventId: 'saved-search-close-newest',
+            content: 'saved search close 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const savedOlder = createRecord({
+            eventId: 'saved-search-close-sparse',
+            content: 'saved search close sparse',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const searchHit = createRecord({
+            eventId: 'saved-search-close-hit',
+            content: 'saved search close 検索結果',
+            createdAt: 850,
+            postedAt: 850_000,
+        });
+        const onClose = vi.fn();
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(true);
+        repositoryMock.getSparseChunk.mockImplementation(async ({ direction }: Record<string, any>) => {
+            if (direction === 'latest') {
+                return [savedOlder];
+            }
+
+            return [];
+        });
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [searchHit],
+            total: 1,
+            hasNext: false,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved search close 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: newest.eventId,
+                offsetTop: 40,
+            },
+            savedAt: 100,
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('saved search close sparse')).toBeTruthy();
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+
+        await waitFor(() => {
+            expect(screen.getByText('saved search close 検索結果')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'search',
+            searchQuery: 'alpha',
+            anchor: {
+                eventId: searchHit.eventId,
+                offsetTop: 24,
+            },
+            savedAt: 101,
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        repositoryMock.getSparseChunk.mockClear();
+        repositoryMock.getVisibleChunkAroundEventId.mockClear();
+        repositoryMock.countForPubkey.mockClear();
+        localSearchServiceMock.searchLocalPosts.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
+            currentPage: 1,
+            searchPage: 1,
+            searchInput: '',
+            searchQuery: '',
+        });
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX)).toMatchObject({
+            loadedPosts: [],
+            searchPosts: [],
+            searchTotalCount: 0,
+            searchHasNext: false,
+        });
+        expect(readPostHistoryDialogScrollState({ pubkeyHex: PUBKEY_HEX, mode: 'normal' })).toBeNull();
+        expect(readPostHistoryDialogScrollState({ pubkeyHex: PUBKEY_HEX, mode: 'search', searchQuery: 'alpha' })).toBeNull();
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved search close 最新')).toBeTruthy();
+            expect(screen.queryByText('saved search close 検索結果')).toBeNull();
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        expect(localSearchServiceMock.searchLocalPosts).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
+    it('jump sparse を基礎状態として検索中に閉じても次回は検索を復元せず最新 contiguous chunk から開く', async () => {
+        const newest = createRecord({
+            eventId: 'jump-search-close-newest',
+            content: 'jump search close 最新',
+            createdAt: 1_700_000_000,
+            postedAt: 1_700_000_000_000,
+        });
+        const jumpTarget = createRecord({
+            eventId: 'jump-search-close-target',
+            content: 'jump search close 対象',
+            createdAt: 1_600_000_000,
+            postedAt: 1_600_000_000_000,
+        });
+        const searchHit = createRecord({
+            eventId: 'jump-search-close-hit',
+            content: 'jump search close 検索結果',
+            createdAt: 1_599_999_999,
+            postedAt: 1_599_999_999_000,
+        });
+        const onClose = vi.fn();
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_650_000_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getVisibleChunkFromCreatedAt
+            .mockResolvedValueOnce([newest])
+            .mockResolvedValueOnce([jumpTarget]);
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === jumpTarget.eventId ? [newest] : [],
+        );
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [searchHit],
+            total: 1,
+            hasNext: false,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('jump search close 最新')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: newest.eventId,
+                offsetTop: 44,
+            },
+            savedAt: 200,
+        });
+
+        await clickMenuAction('日付へ移動');
+        await setJumpDateValue('2020-09-13');
+        await fireEvent.click(getJumpDateSubmitButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('jump search close 対象')).toBeTruthy();
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'beta' } });
+        await waitForSearchDebounce();
+
+        await waitFor(() => {
+            expect(screen.getByText('jump search close 検索結果')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'search',
+            searchQuery: 'beta',
+            anchor: {
+                eventId: searchHit.eventId,
+                offsetTop: 28,
+            },
+            savedAt: 201,
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+        repositoryMock.getSparseChunk.mockClear();
+        repositoryMock.getVisibleChunkAroundEventId.mockClear();
+        repositoryMock.getVisibleChunkFromCreatedAt.mockClear();
+        repositoryMock.countForPubkey.mockClear();
+        localSearchServiceMock.searchLocalPosts.mockClear();
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
+            currentPage: 1,
+            searchPage: 1,
+            searchInput: '',
+            searchQuery: '',
+        });
+        expect(readPostHistoryDialogScrollState({ pubkeyHex: PUBKEY_HEX, mode: 'normal' })).toBeNull();
+        expect(readPostHistoryDialogScrollState({ pubkeyHex: PUBKEY_HEX, mode: 'search', searchQuery: 'beta' })).toBeNull();
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('jump search close 最新')).toBeTruthy();
+            expect(screen.queryByText('jump search close 検索結果')).toBeNull();
+            expect(screen.queryByText('jump search close 対象')).toBeNull();
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        expect(localSearchServiceMock.searchLocalPosts).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
     it('saved sparse 読み込み中に close と reopen を挟んでも遅延結果を次回一覧へ適用しない', async () => {
         const newest = createRecord({
             eventId: 'saved-stale-newest',
@@ -1132,6 +1426,189 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         expect(screen.getByText('saved stale 最新')).toBeTruthy();
         expect(screen.queryByText('saved stale sparse')).toBeNull();
+
+        view.unmount();
+    });
+
+    it('A から B へ切り替えて B の最新取得待ち中でも A の state を B の snapshot へ混在させない', async () => {
+        const otherPubkeyHex = 'b'.repeat(64);
+        const accountALatest = createRecord({
+            eventId: 'account-switch-a-newest',
+            content: 'account switch A 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const accountASavedOlder = createRecord({
+            eventId: 'account-switch-a-sparse',
+            content: 'account switch A sparse',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const staleBLatest = createRecord({
+            eventId: 'account-switch-b-stale',
+            content: 'account switch B stale',
+            createdAt: 2_600,
+            postedAt: 2_600_000,
+        });
+        const accountBLatest = createRecord({
+            eventId: 'account-switch-b-newest',
+            content: 'account switch B 最新',
+            createdAt: 2_700,
+            postedAt: 2_700_000,
+        });
+        const onClose = vi.fn();
+        const firstBLatestDeferred = createDeferred<any[]>();
+        const secondBLatestDeferred = createDeferred<any[]>();
+        let bLatestRequestCount = 0;
+
+        visibleRangeRepositoryMock.get.mockImplementation(async (pubkeyHex: string) =>
+            pubkeyHex === PUBKEY_HEX
+                ? {
+                    pubkeyHex: PUBKEY_HEX,
+                    kindsKey: '1,42',
+                    visibleUntil: 1_000,
+                    updatedAt: 1,
+                }
+                : null,
+        );
+        repositoryMock.countForPubkey.mockImplementation(async (pubkeyHex: string) =>
+            pubkeyHex === PUBKEY_HEX ? 2 : 1,
+        );
+        repositoryMock.getLatestVisibleChunk.mockImplementation(({ pubkeyHex }: Record<string, any>) => {
+            if (pubkeyHex === PUBKEY_HEX) {
+                return Promise.resolve([accountALatest]);
+            }
+
+            bLatestRequestCount += 1;
+            return bLatestRequestCount === 1
+                ? firstBLatestDeferred.promise
+                : secondBLatestDeferred.promise;
+        });
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockImplementation(async (pubkeyHex: string, visibleUntil: number) =>
+            pubkeyHex === PUBKEY_HEX && visibleUntil === 1_000,
+        );
+        repositoryMock.getSparseChunk.mockImplementation(async ({ pubkeyHex, direction }: Record<string, any>) => {
+            if (pubkeyHex === PUBKEY_HEX && direction === 'latest') {
+                return [accountASavedOlder];
+            }
+
+            return [];
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('account switch A 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('account switch A sparse')).toBeTruthy();
+        });
+
+        repositoryMock.getLatestVisibleChunk.mockClear();
+
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: otherPubkeyHex,
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('account switch A 最新')).toBeNull();
+            expect(screen.queryByText('account switch A sparse')).toBeNull();
+        });
+
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(otherPubkeyHex)).toMatchObject({
+            loadedPosts: [],
+            searchPosts: [],
+            totalCount: 0,
+        });
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: otherPubkeyHex,
+                }),
+            );
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(otherPubkeyHex)).toMatchObject({
+            loadedPosts: [],
+            searchPosts: [],
+            totalCount: 0,
+        });
+
+        await view.rerender({
+            show: false,
+            onClose,
+            pubkeyHex: otherPubkeyHex,
+        });
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: otherPubkeyHex,
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+            expect(screen.queryByText('account switch A sparse')).toBeNull();
+        });
+
+        firstBLatestDeferred.resolve([staleBLatest]);
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(screen.queryByText('account switch B stale')).toBeNull();
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(otherPubkeyHex)).toMatchObject({
+            loadedPosts: [],
+            searchPosts: [],
+            totalCount: 0,
+        });
+
+        secondBLatestDeferred.resolve([accountBLatest]);
+
+        await waitFor(() => {
+            expect(screen.getByText('account switch B 最新')).toBeTruthy();
+            expect(screen.queryByText('account switch A 最新')).toBeNull();
+        });
+
+        await waitFor(() => {
+            expect(readPersistedPostHistoryListingSnapshotForPubkey(otherPubkeyHex)).toMatchObject({
+                loadedPosts: [expect.objectContaining({ eventId: accountBLatest.eventId })],
+                searchPosts: [],
+                totalCount: 1,
+            });
+        });
+
+        await view.rerender({
+            show: true,
+            onClose,
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('account switch A 最新')).toBeTruthy();
+            expect(screen.queryByText('account switch B 最新')).toBeNull();
+        });
+
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX).loadedPosts).not.toContainEqual(
+            expect.objectContaining({ eventId: accountBLatest.eventId }),
+        );
 
         view.unmount();
     });
