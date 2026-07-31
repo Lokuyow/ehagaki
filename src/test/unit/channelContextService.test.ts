@@ -9,12 +9,13 @@ import { FALLBACK_RELAYS } from "../../lib/constants";
 import type { NostrEvent } from "../../lib/types";
 import { createMockConsole } from "../helpers";
 import type { MockConsole } from "../helpers";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
 const channelId = "a".repeat(64);
 const authorPubkey = "b".repeat(64);
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
-    return {
+    return createBaseEvent({
         id: channelId,
         pubkey: authorPubkey,
         created_at: 100,
@@ -23,7 +24,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
         content: JSON.stringify({ name: "General", about: "Root about" }),
         sig: "sig",
         ...overrides,
-    };
+    });
 }
 
 function createRxNostr(

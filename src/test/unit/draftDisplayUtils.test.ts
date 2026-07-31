@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createDraftListDisplay, type DraftContextLabels } from '../../lib/draftDisplayUtils';
 import type { Draft, DraftReplyQuoteEntryData, NostrEvent } from '../../lib/types';
+import { createEvent as createBaseEvent } from '../postHistoryEventTestUtils';
 
 const labels: DraftContextLabels = {
     channel: 'チャンネル',
@@ -12,7 +13,7 @@ const labels: DraftContextLabels = {
 };
 
 function createEvent(content: string): NostrEvent {
-    return {
+    return createBaseEvent({
         id: 'event-id',
         pubkey: 'pubkey',
         created_at: 1,
@@ -20,7 +21,7 @@ function createEvent(content: string): NostrEvent {
         tags: [],
         content,
         sig: 'sig',
-    };
+    });
 }
 
 function createReference(
