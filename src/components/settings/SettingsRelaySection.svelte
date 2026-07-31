@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { RelayConfigUtils } from "../../lib/relayConfigUtils";
     import type { RelayConfig } from "../../lib/types";
+    import { tryCopyToClipboard } from "../../lib/utils/clipboardUtils";
     import Button from "../Button.svelte";
 
     interface RelayListItem {
@@ -45,6 +46,11 @@
     }
 
     let relayListItems = $derived(toRelayListItems(relayConfig));
+
+    async function handleCopyRelayUrl(url: string, event: MouseEvent): Promise<boolean> {
+        event.stopPropagation();
+        return tryCopyToClipboard(url, "URL", navigator, window);
+    }
 </script>
 
 <!-- リレー・プロフィール再取得セクション -->
@@ -104,6 +110,7 @@
                         <span
                             >{$_("settingsDialog.relay_write") || "Write"}</span
                         >
+                       <span class="relay-copy-column" aria-hidden="true"></span>
                     </div>
                     <ul>
                         {#each relayListItems as relay}
@@ -135,6 +142,23 @@
                                 >
                                     {relay.write ? "✓" : "–"}
                                 </span>
+                                <div class="relay-copy-cell">
+                                    <Button
+                                        variant="copy"
+                                        shape="circle"
+                                        className="relay-copy-btn"
+                                        ariaLabel={`${$_("settingsDialog.copy_relay_url") || "リレーURLをコピー"}: ${relay.url}`}
+                                        onClick={(event) =>
+                                            handleCopyRelayUrl(relay.url, event)
+                                        }
+                                        floatingMessage={$_("common.copySuccess")}
+                                    >
+                                        <div
+                                            class="relay-copy-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></div>
+                                    </Button>
+                                </div>
                             </li>
                         {/each}
                     </ul>
@@ -167,7 +191,7 @@
         .relay-list-header,
         li {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 48px 52px;
+            grid-template-columns: minmax(0, 1fr) 48px 52px 44px;
             align-items: center;
             column-gap: 8px;
         }
@@ -190,7 +214,7 @@
 
         li {
             color: var(--text-light);
-            padding: 7px 0;
+            padding: 6px 0;
             border-bottom: 1px solid var(--border-hr);
         }
 
@@ -201,6 +225,25 @@
         .relay-url {
             min-width: 0;
             overflow-wrap: anywhere;
+        }
+
+        .relay-copy-cell {
+            display: flex;
+            justify-content: flex-end;
+            min-width: 0;
+        }
+
+        :global(button.relay-copy-btn.copy) {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            min-height: 44px;
+            padding: 0;
+        }
+
+        .relay-copy-icon {
+            width: 20px;
+            height: 20px;
         }
 
         .relay-capability {

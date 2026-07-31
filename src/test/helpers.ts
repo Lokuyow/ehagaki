@@ -4,6 +4,24 @@ import { vi } from 'vitest';
 import type { RxNostr } from 'rx-nostr';
 import type { KeyManagerInterface } from '../lib/types';
 
+export type MockConsole = Console & {
+    log: ReturnType<typeof vi.fn>;
+    debug: ReturnType<typeof vi.fn>;
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+};
+
+export function createMockConsole(): MockConsole {
+    return {
+        log: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    } as unknown as MockConsole;
+}
+
 // Mock Storage implementation
 export class MockStorage implements Storage {
     private store: Record<string, string> = {};

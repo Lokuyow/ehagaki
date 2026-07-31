@@ -319,6 +319,7 @@
     "relay": "Relay",
     "relay_read": "Read",
     "relay_write": "Write",
+    "copy_relay_url": "リレーURLをコピー",
     "relay_read_enabled": "Read有効",
     "relay_read_disabled": "Read無効",
     "relay_write_enabled": "Write有効",

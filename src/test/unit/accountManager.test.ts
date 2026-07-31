@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AccountManager } from '../../lib/accountManager';
 import { STORAGE_KEYS } from '../../lib/constants';
-import { MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 
 describe('AccountManager', () => {
     let storage: MockStorage;
     let manager: AccountManager;
-    const mockConsole = { error: vi.fn(), warn: vi.fn(), log: vi.fn(), info: vi.fn(), debug: vi.fn() } as unknown as Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
         storage = new MockStorage();
+        mockConsole = createMockConsole();
         manager = new AccountManager({ localStorage: storage, console: mockConsole });
         vi.clearAllMocks();
     });

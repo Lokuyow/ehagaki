@@ -5,7 +5,7 @@ import {
     EMBED_MESSAGE_VERSION,
 } from '../../lib/embedProtocol';
 import { EmbedStorageService } from '../../lib/embedStorageService';
-import { MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 
 function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
     const listeners = new Map<string, (event: MessageEvent) => void>();
@@ -27,14 +27,10 @@ function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.c
 }
 
 describe('EmbedStorageService', () => {
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as unknown as Console;
+        mockConsole = createMockConsole();
     });
 
     it('iframe と parentOrigin がない場合は初期化しない', () => {
