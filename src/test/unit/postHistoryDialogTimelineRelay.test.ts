@@ -1307,6 +1307,100 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('Dialog close は実行中の manual current-view relation repair も cancel し、完了 callback を反映しない', async () => {
+        const initialPosts = [createRecord({
+            eventId: 'repair-close-current-view',
+            content: '既存投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        })];
+        const relationRepairComplete = createDeferred<{
+            status: 'success';
+            targetParentEventIds: string[];
+            checkedParentEventIds: string[];
+            savedParentEventIds: string[];
+            savedDirectReplyCount: number;
+            attemptedChunkCount: number;
+            saturatedChunkCount: number;
+            incompleteParentEventIds: string[];
+            deletionConfirmationIncomplete: boolean;
+            relationKinds: Array<'reply' | 'reaction' | 'quote'>;
+            quoteRepairApplied: boolean;
+        }>();
+        const relationRepairCancel = vi.fn();
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(initialPosts);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 0,
+                processedRanges: [],
+                attemptedRangeCount: 0,
+                hadFailures: false,
+                fetchFailed: false,
+                hadTimeout: false,
+                hadUnfinishedRanges: false,
+            }),
+            cancel: vi.fn(),
+        });
+        replyRepairServiceMock.repairVisibleRangeRelations.mockReturnValueOnce({
+            promise: relationRepairComplete.promise,
+            cancel: relationRepairCancel,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('既存投稿')).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+        await waitFor(() => {
+            expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
+        });
+
+        await view.rerender({ show: false });
+        expect(relationRepairCancel).toHaveBeenCalledTimes(1);
+
+        relationRepairComplete.resolve({
+            status: 'success',
+            targetParentEventIds: ['repair-close-current-view'],
+            checkedParentEventIds: ['repair-close-current-view'],
+            savedParentEventIds: ['repair-close-current-view'],
+            savedDirectReplyCount: 1,
+            attemptedChunkCount: 1,
+            saturatedChunkCount: 0,
+            incompleteParentEventIds: [],
+            deletionConfirmationIncomplete: false,
+            relationKinds: ['reply', 'reaction', 'quote'],
+            quoteRepairApplied: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(screen.queryByText('返信を1件補完')).toBeNull();
+        view.unmount();
+    });
+
     it('1件追加 のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-added', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 

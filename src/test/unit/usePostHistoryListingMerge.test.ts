@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     mergeOlderVisiblePosts,
-    POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS,
     resolveNewlyVisibleOlderPosts,
-    resolveOlderRevealChildInteractionRepairNetworkParentIds,
-    resolveVisibleOlderRevealChildInteractionRepairParentPosts,
 } from '../../lib/hooks/usePostHistoryListing.svelte';
 
 function createPost(index: number) {
@@ -152,42 +149,4 @@ describe('mergeOlderVisiblePosts', () => {
         );
     });
 
-    it('newly visible posts から current visible な owner self direct-reply parents だけ残す', () => {
-        const visibleSelf = createPost(10);
-        const hiddenSelf = createPost(11);
-        const visibleKind42 = {
-            ...createPost(12),
-            kind: 42,
-        };
-        const visibleOther = {
-            ...createPost(13),
-            pubkeyHex: 'b'.repeat(64),
-        };
-
-        const result = resolveVisibleOlderRevealChildInteractionRepairParentPosts(
-            'a'.repeat(64),
-            [visibleSelf, hiddenSelf, visibleKind42, visibleOther],
-            [visibleSelf, visibleKind42, visibleOther],
-        );
-
-        expect(result).toEqual([visibleSelf, visibleKind42]);
-    });
-
-    it('older reveal network candidates は in-flight と freshness TTL を除外する', () => {
-        const nowMs = 100_000;
-        const freshCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS - 1_000);
-        const staleCheckedAt = nowMs - (POST_HISTORY_OLDER_REVEAL_REPLY_REPAIR_FRESHNESS_TTL_MS + 1_000);
-
-        const result = resolveOlderRevealChildInteractionRepairNetworkParentIds(
-            ['fresh-parent', 'stale-parent', 'unchecked-parent', 'inflight-parent'],
-            new Map([
-                ['fresh-parent', freshCheckedAt],
-                ['stale-parent', staleCheckedAt],
-            ]),
-            new Set(['inflight-parent']),
-            nowMs,
-        );
-
-        expect(result).toEqual(['stale-parent', 'unchecked-parent']);
-    });
 });
