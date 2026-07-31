@@ -306,6 +306,33 @@ function normalizeFetchedEventItems(
     return Array.from(normalized.values());
 }
 
+async function getDeletionRequestsByTargetEventIds(
+    db: Pick<EHagakiDB, "postHistoryDeletionRequests">,
+    targetEventIds: string[],
+): Promise<Map<string, PostHistoryDeletionRequestRecord[]>> {
+    if (targetEventIds.length === 0) {
+        return new Map();
+    }
+
+    const records = await db.postHistoryDeletionRequests
+        .where("targetEventId")
+        .anyOf(targetEventIds)
+        .toArray();
+    const grouped = new Map<string, PostHistoryDeletionRequestRecord[]>();
+
+    for (const record of records) {
+        const existing = grouped.get(record.targetEventId);
+        if (existing) {
+            existing.push(record);
+            continue;
+        }
+
+        grouped.set(record.targetEventId, [record]);
+    }
+
+    return grouped;
+}
+
 function areMediaArraysEqual(left: PostHistoryMediaRecord[], right: PostHistoryMediaRecord[]): boolean {
     if (left.length !== right.length) {
         return false;
@@ -754,25 +781,16 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             async () => {
                 const existingRecords = await this.db.postHistory.bulkGet(eventIds);
                 const existingMap = new Map<string, PostHistoryRecord>();
-                const deletionRequestsByTargetEventId = new Map<
-                    string,
-                    PostHistoryDeletionRequestRecord[]
-                >();
+                const deletionRequestsByTargetEventId = await getDeletionRequestsByTargetEventIds(
+                    this.db,
+                    eventIds,
+                );
 
                 existingRecords.forEach((record) => {
                     if (record) {
                         existingMap.set(record.eventId, record);
                     }
                 });
-                for (const eventId of eventIds) {
-                    deletionRequestsByTargetEventId.set(
-                        eventId,
-                        await this.db.postHistoryDeletionRequests
-                            .where("targetEventId")
-                            .equals(eventId)
-                            .toArray(),
-                    );
-                }
 
                 const verifiedRequestUpdates: PostHistoryDeletionRequestRecord[] = [];
                 const nextRecords = normalizedItems.map((item) => {
