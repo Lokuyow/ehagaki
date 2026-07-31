@@ -369,6 +369,40 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("countVisibleForPubkey は visibleUntil 境界を inclusive に扱い他 pubkey を含めない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const otherPubkey = "c".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 500 }),
+            postedAt: 500000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 1000 }),
+            postedAt: 1000000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1100 }),
+            postedAt: 1100000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "4".repeat(64), pubkey, created_at: 1200 }),
+            postedAt: 1200000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "5".repeat(64), pubkey: otherPubkey, created_at: 1500 }),
+            postedAt: 1500000,
+        });
+
+        await expect(repository.countVisibleForPubkey(pubkey, 1000)).resolves.toBe(3);
+        await expect(repository.countVisibleForPubkey(pubkey, 1001)).resolves.toBe(2);
+        await expect(repository.countVisibleForPubkey(otherPubkey, 1000)).resolves.toBe(1);
+
+        db.close();
+    });
+
     it("timeline chunk API は stable cursor で older/newer window を返す", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
