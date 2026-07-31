@@ -1,6 +1,10 @@
 import "fake-indexeddb/auto";
 import Dexie, { cmp } from "dexie";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    getPostHistorySearchRevision,
+    resetPostHistoryLocalSearchRevisionsForTesting,
+} from "../../lib/postHistoryLocalSearchRevision";
 import {
     clearPostHistoryShouldReturnToLatestAfterLocalPost,
     consumePostHistoryShouldReturnToLatestAfterLocalPost,
@@ -224,6 +228,10 @@ afterEach(async () => {
         await Dexie.delete(name);
     }
     testDbNames.clear();
+});
+
+beforeEach(() => {
+    resetPostHistoryLocalSearchRevisionsForTesting();
 });
 
 describe("DexiePostHistoryRepository", () => {
@@ -785,6 +793,77 @@ describe("DexiePostHistoryRepository", () => {
         const [record] = await repository.getAll({ pubkeyHex: "b".repeat(64) });
         expect(record.deletedAt).toBe(2000);
         expect(record.deletionEventId).toBe("d".repeat(64));
+
+        db.close();
+    });
+
+    it("markDeleted は primary key で所有者を特定し、実際の変更時だけその pubkey の revision を進める", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const eventId = "a".repeat(64);
+        const pubkey = "b".repeat(64);
+        const otherPubkey = "c".repeat(64);
+
+        await repository.putPostedEvent({ event: createSignedEvent({ id: eventId, pubkey }) });
+        resetPostHistoryLocalSearchRevisionsForTesting();
+        const getSpy = vi.spyOn(db.postHistory, "get");
+
+        await repository.markDeleted(eventId, "d".repeat(64), 2000);
+        expect(getSpy).toHaveBeenCalledWith(eventId);
+        expect(getPostHistorySearchRevision(pubkey)).toBe(1);
+        expect(getPostHistorySearchRevision(otherPubkey)).toBe(0);
+
+        await repository.markDeleted(eventId, "d".repeat(64), 2000);
+        await repository.markDeleted("missing", "e".repeat(64), 3000);
+        expect(getPostHistorySearchRevision(pubkey)).toBe(1);
+
+        db.close();
+    });
+
+    it("markDeleted の DB 更新失敗時は revision を進めない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const eventId = "a".repeat(64);
+        const pubkey = "b".repeat(64);
+
+        await repository.putPostedEvent({ event: createSignedEvent({ id: eventId, pubkey }) });
+        resetPostHistoryLocalSearchRevisionsForTesting();
+        vi.spyOn(db.postHistory, "put").mockRejectedValueOnce(new Error("write failed"));
+
+        await expect(repository.markDeleted(eventId, "d".repeat(64), 2000))
+            .rejects.toThrow("write failed");
+        expect(getPostHistorySearchRevision(pubkey)).toBe(0);
+
+        db.close();
+    });
+
+    it("upsertFetchedEvents は insert・material update・適用済み削除の pubkey だけ revision を進める", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const existingPubkey = "b".repeat(64);
+        const insertedPubkey = "c".repeat(64);
+        const existingEvent = createSignedEvent({
+            id: "a".repeat(64),
+            pubkey: existingPubkey,
+        });
+
+        await repository.putPostedEvent({ event: existingEvent });
+        resetPostHistoryLocalSearchRevisionsForTesting();
+
+        await repository.upsertFetchedEvents({
+            events: [
+                { event: existingEvent },
+                {
+                    event: createSignedEvent({
+                        id: "d".repeat(64),
+                        pubkey: insertedPubkey,
+                    }),
+                },
+            ],
+        });
+
+        expect(getPostHistorySearchRevision(existingPubkey)).toBe(0);
+        expect(getPostHistorySearchRevision(insertedPubkey)).toBe(1);
 
         db.close();
     });

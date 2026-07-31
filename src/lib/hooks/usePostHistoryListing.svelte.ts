@@ -1177,6 +1177,7 @@ export function usePostHistoryListing({
     }
 
     function resetSearchState(): void {
+        postHistoryLocalSearchService.clearCache?.();
         state.searchInput = "";
         state.searchQuery = "";
         state.searchPage = 1;
@@ -1276,6 +1277,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         invalidatePendingLoadRequests();
+        postHistoryLocalSearchService.clearCache?.();
         clearOlderRevealChildInteractionRepairState();
         return shouldClearAllSessionScrollState;
     }
@@ -1285,6 +1287,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         invalidatePendingLoadRequests();
+        postHistoryLocalSearchService.clearCache?.();
         clearOlderRevealChildInteractionRepairState();
         state.syncStatus = "idle";
         resetOlderBackfillSearchState();
@@ -3817,6 +3820,7 @@ export function usePostHistoryListing({
         }
 
         if (!state.searchQuery) {
+            postHistoryLocalSearchService.clearCache?.();
             appliedSearchQuery = "";
             if (state.searchPage !== 1) {
                 state.searchPage = 1;

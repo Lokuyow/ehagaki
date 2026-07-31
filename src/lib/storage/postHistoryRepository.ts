@@ -12,6 +12,7 @@ import {
     toPostHistoryDeletionState,
 } from "../postHistoryDeletionUtils";
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
+import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
@@ -719,6 +720,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
         await this.db.postHistory.put(toRecord(input, this.now));
+        bumpPostHistorySearchRevision(input.event.pubkey);
         markPostHistoryShouldReturnToLatestAfterLocalPost({
             pubkeyHex: input.event.pubkey,
             eventId: input.event.id,
@@ -742,6 +744,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         let updatedCount = 0;
         let unchangedCount = 0;
         let appliedDeletionCount = 0;
+        const changedPubkeys = new Set<string>();
 
         await this.db.transaction(
             "rw",
@@ -827,10 +830,13 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                         schemaVersion: POST_HISTORY_SCHEMA_VERSION,
                     } satisfies PostHistoryRecord;
 
+                    let didMateriallyChange = false;
                     if (!existingRecord) {
                         insertedCount += 1;
+                        didMateriallyChange = true;
                     } else if (hasMaterialPostHistoryChanges(existingRecord, baseRecord)) {
                         updatedCount += 1;
+                        didMateriallyChange = true;
                     } else {
                         unchangedCount += 1;
                     }
@@ -861,10 +867,14 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                         })
                         .sort(comparePostHistoryDeletionRequests);
                     if (baseRecord.deletedAt !== undefined || applicableRequests.length === 0) {
+                        if (didMateriallyChange) {
+                            changedPubkeys.add(baseRecord.pubkeyHex);
+                        }
                         return baseRecord;
                     }
 
                     appliedDeletionCount += 1;
+                    changedPubkeys.add(baseRecord.pubkeyHex);
                     return {
                         ...baseRecord,
                         ...toPostHistoryDeletionState(applicableRequests[0]),
@@ -878,6 +888,8 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 await this.db.postHistory.bulkPut(nextRecords);
             },
         );
+
+        changedPubkeys.forEach(bumpPostHistorySearchRevision);
 
         return {
             insertedCount,
@@ -899,20 +911,43 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     }
 
     async markDeleted(eventId: string, deletionEventId: string, deletedAt: number = this.now()): Promise<void> {
-        await this.db.postHistory.update(eventId, {
-            deletedAt,
-            deletionEventId,
-            updatedAt: this.now(),
+        let changedPubkeyHex: string | null = null;
+        await this.db.transaction("rw", this.db.postHistory, async () => {
+            const record = await this.db.postHistory.get(eventId);
+            if (
+                !record
+                || (
+                    record.deletedAt === deletedAt
+                    && record.deletionEventId === deletionEventId
+                )
+            ) {
+                return;
+            }
+
+            await this.db.postHistory.put({
+                ...record,
+                deletedAt,
+                deletionEventId,
+                updatedAt: this.now(),
+            });
+            changedPubkeyHex = record.pubkeyHex;
         });
+
+        if (changedPubkeyHex) {
+            bumpPostHistorySearchRevision(changedPubkeyHex);
+        }
     }
 
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        await this.db.postHistory
+        const deletedCount = await this.db.postHistory
             .where("pubkeyHex")
             .equals(pubkeyHex)
             .delete();
+        if (deletedCount > 0) {
+            bumpPostHistorySearchRevision(pubkeyHex);
+        }
     }
 }
 

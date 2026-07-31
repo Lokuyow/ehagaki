@@ -1,6 +1,7 @@
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { compareChannelMetadataEventVersions } from "../channelMetadataEventOrder";
 import { normalizeChannelPictureUrl } from "../channelPictureUrlUtils";
+import { bumpChannelMetadataSearchRevision } from "../postHistoryLocalSearchRevision";
 import {
     CHANNEL_METADATA_SCHEMA_VERSION,
     isCurrentChannelMetadataSchemaVersion,
@@ -265,13 +266,20 @@ export class DexieChannelMetadataRepository implements ChannelMetadataRepository
     }
 
     async upsertResolvedChannel(input: UpsertResolvedChannelInput): Promise<ChannelMetadataCache> {
-        return this.db.transaction("rw", this.db.channelMetadata, async () => {
+        let didChangeSearchText = false;
+        const cache = await this.db.transaction("rw", this.db.channelMetadata, async () => {
             const now = this.now();
             const existingRecord = await this.db.channelMetadata.get(input.channelEventId);
             const nextRecord = toRecord(input, existingRecord ?? undefined, now);
+            didChangeSearchText = existingRecord?.name !== nextRecord.name
+                || existingRecord?.about !== nextRecord.about;
             await this.db.channelMetadata.put(nextRecord);
             return toCache(nextRecord);
         });
+        if (didChangeSearchText) {
+            bumpChannelMetadataSearchRevision();
+        }
+        return cache;
     }
 
     shouldRefresh(record: ChannelMetadataCache | null | undefined, now = this.now()): boolean {

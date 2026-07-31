@@ -1,6 +1,10 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+    getChannelMetadataSearchRevision,
+    resetPostHistoryLocalSearchRevisionsForTesting,
+} from "../../lib/postHistoryLocalSearchRevision";
 import {
     EHAGAKI_DB_NAME,
     EHagakiDB,
@@ -44,6 +48,10 @@ function metadataInput(
 afterEach(async () => {
     for (const name of testDbNames) await Dexie.delete(name);
     testDbNames.clear();
+});
+
+beforeEach(() => {
+    resetPostHistoryLocalSearchRevisionsForTesting();
 });
 
 describe("DexieChannelMetadataRepository", () => {
@@ -91,6 +99,30 @@ describe("DexieChannelMetadataRepository", () => {
         expect(record.resolutionQuality).toBe("verified-metadata");
         expect(repository.shouldRefresh(record, 1000 + CHANNEL_METADATA_TTL_MS - 1)).toBe(false);
         expect(repository.shouldRefresh(record, 1000 + CHANNEL_METADATA_TTL_MS)).toBe(true);
+        db.close();
+    });
+
+    it("検索対象の name または about が変わる時だけ検索 revision を進める", async () => {
+        const db = createTestDb();
+        let now = 1000;
+        const repository = new DexieChannelMetadataRepository(db, () => now);
+
+        await repository.upsertResolvedChannel(metadataInput());
+        expect(getChannelMetadataSearchRevision()).toBe(1);
+
+        now = 2000;
+        await repository.upsertResolvedChannel(metadataInput());
+        await repository.markFetchFailed("channel-1");
+        expect(getChannelMetadataSearchRevision()).toBe(1);
+
+        now = 3000;
+        await repository.upsertResolvedChannel(metadataInput({
+            name: "Renamed",
+            metadataEventId: "n".repeat(64),
+            metadataCreatedAt: 300,
+        }));
+        expect(getChannelMetadataSearchRevision()).toBe(2);
+
         db.close();
     });
 
