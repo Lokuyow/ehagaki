@@ -1,6 +1,7 @@
 import { nip19 } from "nostr-tools";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent } from "./types";
+import { isHex64 } from "./utils/nostrHexUtils";
 
 export interface PostHistoryQuoteReference {
     eventId: string;
@@ -8,16 +9,11 @@ export interface PostHistoryQuoteReference {
     authorHint: string | null;
 }
 
-const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
 const INLINE_NOSTR_URI_PATTERN = /nostr:[^\s<>"']+/gi;
 const TRAILING_INLINE_NOSTR_URI_PUNCTUATION_PATTERN =
     /[),.!?:;\]\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\u300d\u300f\u3011]+$/u;
 const PUNCTUATION_ONLY_LINE_PATTERN =
     /^[\s),.!?:;\]\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\u300d\u300f\u3011]+$/u;
-
-function isValidHexId(value: unknown): value is string {
-    return typeof value === "string" && HEX_64_PATTERN.test(value);
-}
 
 function parseRelayHint(value: unknown): string | null {
     return RelayConfigUtils.sanitizeExternalRelayUrls(
@@ -94,12 +90,12 @@ export function parsePostHistoryQuoteReferences(
         }
 
         const eventId = tag[1];
-        if (!isValidHexId(eventId)) {
+        if (!isHex64(eventId)) {
             continue;
         }
 
         const relayHint = parseRelayHint(tag[2]);
-        const authorHint = isValidHexId(tag[3]) ? tag[3] : null;
+        const authorHint = isHex64(tag[3]) ? tag[3] : null;
         const existing = quotesByEventId.get(eventId);
 
         if (!existing) {
