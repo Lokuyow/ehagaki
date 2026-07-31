@@ -346,15 +346,6 @@ function createRecord(overrides: Record<string, any> = {}) {
     };
 }
 
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((resolvePromise) => {
-        resolve = resolvePromise;
-    });
-
-    return { promise, resolve };
-}
-
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
     expect(screen.getByTitle('image.jpg')).toBeTruthy();
