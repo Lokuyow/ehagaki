@@ -543,7 +543,7 @@
 
     :global(.copy-button) {
         height: auto;
-        width: 40px;
+        width: 44px;
         background-color: var(--btn-bg);
 
         .copy-icon {

@@ -104,8 +104,8 @@
     }
 
     :global(.footer-progress-abort-button) {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         flex-shrink: 0;
         cursor: pointer;
         pointer-events: auto;

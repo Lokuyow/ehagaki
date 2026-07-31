@@ -153,7 +153,7 @@
         margin-inline-start: 10px;
 
         :global(.relay-toggle-label) {
-            min-height: 40px;
+            min-height: 44px;
             padding: 10px;
             --btn-bg: transparent;
         }
