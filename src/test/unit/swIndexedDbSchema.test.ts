@@ -30,6 +30,16 @@ function createMockDb(existingStores: string[] = []) {
     };
 }
 
+function getCreatedStore(
+    createdStores: Map<string, { keyPath: string; createIndex: ReturnType<typeof vi.fn> }>,
+    storeName: string,
+) {
+    const store = createdStores.get(storeName);
+    expect(store, `Expected object store "${storeName}" to be created`).toBeDefined();
+
+    return store!;
+}
+
 describe('swIndexedDbSchema', () => {
     it('createObjectStoreIfMissing は既存 store を再作成しない', () => {
         const { db } = createMockDb(['meta']);
@@ -43,69 +53,90 @@ describe('swIndexedDbSchema', () => {
 
     it('ensureCurrentEHagakiDbSchema は必要な store と index を作成する', () => {
         const { db, createdStores } = createMockDb();
+        const indexAssertions = [
+            {
+                storeName: 'emojiItems',
+                indexName: '[pubkeyHex+identityKey]',
+                keyPath: ['pubkeyHex', 'identityKey'],
+            },
+            {
+                storeName: 'drafts',
+                indexName: '[scopeKey+updatedAt]',
+                keyPath: ['scopeKey', 'updatedAt'],
+            },
+            {
+                storeName: 'sharedMedia',
+                indexName: 'schemaVersion',
+                keyPath: 'schemaVersion',
+            },
+            {
+                storeName: 'hashtagHistory',
+                indexName: 'useCount',
+                keyPath: 'useCount',
+            },
+            {
+                storeName: 'customEmojiUsage',
+                indexName: '[pubkeyHex+shortcodeLower+src]',
+                keyPath: ['pubkeyHex', 'shortcodeLower', 'src'],
+            },
+            {
+                storeName: 'customEmojiImageMeta',
+                indexName: 'lastAccessedAt',
+                keyPath: 'lastAccessedAt',
+            },
+            {
+                storeName: 'uploadDestinations',
+                indexName: '[scopeKey+isDefault]',
+                keyPath: ['scopeKey', 'isDefault'],
+            },
+            {
+                storeName: 'postHistory',
+                indexName: '[pubkeyHex+postedAt]',
+                keyPath: ['pubkeyHex', 'postedAt'],
+            },
+            {
+                storeName: 'postHistory',
+                indexName: POST_HISTORY_TIMELINE_INDEX,
+                keyPath: POST_HISTORY_TIMELINE_KEY_PATH,
+            },
+            {
+                storeName: 'postHistoryChildInteractions',
+                indexName: '[parentEventId+createdAt]',
+                keyPath: ['parentEventId', 'createdAt'],
+            },
+            {
+                storeName: 'postHistoryDeletionRequests',
+                indexName: '[targetAuthorPubkey+targetEventId]',
+                keyPath: ['targetAuthorPubkey', 'targetEventId'],
+            },
+            {
+                storeName: 'postMediaCache',
+                indexName: 'schemaVersion',
+                keyPath: 'schemaVersion',
+            },
+            {
+                storeName: 'channelMetadata',
+                indexName: 'metadataCreatedAt',
+                keyPath: 'metadataCreatedAt',
+            },
+            {
+                storeName: 'channelImageCacheMeta',
+                indexName: 'lastAccessedAt',
+                keyPath: 'lastAccessedAt',
+            },
+        ];
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
         expect(db.createObjectStore).toHaveBeenCalledTimes(17);
-        expect(createdStores.get('meta')?.keyPath).toBe('key');
-        expect(createdStores.get('emojiItems')?.createIndex).toHaveBeenCalledWith(
-            '[pubkeyHex+identityKey]',
-            ['pubkeyHex', 'identityKey'],
-        );
-        expect(createdStores.get('drafts')?.createIndex).toHaveBeenCalledWith(
-            '[scopeKey+updatedAt]',
-            ['scopeKey', 'updatedAt'],
-        );
-        expect(createdStores.get('sharedMedia')?.createIndex).toHaveBeenCalledWith(
-            'schemaVersion',
-            'schemaVersion',
-        );
-        expect(createdStores.get('hashtagHistory')?.createIndex).toHaveBeenCalledWith(
-            'useCount',
-            'useCount',
-        );
-        expect(createdStores.get('customEmojiUsage')?.createIndex).toHaveBeenCalledWith(
-            '[pubkeyHex+shortcodeLower+src]',
-            ['pubkeyHex', 'shortcodeLower', 'src'],
-        );
-        expect(createdStores.get('customEmojiImageMeta')?.createIndex).toHaveBeenCalledWith(
-            'lastAccessedAt',
-            'lastAccessedAt',
-        );
-        expect(createdStores.get('uploadDestinations')?.createIndex).toHaveBeenCalledWith(
-            '[scopeKey+isDefault]',
-            ['scopeKey', 'isDefault'],
-        );
-        expect(createdStores.get('postHistory')?.createIndex).toHaveBeenCalledWith(
-            '[pubkeyHex+postedAt]',
-            ['pubkeyHex', 'postedAt'],
-        );
-        expect(createdStores.get('postHistory')?.createIndex).toHaveBeenCalledWith(
-            POST_HISTORY_TIMELINE_INDEX,
-            POST_HISTORY_TIMELINE_KEY_PATH,
-        );
-        expect(createdStores.get('postHistoryChildInteractions')?.createIndex)
-            .toHaveBeenCalledWith(
-                '[parentEventId+createdAt]',
-                ['parentEventId', 'createdAt'],
+        expect(getCreatedStore(createdStores, 'meta').keyPath).toBe('key');
+
+        indexAssertions.forEach(({ storeName, indexName, keyPath }) => {
+            expect(getCreatedStore(createdStores, storeName).createIndex).toHaveBeenCalledWith(
+                indexName,
+                keyPath,
             );
-        expect(createdStores.get('postHistoryDeletionRequests')?.createIndex)
-            .toHaveBeenCalledWith(
-                '[targetAuthorPubkey+targetEventId]',
-                ['targetAuthorPubkey', 'targetEventId'],
-            );
-        expect(createdStores.get('postMediaCache')?.createIndex).toHaveBeenCalledWith(
-            'schemaVersion',
-            'schemaVersion',
-        );
-        expect(createdStores.get('channelMetadata')?.createIndex).toHaveBeenCalledWith(
-            'metadataCreatedAt',
-            'metadataCreatedAt',
-        );
-        expect(createdStores.get('channelImageCacheMeta')?.createIndex).toHaveBeenCalledWith(
-            'lastAccessedAt',
-            'lastAccessedAt',
-        );
+        });
     });
 
     it('既存 postHistory store には upgrade transaction から timeline index だけを追加する', () => {
