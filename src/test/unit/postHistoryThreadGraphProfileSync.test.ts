@@ -12,6 +12,7 @@ import {
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import type { ProfileData } from "../../lib/types";
 import { createPostHistoryThreadGraphHookHarness } from "../helpers/postHistoryThreadGraphHookHarness.svelte";
+import { createProfileData } from "../profileTestUtils";
 
 const authorPubkey = "a".repeat(64);
 const otherPubkey = "b".repeat(64);
@@ -41,13 +42,10 @@ function createPost(
 }
 
 function createProfile(displayName: string): ProfileData {
-    return {
-        name: "name",
+    return createProfileData({
         displayName,
         picture: `https://example.com/${displayName}.png`,
-        npub: "npub1profile",
-        nprofile: "nprofile1profile",
-    };
+    });
 }
 
 function createProfileSync(

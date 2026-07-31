@@ -12,6 +12,7 @@ import type {
 } from "../../lib/storage/profilesRepository";
 import type { ProfileRecord } from "../../lib/storage/ehagakiDb";
 import type { ProfileData } from "../../lib/types";
+import { createProfileData } from "../profileTestUtils";
 
 const repositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
@@ -40,14 +41,14 @@ const otherPubkey = "b".repeat(64);
 const eventId = "1".repeat(64);
 
 function createProfile(overrides: Partial<ProfileData> = {}): ProfileData {
-    return {
+    return createProfileData({
         name: "Cached",
         displayName: "Cached User",
         picture: "https://example.com/cached.png?profile=true",
         npub: "npub1cached",
         nprofile: "nprofile1cached",
         ...overrides,
-    };
+    });
 }
 
 function createProfileRecord(
