@@ -300,6 +300,47 @@ describe("PostHistoryLocalSearchService", () => {
         expect(getAll).toHaveBeenCalledTimes(4);
     });
 
+    it("retry 2 回目の同一 revision request は active in-flight Promise を共有する", async () => {
+        const pubkeyHex = "a".repeat(64);
+        let resolveFirstAttempt: ((posts: PostHistoryRecord[]) => void) | undefined;
+        let resolveSecondAttempt: ((posts: PostHistoryRecord[]) => void) | undefined;
+        const getAll = vi.fn()
+            .mockImplementationOnce(() => new Promise<PostHistoryRecord[]>((resolve) => {
+                resolveFirstAttempt = resolve;
+            }))
+            .mockImplementationOnce(() => new Promise<PostHistoryRecord[]>((resolve) => {
+                resolveSecondAttempt = resolve;
+            }));
+        const service = new PostHistoryLocalSearchService(
+            { getAll },
+            { getMany: vi.fn().mockResolvedValue([]) },
+        );
+        const options = { pubkeyHex, query: "alpha", page: 1, pageSize: 50 };
+
+        const firstRequest = service.searchLocalPosts(options);
+        bumpPostHistorySearchRevision(pubkeyHex);
+        resolveFirstAttempt?.([createRecord({ content: "alpha result" })]);
+
+        await vi.waitFor(() => {
+            expect(getAll).toHaveBeenCalledTimes(2);
+        });
+        const secondRequest = service.searchLocalPosts({
+            ...options,
+            query: "  ALPHA  ",
+        });
+        resolveSecondAttempt?.([createRecord({ content: "alpha result" })]);
+
+        await expect(firstRequest).resolves.toMatchObject({
+            total: 1,
+            items: [expect.objectContaining({ content: "alpha result" })],
+        });
+        await expect(secondRequest).resolves.toMatchObject({
+            total: 1,
+            items: [expect.objectContaining({ content: "alpha result" })],
+        });
+        expect(getAll).toHaveBeenCalledTimes(2);
+    });
+
     it("6 万件でも page 移動では全件取得・metadata 取得・検索構築を再実行しない", async () => {
         const posts = Array.from({ length: 60_000 }, (_, index) =>
             createRecord({

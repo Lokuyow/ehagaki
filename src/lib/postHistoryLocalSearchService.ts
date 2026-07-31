@@ -224,6 +224,12 @@ export class PostHistoryLocalSearchService {
                 }
 
                 attemptRevision = completedRevision;
+                if (
+                    this.inFlightEntry?.identity === identity
+                    && this.runtimeCacheToken === runtimeCacheToken
+                ) {
+                    entry.revision = attemptRevision;
+                }
             }
 
             return [];
