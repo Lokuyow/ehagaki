@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileUploadManager } from '../../lib/fileUploadManager';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { setImageSizeInfoFromFileSize } from '../../stores/uploadStore.svelte';
+import { createTestFile } from '../fileTestUtils';
 import type {
     FileUploadDependencies,
     CompressionService,
@@ -193,19 +194,6 @@ class MockResponse {
     }
 }
 
-// --- テストヘルパー関数 ---
-function createMockFile(name: string, type: string, size: number): File {
-    // メモリ効率の改善：大きなファイルに対しては空のArrayBufferを使用
-    if (size > 10 * 1024 * 1024) { // 10MB以上の場合
-        const buffer = new ArrayBuffer(Math.min(size, 1024)); // 最大1KBまでに制限
-        return new File([buffer], name, { type });
-    }
-
-    const content = new Array(Math.min(size, 1024)).fill(0).map((_, i) => i % 256);
-    const blob = new Blob([new Uint8Array(content)], { type });
-    return new File([blob], name, { type });
-}
-
 function createMockResponse(ok: boolean, status: number, jsonData: any): Response {
     return new MockResponse(ok, status, jsonData) as Response;
 }
@@ -287,13 +275,13 @@ describe('FileUploadManager', () => {
 
     describe('ファイルバリデーション', () => {
         it('有効な画像ファイルを受け入れる', () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000000); // 1MB
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000000 }); // 1MB
             const result = uploadManager.validateImageFile(file);
             expect(result.isValid).toBe(true);
         });
 
         it('画像以外のファイルを拒否する', () => {
-            const file = createMockFile('test.txt', 'text/plain', 1000);
+            const file = createTestFile({ name: 'test.txt', type: 'text/plain', size: 1000 });
             const result = uploadManager.validateImageFile(file);
             expect(result.isValid).toBe(false);
             expect(result.errorMessage).toBe('only_images_allowed');
@@ -317,7 +305,7 @@ describe('FileUploadManager', () => {
 
     describe('ファイルアップロード', () => {
         it('注入された中止判定で圧縮と送信に進まずabortedを返す', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 });
             const isUploadAborted = vi.fn(() => true);
             mockDependencies.isUploadAborted = isUploadAborted;
 
@@ -350,7 +338,7 @@ describe('FileUploadManager', () => {
         });
 
         it('成功時に正しいレスポンスを返す', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 }); // 1KB
 
             // 認証モック
             const mockAuthService: AuthService = {
@@ -394,7 +382,7 @@ describe('FileUploadManager', () => {
         });
 
         it('成功時に圧縮後ファイルを投稿履歴メディアキャッシュへ保存する', async () => {
-            const file = createMockFile('cached.webp', 'image/webp', 1000);
+            const file = createTestFile({ name: 'cached.webp', type: 'image/webp', size: 1000 });
             const compressedFile = new File([new Uint8Array([1, 2, 3, 4])], 'cached.webp', {
                 type: 'image/webp',
             });
@@ -439,7 +427,7 @@ describe('FileUploadManager', () => {
         });
 
         it('保存済みアップロード先がない場合はロケール既定の送信先を使うが localStorage へは書き戻さない', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 });
 
             mockDependencies.navigator = {
                 language: 'ja-JP',
@@ -490,7 +478,7 @@ describe('FileUploadManager', () => {
         });
 
         it('destination が指定された場合は legacy uploadEndpoint を読まず Blossom adapter で送信する', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 });
             mockDependencies.localStorage.setItem('uploadEndpoint', 'https://nostr.build/api/v2/nip96/upload');
             const signer = {
                 getPublicKey: vi.fn().mockResolvedValue('f'.repeat(64)),
@@ -588,8 +576,8 @@ describe('FileUploadManager', () => {
         });
 
         it('圧縮後画像サイズを nip94 metadata に反映する', async () => {
-            const originalFile = createMockFile('test.jpg', 'image/jpeg', 5000);
-            const compressedFile = createMockFile('test.webp', 'image/webp', 2000);
+            const originalFile = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 5000 });
+            const compressedFile = createTestFile({ name: 'test.webp', type: 'image/webp', size: 2000 });
 
             const mockAuthService: AuthService = {
                 buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
@@ -630,7 +618,7 @@ describe('FileUploadManager', () => {
         });
 
         it('uploadFileWithCallbacks 成功時にサイズ情報表示 action を呼び出す', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 });
 
             const mockAuthService: AuthService = {
                 buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
@@ -673,7 +661,7 @@ describe('FileUploadManager', () => {
         });
 
         it('注入されたサイズ情報 callback を優先して呼ぶ', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 });
             const injectedSetImageSizeInfo = vi.fn();
             mockDependencies.setImageSizeInfoFromFileSize = injectedSetImageSizeInfo;
 
@@ -712,7 +700,7 @@ describe('FileUploadManager', () => {
         });
 
         it('ネットワークエラーを適切に処理する', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 }); // 1KB
 
             // 認証サービスをモックして認証エラーを回避
             const mockAuthService: AuthService = {
@@ -746,7 +734,7 @@ describe('FileUploadManager', () => {
         });
 
         it('処理URLによる非同期処理を正しく扱う', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 }); // 1KB
 
             const mockAuthService: AuthService = {
                 buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
@@ -781,8 +769,8 @@ describe('FileUploadManager', () => {
     describe('複数ファイルアップロード', () => {
         it('複数ファイルを並列アップロードする', async () => {
             const files = [
-                createMockFile('test1.jpg', 'image/jpeg', 1000), // 1KB
-                createMockFile('test2.jpg', 'image/jpeg', 1000)  // 1KB
+                createTestFile({ name: 'test1.jpg', type: 'image/jpeg', size: 1000 }), // 1KB
+                createTestFile({ name: 'test2.jpg', type: 'image/jpeg', size: 1000 })  // 1KB
             ];
 
             // 認証サービスをモックして認証エラーを回避
@@ -876,7 +864,7 @@ describe('FileUploadManager', () => {
             // 非同期でメッセージを送信
             setTimeout(() => {
                 const mockSharedData: SharedMediaData = {
-                    images: [createMockFile('shared.jpg', 'image/jpeg', 1000000)],
+                    images: [createTestFile({ name: 'shared.jpg', type: 'image/jpeg', size: 1000000 })],
                     metadata: [{ name: 'shared.jpg' }]
                 };
 
@@ -925,7 +913,7 @@ describe('FileUploadManager', () => {
         });
 
         it('JSONパースエラーを適切に処理する', async () => {
-            const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
+            const file = createTestFile({ name: 'test.jpg', type: 'image/jpeg', size: 1000 }); // 1KB
 
             // 認証サービスをモックして認証エラーを回避
             const mockAuthService: AuthService = {
