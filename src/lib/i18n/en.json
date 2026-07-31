@@ -321,6 +321,7 @@
     "relay": "Relay",
     "relay_read": "Read",
     "relay_write": "Write",
+    "copy_relay_url": "Copy relay URL",
     "relay_read_enabled": "Read enabled",
     "relay_read_disabled": "Read disabled",
     "relay_write_enabled": "Write enabled",
