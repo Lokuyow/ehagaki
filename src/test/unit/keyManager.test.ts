@@ -21,7 +21,7 @@ import {
     KeyValidator
 } from '../../lib/keyManager.svelte';
 import type { KeyManagerDeps } from '../../lib/types';
-import { MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 
 // appUtilsのモック（実際の関数を実装）
 vi.mock("../lib/utils/appUtils", () => ({
@@ -94,16 +94,12 @@ describe('KeyValidator', () => {
 describe('KeyStorage', () => {
     let storage: KeyStorage;
     let mockLocalStorage: MockStorage;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
     let mockSecretKeyStore: { value: string | null; set: (value: string | null) => void };
 
     beforeEach(() => {
         mockLocalStorage = new MockStorage();
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn(),
-            warn: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
         mockSecretKeyStore = {
             value: null,
             set: vi.fn()

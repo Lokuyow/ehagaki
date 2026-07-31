@@ -5,7 +5,7 @@ import {
 } from '../../lib/parentClientAuthService';
 import { STORAGE_KEYS } from '../../lib/constants';
 import type { ParentClientSessionData } from '../../lib/types';
-import { MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 
 function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
@@ -32,14 +32,10 @@ function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.c
 }
 
 describe('ParentClientAuthService', () => {
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as unknown as Console;
+        mockConsole = createMockConsole();
     });
 
     it('auth.request/auth.result で接続し signer を生成する', async () => {
