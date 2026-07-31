@@ -1,30 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createMockConsole } from '../helpers';
 import {
     fetchAndCacheOpaqueProfileImageResponse,
     fetchAndCacheProfileImageResponse,
 } from '../../lib/swProfileImageFetchUtils';
 
+const createGetRequest = (url: string, options?: RequestInit) => new Request(url, { method: 'GET', ...options });
+
 describe('swProfileImageFetchUtils', () => {
     it('fetchAndCacheProfileImageResponse skips network fetch when offline', async () => {
         const fetchRequest = vi.fn();
+        const logger = createMockConsole();
 
         const result = await fetchAndCacheProfileImageResponse({
             request: new Request('https://example.com/profile.jpg?profile=true'),
             isOnline: false,
             normalizeProfileImageUrl: vi.fn(),
             getBaseUrl: vi.fn(),
-            createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            createRequest: (url, options) => createGetRequest(url, options),
             fetchRequest,
             cacheStorage: {
                 open: vi.fn(),
             },
             cacheName: 'profile-cache',
             fetchOpaqueProfileImage: vi.fn(),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-            },
+            logger,
         });
 
         expect(result).toBeNull();
@@ -42,21 +43,19 @@ describe('swProfileImageFetchUtils', () => {
             status: 200,
             headers: { 'Content-Type': 'image/jpeg' },
         });
+        const logger = createMockConsole();
 
         const result = await fetchAndCacheProfileImageResponse({
             request: new Request('https://example.com/profile.jpg?profile=true'),
             isOnline: true,
             normalizeProfileImageUrl: vi.fn(() => 'https://example.com/profile.jpg'),
             getBaseUrl: vi.fn(() => 'https://example.com/profile.jpg'),
-            createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            createRequest: (url, options) => createGetRequest(url, options),
             fetchRequest: vi.fn().mockResolvedValue(response),
             cacheStorage,
             cacheName: 'profile-cache',
             fetchOpaqueProfileImage: vi.fn(),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-            },
+            logger,
         });
 
         expect(result).toBe(response);
@@ -67,12 +66,14 @@ describe('swProfileImageFetchUtils', () => {
     });
 
     it('fetchAndCacheProfileImageResponse returns null for non-ok opaque responses', async () => {
+        const logger = createMockConsole();
+
         const result = await fetchAndCacheProfileImageResponse({
             request: new Request('https://example.com/profile.jpg?profile=true'),
             isOnline: true,
             normalizeProfileImageUrl: vi.fn(() => 'https://example.com/profile.jpg'),
             getBaseUrl: vi.fn(() => 'https://example.com/profile.jpg'),
-            createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            createRequest: (url, options) => createGetRequest(url, options),
             fetchRequest: vi.fn().mockResolvedValue({
                 ok: false,
                 type: 'opaque',
@@ -85,10 +86,7 @@ describe('swProfileImageFetchUtils', () => {
             },
             cacheName: 'profile-cache',
             fetchOpaqueProfileImage: vi.fn(),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-            },
+            logger,
         });
 
         expect(result).toBeNull();
@@ -100,23 +98,21 @@ describe('swProfileImageFetchUtils', () => {
             clone: vi.fn(() => ({ type: 'opaque' })),
         };
         const fetchOpaqueProfileImage = vi.fn().mockResolvedValue(opaqueResponse);
+        const logger = createMockConsole();
 
         const result = await fetchAndCacheProfileImageResponse({
             request: new Request('https://example.com/profile.jpg?profile=true'),
             isOnline: true,
             normalizeProfileImageUrl: vi.fn(() => 'https://example.com/profile.jpg'),
             getBaseUrl: vi.fn(() => 'https://example.com/profile.jpg'),
-            createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            createRequest: (url, options) => createGetRequest(url, options),
             fetchRequest: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
             cacheStorage: {
                 open: vi.fn(),
             },
             cacheName: 'profile-cache',
             fetchOpaqueProfileImage,
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-            },
+            logger,
         });
 
         expect(result).toBe(opaqueResponse);
@@ -134,17 +130,15 @@ describe('swProfileImageFetchUtils', () => {
             type: 'opaque',
             clone: vi.fn(() => ({ type: 'opaque' })),
         };
+        const logger = createMockConsole();
 
         const result = await fetchAndCacheOpaqueProfileImageResponse({
             baseUrl: 'https://example.com/profile.jpg',
             cacheStorage,
             cacheName: 'profile-cache',
             fetchRequest: vi.fn().mockResolvedValue(opaqueResponse),
-            createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-            },
+            createRequest: (url, options) => createGetRequest(url, options),
+            logger,
         });
 
         expect(result).toBe(opaqueResponse);
