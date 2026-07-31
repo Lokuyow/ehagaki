@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { NostrEvent } from "../../lib/types";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
 const rxNostrMock = vi.hoisted(() => ({
     emittedFilters: [] as any[],
@@ -18,17 +20,11 @@ vi.mock("rx-nostr", () => ({
 
 import { PostHistoryDeletionFetchService } from "../../lib/postHistoryDeletionFetchService";
 
-function createEvent(overrides: Record<string, any> = {}) {
-    return {
-        id: "1".repeat(64),
-        pubkey: "a".repeat(64),
-        kind: 1,
+function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
+    return createBaseEvent({
         content: "reply",
-        tags: [],
-        created_at: 100,
-        sig: "b".repeat(128),
         ...overrides,
-    };
+    });
 }
 
 describe("PostHistoryDeletionFetchService", () => {

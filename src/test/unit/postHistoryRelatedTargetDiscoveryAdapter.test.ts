@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 import {
     postHistoryQuoteTargetDiscoveryAdapter,
     postHistoryReplyParentTargetDiscoveryAdapter,
@@ -12,7 +13,7 @@ function createHex(seed: string): string {
 }
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
-    return {
+    return createBaseEvent({
         id: createHex("a"),
         pubkey: createHex("b"),
         kind: 1,
@@ -21,7 +22,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
         created_at: 1,
         sig: createHex("c"),
         ...overrides,
-    };
+    });
 }
 
 function createRecord(overrides: Partial<PostHistoryRecord> = {}): PostHistoryRecord {
