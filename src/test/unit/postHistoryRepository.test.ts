@@ -46,6 +46,19 @@ function createSignedEvent(overrides: Record<string, any> = {}) {
     };
 }
 
+function createDeletionEvent(targetEventId: string, overrides: Record<string, any> = {}) {
+    return {
+        id: "d".repeat(64),
+        pubkey: "b".repeat(64),
+        kind: 5,
+        content: "",
+        tags: [["e", targetEventId]],
+        created_at: 100,
+        sig: "e".repeat(128),
+        ...overrides,
+    };
+}
+
 function createPostHistoryRecord(input: {
     eventId: string;
     pubkeyHex: string;
@@ -177,6 +190,32 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
         materializedCounts,
         queriedIndexes,
     };
+}
+
+function monitorDeletionRequestTargetQueries(db: EHagakiDB) {
+    const originalWhere = db.postHistoryDeletionRequests.where.bind(db.postHistoryDeletionRequests);
+    const anyOfArgs: string[][] = [];
+    const equalsArgs: string[] = [];
+    const whereSpy = vi.spyOn(db.postHistoryDeletionRequests, "where");
+
+    whereSpy.mockImplementation(((index: string) => {
+        const clause = originalWhere(index as any) as any;
+        const originalAnyOf = clause.anyOf.bind(clause);
+        const originalEquals = clause.equals.bind(clause);
+
+        clause.anyOf = ((keys: string[]) => {
+            anyOfArgs.push([...keys]);
+            return originalAnyOf(keys);
+        }) as any;
+        clause.equals = ((key: string) => {
+            equalsArgs.push(key);
+            return originalEquals(key);
+        }) as any;
+
+        return clause;
+    }) as any);
+
+    return { anyOfArgs, equalsArgs, whereSpy };
 }
 
 afterEach(async () => {
@@ -1027,6 +1066,151 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("複数 fetched event を一括 upsert しても削除要求取得は targetEventId index の batch query 1回で済む", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 2000);
+        const deletionRepository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const foreignPubkey = "c".repeat(64);
+        const unchangedEvent = createSignedEvent({ id: "1".repeat(64), pubkey, content: "same", created_at: 100 });
+        const updatedEvent = createSignedEvent({ id: "2".repeat(64), pubkey, content: "same", created_at: 200 });
+        const insertedEvent = createSignedEvent({ id: "3".repeat(64), pubkey, content: "new", created_at: 300 });
+        const unmatchedEvent = createSignedEvent({
+            id: "4".repeat(64),
+            pubkey: foreignPubkey,
+            content: "foreign",
+            created_at: 400,
+        });
+
+        await deletionRepository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: pubkey,
+            deletionEvents: [
+                createDeletionEvent(unchangedEvent.id, {
+                    id: "a".repeat(64),
+                    pubkey,
+                    created_at: 700,
+                }),
+                createDeletionEvent(updatedEvent.id, {
+                    id: "b".repeat(64),
+                    pubkey,
+                    created_at: 900,
+                }),
+                createDeletionEvent(updatedEvent.id, {
+                    id: "c".repeat(64),
+                    pubkey,
+                    created_at: 800,
+                }),
+                createDeletionEvent(unmatchedEvent.id, {
+                    id: "f".repeat(64),
+                    pubkey,
+                    created_at: 600,
+                }),
+            ],
+        });
+        await repository.putPostedEvent({ event: unchangedEvent });
+        await repository.putPostedEvent({ event: updatedEvent });
+
+        const { anyOfArgs, equalsArgs, whereSpy } = monitorDeletionRequestTargetQueries(db);
+
+        const result = await repository.upsertFetchedEvents({
+            events: [
+                { event: unchangedEvent },
+                { event: updatedEvent, relayUrls: ["wss://updated.example.com"] },
+                { event: insertedEvent },
+                { event: insertedEvent, relayUrls: ["wss://dedup.example.com"] },
+                { event: unmatchedEvent },
+            ],
+        });
+
+        expect(whereSpy).toHaveBeenCalledTimes(1);
+        expect(whereSpy).toHaveBeenCalledWith("targetEventId");
+        expect(anyOfArgs).toEqual([[
+            unchangedEvent.id,
+            updatedEvent.id,
+            insertedEvent.id,
+            unmatchedEvent.id,
+        ]]);
+        expect(equalsArgs).toEqual([]);
+        expect(result).toEqual({
+            insertedCount: 2,
+            updatedCount: 1,
+            unchangedCount: 1,
+            appliedDeletionCount: 2,
+        });
+
+        await expect(db.postHistory.get(unchangedEvent.id)).resolves.toMatchObject({
+            deletedAt: 700_000,
+            deletionEventId: "a".repeat(64),
+        });
+        await expect(db.postHistory.get(updatedEvent.id)).resolves.toMatchObject({
+            deletedAt: 800_000,
+            deletionEventId: "c".repeat(64),
+            fetchedRelays: ["wss://updated.example.com/"],
+        });
+        await expect(db.postHistory.get(insertedEvent.id)).resolves.toMatchObject({
+            fetchedRelays: ["wss://dedup.example.com/"],
+        });
+        const savedUnmatched = await db.postHistory.get(unmatchedEvent.id);
+        expect(savedUnmatched).toBeDefined();
+        expect(savedUnmatched).not.toHaveProperty("deletedAt");
+
+        const deletionRecords = await db.postHistoryDeletionRequests.toArray();
+        expect(deletionRecords).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                targetEventId: unchangedEvent.id,
+                deletionEventId: "a".repeat(64),
+                targetVerified: true,
+            }),
+            expect.objectContaining({
+                targetEventId: updatedEvent.id,
+                deletionEventId: "b".repeat(64),
+                targetVerified: true,
+            }),
+            expect.objectContaining({
+                targetEventId: updatedEvent.id,
+                deletionEventId: "c".repeat(64),
+                targetVerified: true,
+            }),
+            expect.objectContaining({
+                targetEventId: unmatchedEvent.id,
+                deletionEventId: "f".repeat(64),
+                targetVerified: false,
+            }),
+        ]));
+
+        whereSpy.mockRestore();
+        db.close();
+    });
+
+    it("削除要求が0件でも複数 fetched event を batch 保存できる", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 2000);
+        const firstEvent = createSignedEvent({ id: "5".repeat(64), created_at: 500 });
+        const secondEvent = createSignedEvent({ id: "6".repeat(64), created_at: 600 });
+        const { anyOfArgs, equalsArgs, whereSpy } = monitorDeletionRequestTargetQueries(db);
+
+        const result = await repository.upsertFetchedEvents({
+            events: [{ event: firstEvent }, { event: secondEvent }],
+        });
+
+        expect(whereSpy).toHaveBeenCalledTimes(1);
+        expect(anyOfArgs).toEqual([[firstEvent.id, secondEvent.id]]);
+        expect(equalsArgs).toEqual([]);
+        expect(result).toEqual({
+            insertedCount: 2,
+            updatedCount: 0,
+            unchangedCount: 0,
+            appliedDeletionCount: 0,
+        });
+        await expect(db.postHistory.bulkGet([firstEvent.id, secondEvent.id])).resolves.toEqual([
+            expect.objectContaining({ eventId: firstEvent.id }),
+            expect.objectContaining({ eventId: secondEvent.id }),
+        ]);
+
+        whereSpy.mockRestore();
+        db.close();
+    });
+
     it("後着した新規投稿とpending削除を同時適用して基本分類と削除件数を分離する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 2000);
@@ -1254,6 +1438,40 @@ describe("DexiePostHistoryRepository", () => {
         await expect(db.postHistory.get(event.id)).resolves.not.toHaveProperty("deletedAt");
         await expect(db.postHistoryDeletionRequests.toArray()).resolves.toMatchObject([
             { targetVerified: false },
+        ]);
+
+        db.close();
+    });
+
+    it("upsertFetchedEvents の transaction が失敗した場合は verified 更新も投稿保存も巻き戻す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 2000);
+        const deletionRepository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
+        const event = createSignedEvent({ id: "7".repeat(64) });
+        await deletionRepository.upsertImportedDeletionEvents({
+            ownerPubkeyHex: event.pubkey,
+            deletionEvents: [createDeletionEvent(event.id, {
+                id: "8".repeat(64),
+                pubkey: event.pubkey,
+                created_at: 300,
+            })],
+        });
+
+        const bulkPutSpy = vi.spyOn(db.postHistory, "bulkPut")
+            .mockRejectedValue(new Error("post history bulkPut failed"));
+
+        await expect(repository.upsertFetchedEvents({
+            events: [{ event }],
+        })).rejects.toThrow("post history bulkPut failed");
+
+        bulkPutSpy.mockRestore();
+
+        await expect(db.postHistory.get(event.id)).resolves.toBeUndefined();
+        await expect(db.postHistoryDeletionRequests.toArray()).resolves.toEqual([
+            expect.objectContaining({
+                targetEventId: event.id,
+                targetVerified: false,
+            }),
         ]);
 
         db.close();
