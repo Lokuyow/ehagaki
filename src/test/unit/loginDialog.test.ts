@@ -81,6 +81,16 @@ vi.mock('../../lib/utils/clipboardUtils', () => ({
     tryCopyToClipboard: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock('../../lib/keyManager.svelte', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/keyManager.svelte')>('../../lib/keyManager.svelte');
+    return actual;
+});
+
+vi.mock('../../lib/keyManager.svelte.ts', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/keyManager.svelte')>('../../lib/keyManager.svelte');
+    return actual;
+});
+
 import LoginDialog from '../../components/LoginDialog.svelte';
 import { DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES } from '../../lib/nip46ConnectUiUtils';
 
@@ -211,7 +221,7 @@ describe('LoginDialog', () => {
         });
 
         expect(
-            screen.queryByRole('button', { name: /clearInput|入力内容を消去/ }),
+            screen.queryByRole('button', { name: '入力内容を消去' }),
         ).toBeNull();
     });
 
@@ -226,8 +236,8 @@ describe('LoginDialog', () => {
         const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
 
         setInputValue(bunkerInput, 'bunker://example?relay=wss://relay.example.com');
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         expect(clearButton).toBeTruthy();
         expect((clearButton as HTMLButtonElement).type).toBe('button');
     });
@@ -254,7 +264,7 @@ describe('LoginDialog', () => {
 
         expect(await screen.findByText('接続に失敗しました')).toBeTruthy();
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.click(clearButton);
 
         expect(bunkerInput.value).toBe('');
@@ -274,9 +284,9 @@ describe('LoginDialog', () => {
         await fireEvent.input(bunkerInput, {
             target: { value: 'bunker://example' },
         });
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.mouseDown(clearButton);
         await fireEvent.click(clearButton);
 
@@ -300,9 +310,9 @@ describe('LoginDialog', () => {
         await fireEvent.input(bunkerInput, {
             target: { value: 'bunker://example' },
         });
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.click(clearButton);
 
         expect(onNip46Login).not.toHaveBeenCalled();
@@ -324,7 +334,7 @@ describe('LoginDialog', () => {
             target: { value: 'bunker://example' },
         });
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ }) as HTMLButtonElement;
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' }) as HTMLButtonElement;
         expect(clearButton.disabled).toBe(true);
     });
 
@@ -334,7 +344,7 @@ describe('LoginDialog', () => {
         });
 
         expect(
-            screen.queryAllByRole('button', { name: /clearInput|入力内容を消去/ }),
+            screen.queryAllByRole('button', { name: '入力内容を消去' }),
         ).toHaveLength(0);
     });
 
@@ -345,9 +355,9 @@ describe('LoginDialog', () => {
 
         const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
         setInputValue(secretInput, validSecret);
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         expect(clearButton).toBeTruthy();
     });
 
@@ -365,7 +375,7 @@ describe('LoginDialog', () => {
             expect(screen.getByText(/nprofile1/)).toBeTruthy();
         });
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.click(clearButton);
 
         expect(secretInput.value).toBe('');
@@ -382,9 +392,9 @@ describe('LoginDialog', () => {
 
         const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
         setInputValue(secretInput, validSecret);
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.mouseDown(clearButton);
         await fireEvent.click(clearButton);
 
@@ -403,9 +413,9 @@ describe('LoginDialog', () => {
 
         const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
         setInputValue(secretInput, validSecret);
-        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole('button', { name: '入力内容を消去' })).toBeTruthy());
 
-        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        const clearButton = screen.getByRole('button', { name: '入力内容を消去' });
         await fireEvent.click(clearButton);
 
         expect(onSave).not.toHaveBeenCalled();

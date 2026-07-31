@@ -38,60 +38,27 @@ const mockKeyManager = {
     PublicKeyState: vi.fn().mockImplementation(function () {
         let _currentIsValid = false;
         let _currentHex = '';
-        let _currentNsec = '';
-        let _currentNpub = '';
-        let _currentNprofile = '';
 
         return {
             setNsec: vi.fn((nsec) => {
-                _currentNsec = nsec ?? '';
                 // 簡易的な実装（テスト用）
                 if (nsec && nsec.startsWith('nsec')) {
                     _currentIsValid = true;
-                    _currentHex = '00'.repeat(32);
-                    _currentNpub = 'npub1' + '00'.repeat(32).slice(0, 10) + '...';
-                    _currentNprofile = 'nprofile1' + '00'.repeat(32).slice(0, 10) + '...';
+                    _currentHex = 'test-hex';
                 } else {
                     _currentIsValid = false;
                     _currentHex = '';
-                    _currentNpub = '';
-                    _currentNprofile = '';
                 }
             }),
             clear: vi.fn(() => {
-                _currentNsec = '';
                 _currentIsValid = false;
                 _currentHex = '';
-                _currentNpub = '';
-                _currentNprofile = '';
             }),
             get currentIsValid() {
                 return _currentIsValid;
             },
             get currentHex() {
                 return _currentHex;
-            },
-            get isValid() {
-                return _currentIsValid;
-            },
-            get hex() {
-                return _currentHex;
-            },
-            get nsec() {
-                return _currentNsec;
-            },
-            get npub() {
-                return _currentNpub;
-            },
-            get nprofile() {
-                return _currentNprofile;
-            },
-            get data() {
-                return {
-                    hex: _currentHex,
-                    npub: _currentNpub,
-                    nprofile: _currentNprofile,
-                };
             }
         };
     })

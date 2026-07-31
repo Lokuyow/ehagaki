@@ -12,7 +12,6 @@
         validateNip46ConnectionRelayDrafts,
     } from "../lib/nip46ConnectUiUtils";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
-    import { toNprofile, toNpub } from "../lib/utils/nostrUtils";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import FloatingMessage from "./FloatingMessage.svelte";
@@ -86,21 +85,14 @@
 
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
-    let publicKeyStateView = $derived.by(() => {
-        if (secretKey !== undefined) {
-            publicKeyState.setNsec(secretKey);
-        }
-        return {
-            isValid: publicKeyState.currentIsValid,
-            npub: publicKeyState.currentHex ? toNpub(publicKeyState.currentHex) : "",
-            nprofile: publicKeyState.currentHex
-                ? toNprofile(publicKeyState.currentHex)
-                : "",
-        };
-    });
-    let isValid = $derived(publicKeyStateView.isValid);
-    let npubValue = $derived(publicKeyStateView.npub);
-    let nprofileValue = $derived(publicKeyStateView.nprofile);
+    let isValid = $derived(publicKeyState.isValid);
+    let npubValue = $derived(publicKeyState.npub);
+    let nprofileValue = $derived(publicKeyState.nprofile);
+    let clearInputLabel = $derived(
+        $_("clearInput") === "clearInput"
+            ? "入力内容を消去"
+            : $_("clearInput"),
+    );
 
     // --- エラーメッセージ管理 ---
     let inputEl: HTMLInputElement | null = $state(null);
@@ -264,12 +256,26 @@
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $effect(() => {
+        if (secretKey !== undefined) {
+            publicKeyState.setNsec(secretKey);
+        }
+    });
+
+    $effect(() => {
         if (secretKey !== undefined && inputEl && !secretKey) {
             inputEl.setCustomValidity("");
         }
     });
 
     // --- UIイベントハンドラ ---
+    function handleBunkerInput(event: Event): void {
+        bunkerUrl = (event.currentTarget as HTMLInputElement).value;
+        nip46ErrorMessage = "";
+        if (bunkerInputEl) {
+            bunkerInputEl.setCustomValidity("");
+        }
+    }
+
     function handleClearBunkerUrl(): void {
         if (!bunkerUrl) {
             return;
@@ -278,6 +284,11 @@
         nip46ErrorMessage = "";
         bunkerInputEl?.setCustomValidity("");
         bunkerInputEl?.focus({ preventScroll: true });
+    }
+
+    function handleSecretKeyInput(event: Event): void {
+        secretKey = (event.currentTarget as HTMLInputElement).value;
+        inputEl?.setCustomValidity("");
     }
 
     function handleClearSecretKey(): void {
@@ -1006,25 +1017,21 @@
                                 <div class="input-shell">
                                     <input
                                         type="password"
-                                        bind:value={bunkerUrl}
+                                        value={bunkerUrl}
                                         placeholder="bunker://..."
                                         class="bunker-input u-control"
                                         required
                                         autocomplete="off"
                                         bind:this={bunkerInputEl}
                                         disabled={isLoadingNip46}
-                                        oninput={() => {
-                                            nip46ErrorMessage = "";
-                                            if (bunkerInputEl)
-                                                bunkerInputEl.setCustomValidity("");
-                                        }}
+                                        oninput={handleBunkerInput}
                                     />
                                     {#if bunkerUrl.length > 0}
                                         <Button
                                             variant="secondary"
                                             type="button"
                                             className="clear-input-btn"
-                                            ariaLabel={$_("clearInput") || "入力内容を消去"}
+                                            ariaLabel={clearInputLabel}
                                             onClick={handleClearBunkerUrl}
                                             onmousedown={preventKeyboardFocusChange}
                                             ontouchstart={preventKeyboardFocusChange}
@@ -1085,7 +1092,7 @@
                 <div class="input-shell">
                     <input
                         type="password"
-                        bind:value={secretKey}
+                        value={secretKey}
                         placeholder="nsec1..."
                         class="secret-input u-control"
                         id="secretKey"
@@ -1096,14 +1103,14 @@
                         maxlength="63"
                         bind:this={inputEl}
                         title={$_("loginDialog.hint_input_secret")}
-                        oninput={() => inputEl?.setCustomValidity("")}
+                        oninput={handleSecretKeyInput}
                     />
                     {#if secretKey.length > 0}
                         <Button
                             variant="secondary"
                             type="button"
                             className="clear-input-btn"
-                            ariaLabel={$_("clearInput") || "入力内容を消去"}
+                            ariaLabel={clearInputLabel}
                             onClick={handleClearSecretKey}
                             onmousedown={preventKeyboardFocusChange}
                             ontouchstart={preventKeyboardFocusChange}
