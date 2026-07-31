@@ -4,6 +4,12 @@ import type { RelayManager } from '../../lib/relayManager';
 import { profileMetadataCache } from '../../lib/profileMetadataCache.svelte';
 import { createMockRxNostr } from '../helpers';
 
+const relay1Url = 'wss://relay1.example.com/';
+const bootstrapRelayUrl = 'wss://bootstrap.example.com/';
+const cachedRelayUrl = 'wss://cached.relay.com/';
+const writeRelayUrl = 'wss://write.relay.com/';
+const readRelayUrl = 'wss://read.relay.com/';
+
 /**
  * RelayProfileService ユニットテスト
  *
@@ -18,12 +24,12 @@ function createMockRelayManager(): RelayManager {
         getFromLocalStorage: vi.fn().mockResolvedValue(null),
         fetchUserRelays: vi.fn().mockResolvedValue({
             success: true,
-            relayConfig: ['wss://relay1.example.com/'],
+            relayConfig: [relay1Url],
             source: 'kind10002'
         }),
         getRelayListsForProfile: vi.fn().mockResolvedValue({
-            writeRelays: ['wss://relay1.example.com/'],
-            additionalRelays: ['wss://relay1.example.com/', 'wss://bootstrap.example.com/']
+            writeRelays: [relay1Url],
+            additionalRelays: [relay1Url, bootstrapRelayUrl]
         }),
         saveToLocalStorage: vi.fn(),
     } as unknown as RelayManager;
@@ -35,17 +41,31 @@ describe('RelayProfileService', () => {
     let mockRxNostr: ReturnType<typeof createMockRxNostr>;
     let getProfileSpy: ReturnType<typeof vi.spyOn>;
 
+    const createProfileResult = (overrides = {}) => ({
+        name: 'Test User',
+        displayName: 'Test User',
+        picture: 'https://example.com/pic.jpg',
+        npub: 'npub1test',
+        nprofile: 'nprofile1test',
+        ...overrides,
+    });
+
+    const createExpectedGetProfileOptions = (overrides = {}) => ({
+        rxNostr: mockRxNostr,
+        forceRefresh: false,
+        allowBackgroundRefresh: false,
+        writeRelays: [relay1Url],
+        additionalRelays: [relay1Url, bootstrapRelayUrl],
+        ...overrides,
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockRxNostr = createMockRxNostr();
         mockRelayManager = createMockRelayManager();
-        getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue({
-            name: 'Test User',
-            displayName: 'Test User',
-            picture: 'https://example.com/pic.jpg',
-            npub: 'npub1test',
-            nprofile: 'nprofile1test'
-        });
+        getProfileSpy = vi.spyOn(profileMetadataCache, 'getProfile').mockResolvedValue(
+            createProfileResult()
+        );
         service = new RelayProfileService(mockRxNostr as any, mockRelayManager);
     });
 
@@ -84,7 +104,7 @@ describe('RelayProfileService', () => {
 
     describe('fetchRelays', () => {
         it('forceRemote=falseでキャッシュがある場合はローカルストレージから返す', async () => {
-            const cachedRelays = { 'wss://cached.relay.com/': { read: true, write: true } };
+            const cachedRelays = { [cachedRelayUrl]: { read: true, write: true } };
             vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(cachedRelays);
 
             const result = await service.fetchRelays('pubkey123', false);
@@ -105,7 +125,7 @@ describe('RelayProfileService', () => {
         });
 
         it('forceRemote=trueの場合はキャッシュを無視してリモート取得する', async () => {
-            const cachedRelays = { 'wss://cached.relay.com/': { read: true, write: true } };
+            const cachedRelays = { [cachedRelayUrl]: { read: true, write: true } };
             vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(cachedRelays);
 
             await service.fetchRelays('pubkey123', true);
@@ -134,54 +154,35 @@ describe('RelayProfileService', () => {
             const result = await service.fetchProfile('pubkey123', false);
 
             expect(mockRelayManager.getRelayListsForProfile).toHaveBeenCalledWith('pubkey123');
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
-                forceRefresh: false,
-                allowBackgroundRefresh: false,
-                writeRelays: ['wss://relay1.example.com/'],
-                additionalRelays: ['wss://relay1.example.com/', 'wss://bootstrap.example.com/']
-            });
-            expect(result).toEqual({
-                name: 'Test User',
-                displayName: 'Test User',
-                picture: 'https://example.com/pic.jpg',
-                npub: 'npub1test',
-                nprofile: 'nprofile1test'
-            });
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions());
+            expect(result).toEqual(createProfileResult());
         });
 
         it('forceRemote=trueの場合は強制再取得でプロフィールを取得する', async () => {
             await service.fetchProfile('pubkey123', true);
 
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions({
                 forceRefresh: true,
-                allowBackgroundRefresh: false,
-                writeRelays: ['wss://relay1.example.com/'],
-                additionalRelays: ['wss://relay1.example.com/', 'wss://bootstrap.example.com/']
-            });
+            }));
         });
 
         it('RelayManagerからリレーリストを取得してprofileMetadataCacheに渡す', async () => {
             vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://write.relay.com/', 'wss://read.relay.com/']
+                writeRelays: [writeRelayUrl],
+                additionalRelays: [writeRelayUrl, readRelayUrl]
             });
 
             await service.fetchProfile('pubkey123');
 
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
-                forceRefresh: false,
-                allowBackgroundRefresh: false,
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://write.relay.com/', 'wss://read.relay.com/']
-            });
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions({
+                writeRelays: [writeRelayUrl],
+                additionalRelays: [writeRelayUrl, readRelayUrl],
+            }));
         });
 
         it('source付き分類をcontextualとfallbackのままcacheへ渡す', async () => {
             vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
-                writeRelays: ['wss://write.relay.com/'],
+                writeRelays: [writeRelayUrl],
                 additionalRelays: ['wss://legacy-merged.example.com/'],
                 contextualRelays: ['wss://context.example.com/'],
                 fallbackRelays: ['wss://source-fallback.example.com/'],
@@ -189,55 +190,48 @@ describe('RelayProfileService', () => {
 
             await service.fetchProfile('pubkey123');
 
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
-                forceRefresh: false,
-                allowBackgroundRefresh: false,
-                writeRelays: ['wss://write.relay.com/'],
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions({
+                writeRelays: [writeRelayUrl],
                 additionalRelays: ['wss://context.example.com/'],
                 fallbackRelays: ['wss://source-fallback.example.com/'],
-            });
+            }));
         });
     });
 
     describe('fetchProfileRealtime', () => {
         it('relay hint を既存のプロフィール取得リレーにマージしてSWR取得する', async () => {
-            getProfileSpy.mockResolvedValue({
+            getProfileSpy.mockResolvedValue(createProfileResult({
                 name: 'Realtime User',
                 displayName: 'Realtime User',
-                picture: 'https://example.com/pic.jpg',
                 npub: 'npub1realtime',
-                nprofile: 'nprofile1realtime'
-            });
+                nprofile: 'nprofile1realtime',
+            }));
             vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://bootstrap.example.com/']
+                writeRelays: [writeRelayUrl],
+                additionalRelays: [bootstrapRelayUrl]
             });
 
             const result = await service.fetchProfileRealtime('pubkey123', {
                 additionalRelays: ['wss://hint-relay.example.com']
             });
 
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
-                forceRefresh: false,
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions({
                 allowBackgroundRefresh: true,
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://hint-relay.example.com/', 'wss://bootstrap.example.com/']
-            });
-            expect(result).toEqual({
+                writeRelays: [writeRelayUrl],
+                additionalRelays: ['wss://hint-relay.example.com/', bootstrapRelayUrl],
+            }));
+            expect(result).toEqual(createProfileResult({
                 name: 'Realtime User',
                 displayName: 'Realtime User',
-                picture: 'https://example.com/pic.jpg',
                 npub: 'npub1realtime',
-                nprofile: 'nprofile1realtime'
-            });
+                nprofile: 'nprofile1realtime',
+            }));
         });
 
         it('無効な external relay hint を除外して network-only 取得する', async () => {
             vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://bootstrap.example.com/']
+                writeRelays: [writeRelayUrl],
+                additionalRelays: [bootstrapRelayUrl]
             });
 
             await service.fetchProfileRealtime('pubkey123', {
@@ -248,13 +242,11 @@ describe('RelayProfileService', () => {
                 ]
             });
 
-            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', {
-                rxNostr: mockRxNostr,
-                forceRefresh: false,
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', createExpectedGetProfileOptions({
                 allowBackgroundRefresh: true,
-                writeRelays: ['wss://write.relay.com/'],
-                additionalRelays: ['wss://hint-relay.example.com/', 'wss://bootstrap.example.com/']
-            });
+                writeRelays: [writeRelayUrl],
+                additionalRelays: ['wss://hint-relay.example.com/', bootstrapRelayUrl],
+            }));
         });
 
         it('保存済みcontextual relayが12件あってもevent hintを先頭に維持する', async () => {
@@ -382,18 +374,12 @@ describe('RelayProfileService', () => {
             expect(mockRelayManager.getFromLocalStorage).toHaveBeenCalledWith('pubkey123');
             // fetchProfile(pubkey, false) が呼ばれる
             expect(getProfileSpy).toHaveBeenCalled();
-            expect(result).toEqual({
-                name: 'Test User',
-                displayName: 'Test User',
-                picture: 'https://example.com/pic.jpg',
-                npub: 'npub1test',
-                nprofile: 'nprofile1test'
-            });
+            expect(result).toEqual(createProfileResult());
         });
 
         it('リレーキャッシュがある場合はリモート取得をスキップする', async () => {
             vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(
-                ['wss://cached.relay.com/']
+                [cachedRelayUrl]
             );
 
             await service.initializeForLogin('pubkey123');
