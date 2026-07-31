@@ -219,6 +219,14 @@ describe("SettingsUploadDestinationSection", () => {
         expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
+    it("renders the URL input with in-field clear button styling", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const input = screen.getByLabelText("URL") as HTMLInputElement;
+        expect(input.classList.contains("upload-destination-url-input")).toBe(true);
+    });
+
     it("uses localized accessible names for the clear button", async () => {
         currentLocale = "en";
         render(SettingsUploadDestinationSection);

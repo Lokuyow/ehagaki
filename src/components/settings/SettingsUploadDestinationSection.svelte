@@ -317,6 +317,7 @@
             <div class="url-input-shell">
                 <input
                     id="upload-destination-url-input"
+                    class="upload-destination-url-input"
                     bind:this={serverUrlInputElement}
                     bind:value={form.serverUrl}
                     inputmode="url"
@@ -807,30 +808,45 @@
     }
 
     .url-input-shell {
+        position: relative;
         display: flex;
         align-items: center;
-        gap: 8px;
         min-width: 0;
     }
 
-    .url-input-shell input {
+    .upload-destination-url-input {
         flex: 1 1 auto;
         min-width: 0;
+        min-height: 46px;
+        padding: 8px 47px 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg-input);
+        color: var(--text);
+        font: inherit;
+        outline: none;
+    }
+
+    .upload-destination-url-input:focus-visible {
+        outline: 2px solid var(--theme);
+        outline-offset: -1px;
     }
 
     :global(.upload-destination-url-clear-button) {
-        flex: 0 0 auto;
+        position: absolute;
+        inset-block: 50%;
+        inset-inline-end: 2px;
+        transform: translateY(-50%);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 44px;
-        min-width: 44px;
         height: 44px;
-        min-height: 44px;
         padding: 0;
-        border: 1px solid var(--border);
-        background-color: var(--bg-input);
+        border: none;
+        background: transparent;
         color: var(--text-muted);
+        z-index: 1;
     }
 
     :global(.upload-destination-url-clear-button:hover:not(:disabled)),
