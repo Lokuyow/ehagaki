@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createMockConsole } from '../helpers';
 import {
     createSharedClientUrl,
     focusAndNotifySharedClient,
@@ -8,10 +9,15 @@ import {
     redirectToAvailableSharedClient,
 } from '../../lib/swClientUtils';
 
+const SHARED_CLIENT_ORIGIN = 'https://example.com';
+const SHARED_CLIENT_BASE_PATH = '/ehagaki/';
+const SHARED_CLIENT_URL = `${SHARED_CLIENT_ORIGIN}${SHARED_CLIENT_BASE_PATH}?shared=true`;
+const SHARED_MEDIA_FIXTURE = { image: 'x' };
+
 describe('swClientUtils', () => {
     it('createSharedClientUrl は shared=true を付けた URL を返す', () => {
-        expect(createSharedClientUrl('/ehagaki/', 'https://example.com')).toBe(
-            'https://example.com/ehagaki/?shared=true',
+        expect(createSharedClientUrl(SHARED_CLIENT_BASE_PATH, SHARED_CLIENT_ORIGIN)).toBe(
+            SHARED_CLIENT_URL,
         );
     });
 
@@ -32,13 +38,13 @@ describe('swClientUtils', () => {
         const onPersisted = vi.fn();
 
         const result = await persistSharedMediaIfPresent({
-            sharedCache: { image: 'x' },
+            sharedCache: SHARED_MEDIA_FIXTURE,
             persist,
             onPersisted,
         });
 
         expect(result).toBe(true);
-        expect(persist).toHaveBeenCalledWith({ image: 'x' });
+        expect(persist).toHaveBeenCalledWith(SHARED_MEDIA_FIXTURE);
         expect(onPersisted).toHaveBeenCalledOnce();
     });
 
@@ -47,7 +53,7 @@ describe('swClientUtils', () => {
         const onError = vi.fn();
 
         const result = await persistSharedMediaIfPresent({
-            sharedCache: { image: 'x' },
+            sharedCache: SHARED_MEDIA_FIXTURE,
             persist: vi.fn(async () => {
                 throw error;
             }),
@@ -62,6 +68,7 @@ describe('swClientUtils', () => {
         const client = { id: 'client-1' };
         const focusAndNotifyClient = vi.fn(async () => 'focused');
         const openNewClient = vi.fn(async () => 'opened');
+        const logger = createMockConsole();
 
         const result = await redirectToAvailableSharedClient({
             clientSet: {
@@ -69,11 +76,7 @@ describe('swClientUtils', () => {
             },
             focusAndNotifyClient,
             openNewClient,
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            },
+            logger,
             createErrorRedirectResponse: () => 'error',
         });
 
@@ -89,26 +92,23 @@ describe('swClientUtils', () => {
             postMessage: vi.fn(),
         };
         const persistSharedMedia = vi.fn(async () => { });
+        const logger = createMockConsole();
 
         const result = await focusAndNotifySharedClient({
             client,
-            sharedCache: { image: 'x' },
+            sharedCache: SHARED_MEDIA_FIXTURE,
             persistSharedMedia,
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            },
+            logger,
             createRedirectResponse: () => 'redirected',
         });
 
         expect(result).toBe('redirected');
-        expect(persistSharedMedia).toHaveBeenCalledWith({ image: 'x' });
+        expect(persistSharedMedia).toHaveBeenCalledWith(SHARED_MEDIA_FIXTURE);
         expect(client.focus).toHaveBeenCalledTimes(1);
         expect(client.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: 'SHARED_MEDIA',
-                data: { image: 'x' },
+                data: SHARED_MEDIA_FIXTURE,
                 requestId: expect.stringMatching(/^sw-/),
             }),
         );
@@ -116,22 +116,19 @@ describe('swClientUtils', () => {
 
     it('openNewSharedClientWindow は shared=true 付き URL を開く', async () => {
         const openWindow = vi.fn(async () => { });
+        const logger = createMockConsole();
 
         const result = await openNewSharedClientWindow({
-            sharedCache: { image: 'x' },
+            sharedCache: SHARED_MEDIA_FIXTURE,
             persistSharedMedia: vi.fn(async () => { }),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            },
-            basePath: '/ehagaki/',
-            origin: 'https://example.com',
+            logger,
+            basePath: SHARED_CLIENT_BASE_PATH,
+            origin: SHARED_CLIENT_ORIGIN,
             openWindow,
             createRedirectResponse: () => 'redirected',
         });
 
         expect(result).toBe('redirected');
-        expect(openWindow).toHaveBeenCalledWith('https://example.com/ehagaki/?shared=true');
+        expect(openWindow).toHaveBeenCalledWith(SHARED_CLIENT_URL);
     });
 });
