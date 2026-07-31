@@ -6,6 +6,7 @@ import {
 } from "../postHistoryNip10Utils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
+import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import {
     ehagakiDb,
     type EHagakiDB,
@@ -58,16 +59,6 @@ function sortRelatedEvents(records: PostHistoryChildInteractionRecord[]): PostHi
 
         return left.eventId.localeCompare(right.eventId);
     });
-}
-
-function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
-    const normalizedLeft = left ?? [];
-    const normalizedRight = right ?? [];
-    if (normalizedLeft.length !== normalizedRight.length) {
-        return false;
-    }
-
-    return normalizedLeft.every((value, index) => value === normalizedRight[index]);
 }
 
 function areTagsEqual(left: string[][], right: string[][]): boolean {

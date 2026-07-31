@@ -24,6 +24,7 @@ import {
     createPostHistoryProfileSyncCoordinator,
     type PostHistoryProfileSyncCoordinator,
 } from "./postHistoryProfileSync";
+import { areStringArraysEqual } from "./utils/arrayEqualityUtils";
 
 const POST_HISTORY_RELATED_TARGET_RELAY_LIMIT = 8;
 
@@ -92,14 +93,6 @@ function sanitizeRelayHints(relayHints: string[]): string[] {
     return RelayConfigUtils.sanitizeExternalRelayUrls(relayHints, {
         limit: POST_HISTORY_RELATED_TARGET_RELAY_LIMIT,
     });
-}
-
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    return left.every((value, index) => value === right[index]);
 }
 
 function createSyntheticTargetEvent(

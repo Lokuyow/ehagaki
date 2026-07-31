@@ -10,6 +10,7 @@ import {
 } from "../postHistoryDeletionUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
+import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import {
     ehagakiDb,
     type EHagakiDB,
@@ -111,16 +112,6 @@ function addDeletedTarget(
     const eventIds = map.get(record.targetAuthorPubkey) ?? new Set<string>();
     eventIds.add(record.targetEventId);
     map.set(record.targetAuthorPubkey, eventIds);
-}
-
-function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
-    const normalizedLeft = left ?? [];
-    const normalizedRight = right ?? [];
-    if (normalizedLeft.length !== normalizedRight.length) {
-        return false;
-    }
-
-    return normalizedLeft.every((value, index) => value === normalizedRight[index]);
 }
 
 function hasMaterialDeletionRequestChanges(
