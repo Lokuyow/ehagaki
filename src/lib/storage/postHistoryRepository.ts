@@ -15,6 +15,7 @@ import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistor
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
+import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
@@ -303,16 +304,6 @@ function normalizeFetchedEventItems(
     }
 
     return Array.from(normalized.values());
-}
-
-function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
-    const normalizedLeft = left ?? [];
-    const normalizedRight = right ?? [];
-    if (normalizedLeft.length !== normalizedRight.length) {
-        return false;
-    }
-
-    return normalizedLeft.every((value, index) => value === normalizedRight[index]);
 }
 
 function areMediaArraysEqual(left: PostHistoryMediaRecord[], right: PostHistoryMediaRecord[]): boolean {

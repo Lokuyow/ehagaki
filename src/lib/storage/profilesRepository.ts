@@ -6,6 +6,7 @@ import {
 } from "../profileEventComparison";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { ProfileData } from "../types";
+import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { ehagakiDb, type EHagakiDB, type ProfileRecord } from "./ehagakiDb";
 
 const PROFILE_SCHEMA_VERSION = 2;
@@ -81,13 +82,6 @@ function toRecord(pubkeyHex: string, profile: ProfileData, now: () => number): P
 function normalizeProfileRelays(...relayLists: Array<string[] | undefined>): string[] | undefined {
     const normalized = RelayConfigUtils.sanitizeExternalRelayUrls(relayLists.flatMap((relays) => relays ?? []));
     return normalized.length > 0 ? normalized : undefined;
-}
-
-function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
-    const leftValues = left ?? [];
-    const rightValues = right ?? [];
-    return leftValues.length === rightValues.length
-        && leftValues.every((value, index) => value === rightValues[index]);
 }
 
 function hasValidEventIdentity(record: ProfileRecord): record is ProfileRecord & ProfileEventIdentity {

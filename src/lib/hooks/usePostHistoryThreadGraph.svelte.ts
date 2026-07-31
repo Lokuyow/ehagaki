@@ -103,6 +103,7 @@ import {
     createPostHistoryProfileSyncCoordinator,
     type PostHistoryProfileSyncCoordinator,
 } from "../postHistoryProfileSync";
+import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 
 export type PostHistoryThreadGraphRepliesStatus =
     | "unloaded"
@@ -191,14 +192,6 @@ function buildInitialRepliesActionState(): PostHistoryThreadGraphRepliesActionSt
 
 function sanitizeRelayUrls(urls: string[]): string[] {
     return RelayConfigUtils.sanitizeExternalRelayUrls(urls, { limit: 8 });
-}
-
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    return left.every((value, index) => value === right[index]);
 }
 
 function uniqueEventIds(eventIds: string[]): string[] {
