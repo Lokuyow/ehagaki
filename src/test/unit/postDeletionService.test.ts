@@ -7,6 +7,8 @@ import {
     buildDeletionRequestEvent,
     canRequestPostDeletion,
 } from "../../lib/postDeletionService";
+import { createDeferred } from "../deferredTestUtils";
+import { createMockConsole } from "../helpers";
 
 function createAuthState(overrides: Partial<AuthState> = {}): AuthState {
     return {
@@ -44,22 +46,31 @@ function createRecord(overrides: Partial<PostHistoryRecord> = {}): PostHistoryRe
 }
 
 describe("postDeletionService helpers", () => {
-    it("自分の未削除投稿だけ deletion request 対象にする", () => {
-        expect(
-            canRequestPostDeletion(createRecord(), "a".repeat(64)),
-        ).toBe(true);
-        expect(
-            canRequestPostDeletion(
-                createRecord({ pubkeyHex: "b".repeat(64) }),
-                "a".repeat(64),
-            ),
-        ).toBe(false);
-        expect(
-            canRequestPostDeletion(createRecord({ deletedAt: 123 }), "a".repeat(64)),
-        ).toBe(false);
-        expect(
-            canRequestPostDeletion(createRecord({ kind: 30023 }), "a".repeat(64)),
-        ).toBe(false);
+    it.each([
+        {
+            name: "自分の未削除投稿",
+            recordOverrides: {},
+            expected: true,
+        },
+        {
+            name: "他人の投稿",
+            recordOverrides: { pubkeyHex: "b".repeat(64) },
+            expected: false,
+        },
+        {
+            name: "削除済み投稿",
+            recordOverrides: { deletedAt: 123 },
+            expected: false,
+        },
+        {
+            name: "対象外kind",
+            recordOverrides: { kind: 30023 },
+            expected: false,
+        },
+    ])("$name", ({ recordOverrides, expected }) => {
+        expect(canRequestPostDeletion(createRecord(recordOverrides), "a".repeat(64))).toBe(
+            expected,
+        );
     });
 
     it("kind:5 deletion request event を e tag, k tag, 空 content で組み立てる", () => {
@@ -128,11 +139,7 @@ describe("PostDeletionService", () => {
             postHistoryRepository: { markDeleted },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 5000,
-            console: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            } as unknown as Console,
+            console: createMockConsole(),
         });
 
         const result = await service.requestDeletion({
@@ -297,15 +304,12 @@ describe("PostDeletionService", () => {
     });
 
     it("NIP-46 signer取得待機中に認証が変わった場合はsignerを使用しない", async () => {
-        let resolveSigner!: (signer: any) => void;
-        const signerPromise = new Promise<any>((resolve) => {
-            resolveSigner = resolve;
-        });
+        const signerDeferred = createDeferred<any>();
         const signEvent = vi.fn();
         const authStateStore = { value: createAuthState({ type: "nip46" }) };
         const service = new PostDeletionService({
             authStateStore,
-            getNip46SignerForSessionFn: vi.fn().mockReturnValue(signerPromise),
+            getNip46SignerForSessionFn: vi.fn().mockReturnValue(signerDeferred.promise),
         });
 
         const resultPromise = service.requestDeletion({
@@ -316,7 +320,7 @@ describe("PostDeletionService", () => {
             type: "nip46",
             pubkey: "b".repeat(64),
         });
-        resolveSigner({ signEvent });
+        signerDeferred.resolve({ signEvent });
 
         await expect(resultPromise).resolves.toEqual({
             success: false,
