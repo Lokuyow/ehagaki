@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Nip96UploadAdapter } from "../../lib/upload/Nip96UploadAdapter";
 import type { UploadDestination } from "../../lib/types";
+import { createNip96ProcessingResponse, createNip96SuccessResponse, createTextResponse } from "../jsonResponseTestHelper";
 
 function createDestination(): UploadDestination {
     return {
@@ -61,19 +62,11 @@ describe("Nip96UploadAdapter", () => {
             return image as unknown as HTMLImageElement;
         });
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({
-                status: "processing",
+            .mockResolvedValueOnce(createNip96ProcessingResponse({
                 processing_url: "https://share.yabu.me/1811",
-            }), {
-                status: 202,
-                headers: { "content-type": "application/json" },
             }))
-            .mockResolvedValueOnce(new Response("Not Found", {
-                status: 404,
-                statusText: "Not Found",
-            }))
-            .mockResolvedValueOnce(new Response(JSON.stringify({
-                status: "success",
+            .mockResolvedValueOnce(createTextResponse("Not Found", 404))
+            .mockResolvedValueOnce(createNip96SuccessResponse({
                 nip94_event: {
                     tags: [
                         ["url", "https://share.yabu.me/files/mockhash.png"],
@@ -81,9 +74,6 @@ describe("Nip96UploadAdapter", () => {
                         ["m", "image/png"],
                     ],
                 },
-            }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
             }));
         const authService = {
             buildAuthHeader: vi.fn(async (_url: string, method: string) => `Bearer ${method}`),

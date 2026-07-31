@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
 import type { UploadDestination } from "../../lib/types";
+import { createBlossomUploadResponse, createEmptyResponse } from "../jsonResponseTestHelper";
 
 vi.mock("../../lib/utils/fileUtils", () => ({
     calculateSHA256Hex: vi.fn(async () => "a".repeat(64)),
@@ -66,19 +67,13 @@ describe("BlossomUploadAdapter", () => {
 
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({
+            .mockResolvedValueOnce(createBlossomUploadResponse({
                 url: "https://npub1example.blossom.band/mockhash.png",
                 sha256: "a".repeat(64),
                 size: 4,
                 type: "image/png",
-            }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
             }))
-            .mockResolvedValueOnce(new Response(null, {
-                status: 200,
-                headers: { "content-type": "image/png" },
-            }));
+            .mockResolvedValueOnce(createEmptyResponse(200, { "content-type": "image/png" }));
         const signer = {
             getPublicKey: vi.fn(async () => "f".repeat(64)),
             signEvent: vi.fn(async (event) => ({
@@ -118,14 +113,11 @@ describe("BlossomUploadAdapter", () => {
         const adapter = new BlossomUploadAdapter();
         const imageSpy = mockImageLoads([false, true]);
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({
+            .mockResolvedValueOnce(createBlossomUploadResponse({
                 url: "https://npub1example.blossom.band/mockhash.png",
                 sha256: "a".repeat(64),
                 size: 4,
                 type: "image/png",
-            }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
             }))
             .mockRejectedValue(new TypeError("Failed to fetch"));
         const signer = {
@@ -160,7 +152,7 @@ describe("BlossomUploadAdapter", () => {
 
     it("uses an image/png probe for HEAD /upload connection tests", async () => {
         const adapter = new BlossomUploadAdapter();
-        const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+        const fetchMock = vi.fn(async () => createEmptyResponse(200));
         const authService = {
             buildAuthHeader: vi.fn(),
             buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
@@ -198,9 +190,9 @@ describe("BlossomUploadAdapter", () => {
             const contentType = headers["X-Content-Type"];
 
             if (contentType === "video/mp4") {
-                return new Response(null, { status: 415 });
+                return createEmptyResponse(415);
             }
-            return new Response(null, { status: 200 });
+            return createEmptyResponse(200);
         });
         const authService = {
             buildAuthHeader: vi.fn(),
@@ -225,11 +217,8 @@ describe("BlossomUploadAdapter", () => {
 
     it("uses explicit upload size headers when a Blossom server exposes them", async () => {
         const adapter = new BlossomUploadAdapter();
-        const fetchMock = vi.fn(async () => new Response(null, {
-            status: 200,
-            headers: {
-                "X-Max-Upload-Size": String(10 * 1024 * 1024),
-            },
+        const fetchMock = vi.fn(async () => createEmptyResponse(200, {
+            "X-Max-Upload-Size": String(10 * 1024 * 1024),
         }));
         const authService = {
             buildAuthHeader: vi.fn(),

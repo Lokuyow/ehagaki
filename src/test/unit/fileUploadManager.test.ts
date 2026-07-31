@@ -3,6 +3,7 @@ import { FileUploadManager } from '../../lib/fileUploadManager';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { setImageSizeInfoFromFileSize } from '../../stores/uploadStore.svelte';
 import { createTestFile } from '../fileTestUtils';
+import { createJsonResponse } from '../jsonResponseTestHelper';
 import type {
     FileUploadDependencies,
     CompressionService,
