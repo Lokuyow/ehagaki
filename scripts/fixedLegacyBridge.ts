@@ -31,7 +31,7 @@ const LEGACY_BRIDGE_MANIFEST_PATH = resolve(
     "manifest.json",
 );
 const FIXED_LEGACY_BRIDGE_MANIFEST_SHA256 =
-    "92b511b84ad3d2347ab802958ef80df27e76921d3cc9ada60296c05bfd8cc30d";
+    "0150cb23da0bd915dbfa4edb0c5cab16ebddd48ede8e4bc6a51ba77f31c3acd9";
 
 function fail(message: string): never {
     throw new Error(`[fixed-legacy-bridge] ${message}`);
