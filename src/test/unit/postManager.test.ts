@@ -1,6 +1,4 @@
-import { vi } from 'vitest';
-
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
     PostManager,
     PostValidator,
@@ -16,7 +14,7 @@ import type {
 import { updateHashtagData } from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
-import { createMockRxNostr, MockKeyManager } from '../helpers';
+import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers';
 import { nip19 } from 'nostr-tools';
 
 class MockClassList {
@@ -137,95 +135,106 @@ describe('PostValidator', () => {
 });
 
 describe('trimTrailingNewlineAfterMedia', () => {
-    describe('画像URL末尾の改行削除', () => {
-        it('画像URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/image.jpg\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.jpg');
-        });
+    const imageCases = [
+        {
+            name: '画像URL直後の末尾改行を削除する (.jpg)',
+            content: 'テスト\nhttps://example.com/image.jpg\n',
+            expected: 'テスト\nhttps://example.com/image.jpg',
+        },
+        {
+            name: '.png拡張子の画像URL直後の末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/image.png\n',
+            expected: 'テスト\nhttps://example.com/image.png',
+        },
+        {
+            name: '.webp拡張子の画像URL直後の末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/image.webp\n',
+            expected: 'テスト\nhttps://example.com/image.webp',
+        },
+        {
+            name: '.gif拡張子の画像URL直後の末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/image.gif\n',
+            expected: 'テスト\nhttps://example.com/image.gif',
+        },
+    ];
 
-        it('.png拡張子の画像URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/image.png\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.png');
-        });
+    const videoCases = [
+        {
+            name: '.mp4動画URL直後の末尾改行を削除する',
+            content: 'てす\nhttps://share.yabu.me/abc/video.mp4\n',
+            expected: 'てす\nhttps://share.yabu.me/abc/video.mp4',
+        },
+        {
+            name: '.webm動画URL直後の末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/video.webm\n',
+            expected: 'テスト\nhttps://example.com/video.webm',
+        },
+        {
+            name: '.mov動画URL直後の末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/video.mov\n',
+            expected: 'テスト\nhttps://example.com/video.mov',
+        },
+    ];
 
-        it('.webp拡張子の画像URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/image.webp\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.webp');
-        });
+    const uppercaseCases = [
+        {
+            name: '.JPG（大文字）の画像URLの末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/image.JPG\n',
+            expected: 'テスト\nhttps://example.com/image.JPG',
+        },
+        {
+            name: '.MP4（大文字）の動画URLの末尾改行を削除する',
+            content: 'テスト\nhttps://example.com/video.MP4\n',
+            expected: 'テスト\nhttps://example.com/video.MP4',
+        },
+    ];
 
-        it('.gif拡張子の画像URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/image.gif\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.gif');
-        });
+    const nonRemovalCases = [
+        {
+            name: '末尾が改行でない場合はそのまま返す',
+            content: 'テスト\nhttps://example.com/image.jpg',
+            expected: 'テスト\nhttps://example.com/image.jpg',
+        },
+        {
+            name: 'メディアURLの後に文字がある場合は改行を削除しない',
+            content: 'テスト\nhttps://example.com/image.jpg\nテキスト\n',
+            expected: 'テスト\nhttps://example.com/image.jpg\nテキスト\n',
+        },
+        {
+            name: '通常のURLの場合は改行を削除しない',
+            content: 'テスト\nhttps://example.com/page\n',
+            expected: 'テスト\nhttps://example.com/page\n',
+        },
+        {
+            name: 'テキストのみの末尾改行は削除しない',
+            content: 'テスト\n',
+            expected: 'テスト\n',
+        },
+        {
+            name: '空文字列はそのまま返す',
+            content: '',
+            expected: '',
+        },
+    ];
+
+    it.each(imageCases)('$name', ({ content, expected }) => {
+        const result = trimTrailingNewlineAfterMedia(content);
+        expect(result).toBe(expected);
     });
 
-    describe('動画URL末尾の改行削除', () => {
-        it('.mp4動画URL直後の末尾改行を削除する', () => {
-            const content = 'てす\nhttps://share.yabu.me/abc/video.mp4\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('てす\nhttps://share.yabu.me/abc/video.mp4');
-        });
-
-        it('.webm動画URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/video.webm\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/video.webm');
-        });
-
-        it('.mov動画URL直後の末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/video.mov\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/video.mov');
-        });
+    it.each(videoCases)('$name', ({ content, expected }) => {
+        const result = trimTrailingNewlineAfterMedia(content);
+        expect(result).toBe(expected);
     });
 
-    describe('改行を削除しないケース', () => {
-        it('末尾が改行でない場合はそのまま返す', () => {
-            const content = 'テスト\nhttps://example.com/image.jpg';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.jpg');
-        });
-
-        it('メディアURLの後に文字がある場合は改行を削除しない', () => {
-            const content = 'テスト\nhttps://example.com/image.jpg\nテキスト\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.jpg\nテキスト\n');
-        });
-
-        it('通常のURLの場合は改行を削除しない', () => {
-            const content = 'テスト\nhttps://example.com/page\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/page\n');
-        });
-
-        it('テキストのみの末尾改行は削除しない', () => {
-            const content = 'テスト\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\n');
-        });
-
-        it('空文字列はそのまま返す', () => {
-            const result = trimTrailingNewlineAfterMedia('');
-            expect(result).toBe('');
-        });
+    it.each(uppercaseCases)('$name', ({ content, expected }) => {
+        const result = trimTrailingNewlineAfterMedia(content);
+        expect(result).toBe(expected);
     });
 
-    describe('大文字小文字の拡張子', () => {
-        it('.JPG（大文字）の画像URLの末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/image.JPG\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/image.JPG');
-        });
-
-        it('.MP4（大文字）の動画URLの末尾改行を削除する', () => {
-            const content = 'テスト\nhttps://example.com/video.MP4\n';
-            const result = trimTrailingNewlineAfterMedia(content);
-            expect(result).toBe('テスト\nhttps://example.com/video.MP4');
-        });
+    it.each(nonRemovalCases)('$name', ({ content, expected }) => {
+        const result = trimTrailingNewlineAfterMedia(content);
+        expect(result).toBe(expected);
     });
 });
 
@@ -258,10 +267,7 @@ describe('PostManager editor state helpers', () => {
                 tags: [],
             },
             clearReplyQuoteFn: vi.fn(),
-            console: {
-                log: vi.fn(),
-                error: vi.fn(),
-            } as any,
+            console: createMockConsole(),
         };
 
         manager = new PostManager(undefined, mockDeps);
@@ -851,7 +857,7 @@ describe('PostEventBuilder', () => {
 
 describe('PostEventSender', () => {
     let mockRxNostr: RxNostr;
-    let mockConsole: Console;
+    let mockConsole: ReturnType<typeof createMockConsole>;
     let sender: PostEventSender;
     let mockSubscription: any;
 
@@ -864,10 +870,7 @@ describe('PostEventSender', () => {
             send: vi.fn()
         } as any;
 
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
 
         sender = new PostEventSender(mockRxNostr, mockConsole);
     });
