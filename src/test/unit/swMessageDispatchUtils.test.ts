@@ -4,6 +4,23 @@ import {
     dispatchServiceWorkerMessageRoute,
     processServiceWorkerMessageEvent,
 } from '../../lib/swMessageDispatchUtils';
+import { createMockConsole } from '../helpers';
+
+function createProcessServiceWorkerEventDependencies() {
+    return {
+        skipWaiting: vi.fn(),
+        logger: createMockConsole(),
+        messageHandler: {
+            respondSharedMedia: vi.fn(),
+            respondSharedMediaForce: vi.fn(),
+        },
+        cacheManager: {
+            clearProfileCache: vi.fn(),
+            cleanupDuplicateProfileCache: vi.fn(),
+            cacheCustomEmojiImages: vi.fn(),
+        },
+    };
+}
 
 describe('swMessageDispatchUtils', () => {
     it('type route の handler を実行する', async () => {
@@ -48,6 +65,7 @@ describe('swMessageDispatchUtils', () => {
 
     it('processServiceWorkerMessageEvent は type message を処理する', async () => {
         const port = { postMessage: vi.fn() };
+        const { skipWaiting, logger, messageHandler, cacheManager } = createProcessServiceWorkerEventDependencies();
 
         const result = await processServiceWorkerMessageEvent({
             event: {
@@ -55,21 +73,10 @@ describe('swMessageDispatchUtils', () => {
                 ports: [port],
             },
             version: '1.2.3',
-            skipWaiting: vi.fn(),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            },
-            messageHandler: {
-                respondSharedMedia: vi.fn(),
-                respondSharedMediaForce: vi.fn(),
-            },
-            cacheManager: {
-                clearProfileCache: vi.fn(),
-                cleanupDuplicateProfileCache: vi.fn(),
-                cacheCustomEmojiImages: vi.fn(),
-            },
+            skipWaiting,
+            logger,
+            messageHandler,
+            cacheManager,
         });
 
         expect(result).toBe(true);
@@ -77,31 +84,43 @@ describe('swMessageDispatchUtils', () => {
     });
 
     it('processServiceWorkerMessageEvent は action message を処理する', async () => {
-        const respondSharedMedia = vi.fn();
+        const { skipWaiting, logger, messageHandler, cacheManager } = createProcessServiceWorkerEventDependencies();
 
         const result = await processServiceWorkerMessageEvent({
             event: {
                 data: { action: 'getSharedMedia' },
             },
             version: '1.2.3',
-            skipWaiting: vi.fn(),
-            logger: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            },
-            messageHandler: {
-                respondSharedMedia,
-                respondSharedMediaForce: vi.fn(),
-            },
-            cacheManager: {
-                clearProfileCache: vi.fn(),
-                cleanupDuplicateProfileCache: vi.fn(),
-                cacheCustomEmojiImages: vi.fn(),
-            },
+            skipWaiting,
+            logger,
+            messageHandler,
+            cacheManager,
         });
 
         expect(result).toBe(true);
-        expect(respondSharedMedia).toHaveBeenCalledOnce();
+        expect(messageHandler.respondSharedMedia).toHaveBeenCalledOnce();
+    });
+
+    it('processServiceWorkerMessageEvent は unknown message を処理しない', async () => {
+        const { skipWaiting, logger, messageHandler, cacheManager } = createProcessServiceWorkerEventDependencies();
+
+        const result = await processServiceWorkerMessageEvent({
+            event: {
+                data: { action: 'unknownAction' },
+            },
+            version: '1.2.3',
+            skipWaiting,
+            logger,
+            messageHandler,
+            cacheManager,
+        });
+
+        expect(result).toBe(false);
+        expect(skipWaiting).not.toHaveBeenCalled();
+        expect(messageHandler.respondSharedMedia).not.toHaveBeenCalled();
+        expect(messageHandler.respondSharedMediaForce).not.toHaveBeenCalled();
+        expect(cacheManager.clearProfileCache).not.toHaveBeenCalled();
+        expect(cacheManager.cleanupDuplicateProfileCache).not.toHaveBeenCalled();
+        expect(cacheManager.cacheCustomEmojiImages).not.toHaveBeenCalled();
     });
 });
