@@ -1,23 +1,29 @@
 // --- JSDOM用ポリフィル ---
-if (typeof global.DragEvent === "undefined") {
-    // @ts-ignore
-    global.DragEvent = class extends Event {
-        dataTransfer: any;
-        constructor(type: string, eventInitDict: any = {}) {
-            super(type, eventInitDict);
-            this.dataTransfer = eventInitDict.dataTransfer || {};
-        }
-    };
+if (typeof globalThis.DragEvent === "undefined") {
+    Object.defineProperty(globalThis, "DragEvent", {
+        configurable: true,
+        writable: true,
+        value: class extends Event {
+            dataTransfer: { [key: string]: unknown };
+            constructor(type: string, eventInitDict: EventInit & { dataTransfer?: { [key: string]: unknown } } = {}) {
+                super(type, eventInitDict);
+                this.dataTransfer = eventInitDict.dataTransfer || {};
+            }
+        },
+    });
 }
-if (typeof global.ClipboardEvent === "undefined") {
-    // @ts-ignore
-    global.ClipboardEvent = class extends Event {
-        clipboardData: any;
-        constructor(type: string, eventInitDict: any = {}) {
-            super(type, eventInitDict);
-            this.clipboardData = eventInitDict.clipboardData || {};
-        }
-    };
+if (typeof globalThis.ClipboardEvent === "undefined") {
+    Object.defineProperty(globalThis, "ClipboardEvent", {
+        configurable: true,
+        writable: true,
+        value: class extends Event {
+            clipboardData: { [key: string]: unknown };
+            constructor(type: string, eventInitDict: EventInit & { clipboardData?: { [key: string]: unknown } } = {}) {
+                super(type, eventInitDict);
+                this.clipboardData = eventInitDict.clipboardData || {};
+            }
+        },
+    });
 }
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -42,24 +48,64 @@ import { extractContentWithImages } from "../../lib/utils/editorDocumentUtils";
 // extractContentWithImagesをMocked型にキャスト
 const mockedExtractContentWithImages = vi.mocked(extractContentWithImages);
 
-// Helper to create a mock HTMLElement
-function createMockNode(): HTMLElement {
-    const node = document.createElement("div");
-    // @ts-ignore
-    node.__uploadFiles = vi.fn();
-    // @ts-ignore
-    node.__submitPost = vi.fn();
-    // @ts-ignore
-    node.__currentEditor = { /* dummy */ };
-    // @ts-ignore
-    node.__hasStoredKey = true;
-    // @ts-ignore
-    node.__postStatus = { sending: false };
-    return node;
+type MockFn = ReturnType<typeof vi.fn>;
+
+type EditorDomActionTestElement = HTMLElement & {
+    __uploadFiles: MockFn;
+    __submitPost?: MockFn;
+    __currentEditor: unknown;
+    __hasStoredKey: boolean | ((...args: unknown[]) => boolean);
+    __postStatus: { sending: boolean } | ((...args: unknown[]) => { sending: boolean });
+};
+
+type DragEventDataTransferLike = {
+    getData?: MockFn;
+    files?: File[];
+    types?: string[];
+};
+
+type ClipboardItemLike = {
+    kind: string;
+    type: string;
+    getAsFile: () => File | null;
+};
+
+type ClipboardDataLike = {
+    items: ClipboardItemLike[];
+};
+
+function createMockNode(): EditorDomActionTestElement {
+    const node: HTMLElement = document.createElement("div");
+    const mockNode = node as EditorDomActionTestElement;
+    mockNode.__uploadFiles = vi.fn();
+    mockNode.__submitPost = vi.fn();
+    mockNode.__currentEditor = { /* dummy */ };
+    mockNode.__hasStoredKey = true;
+    mockNode.__postStatus = { sending: false };
+    return mockNode;
+}
+
+function createDragEvent(type: string, dataTransfer?: DragEventDataTransferLike): DragEvent {
+    const event = new DragEvent(type, {
+        bubbles: true,
+        cancelable: true,
+    });
+    Object.defineProperty(event, "dataTransfer", {
+        value: dataTransfer ?? { types: [] },
+    });
+    return event;
+}
+
+function createClipboardEvent(type: string, clipboardData: ClipboardDataLike): ClipboardEvent {
+    const event = new ClipboardEvent(type, { bubbles: true });
+    Object.defineProperty(event, "clipboardData", {
+        value: clipboardData,
+    });
+    return event;
 }
 
 describe("fileDropAction", () => {
-    let node: HTMLElement;
+    let node: EditorDomActionTestElement;
     let destroy: () => void;
 
     beforeEach(() => {
@@ -73,37 +119,19 @@ describe("fileDropAction", () => {
     });
 
     it("adds drag-over class on external dragover", () => {
-        const event = new DragEvent("dragover", {
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(event, "dataTransfer", {
-            value: { types: ["Files"] }, // "Files" を含める
-        });
+        const event = createDragEvent("dragover", { types: ["Files"] });
         node.dispatchEvent(event);
         expect(node.classList.contains("drag-over")).toBe(true);
     });
 
     it("removes drag-over class on dragleave", () => {
         // まず dragover で drag-over クラスを付与
-        const dragOverEvent = new DragEvent("dragover", {
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(dragOverEvent, "dataTransfer", {
-            value: { types: ["Files"] },
-        });
+        const dragOverEvent = createDragEvent("dragover", { types: ["Files"] });
         node.dispatchEvent(dragOverEvent);
         expect(node.classList.contains("drag-over")).toBe(true);
 
         // 次に dragleave で types: []（外部ファイルが無い状態）を渡す
-        const dragLeaveEvent = new DragEvent("dragleave", {
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(dragLeaveEvent, "dataTransfer", {
-            value: { types: [] },
-        });
+        const dragLeaveEvent = createDragEvent("dragleave", { types: [] });
         node.dispatchEvent(dragLeaveEvent);
         expect(node.classList.contains("drag-over")).toBe(false);
     });
@@ -111,42 +139,28 @@ describe("fileDropAction", () => {
     it("calls __uploadFiles on drop with files", async () => {
         const file = new File(["foo"], "foo.png", { type: "image/png" });
         const files = [file];
-        const event = new DragEvent("drop", {
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(event, "dataTransfer", {
-            value: {
-                getData: vi.fn().mockReturnValue(""),
-                files,
-                types: ["Files"], // 修正: types: [] → types: ["Files"]
-            },
+        const event = createDragEvent("drop", {
+            getData: vi.fn().mockReturnValue(""),
+            files,
+            types: ["Files"],
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__uploadFiles).toHaveBeenCalledWith(files);
     });
 
     it("does not call __uploadFiles on internal drag", () => {
-        const event = new DragEvent("drop", {
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(event, "dataTransfer", {
-            value: {
-                getData: vi.fn().mockReturnValue("some-data"),
-                files: [],
-                types: ["application/x-tiptap-node"],
-            },
+        const event = createDragEvent("drop", {
+            getData: vi.fn().mockReturnValue("some-data"),
+            files: [],
+            types: ["application/x-tiptap-node"],
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__uploadFiles).not.toHaveBeenCalled();
     });
 });
 
 describe("pasteAction", () => {
-    let node: HTMLElement;
+    let node: EditorDomActionTestElement;
     let destroy: () => void;
 
     beforeEach(() => {
@@ -169,12 +183,8 @@ describe("pasteAction", () => {
         const clipboardData = {
             items: [item],
         };
-        const event = new ClipboardEvent("paste", { bubbles: true });
-        Object.defineProperty(event, "clipboardData", {
-            value: clipboardData,
-        });
+        const event = createClipboardEvent("paste", clipboardData);
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__uploadFiles).toHaveBeenCalledWith([file]);
     });
 
@@ -187,18 +197,14 @@ describe("pasteAction", () => {
         const clipboardData = {
             items: [item],
         };
-        const event = new ClipboardEvent("paste", { bubbles: true });
-        Object.defineProperty(event, "clipboardData", {
-            value: clipboardData,
-        });
+        const event = createClipboardEvent("paste", clipboardData);
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__uploadFiles).not.toHaveBeenCalled();
     });
 });
 
 describe("touchAction", () => {
-    let node: HTMLElement;
+    let node: EditorDomActionTestElement;
     let destroy: () => void;
 
     beforeEach(() => {
@@ -269,7 +275,7 @@ describe("touchAction", () => {
 });
 
 describe("keydownAction", () => {
-    let node: HTMLElement;
+    let node: EditorDomActionTestElement;
     let destroy: () => void;
 
     beforeEach(() => {
@@ -299,12 +305,10 @@ describe("keydownAction", () => {
             key,
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).toHaveBeenCalled();
     });
 
     it("does not call __submitPost if postStatus.sending is true", () => {
-        // @ts-ignore
         node.__postStatus = { sending: true };
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
@@ -313,12 +317,10 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
     });
 
     it("does not call __submitPost if content is empty", () => {
-        // @ts-ignore
         node.__currentEditor = () => undefined;
         mockedExtractContentWithImages.mockReturnValue("");
         const event = new KeyboardEvent("keydown", {
@@ -327,12 +329,10 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
     });
 
     it("does not call __submitPost if hasStoredKey is false", () => {
-        // @ts-ignore
         node.__hasStoredKey = () => false;
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
@@ -341,7 +341,6 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
     });
 
@@ -353,16 +352,12 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
     });
 
     it("supports function wrappers for __currentEditor, __hasStoredKey, __postStatus", () => {
-        // @ts-ignore
         node.__currentEditor = vi.fn(() => ({}));
-        // @ts-ignore
         node.__hasStoredKey = vi.fn(() => true);
-        // @ts-ignore
         node.__postStatus = vi.fn(() => ({ sending: false }));
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
@@ -371,12 +366,10 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         node.dispatchEvent(event);
-        // @ts-ignore
         expect(node.__submitPost).toHaveBeenCalled();
     });
 
     it("does not call __submitPost if __submitPost is not defined", () => {
-        // @ts-ignore
         node.__submitPost = undefined;
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
@@ -407,22 +400,19 @@ describe("fileDropActionWithDragState", () => {
     });
 
     it("calls dragOver(true) on dragover", () => {
-        const event = new DragEvent("dragover", { bubbles: true, cancelable: true });
-        Object.defineProperty(event, "dataTransfer", {
-            value: { types: ["Files"] },
-        });
+        const event = createDragEvent("dragover", { types: ["Files"] });
         node.dispatchEvent(event);
         expect(dragOverState).toBe(true);
     });
 
     it("calls dragOver(false) on dragleave", () => {
-        const event = new DragEvent("dragleave", { bubbles: true, cancelable: true });
+        const event = createDragEvent("dragleave");
         node.dispatchEvent(event);
         expect(dragOverState).toBe(false);
     });
 
     it("calls dragOver(false) on drop", () => {
-        const event = new DragEvent("drop", { bubbles: true, cancelable: true });
+        const event = createDragEvent("drop");
         node.dispatchEvent(event);
         expect(dragOverState).toBe(false);
     });
