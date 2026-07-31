@@ -286,11 +286,6 @@
         bunkerInputEl?.focus({ preventScroll: true });
     }
 
-    function handleSecretKeyInput(event: Event): void {
-        secretKey = (event.currentTarget as HTMLInputElement).value;
-        inputEl?.setCustomValidity("");
-    }
-
     function handleClearSecretKey(): void {
         if (!secretKey) {
             return;
@@ -1091,8 +1086,8 @@
             <div class="secret-input-row">
                 <div class="input-shell">
                     <input
+                        bind:value={secretKey}
                         type="password"
-                        value={secretKey}
                         placeholder="nsec1..."
                         class="secret-input u-control"
                         id="secretKey"
@@ -1103,7 +1098,7 @@
                         maxlength="63"
                         bind:this={inputEl}
                         title={$_("loginDialog.hint_input_secret")}
-                        oninput={handleSecretKeyInput}
+                        oninput={() => inputEl?.setCustomValidity("")}
                     />
                     {#if secretKey.length > 0}
                         <Button
