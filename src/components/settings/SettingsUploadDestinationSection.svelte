@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
     import type { RxNostr } from "rx-nostr";
+    import { preventKeyboardFocusChange } from "../../lib/utils/keyboardFocusUtils";
     import Button from "../Button.svelte";
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
@@ -37,6 +38,7 @@
     let expanded = $state(false);
     let editing = $state(false);
     let editingTargetId: string | null = $state(null);
+    let serverUrlInputElement: HTMLInputElement | null = $state(null);
     let form = $state({ ...emptyForm });
     let testingId: string | null = $state(null);
     let expandedMimeDestinations = $state<Record<string, boolean>>({});
@@ -161,6 +163,14 @@
         if (!preset) return;
         form.protocol = preset.protocol;
         form.serverUrl = preset.serverUrl;
+    }
+
+    function handleClearServerUrl(): void {
+        form.serverUrl = "";
+        form.presetId = "custom";
+        setTimeout(() => {
+            serverUrlInputElement?.focus({ preventScroll: true });
+        }, 0);
     }
 
     async function saveForm(): Promise<void> {
@@ -302,7 +312,31 @@
         </label>
         <label>
             <span>URL</span>
-            <input bind:value={form.serverUrl} inputmode="url" />
+            <div class="url-input-shell">
+                <input
+                    bind:this={serverUrlInputElement}
+                    bind:value={form.serverUrl}
+                    inputmode="url"
+                />
+                {#if form.serverUrl.trim().length > 0}
+                    <Button
+                        type="button"
+                        className="upload-destination-url-clear-button"
+                        variant="default"
+                        shape="square"
+                        contentLayout="icon"
+                        ariaLabel={$_("clearInput") || "入力内容を消去"}
+                        onClick={handleClearServerUrl}
+                        onmousedown={preventKeyboardFocusChange}
+                        ontouchstart={preventKeyboardFocusChange}
+                    >
+                        <div
+                            class="url-clear-input-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                    </Button>
+                {/if}
+            </div>
         </label>
         <div class="checkbox-group">
             <label class="checkbox-row">
@@ -760,6 +794,54 @@
         flex-direction: column;
         gap: 4px;
         font-size: 0.875rem;
+    }
+
+    .url-input-shell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .url-input-shell input {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    :global(.upload-destination-url-clear-button) {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 1px solid var(--border);
+        background-color: var(--bg-input);
+        color: var(--text-muted);
+    }
+
+    :global(.upload-destination-url-clear-button:hover:not(:disabled)),
+    :global(.upload-destination-url-clear-button:focus-visible) {
+        background-color: var(--button-hover-bg);
+        color: var(--button-hover-color);
+    }
+
+    :global(.upload-destination-url-clear-button:focus-visible) {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+    }
+
+    :global(.upload-destination-url-clear-button .svg-icon) {
+        --svg: currentColor;
+        width: 24px;
+        height: 24px;
+    }
+
+    .url-clear-input-icon {
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .checkbox-group {
