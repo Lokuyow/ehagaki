@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createDeferred } from "../deferredTestUtils";
+
 const customEmojiMocks = vi.hoisted(() => ({
     cacheCustomEmojiImages: vi.fn(),
     fetchCustomEmojiList: vi.fn(),
@@ -28,17 +30,6 @@ function createEmoji(shortcode: string, src: string, sortIndex = 0): CustomEmoji
         sourceType: "kind10030",
         sourceAddress: null,
     };
-}
-
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (reason?: unknown) => void;
-    const promise = new Promise<T>((promiseResolve, promiseReject) => {
-        resolve = promiseResolve;
-        reject = promiseReject;
-    });
-
-    return { promise, resolve, reject };
 }
 
 describe("customEmojiStore", () => {

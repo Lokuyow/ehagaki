@@ -1,16 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createDeferred } from "../deferredTestUtils";
 import { createComponentLoader } from "../../lib/appComponentLoader";
-
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (reason?: unknown) => void;
-    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-        resolve = resolvePromise;
-        reject = rejectPromise;
-    });
-    return { promise, resolve, reject };
-}
 
 describe("createComponentLoader", () => {
     it("成功時はcomponentとPromiseをcacheする", async () => {

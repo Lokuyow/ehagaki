@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createDeferred } from "../deferredTestUtils";
 import { createPostHistoryProfileSyncCoordinator } from "../../lib/postHistoryProfileSync";
 import type { ProfileData } from "../../lib/types";
 
@@ -11,14 +12,6 @@ function createProfile(name: string): ProfileData {
         npub: `npub-${name}`,
         nprofile: `nprofile-${name}`,
     };
-}
-
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((nextResolve) => {
-        resolve = nextResolve;
-    });
-    return { promise, resolve };
 }
 
 describe("postHistoryProfileSync", () => {
