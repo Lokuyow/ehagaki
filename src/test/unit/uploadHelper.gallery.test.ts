@@ -9,6 +9,7 @@
  * 別ファイルに分離している（vi.mock はファイル単位で適用されるため）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createTestFile } from '../fileTestUtils';
 
 // ---------- placeholderManager を全体モック ----------
 // vi.mockは巧き上げされるため、内部で使う変数はvi.hoistedで宣言する
@@ -144,6 +145,38 @@ function createDeps(
     };
 }
 
+function createTestUploadFile() {
+    return createTestFile({
+        name: 'test.png',
+        type: 'image/png',
+        content: 'content',
+    });
+}
+
+async function runUploadHelper({
+    file = createTestUploadFile(),
+    deps,
+    onUpload,
+    verifyResult = false,
+}: {
+    file?: File;
+    deps?: UploadHelperDependencies;
+    onUpload?: () => void;
+    verifyResult?: boolean;
+} = {}) {
+    const resolvedDeps = deps ?? createDeps(onUpload);
+    const result = await uploadHelper({
+        files: [file],
+        currentEditor: null,
+        showUploadError: vi.fn(),
+        updateUploadState: vi.fn(),
+        devMode: false,
+        dependencies: resolvedDeps,
+    });
+
+    return { deps: resolvedDeps, result, verifyResult };
+}
+
 // ---------- テスト ----------
 
 describe('uploadHelper - ギャラリーモードの中止動作', () => {
@@ -153,7 +186,7 @@ describe('uploadHelper - ギャラリーモードの中止動作', () => {
     const mockPlaceholderMap: PlaceholderEntry[] = [
         {
             placeholderId: 'ph-1',
-            file: new File(['content'], 'test.png', { type: 'image/png' }),
+            file: createTestUploadFile(),
         },
     ];
 
@@ -193,19 +226,10 @@ describe('uploadHelper - ギャラリーモードの中止動作', () => {
 
     describe('アップロード完了後に中止フラグが立っている場合', () => {
         it('ギャラリーモードでは removeAllGalleryPlaceholders が呼ばれる', async () => {
-            const file = new File(['content'], 'test.png', { type: 'image/png' });
-            // アップロード完了と同時に中止フラグを立てる
-            const deps = createDeps(() => {
-                abortFlagValue = true;
-            });
-
-            await uploadHelper({
-                files: [file],
-                currentEditor: null,
-                showUploadError: vi.fn(),
-                updateUploadState: vi.fn(),
-                devMode: false,
-                dependencies: deps,
+            const { deps } = await runUploadHelper({
+                onUpload: () => {
+                    abortFlagValue = true;
+                },
             });
 
             expect(mockRemoveAllGalleryPlaceholders).toHaveBeenCalledOnce();
@@ -216,36 +240,21 @@ describe('uploadHelper - ギャラリーモードの中止動作', () => {
         });
 
         it('ギャラリーモードでは removeAllPlaceholders（エディタ用）は呼ばれない', async () => {
-            const file = new File(['content'], 'test.png', { type: 'image/png' });
-            const deps = createDeps(() => {
-                abortFlagValue = true;
-            });
-
-            await uploadHelper({
-                files: [file],
-                currentEditor: null,
-                showUploadError: vi.fn(),
-                updateUploadState: vi.fn(),
-                devMode: false,
-                dependencies: deps,
+            await runUploadHelper({
+                onUpload: () => {
+                    abortFlagValue = true;
+                },
             });
 
             expect(removeAllPlaceholders).not.toHaveBeenCalled();
         });
 
         it('戻り値の results が null で placeholderMap が空になる', async () => {
-            const file = new File(['content'], 'test.png', { type: 'image/png' });
-            const deps = createDeps(() => {
-                abortFlagValue = true;
-            });
-
-            const result = await uploadHelper({
-                files: [file],
-                currentEditor: null,
-                showUploadError: vi.fn(),
-                updateUploadState: vi.fn(),
-                devMode: false,
-                dependencies: deps,
+            const { result } = await runUploadHelper({
+                onUpload: () => {
+                    abortFlagValue = true;
+                },
+                verifyResult: true,
             });
 
             expect(result.results).toBeNull();
@@ -256,18 +265,7 @@ describe('uploadHelper - ギャラリーモードの中止動作', () => {
 
     describe('中止フラグが最初から立っていない（正常系）', () => {
         it('正常完了時は removeAllGalleryPlaceholders が呼ばれない', async () => {
-            const file = new File(['content'], 'test.png', { type: 'image/png' });
-            // abortFlagValue = false のまま（中止しない）
-            const deps = createDeps();
-
-            await uploadHelper({
-                files: [file],
-                currentEditor: null,
-                showUploadError: vi.fn(),
-                updateUploadState: vi.fn(),
-                devMode: false,
-                dependencies: deps,
-            });
+            await runUploadHelper();
 
             expect(mockRemoveAllGalleryPlaceholders).not.toHaveBeenCalled();
         });
