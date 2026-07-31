@@ -2,17 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createNip46AuthFlowController } from '../../lib/nip46AuthFlowCoordinator';
 import type { PendingNip46AuthSession } from '../../lib/authService';
-
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (reason?: unknown) => void;
-    const promise = new Promise<T>((res, rej) => {
-        resolve = res;
-        reject = rej;
-    });
-
-    return { promise, resolve, reject };
-}
+import { createDeferred } from '../deferredTestUtils';
 
 function createPendingSession() {
     const ready = createDeferred<void>();

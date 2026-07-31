@@ -10,6 +10,7 @@ import {
     NIP46_REQUESTED_PERMS,
     normalizeSupportedNip46FinalRelay,
 } from '../../lib/nip46Service';
+import { createDeferred } from '../deferredTestUtils';
 import { MockStorage } from '../helpers';
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
@@ -181,21 +182,6 @@ describe('normalizeSupportedNip46FinalRelay', () => {
 describe('Nip46Service', () => {
     let service: Nip46Service;
     let mockStorage: MockStorage;
-
-    function createDeferred<T>() {
-        let resolve: ((value: T | PromiseLike<T>) => void) | undefined;
-        let reject: ((reason?: unknown) => void) | undefined;
-        const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-            resolve = resolvePromise;
-            reject = rejectPromise;
-        });
-
-        return {
-            promise,
-            resolve: resolve!,
-            reject: reject!,
-        };
-    }
 
     function getNostrConnectUriRelays(uri: string): string[] {
         return new URL(uri).searchParams.getAll('relay');
