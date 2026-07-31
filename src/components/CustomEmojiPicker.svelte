@@ -189,6 +189,43 @@
         updatePickerWidth();
     }
 
+    function getPickerHeightMaxValue(): number {
+        if (typeof window === "undefined") {
+            return CUSTOM_EMOJI_PICKER_MIN_HEIGHT;
+        }
+
+        const viewportHeight = getPickerHeightClampViewport();
+        const viewportMaxHeight = Math.floor(viewportHeight * 0.6);
+        return Math.max(
+            CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+            pickerStorageMaxHeight === undefined
+                ? viewportMaxHeight
+                : pickerStorageMaxHeight,
+        );
+    }
+
+    function updatePickerHeight(nextHeight: number): void {
+        pickerHeight = writeCustomEmojiPickerHeight(
+            localStorage,
+            nextHeight,
+            getPickerHeightClampViewport(),
+            pickerStorageMaxHeight,
+        );
+    }
+
+    function handleResizeHandleKeyDown(event: KeyboardEvent): void {
+        if (event.key === "ArrowUp") {
+            event.preventDefault();
+            updatePickerHeight(effectivePickerHeight + 24);
+            return;
+        }
+
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            updatePickerHeight(effectivePickerHeight - 24);
+        }
+    }
+
     function schedulePickerLayoutUpdate(): void {
         if (layoutFrameId !== null) {
             cancelAnimationFrame(layoutFrameId);
@@ -357,12 +394,7 @@
             moveEvent.preventDefault();
             const nextVisibleHeight =
                 startVisibleHeight + (startY - moveEvent.clientY);
-            pickerHeight = writeCustomEmojiPickerHeight(
-                localStorage,
-                nextVisibleHeight,
-                getPickerHeightClampViewport(),
-                pickerStorageMaxHeight,
-            );
+            updatePickerHeight(nextVisibleHeight);
         };
 
         const stop = () => {
@@ -388,12 +420,19 @@
     bind:this={pickerElement}
     style={pickerChromeStyle}
 >
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
         class="resize-handle"
         role="separator"
+        tabindex="0"
         aria-orientation="horizontal"
         aria-label={$_("customEmoji.resize")}
+        aria-valuemin={CUSTOM_EMOJI_PICKER_MIN_HEIGHT}
+        aria-valuenow={effectivePickerHeight}
+        aria-valuemax={getPickerHeightMaxValue()}
         onpointerdown={startResize}
+        onkeydown={handleResizeHandleKeyDown}
     ></div>
     <Command.Root
         class="custom-emoji-command"
