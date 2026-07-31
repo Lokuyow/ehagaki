@@ -59,4 +59,37 @@ describe('swProfileCacheActionUtils', () => {
         expect(logger.log).toHaveBeenCalledWith('重複キャッシュを削除:', duplicateRequest.url);
         expect(logger.log).toHaveBeenCalledWith('重複プロフィールキャッシュクリーンアップ完了: 1件削除');
     });
+
+    it('cleanupServiceWorkerDuplicateProfileCache does not count failed deletions', async () => {
+        const baseRequest = { url: 'https://example.com/profile.jpg' };
+        const duplicateRequest = { url: 'https://example.com/profile.jpg?profile=true' };
+        const unrelatedRequest = { url: 'https://example.com/other.jpg?profile=true' };
+        const cache = {
+            keys: vi.fn().mockResolvedValue([baseRequest, duplicateRequest, unrelatedRequest]),
+            delete: vi.fn().mockResolvedValue(false),
+        };
+        const cacheStorage = {
+            open: vi.fn().mockResolvedValue(cache),
+        };
+        const logger = {
+            log: vi.fn(),
+            error: vi.fn(),
+        };
+
+        const result = await cleanupServiceWorkerDuplicateProfileCache({
+            cacheStorage,
+            cacheName: 'profile-cache',
+            logger,
+            getBaseUrl: (url) => {
+                const parsed = new URL(url);
+                return `${parsed.origin}${parsed.pathname}`;
+            },
+        });
+
+        expect(result).toEqual({ success: true, deletedCount: 0 });
+        expect(cache.delete).toHaveBeenCalledTimes(1);
+        expect(cache.delete).toHaveBeenCalledWith(duplicateRequest);
+        expect(logger.log).not.toHaveBeenCalledWith('重複キャッシュを削除:', duplicateRequest.url);
+        expect(logger.log).toHaveBeenCalledWith('重複プロフィールキャッシュクリーンアップ完了: 0件削除');
+    });
 });

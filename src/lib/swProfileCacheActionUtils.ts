@@ -69,9 +69,11 @@ export async function cleanupServiceWorkerDuplicateProfileCache<
 
         let deletedCount = 0;
         for (const duplicateKey of duplicateKeys) {
-            await cache.delete(duplicateKey);
-            deletedCount++;
-            logger.log('重複キャッシュを削除:', duplicateKey.url);
+            const deleted = await cache.delete(duplicateKey);
+            if (deleted) {
+                deletedCount++;
+                logger.log('重複キャッシュを削除:', duplicateKey.url);
+            }
         }
 
         logger.log(`重複プロフィールキャッシュクリーンアップ完了: ${deletedCount}件削除`);
