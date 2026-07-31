@@ -5,6 +5,7 @@ import type {
     ReplyQuoteComposerState,
     ReplyQuoteState,
 } from "../../lib/types";
+import { createProfileData } from "../profileTestUtils";
 
 const ownerTokens = new Map<string, symbol>();
 
@@ -51,13 +52,13 @@ function createReference(
 }
 
 function createProfile(name: string, picture = `https://example.com/${name}.png`): ProfileData {
-    return {
+    return createProfileData({
         name,
         displayName: name,
         picture,
         npub: `npub-${name}`,
         nprofile: `nprofile-${name}`,
-    };
+    });
 }
 
 describe("replyQuoteProfileSync", () => {
