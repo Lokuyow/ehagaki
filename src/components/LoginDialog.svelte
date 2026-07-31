@@ -3,7 +3,6 @@
     import { Dialog, Tabs } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
     import { BUNKER_REGEX } from "../lib/nip46Service";
-    import { derivePublicKeyFromNsec, isValidNsec } from "../lib/utils/nostrUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import {
         createNip46ConnectionRelayDrafts,
@@ -13,6 +12,7 @@
         validateNip46ConnectionRelayDrafts,
     } from "../lib/nip46ConnectUiUtils";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
+    import { toNprofile, toNpub } from "../lib/utils/nostrUtils";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import FloatingMessage from "./FloatingMessage.svelte";
@@ -85,26 +85,22 @@
     let isParentClientEnabled = $derived(isParentClientAvailable);
 
     // --- 公開鍵状態管理 ---
-    let publicKeyState = $state(new PublicKeyState());
-    let isValid = $state(false);
-    let npubValue = $state("");
-    let nprofileValue = $state("");
-
-    function syncPublicKeyState(): void {
-        const nextSecretKey = secretKey?.trim() ?? "";
-
-        if (!nextSecretKey || !isValidNsec(nextSecretKey)) {
-            isValid = false;
-            npubValue = "";
-            nprofileValue = "";
-            return;
+    const publicKeyState = new PublicKeyState();
+    let publicKeyStateView = $derived.by(() => {
+        if (secretKey !== undefined) {
+            publicKeyState.setNsec(secretKey);
         }
-
-        const derivedData = derivePublicKeyFromNsec(nextSecretKey);
-        isValid = Boolean(derivedData.hex);
-        npubValue = derivedData.npub;
-        nprofileValue = derivedData.nprofile;
-    }
+        return {
+            isValid: publicKeyState.currentIsValid,
+            npub: publicKeyState.currentHex ? toNpub(publicKeyState.currentHex) : "",
+            nprofile: publicKeyState.currentHex
+                ? toNprofile(publicKeyState.currentHex)
+                : "",
+        };
+    });
+    let isValid = $derived(publicKeyStateView.isValid);
+    let npubValue = $derived(publicKeyStateView.npub);
+    let nprofileValue = $derived(publicKeyStateView.nprofile);
 
     // --- エラーメッセージ管理 ---
     let inputEl: HTMLInputElement | null = $state(null);
@@ -268,15 +264,8 @@
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $effect(() => {
-        if (secretKey !== undefined) {
-            publicKeyState.setNsec(secretKey);
-            syncPublicKeyState();
-            // 入力値が空の場合のみエラーをクリア
-            if (inputEl) {
-                if (!secretKey) {
-                    inputEl.setCustomValidity("");
-                }
-            }
+        if (secretKey !== undefined && inputEl && !secretKey) {
+            inputEl.setCustomValidity("");
         }
     });
 
@@ -296,18 +285,8 @@
             return;
         }
         secretKey = "";
-        publicKeyState.setNsec("");
-        syncPublicKeyState();
         inputEl?.setCustomValidity("");
         inputEl?.focus({ preventScroll: true });
-    }
-
-    function handleSecretKeyInput(event: Event): void {
-        const nextValue = (event.currentTarget as HTMLInputElement | null)?.value ?? "";
-        secretKey = nextValue;
-        publicKeyState.setNsec(nextValue);
-        syncPublicKeyState();
-        inputEl?.setCustomValidity("");
     }
 
     function handleSave() {
@@ -1117,7 +1096,7 @@
                         maxlength="63"
                         bind:this={inputEl}
                         title={$_("loginDialog.hint_input_secret")}
-                        oninput={handleSecretKeyInput}
+                        oninput={() => inputEl?.setCustomValidity("")}
                     />
                     {#if secretKey.length > 0}
                         <Button
