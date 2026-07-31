@@ -11,6 +11,7 @@ import {
     createNip42Authenticator,
     NostrAuthService,
 } from '../../lib/nostrAuthService';
+import { createDeferred } from '../deferredTestUtils';
 import { mockAuthStoreModule } from '../mocks/storeModules';
 
 // nostr-tools/nip98 をモック（buildAuthHeader のユニットテスト用）
@@ -89,14 +90,6 @@ describe('nostr-tools/nip98 インポート整合性', () => {
 // =============================================================================
 describe('NostrAuthService', () => {
     let service: NostrAuthService;
-
-    function createDeferred<T>() {
-        let resolve!: (value: T) => void;
-        const promise = new Promise<T>((resolvePromise) => {
-            resolve = resolvePromise;
-        });
-        return { promise, resolve };
-    }
 
     beforeEach(() => {
         service = new NostrAuthService();
