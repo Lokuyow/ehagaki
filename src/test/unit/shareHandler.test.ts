@@ -65,7 +65,8 @@ describe("ShareHandler", () => {
     });
 
     it("SHARED_MEDIAメッセージでupdateSharedMediaStoreが呼ばれる", () => {
-        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", size: 1234 });
+        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", content: new Uint8Array(1234) });
+        expect(file.size).toBe(1234);
         const metadata: SharedMediaMetadata = { name: "test.jpg" };
         const event = { data: { type: "SHARED_MEDIA", data: { images: [file], metadata: [metadata] } } };
         // @ts-ignore
@@ -106,7 +107,7 @@ describe("ShareHandler", () => {
 
     it("processSharedMediaOnLaunchが成功時にストアが更新される", async () => {
         // FileUploadManagerのprocessSharedMediaOnLaunchをモック
-        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", size: 1234 });
+        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", content: new Uint8Array(1234) });
         const metadata = { name: "test.jpg" };
         // @ts-ignore
         handler.fileUploadManager.processSharedMediaOnLaunch = vi.fn().mockResolvedValue({
