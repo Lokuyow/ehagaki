@@ -7,6 +7,8 @@ import {
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "../../lib/channelContextConstants";
 import { FALLBACK_RELAYS } from "../../lib/constants";
 import type { NostrEvent } from "../../lib/types";
+import { createMockConsole } from "../helpers";
+import type { MockConsole } from "../helpers";
 
 const channelId = "a".repeat(64);
 const authorPubkey = "b".repeat(64);
@@ -41,14 +43,10 @@ function createRxNostr(
 
 describe("ChannelContextService", () => {
     let service: ChannelContextService;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as any;
+        mockConsole = createMockConsole();
         service = new ChannelContextService({ console: mockConsole });
     });
 

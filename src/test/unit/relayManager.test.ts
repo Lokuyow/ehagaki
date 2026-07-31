@@ -7,7 +7,8 @@ import {
 } from '../../lib/relayManager';
 import type { RelayConfig, RelayManagerDeps } from '../../lib/types';
 import type { RxNostr } from 'rx-nostr';
-import { MockStorage, createMockRxNostr } from '../helpers';
+import { MockStorage, createMockRxNostr, createMockConsole } from '../helpers';
+import type { MockConsole } from '../helpers';
 import { EHagakiDB } from '../../lib/storage/ehagakiDb';
 import { DexieRelayConfigsRepository } from '../../lib/storage/relayConfigsRepository';
 import { FALLBACK_RELAYS } from '../../lib/constants';
@@ -132,17 +133,13 @@ describe('RelayConfigParser', () => {
 describe('RelayStorage', () => {
     let storage: RelayStorage;
     let mockLocalStorage: MockStorage;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
     let mockRelayListUpdatedStore: RelayManagerDeps['relayListUpdatedStore'];
     let repository: DexieRelayConfigsRepository;
 
     beforeEach(() => {
         mockLocalStorage = new MockStorage();
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn(),
-            warn: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
         mockRelayListUpdatedStore = {
             value: 0,
             set: vi.fn()
@@ -283,7 +280,7 @@ describe('RelayStorage', () => {
 describe('RelayNetworkFetcher', () => {
     let fetcher: RelayNetworkFetcher;
     let mockRxNostr: RxNostr;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
     let mockSetTimeout: any;
     let mockClearTimeout: any;
     let mockSubscription: any;
@@ -302,10 +299,7 @@ describe('RelayNetworkFetcher', () => {
             setDefaultRelays: vi.fn()
         } as any;
 
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
 
         mockSetTimeout = vi.fn();
         mockClearTimeout = vi.fn();
@@ -440,6 +434,7 @@ describe('RelayManager統合テスト', () => {
     let mockRxNostr: RxNostr;
     let mockDeps: RelayManagerDeps;
     let mockStorage: MockStorage;
+    let mockConsole: MockConsole;
     let mockSetTimeout: any;
     let mockClearTimeout: any;
     let subscribeFn: any;
@@ -457,14 +452,11 @@ describe('RelayManager統合テスト', () => {
             return 'timeout-id';
         });
         mockClearTimeout = vi.fn();
+        mockConsole = createMockConsole();
 
         mockDeps = {
             localStorage: mockStorage,
-            console: {
-                log: vi.fn(),
-                error: vi.fn(),
-                warn: vi.fn()
-            } as any,
+            console: mockConsole,
             setTimeoutFn: mockSetTimeout,
             clearTimeoutFn: mockClearTimeout,
             relayListUpdatedStore: {
