@@ -5,6 +5,7 @@ import { locale, waitLocale } from 'svelte-i18n';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
+        'clearInput': '入力内容を消去',
         'loginDialog.input_secret': '秘密鍵',
         'loginDialog.hint_input_secret': 'nsec1から始まる秘密鍵を入力',
         'loginDialog.add_account_title': 'アカウントを追加',
@@ -80,36 +81,17 @@ vi.mock('../../lib/utils/clipboardUtils', () => ({
     tryCopyToClipboard: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../../lib/keyManager.svelte', () => ({
-    PublicKeyState: class MockPublicKeyState {
-        private valid = false;
-        private npubValue = '';
-        private nprofileValue = '';
-
-        setNsec(value: string) {
-            this.valid = value.startsWith('nsec1');
-            this.npubValue = this.valid ? 'npub1test' : '';
-            this.nprofileValue = this.valid ? 'nprofile1test' : '';
-        }
-
-        get isValid() {
-            return this.valid;
-        }
-
-        get npub() {
-            return this.npubValue;
-        }
-
-        get nprofile() {
-            return this.nprofileValue;
-        }
-    },
-}));
-
 import LoginDialog from '../../components/LoginDialog.svelte';
 import { DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES } from '../../lib/nip46ConnectUiUtils';
 
 describe('LoginDialog', () => {
+    const validSecret = 'nsec1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhs80zqrl';
+
+    const setInputValue = (input: HTMLInputElement, value: string) => {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
     const defaultProps = {
         show: true,
         secretKey: '',
@@ -192,11 +174,10 @@ describe('LoginDialog', () => {
 
         const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
         const form = secretInput.closest('form');
-        const validSecret = 'nsec1' + 'a'.repeat(58);
 
-        await fireEvent.input(secretInput, {
-            target: { value: validSecret },
-        });
+        setInputValue(secretInput, validSecret);
+        await waitFor(() => expect(secretInput.value).toBe(validSecret));
+        await screen.findByText(/npub1/);
         await fireEvent.keyDown(secretInput, { key: 'Enter', code: 'Enter' });
         await fireEvent.submit(form as HTMLFormElement);
 
@@ -215,14 +196,219 @@ describe('LoginDialog', () => {
 
         const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
         const saveButton = screen.getByRole('button', { name: '保存' });
-        const validSecret = 'nsec1' + 'a'.repeat(58);
 
-        await fireEvent.input(secretInput, {
-            target: { value: validSecret },
-        });
+        setInputValue(secretInput, validSecret);
+        await waitFor(() => expect(secretInput.value).toBe(validSecret));
+        await screen.findByText(/npub1/);
         await fireEvent.click(saveButton);
 
         expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('bunker URLが空のときクリアボタンが表示されない', () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        expect(
+            screen.queryByRole('button', { name: /clearInput|入力内容を消去/ }),
+        ).toBeNull();
+    });
+
+    it('bunker URLを入力するとクリアボタンが表示される', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+        await waitFor(() => expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy());
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
+
+        setInputValue(bunkerInput, 'bunker://example?relay=wss://relay.example.com');
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        expect(clearButton).toBeTruthy();
+        expect((clearButton as HTMLButtonElement).type).toBe('button');
+    });
+
+    it('bunker URLをクリアすると値とエラーが消える', async () => {
+        const onNip46Login = vi.fn<() => Promise<string | undefined>>().mockResolvedValue('nip46_connection_failed');
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNip46Login,
+            },
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+        await waitFor(() => expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy());
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
+
+        await fireEvent.input(bunkerInput, {
+            target: { value: 'bunker://example?relay=wss://relay.example.com' },
+        });
+        await fireEvent.click(screen.getByText('接続'));
+
+        expect(await screen.findByText('接続に失敗しました')).toBeTruthy();
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.click(clearButton);
+
+        expect(bunkerInput.value).toBe('');
+        expect(screen.queryByText('接続に失敗しました')).toBeNull();
+        expect(bunkerInput.validity.customError).toBe(false);
+    });
+
+    it('bunker URLクリア後に入力欄へフォーカスが戻る', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+        await waitFor(() => expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy());
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
+        await fireEvent.input(bunkerInput, {
+            target: { value: 'bunker://example' },
+        });
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.mouseDown(clearButton);
+        await fireEvent.click(clearButton);
+
+        expect(document.activeElement).toBe(bunkerInput);
+    });
+
+    it('bunker URLクリアでonNip46Loginが呼ばれない', async () => {
+        const onNip46Login = vi.fn<() => Promise<string | undefined>>().mockResolvedValue(undefined);
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNip46Login,
+            },
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+        await waitFor(() => expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy());
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
+        await fireEvent.input(bunkerInput, {
+            target: { value: 'bunker://example' },
+        });
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.click(clearButton);
+
+        expect(onNip46Login).not.toHaveBeenCalled();
+    });
+
+    it('isLoadingNip46中はクリアボタンが操作不可になる', async () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isLoadingNip46: true,
+            },
+        });
+
+        await fireEvent.click(screen.getByText('bunker:// を入力'));
+        await waitFor(() => expect(screen.getByPlaceholderText('bunker://...')).toBeTruthy());
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...') as HTMLInputElement;
+        await fireEvent.input(bunkerInput, {
+            target: { value: 'bunker://example' },
+        });
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ }) as HTMLButtonElement;
+        expect(clearButton.disabled).toBe(true);
+    });
+
+    it('秘密鍵が空のときクリアボタンが表示されない', () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        expect(
+            screen.queryAllByRole('button', { name: /clearInput|入力内容を消去/ }),
+        ).toHaveLength(0);
+    });
+
+    it('秘密鍵を入力するとクリアボタンが表示される', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        setInputValue(secretInput, validSecret);
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        expect(clearButton).toBeTruthy();
+    });
+
+    it('秘密鍵をクリアすると値と公開鍵表示が消える', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        setInputValue(secretInput, validSecret);
+
+        await waitFor(() => expect(secretInput.value).toBe(validSecret));
+        await waitFor(() => {
+            expect(screen.getByText(/npub1/)).toBeTruthy();
+            expect(screen.getByText(/nprofile1/)).toBeTruthy();
+        });
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.click(clearButton);
+
+        expect(secretInput.value).toBe('');
+        await waitFor(() => {
+            expect(screen.queryByText(/npub1/)).toBeNull();
+            expect(screen.queryByText(/nprofile1/)).toBeNull();
+        });
+    });
+
+    it('秘密鍵クリア後に入力欄へフォーカスが戻る', async () => {
+        render(LoginDialog, {
+            props: defaultProps,
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        setInputValue(secretInput, validSecret);
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.mouseDown(clearButton);
+        await fireEvent.click(clearButton);
+
+        expect(document.activeElement).toBe(secretInput);
+    });
+
+    it('秘密鍵クリアでonSaveが呼ばれない', async () => {
+        const onSave = vi.fn();
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onSave,
+            },
+        });
+
+        const secretInput = screen.getByPlaceholderText('nsec1...') as HTMLInputElement;
+        setInputValue(secretInput, validSecret);
+        await waitFor(() => expect(screen.getByRole('button', { name: /clearInput|入力内容を消去/ })).toBeTruthy());
+
+        const clearButton = screen.getByRole('button', { name: /clearInput|入力内容を消去/ });
+        await fireEvent.click(clearButton);
+
+        expect(onSave).not.toHaveBeenCalled();
     });
 
     it('親クライアント連携ログイン失敗時にローカライズ済みエラーを表示する', async () => {
@@ -495,8 +681,10 @@ describe('LoginDialog', () => {
         expect(saveButton.disabled).toBe(false);
 
         await fireEvent.input(secretInput, {
-            target: { value: 'nsec1' + 'a'.repeat(58) },
+            target: { value: validSecret },
         });
+        await waitFor(() => expect(secretInput.value).toBe(validSecret));
+        await screen.findByText(/npub1/);
         await fireEvent.click(parentButton);
         await fireEvent.click(extensionButton);
         await fireEvent.click(saveButton);
