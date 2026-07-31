@@ -5,6 +5,7 @@ import {
     resolveKind7ReactionTargetEventId,
 } from "../../lib/postHistoryNip10Utils";
 import type { NostrEvent } from "../../lib/types";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
 const ROOT_ID = "1".repeat(64);
 const REPLY_ID = "2".repeat(64);
@@ -14,7 +15,7 @@ const LEGACY_ID = "5".repeat(64);
 const AUTHOR_HINT = "a".repeat(64);
 
 function createEvent(tags: string[][], kind = 1): NostrEvent {
-    return {
+    return createBaseEvent({
         id: "f".repeat(64),
         pubkey: "b".repeat(64),
         kind,
@@ -22,7 +23,7 @@ function createEvent(tags: string[][], kind = 1): NostrEvent {
         tags,
         created_at: 100,
         sig: "sig",
-    };
+    });
 }
 
 describe("parseKind1ThreadReferences", () => {

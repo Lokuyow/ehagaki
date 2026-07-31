@@ -8,11 +8,12 @@ vi.mock("svelte-i18n", () => ({
 
 import PostHistoryRelatedEventCard from "../../components/PostHistoryRelatedEventCard.svelte";
 import type { NostrEvent, ProfileData } from "../../lib/types";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
 const pubkey = "a".repeat(64);
 
 function createEvent(content = "reply"): NostrEvent {
-    return {
+    return createBaseEvent({
         id: "1".repeat(64),
         pubkey,
         kind: 1,
@@ -20,7 +21,7 @@ function createEvent(content = "reply"): NostrEvent {
         tags: [],
         created_at: 100,
         sig: "2".repeat(128),
-    };
+    });
 }
 
 describe("PostHistoryRelatedEventCard", () => {
