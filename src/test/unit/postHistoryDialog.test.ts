@@ -122,7 +122,6 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
 const repositoryMock = vi.hoisted(() => ({
     getByEventId: vi.fn(),
     getPage: vi.fn(),
-    getVisiblePage: vi.fn(),
     getLatestVisibleChunk: vi.fn(),
     getOlderVisibleChunk: vi.fn(),
     getNewerVisibleChunk: vi.fn(),
@@ -842,26 +841,14 @@ describe('PostHistoryDialog', () => {
         clearPersistedPostHistoryViewState();
         vi.clearAllMocks();
         repositoryMock.getPage.mockResolvedValue([]);
-        repositoryMock.getVisiblePage.mockImplementation(async ({ pubkeyHex, page, pageSize }: Record<string, any>) =>
-            repositoryMock.getPage({ pubkeyHex, page, pageSize }),
-        );
         repositoryMock.getByEventId.mockResolvedValue(null);
-        repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, any>) => {
-            if (typeof visibleUntil === 'number') {
-                return repositoryMock.getVisiblePage({
-                    pubkeyHex,
-                    visibleUntil,
-                    page: 1,
-                    pageSize: limit,
-                });
-            }
-
-            return repositoryMock.getPage({
+        repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex, limit }: Record<string, any>) =>
+            repositoryMock.getPage({
                 pubkeyHex,
                 page: 1,
                 pageSize: limit,
-            });
-        });
+            }),
+        );
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
         repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, any>) =>

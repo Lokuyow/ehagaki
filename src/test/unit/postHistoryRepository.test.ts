@@ -369,83 +369,6 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
-    it("visibleUntil を指定した件数取得とページ取得は createdAt inclusive で絞り込む", async () => {
-        const db = createTestDb();
-        const repository = new DexiePostHistoryRepository(db, () => 1000);
-        const pubkey = "b".repeat(64);
-
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 500 }),
-            postedAt: 500000,
-        });
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 1000 }),
-            postedAt: 1000000,
-        });
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1100 }),
-            postedAt: 1100000,
-        });
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "4".repeat(64), pubkey, created_at: 1200 }),
-            postedAt: 1200000,
-        });
-
-        await expect(repository.countVisibleForPubkey(pubkey, 1000)).resolves.toBe(3);
-        await expect(repository.getVisiblePage({
-            pubkeyHex: pubkey,
-            visibleUntil: 1000,
-            page: 1,
-            pageSize: 10,
-        })).resolves.toMatchObject([
-            { eventId: "4".repeat(64), createdAt: 1200 },
-            { eventId: "3".repeat(64), createdAt: 1100 },
-            { eventId: "2".repeat(64), createdAt: 1000 },
-        ]);
-        await expect(repository.getVisiblePage({
-            pubkeyHex: pubkey,
-            visibleUntil: 1000,
-            page: 2,
-            pageSize: 2,
-        })).resolves.toMatchObject([
-            { eventId: "2".repeat(64), createdAt: 1000 },
-        ]);
-
-        db.close();
-    });
-
-    it("visible query でも表示順は postedAt desc / createdAt desc を維持する", async () => {
-        const db = createTestDb();
-        const repository = new DexiePostHistoryRepository(db, () => 1000);
-        const pubkey = "b".repeat(64);
-
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 1000 }),
-            postedAt: 4000,
-        });
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 1100 }),
-            postedAt: 3000,
-        });
-        await repository.putPostedEvent({
-            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1050 }),
-            postedAt: 4000,
-        });
-
-        const records = await repository.getVisibleAll({
-            pubkeyHex: pubkey,
-            visibleUntil: 1000,
-        });
-
-        expect(records.map((record) => record.eventId)).toEqual([
-            "3".repeat(64),
-            "1".repeat(64),
-            "2".repeat(64),
-        ]);
-
-        db.close();
-    });
-
     it("timeline chunk API は stable cursor で older/newer window を返す", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
@@ -895,7 +818,6 @@ describe("DexiePostHistoryRepository", () => {
         });
         const { db, materializedCounts, queriedIndexes } = createInstrumentedTimelineDb(records);
         const repository = new DexiePostHistoryRepository(db as any, () => 1000);
-        const getVisibleAll = vi.spyOn(repository, "getVisibleAll");
 
         const latest = await repository.getLatestVisibleChunk({
             pubkeyHex: pubkey,
@@ -931,7 +853,6 @@ describe("DexiePostHistoryRepository", () => {
         expect([latest, older, dateChunk, around].map((chunk) => chunk.length))
             .toEqual([25, 25, 25, 25]);
         expect(newer).toHaveLength(10);
-        expect(getVisibleAll).not.toHaveBeenCalled();
         expect(queriedIndexes).not.toContain("[pubkeyHex+postedAt]");
         expect(queriedIndexes.every((index) => index === POST_HISTORY_TIMELINE_INDEX))
             .toBe(true);

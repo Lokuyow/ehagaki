@@ -43,11 +43,6 @@ export type PostHistoryVisibleQueryOptions = PostHistoryRepositoryOptions & {
     visibleUntil?: number | null;
 };
 
-export type PostHistoryVisiblePageOptions = PostHistoryVisibleQueryOptions & {
-    page: number;
-    pageSize: number;
-};
-
 export type PostHistoryTimelineCursor = Pick<
     PostHistoryRecord,
     "eventId" | "postedAt" | "createdAt"
@@ -115,9 +110,7 @@ export interface PostHistoryRepository {
         eventIds: string[];
     }): Promise<string[]>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
-    getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
-    getVisiblePage(options: PostHistoryVisiblePageOptions): Promise<PostHistoryRecord[]>;
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
@@ -389,22 +382,6 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         return sortPostHistoryRecords(records);
     }
 
-    async getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]> {
-        if (!options.pubkeyHex) return [];
-
-        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
-        if (visibleUntil === null) {
-            return this.getAll(options);
-        }
-
-        const records = await this.db.postHistory
-            .where("[pubkeyHex+createdAt]")
-            .between([options.pubkeyHex, visibleUntil], [options.pubkeyHex, Dexie.maxKey])
-            .toArray();
-
-        return sortPostHistoryRecords(records);
-    }
-
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
         if (!options.pubkeyHex) return [];
 
@@ -419,14 +396,6 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .offset((page - 1) * pageSize)
             .limit(pageSize)
             .toArray();
-    }
-
-    async getVisiblePage(options: PostHistoryVisiblePageOptions): Promise<PostHistoryRecord[]> {
-        const page = normalizePageNumber(options.page);
-        const pageSize = normalizePageSize(options.pageSize);
-        const records = await this.getVisibleAll(options);
-
-        return records.slice((page - 1) * pageSize, page * pageSize);
     }
 
     async getLatestVisibleChunk(
