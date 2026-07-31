@@ -2,28 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 import { EmbedComposerContextService } from '../../lib/embedComposerContextService';
 import { createMockConsole, type MockConsole } from '../helpers';
-
-function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-        removeEventListener: vi.fn((type: string) => {
-            listeners.delete(type);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createMockWindow } from '../embedWindowTestUtils';
 
 describe('EmbedComposerContextService', () => {
     let mockConsole: MockConsole;
