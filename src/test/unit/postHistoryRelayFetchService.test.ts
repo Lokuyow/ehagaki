@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_RELAYS } from "../../lib/constants";
+import type { NostrEvent } from "../../lib/types";
+import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
 
 const createRxBackwardReqMock = vi.hoisted(() => vi.fn((_rxReqId?: string) => ({
     emit: vi.fn(),
@@ -22,8 +24,8 @@ import {
 import { createMockConsole } from "../helpers";
 import type { MockConsole } from "../helpers";
 
-function createEvent(overrides: Record<string, any> = {}) {
-    return {
+function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
+    return createPostHistoryEvent({
         id: "a".repeat(64),
         pubkey: "b".repeat(64),
         kind: 1,
@@ -32,7 +34,7 @@ function createEvent(overrides: Record<string, any> = {}) {
         created_at: 100,
         sig: "c".repeat(128),
         ...overrides,
-    };
+    });
 }
 
 describe("PostHistoryRelayFetchService", () => {

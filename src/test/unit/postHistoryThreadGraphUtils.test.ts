@@ -10,9 +10,10 @@ import {
     toEventFromReplyRecord,
 } from "../../lib/postHistoryThreadGraphUtils";
 import type { NostrEvent } from "../../lib/types";
+import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
-    return {
+    return createPostHistoryEvent({
         id: "1".repeat(64),
         pubkey: "a".repeat(64),
         kind: 1,
@@ -21,7 +22,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
         created_at: 100,
         sig: "b".repeat(128),
         ...overrides,
-    };
+    });
 }
 
 describe("postHistoryThreadGraphUtils", () => {

@@ -19,11 +19,12 @@ import { PostHistoryAuthoredPostsRealtimeService } from "../../lib/postHistoryAu
 import { PostHistoryInboundInteractionsRealtimeService } from "../../lib/postHistoryInboundInteractionsRealtimeService";
 import { PostHistoryInboundReplyReconciliationService } from "../../lib/postHistoryInboundReplyReconciliationService";
 import type { NostrEvent } from "../../lib/types";
+import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
-    return {
+    return createPostHistoryEvent({
         id: "f".repeat(64),
         pubkey: OWNER_PUBKEY,
         kind: 1,
@@ -32,7 +33,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
         created_at: 100,
         sig: "c".repeat(128),
         ...overrides,
-    };
+    });
 }
 
 describe("PostHistoryAuthoredPostsRealtimeService", () => {
