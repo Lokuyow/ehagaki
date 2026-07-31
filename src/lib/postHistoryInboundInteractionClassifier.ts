@@ -4,6 +4,7 @@ import {
     type PostHistoryThreadReferences,
 } from "./postHistoryNip10Utils";
 import type { NostrEvent } from "./types";
+import { isHex64 } from "./utils/nostrHexUtils";
 
 export type PostHistoryInboundInteractionType =
     | "direct-reply"
@@ -21,12 +22,6 @@ export interface PostHistoryInboundInteractionClassification {
     targetEventId: string | null;
     targetAuthorPubkey: string | null;
     reason: string;
-}
-
-const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
-
-function isHex64(value: unknown): value is string {
-    return typeof value === "string" && HEX_64_PATTERN.test(value);
 }
 
 function eventHasPTag(event: NostrEvent, pubkeyHex: string): boolean {

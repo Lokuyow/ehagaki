@@ -1,5 +1,6 @@
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent } from "./types";
+import { isHex64 } from "./utils/nostrHexUtils";
 
 export interface PostHistoryThreadReferenceTag {
     eventId: string;
@@ -34,8 +35,6 @@ export type PostHistoryThreadReferenceIssue =
     | "conflicting-reply-targets"
     | "reply-target-is-channel";
 
-const HEX_64_PATTERN = /^[0-9a-f]{64}$/i;
-
 const EMPTY_REFERENCES: PostHistoryThreadReferences = {
     rootId: null,
     replyId: null,
@@ -54,10 +53,6 @@ const EMPTY_REFERENCES: PostHistoryThreadReferences = {
     issues: [],
 };
 
-function isValidHexId(value: unknown): value is string {
-    return typeof value === "string" && HEX_64_PATTERN.test(value);
-}
-
 function normalizeMarker(value: unknown): string | null {
     if (typeof value !== "string") {
         return null;
@@ -69,7 +64,7 @@ function normalizeMarker(value: unknown): string | null {
 
 function parseETag(tag: string[]): PostHistoryThreadReferenceTag | null {
     const eventId = tag[1];
-    if (!isValidHexId(eventId)) {
+    if (!isHex64(eventId)) {
         return null;
     }
 
@@ -77,7 +72,7 @@ function parseETag(tag: string[]): PostHistoryThreadReferenceTag | null {
         typeof tag[2] === "string" && tag[2].length > 0 ? [tag[2]] : [],
         { limit: 1 },
     )[0] ?? null;
-    const authorHint = isValidHexId(tag[4]) ? tag[4] : null;
+    const authorHint = isHex64(tag[4]) ? tag[4] : null;
 
     return {
         eventId,
@@ -141,7 +136,7 @@ function normalizeReactionTargetMarker(value: unknown): "reply" | "root" | "unkn
     }
 
     const trimmed = value.trim().toLowerCase();
-    if (trimmed.length === 0 || isValidHexId(trimmed)) {
+    if (trimmed.length === 0 || isHex64(trimmed)) {
         return null;
     }
 
@@ -160,7 +155,7 @@ export function resolveKind7ReactionTargetEventId(
     }
 
     const eTags = event.tags.filter(
-        (tag): tag is string[] => Array.isArray(tag) && tag[0] === "e" && isValidHexId(tag[1]),
+        (tag): tag is string[] => Array.isArray(tag) && tag[0] === "e" && isHex64(tag[1]),
     );
     if (eTags.length === 0) {
         return null;
