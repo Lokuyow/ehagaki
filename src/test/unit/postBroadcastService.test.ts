@@ -3,7 +3,9 @@ import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import {
     PostBroadcastService,
     resolveBroadcastEvent,
+    type PostBroadcastServiceDeps,
 } from "../../lib/postBroadcastService";
+import { createMockConsole } from "../helpers";
 
 function createRecord(
     overrides: Partial<PostHistoryRecord> = {},
@@ -36,6 +38,16 @@ function createRecord(
         schemaVersion: 2,
         ...overrides,
     };
+}
+
+function createService(
+    writeRelays: string[],
+    overrides: Partial<PostBroadcastServiceDeps> = {},
+) {
+    return new PostBroadcastService({
+        writeRelaysStore: { value: writeRelays },
+        ...overrides,
+    });
 }
 
 function createObservable(packets: any[] = []) {
@@ -90,20 +102,14 @@ describe("PostBroadcastService", () => {
                 eventId: "e".repeat(64),
             },
         ]));
-        const service = new PostBroadcastService({
-            writeRelaysStore: {
-                value: [
-                    "wss://write.example.com/",
-                    "wss://write.example.com/",
-                    "wss://second.example.com/",
-                ],
-            },
-            console: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            } as unknown as Console,
-        });
+        const service = createService(
+            [
+                "wss://write.example.com/",
+                "wss://write.example.com/",
+                "wss://second.example.com/",
+            ],
+            { console: createMockConsole() },
+        );
 
         const result = await service.broadcast({
             post,
@@ -135,9 +141,7 @@ describe("PostBroadcastService", () => {
     it("OK が返らないリレーはタイムアウトとして扱う", async () => {
         const post = createRecord();
         const send = vi.fn().mockReturnValue(createObservable());
-        const service = new PostBroadcastService({
-            writeRelaysStore: { value: ["wss://write.example.com/"] },
-        });
+        const service = createService(["wss://write.example.com/"]);
 
         const result = await service.broadcast({
             post,
@@ -156,13 +160,8 @@ describe("PostBroadcastService", () => {
         const send = vi.fn().mockReturnValue(
             createErrorObservable(new Error("network failed")),
         );
-        const service = new PostBroadcastService({
-            writeRelaysStore: { value: ["wss://write.example.com/"] },
-            console: {
-                log: vi.fn(),
-                warn: vi.fn(),
-                error: vi.fn(),
-            } as unknown as Console,
+        const service = createService(["wss://write.example.com/"], {
+            console: createMockConsole(),
         });
 
         const result = await service.broadcast({
@@ -178,9 +177,7 @@ describe("PostBroadcastService", () => {
 
     it("write relay がない場合は送信しない", async () => {
         const send = vi.fn();
-        const service = new PostBroadcastService({
-            writeRelaysStore: { value: [] },
-        });
+        const service = createService([]);
 
         const result = await service.broadcast({
             post: createRecord(),
@@ -196,9 +193,7 @@ describe("PostBroadcastService", () => {
 
     it("rawEvent が署名済みイベントでない場合は送信しない", async () => {
         const send = vi.fn();
-        const service = new PostBroadcastService({
-            writeRelaysStore: { value: ["wss://write.example.com/"] },
-        });
+        const service = createService(["wss://write.example.com/"]);
 
         const result = await service.broadcast({
             post: createRecord({ rawEvent: null }),
