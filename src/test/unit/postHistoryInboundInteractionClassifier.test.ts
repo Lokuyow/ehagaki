@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyPostHistoryInboundInteraction } from "../../lib/postHistoryInboundInteractionClassifier";
 import type { NostrEvent } from "../../lib/types";
+import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 const PARENT_ID = "1".repeat(64);
@@ -8,7 +9,7 @@ const ROOT_ID = "2".repeat(64);
 const OTHER_PARENT_ID = "3".repeat(64);
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
-    return {
+    return createBaseEvent({
         id: "f".repeat(64),
         pubkey: "b".repeat(64),
         kind: 1,
@@ -17,7 +18,7 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
         created_at: 100,
         sig: "c".repeat(128),
         ...overrides,
-    };
+    });
 }
 
 describe("classifyPostHistoryInboundInteraction", () => {
