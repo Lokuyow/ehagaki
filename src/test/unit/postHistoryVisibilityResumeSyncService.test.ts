@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { PostHistoryVisibilityResumeSyncService } from "../../lib/postHistoryVisibilityResumeSyncService";
 import type { NostrEvent } from "../../lib/types";
+import { createAuthoredFetchResult, createInboundSyncResult } from "../postHistorySyncResultTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 
@@ -18,55 +19,23 @@ function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
 }
 
 function createAuthoredResult(event = createEvent()) {
-    return {
-        status: "success",
+    return createAuthoredFetchResult(event, {
         events: [{ event, relayUrls: ["wss://relay.example.com/"] }],
-        fetchedAt: 1_700_000_000_000,
-        nextUntil: null,
-        hasMore: false,
         relayUrls: ["wss://read.example.com/"],
         observedRelayUrls: ["wss://relay.example.com/"],
-        rawCount: 1,
-        uniqueCount: 1,
-        duplicateCount: 0,
-        perRelayCounts: [],
-        oldestCreatedAt: event.created_at,
-        newestCreatedAt: event.created_at,
         requestedRelayUrls: ["wss://read.example.com/"],
         eventRelayUrls: ["wss://relay.example.com/"],
-        eoseRelayUrls: [],
-        closedRelayUrls: [],
-        errorRelayUrls: [],
-        downRelayUrls: [],
-        completedByRxNostr: true,
-        completedByLocalTimeout: false,
-        hasAnyRelayResponse: true,
-        allRelaysFailed: false,
-    } as const;
+    }, {
+        fetchedAt: 1_700_000_000_000,
+    });
 }
 
 function createInboundResult() {
-    return {
-        status: "success",
+    return createInboundSyncResult({}, {
         fetchedAt: 1_700_000_000_000,
         since: 50,
         limit: 150,
-        relayUrls: [],
-        rawCount: 0,
-        uniqueCount: 0,
-        saturated: false,
-        maybeIncomplete: false,
-        newestSeenCreatedAt: null,
-        savedParentEventIds: [],
-        savedDirectReplyCount: 0,
-        classifications: {
-            "direct-reply": 0,
-            "direct-reply-candidate": 0,
-            "mention-like": 0,
-            reaction: 0,
-            unsupported: 0,
-        },
-    } as const;
+    });
 }
 
 describe("PostHistoryVisibilityResumeSyncService", () => {
