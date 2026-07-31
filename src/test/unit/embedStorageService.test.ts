@@ -5,7 +5,8 @@ import {
     EMBED_MESSAGE_VERSION,
 } from '../../lib/embedProtocol';
 import { EmbedStorageService } from '../../lib/embedStorageService';
-import { createEmbedTestWindow, createMockConsole, type MockConsole, MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
+import { createEmbedTestWindow } from '../embedWindowTestUtils';
 
 describe('EmbedStorageService', () => {
     let mockConsole: MockConsole;

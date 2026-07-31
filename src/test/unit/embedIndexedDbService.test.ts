@@ -6,7 +6,8 @@ import {
 import { EmbedIndexedDbService } from "../../lib/embedIndexedDbService";
 import type { UploadDestinationRecord } from "../../lib/storage/ehagakiDb";
 import { UPLOAD_DESTINATION_GLOBAL_SCOPE } from "../../lib/upload/uploadDestinationPresets";
-import { createEmbedTestWindow, createMockConsole, type MockConsole } from "../helpers";
+import { createMockConsole, type MockConsole } from "../helpers";
+import { createEmbedTestWindow } from "../embedWindowTestUtils";
 
 function createDestinationRecord(id = "destination"): UploadDestinationRecord {
     return {

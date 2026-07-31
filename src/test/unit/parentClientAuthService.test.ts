@@ -5,7 +5,8 @@ import {
 } from '../../lib/parentClientAuthService';
 import { STORAGE_KEYS } from '../../lib/constants';
 import type { ParentClientSessionData } from '../../lib/types';
-import { createEmbedTestWindow, createMockConsole, type MockConsole, MockStorage } from '../helpers';
+import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
+import { createEmbedTestWindow } from '../embedWindowTestUtils';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 
 describe('ParentClientAuthService', () => {
@@ -16,7 +17,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('auth.request/auth.result で接続し signer を生成する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const promise = service.connect({ capabilities: ['signEvent'] });
@@ -54,7 +55,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('rpc.request/rpc.result で signEvent を委譲する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const connectPromise = service.connect({ capabilities: ['signEvent'] });
@@ -101,7 +102,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('capabilities 未指定時は signEvent のみを既定要求する', () => {
-        const { windowObj, parent } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         void service.connect({ timeoutMs: 1 }).catch(() => undefined);
@@ -156,7 +157,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('auth.error を受け取ると接続要求を明示的な認証エラーとして reject する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const promise = service.connect({ capabilities: ['signEvent'] });
@@ -181,7 +182,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('要求していない capability を含む auth.result を reject する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const promise = service.connect({ capabilities: ['signEvent'] });
@@ -205,7 +206,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('malformed な rpc.result を reject する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const connectPromise = service.connect({ capabilities: ['signEvent'] });
@@ -248,7 +249,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('requestId がない auth.result は warn して無視する', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
 
         const promise = service.connect({ capabilities: ['signEvent'] });
@@ -290,7 +291,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('auth.logout を受け取ると remote logout listener が呼ばれる', async () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
         const onRemoteLogout = vi.fn();
         service.onRemoteLogout(onRemoteLogout);
@@ -331,7 +332,7 @@ describe('ParentClientAuthService', () => {
     });
 
     it('auth.login を受け取ると remote login listener が呼ばれる', () => {
-        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { document: { referrer: '' } });
+        const { windowObj, parent, listeners } = createEmbedTestWindow(undefined, { documentReferrer: '' });
         const service = new ParentClientAuthService(windowObj, mockConsole);
         const onRemoteLogin = vi.fn();
         service.onRemoteLogin(onRemoteLogin);

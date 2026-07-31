@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 import { EmbedComposerContextService } from '../../lib/embedComposerContextService';
-import { createEmbedTestWindow, createMockConsole, type MockConsole } from '../helpers';
+import { createMockConsole, type MockConsole } from '../helpers';
+import { createEmbedTestWindow } from '../embedWindowTestUtils';
 
 describe('EmbedComposerContextService', () => {
     let mockConsole: MockConsole;
