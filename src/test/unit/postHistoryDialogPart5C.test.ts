@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
+import { createDeferred } from '../deferredTestUtils';
+
+void createDeferred;
 
 const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record<string, unknown> }) => {
     const translations: Record<string, string> = {
@@ -344,15 +347,6 @@ function createRecord(overrides: Record<string, any> = {}) {
         schemaVersion: 2,
         ...overrides,
     };
-}
-
-function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((resolvePromise) => {
-        resolve = resolvePromise;
-    });
-
-    return { promise, resolve };
 }
 
 function expectDefaultMediaReplacement(): void {
