@@ -29,7 +29,7 @@ export class MockStorage implements Storage {
     get length() { return Object.keys(this.store).length; }
 
     getItem(key: string): string | null {
-        return this.store[key] || null;
+        return this.store[key] ?? null;
     }
 
     setItem(key: string, value: string): void {
@@ -46,7 +46,7 @@ export class MockStorage implements Storage {
 
     key(index: number): string | null {
         const keys = Object.keys(this.store);
-        return keys[index] || null;
+        return keys[index] ?? null;
     }
 }
 
