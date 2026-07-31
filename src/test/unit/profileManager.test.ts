@@ -14,7 +14,7 @@ import { EHagakiDB } from '../../lib/storage/ehagakiDb';
 import { DexieProfilesRepository } from '../../lib/storage/profilesRepository';
 import { profileMetadataCache } from '../../lib/profileMetadataCache.svelte';
 import type { ProfileManagerDeps } from '../../lib/types';
-import { MockStorage, createMockRxNostr } from '../helpers';
+import { MockStorage, createMockConsole, createMockRxNostr } from '../helpers';
 
 describe('ProfileUrlUtils', () => {
     describe('addCacheBuster', () => {
@@ -153,16 +153,13 @@ describe('ProfileDataFactory', () => {
 describe('ProfileStorage', () => {
     let storage: ProfileStorage;
     let mockLocalStorage: MockStorage;
-    let mockConsole: Console;
+    let mockConsole: ReturnType<typeof createMockConsole>;
     let factory: ProfileDataFactory;
     let repository: DexieProfilesRepository;
 
     beforeEach(() => {
         mockLocalStorage = new MockStorage();
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
         factory = new ProfileDataFactory();
         repository = new DexieProfilesRepository(
             new EHagakiDB(`ProfileStorage-test-${Date.now()}-${Math.random()}`),
@@ -256,7 +253,7 @@ describe('ProfileNetworkFetcher', () => {
     let fetcher: ProfileNetworkFetcher;
     let mockRxNostr: any;
     let mockSubscription: any;
-    let mockConsole: Console;
+    let mockConsole: ReturnType<typeof createMockConsole>;
     let mockSetTimeout: any;
     let mockClearTimeout: any;
     let factory: ProfileDataFactory;
@@ -272,10 +269,7 @@ describe('ProfileNetworkFetcher', () => {
             })
         };
 
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn()
-        } as any;
+        mockConsole = createMockConsole();
 
         // setTimeout/clearTimeoutのモック - タイムアウトのシミュレート用
         mockSetTimeout = vi.fn((fn: () => void, delay: number) => {
@@ -379,12 +373,14 @@ describe('ProfileManager統合テスト', () => {
     let mockRxNostr: any;
     let mockDeps: ProfileManagerDeps;
     let mockStorage: MockStorage;
+    let mockConsole: ReturnType<typeof createMockConsole>;
     let mockSetTimeout: any;
     let mockClearTimeout: any;
 
     beforeEach(() => {
         mockStorage = new MockStorage();
         mockRxNostr = createMockRxNostr();
+        mockConsole = createMockConsole();
 
         // setTimeout/clearTimeoutのモック
         mockSetTimeout = vi.fn((fn: () => void) => {
@@ -399,10 +395,7 @@ describe('ProfileManager統合テスト', () => {
             navigator: { onLine: true } as Navigator,
             setTimeoutFn: mockSetTimeout,
             clearTimeoutFn: mockClearTimeout,
-            console: {
-                log: vi.fn(),
-                error: vi.fn()
-            } as any
+            console: mockConsole
         };
 
         manager = new ProfileManager(mockRxNostr, mockDeps);
@@ -437,10 +430,7 @@ describe('ProfileManager統合テスト', () => {
             navigator: { onLine: true } as Navigator,
             setTimeoutFn: mockSetTimeout,
             clearTimeoutFn: mockClearTimeout,
-            console: {
-                log: vi.fn(),
-                error: vi.fn()
-            } as any
+            console: mockConsole
         };
 
         manager = new ProfileManager(mockRxNostr, mockDeps);
