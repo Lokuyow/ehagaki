@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
@@ -6,26 +6,7 @@ import {
 import { EmbedIndexedDbService } from "../../lib/embedIndexedDbService";
 import type { UploadDestinationRecord } from "../../lib/storage/ehagakiDb";
 import { UPLOAD_DESTINATION_GLOBAL_SCOPE } from "../../lib/upload/uploadDestinationPresets";
-import { createMockConsole, type MockConsole } from "../helpers";
-
-function createMockWindow(search = "?parentOrigin=https%3A%2F%2Fparent.example.com") {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createEmbedTestWindow, createMockConsole, type MockConsole } from "../helpers";
 
 function createDestinationRecord(id = "destination"): UploadDestinationRecord {
     return {
@@ -63,14 +44,14 @@ describe("EmbedIndexedDbService", () => {
     });
 
     it("iframe と parentOrigin がない場合は初期化しない", () => {
-        const { windowObj } = createMockWindow("");
+        const { windowObj } = createEmbedTestWindow("");
         const service = new EmbedIndexedDbService(windowObj, mockConsole);
 
         expect(service.initialize()).toBe(false);
     });
 
     it("idb.getSnapshot を送信し、uploadDestinations records を返す", async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole);
         service.initialize();
 
@@ -110,7 +91,7 @@ describe("EmbedIndexedDbService", () => {
     });
 
     it("records が省略された snapshot は未保存として null を返す", async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole);
         service.initialize();
 
@@ -137,7 +118,7 @@ describe("EmbedIndexedDbService", () => {
     });
 
     it("不正な idb.result payload は無視して timeout する", async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
         service.initialize();
 
@@ -167,7 +148,7 @@ describe("EmbedIndexedDbService", () => {
     });
 
     it("origin が一致しない idb.result は無視して timeout する", async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedIndexedDbService(windowObj, mockConsole, 10);
         service.initialize();
 

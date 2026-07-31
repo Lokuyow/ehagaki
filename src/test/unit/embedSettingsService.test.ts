@@ -1,26 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 import { EmbedSettingsService } from '../../lib/embedSettingsService';
-import { createMockConsole, type MockConsole } from '../helpers';
-
-function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createEmbedTestWindow, createMockConsole, type MockConsole } from '../helpers';
 
 describe('EmbedSettingsService', () => {
     let mockConsole: MockConsole;
@@ -30,7 +11,7 @@ describe('EmbedSettingsService', () => {
     });
 
     it('settings.set を受け取ると listener を呼ぶ', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedSettingsService(windowObj, mockConsole);
         const onRemoteSetSettings = vi.fn();
         service.onRemoteSetSettings(onRemoteSetSettings);
@@ -63,7 +44,7 @@ describe('EmbedSettingsService', () => {
     });
 
     it('origin が一致しない settings.set は無視する', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedSettingsService(windowObj, mockConsole);
         const onRemoteSetSettings = vi.fn();
         service.onRemoteSetSettings(onRemoteSetSettings);
@@ -85,7 +66,7 @@ describe('EmbedSettingsService', () => {
     });
 
     it('requestId がない settings.set は拒否する', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedSettingsService(windowObj, mockConsole);
         const onRemoteSetSettings = vi.fn();
         const onRemoteSettingsError = vi.fn();
@@ -113,7 +94,7 @@ describe('EmbedSettingsService', () => {
     });
 
     it('不正な payload は settings error listener を呼ぶ', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedSettingsService(windowObj, mockConsole);
         const onRemoteSetSettings = vi.fn();
         const onRemoteSettingsError = vi.fn();

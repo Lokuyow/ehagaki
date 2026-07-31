@@ -1,30 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '../../lib/constants';
 import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
 } from '../../lib/embedProtocol';
 import { EmbedStorageService } from '../../lib/embedStorageService';
-import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
-
-function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createEmbedTestWindow, createMockConsole, type MockConsole, MockStorage } from '../helpers';
 
 describe('EmbedStorageService', () => {
     let mockConsole: MockConsole;
@@ -34,14 +15,14 @@ describe('EmbedStorageService', () => {
     });
 
     it('iframe と parentOrigin がない場合は初期化しない', () => {
-        const { windowObj } = createMockWindow('');
+        const { windowObj } = createEmbedTestWindow('');
         const service = new EmbedStorageService(windowObj, mockConsole);
 
         expect(service.initialize()).toBe(false);
     });
 
     it('storage.get を送信し、storage.result を返す', async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedStorageService(windowObj, mockConsole);
         service.initialize();
 
@@ -81,7 +62,7 @@ describe('EmbedStorageService', () => {
     });
 
     it('origin が一致しない storage.result は無視して timeout する', async () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedStorageService(windowObj, mockConsole, 10);
         service.initialize();
 
@@ -111,7 +92,7 @@ describe('EmbedStorageService', () => {
     });
 
     it('localStorage の値と削除状態を親へ保存要求する', () => {
-        const { windowObj, parent } = createMockWindow();
+        const { windowObj, parent } = createEmbedTestWindow();
         const storage = new MockStorage();
         storage.setItem(STORAGE_KEYS.THEME_MODE, 'dark');
 

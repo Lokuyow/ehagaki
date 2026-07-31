@@ -1,29 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 import { EmbedComposerContextService } from '../../lib/embedComposerContextService';
-import { createMockConsole, type MockConsole } from '../helpers';
-
-function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-        removeEventListener: vi.fn((type: string) => {
-            listeners.delete(type);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createEmbedTestWindow, createMockConsole, type MockConsole } from '../helpers';
 
 describe('EmbedComposerContextService', () => {
     let mockConsole: MockConsole;
@@ -33,7 +11,7 @@ describe('EmbedComposerContextService', () => {
     });
 
     it('composer.setContext を受け取ると listener を呼ぶ', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
         service.onRemoteSetContext(onRemoteSetContext);
@@ -66,7 +44,7 @@ describe('EmbedComposerContextService', () => {
     });
 
     it('quotes が null の composer.setContext を受け取ると listener を呼ぶ', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
         service.onRemoteSetContext(onRemoteSetContext);
@@ -97,7 +75,7 @@ describe('EmbedComposerContextService', () => {
     });
 
     it('origin が一致しないメッセージは無視する', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
         service.onRemoteSetContext(onRemoteSetContext);
@@ -120,7 +98,7 @@ describe('EmbedComposerContextService', () => {
     });
 
     it('有効requestIdの不正payloadもControllerがerror ackできるようlistenerへ渡す', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
         service.onRemoteSetContext(onRemoteSetContext);
@@ -147,7 +125,7 @@ describe('EmbedComposerContextService', () => {
     });
 
     it('requestId がない composer.setContext は無視する', () => {
-        const { windowObj, parent, listeners } = createMockWindow();
+        const { windowObj, parent, listeners } = createEmbedTestWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
         const onRemoteSetContext = vi.fn();
         service.onRemoteSetContext(onRemoteSetContext);
