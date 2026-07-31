@@ -1,21 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReplyQuoteService } from "../../lib/replyQuoteService";
 import type { NostrEvent, ReplyQuoteState } from "../../lib/types";
-import { createMockRxNostr, createMockObservable } from "../helpers";
+import { createMockConsole, createMockRxNostr, createMockObservable } from "../helpers";
+import type { MockConsole } from "../helpers";
 import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
 import { FALLBACK_RELAYS } from "../../lib/constants";
 
 describe("ReplyQuoteService", () => {
     let service: ReplyQuoteService;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as any;
+        mockConsole = createMockConsole();
         service = new ReplyQuoteService({ console: mockConsole });
     });
 

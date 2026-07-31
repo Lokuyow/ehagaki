@@ -19,6 +19,8 @@ import {
     POST_HISTORY_FETCH_TIMEOUT_MS,
     PostHistoryRelayFetchService,
 } from "../../lib/postHistoryRelayFetchService";
+import { createMockConsole } from "../helpers";
+import type { MockConsole } from "../helpers";
 
 function createEvent(overrides: Record<string, any> = {}) {
     return {
@@ -35,15 +37,11 @@ function createEvent(overrides: Record<string, any> = {}) {
 
 describe("PostHistoryRelayFetchService", () => {
     let service: PostHistoryRelayFetchService;
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as unknown as Console;
+        mockConsole = createMockConsole();
         service = new PostHistoryRelayFetchService({
             console: mockConsole,
             now: () => 9000,
