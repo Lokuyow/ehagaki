@@ -7,29 +7,7 @@ import { STORAGE_KEYS } from '../../lib/constants';
 import type { ParentClientSessionData } from '../../lib/types';
 import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
-
-function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        document: { referrer: '' },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-        removeEventListener: vi.fn((type: string) => {
-            listeners.delete(type);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createMockWindow } from '../embedWindowTestUtils';
 
 describe('ParentClientAuthService', () => {
     let mockConsole: MockConsole;

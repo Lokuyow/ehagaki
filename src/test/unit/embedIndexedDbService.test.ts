@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
@@ -7,25 +7,7 @@ import { EmbedIndexedDbService } from "../../lib/embedIndexedDbService";
 import type { UploadDestinationRecord } from "../../lib/storage/ehagakiDb";
 import { UPLOAD_DESTINATION_GLOBAL_SCOPE } from "../../lib/upload/uploadDestinationPresets";
 import { createMockConsole, type MockConsole } from "../helpers";
-
-function createMockWindow(search = "?parentOrigin=https%3A%2F%2Fparent.example.com") {
-    const listeners = new Map<string, (event: MessageEvent) => void>();
-    const parent = {
-        postMessage: vi.fn(),
-    };
-
-    const windowObj = {
-        self: {},
-        top: {},
-        parent,
-        location: { search },
-        addEventListener: vi.fn((type: string, handler: (event: MessageEvent) => void) => {
-            listeners.set(type, handler);
-        }),
-    } as unknown as Window;
-
-    return { windowObj, parent, listeners };
-}
+import { createMockWindow } from "../embedWindowTestUtils";
 
 function createDestinationRecord(id = "destination"): UploadDestinationRecord {
     return {
