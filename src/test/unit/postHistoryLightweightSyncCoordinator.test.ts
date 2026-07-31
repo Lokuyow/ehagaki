@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { PostHistoryLightweightSyncCoordinator } from "../../lib/postHistoryLightweightSyncCoordinator";
 import type { NostrEvent } from "../../lib/types";
+import { createAuthoredFetchResult, createInboundSyncResult } from "../postHistorySyncResultTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 const OTHER_OWNER_PUBKEY = "b".repeat(64);
@@ -27,55 +28,11 @@ function createEvent(): NostrEvent {
 }
 
 function createAuthoredResult(event = createEvent()) {
-    return {
-        status: "success",
-        events: [{ event, relayUrls: [] }],
-        fetchedAt: 1000,
-        nextUntil: null,
-        hasMore: false,
-        relayUrls: [],
-        observedRelayUrls: [],
-        rawCount: 1,
-        uniqueCount: 1,
-        duplicateCount: 0,
-        perRelayCounts: [],
-        oldestCreatedAt: event.created_at,
-        newestCreatedAt: event.created_at,
-        requestedRelayUrls: [],
-        eventRelayUrls: [],
-        eoseRelayUrls: [],
-        closedRelayUrls: [],
-        errorRelayUrls: [],
-        downRelayUrls: [],
-        completedByRxNostr: true,
-        completedByLocalTimeout: false,
-        hasAnyRelayResponse: true,
-        allRelaysFailed: false,
-    } as const;
+    return createAuthoredFetchResult(event, {}, { fetchedAt: 1000 });
 }
 
 function createInboundResult() {
-    return {
-        status: "success",
-        fetchedAt: 1000,
-        since: 10,
-        limit: 100,
-        relayUrls: [],
-        rawCount: 0,
-        uniqueCount: 0,
-        saturated: false,
-        maybeIncomplete: false,
-        newestSeenCreatedAt: null,
-        savedParentEventIds: [],
-        savedDirectReplyCount: 0,
-        classifications: {
-            "direct-reply": 0,
-            "direct-reply-candidate": 0,
-            "mention-like": 0,
-            reaction: 0,
-            unsupported: 0,
-        },
-    } as const;
+    return createInboundSyncResult({}, { fetchedAt: 1000, since: 10, limit: 100 });
 }
 
 function createAuthoredStateRepository() {

@@ -3,7 +3,9 @@ import {
     PostHistoryForegroundPeriodicSyncService,
 } from "../../lib/postHistoryForegroundPeriodicSyncService";
 import type { PostHistoryAuthoredSyncState } from "../../lib/storage/postHistoryAuthoredSyncStateRepository";
+import type { PostHistoryRelayFetchResult } from "../../lib/postHistoryRelayFetchService";
 import type { NostrEvent } from "../../lib/types";
+import { createAuthoredSyncResult, createInboundSyncResult } from "../postHistorySyncResultTestUtils";
 
 const OWNER_PUBKEY = "a".repeat(64);
 
@@ -19,62 +21,19 @@ function createEvent(createdAt = 950): NostrEvent {
     };
 }
 
-function createAuthoredResult(overrides: Record<string, unknown> = {}) {
+function createAuthoredResult(overrides: Partial<PostHistoryRelayFetchResult> = {}) {
     const event = createEvent();
-    return {
-        fetchResult: {
-            status: "success",
-            events: [{ event, relayUrls: [] }],
-            fetchedAt: 2_000,
-            nextUntil: null,
-            hasMore: false,
-            relayUrls: [],
-            observedRelayUrls: [],
-            rawCount: 1,
-            uniqueCount: 1,
-            duplicateCount: 0,
-            perRelayCounts: [],
-            oldestCreatedAt: event.created_at,
-            newestCreatedAt: event.created_at,
-            requestedRelayUrls: [],
-            eventRelayUrls: [],
-            eoseRelayUrls: [],
-            closedRelayUrls: [],
-            errorRelayUrls: [],
-            downRelayUrls: [],
-            completedByRxNostr: true,
-            completedByLocalTimeout: false,
-            hasAnyRelayResponse: true,
-            allRelaysFailed: false,
-            ...overrides,
-        },
-        upsertSummary: { insertedCount: 1, updatedCount: 0, unchangedCount: 0 },
-        savedSelfPostEventIds: [event.id],
-    } as any;
+    return createAuthoredSyncResult(event, overrides, {
+        fetchedAt: 2_000,
+    });
 }
 
 function createInboundResult() {
-    return {
-        status: "success",
+    return createInboundSyncResult({}, {
         fetchedAt: 2_000,
         since: 100,
         limit: 100,
-        relayUrls: [],
-        rawCount: 0,
-        uniqueCount: 0,
-        saturated: false,
-        maybeIncomplete: false,
-        newestSeenCreatedAt: null,
-        savedParentEventIds: [],
-        savedDirectReplyCount: 0,
-        classifications: {
-            "direct-reply": 0,
-            "direct-reply-candidate": 0,
-            "mention-like": 0,
-            reaction: 0,
-            unsupported: 0,
-        },
-    } as const;
+    });
 }
 
 function createState(overrides: Partial<PostHistoryAuthoredSyncState> = {}): PostHistoryAuthoredSyncState {
