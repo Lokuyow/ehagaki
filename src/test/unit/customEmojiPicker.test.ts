@@ -22,6 +22,7 @@ vi.mock('svelte-i18n', () => ({
 }));
 
 import CustomEmojiPicker from '../../components/CustomEmojiPicker.svelte';
+import { CUSTOM_EMOJI_PICKER_MIN_HEIGHT } from '../../lib/customEmoji';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 
 const cachedEmoji = {
@@ -74,6 +75,7 @@ function installAnimationFrameHarness() {
 }
 
 beforeEach(() => {
+    window.localStorage.clear();
     customEmojiStore.reset();
     pickerMocks.readCachedCustomEmojiItems.mockResolvedValue([cachedEmoji]);
     pickerMocks.fetchCustomEmojiList.mockResolvedValue([cachedEmoji]);
@@ -112,6 +114,176 @@ afterEach(() => {
     }
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+});
+
+describe('CustomEmojiPicker resize handle', () => {
+    it('makes the resize handle focusable with keyboard accessible semantics', () => {
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+        expect(handle.getAttribute('tabindex')).toBe('0');
+        expect(handle.getAttribute('aria-valuemin')).toBe(String(CUSTOM_EMOJI_PICKER_MIN_HEIGHT));
+        expect(handle.getAttribute('aria-valuenow')).toBeTruthy();
+        expect(handle.getAttribute('aria-valuemax')).toBeTruthy();
+
+        handle.focus();
+        expect(document.activeElement).toBe(handle);
+    });
+
+    it('changes the picker height with ArrowUp and ArrowDown and saves it to storage', async () => {
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+        const initialHeight = Number(handle.getAttribute('aria-valuenow'));
+
+        const upEvent = new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        });
+        handle.dispatchEvent(upEvent);
+        expect(upEvent.defaultPrevented).toBe(true);
+
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe(String(initialHeight + 24));
+        });
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBe(String(initialHeight + 24));
+
+        const downEvent = new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        });
+        handle.dispatchEvent(downEvent);
+        expect(downEvent.defaultPrevented).toBe(true);
+
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe(String(initialHeight));
+        });
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBe(String(initialHeight));
+    });
+
+    it('does not reduce the picker below the minimum height with ArrowDown', async () => {
+        window.localStorage.setItem('customEmojiPickerHeight', String(CUSTOM_EMOJI_PICKER_MIN_HEIGHT));
+
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+
+        handle.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe(String(CUSTOM_EMOJI_PICKER_MIN_HEIGHT));
+        });
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBe(String(CUSTOM_EMOJI_PICKER_MIN_HEIGHT));
+    });
+
+    it('does not exceed maxHeight when resized with the keyboard', async () => {
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                maxHeight: 200,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+        handle.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe('200');
+        });
+        expect(handle.getAttribute('aria-valuemax')).toBe('200');
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBe('200');
+    });
+
+    it('ignores unrelated keys and keeps the current height unchanged', async () => {
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+        const initialHeight = Number(handle.getAttribute('aria-valuenow'));
+        const event = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+        });
+        handle.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe(String(initialHeight));
+        });
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBeNull();
+    });
+
+    it('keeps pointer resizing working through the shared height update path', async () => {
+        render(CustomEmojiPicker, {
+            props: {
+                open: true,
+                rxNostr: {} as never,
+                pubkey: 'pubkey',
+            },
+        });
+
+        const handle = screen.getByRole('separator', { name: 'customEmoji.resize' });
+        const initialHeight = Number(handle.getAttribute('aria-valuenow'));
+
+        const pointerDownEvent = new Event('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+        }) as Event & { clientY: number };
+        Object.defineProperty(pointerDownEvent, 'clientY', { value: 300 });
+        handle.dispatchEvent(pointerDownEvent);
+
+        const pointerMoveEvent = new Event('pointermove', {
+            bubbles: true,
+            cancelable: true,
+        }) as Event & { clientY: number };
+        Object.defineProperty(pointerMoveEvent, 'clientY', { value: 260 });
+        window.dispatchEvent(pointerMoveEvent);
+        window.dispatchEvent(new Event('pointerup', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        await vi.waitFor(() => {
+            expect(handle.getAttribute('aria-valuenow')).toBe(String(initialHeight + 40));
+        });
+        expect(window.localStorage.getItem('customEmojiPickerHeight')).toBe(String(initialHeight + 40));
+    });
 });
 
 describe('CustomEmojiPicker image cache', () => {
