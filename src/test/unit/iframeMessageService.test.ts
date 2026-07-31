@@ -2,17 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { IframeMessageService } from "../../lib/iframeMessageService";
 import type { IframeMessagePayload } from "../../lib/iframeMessageService";
 import { EMBED_MESSAGE_NAMESPACE, EMBED_MESSAGE_VERSION } from '../../lib/embedProtocol';
+import { createMockConsole, type MockConsole } from "../helpers";
 
 describe("IframeMessageService", () => {
   let mockWindow: any;
-  let mockConsole: Console;
+  let mockConsole: MockConsole;
 
   beforeEach(() => {
-    mockConsole = {
-      log: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as any;
+    mockConsole = createMockConsole();
   });
 
   describe("isInIframe", () => {

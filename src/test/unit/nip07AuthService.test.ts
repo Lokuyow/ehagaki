@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Nip07AuthService } from '../../lib/nip07AuthService';
+import { createMockConsole, type MockConsole } from '../helpers';
 
 // nip07-awaiterをモック（AuthService経由で使われる場合のデフォルト値）
 vi.mock('nip07-awaiter', () => ({
@@ -14,16 +15,8 @@ function createMockWindow(nostr?: any): Window {
     return { nostr } as any;
 }
 
-function createMockConsole(): Console {
-    return {
-        log: vi.fn(),
-        error: vi.fn(),
-        warn: vi.fn(),
-    } as unknown as Console;
-}
-
 describe('Nip07AuthService', () => {
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
         mockConsole = createMockConsole();

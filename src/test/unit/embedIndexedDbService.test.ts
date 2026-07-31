@@ -6,6 +6,7 @@ import {
 import { EmbedIndexedDbService } from "../../lib/embedIndexedDbService";
 import type { UploadDestinationRecord } from "../../lib/storage/ehagakiDb";
 import { UPLOAD_DESTINATION_GLOBAL_SCOPE } from "../../lib/upload/uploadDestinationPresets";
+import { createMockConsole, type MockConsole } from "../helpers";
 
 function createMockWindow(search = "?parentOrigin=https%3A%2F%2Fparent.example.com") {
     const listeners = new Map<string, (event: MessageEvent) => void>();
@@ -55,14 +56,10 @@ function createDestinationRecord(id = "destination"): UploadDestinationRecord {
 }
 
 describe("EmbedIndexedDbService", () => {
-    let mockConsole: Console;
+    let mockConsole: MockConsole;
 
     beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        } as unknown as Console;
+        mockConsole = createMockConsole();
     });
 
     it("iframe と parentOrigin がない場合は初期化しない", () => {
