@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImageCompressionService } from '../../lib/imageCompressionService';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { NostrAuthService } from '../../lib/nostrAuthService';
+import { createJsonResponse } from '../uploadResponseTestUtils';
 import {
     NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS,
     registerNip46VisibilityHandler,
@@ -418,19 +419,18 @@ describe('ファイルアップロードフロー統合テスト', () => {
             }));
             const { visibilityRecovery, cleanup } = await prepareRecovery({ signEvent });
             const fetchMock = vi.fn()
-                .mockResolvedValueOnce(new Response(JSON.stringify({
+               .mockResolvedValueOnce(createJsonResponse({
                     status: 'success',
                     nip94_event: {
                         tags: [['url', 'https://upload.example/photo.png']],
                     },
-                }), {
+               }, {
                     status: 200,
-                    headers: { 'content-type': 'application/json' },
-                }))
-                .mockResolvedValue(new Response(null, {
-                    status: 200,
-                    headers: { 'content-type': 'image/png' },
-                }));
+               }))
+               .mockResolvedValue(new Response(null, {
+                   status: 200,
+                   headers: { 'content-type': 'image/png' },
+               }));
 
             const uploadPromise = new Nip96UploadAdapter().upload({
                 file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
@@ -468,19 +468,18 @@ describe('ファイルアップロードフロー統合テスト', () => {
             };
             const { visibilityRecovery, cleanup } = await prepareRecovery(signer);
             const fetchMock = vi.fn()
-                .mockResolvedValueOnce(new Response(JSON.stringify({
+               .mockResolvedValueOnce(createJsonResponse({
                     url: 'https://blossom.example/photo.png',
                     sha256: 'a'.repeat(64),
                     size: 3,
                     type: 'image/png',
-                }), {
+               }, {
                     status: 200,
-                    headers: { 'content-type': 'application/json' },
-                }))
-                .mockResolvedValue(new Response(null, {
-                    status: 200,
-                    headers: { 'content-type': 'image/png' },
-                }));
+               }))
+               .mockResolvedValue(new Response(null, {
+                   status: 200,
+                   headers: { 'content-type': 'image/png' },
+               }));
 
             const uploadPromise = new BlossomUploadAdapter().upload({
                 file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
@@ -512,19 +511,18 @@ describe('ファイルアップロードフロー統合テスト', () => {
             };
             (keyManager.getFromStore as any).mockReturnValue('nsec1test');
             const fetchMock = vi.fn()
-                .mockResolvedValueOnce(new Response(JSON.stringify({
+               .mockResolvedValueOnce(createJsonResponse({
                     status: 'success',
                     nip94_event: {
                         tags: [['url', 'https://upload.example/nsec-photo.png']],
                     },
-                }), {
+               }, {
                     status: 200,
-                    headers: { 'content-type': 'application/json' },
-                }))
-                .mockResolvedValue(new Response(null, {
-                    status: 200,
-                    headers: { 'content-type': 'image/png' },
-                }));
+               }))
+               .mockResolvedValue(new Response(null, {
+                   status: 200,
+                   headers: { 'content-type': 'image/png' },
+               }));
 
             const result = await new Nip96UploadAdapter().upload({
                 file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),

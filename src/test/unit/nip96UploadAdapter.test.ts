@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Nip96UploadAdapter } from "../../lib/upload/Nip96UploadAdapter";
 import type { UploadDestination } from "../../lib/types";
+import { createJsonResponse } from "../uploadResponseTestUtils";
 
 function createDestination(): UploadDestination {
     return {
@@ -61,18 +62,17 @@ describe("Nip96UploadAdapter", () => {
             return image as unknown as HTMLImageElement;
         });
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({
+            .mockResolvedValueOnce(createJsonResponse({
                 status: "processing",
                 processing_url: "https://share.yabu.me/1811",
-            }), {
+            }, {
                 status: 202,
-                headers: { "content-type": "application/json" },
             }))
             .mockResolvedValueOnce(new Response("Not Found", {
                 status: 404,
                 statusText: "Not Found",
             }))
-            .mockResolvedValueOnce(new Response(JSON.stringify({
+            .mockResolvedValueOnce(createJsonResponse({
                 status: "success",
                 nip94_event: {
                     tags: [
@@ -81,9 +81,8 @@ describe("Nip96UploadAdapter", () => {
                         ["m", "image/png"],
                     ],
                 },
-            }), {
+            }, {
                 status: 200,
-                headers: { "content-type": "application/json" },
             }));
         const authService = {
             buildAuthHeader: vi.fn(async (_url: string, method: string) => `Bearer ${method}`),
