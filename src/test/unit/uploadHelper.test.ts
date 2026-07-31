@@ -23,6 +23,7 @@ import type {
     UploadDestination,
 } from "../../lib/types";
 import { NodeSelection } from "prosemirror-state";
+import { createTestFile } from "../fileTestUtils";
 
 const uploadDestinationsRepositoryMock = vi.hoisted(() => ({
     getDefault: vi.fn(),
@@ -262,7 +263,7 @@ describe("uploadHelper", () => {
 
     describe("processFilesForUpload", () => {
         it("processes files and calculates ox and dimensions", async () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const results = await processFilesForUpload([file], mockDependencies);
 
             expect(results).toHaveLength(1);
@@ -277,7 +278,7 @@ describe("uploadHelper", () => {
 
     describe("insertPlaceholdersIntoEditor", () => {
         it("inserts placeholders for valid files", () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const processingResults = [{
                 file,
                 index: 0,
@@ -307,7 +308,7 @@ describe("uploadHelper", () => {
         });
 
         it("shows error for invalid files", () => {
-            const invalidFile = new File(["content"], "test.txt", { type: "text/plain" });
+            const invalidFile = createTestFile({ name: "test.txt", type: "text/plain", content: "content" });
             const processingResults = [{ file: invalidFile, index: 0 }];
             const showUploadError = vi.fn();
 
@@ -346,8 +347,8 @@ describe("uploadHelper", () => {
         });
 
         it("inserts after selected image node when image is selected", () => {
-            const file1 = new File(["content1"], "test1.png", { type: "image/png" });
-            const file2 = new File(["content2"], "test2.png", { type: "image/png" });
+            const file1 = createTestFile({ name: "test1.png", type: "image/png", content: "content1" });
+            const file2 = createTestFile({ name: "test2.png", type: "image/png", content: "content2" });
             const processingResults = [
                 { file: file1, index: 0, ox: "hash1", dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 } },
                 { file: file2, index: 1, ox: "hash2", dimensions: { width: 150, height: 300, displayWidth: 150, displayHeight: 300 } }
@@ -421,7 +422,7 @@ describe("uploadHelper", () => {
     describe("prepareMetadataList", () => {
         it("prepares metadata for files", () => {
             const fileContent = new Uint8Array(1024);
-            const file = new File([fileContent], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: fileContent });
 
             const metadata = prepareMetadataList([file]);
 
@@ -449,7 +450,7 @@ describe("uploadHelper", () => {
             })) as unknown as new () => FileUploadManagerInterface;
             const placeholderMap: PlaceholderEntry[] = [
                 {
-                    file: new File(["content"], "test.png", { type: "image/png" }),
+                    file: createTestFile({ name: "test.png", type: "image/png", content: "content" }),
                     placeholderId: "placeholder-1",
                 },
             ];
@@ -506,7 +507,7 @@ describe("uploadHelper", () => {
 
     describe("uploadHelper integration", () => {
         it("merges store updates with external progress callbacks", async () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const updateUploadState = vi.fn();
             const externalOnProgress = vi.fn();
             const externalOnVideoCompressionProgress = vi.fn();
@@ -583,7 +584,7 @@ describe("uploadHelper", () => {
         });
 
         it("uploads a single valid file successfully", async () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
 
@@ -605,7 +606,7 @@ describe("uploadHelper", () => {
         });
 
         it("forwards a resolved blossom destination instead of falling back to the legacy upload endpoint", async () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
             const destination: UploadDestination = {
@@ -682,7 +683,7 @@ describe("uploadHelper", () => {
         });
 
         it("uses injected abort checker for upload checkpoints", async () => {
-            const file = new File(["content"], "test.png", { type: "image/png" });
+            const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
             const isUploadAborted = vi.fn()
@@ -710,7 +711,7 @@ describe("uploadHelper", () => {
         });
 
         it("handles validation errors", async () => {
-            const invalidFile = new File(["content"], "test.txt", { type: "text/plain" });
+            const invalidFile = createTestFile({ name: "test.txt", type: "text/plain", content: "content" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
 
@@ -750,8 +751,8 @@ describe("uploadHelper", () => {
         });
 
         it("handles multiple files with mixed results", async () => {
-            const validFile = new File(["content"], "valid.png", { type: "image/png" });
-            const invalidFile = new File(["content"], "invalid.txt", { type: "text/plain" });
+            const validFile = createTestFile({ name: "valid.png", type: "image/png", content: "content" });
+            const invalidFile = createTestFile({ name: "invalid.txt", type: "text/plain", content: "content" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
 
@@ -840,8 +841,8 @@ describe("uploadHelper", () => {
 
         // 複数有効ファイルのテストケースを修正
         it("handles multiple valid files successfully", async () => {
-            const validFile1 = new File(["content1"], "valid1.png", { type: "image/png" });
-            const validFile2 = new File(["content2"], "valid2.png", { type: "image/png" });
+            const validFile1 = createTestFile({ name: "valid1.png", type: "image/png", content: "content1" });
+            const validFile2 = createTestFile({ name: "valid2.png", type: "image/png", content: "content2" });
             const showUploadError = vi.fn();
             const updateUploadState = vi.fn();
 
@@ -924,8 +925,8 @@ describe("uploadHelper", () => {
 
         // 実際の複数プレースホルダーテストを修正
         it("creates unique placeholder IDs for multiple files", () => {
-            const file1 = new File(["content1"], "test1.png", { type: "image/png" });
-            const file2 = new File(["content2"], "test2.png", { type: "image/png" });
+            const file1 = createTestFile({ name: "test1.png", type: "image/png", content: "content1" });
+            const file2 = createTestFile({ name: "test2.png", type: "image/png", content: "content2" });
             const processingResults = [
                 { file: file1, index: 0, ox: "hash1", dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 } },
                 { file: file2, index: 1, ox: "hash2", dimensions: { width: 150, height: 300, displayWidth: 150, displayHeight: 300 } }
@@ -988,7 +989,7 @@ describe("uploadHelper", () => {
 
         describe("insertPlaceholdersIntoEditor edge cases", () => {
             it("returns empty array if currentEditor is null", () => {
-                const file = new File(["content"], "test.png", { type: "image/png" });
+                const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
                 const processingResults = [{
                     file,
                     index: 0,
@@ -1011,7 +1012,7 @@ describe("uploadHelper", () => {
             });
 
             it("handles error thrown by image node creation", () => {
-                const file = new File(["content"], "test.png", { type: "image/png" });
+                const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
                 const processingResults = [{
                     file,
                     index: 0,
@@ -1059,7 +1060,7 @@ describe("uploadHelper", () => {
             });
 
             it("replaces empty paragraph with image if doc is only empty paragraph", () => {
-                const file = new File(["content"], "test.png", { type: "image/png" });
+                const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
                 const processingResults = [{
                     file,
                     index: 0,
@@ -1113,7 +1114,7 @@ describe("uploadHelper", () => {
             });
 
             it("updates imageSizeMapStore when dimensions are present", () => {
-                const file = new File(["content"], "test.png", { type: "image/png" });
+                const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
                 const processingResults = [{
                     file,
                     index: 0,
@@ -1144,7 +1145,7 @@ describe("uploadHelper", () => {
             });
 
             it("does not update imageSizeMapStore if dimensions are missing", () => {
-                const file = new File(["content"], "test.png", { type: "image/png" });
+                const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
                 const processingResults = [{
                     file,
                     index: 0,

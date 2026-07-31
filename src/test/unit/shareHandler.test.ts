@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ShareHandler, getSharedMediaFromServiceWorker, checkIfOpenedFromShare } from "../../lib/shareHandler";
 import type { SharedMediaMetadata } from "../../lib/types";
+import { createTestFile } from "../fileTestUtils";
 
 vi.mock("../../stores/sharedContentStore.svelte", () => ({
     clearSharedMediaStore: vi.fn(),
@@ -22,11 +23,6 @@ vi.mock("../../lib/storage/sharedMediaRepository", () => ({
 }));
 
 const mockSharedMediaRepository = vi.mocked(await import("../../lib/storage/sharedMediaRepository"));
-
-// モック用ファイル生成
-function createMockFile(name = "test.jpg", type = "image/jpeg", size = 1234): File {
-    return new File([new Uint8Array(size)], name, { type });
-}
 
 describe("ShareHandler", () => {
     let handler: ShareHandler;
@@ -69,7 +65,8 @@ describe("ShareHandler", () => {
     });
 
     it("SHARED_MEDIAメッセージでupdateSharedMediaStoreが呼ばれる", () => {
-        const file = createMockFile();
+        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", content: new Uint8Array(1234) });
+        expect(file.size).toBe(1234);
         const metadata: SharedMediaMetadata = { name: "test.jpg" };
         const event = { data: { type: "SHARED_MEDIA", data: { images: [file], metadata: [metadata] } } };
         // @ts-ignore
@@ -110,7 +107,7 @@ describe("ShareHandler", () => {
 
     it("processSharedMediaOnLaunchが成功時にストアが更新される", async () => {
         // FileUploadManagerのprocessSharedMediaOnLaunchをモック
-        const file = createMockFile();
+        const file = createTestFile({ name: "test.jpg", type: "image/jpeg", content: new Uint8Array(1234) });
         const metadata = { name: "test.jpg" };
         // @ts-ignore
         handler.fileUploadManager.processSharedMediaOnLaunch = vi.fn().mockResolvedValue({

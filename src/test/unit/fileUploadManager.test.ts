@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileUploadManager } from '../../lib/fileUploadManager';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { setImageSizeInfoFromFileSize } from '../../stores/uploadStore.svelte';
+import { createTestFile } from '../fileTestUtils';
 import type {
     FileUploadDependencies,
     CompressionService,
@@ -193,21 +194,22 @@ class MockResponse {
     }
 }
 
-// --- テストヘルパー関数 ---
-function createMockFile(name: string, type: string, size: number): File {
-    // メモリ効率の改善：大きなファイルに対しては空のArrayBufferを使用
-    if (size > 10 * 1024 * 1024) { // 10MB以上の場合
-        const buffer = new ArrayBuffer(Math.min(size, 1024)); // 最大1KBまでに制限
-        return new File([buffer], name, { type });
-    }
-
-    const content = new Array(Math.min(size, 1024)).fill(0).map((_, i) => i % 256);
-    const blob = new Blob([new Uint8Array(content)], { type });
-    return new File([blob], name, { type });
-}
-
 function createMockResponse(ok: boolean, status: number, jsonData: any): Response {
     return new MockResponse(ok, status, jsonData) as Response;
+}
+
+function createMockFile(name: string, type: string, size: number): File {
+    if (size > 10 * 1024 * 1024) {
+        const buffer = new ArrayBuffer(Math.min(size, 1024));
+        return createTestFile({ name, type, content: buffer });
+    }
+
+    const bytes = new Uint8Array(Math.min(size, 1024));
+    for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] = index % 256;
+    }
+
+    return createTestFile({ name, type, content: bytes });
 }
 
 function createMockDependencies(): FileUploadDependencies {
