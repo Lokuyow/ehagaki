@@ -3,23 +3,45 @@ import {
     createServiceWorkerActionHandlers,
     createServiceWorkerTypeMessageHandlers,
 } from '../../lib/swMessageHandlerFactories';
+import { createMockConsole } from '../helpers';
+
+function createTypeMessageHandlerTestContext({
+    responseChannel = 'ports',
+    version = '1.2.3',
+    skipWaiting = vi.fn(() => undefined),
+}: {
+    responseChannel?: 'ports' | 'source' | 'none';
+    version?: string;
+    skipWaiting?: () => void;
+} = {}) {
+    const postMessage = vi.fn();
+    const logger = createMockConsole();
+    const event = responseChannel === 'source'
+        ? { source: { postMessage } }
+        : responseChannel === 'ports'
+            ? { ports: [{ postMessage }] }
+            : {};
+
+    return {
+        event,
+        version,
+        skipWaiting,
+        postMessage,
+        logger,
+    };
+}
 
 describe('swMessageHandlerFactories', () => {
     it('creates type handlers that skip waiting and post version responses', async () => {
-        const postMessage = vi.fn();
-        const skipWaiting = vi.fn();
-        const logger = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        };
-        const event = {
-            ports: [{ postMessage }],
-        };
+        const { event, version, skipWaiting, postMessage, logger } = createTypeMessageHandlerTestContext({
+            responseChannel: 'ports',
+            version: '1.2.3',
+            skipWaiting: vi.fn(() => undefined),
+        });
 
         const handlers = createServiceWorkerTypeMessageHandlers({
             event,
-            version: '1.2.3',
+            version,
             skipWaiting,
             logger,
         });
@@ -33,18 +55,14 @@ describe('swMessageHandlerFactories', () => {
     });
 
     it('creates ping handlers that respond through source channels', async () => {
-        const postMessage = vi.fn();
-        const logger = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        };
+        const { event, version, postMessage, logger } = createTypeMessageHandlerTestContext({
+            responseChannel: 'source',
+            version: '9.9.9',
+        });
 
         const handlers = createServiceWorkerTypeMessageHandlers({
-            event: {
-                source: { postMessage },
-            },
-            version: '9.9.9',
+            event,
+            version,
             skipWaiting: vi.fn(),
             logger,
             createPingTest: (version) => ({ type: 'PONG', timestamp: 123, version }),
@@ -61,15 +79,14 @@ describe('swMessageHandlerFactories', () => {
     });
 
     it('warns when ping handlers have no available response channel', async () => {
-        const logger = {
-            log: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        };
+        const { event, version, logger } = createTypeMessageHandlerTestContext({
+            responseChannel: 'none',
+            version: '0.0.1',
+        });
 
         const handlers = createServiceWorkerTypeMessageHandlers({
-            event: {},
-            version: '0.0.1',
+            event,
+            version,
             skipWaiting: vi.fn(),
             logger,
             createPingTest: (version) => ({ type: 'PONG', timestamp: 1, version }),
