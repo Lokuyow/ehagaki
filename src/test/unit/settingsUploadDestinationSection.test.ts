@@ -176,6 +176,7 @@ describe("SettingsUploadDestinationSection", () => {
         const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
         const presetSelect = screen.getByLabelText("プリセット") as HTMLSelectElement;
 
+        expect(input).toBeInstanceOf(HTMLInputElement);
         expect(screen.queryByRole("button", { name: "入力内容を消去" })).toBeNull();
 
         await fireEvent.change(protocolSelect, { target: { value: "custom-http" } });
@@ -226,7 +227,9 @@ describe("SettingsUploadDestinationSection", () => {
         const input = screen.getByLabelText("URL") as HTMLInputElement;
         await fireEvent.input(input, { target: { value: "https://example.com" } });
 
-        expect(screen.getByRole("button", { name: "Clear input" })).toBeTruthy();
+        const clearButton = screen.getByRole("button", { name: "Clear input" });
+        expect(clearButton).toBeTruthy();
+        expect(clearButton.getAttribute("aria-label")).toBe("Clear input");
 
         currentLocale = "ja";
         cleanup();
@@ -236,6 +239,8 @@ describe("SettingsUploadDestinationSection", () => {
         const japaneseInput = screen.getByLabelText("URL") as HTMLInputElement;
         await fireEvent.input(japaneseInput, { target: { value: "https://example.com" } });
 
-        expect(screen.getByRole("button", { name: "入力内容を消去" })).toBeTruthy();
+        const japaneseClearButton = screen.getByRole("button", { name: "入力内容を消去" });
+        expect(japaneseClearButton).toBeTruthy();
+        expect(japaneseInput).toBeInstanceOf(HTMLInputElement);
     });
 });

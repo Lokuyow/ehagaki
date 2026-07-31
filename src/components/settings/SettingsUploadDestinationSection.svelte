@@ -310,10 +310,13 @@
                 <option value="custom-http">Custom HTTP</option>
             </select>
         </label>
-        <label>
-            <span>URL</span>
+        <div class="url-field">
+            <label for="upload-destination-url-input">
+                <span>URL</span>
+            </label>
             <div class="url-input-shell">
                 <input
+                    id="upload-destination-url-input"
                     bind:this={serverUrlInputElement}
                     bind:value={form.serverUrl}
                     inputmode="url"
@@ -337,7 +340,7 @@
                     </Button>
                 {/if}
             </div>
-        </label>
+        </div>
         <div class="checkbox-group">
             <label class="checkbox-row">
                 <input type="checkbox" bind:checked={form.enabled} />
@@ -790,6 +793,13 @@
     }
 
     label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.875rem;
+    }
+
+    .url-field {
         display: flex;
         flex-direction: column;
         gap: 4px;
