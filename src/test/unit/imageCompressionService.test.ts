@@ -5,6 +5,7 @@ import {
 } from '../../lib/imageCompressionService';
 import type { MimeTypeSupportInterface } from '../../lib/types';
 import { MockStorage } from '../helpers';
+import { createTestFile } from '../fileTestUtils';
 
 /**
  * ImageCompressionService ユニットテスト
@@ -41,11 +42,6 @@ function createMockMimeSupport(
             return mimeTypeSupport[mime] ?? true;
         })
     };
-}
-
-function createTestFile(name: string, type: string, sizeBytes: number): File {
-    const content = new Uint8Array(sizeBytes);
-    return new File([content], name, { type });
 }
 
 describe('calculateExtremeAspectMaxWidthOrHeight', () => {
@@ -303,7 +299,7 @@ describe('ImageCompressionService', () => {
     describe('compress', () => {
         describe('画像以外のファイル', () => {
             it('テキストファイルは圧縮しない', async () => {
-                const file = createTestFile('doc.txt', 'text/plain', 50000);
+                const file = createTestFile({ name: 'doc.txt', type: 'text/plain', content: new Uint8Array(50000) });
                 const result = await service.compress(file);
 
                 expect(result.wasCompressed).toBe(false);
@@ -312,7 +308,7 @@ describe('ImageCompressionService', () => {
             });
 
             it('動画ファイルは圧縮しない', async () => {
-                const file = createTestFile('video.mp4', 'video/mp4', 1000000);
+                const file = createTestFile({ name: 'video.mp4', type: 'video/mp4', content: new Uint8Array(1000000) });
                 const result = await service.compress(file);
 
                 expect(result.wasCompressed).toBe(false);
@@ -322,7 +318,7 @@ describe('ImageCompressionService', () => {
 
         describe('小さい画像のスキップ', () => {
             it('20KB以下の画像は圧縮をスキップする', async () => {
-                const file = createTestFile('small.jpg', 'image/jpeg', 20 * 1024);
+                const file = createTestFile({ name: 'small.jpg', type: 'image/jpeg', content: new Uint8Array(20 * 1024) });
                 const result = await service.compress(file);
 
                 expect(result.wasCompressed).toBe(false);
@@ -331,14 +327,14 @@ describe('ImageCompressionService', () => {
             });
 
             it('20KBちょうどの画像は圧縮をスキップする', async () => {
-                const file = createTestFile('small.jpg', 'image/jpeg', 20 * 1024);
+                const file = createTestFile({ name: 'small.jpg', type: 'image/jpeg', content: new Uint8Array(20 * 1024) });
                 const result = await service.compress(file);
 
                 expect(result.wasSkipped).toBe(true);
             });
 
             it('20KBを超える画像は圧縮を試行する', async () => {
-                const file = createTestFile('large.jpg', 'image/jpeg', 20 * 1024 + 1);
+                const file = createTestFile({ name: 'large.jpg', type: 'image/jpeg', content: new Uint8Array(20 * 1024 + 1) });
                 const compressedContent = new Uint8Array(10000);
                 const compressedFile = new File([compressedContent], 'large.jpg', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -353,7 +349,7 @@ describe('ImageCompressionService', () => {
                 mockStorage.setItem('imageQualityLevel', 'none');
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const result = await service.compress(file);
 
                 expect(result.wasCompressed).toBe(false);
@@ -365,7 +361,7 @@ describe('ImageCompressionService', () => {
 
         describe('正常な圧縮', () => {
             it('圧縮後のファイルが小さい場合は圧縮済みファイルを返す', async () => {
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -377,7 +373,7 @@ describe('ImageCompressionService', () => {
             });
 
             it('圧縮後のファイルが元より大きい場合は元のファイルを返す', async () => {
-                const file = createTestFile('photo.jpg', 'image/jpeg', 50000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(50000) });
                 const compressedContent = new Uint8Array(60000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -389,7 +385,7 @@ describe('ImageCompressionService', () => {
             });
 
             it('圧縮後のファイルが同じサイズの場合は元のファイルを返す', async () => {
-                const file = createTestFile('photo.jpg', 'image/jpeg', 50000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(50000) });
                 const compressedContent = new Uint8Array(50000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -404,7 +400,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': false, 'image/png': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.png', 'image/png', 500000);
+                const file = createTestFile({ name: 'photo.png', type: 'image/png', content: new Uint8Array(500000) });
 
                 imageCompressionMock.mockImplementation(async (_file: File, options?: { maxSizeMB?: number }) => {
                     const targetBytes = Math.floor((options?.maxSizeMB ?? 0) * 1024 * 1024);
@@ -423,7 +419,7 @@ describe('ImageCompressionService', () => {
             it('極端な縦長画像では補正後のmaxWidthOrHeightを渡す', async () => {
                 mockImageNaturalWidth = 2000;
                 mockImageNaturalHeight = 10000;
-                const file = createTestFile('long-chat.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'long-chat.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'long-chat.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -440,7 +436,7 @@ describe('ImageCompressionService', () => {
             it('極端な横長画像では補正後のmaxWidthOrHeightを渡す', async () => {
                 mockImageNaturalWidth = 10000;
                 mockImageNaturalHeight = 2000;
-                const file = createTestFile('wide-note.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'wide-note.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'wide-note.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -457,7 +453,7 @@ describe('ImageCompressionService', () => {
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
                 mockImageNaturalWidth = 45;
                 mockImageNaturalHeight = 1784;
-                const file = createTestFile('thin-long.png', 'image/png', 500000);
+                const file = createTestFile({ name: 'thin-long.png', type: 'image/png', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'thin-long.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -473,7 +469,7 @@ describe('ImageCompressionService', () => {
             it('通常比率画像では従来のmaxWidthOrHeightを渡す', async () => {
                 mockImageNaturalWidth = 4000;
                 mockImageNaturalHeight = 3000;
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -486,7 +482,7 @@ describe('ImageCompressionService', () => {
 
             it('画像サイズを取得できない場合は従来のmaxWidthOrHeightを渡す', async () => {
                 mockImageShouldError = true;
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -501,7 +497,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': false, 'image/png': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.png', 'image/png', 500000);
+                const file = createTestFile({ name: 'photo.png', type: 'image/png', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.png', { type: 'image/png' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -515,7 +511,7 @@ describe('ImageCompressionService', () => {
             });
 
             it('ブラウザ圧縮がPNGを返してもWebPへ再エンコードする', async () => {
-                const file = createTestFile('photo.png', 'image/png', 500000);
+                const file = createTestFile({ name: 'photo.png', type: 'image/png', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.png', { type: 'image/png' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -535,7 +531,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -552,7 +548,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': false, 'image/png': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.png', 'image/png', 500000);
+                const file = createTestFile({ name: 'photo.png', type: 'image/png', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.png', { type: 'image/png' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -568,7 +564,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(false, { 'image/webp': false, 'image/jpeg': true });
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.jpg', { type: 'image/jpeg' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -583,7 +579,7 @@ describe('ImageCompressionService', () => {
                 mockMimeSupport = createMockMimeSupport(true);
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -600,7 +596,7 @@ describe('ImageCompressionService', () => {
                 vi.mocked(mockMimeSupport.canEncodeMimeType).mockReturnValue(false);
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const compressedContent = new Uint8Array(100000);
                 const compressedFile = new File([compressedContent], 'photo.jpg', { type: 'image/jpeg' });
                 imageCompressionMock.mockResolvedValue(compressedFile);
@@ -615,7 +611,7 @@ describe('ImageCompressionService', () => {
 
         describe('圧縮エラー', () => {
             it('圧縮が例外を投げた場合は元のファイルを返す', async () => {
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 imageCompressionMock.mockRejectedValue(new Error('Compression failed'));
 
                 const result = await service.compress(file);
@@ -631,7 +627,7 @@ describe('ImageCompressionService', () => {
                 const isUploadAborted = vi.fn(() => true);
                 service = new ImageCompressionService(mockMimeSupport, mockStorage, isUploadAborted);
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const result = await service.compress(file);
 
                 expect(result.aborted).toBe(true);
@@ -645,7 +641,7 @@ describe('ImageCompressionService', () => {
                 const { uploadAbortFlagStore } = await import('../../stores/uploadStore.svelte');
                 (uploadAbortFlagStore as any).value = true;
 
-                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const file = createTestFile({ name: 'photo.jpg', type: 'image/jpeg', content: new Uint8Array(500000) });
                 const result = await service.compress(file);
 
                 expect(result.aborted).toBe(true);
