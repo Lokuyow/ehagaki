@@ -3,9 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
-import { createDeferred } from '../deferredTestUtils';
-
-void createDeferred;
 
 const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record<string, unknown> }) => {
     const translations: Record<string, string> = {
