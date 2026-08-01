@@ -4,7 +4,6 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import {
         postHistoryJsonlImportService,
         type PostHistoryJsonlImportProgress,
@@ -317,26 +316,17 @@
         </p>
     </div>
 
-    {#if statusKey}
-        <div
-            class="import-status"
-            class:import-status-error={result?.status === "failed"}
-            aria-live="polite"
-        >
-            {#if running}
-                <LoadingPlaceholder
-                    showLoader={true}
-                    loaderSize={24}
-                    state="loading"
-                    customClass="post-history-import-loading"
-                />
-            {/if}
-            <span>{$_(statusKey)}</span>
-        </div>
-    {/if}
-
-    {#if running}
+    {#if running || result}
         <div class="import-progress" aria-label={$_("postHistory.importProgress")}>
+            {#if statusKey}
+                <div
+                    class="import-progress-status"
+                    class:import-progress-status-error={result?.status === "failed"}
+                    aria-live="polite"
+                >
+                    {$_(statusKey)}
+                </div>
+            {/if}
             <div class="import-progress-summary">
                 <span class="import-progress-metric">
                     <span>{$_("postHistory.importProgress")}</span>
@@ -346,16 +336,18 @@
                     <span>{$_("postHistory.importElapsedTime")}</span>
                     <span class="import-progress-number">{formatDuration(elapsedMs)}</span>
                 </span>
-                <span class="import-progress-metric">
-                    <span>{$_("postHistory.importEstimatedRemainingTime")}</span>
-                    <span class="import-progress-number">
-                        {#if remainingTimeMs === null}
-                            {$_("postHistory.importRemainingTimeCalculating")}
-                        {:else}
-                            {$_("postHistory.importApproximate")} {formatDuration(remainingTimeMs)}
-                        {/if}
+                {#if running}
+                    <span class="import-progress-metric">
+                        <span>{$_("postHistory.importEstimatedRemainingTime")}</span>
+                        <span class="import-progress-number">
+                            {#if remainingTimeMs === null}
+                                {$_("postHistory.importRemainingTimeCalculating")}
+                            {:else}
+                                {$_("postHistory.importApproximate")} {formatDuration(remainingTimeMs)}
+                            {/if}
+                        </span>
                     </span>
-                </span>
+                {/if}
             </div>
             <Progress.Root
                 value={progressPercentage}
@@ -500,24 +492,19 @@
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    .import-status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        width: 100%;
-        margin-top: 14px;
-        padding: 10px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--dialog-bg), var(--text) 5%);
-    }
-
-    .import-status-error {
-        color: var(--error-color, #d32f2f);
-    }
-
     .import-progress {
         width: 100%;
         margin-top: 12px;
+    }
+
+    .import-progress-status {
+        margin-bottom: 8px;
+        color: var(--text);
+        font-size: 0.9rem;
+    }
+
+    .import-progress-status-error {
+        color: var(--error-color, #d32f2f);
     }
 
     .import-progress-summary {
@@ -562,10 +549,6 @@
         :global(.import-progress-indicator) {
             transition: none;
         }
-    }
-
-    :global(.post-history-import-loading) {
-        flex: 0 0 auto;
     }
 
     .import-results {

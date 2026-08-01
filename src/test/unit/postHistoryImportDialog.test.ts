@@ -352,11 +352,19 @@ describe("PostHistoryImportDialog", () => {
     });
 
     it("部分成功の結果を表示する", async () => {
-        importFileMock.mockResolvedValue(createResult({
-            status: "partial",
-            failedPostEventCount: 1,
-            insertedPostCount: 0,
-        }));
+        importFileMock.mockImplementation(async ({ onProgress }) => {
+            const partialResult = createResult({
+                status: "partial",
+                failedPostEventCount: 1,
+                insertedPostCount: 0,
+            });
+            onProgress({
+                result: partialResult,
+                processedBytes: 75,
+                totalBytes: 100,
+            });
+            return partialResult;
+        });
         render(PostHistoryImportDialog, {
             props: {
                 open: true,
@@ -374,6 +382,10 @@ describe("PostHistoryImportDialog", () => {
         expect(await screen.findByText(
             "処理を完了しましたが、一部を取り込めませんでした",
         )).toBeTruthy();
+        expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("75");
+        expect(screen.getByText("処理を完了しましたが、一部を取り込めませんでした")
+            .closest(".import-progress")?.getAttribute("aria-label"))
+            .toBe("進捗");
     });
 
     it("インポート中にバイト進捗、経過時間、計算中の残り時間を表示する", async () => {
@@ -456,8 +468,11 @@ describe("PostHistoryImportDialog", () => {
         });
     });
 
-    it("完了後は実行中専用の進捗表示を隠す", async () => {
-        importFileMock.mockResolvedValue(createResult());
+    it("処理中の状態を進捗領域に表示しimport-statusを作らない", async () => {
+        let resolveImport!: (result: PostHistoryJsonlImportResult) => void;
+        importFileMock.mockReturnValue(new Promise((resolve) => {
+            resolveImport = resolve;
+        }));
         render(PostHistoryImportDialog, {
             props: {
                 open: true,
@@ -471,7 +486,121 @@ describe("PostHistoryImportDialog", () => {
             target: { files: [new File(["1"], "history.jsonl")] },
         });
 
+        const status = screen.getByText("読み込み中...");
+        expect(status.closest(".import-progress")).toBeTruthy();
+        expect(status.closest(".import-progress-status")?.getAttribute("aria-live"))
+            .toBe("polite");
+        expect(screen.queryByText("読み込み中...")?.closest(".import-progress-summary"))
+            .toBeNull();
+        expect(screen.queryByText("読み込み中...")?.closest(".import-status")).toBeNull();
+        expect(screen.getByRole("progressbar")).toBeTruthy();
+
+        resolveImport(createResult());
         await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+    });
+
+    it("正常完了後も最終進捗、経過時間、完了状態を表示する", async () => {
+        vi.useFakeTimers();
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        let resolveImport!: (result: PostHistoryJsonlImportResult) => void;
+        let emitProgress!: (progress: Readonly<PostHistoryJsonlImportProgress>) => void;
+        importFileMock.mockImplementation(({ onProgress }) => {
+            emitProgress = onProgress;
+            return new Promise((resolve) => {
+                resolveImport = resolve;
+            });
+        });
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, {
+            target: { files: [new File(["1"], "history.jsonl")] },
+        });
+
+        now = 5_000;
+        vi.advanceTimersByTime(1_000);
+        emitProgress({
+            result: createResult(),
+            processedBytes: 1,
+            totalBytes: 1,
+        });
+        resolveImport(createResult());
+        await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+
+        expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100");
+        expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:05");
+        expect(screen.queryByText("推定残り時間")).toBeNull();
+    });
+
+    it("失敗時は実際の最終進捗を維持し100%へ上書きしない", async () => {
+        importFileMock.mockImplementation(async ({ onProgress }) => {
+            const failedResult = createResult({ status: "failed" });
+            onProgress({
+                result: failedResult,
+                processedBytes: 42,
+                totalBytes: 100,
+            });
+            return failedResult;
+        });
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, {
+            target: { files: [new File(["1"], "history.jsonl")] },
+        });
+
+        await waitFor(() => expect(screen.getByText("ファイルを読み込めませんでした")).toBeTruthy());
+        expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("42");
+    });
+
+    it("完了後に閉じて再表示すると進捗表示をリセットする", async () => {
+        importFileMock.mockImplementation(async ({ onProgress }) => {
+            const completedResult = createResult();
+            onProgress({
+                result: completedResult,
+                processedBytes: 100,
+                totalBytes: 100,
+            });
+            return completedResult;
+        });
+        const view = render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, {
+            target: { files: [new File(["1"], "history.jsonl")] },
+        });
+        await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+
+        await view.rerender({
+            open: false,
+            ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64),
+        });
+        await view.rerender({
+            open: true,
+            ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64),
+        });
         expect(screen.queryByRole("progressbar")).toBeNull();
+        expect(screen.queryByText("読み込みが完了しました")).toBeNull();
     });
 });
