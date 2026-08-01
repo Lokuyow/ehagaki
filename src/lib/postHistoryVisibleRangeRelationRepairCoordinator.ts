@@ -329,26 +329,31 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
             return;
         }
 
-        scheduleChildInteractionDeletionRefresh(
-            "listing-current-view",
-            request.visiblePosts.map((post) => post.eventId),
-            request.rxNostr,
-            request.isActive,
-        );
+        try {
+            scheduleChildInteractionDeletionRefresh(
+                "listing-current-view",
+                request.visiblePosts.map((post) => post.eventId),
+                request.rxNostr,
+                request.isActive,
+            );
 
-        const relationRepairTask = startRelationAwareVisibleRangeRepair(request);
-        const result = await relationRepairTask.promise;
-        if (result.status === "cancelled" || !request.isActive()) {
-            return;
+            const relationRepairTask = startRelationAwareVisibleRangeRepair(request);
+            const result = await relationRepairTask.promise;
+            if (result.status === "cancelled" || !request.isActive()) {
+                return;
+            }
+
+            await dispatchRelationRepairRefreshSignal({
+                source: "listing-current-view",
+                result,
+                quoteRefreshPosts: request.visiblePosts,
+                isActive: request.isActive,
+                awaitBadgeRefresh: true,
+            });
+        } catch {
+            // Jump repair is intentionally background-only. Keep failures out of
+            // the fire-and-forget caller while leaving manual repair errors visible.
         }
-
-        await dispatchRelationRepairRefreshSignal({
-            source: "listing-current-view",
-            result,
-            quoteRefreshPosts: request.visiblePosts,
-            isActive: request.isActive,
-            awaitBadgeRefresh: true,
-        });
     }
 
     function scheduleOlderRevealRepair(candidatePosts: PostHistoryRecord[]): void {

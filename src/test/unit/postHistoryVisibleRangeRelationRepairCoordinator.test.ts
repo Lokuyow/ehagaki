@@ -378,4 +378,43 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
             ["parent"],
         );
     });
+
+    it("swallows a jump relation repair rejection without running refresh callbacks", async () => {
+        const rejection = new Error("jump relation repair failed");
+        const task = createRepairTask(Promise.reject(rejection));
+        const {
+            coordinator,
+            onChildInteractionBadgeRefreshRequested,
+            onQuoteVisibleRangeRefreshRequested,
+        } = createCoordinator({ repairTask: task });
+
+        await expect(coordinator.repairJump(currentViewRequest())).resolves.toBeUndefined();
+        expect(onChildInteractionBadgeRefreshRequested).not.toHaveBeenCalled();
+        expect(onQuoteVisibleRangeRefreshRequested).not.toHaveBeenCalled();
+    });
+
+    it("swallows a jump badge refresh rejection after one awaited callback", async () => {
+        const task = createRepairTask(Promise.resolve(createRelationRepairResult({
+            savedParentEventIds: ["parent"],
+        })));
+        const {
+            coordinator,
+            onChildInteractionBadgeRefreshRequested,
+        } = createCoordinator({ repairTask: task });
+        onChildInteractionBadgeRefreshRequested.mockRejectedValueOnce(
+            new Error("badge refresh failed"),
+        );
+
+        await expect(coordinator.repairJump(currentViewRequest())).resolves.toBeUndefined();
+        expect(onChildInteractionBadgeRefreshRequested).toHaveBeenCalledTimes(1);
+    });
+
+    it("continues to propagate manual current-view repair rejection", async () => {
+        const rejection = new Error("manual relation repair failed");
+        const task = createRepairTask(Promise.reject(rejection));
+        const { coordinator } = createCoordinator({ repairTask: task });
+
+        await expect(coordinator.repairCurrentView(currentViewRequest()))
+            .rejects.toBe(rejection);
+    });
 });
