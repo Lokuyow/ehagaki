@@ -103,6 +103,7 @@ interface UsePostHistoryListingParams {
 interface PersistedPostHistoryListingSnapshot {
     loadedPosts: PostHistoryRecord[];
     searchPosts: PostHistoryRecord[];
+    searchQuery: string;
     totalCount: number;
     searchTotalCount: number;
     searchHasNext: boolean;
@@ -271,6 +272,7 @@ export function resolveNewlyVisibleOlderPosts(
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
     loadedPosts: [],
     searchPosts: [],
+    searchQuery: "",
     totalCount: 0,
     searchTotalCount: 0,
     searchHasNext: false,
@@ -466,6 +468,7 @@ function cloneListingSnapshot(
     return {
         loadedPosts: [...snapshot.loadedPosts],
         searchPosts: [...snapshot.searchPosts],
+        searchQuery: snapshot.searchQuery ?? "",
         totalCount: snapshot.totalCount,
         searchTotalCount: snapshot.searchTotalCount,
         searchHasNext: snapshot.searchHasNext,
@@ -548,13 +551,18 @@ export function usePostHistoryListing({
     const persistedListingSnapshot = readPersistedListingSnapshot(
         getPubkeyHex(),
     );
+    const restoredSearchState =
+        persistedListingSnapshot.searchQuery === persistedViewState.searchQuery
+        && persistedViewState.searchQuery.length > 0;
     const state = $state({
         loadedPosts: persistedListingSnapshot.loadedPosts,
-        searchPosts: persistedListingSnapshot.searchPosts,
+        searchPosts: restoredSearchState
+            ? persistedListingSnapshot.searchPosts
+            : [],
         searchInput: persistedViewState.searchInput,
         searchQuery: persistedViewState.searchQuery,
         currentPage: 1,
-        searchPage: persistedViewState.searchPage,
+        searchPage: restoredSearchState ? persistedViewState.searchPage : 1,
         totalCount: persistedListingSnapshot.totalCount,
         searchTotalCount: persistedListingSnapshot.searchTotalCount,
         searchHasNext: persistedListingSnapshot.searchHasNext,
@@ -590,7 +598,10 @@ export function usePostHistoryListing({
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let activeOlderRevealChildInteractionRepairRxNostr = getRxNostr();
-    let appliedSearchQuery = "";
+    let appliedSearchQuery = restoredSearchState
+        ? persistedViewState.searchQuery
+        : "";
+    let searchResultsInitialized = !restoredSearchState;
     const olderBackfillSearch = $state<OlderBackfillSearchState>({
         windowSeconds: POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
         nextUntil: null,
@@ -643,7 +654,7 @@ export function usePostHistoryListing({
         !isRefetchingAroundCurrentView && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
     );
     const canLoadNewer = $derived(
-        !isRefetchingAroundCurrentView && (isSearchMode ? state.searchPage > 1 : state.hasNewerLocal),
+        !isRefetchingAroundCurrentView && !isSearchMode && state.hasNewerLocal,
     );
     const canReturnToLatest = $derived(
         !isSearchMode
@@ -948,6 +959,7 @@ export function usePostHistoryListing({
         hasStartedInitialSync = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
+        searchResultsInitialized = false;
     }
 
     function updateRelayHistoryCursor(
@@ -2233,6 +2245,25 @@ export function usePostHistoryListing({
         return true;
     }
 
+    function mergeSearchPageResults(
+        currentPosts: PostHistoryRecord[],
+        nextPosts: PostHistoryRecord[],
+    ): PostHistoryRecord[] {
+        const mergedPosts = [...currentPosts];
+        const knownEventIds = new Set(currentPosts.map((post) => post.eventId));
+
+        for (const post of nextPosts) {
+            if (knownEventIds.has(post.eventId)) {
+                continue;
+            }
+
+            knownEventIds.add(post.eventId);
+            mergedPosts.push(post);
+        }
+
+        return mergedPosts;
+    }
+
     async function loadSearchPage(page: number, query: string): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !query) {
@@ -2270,7 +2301,10 @@ export function usePostHistoryListing({
         }
 
         state.searchTotalCount = result.total;
-        state.searchPosts = result.items;
+        state.searchPosts = normalizedPage === 1
+            ? result.items
+            : mergeSearchPageResults(state.searchPosts, result.items);
+        state.searchPage = safePage;
         state.searchHasNext = result.hasNext;
         void prefetchCurrentPageMedia(result.items);
     }
@@ -2504,7 +2538,9 @@ export function usePostHistoryListing({
             return false;
         }
 
-        state.searchPage += 1;
+        const nextPage = state.searchPage + 1;
+        state.searchPage = nextPage;
+        await loadSearchPage(nextPage, state.searchQuery);
         return true;
     }
 
@@ -3321,6 +3357,7 @@ export function usePostHistoryListing({
         writePersistedListingSnapshot(getPubkeyHex(), {
             loadedPosts: state.loadedPosts,
             searchPosts: state.searchPosts,
+            searchQuery: state.searchQuery,
             totalCount: state.totalCount,
             searchTotalCount: state.searchTotalCount,
             searchHasNext: state.searchHasNext,
@@ -3453,6 +3490,7 @@ export function usePostHistoryListing({
         if (!state.searchQuery) {
             postHistoryLocalSearchService.clearCache?.();
             appliedSearchQuery = "";
+            searchResultsInitialized = false;
             if (state.searchPage !== 1) {
                 state.searchPage = 1;
                 return;
@@ -3464,14 +3502,22 @@ export function usePostHistoryListing({
             return;
         }
 
-        if (state.searchQuery !== appliedSearchQuery && state.searchPage !== 1) {
+        if (state.searchQuery !== appliedSearchQuery) {
             appliedSearchQuery = state.searchQuery;
             state.searchPage = 1;
+            state.searchPosts = [];
+            state.searchTotalCount = 0;
+            state.searchHasNext = false;
+            searchResultsInitialized = true;
+            void loadSearchPage(1, state.searchQuery);
             return;
         }
 
         appliedSearchQuery = state.searchQuery;
-        void loadSearchPage(state.searchPage, state.searchQuery);
+        if (!searchResultsInitialized) {
+            searchResultsInitialized = true;
+            void loadSearchPage(state.searchPage, state.searchQuery);
+        }
     });
 
     return {

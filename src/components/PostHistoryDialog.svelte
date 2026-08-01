@@ -710,7 +710,15 @@
     }
 
     async function handleLoadOlder(): Promise<void> {
-        await history.loadOlder();
+        const isSearchMode = history.isSearchMode;
+        const scrollAnchor = isSearchMode
+            ? historyViewport.captureHistoryScrollAnchor()
+            : null;
+        const changed = await history.loadOlder();
+
+        if (changed && isSearchMode) {
+            historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+        }
     }
 
     async function handleShowSavedOlderPosts(): Promise<void> {

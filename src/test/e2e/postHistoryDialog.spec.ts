@@ -261,11 +261,8 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await page.getByRole('button', { name: 'さらに古い検索結果を表示' }).click();
         await expectSummary(page, harness.matchingPosts);
-        await expectVisiblePostCount(page, harness.matchingPosts - 50);
-
-        await page.getByRole('button', { name: '新しい検索結果を表示' }).click();
-        await expectSummary(page, harness.matchingPosts);
-        await expectVisiblePostCount(page, 50);
+        await expectVisiblePostCount(page, harness.matchingPosts);
+        await expect(page.getByRole('button', { name: '新しい検索結果を表示' })).toHaveCount(0);
     });
 
     test('desktop newer prepend keeps the current post anchored', async ({ page, isMobile }) => {

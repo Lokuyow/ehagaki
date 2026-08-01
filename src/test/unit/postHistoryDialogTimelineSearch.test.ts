@@ -5,6 +5,7 @@ import {
     PostHistoryDialog,
     cleanupPostHistoryDialogHarness,
     createRecord,
+    getHistoryContainer,
     localSearchServiceMock,
     openSearchBar,
     postMediaCacheServiceMock,
@@ -19,6 +20,74 @@ import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogVi
 describe('PostHistoryDialog timeline search', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
+    });
+
+    it('検索結果の古いページ追加後も既存投稿のコンテナ内位置を維持する', async () => {
+        let layoutShift = 0;
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-scroll-normal', content: '通常一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => {
+                if (page === 2) {
+                    layoutShift = 40;
+                }
+
+                return {
+                    items: [createRecord({
+                        eventId: `search-scroll-page-${page}`,
+                        content: `search-scroll-page-${page}`,
+                    })],
+                    total: 100,
+                    hasNext: page === 1,
+                };
+            },
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => {
+            expect(screen.getByText('search-scroll-page-1')).toBeTruthy();
+        });
+
+        const container = getHistoryContainer();
+        container.scrollTop = 20;
+        Object.defineProperty(container, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => ({ top: 0, bottom: 320 }),
+        });
+        const firstItem = container.querySelector<HTMLElement>('[data-post-history-event-id="search-scroll-page-1"]');
+        expect(firstItem).not.toBeNull();
+        Object.defineProperty(firstItem, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => ({
+                top: 40 + layoutShift - container.scrollTop,
+                bottom: 100 + layoutShift - container.scrollTop,
+            }),
+        });
+
+        const beforeOffset = firstItem!.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('search-scroll-page-2')).toBeTruthy();
+        });
+
+        const afterOffset = firstItem!.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        expect(afterOffset).toBe(beforeOffset);
+        view.unmount();
     });
 
     afterEach(() => {
@@ -50,7 +119,7 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
-    it('検索結果は古い側と新しい側へローカル移動する', async () => {
+    it('検索結果は古い側へ順番に追加し、新しい検索結果ボタンを表示しない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'search-normal', content: '通常一覧' }),
@@ -60,8 +129,8 @@ describe('PostHistoryDialog timeline search', () => {
         localSearchServiceMock.searchLocalPosts.mockImplementation(
             async ({ page }: { page: number }) => ({
                 items: [createRecord({ eventId: `search-page-${page}`, content: `search-page-${page}` })],
-                total: 51,
-                hasNext: page === 1,
+                total: 101,
+                hasNext: page < 3,
             }),
         );
 
@@ -91,20 +160,24 @@ describe('PostHistoryDialog timeline search', () => {
                 page: 2,
                 pageSize: 50,
             });
+            expect(screen.getByText('search-page-1')).toBeTruthy();
             expect(screen.getByText('search-page-2')).toBeTruthy();
-            expect(screen.getByRole('button', { name: '新しい検索結果を表示' })).toBeTruthy();
+            expect(screen.queryByRole('button', { name: '新しい検索結果を表示' })).toBeNull();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '新しい検索結果を表示' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
 
         await waitFor(() => {
             expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
                 pubkeyHex: PUBKEY_HEX,
                 query: 'alpha',
-                page: 1,
+                page: 3,
                 pageSize: 50,
             });
             expect(screen.getByText('search-page-1')).toBeTruthy();
+            expect(screen.getByText('search-page-2')).toBeTruthy();
+            expect(screen.getByText('search-page-3')).toBeTruthy();
+            expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
         });
 
         view.unmount();
@@ -168,7 +241,10 @@ describe('PostHistoryDialog timeline search', () => {
 
         await waitFor(() => {
             expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
-                .toHaveBeenLastCalledWith(['https://example.com/media-2.jpg']);
+                .toHaveBeenLastCalledWith([
+                    'https://example.com/media-1.jpg',
+                    'https://example.com/media-2.jpg',
+                ]);
             expect(screen.getByText('media-2')).toBeTruthy();
         });
 
@@ -304,11 +380,16 @@ describe('PostHistoryDialog timeline search', () => {
         ]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [createRecord({ eventId: 'search-reopen-hit', content: 'reopen 検索結果' })],
-            total: 1,
-            hasNext: false,
-        });
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => ({
+                items: [createRecord({
+                    eventId: `search-reopen-hit-${page}`,
+                    content: `reopen 検索結果 ${page}`,
+                })],
+                total: 100,
+                hasNext: page === 1,
+            }),
+        );
 
         const onClose = vi.fn();
         const view = render(PostHistoryDialog, {
@@ -324,7 +405,12 @@ describe('PostHistoryDialog timeline search', () => {
         await waitForSearchDebounce();
 
         await waitFor(() => {
-            expect(screen.getByText('reopen 検索結果')).toBeTruthy();
+            expect(screen.getByText('reopen 検索結果 1')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('reopen 検索結果 2')).toBeTruthy();
         });
 
         repositoryMock.getLatestVisibleChunk.mockClear();
@@ -337,7 +423,7 @@ describe('PostHistoryDialog timeline search', () => {
 
         expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
             currentPage: 1,
-            searchPage: 1,
+            searchPage: 2,
             searchInput: 'alpha',
             searchQuery: 'alpha',
         });
@@ -354,14 +440,15 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('reopen 検索結果')).toBeTruthy();
+            expect(screen.getByText('reopen 検索結果 1')).toBeTruthy();
+            expect(screen.getByText('reopen 検索結果 2')).toBeTruthy();
         });
 
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
         expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
             pubkeyHex: PUBKEY_HEX,
             query: 'alpha',
-            page: 1,
+            page: 2,
             pageSize: 50,
         });
 
