@@ -177,7 +177,7 @@
     "importElapsedTime": "Elapsed time",
     "importEstimatedRemainingTime": "Estimated time remaining",
     "importRemainingTimeCalculating": "Calculating...",
-    "importApproximate": "Approx.",
+    "importRemainingTimeUnavailable": "--:--",
     "importProgressBarLabel": "JSONL import progress",
     "importComplete": "Import complete",
     "importPartial": "Import completed, but some items could not be imported",

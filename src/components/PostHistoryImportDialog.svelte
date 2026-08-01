@@ -62,6 +62,18 @@
         return Number.isFinite(remaining) && remaining >= 0 ? remaining : null;
     });
 
+    let remainingTimeLabel = $derived.by(() => {
+        if (running) {
+            return remainingTimeMs === null
+                ? $_("postHistory.importRemainingTimeCalculating")
+                : formatDuration(remainingTimeMs);
+        }
+        if (result?.status === "completed" || result?.status === "partial") {
+            return formatDuration(0);
+        }
+        return $_("postHistory.importRemainingTimeUnavailable");
+    });
+
     function formatDuration(durationMs: number): string {
         const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
         const seconds = String(totalSeconds % 60).padStart(2, "0");
@@ -336,18 +348,10 @@
                     <span>{$_("postHistory.importElapsedTime")}</span>
                     <span class="import-progress-number">{formatDuration(elapsedMs)}</span>
                 </span>
-                {#if running}
-                    <span class="import-progress-metric">
-                        <span>{$_("postHistory.importEstimatedRemainingTime")}</span>
-                        <span class="import-progress-number">
-                            {#if remainingTimeMs === null}
-                                {$_("postHistory.importRemainingTimeCalculating")}
-                            {:else}
-                                {$_("postHistory.importApproximate")} {formatDuration(remainingTimeMs)}
-                            {/if}
-                        </span>
-                    </span>
-                {/if}
+                <span class="import-progress-metric">
+                    <span>{$_("postHistory.importEstimatedRemainingTime")}</span>
+                    <span class="import-progress-number">{remainingTimeLabel}</span>
+                </span>
             </div>
             <Progress.Root
                 value={progressPercentage}
@@ -476,7 +480,9 @@
 
     @media (hover: hover) and (pointer: fine) {
         .import-drop-zone {
-            padding: 12px;
+            min-height: 136px;
+            box-sizing: border-box;
+            padding: 20px 16px 28px;
         }
 
         .import-drop-hint {
@@ -519,14 +525,15 @@
 
     .import-progress-metric {
         display: flex;
-        justify-content: space-between;
-        gap: 6px;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
         min-width: 0;
     }
 
     .import-progress-number {
         color: var(--text);
-        text-align: right;
+        text-align: center;
     }
 
     :global(.import-progress-root) {
@@ -601,6 +608,16 @@
     @media (max-width: 680px) {
         .import-progress-summary {
             grid-template-columns: 1fr;
+        }
+
+        .import-progress-metric {
+            flex-direction: row;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .import-progress-number {
+            text-align: right;
         }
 
         .import-results {
