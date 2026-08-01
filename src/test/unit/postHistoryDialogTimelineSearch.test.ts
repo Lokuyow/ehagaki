@@ -511,6 +511,7 @@ describe('PostHistoryDialog timeline search', () => {
     });
 
     it('contiguous 表示中の検索を閉じて reopen した場合は既存の検索復元を維持する', async () => {
+        let searchDataRevision = 0;
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'search-reopen-normal', content: '検索復元前の通常一覧' }),
@@ -519,10 +520,26 @@ describe('PostHistoryDialog timeline search', () => {
         repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
         localSearchServiceMock.searchLocalPosts.mockImplementation(
             async ({ page }: { page: number }) => ({
-                items: [createRecord({
-                    eventId: `search-reopen-hit-${page}`,
-                    content: `reopen 検索結果 ${page}`,
-                })],
+                items: searchDataRevision === 0
+                    ? [createRecord({
+                        eventId: `search-reopen-hit-${page}`,
+                        content: `reopen 検索結果 ${page}`,
+                    })]
+                    : page === 1
+                        ? [
+                            createRecord({
+                                eventId: 'search-reopen-newest-hit',
+                                content: 'reopen 新しい先頭結果',
+                            }),
+                            createRecord({
+                                eventId: 'search-reopen-hit-1',
+                                content: 'reopen 検索結果 1',
+                            }),
+                        ]
+                        : [createRecord({
+                            eventId: 'search-reopen-hit-2',
+                            content: 'reopen 検索結果 2',
+                        })],
                 total: 100,
                 hasNext: page === 1,
             }),
@@ -557,6 +574,7 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => {
             expect(onClose).toHaveBeenCalledTimes(1);
         });
+        searchDataRevision = 1;
 
         expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
             currentPage: 1,
@@ -577,17 +595,145 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         await waitFor(() => {
+            expect(screen.getByText('reopen 新しい先頭結果')).toBeTruthy();
             expect(screen.getByText('reopen 検索結果 1')).toBeTruthy();
             expect(screen.getByText('reopen 検索結果 2')).toBeTruthy();
         });
 
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
-        expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-            pubkeyHex: PUBKEY_HEX,
-            query: 'alpha',
-            page: 2,
-            pageSize: 50,
+        expect(localSearchServiceMock.searchLocalPosts.mock.calls.map(([args]) => args.page))
+            .toEqual([1, 2]);
+        expect(screen.queryByText('reopen 検索結果 3')).toBeNull();
+        expect(
+            [...document.querySelectorAll<HTMLElement>('.post-history-item')]
+                .map((element) => element.dataset.postHistoryEventId),
+        ).toEqual([
+            'search-reopen-newest-hit',
+            'search-reopen-hit-1',
+            'search-reopen-hit-2',
+        ]);
+
+        view.unmount();
+    });
+
+    it('検索終了時に検索読み込みを無効化し、通常履歴の古い投稿表示を制限しない', async () => {
+        const delayedPage = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-close-newest', content: '通常の最新投稿' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-close-older', content: '通常の古い投稿' }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => page === 1
+                ? {
+                    items: [createRecord({ eventId: 'search-close-page-1', content: '検索結果1' })],
+                    total: 100,
+                    hasNext: true,
+                }
+                : delayedPage.promise,
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
         });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => {
+            expect(screen.getByText('検索結果1')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+                pubkeyHex: PUBKEY_HEX,
+                query: 'alpha',
+                page: 2,
+                pageSize: 50,
+            });
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+        const loadOlderButton = await screen.findByRole('button', { name: 'さらに古い投稿を表示' });
+        expect(loadOlderButton.hasAttribute('disabled')).toBe(false);
+        expect(screen.getByText('通常の最新投稿')).toBeTruthy();
+
+        delayedPage.resolve({
+            items: [createRecord({ eventId: 'search-close-page-2', content: '遅延検索結果2' })],
+            total: 100,
+            hasNext: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(screen.queryByText('遅延検索結果2')).toBeNull();
+        expect(screen.getByText('通常の最新投稿')).toBeTruthy();
+
+        view.unmount();
+    });
+
+    it('検索入力を空にした時も遅延検索結果を通常履歴へ適用しない', async () => {
+        const delayedPage = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-clear-newest', content: '空検索の通常最新投稿' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-clear-older', content: '空検索の通常古い投稿' }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => page === 1
+                ? {
+                    items: [createRecord({ eventId: 'search-clear-page-1', content: '空検索前の結果' })],
+                    total: 100,
+                    hasNext: true,
+                }
+                : delayedPage.promise,
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(screen.getByText('空検索前の結果')).toBeTruthy());
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
+        await waitFor(() => expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
+
+        await fireEvent.input(searchInput, { target: { value: '' } });
+        await waitForSearchDebounce();
+        const loadOlderButton = await screen.findByRole('button', { name: 'さらに古い投稿を表示' });
+        expect(loadOlderButton.hasAttribute('disabled')).toBe(false);
+        expect(screen.getByText('空検索の通常最新投稿')).toBeTruthy();
+
+        delayedPage.resolve({
+            items: [createRecord({ eventId: 'search-clear-page-2', content: '適用されない遅延結果' })],
+            total: 100,
+            hasNext: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(screen.queryByText('適用されない遅延結果')).toBeNull();
+        expect(screen.getByText('空検索の通常最新投稿')).toBeTruthy();
 
         view.unmount();
     });

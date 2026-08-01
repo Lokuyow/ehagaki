@@ -659,8 +659,9 @@ export function usePostHistoryListing({
     const showPaging = $derived(false);
     const canLoadOlder = $derived(
         !isRefetchingAroundCurrentView
-        && !isSearchPageLoading
-        && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
+        && (isSearchMode
+            ? !isSearchPageLoading && state.searchHasNext
+            : state.hasOlderLocal),
     );
     const canLoadNewer = $derived(
         !isRefetchingAroundCurrentView && !isSearchMode && state.hasNewerLocal,
@@ -849,6 +850,8 @@ export function usePostHistoryListing({
     }
 
     function resetSearchState(): void {
+        searchLoadRequestId += 1;
+        isSearchPageLoading = false;
         postHistoryLocalSearchService.clearCache?.();
         state.searchInput = "";
         state.searchQuery = "";
@@ -3590,6 +3593,8 @@ export function usePostHistoryListing({
         }
 
         if (!state.searchQuery) {
+            searchLoadRequestId += 1;
+            isSearchPageLoading = false;
             postHistoryLocalSearchService.clearCache?.();
             appliedSearchQuery = "";
             searchResultsInitialized = false;
@@ -3618,7 +3623,10 @@ export function usePostHistoryListing({
         appliedSearchQuery = state.searchQuery;
         if (!searchResultsInitialized) {
             searchResultsInitialized = true;
-            void loadSearchPage(state.searchPage, state.searchQuery);
+            void rebuildSearchResultsThroughPage(
+                state.searchPage,
+                state.searchQuery,
+            );
         }
     });
 
