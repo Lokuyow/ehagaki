@@ -240,7 +240,6 @@
     }
 
     let localHistoryDeleteConfirmOpen = $state(false);
-    let isDeletingLocalHistory = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let jumpDateValue = $state<DateValue | undefined>(createTodayDateValue());
     let jumpDatePlaceholder = $state<DateValue | undefined>(
@@ -480,7 +479,6 @@
         rawJsonDialogOpen = false;
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
-        isDeletingLocalHistory = false;
         activeUtilityPanel = "none";
         jumpDateValue = createTodayDateValue();
         jumpDatePlaceholder = createTodayDateValue();
@@ -1369,21 +1367,12 @@
     }
 
     async function handleLocalHistoryDeleteConfirm(): Promise<void> {
-        if (isDeletingLocalHistory) {
-            return;
-        }
-
-        isDeletingLocalHistory = true;
-        try {
-            const deleted = await history.deleteLocalHistory();
-            if (deleted) {
-                historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
-                localHistoryDeleteConfirmOpen = false;
-                activeUtilityPanel = "none";
-                historyViewport.resetHistoryScrollSoon();
-            }
-        } finally {
-            isDeletingLocalHistory = false;
+        const deleted = await history.deleteLocalHistory();
+        if (deleted) {
+            historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
+            localHistoryDeleteConfirmOpen = false;
+            activeUtilityPanel = "none";
+            historyViewport.resetHistoryScrollSoon();
         }
     }
 </script>
@@ -1553,30 +1542,34 @@
     {#if activeUtilityPanel === "search"}
         <div
             class="post-history-search-row"
-            class:post-history-search-active={history.isSearchMode}
         >
-            <div class="post-history-search-leading" aria-hidden="true">
-                {#if history.isSearchPageLoading}
-                    <LoadingPlaceholder
-                        variant="spinner"
-                        showLoader={true}
-                        loaderSize={24}
-                        ariaHidden={true}
-                        customClass="post-history-search-spinner"
-                    />
-                {:else}
-                    <div class="search-icon svg-icon"></div>
-                {/if}
+            <div
+                class="post-history-search-input-wrapper"
+                class:post-history-search-active={history.isSearchMode}
+            >
+                <div class="post-history-search-leading" aria-hidden="true">
+                    {#if history.isSearchPageLoading}
+                        <LoadingPlaceholder
+                            variant="spinner"
+                            showLoader={true}
+                            loaderSize={24}
+                            ariaHidden={true}
+                            customClass="post-history-search-spinner"
+                        />
+                    {:else}
+                        <div class="search-icon svg-icon"></div>
+                    {/if}
+                </div>
+                <input
+                    bind:value={history.state.searchInput}
+                    bind:this={searchInputElement}
+                    class="post-history-search-input"
+                    type="search"
+                    placeholder={$_("postHistory.searchPlaceholder")}
+                    aria-label={$_("postHistory.search")}
+                    aria-busy={history.isSearchPageLoading ? "true" : "false"}
+                />
             </div>
-            <input
-                bind:value={history.state.searchInput}
-                bind:this={searchInputElement}
-                class="post-history-search-input"
-                type="search"
-                placeholder={$_("postHistory.searchPlaceholder")}
-                aria-label={$_("postHistory.search")}
-                aria-busy={history.isSearchPageLoading ? "true" : "false"}
-            />
             <Button
                 type="button"
                 class="post-history-search-close"
@@ -2963,10 +2956,11 @@
     confirmLabel={$_("postHistory.deleteLocalHistoryConfirm")}
     cancelLabel={$_("postHistory.deleteLocalHistoryCancel")}
     confirmVariant="danger"
-    confirmDisabled={isDeletingLocalHistory}
     onConfirm={handleLocalHistoryDeleteConfirm}
     onCancel={handleLocalHistoryDeleteCancel}
     closeOnConfirm={false}
+    preventCloseWhileConfirming={true}
+    showConfirmSpinner={true}
     contentClass="post-history-local-delete-confirm"
 >
     {#snippet children()}
@@ -3120,13 +3114,26 @@
         width: 100%;
     }
 
+    .post-history-search-input-wrapper {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        border: 1px solid var(--border-soft);
+        background: var(--background);
+        color: var(--text);
+        font: inherit;
+        border-bottom: 1px solid var(--border-hr);
+    }
+
     .post-history-search-leading {
         display: flex;
-        flex: 0 0 40px;
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 40px;
         align-items: center;
         justify-content: center;
-        align-self: stretch;
         color: var(--text-muted);
+        pointer-events: none;
     }
 
     :global(.post-history-search-leading .search-icon),
@@ -3150,15 +3157,14 @@
     }
 
     .post-history-search-input {
-        flex: 1 1 auto;
-        width: auto;
+        display: block;
+        width: 100%;
         min-width: 0;
-        padding: 10px 12px;
-        border: 1px solid var(--border-soft);
-        background: var(--background);
-        color: var(--text);
+        padding: 10px 12px 10px 52px;
+        border: 0;
+        background: transparent;
+        color: inherit;
         font: inherit;
-        border-bottom: 1px solid var(--border-hr);
     }
 
     :global(.post-history-search-close.square) {

@@ -10,7 +10,10 @@ import {
     consumePostHistoryShouldReturnToLatestAfterLocalPost,
 } from "../../lib/postHistoryLatestRequest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
-import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
+import type {
+    PostHistoryChildInteractionRecord,
+    PostHistoryRecord,
+} from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import {
     comparePostHistoryTimelineOrder,
@@ -380,6 +383,97 @@ describe("DexiePostHistoryRepository", () => {
         await expect(repository.getAll({ pubkeyHex: pubkey })).resolves.toEqual([]);
         await expect(repository.getAll({ pubkeyHex: otherPubkey })).resolves.toHaveLength(1);
 
+        db.close();
+    });
+
+    it("deleteLocalHistoryForPubkey は関連キャッシュを一括削除してから対象履歴だけを削除し、commit後に検索リビジョンを更新する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const otherPubkey = "d".repeat(64);
+        const ownerEventIds = ["1".repeat(64), "2".repeat(64)];
+        const otherEventId = "3".repeat(64);
+
+        for (const [index, eventId] of ownerEventIds.entries()) {
+            await repository.putPostedEvent({
+                event: createSignedEvent({
+                    id: eventId,
+                    pubkey,
+                    created_at: 100 + index,
+                }),
+            });
+        }
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: otherEventId, pubkey: otherPubkey }),
+        });
+
+        const createChild = (
+            eventId: string,
+            parentEventId: string,
+        ): PostHistoryChildInteractionRecord => ({
+            id: eventId,
+            eventId,
+            parentEventId,
+            authorPubkey: "e".repeat(64),
+            kind: 1,
+            content: "reply",
+            tags: [],
+            createdAt: 100,
+            relayUrls: [],
+            discoveredAs: ["direct-reply"],
+            rawEvent: {},
+            fetchedAt: 1000,
+            updatedAt: 1000,
+            schemaVersion: 1,
+        });
+        await db.postHistoryChildInteractions.bulkPut([
+            createChild("4".repeat(64), ownerEventIds[0]),
+            createChild("5".repeat(64), ownerEventIds[1]),
+            createChild("6".repeat(64), otherEventId),
+        ]);
+
+        const transactionSpy = vi.spyOn(db, "transaction");
+        const revisionBefore = getPostHistorySearchRevision(pubkey);
+
+        await repository.deleteLocalHistoryForPubkey(pubkey);
+
+        expect(transactionSpy).toHaveBeenCalledOnce();
+        await expect(repository.getAll({ pubkeyHex: pubkey })).resolves.toEqual([]);
+        await expect(repository.getAll({ pubkeyHex: otherPubkey })).resolves.toHaveLength(1);
+        await expect(
+            db.postHistoryChildInteractions.where("parentEventId").equals(ownerEventIds[0]).count(),
+        ).resolves.toBe(0);
+        await expect(
+            db.postHistoryChildInteractions.where("parentEventId").equals(ownerEventIds[1]).count(),
+        ).resolves.toBe(0);
+        await expect(
+            db.postHistoryChildInteractions.where("parentEventId").equals(otherEventId).count(),
+        ).resolves.toBe(1);
+        expect(getPostHistorySearchRevision(pubkey)).toBeGreaterThan(revisionBefore);
+
+        db.close();
+    });
+
+    it("deleteLocalHistoryForPubkey はtransaction失敗時に検索リビジョンを更新しない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey }),
+        });
+        const revisionBefore = getPostHistorySearchRevision(pubkey);
+        const transactionSpy = vi
+            .spyOn(db, "transaction")
+            .mockRejectedValueOnce(new Error("transaction failed"));
+
+        await expect(repository.deleteLocalHistoryForPubkey(pubkey)).rejects.toThrow(
+            "transaction failed",
+        );
+        expect(transactionSpy).toHaveBeenCalledOnce();
+        expect(getPostHistorySearchRevision(pubkey)).toBe(revisionBefore);
+        await expect(repository.getAll({ pubkeyHex: pubkey })).resolves.toHaveLength(1);
+
+        transactionSpy.mockRestore();
         db.close();
     });
 

@@ -134,6 +134,7 @@ const repositoryMock = vi.hoisted(() => ({
     getOldestCreatedAt: vi.fn(),
     upsertFetchedEvents: vi.fn(),
     deleteForPubkey: vi.fn(),
+    deleteLocalHistoryForPubkey: vi.fn(),
 }));
 
 const replyEventsRepositoryMock = vi.hoisted(() => {
@@ -865,6 +866,7 @@ describe('PostHistoryDialog', () => {
             unchangedCount: 0,
         });
         repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
+        repositoryMock.deleteLocalHistoryForPubkey.mockResolvedValue(undefined);
         replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([]);
         replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
         replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
@@ -5849,7 +5851,7 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
 
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
+        expect(repositoryMock.deleteLocalHistoryForPubkey).not.toHaveBeenCalled();
         expect(await screen.findByText('保存済み投稿履歴をクリア')).toBeTruthy();
         const descriptions = await screen.findAllByText(/Nostrリレー上の投稿は削除されません/);
         expect(descriptions).toHaveLength(2);
@@ -5863,13 +5865,99 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'クリアする' }));
 
         await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(repositoryMock.deleteLocalHistoryForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(replyEventsRepositoryMock.deleteForPostHistoryPubkey).not.toHaveBeenCalled();
             expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(authoredSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(inboundInteractionsSyncStateRepositoryMock.clearForPubkey).not.toHaveBeenCalled();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(screen.queryByText('削除対象')).toBeNull();
+        });
+    });
+
+    it('[delete-local-history-loading] 削除中は確認ボタンにspinnerを表示し、二重実行とcloseを防ぐ', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+        ]);
+        let resolveDelete: (() => void) | undefined;
+        repositoryMock.deleteLocalHistoryForPubkey.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveDelete = resolve;
+                }),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await waitFor(() => expect(screen.getByText('削除対象')).toBeTruthy());
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
+
+        const confirmButton = screen.getByRole('button', { name: 'クリアする' }) as HTMLButtonElement;
+        const cancelButton = screen.getByRole('button', { name: 'キャンセル' }) as HTMLButtonElement;
+        const firstClick = fireEvent.click(confirmButton);
+
+        await waitFor(() => {
+            expect(repositoryMock.deleteLocalHistoryForPubkey).toHaveBeenCalledOnce();
+            expect(confirmButton.disabled).toBe(true);
+            expect(confirmButton.getAttribute('aria-busy')).toBe('true');
+            expect(confirmButton.querySelector('.confirm-button-spinner')).not.toBeNull();
+            expect(cancelButton.disabled).toBe(true);
+        });
+        await fireEvent.click(confirmButton);
+        expect(repositoryMock.deleteLocalHistoryForPubkey).toHaveBeenCalledOnce();
+
+        resolveDelete?.();
+        await firstClick;
+        await waitFor(() => {
+            expect(screen.queryByRole('alertdialog')).toBeNull();
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('[delete-local-history-failure] 早期失敗後も並列削除の完了を待ち、再試行可能に戻る', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+        ]);
+        let resolveVisibleRange: (() => void) | undefined;
+        repositoryMock.deleteLocalHistoryForPubkey.mockRejectedValueOnce(new Error('delete failed'));
+        visibleRangeRepositoryMock.clearForPubkey.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveVisibleRange = resolve;
+                }),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await waitFor(() => expect(screen.getByText('削除対象')).toBeTruthy());
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
+
+        const confirmButton = screen.getByRole('button', { name: 'クリアする' }) as HTMLButtonElement;
+        const firstClick = fireEvent.click(confirmButton);
+        await waitFor(() => expect(confirmButton.disabled).toBe(true));
+        expect(screen.getByRole('alertdialog')).toBeTruthy();
+
+        resolveVisibleRange?.();
+        await firstClick;
+        await waitFor(() => {
+            expect(confirmButton.disabled).toBe(false);
+            expect(confirmButton.getAttribute('aria-busy')).toBeNull();
+            expect(screen.getByRole('alertdialog')).toBeTruthy();
+            expect(screen.getByText('保存済み投稿履歴のクリアに失敗しました')).toBeTruthy();
         });
     });
 

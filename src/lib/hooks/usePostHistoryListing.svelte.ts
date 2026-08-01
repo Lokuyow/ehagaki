@@ -55,7 +55,6 @@ import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
-import { postHistoryChildInteractionsRepository } from "../storage/postHistoryChildInteractionsRepository";
 import { postHistoryJumpCacheAnchorRepository } from "../storage/postHistoryJumpCacheAnchorRepository";
 import {
     buildPostHistoryVisibleKindsKey,
@@ -3298,14 +3297,13 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
 
-        try {
-            await Promise.all([
-                postHistoryChildInteractionsRepository.deleteChildInteractionsForPostHistoryPubkey(pubkeyHex),
-                postHistoryRepository.deleteForPubkey(pubkeyHex),
-                postHistoryJumpCacheAnchorRepository.clearForPubkey(pubkeyHex),
-                postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
-            ]);
-        } catch {
+        const results = await Promise.allSettled([
+            postHistoryRepository.deleteLocalHistoryForPubkey(pubkeyHex),
+            postHistoryJumpCacheAnchorRepository.clearForPubkey(pubkeyHex),
+            postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
+        ]);
+
+        if (results.some((result) => result.status === "rejected")) {
             clearCurrentViewRefetchFeedback();
             state.currentViewRefetchMessageKey = "postHistory.deleteLocalHistoryFailed";
             state.currentViewRefetchMessageValues = null;

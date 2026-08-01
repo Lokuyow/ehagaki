@@ -214,6 +214,41 @@ describe('ConfirmDialog', () => {
         });
     });
 
+    it('showConfirmSpinner指定時は非同期確認中だけspinnerとaria-busyを表示する', async () => {
+        let resolveConfirm: (() => void) | undefined;
+        const onConfirm = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveConfirm = resolve;
+                }),
+        );
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm,
+                closeOnConfirm: false,
+                showConfirmSpinner: true,
+            },
+        });
+
+        const confirmButton = screen.getByRole('button', { name: 'OK' });
+        expect(confirmButton.getAttribute('aria-busy')).toBeNull();
+        expect(confirmButton.querySelector('.confirm-button-spinner')).toBeNull();
+
+        await fireEvent.click(confirmButton);
+        await waitFor(() => {
+            expect(confirmButton.getAttribute('aria-busy')).toBe('true');
+            expect(confirmButton.querySelector('.confirm-button-spinner')).not.toBeNull();
+        });
+
+        resolveConfirm?.();
+        await waitFor(() => {
+            expect(confirmButton.getAttribute('aria-busy')).toBeNull();
+            expect(confirmButton.querySelector('.confirm-button-spinner')).toBeNull();
+        });
+    });
+
     it('close lock中は外側クリック・Escape・履歴closeを拒否する', async () => {
         let resolveConfirm: (() => void) | undefined;
         const onConfirm = vi.fn(

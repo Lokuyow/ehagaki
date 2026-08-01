@@ -126,6 +126,7 @@ export interface PostHistoryRepository {
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
     deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
+    deleteLocalHistoryForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 type NormalizedFetchedEventItem = {
@@ -946,6 +947,43 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .equals(pubkeyHex)
             .delete();
         if (deletedCount > 0) {
+            bumpPostHistorySearchRevision(pubkeyHex);
+        }
+    }
+
+    async deleteLocalHistoryForPubkey(
+        pubkeyHex: string | null | undefined,
+    ): Promise<void> {
+        if (!pubkeyHex) return;
+
+        let deletedPostHistoryCount = 0;
+        await this.db.transaction(
+            "rw",
+            this.db.postHistory,
+            this.db.postHistoryChildInteractions,
+            async () => {
+                const parentEventIds = (await this.db.postHistory
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .primaryKeys()).map(String);
+
+                if (parentEventIds.length > 0) {
+                    await this.db.postHistoryChildInteractions
+                        .where("parentEventId")
+                        .anyOf(parentEventIds)
+                        .delete();
+                }
+
+                deletedPostHistoryCount = await this.db.postHistory
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .delete();
+            },
+        );
+
+        // Keep the search revision outside the transaction so it only advances
+        // after IndexedDB has committed successfully.
+        if (deletedPostHistoryCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }
     }

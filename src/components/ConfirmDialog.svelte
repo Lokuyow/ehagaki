@@ -3,6 +3,7 @@
     import { _ } from "svelte-i18n";
     import { AlertDialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     interface Props {
@@ -36,6 +37,8 @@
         closeOnConfirm?: boolean;
         /** 非同期確認中のキャンセル・外側クリック・Escape・履歴closeを禁止するか */
         preventCloseWhileConfirming?: boolean;
+        /** 確認処理中に確認ボタン内へ回転ローダーを表示するか */
+        showConfirmSpinner?: boolean;
     }
 
     let {
@@ -54,6 +57,7 @@
         addToHistory = true,
         closeOnConfirm = true,
         preventCloseWhileConfirming = false,
+        showConfirmSpinner = false,
     }: Props = $props();
 
     // デフォルトのラベル（ローカライズ）
@@ -176,8 +180,33 @@
                                 shape="square"
                                 onClick={handleConfirm}
                                 disabled={confirmDisabled || isConfirming}
+                                aria-busy={isConfirming ? "true" : undefined}
                             >
-                                {defaultConfirmLabel}
+                                {#if showConfirmSpinner}
+                                    <span class="confirm-button-content">
+                                        <span
+                                            class="confirm-button-spinner-slot"
+                                            aria-hidden="true"
+                                        >
+                                            {#if isConfirming}
+                                                <LoadingPlaceholder
+                                                    variant="spinner"
+                                                    showLoader={true}
+                                                    loaderSize={16}
+                                                    ariaHidden={true}
+                                                    customClass="confirm-button-spinner"
+                                                />
+                                            {/if}
+                                        </span>
+                                        <span>{defaultConfirmLabel}</span>
+                                        <span
+                                            class="confirm-button-spinner-slot"
+                                            aria-hidden="true"
+                                        ></span>
+                                    </span>
+                                {:else}
+                                    {defaultConfirmLabel}
+                                {/if}
                             </Button>
                         {/snippet}
                     </AlertDialog.Action>
@@ -258,6 +287,28 @@
         :global(button) {
             flex: 1;
             font-size: 1.2rem;
+        }
+
+        :global(.confirm-button-content) {
+            display: grid;
+            grid-template-columns: 16px auto 16px;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            gap: 6px;
+        }
+
+        :global(.confirm-button-spinner-slot) {
+            display: flex;
+            width: 16px;
+            height: 16px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        :global(.confirm-button-spinner) {
+            width: 16px;
+            color: currentColor;
         }
 
         :global(:root.dark .btn-cancel.secondary.square) {

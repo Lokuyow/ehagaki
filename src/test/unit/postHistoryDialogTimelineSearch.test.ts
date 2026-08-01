@@ -259,8 +259,11 @@ describe('PostHistoryDialog timeline search', () => {
         expect(searchInput.getAttribute('aria-busy')).toBe('true');
         expect(searchInput.hasAttribute('disabled')).toBe(false);
         expect(screen.getByText('検索前の一覧')).toBeTruthy();
-        expect(document.querySelector('.post-history-search-spinner')).not.toBeNull();
-        expect(document.querySelector('.search-icon')).toBeNull();
+        const inputWrapper = searchInput.closest('.post-history-search-input-wrapper');
+        const leadingIcon = inputWrapper?.querySelector('.post-history-search-leading');
+        expect(inputWrapper).not.toBeNull();
+        expect(leadingIcon?.querySelector('.post-history-search-spinner')).not.toBeNull();
+        expect(leadingIcon?.querySelector('.search-icon')).toBeNull();
 
         await fireEvent.input(searchInput, { target: { value: 'beta' } });
         await waitForSearchDebounce();
@@ -282,8 +285,9 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => {
             expect(screen.getByText('beta-result')).toBeTruthy();
             expect(searchInput.getAttribute('aria-busy')).toBe('false');
-            expect(document.querySelector('.post-history-search-spinner')).toBeNull();
-            expect(document.querySelector('.search-icon')).not.toBeNull();
+            expect(inputWrapper?.contains(searchInput)).toBe(true);
+            expect(leadingIcon?.querySelector('.post-history-search-spinner')).toBeNull();
+            expect(leadingIcon?.querySelector('.search-icon')).not.toBeNull();
         });
 
         view.unmount();
@@ -310,8 +314,11 @@ describe('PostHistoryDialog timeline search', () => {
         await fireEvent.input(searchInput, { target: { value: 'alpha' } });
 
         expect(searchInput.getAttribute('aria-busy')).toBe('false');
-        expect(document.querySelector('.search-icon')).not.toBeNull();
-        expect(document.querySelector('.post-history-search-spinner')).toBeNull();
+        const inputWrapper = searchInput.closest('.post-history-search-input-wrapper');
+        const leadingIcon = inputWrapper?.querySelector('.post-history-search-leading');
+        expect(inputWrapper).not.toBeNull();
+        expect(leadingIcon?.querySelector('.search-icon')).not.toBeNull();
+        expect(leadingIcon?.querySelector('.post-history-search-spinner')).toBeNull();
 
         await waitForSearchDebounce();
         expect(searchInput.getAttribute('aria-busy')).toBe('true');
@@ -323,7 +330,8 @@ describe('PostHistoryDialog timeline search', () => {
         });
         await waitFor(() => {
             expect(searchInput.getAttribute('aria-busy')).toBe('false');
-            expect(document.querySelector('.search-icon')).not.toBeNull();
+            expect(inputWrapper?.contains(searchInput)).toBe(true);
+            expect(leadingIcon?.querySelector('.search-icon')).not.toBeNull();
         });
 
         view.unmount();
