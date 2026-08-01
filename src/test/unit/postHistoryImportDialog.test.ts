@@ -30,7 +30,7 @@ const translations: Record<string, string> = {
     "postHistory.importElapsedTime": "経過時間",
     "postHistory.importEstimatedRemainingTime": "推定残り時間",
     "postHistory.importRemainingTimeCalculating": "計算中...",
-    "postHistory.importApproximate": "約",
+    "postHistory.importRemainingTimeUnavailable": "--:--",
     "postHistory.importProgressBarLabel": "JSONLインポートの進捗",
     "postHistory.importComplete": "読み込みが完了しました",
     "postHistory.importPartial": "処理を完了しましたが、一部を取り込めませんでした",
@@ -430,7 +430,9 @@ describe("PostHistoryImportDialog", () => {
         expect(screen.getByText("進捗").parentElement?.textContent).toContain("50%");
         expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:12");
         expect(screen.getByText("推定残り時間").parentElement?.textContent)
-            .toContain("約 0:12");
+            .toContain("0:12");
+        expect(screen.getByText("推定残り時間").parentElement?.textContent)
+            .not.toContain("約");
     });
 
     it("1時間以上の経過時間をh:mm:ssで表示する", async () => {
@@ -536,7 +538,8 @@ describe("PostHistoryImportDialog", () => {
 
         expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100");
         expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:05");
-        expect(screen.queryByText("推定残り時間")).toBeNull();
+        expect(screen.getByText("推定残り時間").parentElement?.textContent).toContain("0:00");
+        expect(screen.getAllByText(/進捗|経過時間|推定残り時間/)).toHaveLength(3);
     });
 
     it("失敗時は実際の最終進捗を維持し100%へ上書きしない", async () => {
@@ -564,6 +567,7 @@ describe("PostHistoryImportDialog", () => {
 
         await waitFor(() => expect(screen.getByText("ファイルを読み込めませんでした")).toBeTruthy());
         expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("42");
+        expect(screen.getByText("推定残り時間").parentElement?.textContent).toContain("--:--");
     });
 
     it("完了後に閉じて再表示すると進捗表示をリセットする", async () => {
