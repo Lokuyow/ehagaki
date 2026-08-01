@@ -14,6 +14,10 @@ import {
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistoryLatestRequest";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
+import {
+    createPostHistorySearchRecord,
+    getPostHistorySearchIndexMetaKey,
+} from "../postHistorySearchIndex";
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
@@ -110,6 +114,10 @@ export interface PostHistoryRepository {
         pubkeyHex: string | null | undefined;
         eventIds: string[];
     }): Promise<string[]>;
+    getManyByEventIds(input: {
+        pubkeyHex: string | null | undefined;
+        eventIds: string[];
+    }): Promise<PostHistoryRecord[]>;
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
@@ -396,6 +404,17 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 !!record && record.pubkeyHex === input.pubkeyHex
             )
             .map((record) => record.eventId);
+    }
+
+    async getManyByEventIds(input: {
+        pubkeyHex: string | null | undefined;
+        eventIds: string[];
+    }): Promise<PostHistoryRecord[]> {
+        if (!input.pubkeyHex || input.eventIds.length === 0) return [];
+        const records = await this.db.postHistory.bulkGet(input.eventIds);
+        return records.filter((record): record is PostHistoryRecord =>
+            !!record && record.pubkeyHex === input.pubkeyHex
+        );
     }
 
     async getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]> {
@@ -719,7 +738,16 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     }
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
-        await this.db.postHistory.put(toRecord(input, this.now));
+        const record = toRecord(input, this.now);
+        await this.db.transaction(
+            "rw",
+            this.db.postHistory,
+            this.db.postHistorySearch,
+            async () => {
+                await this.db.postHistory.put(record);
+                await this.db.postHistorySearch.put(createPostHistorySearchRecord(record));
+            },
+        );
         bumpPostHistorySearchRevision(input.event.pubkey);
         markPostHistoryShouldReturnToLatestAfterLocalPost({
             pubkeyHex: input.event.pubkey,
@@ -749,6 +777,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         await this.db.transaction(
             "rw",
             this.db.postHistory,
+            this.db.postHistorySearch,
             this.db.postHistoryDeletionRequests,
             async () => {
                 const existingRecords = await this.db.postHistory.bulkGet(eventIds);
@@ -886,6 +915,9 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     await this.db.postHistoryDeletionRequests.bulkPut(verifiedRequestUpdates);
                 }
                 await this.db.postHistory.bulkPut(nextRecords);
+                await this.db.postHistorySearch.bulkPut(
+                    nextRecords.map(createPostHistorySearchRecord),
+                );
             },
         );
 
@@ -941,10 +973,21 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
         if (!pubkeyHex) return;
 
-        const deletedCount = await this.db.postHistory
-            .where("pubkeyHex")
-            .equals(pubkeyHex)
-            .delete();
+        const deletedCount = await this.db.transaction(
+            "rw",
+            this.db.postHistory,
+            this.db.postHistorySearch,
+            this.db.meta,
+            async () => {
+                const count = await this.db.postHistory
+                    .where("pubkeyHex")
+                    .equals(pubkeyHex)
+                    .delete();
+                await this.db.postHistorySearch.where("pubkeyHex").equals(pubkeyHex).delete();
+                await this.db.meta.delete(getPostHistorySearchIndexMetaKey(pubkeyHex));
+                return count;
+            },
+        );
         if (deletedCount > 0) {
             bumpPostHistorySearchRevision(pubkeyHex);
         }

@@ -3,11 +3,15 @@ import {
     type ChannelMetadataCache,
     type ChannelMetadataRepository,
 } from "./storage/channelMetadataRepository";
-import type { PostHistoryRecord } from "./storage/ehagakiDb";
+import type { PostHistoryRecord, PostHistorySearchRecord } from "./storage/ehagakiDb";
 import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
+import {
+    postHistorySearchRepository,
+    type DexiePostHistorySearchRepository,
+} from "./storage/postHistorySearchRepository";
 import {
     getChannelMetadataSearchRevision,
     getPostHistorySearchRevision,
@@ -35,7 +39,7 @@ type ResolvedSearchCacheEntry = {
     pubkeyHex: string;
     normalizedQueryKey: string;
     revision: SearchRevisionSnapshot;
-    filteredPosts: PostHistoryRecord[];
+    matchedEventIds: string[];
 };
 
 type InFlightSearchEntry = {
@@ -44,7 +48,7 @@ type InFlightSearchEntry = {
     pubkeyHex: string;
     normalizedQueryKey: string;
     revision: SearchRevisionSnapshot;
-    promise: Promise<PostHistoryRecord[]>;
+    promise: Promise<string[]>;
 };
 
 function normalizePageNumber(page: number): number {
@@ -56,11 +60,7 @@ function normalizePageSize(pageSize: number): number {
 }
 
 function normalizeQueryTokens(query: string): string[] {
-    return query
-        .trim()
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(Boolean);
+    return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 
 function getNormalizedQueryKey(queryTokens: string[]): string {
@@ -74,46 +74,33 @@ function getRevisionSnapshot(pubkeyHex: string): SearchRevisionSnapshot {
     };
 }
 
-function areRevisionSnapshotsEqual(
-    left: SearchRevisionSnapshot,
-    right: SearchRevisionSnapshot,
-): boolean {
+function areRevisionSnapshotsEqual(left: SearchRevisionSnapshot, right: SearchRevisionSnapshot): boolean {
     return left.postHistory === right.postHistory
         && left.channelMetadata === right.channelMetadata;
 }
 
-function buildSearchText(
-    post: PostHistoryRecord,
-    channelMetadata: ChannelMetadataCache | null,
-): string {
-    return [
-        post.content,
-        post.eventId,
-        String(post.kind),
-        post.tags.flat().join(" "),
-        ...post.media.flatMap((media) => [media.url, media.alt ?? ""]),
-        post.channelEventId ?? "",
-        post.relayHints.join(" "),
-        post.acceptedRelays.join(" "),
-        post.fetchedRelays?.join(" ") ?? "",
-        channelMetadata?.name ?? "",
-        channelMetadata?.about ?? "",
-    ]
-        .join("\n")
-        .toLowerCase();
+function extractChannelEventIds(records: PostHistorySearchRecord[]): string[] {
+    return Array.from(new Set(records.flatMap((record) => record.channelEventId ? [record.channelEventId] : [])));
 }
 
-function extractChannelEventIds(posts: PostHistoryRecord[]): string[] {
-    return Array.from(
-        new Set(
-            posts
-                .map((post) => post.channelEventId)
-                .filter(
-                    (channelEventId): channelEventId is string =>
-                        typeof channelEventId === "string" &&
-                        channelEventId.length > 0,
-                ),
-        ),
+function createChannelSearchText(channelMetadata: ChannelMetadataCache): string {
+    return [channelMetadata.name ?? "", channelMetadata.about ?? ""].join("\n").toLowerCase();
+}
+
+function matchesQuery(
+    record: PostHistorySearchRecord,
+    queryTokens: string[],
+    channelSearchText: string | undefined,
+): boolean {
+    const eventId = record.eventId.toLowerCase();
+    const kind = String(record.kind);
+    const channelEventId = record.channelEventId?.toLowerCase();
+    return queryTokens.every((token) =>
+        record.searchText.includes(token)
+        || eventId.includes(token)
+        || kind.includes(token)
+        || channelEventId?.includes(token) === true
+        || channelSearchText?.includes(token) === true
     );
 }
 
@@ -123,13 +110,10 @@ export class PostHistoryLocalSearchService {
     private runtimeCacheToken = 0;
 
     constructor(
-        private postHistoryRepositoryImpl: Pick<PostHistoryRepository, "getAll"> =
-            postHistoryRepository,
-        private channelMetadataRepositoryImpl: Pick<
-            ChannelMetadataRepository,
-            "getMany"
-        > = channelMetadataRepository,
-    ) { }
+        private postHistoryRepositoryImpl: Pick<PostHistoryRepository, "getManyByEventIds"> = postHistoryRepository,
+        private postHistorySearchRepositoryImpl: Pick<DexiePostHistorySearchRepository, "getForPubkey"> = postHistorySearchRepository,
+        private channelMetadataRepositoryImpl: Pick<ChannelMetadataRepository, "getMany"> = channelMetadataRepository,
+    ) {}
 
     clearCache(): void {
         this.resolvedCacheEntry = null;
@@ -148,37 +132,27 @@ export class PostHistoryLocalSearchService {
             && areRevisionSnapshotsEqual(entry.revision, revision);
     }
 
-    private async buildFilteredPosts(
-        pubkeyHex: string,
-        queryTokens: string[],
-    ): Promise<PostHistoryRecord[]> {
-        const posts = await this.postHistoryRepositoryImpl.getAll({ pubkeyHex });
-        const channelEventIds = extractChannelEventIds(posts);
-        const channelMetadataById = new Map<string, ChannelMetadataCache>();
-
+    private async buildMatchedEventIds(pubkeyHex: string, queryTokens: string[]): Promise<string[]> {
+        const records = await this.postHistorySearchRepositoryImpl.getForPubkey(pubkeyHex);
+        const channelMetadataById = new Map<string, string>();
+        const channelEventIds = extractChannelEventIds(records);
         if (channelEventIds.length > 0) {
-            const records = await this.channelMetadataRepositoryImpl.getMany(
-                channelEventIds,
-            );
-
-            records.forEach((record) => {
-                channelMetadataById.set(record.channelEventId, record);
+            const metadata = await this.channelMetadataRepositoryImpl.getMany(channelEventIds);
+            metadata.forEach((record) => {
+                channelMetadataById.set(record.channelEventId, createChannelSearchText(record));
             });
         }
 
-        return posts.filter((post) => {
-            const searchText = buildSearchText(
-                post,
-                post.channelEventId
-                    ? channelMetadataById.get(post.channelEventId) ?? null
-                    : null,
-            );
-
-            return queryTokens.every((token) => searchText.includes(token));
-        });
+        return records
+            .filter((record) => matchesQuery(
+                record,
+                queryTokens,
+                record.channelEventId ? channelMetadataById.get(record.channelEventId) : undefined,
+            ))
+            .map((record) => record.eventId);
     }
 
-    private startFilteredPostsBuild(
+    private startMatchedEventIdsBuild(
         pubkeyHex: string,
         normalizedQueryKey: string,
         queryTokens: string[],
@@ -192,66 +166,42 @@ export class PostHistoryLocalSearchService {
             pubkeyHex,
             normalizedQueryKey,
             revision,
-            promise: Promise.resolve([] as PostHistoryRecord[]),
+            promise: Promise.resolve([] as string[]),
         } satisfies InFlightSearchEntry;
 
         entry.promise = (async () => {
             let attemptRevision = revision;
-
             for (let attempt = 0; attempt < 2; attempt += 1) {
-                const filteredPosts = await this.buildFilteredPosts(pubkeyHex, queryTokens);
+                const matchedEventIds = await this.buildMatchedEventIds(pubkeyHex, queryTokens);
                 const completedRevision = getRevisionSnapshot(pubkeyHex);
-                const isStable = areRevisionSnapshotsEqual(
-                    attemptRevision,
-                    completedRevision,
-                );
-
-                if (
-                    isStable
-                    && this.inFlightEntry?.identity === identity
-                    && this.runtimeCacheToken === runtimeCacheToken
-                ) {
+                const isStable = areRevisionSnapshotsEqual(attemptRevision, completedRevision);
+                if (isStable && this.inFlightEntry?.identity === identity && this.runtimeCacheToken === runtimeCacheToken) {
                     this.resolvedCacheEntry = {
                         pubkeyHex,
                         normalizedQueryKey,
                         revision: attemptRevision,
-                        filteredPosts,
+                        matchedEventIds,
                     };
                 }
-
-                if (isStable || attempt === 1) {
-                    return filteredPosts;
-                }
+                if (isStable || attempt === 1) return matchedEventIds;
 
                 attemptRevision = completedRevision;
-                if (
-                    this.inFlightEntry?.identity === identity
-                    && this.runtimeCacheToken === runtimeCacheToken
-                ) {
+                if (this.inFlightEntry?.identity === identity && this.runtimeCacheToken === runtimeCacheToken) {
                     entry.revision = attemptRevision;
                 }
             }
-
             return [];
         })().finally(() => {
-            if (this.inFlightEntry?.identity === identity) {
-                this.inFlightEntry = null;
-            }
+            if (this.inFlightEntry?.identity === identity) this.inFlightEntry = null;
         });
         this.inFlightEntry = entry;
         return entry;
     }
 
-    async searchLocalPosts(
-        options: SearchLocalPostsOptions,
-    ): Promise<SearchLocalPostsResult> {
+    async searchLocalPosts(options: SearchLocalPostsOptions): Promise<SearchLocalPostsResult> {
         const queryTokens = normalizeQueryTokens(options.query);
         if (!options.pubkeyHex || queryTokens.length === 0) {
-            return {
-                items: [],
-                total: 0,
-                hasNext: false,
-            };
+            return { items: [], total: 0, hasNext: false };
         }
 
         const page = normalizePageNumber(options.page);
@@ -260,14 +210,9 @@ export class PostHistoryLocalSearchService {
         const normalizedQueryKey = getNormalizedQueryKey(queryTokens);
         const revision = getRevisionSnapshot(pubkeyHex);
         const resolvedCacheEntry = this.resolvedCacheEntry;
-        const filteredPosts = resolvedCacheEntry
-            && this.isResolvedCacheEntryCurrent(
-                resolvedCacheEntry,
-                pubkeyHex,
-                normalizedQueryKey,
-                revision,
-            )
-            ? resolvedCacheEntry.filteredPosts
+        const matchedEventIds = resolvedCacheEntry
+            && this.isResolvedCacheEntryCurrent(resolvedCacheEntry, pubkeyHex, normalizedQueryKey, revision)
+            ? resolvedCacheEntry.matchedEventIds
             : await (() => {
                 const inFlightEntry = this.inFlightEntry;
                 const entry = inFlightEntry
@@ -276,25 +221,23 @@ export class PostHistoryLocalSearchService {
                     && inFlightEntry.normalizedQueryKey === normalizedQueryKey
                     && areRevisionSnapshotsEqual(inFlightEntry.revision, revision)
                     ? inFlightEntry
-                    : this.startFilteredPostsBuild(
-                        pubkeyHex,
-                        normalizedQueryKey,
-                        queryTokens,
-                        revision,
-                    );
+                    : this.startMatchedEventIdsBuild(pubkeyHex, normalizedQueryKey, queryTokens, revision);
                 return entry.promise;
             })();
 
         const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-
+        const pageEventIds = matchedEventIds.slice(startIndex, startIndex + pageSize);
+        const records = await this.postHistoryRepositoryImpl.getManyByEventIds({ pubkeyHex, eventIds: pageEventIds });
+        const recordsByEventId = new Map(records.map((record) => [record.eventId, record]));
         return {
-            items: filteredPosts.slice(startIndex, endIndex),
-            total: filteredPosts.length,
-            hasNext: endIndex < filteredPosts.length,
+            items: pageEventIds.flatMap((eventId) => {
+                const record = recordsByEventId.get(eventId);
+                return record ? [record] : [];
+            }),
+            total: matchedEventIds.length,
+            hasNext: startIndex + pageSize < matchedEventIds.length,
         };
     }
 }
 
-export const postHistoryLocalSearchService =
-    new PostHistoryLocalSearchService();
+export const postHistoryLocalSearchService = new PostHistoryLocalSearchService();

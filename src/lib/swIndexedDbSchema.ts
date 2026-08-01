@@ -1,4 +1,6 @@
 import {
+    POST_HISTORY_SEARCH_TIMELINE_INDEX,
+    POST_HISTORY_SEARCH_TIMELINE_KEY_PATH,
     POST_HISTORY_TIMELINE_INDEX,
     POST_HISTORY_TIMELINE_KEY_PATH,
 } from './storage/ehagakiDbConstants';
@@ -146,6 +148,16 @@ export function ensureCurrentEHagakiDbSchema(
         { name: '[pubkeyHex+postedAt]', keyPath: ['pubkeyHex', 'postedAt'] },
         { name: '[pubkeyHex+createdAt]', keyPath: ['pubkeyHex', 'createdAt'] },
         { name: POST_HISTORY_TIMELINE_INDEX, keyPath: POST_HISTORY_TIMELINE_KEY_PATH },
+    ]);
+    createObjectStoreIfMissing(db, 'postHistorySearch', 'eventId', [
+        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
+        { name: 'postedAt', keyPath: 'postedAt' },
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'kind', keyPath: 'kind' },
+        {
+            name: POST_HISTORY_SEARCH_TIMELINE_INDEX,
+            keyPath: POST_HISTORY_SEARCH_TIMELINE_KEY_PATH,
+        },
     ]);
     if (postHistoryAlreadyExists && upgradeTransaction) {
         const postHistoryStore = upgradeTransaction.objectStore('postHistory');

@@ -243,6 +243,10 @@ const localSearchServiceMock = vi.hoisted(() => ({
     searchLocalPosts: vi.fn(),
 }));
 
+const searchIndexRepositoryMock = vi.hoisted(() => ({
+    ensureReady: vi.fn(),
+}));
+
 const postDeletionServiceMock = vi.hoisted(() => ({
     requestDeletion: vi.fn(),
 }));
@@ -430,6 +434,10 @@ vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
     postHistoryLocalSearchService: localSearchServiceMock,
+}));
+
+vi.mock('../../lib/storage/postHistorySearchRepository', () => ({
+    postHistorySearchRepository: searchIndexRepositoryMock,
 }));
 
 vi.mock('../../lib/postDeletionService', () => ({
@@ -962,6 +970,7 @@ describe('PostHistoryDialog', () => {
             total: 0,
             hasNext: false,
         });
+        searchIndexRepositoryMock.ensureReady.mockResolvedValue('ready');
         postDeletionServiceMock.requestDeletion.mockResolvedValue({
             success: true,
             eventId: 'delete-event-id',

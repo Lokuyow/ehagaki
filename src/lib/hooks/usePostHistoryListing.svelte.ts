@@ -36,6 +36,7 @@ import {
     postHistoryLocalSearchService,
     type SearchLocalPostsResult,
 } from "../postHistoryLocalSearchService";
+import { postHistorySearchRepository } from "../storage/postHistorySearchRepository";
 import {
     consumePostHistoryShouldReturnToLatestAfterLocalPost,
     type PendingPostHistoryLatestRequest,
@@ -585,10 +586,13 @@ export function usePostHistoryListing({
         sparseSource: null as PostHistorySparseSource,
         hasSavedPostsOutsideVisibleRange: false,
         latestOlderBackfillUiResult: null as OlderBackfillUiResult | null,
+        searchIndexStatus: "idle" as "idle" | "building" | "ready" | "failed",
+        searchIndexProcessedCount: 0,
     });
 
     let loadRequestId = 0;
     let searchLoadRequestId = 0;
+    let searchIndexRequestId = 0;
     let isSearchPageLoading = $state(false);
     let hasStartedInitialSync = false;
     let hasAttemptedInitialLocalLoad = false;
@@ -862,6 +866,36 @@ export function usePostHistoryListing({
         appliedSearchQuery = "";
     }
 
+    async function prepareSearchIndex(): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex) return false;
+        if (state.searchIndexStatus === "ready") return true;
+
+        const requestId = ++searchIndexRequestId;
+        state.searchIndexStatus = "building";
+        state.searchIndexProcessedCount = 0;
+        try {
+            const result = await postHistorySearchRepository.ensureReady({
+                pubkeyHex,
+                shouldContinue: () => getShow() && requestId === searchIndexRequestId,
+                onProgress: ({ status, processedCount }) => {
+                    if (requestId !== searchIndexRequestId) return;
+                    state.searchIndexStatus = status;
+                    state.searchIndexProcessedCount = processedCount;
+                },
+            });
+            if (result !== "ready" || requestId !== searchIndexRequestId) return false;
+            postHistoryLocalSearchService.clearCache?.();
+            state.searchIndexStatus = "ready";
+            return true;
+        } catch {
+            if (requestId === searchIndexRequestId) {
+                state.searchIndexStatus = "failed";
+            }
+            return false;
+        }
+    }
+
     function clearCurrentListingState(): void {
         state.loadedPosts = [];
         state.totalCount = 0;
@@ -953,6 +987,8 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         invalidatePendingLoadRequests();
+        searchIndexRequestId += 1;
+        state.searchIndexStatus = "idle";
         postHistoryLocalSearchService.clearCache?.();
         relationRepairCoordinator.resetOlderRevealRepairContext();
         return shouldClearAllSessionScrollState;
@@ -963,6 +999,9 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         invalidatePendingLoadRequests();
+        searchIndexRequestId += 1;
+        state.searchIndexStatus = "idle";
+        state.searchIndexProcessedCount = 0;
         postHistoryLocalSearchService.clearCache?.();
         relationRepairCoordinator.resetOlderRevealRepairContext();
         state.syncStatus = "idle";
@@ -2292,7 +2331,7 @@ export function usePostHistoryListing({
         requestId: number,
     ): Promise<SearchLocalPostsResult | null> {
         const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex || !query) {
+        if (!pubkeyHex || !query || state.searchIndexStatus !== "ready") {
             return null;
         }
 
@@ -3609,6 +3648,11 @@ export function usePostHistoryListing({
             return;
         }
 
+        if (state.searchIndexStatus !== "ready") {
+            void prepareSearchIndex();
+            return;
+        }
+
         if (state.searchQuery !== appliedSearchQuery) {
             appliedSearchQuery = state.searchQuery;
             state.searchPage = 1;
@@ -3729,6 +3773,7 @@ export function usePostHistoryListing({
             return currentViewRefetchStatusMessageValues;
         },
         prepareForClose,
+        prepareSearchIndex,
         cancelCurrentSync,
         cancelCurrentViewRefetch,
         loadOlder,
