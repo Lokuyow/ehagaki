@@ -228,6 +228,31 @@ test.describe('PostHistoryDialog Playwright', () => {
         const chooseFileButton = importDialog.locator('button[aria-label="JSONLファイルを選択"]');
         await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
 
+        const initialUrl = page.url();
+        const nonFileDefaultsPrevented = await dropZone.evaluate((element) => {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.setData('text/uri-list', 'https://example.com/ignored');
+            const dragOverEvent = new DragEvent('dragover', {
+                bubbles: true,
+                cancelable: true,
+                dataTransfer,
+            });
+            const dropEvent = new DragEvent('drop', {
+                bubbles: true,
+                cancelable: true,
+                dataTransfer,
+            });
+            element.dispatchEvent(dragOverEvent);
+            element.dispatchEvent(dropEvent);
+            return {
+                dragOver: dragOverEvent.defaultPrevented,
+                drop: dropEvent.defaultPrevented,
+            };
+        });
+        expect(nonFileDefaultsPrevented).toEqual({ dragOver: true, drop: true });
+        expect(page.url()).toBe(initialUrl);
+        await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
+
         await dropZone.evaluate((element, jsonl) => {
             const file = new File([jsonl], 'post-history.jsonl', {
                 type: 'application/x-ndjson',

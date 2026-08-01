@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { readable } from "svelte/store";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PostHistoryImportDialog from "../../components/PostHistoryImportDialog.svelte";
@@ -154,6 +154,36 @@ describe("PostHistoryImportDialog", () => {
         expect(importFileMock).not.toHaveBeenCalled();
     });
 
+    it("非ファイルのdragoverとdropでもブラウザの既定動作を抑止する", () => {
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const dropZone = getDropZone();
+        const dataTransfer = { types: ["text/uri-list"], files: [] };
+        const dragOverEvent = createEvent.dragOver(dropZone, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer,
+        });
+        const dropEvent = createEvent.drop(dropZone, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer,
+        });
+
+        dropZone.dispatchEvent(dragOverEvent);
+        dropZone.dispatchEvent(dropEvent);
+
+        expect(dragOverEvent.defaultPrevented).toBe(true);
+        expect(dropEvent.defaultPrevented).toBe(true);
+        expect(importFileMock).not.toHaveBeenCalled();
+        expect(screen.queryByText("ここにドロップ")).toBeNull();
+    });
+
     it("処理中のドロップで二重実行せず、所有者がいない場合も開始しない", async () => {
         let resolveImport!: (result: PostHistoryJsonlImportResult) => void;
         importFileMock.mockReturnValue(new Promise((resolve) => {
@@ -214,10 +244,16 @@ describe("PostHistoryImportDialog", () => {
             },
         });
         const dropZone = getDropZone();
+        const dataTransfer = { types: ["Files"], files: [createFile()] };
         await fireEvent.dragEnter(dropZone, {
-            dataTransfer: { types: ["Files"], files: [createFile()] },
+            dataTransfer,
         });
+        await fireEvent.dragEnter(dropZone, { dataTransfer });
         expect(screen.getByText("ここにドロップ")).toBeTruthy();
+        await fireEvent.dragLeave(dropZone, { dataTransfer });
+        expect(screen.getByText("ここにドロップ")).toBeTruthy();
+        await fireEvent.dragLeave(dropZone, { dataTransfer });
+        expect(screen.getByText("JSONLファイルをここにドラッグ＆ドロップ")).toBeTruthy();
 
         open = false;
         await view.rerender({

@@ -91,10 +91,10 @@
     }
 
     function handleDragOver(event: DragEvent): void {
+        event.preventDefault();
         if (!hasDraggedFiles(event.dataTransfer)) {
             return;
         }
-        event.preventDefault();
     }
 
     function handleDragLeave(event: DragEvent): void {
@@ -105,10 +105,10 @@
     }
 
     function handleDrop(event: DragEvent): void {
+        event.preventDefault();
         if (!hasDraggedFiles(event.dataTransfer)) {
             return;
         }
-        event.preventDefault();
         dragDepth = 0;
         const file = event.dataTransfer?.files[0];
         if (file) {
