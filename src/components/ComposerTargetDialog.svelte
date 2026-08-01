@@ -1169,7 +1169,7 @@
         outline-offset: -1px;
     }
 
-    :global(.composer-target-clear-button) {
+    :global(html body button.composer-target-clear-button) {
         position: absolute;
         inset-block: 50%;
         inset-inline-end: 2px;
@@ -1180,19 +1180,26 @@
         align-items: center;
         justify-content: center;
         padding: 0;
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
         border: none;
-        background: transparent;
         color: var(--text-muted);
         z-index: 1;
     }
 
-    :global(.composer-target-clear-button:hover:not(:disabled)),
-    :global(.composer-target-clear-button:focus-visible) {
-        background-color: var(--button-hover-bg);
-        color: var(--button-hover-color);
+    :global(html body button.composer-target-clear-button:hover:not(:disabled)),
+    :global(html body button.composer-target-clear-button:active:not(:disabled)),
+    :global(html body button.composer-target-clear-button:focus-visible),
+    :global(html body button.composer-target-clear-button:disabled) {
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+        border: none;
+        color: var(--text-muted);
     }
 
-    :global(.composer-target-clear-button:focus-visible) {
+    :global(html body button.composer-target-clear-button:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
     }

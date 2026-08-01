@@ -1322,27 +1322,47 @@
         min-width: 0;
     }
 
-    :global(.clear-input-btn) {
+    :global(html body button.clear-input-btn) {
         position: absolute;
         inset: 50% auto 50% auto;
-        right: 8px;
+        right: 2px;
         transform: translateY(-50%);
-        width: 44px;
-        min-width: 44px;
-        height: 44px;
-        min-height: 44px;
+        width: 46px;
+        min-width: 46px;
+        height: 46px;
+        min-height: 46px;
         padding: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 999px;
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+        border: none;
+        color: var(--text-muted);
         flex: 0 0 auto;
         z-index: 1;
     }
 
+    :global(html body button.clear-input-btn:hover:not(:disabled)),
+    :global(html body button.clear-input-btn:active:not(:disabled)),
+    :global(html body button.clear-input-btn:focus-visible),
+    :global(html body button.clear-input-btn:disabled) {
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+        border: none;
+        color: var(--text-muted);
+    }
+
+    :global(html body button.clear-input-btn:focus-visible) {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+    }
+
     .clear-input-icon {
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 

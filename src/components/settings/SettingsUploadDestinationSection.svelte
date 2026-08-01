@@ -832,7 +832,7 @@
         outline-offset: -1px;
     }
 
-    :global(.upload-destination-url-clear-button) {
+    :global(html body button.upload-destination-url-clear-button) {
         position: absolute;
         inset-block: 50%;
         inset-inline-end: 2px;
@@ -840,22 +840,29 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 44px;
-        height: 44px;
+        width: 46px;
+        height: 46px;
         padding: 0;
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
         border: none;
-        background: transparent;
         color: var(--text-muted);
         z-index: 1;
     }
 
-    :global(.upload-destination-url-clear-button:hover:not(:disabled)),
-    :global(.upload-destination-url-clear-button:focus-visible) {
-        background-color: var(--button-hover-bg);
-        color: var(--button-hover-color);
+    :global(html body button.upload-destination-url-clear-button:hover:not(:disabled)),
+    :global(html body button.upload-destination-url-clear-button:active:not(:disabled)),
+    :global(html body button.upload-destination-url-clear-button:focus-visible),
+    :global(html body button.upload-destination-url-clear-button:disabled) {
+        --btn-bg: transparent;
+        background-color: transparent;
+        background-image: none;
+        border: none;
+        color: var(--text-muted);
     }
 
-    :global(.upload-destination-url-clear-button:focus-visible) {
+    :global(html body button.upload-destination-url-clear-button:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
     }
