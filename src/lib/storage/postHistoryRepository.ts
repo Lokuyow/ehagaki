@@ -962,6 +962,28 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             this.db.postHistory,
             this.db.postHistoryChildInteractions,
             async () => {
+                const firstPostHistoryRecord = await this.db.postHistory
+                    .orderBy("pubkeyHex")
+                    .first();
+                if (!firstPostHistoryRecord) {
+                    return;
+                }
+
+                const lastPostHistoryRecord = await this.db.postHistory
+                    .orderBy("pubkeyHex")
+                    .last();
+                const canClearEntirePostHistory =
+                    firstPostHistoryRecord.pubkeyHex === pubkeyHex
+                    && lastPostHistoryRecord?.pubkeyHex === pubkeyHex;
+
+                if (canClearEntirePostHistory) {
+                    await this.db.postHistoryChildInteractions.clear();
+                    await this.db.postHistory.clear();
+                    // The first record proved that at least one record existed.
+                    deletedPostHistoryCount = 1;
+                    return;
+                }
+
                 const parentEventIds = (await this.db.postHistory
                     .where("pubkeyHex")
                     .equals(pubkeyHex)

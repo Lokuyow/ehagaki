@@ -386,6 +386,58 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("deleteLocalHistoryForPubkey は単一pubkeyだけなら両テーブルのclearを使う", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const parentEventId = "1".repeat(64);
+        const childEventId = "2".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: parentEventId, pubkey }),
+        });
+        await db.postHistoryChildInteractions.put({
+            id: childEventId,
+            eventId: childEventId,
+            parentEventId,
+            authorPubkey: "e".repeat(64),
+            kind: 1,
+            content: "reply",
+            tags: [],
+            createdAt: 100,
+            relayUrls: [],
+            discoveredAs: ["direct-reply"],
+            rawEvent: {},
+            fetchedAt: 1000,
+            updatedAt: 1000,
+            schemaVersion: 1,
+        });
+
+        const postHistoryClearSpy = vi.spyOn(db.postHistory, "clear");
+        const childInteractionsClearSpy = vi.spyOn(
+            db.postHistoryChildInteractions,
+            "clear",
+        );
+        const postHistoryWhereSpy = vi.spyOn(db.postHistory, "where");
+        const childInteractionsWhereSpy = vi.spyOn(
+            db.postHistoryChildInteractions,
+            "where",
+        );
+        const revisionBefore = getPostHistorySearchRevision(pubkey);
+
+        await repository.deleteLocalHistoryForPubkey(pubkey);
+
+        expect(postHistoryClearSpy).toHaveBeenCalledOnce();
+        expect(childInteractionsClearSpy).toHaveBeenCalledOnce();
+        expect(postHistoryWhereSpy).not.toHaveBeenCalled();
+        expect(childInteractionsWhereSpy).not.toHaveBeenCalled();
+        await expect(db.postHistory.count()).resolves.toBe(0);
+        await expect(db.postHistoryChildInteractions.count()).resolves.toBe(0);
+        expect(getPostHistorySearchRevision(pubkey)).toBe(revisionBefore + 1);
+
+        db.close();
+    });
+
     it("deleteLocalHistoryForPubkey は関連キャッシュを一括削除してから対象履歴だけを削除し、commit後に検索リビジョンを更新する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
@@ -433,11 +485,18 @@ describe("DexiePostHistoryRepository", () => {
         ]);
 
         const transactionSpy = vi.spyOn(db, "transaction");
+        const postHistoryClearSpy = vi.spyOn(db.postHistory, "clear");
+        const childInteractionsClearSpy = vi.spyOn(
+            db.postHistoryChildInteractions,
+            "clear",
+        );
         const revisionBefore = getPostHistorySearchRevision(pubkey);
 
         await repository.deleteLocalHistoryForPubkey(pubkey);
 
         expect(transactionSpy).toHaveBeenCalledOnce();
+        expect(postHistoryClearSpy).not.toHaveBeenCalled();
+        expect(childInteractionsClearSpy).not.toHaveBeenCalled();
         await expect(repository.getAll({ pubkeyHex: pubkey })).resolves.toEqual([]);
         await expect(repository.getAll({ pubkeyHex: otherPubkey })).resolves.toHaveLength(1);
         await expect(
@@ -449,7 +508,70 @@ describe("DexiePostHistoryRepository", () => {
         await expect(
             db.postHistoryChildInteractions.where("parentEventId").equals(otherEventId).count(),
         ).resolves.toBe(1);
-        expect(getPostHistorySearchRevision(pubkey)).toBeGreaterThan(revisionBefore);
+        expect(getPostHistorySearchRevision(pubkey)).toBe(revisionBefore + 1);
+
+        db.close();
+    });
+
+    it("deleteLocalHistoryForPubkey は高速経路の途中失敗を両テーブルrollbackし、検索リビジョンを更新しない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const parentEventId = "1".repeat(64);
+        const childEventId = "2".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: parentEventId, pubkey }),
+        });
+        await db.postHistoryChildInteractions.put({
+            id: childEventId,
+            eventId: childEventId,
+            parentEventId,
+            authorPubkey: "e".repeat(64),
+            kind: 1,
+            content: "reply",
+            tags: [],
+            createdAt: 100,
+            relayUrls: [],
+            discoveredAs: ["direct-reply"],
+            rawEvent: {},
+            fetchedAt: 1000,
+            updatedAt: 1000,
+            schemaVersion: 1,
+        });
+        const revisionBefore = getPostHistorySearchRevision(pubkey);
+        const postHistoryClearSpy = vi
+            .spyOn(db.postHistory, "clear")
+            .mockRejectedValueOnce(new Error("post history clear failed"));
+
+        await expect(repository.deleteLocalHistoryForPubkey(pubkey)).rejects.toThrow(
+            "post history clear failed",
+        );
+        expect(postHistoryClearSpy).toHaveBeenCalledOnce();
+        await expect(db.postHistory.count()).resolves.toBe(1);
+        await expect(db.postHistoryChildInteractions.count()).resolves.toBe(1);
+        expect(getPostHistorySearchRevision(pubkey)).toBe(revisionBefore);
+
+        postHistoryClearSpy.mockRestore();
+        db.close();
+    });
+
+    it("deleteLocalHistoryForPubkey は対象履歴が空ならclearも検索リビジョン更新もしない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const postHistoryClearSpy = vi.spyOn(db.postHistory, "clear");
+        const childInteractionsClearSpy = vi.spyOn(
+            db.postHistoryChildInteractions,
+            "clear",
+        );
+        const revisionBefore = getPostHistorySearchRevision(pubkey);
+
+        await repository.deleteLocalHistoryForPubkey(pubkey);
+
+        expect(postHistoryClearSpy).not.toHaveBeenCalled();
+        expect(childInteractionsClearSpy).not.toHaveBeenCalled();
+        expect(getPostHistorySearchRevision(pubkey)).toBe(revisionBefore);
 
         db.close();
     });
