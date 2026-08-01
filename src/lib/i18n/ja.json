@@ -170,6 +170,8 @@
     "importTitle": "投稿履歴を読み込む",
     "importDescription": "Citrineなどから書き出したNostr JSONLに対応しています。署名済みのkind 1・42と削除要求を、この端末の投稿履歴へ統合します。",
     "importChooseFile": "JSONLファイルを選択",
+    "importDropHint": "JSONLファイルをここにドラッグ＆ドロップ",
+    "importDropActive": "ここにドロップ",
     "importReading": "読み込み中...",
     "importComplete": "読み込みが完了しました",
     "importPartial": "処理を完了しましたが、一部を取り込めませんでした",

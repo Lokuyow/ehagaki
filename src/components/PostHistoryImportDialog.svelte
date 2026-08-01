@@ -28,6 +28,7 @@
     let fileInput = $state<HTMLInputElement | null>(null);
     let running = $state(false);
     let result = $state<PostHistoryJsonlImportResult | null>(null);
+    let dragDepth = $state(0);
     let abortController: AbortController | null = null;
     let requestId = 0;
     let wasOpen = false;
@@ -45,6 +46,7 @@
     function resetState(): void {
         result = null;
         running = false;
+        dragDepth = 0;
         abortController = null;
         if (fileInput) {
             fileInput.value = "";
@@ -56,6 +58,7 @@
         abortController?.abort();
         abortController = null;
         running = false;
+        dragDepth = 0;
     }
 
     function handleOpenChange(nextOpen: boolean): void {
@@ -71,14 +74,50 @@
         }
     }
 
-    async function handleFileChange(event: Event): Promise<void> {
-        if (running || !ownerPubkeyHex) {
+    function hasDraggedFiles(dataTransfer: DataTransfer | null | undefined): boolean {
+        if (!dataTransfer) {
+            return false;
+        }
+        return Array.from(dataTransfer.types).includes("Files")
+            || dataTransfer.files.length > 0;
+    }
+
+    function handleDragEnter(event: DragEvent): void {
+        if (!hasDraggedFiles(event.dataTransfer)) {
             return;
         }
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        input.value = "";
-        if (!file) {
+        event.preventDefault();
+        dragDepth += 1;
+    }
+
+    function handleDragOver(event: DragEvent): void {
+        if (!hasDraggedFiles(event.dataTransfer)) {
+            return;
+        }
+        event.preventDefault();
+    }
+
+    function handleDragLeave(event: DragEvent): void {
+        if (dragDepth === 0 && !hasDraggedFiles(event.dataTransfer)) {
+            return;
+        }
+        dragDepth = Math.max(0, dragDepth - 1);
+    }
+
+    function handleDrop(event: DragEvent): void {
+        if (!hasDraggedFiles(event.dataTransfer)) {
+            return;
+        }
+        event.preventDefault();
+        dragDepth = 0;
+        const file = event.dataTransfer?.files[0];
+        if (file) {
+            void importFile(file);
+        }
+    }
+
+    async function importFile(file: File): Promise<void> {
+        if (running || !ownerPubkeyHex) {
             return;
         }
 
@@ -118,6 +157,15 @@
         }
     }
 
+    async function handleFileChange(event: Event): Promise<void> {
+        const input = event.currentTarget as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = "";
+        if (file) {
+            await importFile(file);
+        }
+    }
+
     $effect(() => {
         if (open && !wasOpen) {
             resetState();
@@ -150,17 +198,32 @@
         aria-label={$_("postHistory.importChooseFile")}
         onchange={handleFileChange}
     />
-    <Button
-        className="post-history-import-file-button"
-        variant="default"
-        shape="pill"
-        disabled={running || !ownerPubkeyHex}
-        ariaLabel={$_("postHistory.importChooseFile")}
-        onClick={chooseFile}
+    <div
+        class="import-drop-zone"
+        role="presentation"
+        class:import-drop-zone-active={dragDepth > 0}
+        ondragenter={handleDragEnter}
+        ondragover={handleDragOver}
+        ondragleave={handleDragLeave}
+        ondrop={handleDrop}
     >
-        <span class="import-icon svg-icon" aria-hidden="true"></span>
-        <span>{$_("postHistory.importChooseFile")}</span>
-    </Button>
+        <Button
+            className="post-history-import-file-button"
+            variant="default"
+            shape="pill"
+            disabled={running || !ownerPubkeyHex}
+            ariaLabel={$_("postHistory.importChooseFile")}
+            onClick={chooseFile}
+        >
+            <span class="import-icon svg-icon" aria-hidden="true"></span>
+            <span>{$_("postHistory.importChooseFile")}</span>
+        </Button>
+        <p class="import-drop-hint">
+            {dragDepth > 0
+                ? $_("postHistory.importDropActive")
+                : $_("postHistory.importDropHint")}
+        </p>
+    </div>
 
     {#if statusKey}
         <div
@@ -265,7 +328,39 @@
     }
 
     :global(.post-history-import-file-button) {
+        margin-top: 0;
+    }
+
+    .import-drop-zone {
+        width: 100%;
         margin-top: 16px;
+        padding: 0;
+        border: 1px dashed transparent;
+        border-radius: 10px;
+        text-align: center;
+        transition: background-color 120ms ease, border-color 120ms ease;
+    }
+
+    .import-drop-zone-active {
+        border-color: var(--accent-color, var(--primary-color));
+        background: color-mix(in srgb, var(--accent-color, var(--primary-color)), transparent 90%);
+    }
+
+    .import-drop-hint {
+        display: none;
+        margin: 8px 0 0;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .import-drop-zone {
+            padding: 12px;
+        }
+
+        .import-drop-hint {
+            display: block;
+        }
     }
 
     .import-icon {

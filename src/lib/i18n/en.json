@@ -170,6 +170,8 @@
     "importTitle": "Import post history",
     "importDescription": "Supports Nostr JSONL exported from Citrine and similar tools. Signed kind 1 and 42 events and deletion requests are merged into post history on this device.",
     "importChooseFile": "Choose JSONL file",
+    "importDropHint": "Drag and drop a JSONL file here",
+    "importDropActive": "Drop here",
     "importReading": "Reading...",
     "importComplete": "Import complete",
     "importPartial": "Import completed, but some items could not be imported",

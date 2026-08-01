@@ -20,6 +20,8 @@ const translations: Record<string, string> = {
     "postHistory.importTitle": "投稿履歴を読み込む",
     "postHistory.importDescription": "Citrineなどから書き出したNostr JSONLに対応",
     "postHistory.importChooseFile": "JSONLファイルを選択",
+    "postHistory.importDropHint": "JSONLファイルをここにドラッグ＆ドロップ",
+    "postHistory.importDropActive": "ここにドロップ",
     "postHistory.importReading": "読み込み中...",
     "postHistory.importComplete": "読み込みが完了しました",
     "postHistory.importPartial": "処理を完了しましたが、一部を取り込めませんでした",
@@ -88,6 +90,150 @@ function createResult(
 describe("PostHistoryImportDialog", () => {
     beforeEach(() => {
         importFileMock.mockReset();
+    });
+
+    function getDropZone() {
+        return screen.getByText("JSONLファイルをここにドラッグ＆ドロップ").parentElement as HTMLElement;
+    }
+
+    function createFile() {
+        return new File(["{}"], "history.jsonl", { type: "application/x-ndjson" });
+    }
+
+    it("ファイル選択で既存のインポートサービスへ先頭のファイルを渡す", async () => {
+        importFileMock.mockResolvedValue(createResult());
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        const firstFile = createFile();
+        await fireEvent.change(input, {
+            target: { files: [firstFile, createFile()] },
+        });
+
+        await waitFor(() => expect(importFileMock).toHaveBeenCalledTimes(1));
+        expect(importFileMock.mock.calls[0][0].file).toBe(firstFile);
+    });
+
+    it("ファイルのドロップで既存のインポートサービスへ渡す", async () => {
+        importFileMock.mockResolvedValue(createResult());
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const file = createFile();
+        await fireEvent.drop(getDropZone(), {
+            dataTransfer: { types: ["Files"], files: [file, createFile()] },
+        });
+
+        await waitFor(() => expect(importFileMock).toHaveBeenCalledTimes(1));
+        expect(importFileMock.mock.calls[0][0].file).toBe(file);
+    });
+
+    it("ファイルを含まないドロップではインポートを開始しない", async () => {
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+
+        await fireEvent.drop(getDropZone(), {
+            dataTransfer: { types: ["text/uri-list"], files: [] },
+        });
+
+        expect(importFileMock).not.toHaveBeenCalled();
+    });
+
+    it("処理中のドロップで二重実行せず、所有者がいない場合も開始しない", async () => {
+        let resolveImport!: (result: PostHistoryJsonlImportResult) => void;
+        importFileMock.mockReturnValue(new Promise((resolve) => {
+            resolveImport = resolve;
+        }));
+        const view = render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const dropZone = getDropZone();
+        const file = createFile();
+        await fireEvent.drop(dropZone, { dataTransfer: { types: ["Files"], files: [file] } });
+        await fireEvent.drop(dropZone, { dataTransfer: { types: ["Files"], files: [file] } });
+        expect(importFileMock).toHaveBeenCalledTimes(1);
+        resolveImport(createResult());
+        await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+
+        await view.rerender({
+            open: true,
+            ownerPubkeyHex: null,
+            getCurrentPubkeyHex: () => null,
+        });
+        await fireEvent.drop(getDropZone(), { dataTransfer: { types: ["Files"], files: [file] } });
+        expect(importFileMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("ドロップ経由でも完了結果とonImported通知を維持する", async () => {
+        importFileMock.mockResolvedValue(createResult({ insertedPostCount: 2 }));
+        const onImported = vi.fn();
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+                onImported,
+            },
+        });
+
+        await fireEvent.drop(getDropZone(), {
+            dataTransfer: { types: ["Files"], files: [createFile()] },
+        });
+
+        await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+        expect(screen.getByText("新規追加").parentElement?.textContent).toContain("2");
+        expect(onImported).toHaveBeenCalledTimes(1);
+    });
+
+    it("ダイアログを閉じて再表示するとドラッグ状態をリセットする", async () => {
+        let open = true;
+        const view = render(PostHistoryImportDialog, {
+            props: {
+                open,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const dropZone = getDropZone();
+        await fireEvent.dragEnter(dropZone, {
+            dataTransfer: { types: ["Files"], files: [createFile()] },
+        });
+        expect(screen.getByText("ここにドロップ")).toBeTruthy();
+
+        open = false;
+        await view.rerender({
+            open,
+            ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64),
+        });
+        open = true;
+        await view.rerender({
+            open,
+            ownerPubkeyHex: "a".repeat(64),
+            getCurrentPubkeyHex: () => "a".repeat(64),
+        });
+
+        expect(screen.queryByText("ここにドロップ")).toBeNull();
+        expect(screen.getByText("JSONLファイルをここにドラッグ＆ドロップ")).toBeTruthy();
     });
 
     it("ファイル選択キャンセルをエラーにせずimportを開始しない", async () => {

@@ -216,6 +216,62 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByText(harness.importPostContent, { exact: true })).toBeVisible();
     });
 
+    test('desktop JSONL import also starts from a file drop without child-element flicker', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoHarness(page);
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '投稿履歴を読み込む' }).click();
+
+        const importDialog = page.locator('.post-history-import-dialog');
+        const dropZone = importDialog.locator('.import-drop-zone');
+        const chooseFileButton = importDialog.locator('button[aria-label="JSONLファイルを選択"]');
+        await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
+
+        await dropZone.evaluate((element, jsonl) => {
+            const file = new File([jsonl], 'post-history.jsonl', {
+                type: 'application/x-ndjson',
+            });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            element.dispatchEvent(new DragEvent('dragenter', {
+                bubbles: true,
+                dataTransfer,
+            }));
+        }, harness.importEventJsonl);
+        await expect(dropZone).toContainText('ここにドロップ');
+
+        await chooseFileButton.evaluate((element) => {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(new File(['unused'], 'unused.jsonl'));
+            element.dispatchEvent(new DragEvent('dragenter', {
+                bubbles: true,
+                dataTransfer,
+            }));
+            element.dispatchEvent(new DragEvent('dragleave', {
+                bubbles: true,
+                dataTransfer,
+            }));
+        });
+        await expect(dropZone).toContainText('ここにドロップ');
+
+        await dropZone.evaluate((element, jsonl) => {
+            const file = new File([jsonl], 'post-history.jsonl', {
+                type: 'application/x-ndjson',
+            });
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            element.dispatchEvent(new DragEvent('drop', {
+                bubbles: true,
+                dataTransfer,
+            }));
+        }, harness.importEventJsonl);
+
+        await expect(importDialog.getByText('読み込みが完了しました')).toBeVisible();
+        await expect(importDialog.getByText('新規追加').locator('..')).toContainText('1');
+        await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
+    });
+
     test('saved posts outside the visible range can be viewed without changing the range', async ({ page }) => {
         const harness = await gotoSparseHarness(page);
 
