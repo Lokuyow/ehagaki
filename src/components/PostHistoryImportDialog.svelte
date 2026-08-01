@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { Dialog } from "bits-ui";
+    import { Dialog, Progress } from "bits-ui";
+    import { onDestroy } from "svelte";
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import {
         postHistoryJsonlImportService,
+        type PostHistoryJsonlImportProgress,
         type PostHistoryJsonlImportResult,
     } from "../lib/postHistoryJsonlImportService";
 
@@ -28,10 +30,83 @@
     let fileInput = $state<HTMLInputElement | null>(null);
     let running = $state(false);
     let result = $state<PostHistoryJsonlImportResult | null>(null);
+    let importProgress = $state<PostHistoryJsonlImportProgress | null>(null);
+    let processedBytes = $state(0);
+    let totalBytes = $state(0);
+    let elapsedMs = $state(0);
     let dragDepth = $state(0);
     let abortController: AbortController | null = null;
+    let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+    let startedAt: number | null = null;
     let requestId = 0;
     let wasOpen = false;
+
+    let displayedProcessedBytes = $derived(importProgress?.processedBytes ?? processedBytes);
+    let displayedTotalBytes = $derived(importProgress?.totalBytes ?? totalBytes);
+    let progressPercentage = $derived.by(() => {
+        if (displayedTotalBytes <= 0) {
+            return 0;
+        }
+        return Math.min(100, Math.max(0, Math.round(
+            displayedProcessedBytes / displayedTotalBytes * 100,
+        )));
+    });
+    let remainingTimeMs = $derived.by(() => {
+        if (displayedProcessedBytes <= 0
+            || displayedTotalBytes <= 0
+            || displayedProcessedBytes >= displayedTotalBytes
+            || elapsedMs < 1000) {
+            return null;
+        }
+        const speed = displayedProcessedBytes / elapsedMs;
+        const remaining = (displayedTotalBytes - displayedProcessedBytes) / speed;
+        return Number.isFinite(remaining) && remaining >= 0 ? remaining : null;
+    });
+
+    function formatDuration(durationMs: number): string {
+        const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+        const totalMinutes = Math.floor(totalSeconds / 60);
+        const minutes = totalMinutes % 60;
+        if (totalMinutes < 60) {
+            return `${minutes}:${seconds}`;
+        }
+        return `${Math.floor(totalMinutes / 60)}:${String(minutes).padStart(2, "0")}:${seconds}`;
+    }
+
+    function updateElapsedTime(): void {
+        if (startedAt === null) {
+            return;
+        }
+        elapsedMs = Math.max(0, performance.now() - startedAt);
+    }
+
+    function stopElapsedTimer(): void {
+        if (elapsedTimer !== null) {
+            clearInterval(elapsedTimer);
+            elapsedTimer = null;
+        }
+        startedAt = null;
+    }
+
+    function startElapsedTimer(): void {
+        stopElapsedTimer();
+        elapsedMs = 0;
+        startedAt = performance.now();
+        elapsedTimer = setInterval(updateElapsedTime, 1000);
+    }
+
+    function resetProgressState(): void {
+        stopElapsedTimer();
+        importProgress = null;
+        processedBytes = 0;
+        totalBytes = 0;
+        elapsedMs = 0;
+    }
+
+    function getProgressIndicatorStyle(value: number): string {
+        return `translate: -${100 - value}% 0;`;
+    }
 
     let statusKey = $derived.by(() => {
         if (running) return "postHistory.importReading";
@@ -46,6 +121,7 @@
     function resetState(): void {
         result = null;
         running = false;
+        resetProgressState();
         dragDepth = 0;
         abortController = null;
         if (fileInput) {
@@ -58,6 +134,7 @@
         abortController?.abort();
         abortController = null;
         running = false;
+        resetProgressState();
         dragDepth = 0;
     }
 
@@ -126,6 +203,10 @@
         abortController = controller;
         running = true;
         result = null;
+        importProgress = null;
+        processedBytes = 0;
+        totalBytes = Number.isFinite(file.size) && file.size > 0 ? file.size : 0;
+        startElapsedTimer();
         try {
             const importResult = await postHistoryJsonlImportService.importFile({
                 file,
@@ -134,7 +215,15 @@
                 signal: controller.signal,
                 onProgress: (progress) => {
                     if (currentRequestId === requestId && open) {
-                        result = { ...progress };
+                        importProgress = {
+                            result: { ...progress.result },
+                            processedBytes: progress.processedBytes,
+                            totalBytes: progress.totalBytes,
+                        };
+                        processedBytes = progress.processedBytes;
+                        totalBytes = progress.totalBytes;
+                        result = { ...progress.result };
+                        updateElapsedTime();
                     }
                 },
             });
@@ -152,6 +241,7 @@
         } finally {
             if (currentRequestId === requestId) {
                 running = false;
+                stopElapsedTimer();
                 abortController = null;
             }
         }
@@ -174,6 +264,8 @@
         }
         wasOpen = open;
     });
+
+    onDestroy(stopElapsedTimer);
 </script>
 
 <DialogWrapper
@@ -240,6 +332,43 @@
                 />
             {/if}
             <span>{$_(statusKey)}</span>
+        </div>
+    {/if}
+
+    {#if running}
+        <div class="import-progress" aria-label={$_("postHistory.importProgress")}>
+            <div class="import-progress-summary">
+                <span class="import-progress-metric">
+                    <span>{$_("postHistory.importProgress")}</span>
+                    <span class="import-progress-number">{progressPercentage}%</span>
+                </span>
+                <span class="import-progress-metric">
+                    <span>{$_("postHistory.importElapsedTime")}</span>
+                    <span class="import-progress-number">{formatDuration(elapsedMs)}</span>
+                </span>
+                <span class="import-progress-metric">
+                    <span>{$_("postHistory.importEstimatedRemainingTime")}</span>
+                    <span class="import-progress-number">
+                        {#if remainingTimeMs === null}
+                            {$_("postHistory.importRemainingTimeCalculating")}
+                        {:else}
+                            {$_("postHistory.importApproximate")} {formatDuration(remainingTimeMs)}
+                        {/if}
+                    </span>
+                </span>
+            </div>
+            <Progress.Root
+                value={progressPercentage}
+                max={100}
+                aria-label={$_("postHistory.importProgressBarLabel")}
+                aria-valuetext={`${progressPercentage}%`}
+                class="import-progress-root"
+            >
+                <div
+                    class="import-progress-indicator"
+                    style={getProgressIndicatorStyle(progressPercentage)}
+                ></div>
+            </Progress.Root>
         </div>
     {/if}
 
@@ -386,6 +515,55 @@
         color: var(--error-color, #d32f2f);
     }
 
+    .import-progress {
+        width: 100%;
+        margin-top: 12px;
+    }
+
+    .import-progress-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .import-progress-metric {
+        display: flex;
+        justify-content: space-between;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .import-progress-number {
+        color: var(--text);
+        text-align: right;
+    }
+
+    :global(.import-progress-root) {
+        width: 100%;
+        height: 12px;
+        border-radius: 999px;
+        background-color: color-mix(in srgb, var(--text) 12%, transparent);
+        overflow: hidden;
+    }
+
+    :global(.import-progress-indicator) {
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background-color: var(--theme);
+        transition: translate 0.3s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        :global(.import-progress-indicator) {
+            transition: none;
+        }
+    }
+
     :global(.post-history-import-loading) {
         flex: 0 0 auto;
     }
@@ -438,6 +616,10 @@
     }
 
     @media (max-width: 680px) {
+        .import-progress-summary {
+            grid-template-columns: 1fr;
+        }
+
         .import-results {
             grid-template-columns: 1fr;
         }

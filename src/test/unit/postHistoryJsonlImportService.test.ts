@@ -22,16 +22,43 @@ function createSignedEvent(
     }, secretKey);
 }
 
-function createFile(content: string): Pick<File, "stream"> {
+function createFile(content: string): Pick<File, "stream" | "size"> {
     const bytes = new TextEncoder().encode(content);
     return {
+        size: bytes.byteLength,
         stream: () => new ReadableStream<Uint8Array>({
             start(controller) {
                 controller.enqueue(bytes);
                 controller.close();
             },
         }),
-    } as Pick<File, "stream">;
+    } as Pick<File, "stream" | "size">;
+}
+
+function createChunkedFile(
+    content: string,
+    chunkSizes: number[],
+    onPull?: (chunkIndex: number) => void,
+): Pick<File, "stream" | "size"> {
+    const bytes = new TextEncoder().encode(content);
+    let offset = 0;
+    let chunkIndex = 0;
+    return {
+        size: bytes.byteLength,
+        stream: () => new ReadableStream<Uint8Array>({
+            pull(controller) {
+                if (offset >= bytes.byteLength) {
+                    controller.close();
+                    return;
+                }
+                onPull?.(chunkIndex);
+                const chunkSize = chunkSizes[chunkIndex] ?? bytes.byteLength - offset;
+                controller.enqueue(bytes.slice(offset, offset + chunkSize));
+                offset += chunkSize;
+                chunkIndex += 1;
+            },
+        }),
+    };
 }
 
 function createRepositoryMocks() {
@@ -542,7 +569,10 @@ describe("PostHistoryJsonlImportService", () => {
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
-            file: { stream: () => stream } as Pick<File, "stream">,
+            file: {
+                size: encoder.encode(`${JSON.stringify(event)}\n`).byteLength + 1,
+                stream: () => stream,
+            },
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -608,8 +638,10 @@ describe("PostHistoryJsonlImportService", () => {
         expect(result.insertedPostCount).toBe(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1);
         expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents).not.toHaveBeenCalled();
         expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
-            status: "account-changed",
-            insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1,
+            result: expect.objectContaining({
+                status: "account-changed",
+                insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1,
+            }),
         }));
     });
 
@@ -647,12 +679,12 @@ describe("PostHistoryJsonlImportService", () => {
         });
 
         expect(onProgress).toHaveBeenCalledTimes(2);
-        expect(onProgress.mock.calls.map(([progress]) => progress.insertedPostCount))
+        expect(onProgress.mock.calls.map(([progress]) => progress.result.insertedPostCount))
             .toEqual([POST_HISTORY_JSONL_IMPORT_BATCH_SIZE, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2]);
-        expect(onProgress.mock.calls[0][0].status).toBe("completed");
-        expect(onProgress.mock.calls[0][0].insertedPostCount)
+        expect(onProgress.mock.calls[0][0].result.status).toBe("completed");
+        expect(onProgress.mock.calls[0][0].result.insertedPostCount)
             .toBe(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
-        expect(onProgress.mock.calls[1][0]).toEqual(result);
+        expect(onProgress.mock.calls[1][0].result).toEqual(result);
         await Promise.resolve();
         expect(onProgress).toHaveBeenCalledTimes(2);
     });
@@ -695,6 +727,67 @@ describe("PostHistoryJsonlImportService", () => {
         expect(onProgress).toHaveBeenCalledTimes(3);
     });
 
+    it("複数チャンクの処理済みバイト数が増加しFile.sizeと一致する", async () => {
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        const file = createChunkedFile("a\nb\nc\n", [2, 2, 2], () => {
+            now += 300;
+        });
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const onProgress = vi.fn();
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file,
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+            onProgress,
+        });
+
+        const processedBytes = onProgress.mock.calls.map(([progress]) => progress.processedBytes);
+        expect(processedBytes.length).toBeGreaterThanOrEqual(2);
+        expect(processedBytes).toEqual([...processedBytes].sort((a, b) => a - b));
+        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+            processedBytes: file.size,
+            totalBytes: file.size,
+            result,
+        }));
+    });
+
+    it("チャンク進捗も250ms未満では間引き、250ms経過後は通知する", async () => {
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        const onProgress = vi.fn();
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+        const pubkey = getPublicKey(generateSecretKey());
+        const file = createChunkedFile("a\nb\nc\n", [2, 2, 2], () => {
+            now += 100;
+        });
+
+        await service.importFile({
+            file,
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+            onProgress,
+        });
+
+        expect(onProgress).toHaveBeenCalledTimes(2);
+
+        now = 0;
+        onProgress.mockClear();
+        const secondPubkey = getPublicKey(generateSecretKey());
+        await service.importFile({
+            file: createChunkedFile("a\nb\nc\n", [2, 2, 2], () => {
+                now += 250;
+            }),
+            ownerPubkeyHex: secondPubkey,
+            getCurrentPubkeyHex: () => secondPubkey,
+            onProgress,
+        });
+        expect(onProgress.mock.calls.length).toBeGreaterThan(2);
+    });
+
     it("中間通知直後でもpartialの最終結果を強制通知する", async () => {
         vi.spyOn(performance, "now").mockReturnValue(0);
         const secretKey = generateSecretKey();
@@ -716,9 +809,11 @@ describe("PostHistoryJsonlImportService", () => {
         expect(result.status).toBe("partial");
         expect(onProgress).toHaveBeenCalledTimes(2);
         expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
-            status: "partial",
-            insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE,
-            invalidJsonCount: 1,
+            result: expect.objectContaining({
+                status: "partial",
+                insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE,
+                invalidJsonCount: 1,
+            }),
         }));
     });
 
@@ -757,10 +852,11 @@ describe("PostHistoryJsonlImportService", () => {
 
         const result = await service.importFile({
             file: {
+                size: 0,
                 stream: () => {
                     throw new Error("stream unavailable");
                 },
-            } as unknown as Pick<File, "stream">,
+            } as unknown as Pick<File, "stream" | "size">,
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
             onProgress,
@@ -769,6 +865,8 @@ describe("PostHistoryJsonlImportService", () => {
         expect(result.status).toBe("failed");
         expect(result.nonEmptyLineCount).toBe(0);
         expect(onProgress).toHaveBeenCalledTimes(1);
-        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed" }));
+        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+            result: expect.objectContaining({ status: "failed" }),
+        }));
     });
 });

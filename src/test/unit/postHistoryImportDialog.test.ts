@@ -1,8 +1,11 @@
 import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { readable } from "svelte/store";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PostHistoryImportDialog from "../../components/PostHistoryImportDialog.svelte";
-import type { PostHistoryJsonlImportResult } from "../../lib/postHistoryJsonlImportService";
+import type {
+    PostHistoryJsonlImportProgress,
+    PostHistoryJsonlImportResult,
+} from "../../lib/postHistoryJsonlImportService";
 
 const importFileMock = vi.hoisted(() => vi.fn());
 
@@ -23,6 +26,12 @@ const translations: Record<string, string> = {
     "postHistory.importDropHint": "JSONLファイルをここにドラッグ＆ドロップ",
     "postHistory.importDropActive": "ここにドロップ",
     "postHistory.importReading": "読み込み中...",
+    "postHistory.importProgress": "進捗",
+    "postHistory.importElapsedTime": "経過時間",
+    "postHistory.importEstimatedRemainingTime": "推定残り時間",
+    "postHistory.importRemainingTimeCalculating": "計算中...",
+    "postHistory.importApproximate": "約",
+    "postHistory.importProgressBarLabel": "JSONLインポートの進捗",
     "postHistory.importComplete": "読み込みが完了しました",
     "postHistory.importPartial": "処理を完了しましたが、一部を取り込めませんでした",
     "postHistory.importFailed": "ファイルを読み込めませんでした",
@@ -90,6 +99,11 @@ function createResult(
 describe("PostHistoryImportDialog", () => {
     beforeEach(() => {
         importFileMock.mockReset();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
     function getDropZone() {
@@ -360,5 +374,104 @@ describe("PostHistoryImportDialog", () => {
         expect(await screen.findByText(
             "処理を完了しましたが、一部を取り込めませんでした",
         )).toBeTruthy();
+    });
+
+    it("インポート中にバイト進捗、経過時間、計算中の残り時間を表示する", async () => {
+        vi.useFakeTimers();
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        let emitProgress!: (progress: Readonly<PostHistoryJsonlImportProgress>) => void;
+        importFileMock.mockImplementation(({ onProgress }) => {
+            emitProgress = onProgress;
+            return new Promise<PostHistoryJsonlImportResult>(() => undefined);
+        });
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+
+        await fireEvent.change(input, {
+            target: { files: [new File(["1234567890"], "history.jsonl")] },
+        });
+
+        expect(screen.getByRole("progressbar").getAttribute("aria-valuetext")).toBe("0%");
+        expect(screen.getByText("進捗").parentElement?.textContent).toContain("0%");
+        expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:00");
+        expect(screen.getByText("推定残り時間").parentElement?.textContent)
+            .toContain("計算中...");
+
+        now = 12_000;
+        vi.advanceTimersByTime(1_000);
+        emitProgress({
+            result: createResult(),
+            processedBytes: 50,
+            totalBytes: 100,
+        });
+        await waitFor(() => {
+            expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50");
+        });
+        expect(screen.getByText("進捗").parentElement?.textContent).toContain("50%");
+        expect(screen.getByText("経過時間").parentElement?.textContent).toContain("0:12");
+        expect(screen.getByText("推定残り時間").parentElement?.textContent)
+            .toContain("約 0:12");
+    });
+
+    it("1時間以上の経過時間をh:mm:ssで表示する", async () => {
+        vi.useFakeTimers();
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        let emitProgress!: (progress: Readonly<PostHistoryJsonlImportProgress>) => void;
+        importFileMock.mockImplementation(({ onProgress }) => {
+            emitProgress = onProgress;
+            return new Promise<PostHistoryJsonlImportResult>(() => undefined);
+        });
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, {
+            target: { files: [new File(["1"], "history.jsonl")] },
+        });
+
+        now = 3_722_000;
+        vi.advanceTimersByTime(1_000);
+        emitProgress({
+            result: createResult(),
+            processedBytes: 1,
+            totalBytes: 2,
+        });
+        await waitFor(() => {
+            expect(screen.getByText("経過時間").parentElement?.textContent)
+                .toContain("1:02:02");
+        });
+    });
+
+    it("完了後は実行中専用の進捗表示を隠す", async () => {
+        importFileMock.mockResolvedValue(createResult());
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+        await fireEvent.change(input, {
+            target: { files: [new File(["1"], "history.jsonl")] },
+        });
+
+        await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
+        expect(screen.queryByRole("progressbar")).toBeNull();
     });
 });

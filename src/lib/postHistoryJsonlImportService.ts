@@ -46,12 +46,18 @@ export interface PostHistoryJsonlImportResult {
     appliedDeletionPostCount: number;
 }
 
+export interface PostHistoryJsonlImportProgress {
+    result: Readonly<PostHistoryJsonlImportResult>;
+    processedBytes: number;
+    totalBytes: number;
+}
+
 export interface PostHistoryJsonlImportInput {
-    file: Pick<File, "stream">;
+    file: Pick<File, "stream" | "size">;
     ownerPubkeyHex: string;
     getCurrentPubkeyHex: () => string | null | undefined;
     signal?: AbortSignal;
-    onProgress?: (result: Readonly<PostHistoryJsonlImportResult>) => void;
+    onProgress?: (progress: Readonly<PostHistoryJsonlImportProgress>) => void;
 }
 
 export interface PostHistoryJsonlImportServiceDeps {
@@ -123,6 +129,10 @@ export class PostHistoryJsonlImportService {
         const buffer: BufferedImportEvent[] = [];
         let hadSaveFailure = false;
         let lastProgressNotificationAt: number | null = null;
+        const totalBytes = Number.isFinite(input.file.size) && input.file.size > 0
+            ? input.file.size
+            : 0;
+        let processedBytes = 0;
         const hasInputRejections = (): boolean =>
             result.invalidJsonCount > 0
             || result.invalidStructureCount > 0
@@ -148,7 +158,20 @@ export class PostHistoryJsonlImportService {
                 return;
             }
             lastProgressNotificationAt = now;
-            input.onProgress(copyResult(result));
+            input.onProgress({
+                result: copyResult(result),
+                processedBytes,
+                totalBytes,
+            });
+        };
+        const addProcessedBytes = (byteCount: number): void => {
+            if (byteCount <= 0) {
+                return;
+            }
+            processedBytes = Math.min(
+                totalBytes,
+                Math.max(processedBytes, processedBytes + byteCount),
+            );
         };
         const flush = async (): Promise<PostHistoryJsonlImportStatus | null> => {
             if (buffer.length === 0) {
@@ -325,6 +348,8 @@ export class PostHistoryJsonlImportService {
                         return result;
                     }
                 }
+                addProcessedBytes(chunk.value.byteLength);
+                emitProgress();
             }
         } catch {
             const stopStatus = getStopStatus();
