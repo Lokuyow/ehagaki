@@ -130,29 +130,29 @@ describe("PostHistoryJsonlImportService", () => {
     it.each([
         {
             name: "不正JSON",
-            line: "not-json",
+            createLine: () => "not-json",
             field: "invalidJsonCount" as const,
         },
         {
             name: "不正構造",
-            line: JSON.stringify({ kind: 1 }),
+            createLine: () => JSON.stringify({ kind: 1 }),
             field: "invalidStructureCount" as const,
         },
         {
             name: "不正IDまたは署名",
-            line: JSON.stringify({
-                ...createSignedEvent(generateSecretKey()),
+            createLine: (secretKey: Uint8Array) => JSON.stringify({
+                ...createSignedEvent(secretKey),
                 sig: "0".repeat(128),
             }),
             field: "invalidIdOrSignatureCount" as const,
         },
-    ])("$nameだけのファイルはcompletedにならない", async ({ line, field }) => {
+    ])("$nameだけのファイルはcompletedにならない", async ({ createLine, field }) => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);
         const service = new PostHistoryJsonlImportService(createRepositoryMocks());
 
         const result = await service.importFile({
-            file: createFile(line),
+            file: createFile(createLine(secretKey)),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
         });
@@ -338,6 +338,112 @@ describe("PostHistoryJsonlImportService", () => {
             otherAccountCount: 1,
             unsupportedKindCount: 1,
         });
+    });
+
+    it("別アカウントかつ署名不正のイベントは署名不正にせず保存しない", async () => {
+        const ownerSecretKey = generateSecretKey();
+        const otherSecretKey = generateSecretKey();
+        const ownerPubkey = getPublicKey(ownerSecretKey);
+        const otherEvent = {
+            ...createSignedEvent(otherSecretKey),
+            sig: "0".repeat(128),
+        };
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(JSON.stringify(otherEvent)),
+            ownerPubkeyHex: ownerPubkey,
+            getCurrentPubkeyHex: () => ownerPubkey,
+        });
+
+        expect(result).toMatchObject({
+            status: "completed",
+            otherAccountCount: 1,
+            invalidIdOrSignatureCount: 0,
+        });
+        expect(deps.postHistoryRepository.upsertFetchedEvents).not.toHaveBeenCalled();
+        expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents).not.toHaveBeenCalled();
+    });
+
+    it("対象外kindかつ署名不正のイベントは署名不正にせず保存しない", async () => {
+        const secretKey = generateSecretKey();
+        const ownerPubkey = getPublicKey(secretKey);
+        const unsupportedEvent = {
+            ...createSignedEvent(secretKey, { kind: 7 }),
+            sig: "0".repeat(128),
+        };
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(JSON.stringify(unsupportedEvent)),
+            ownerPubkeyHex: ownerPubkey,
+            getCurrentPubkeyHex: () => ownerPubkey,
+        });
+
+        expect(result).toMatchObject({
+            status: "completed",
+            unsupportedKindCount: 1,
+            invalidIdOrSignatureCount: 0,
+        });
+        expect(deps.postHistoryRepository.upsertFetchedEvents).not.toHaveBeenCalled();
+        expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents).not.toHaveBeenCalled();
+    });
+
+    it("同一の別アカウントイベントを各行の除外理由へ数えファイル内重複にしない", async () => {
+        const ownerSecretKey = generateSecretKey();
+        const otherSecretKey = generateSecretKey();
+        const ownerPubkey = getPublicKey(ownerSecretKey);
+        const otherEvent = createSignedEvent(otherSecretKey);
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(`${JSON.stringify(otherEvent)}\n${JSON.stringify(otherEvent)}`),
+            ownerPubkeyHex: ownerPubkey,
+            getCurrentPubkeyHex: () => ownerPubkey,
+        });
+
+        expect(result).toMatchObject({
+            otherAccountCount: 2,
+            fileDuplicateCount: 0,
+        });
+    });
+
+    it("同一の対象外kindイベントを各行の除外理由へ数えファイル内重複にしない", async () => {
+        const secretKey = generateSecretKey();
+        const ownerPubkey = getPublicKey(secretKey);
+        const unsupportedEvent = createSignedEvent(secretKey, { kind: 7 });
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(`${JSON.stringify(unsupportedEvent)}\n${JSON.stringify(unsupportedEvent)}`),
+            ownerPubkeyHex: ownerPubkey,
+            getCurrentPubkeyHex: () => ownerPubkey,
+        });
+
+        expect(result).toMatchObject({
+            unsupportedKindCount: 2,
+            fileDuplicateCount: 0,
+        });
+    });
+
+    it("対象アカウントかつ対象kindの署名不正は従来どおり署名不正に数える", async () => {
+        const secretKey = generateSecretKey();
+        const ownerPubkey = getPublicKey(secretKey);
+        const invalidEvent = {
+            ...createSignedEvent(secretKey),
+            sig: "0".repeat(128),
+        };
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(JSON.stringify(invalidEvent)),
+            ownerPubkeyHex: ownerPubkey,
+            getCurrentPubkeyHex: () => ownerPubkey,
+        });
+
+        expect(result.invalidIdOrSignatureCount).toBe(1);
     });
 
     it("fatal UTF-8エラー時も正常に読めたprefixをflushして部分成功にする", async () => {

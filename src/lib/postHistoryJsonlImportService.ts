@@ -222,6 +222,14 @@ export class PostHistoryJsonlImportService {
                 return null;
             }
             const event = parsed as NostrEvent;
+            if (event.pubkey !== input.ownerPubkeyHex) {
+                result.otherAccountCount += 1;
+                return null;
+            }
+            if (event.kind !== 1 && event.kind !== 42 && event.kind !== 5) {
+                result.unsupportedKindCount += 1;
+                return null;
+            }
             if (!verifyEvent(event as never)) {
                 result.invalidIdOrSignatureCount += 1;
                 return null;
@@ -232,10 +240,6 @@ export class PostHistoryJsonlImportService {
             }
             processedEventIds.add(event.id);
 
-            if (event.pubkey !== input.ownerPubkeyHex) {
-                result.otherAccountCount += 1;
-                return null;
-            }
             if (event.kind === 1 || event.kind === 42) {
                 result.uniquePostEventCount += 1;
                 buffer.push({ type: "post", event });
@@ -248,9 +252,6 @@ export class PostHistoryJsonlImportService {
                     return null;
                 }
                 buffer.push({ type: "deletion", event });
-            } else {
-                result.unsupportedKindCount += 1;
-                return null;
             }
 
             if (buffer.length >= POST_HISTORY_JSONL_IMPORT_BATCH_SIZE) {
