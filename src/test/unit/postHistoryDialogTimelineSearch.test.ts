@@ -227,6 +227,108 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
+    it('検索開始時は一覧を維持し、最新検索だけがloadingを終了する', async () => {
+        const alphaSearch = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        const betaSearch = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-loading-normal', content: '検索前の一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ query }: { query: string }) =>
+                query === 'alpha' ? alphaSearch.promise : betaSearch.promise,
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        expect(searchInput.getAttribute('aria-busy')).toBe('true');
+        expect(searchInput.hasAttribute('disabled')).toBe(false);
+        expect(screen.getByText('検索前の一覧')).toBeTruthy();
+        expect(document.querySelector('.post-history-search-spinner')).not.toBeNull();
+        expect(document.querySelector('.search-icon')).toBeNull();
+
+        await fireEvent.input(searchInput, { target: { value: 'beta' } });
+        await waitForSearchDebounce();
+        alphaSearch.resolve({
+            items: [createRecord({ eventId: 'alpha-result', content: 'alpha-result' })],
+            total: 1,
+            hasNext: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(searchInput.getAttribute('aria-busy')).toBe('true');
+        expect(screen.queryByText('alpha-result')).toBeNull();
+
+        betaSearch.resolve({
+            items: [createRecord({ eventId: 'beta-result', content: 'beta-result' })],
+            total: 1,
+            hasNext: false,
+        });
+        await waitFor(() => {
+            expect(screen.getByText('beta-result')).toBeTruthy();
+            expect(searchInput.getAttribute('aria-busy')).toBe('false');
+            expect(document.querySelector('.post-history-search-spinner')).toBeNull();
+            expect(document.querySelector('.search-icon')).not.toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it('debounce中は虫眼鏡を維持し、検索終了時にloadingを解除する', async () => {
+        const search = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-debounce-normal', content: '通常一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockReturnValue(search.promise);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+
+        expect(searchInput.getAttribute('aria-busy')).toBe('false');
+        expect(document.querySelector('.search-icon')).not.toBeNull();
+        expect(document.querySelector('.post-history-search-spinner')).toBeNull();
+
+        await waitForSearchDebounce();
+        expect(searchInput.getAttribute('aria-busy')).toBe('true');
+
+        search.resolve({
+            items: [],
+            total: 0,
+            hasNext: false,
+        });
+        await waitFor(() => {
+            expect(searchInput.getAttribute('aria-busy')).toBe('false');
+            expect(document.querySelector('.search-icon')).not.toBeNull();
+        });
+
+        view.unmount();
+    });
+
     afterEach(() => {
         cleanupPostHistoryDialogHarness();
     });

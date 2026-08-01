@@ -7,6 +7,8 @@
         customClass?: string;
         state?: "loading" | "complete";
         loaderSize?: number | string;
+        variant?: "loader" | "spinner";
+        ariaHidden?: boolean;
     }
 
     let {
@@ -15,6 +17,8 @@
         customClass = "",
         state = undefined,
         loaderSize = 40,
+        variant = "loader",
+        ariaHidden = false,
     }: Props = $props();
 
     // デフォルトテキストを国際化対応で設定
@@ -33,8 +37,12 @@
     );
 </script>
 
-<div class="loading-placeholder {customClass}" aria-label={displayText}>
-    {#if isLoading}
+<div
+    class="loading-placeholder {customClass}"
+    aria-label={displayText}
+    aria-hidden={ariaHidden ? "true" : undefined}
+>
+    {#if isLoading && variant === "loader"}
         <div class="loader-container" style:--loader-size={loaderSizeValue}>
             <div class="square"></div>
             <div class="square"></div>
@@ -42,6 +50,13 @@
             <div class="square"></div>
             <div class="square"></div>
         </div>
+    {/if}
+    {#if isLoading && variant === "spinner"}
+        <span
+            class="inline-spinner"
+            style:--loader-size={loaderSizeValue}
+            aria-hidden="true"
+        ></span>
     {/if}
     {#if displayText}
         <span class="placeholder-text" class:loading-text={isLoading}
@@ -119,6 +134,23 @@
         position: relative;
         width: var(--loader-size);
         height: var(--loader-size);
+    }
+
+    .inline-spinner {
+        display: block;
+        width: var(--loader-size);
+        height: var(--loader-size);
+        border: max(2px, calc(var(--loader-size) * 0.1)) solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: inline-spinner-rotate 0.8s linear infinite;
+        box-sizing: border-box;
+    }
+
+    @keyframes inline-spinner-rotate {
+        to {
+            transform: rotate(360deg);
+        }
     }
     /* 正方形の基本スタイル */
     .square {
@@ -206,6 +238,10 @@
         .square {
             animation: none;
             transform: translate(-25%, -25%) scale(1) rotate(0deg);
+        }
+
+        .inline-spinner {
+            animation: none;
         }
     }
 </style>

@@ -3610,11 +3610,11 @@ export function usePostHistoryListing({
         }
 
         if (state.searchQuery !== appliedSearchQuery) {
+            if (appliedSearchQuery === "" && state.searchPosts.length === 0) {
+                state.searchPosts = state.loadedPosts;
+            }
             appliedSearchQuery = state.searchQuery;
             state.searchPage = 1;
-            state.searchPosts = [];
-            state.searchTotalCount = 0;
-            state.searchHasNext = false;
             searchResultsInitialized = true;
             void loadSearchPage(1, state.searchQuery);
             return;
@@ -3718,6 +3718,9 @@ export function usePostHistoryListing({
         },
         get showStatusLoader() {
             return showStatusLoader;
+        },
+        get isSearchPageLoading() {
+            return isSearchPageLoading;
         },
         get canRefetchAroundCurrentView() {
             return canRefetchAroundCurrentView;

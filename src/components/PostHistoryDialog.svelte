@@ -1555,6 +1555,19 @@
             class="post-history-search-row"
             class:post-history-search-active={history.isSearchMode}
         >
+            <div class="post-history-search-leading" aria-hidden="true">
+                {#if history.isSearchPageLoading}
+                    <LoadingPlaceholder
+                        variant="spinner"
+                        showLoader={true}
+                        loaderSize={24}
+                        ariaHidden={true}
+                        customClass="post-history-search-spinner"
+                    />
+                {:else}
+                    <div class="search-icon svg-icon"></div>
+                {/if}
+            </div>
             <input
                 bind:value={history.state.searchInput}
                 bind:this={searchInputElement}
@@ -1562,6 +1575,7 @@
                 type="search"
                 placeholder={$_("postHistory.searchPlaceholder")}
                 aria-label={$_("postHistory.search")}
+                aria-busy={history.isSearchPageLoading ? "true" : "false"}
             />
             <Button
                 type="button"
@@ -3106,6 +3120,27 @@
         width: 100%;
     }
 
+    .post-history-search-leading {
+        display: flex;
+        flex: 0 0 40px;
+        align-items: center;
+        justify-content: center;
+        align-self: stretch;
+        color: var(--text-muted);
+    }
+
+    :global(.post-history-search-leading .search-icon),
+    :global(.post-history-search-leading .inline-spinner) {
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.post-history-search-leading .loading-placeholder) {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+    }
+
     .post-history-search-active {
         border-bottom-color: color-mix(
             in srgb,
@@ -3115,7 +3150,8 @@
     }
 
     .post-history-search-input {
-        width: 100%;
+        flex: 1 1 auto;
+        width: auto;
         min-width: 0;
         padding: 10px 12px;
         border: 1px solid var(--border-soft);
