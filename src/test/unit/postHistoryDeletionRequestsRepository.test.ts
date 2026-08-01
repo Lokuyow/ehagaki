@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
@@ -47,32 +47,6 @@ afterEach(async () => {
 });
 
 describe("DexiePostHistoryDeletionRequestsRepository", () => {
-    it("JSONL削除適用は検索レコードを書き換えず、正本の削除状態だけを更新する", async () => {
-        const db = createTestDb();
-        const postRepository = new DexiePostHistoryRepository(db, () => 1000);
-        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);
-        const targetEvent = createSignedEvent();
-        const deletionEvent = createDeletionEvent({ tags: [["e", targetEvent.id], ["k", "1"]] });
-        await postRepository.putPostedEvent({ event: targetEvent });
-        const before = await db.postHistorySearch.get(targetEvent.id);
-        const putSpy = vi.spyOn(db.postHistorySearch, "put");
-        const bulkPutSpy = vi.spyOn(db.postHistorySearch, "bulkPut");
-
-        await expect(repository.upsertImportedDeletionEvents({
-            ownerPubkeyHex: targetEvent.pubkey,
-            deletionEvents: [deletionEvent],
-        })).resolves.toMatchObject({ appliedDeletionCount: 1 });
-
-        await expect(db.postHistory.get(targetEvent.id)).resolves.toMatchObject({
-            deletedAt: deletionEvent.created_at * 1000,
-            deletionEventId: deletionEvent.id,
-        });
-        await expect(db.postHistorySearch.get(targetEvent.id)).resolves.toEqual(before);
-        expect(putSpy).not.toHaveBeenCalled();
-        expect(bulkPutSpy).not.toHaveBeenCalled();
-        db.close();
-    });
-
     it("validなkind:5 tombstoneをglobal tableに保存し、targetAuthorPubkey+targetEventIdで取得する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 1000);

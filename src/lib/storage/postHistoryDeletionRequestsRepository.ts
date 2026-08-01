@@ -452,9 +452,6 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     }
 
                     const deletionState = toPostHistoryDeletionState(applicableRequest);
-                    // A kind 5 import changes only deletion state and updatedAt. Those fields do
-                    // not affect post-history search membership or timeline order, so this
-                    // deliberate direct update must not rewrite postHistorySearch.
                     await this.db.postHistory.update(targetEventId, {
                         ...deletionState,
                         updatedAt: this.now(),

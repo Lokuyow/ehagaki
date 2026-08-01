@@ -109,9 +109,6 @@ const hoisted = vi.hoisted(() => {
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
         },
-        searchIndexRepositoryMock: {
-            ensureReady: vi.fn(),
-        },
         postHistoryJsonlImportServiceMock: {
             importFile: vi.fn(),
         },
@@ -166,7 +163,6 @@ export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
 export const repairServiceMock = hoisted.repairServiceMock;
 export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
 export const localSearchServiceMock = hoisted.localSearchServiceMock;
-export const searchIndexRepositoryMock = hoisted.searchIndexRepositoryMock;
 export const postHistoryJsonlImportServiceMock = hoisted.postHistoryJsonlImportServiceMock;
 export const postMediaCacheServiceMock = hoisted.postMediaCacheServiceMock;
 export const clipboardMock = hoisted.clipboardMock;
@@ -245,10 +241,6 @@ vi.mock('../../lib/postHistoryVisibleRangeChildInteractionRepairService', () => 
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
     postHistoryLocalSearchService: hoisted.localSearchServiceMock,
-}));
-
-vi.mock('../../lib/storage/postHistorySearchRepository', () => ({
-    postHistorySearchRepository: hoisted.searchIndexRepositoryMock,
 }));
 
 vi.mock('../../lib/postHistoryJsonlImportService', () => ({
@@ -485,7 +477,6 @@ export function resetPostHistoryDialogHarness(): void {
         total: 0,
         hasNext: false,
     });
-    searchIndexRepositoryMock.ensureReady.mockResolvedValue("ready");
     postHistoryJsonlImportServiceMock.importFile.mockResolvedValue({
         status: 'completed',
         insertedPostCount: 0,

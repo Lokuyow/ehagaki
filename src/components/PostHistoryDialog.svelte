@@ -1211,12 +1211,7 @@
 
         activeUtilityPanel = "search";
         headingMenuOpen = false;
-        void history.prepareSearchIndex().then((ready) => {
-            if (ready) {
-                return focusSearchInputSoon();
-            }
-            return undefined;
-        });
+        void focusSearchInputSoon();
     }
 
     function hideSearch(): void {
@@ -1560,34 +1555,14 @@
             class="post-history-search-row"
             class:post-history-search-active={history.isSearchMode}
         >
-            {#if history.state.searchIndexStatus === "building"}
-                <div class="post-history-search-index-status" aria-live="polite">
-                    {$_("postHistory.searchIndexPreparing", {
-                        values: { count: history.state.searchIndexProcessedCount },
-                    })}
-                </div>
-            {:else if history.state.searchIndexStatus === "failed"}
-                <div class="post-history-search-index-status" aria-live="polite">
-                    <span>{$_("postHistory.searchIndexFailed")}</span>
-                    <Button
-                        type="button"
-                        variant="default"
-                        shape="pill"
-                        onClick={() => void history.prepareSearchIndex()}
-                    >
-                        {$_("postHistory.searchIndexRetry")}
-                    </Button>
-                </div>
-            {:else}
-                <input
-                    bind:value={history.state.searchInput}
-                    bind:this={searchInputElement}
-                    class="post-history-search-input"
-                    type="search"
-                    placeholder={$_("postHistory.searchPlaceholder")}
-                    aria-label={$_("postHistory.search")}
-                />
-            {/if}
+            <input
+                bind:value={history.state.searchInput}
+                bind:this={searchInputElement}
+                class="post-history-search-input"
+                type="search"
+                placeholder={$_("postHistory.searchPlaceholder")}
+                aria-label={$_("postHistory.search")}
+            />
             <Button
                 type="button"
                 class="post-history-search-close"
@@ -3148,19 +3123,6 @@
         color: var(--text);
         font: inherit;
         border-bottom: 1px solid var(--border-hr);
-    }
-
-    .post-history-search-index-status {
-        display: flex;
-        flex: 1;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        min-height: 40px;
-        padding: 8px 12px;
-        border: 1px solid var(--border-soft);
-        border-bottom: 1px solid var(--border-hr);
-        color: var(--text-muted);
     }
 
     :global(.post-history-search-close.square) {

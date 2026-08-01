@@ -5,8 +5,6 @@ import {
     ensureCurrentEHagakiDbSchema,
 } from '../../lib/swIndexedDbSchema';
 import {
-    POST_HISTORY_SEARCH_TIMELINE_INDEX,
-    POST_HISTORY_SEARCH_TIMELINE_KEY_PATH,
     POST_HISTORY_TIMELINE_INDEX,
     POST_HISTORY_TIMELINE_KEY_PATH,
 } from '../../lib/storage/ehagakiDbConstants';
@@ -102,11 +100,6 @@ describe('swIndexedDbSchema', () => {
                 keyPath: POST_HISTORY_TIMELINE_KEY_PATH,
             },
             {
-                storeName: 'postHistorySearch',
-                indexName: POST_HISTORY_SEARCH_TIMELINE_INDEX,
-                keyPath: POST_HISTORY_SEARCH_TIMELINE_KEY_PATH,
-            },
-            {
                 storeName: 'postHistoryChildInteractions',
                 indexName: '[parentEventId+createdAt]',
                 keyPath: ['parentEventId', 'createdAt'],
@@ -135,7 +128,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(18);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(17);
         expect(getCreatedStore(createdStores, 'meta').keyPath).toBe('key');
 
         indexAssertions.forEach(({ storeName, indexName, keyPath }) => {
