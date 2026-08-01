@@ -4,11 +4,13 @@ import {
     PUBKEY_HEX,
     PostHistoryDialog,
     cleanupPostHistoryDialogHarness,
+    createDeferred,
     createRecord,
     getHistoryContainer,
     localSearchServiceMock,
     openSearchBar,
     postMediaCacheServiceMock,
+    postHistoryJsonlImportServiceMock,
     relayFetchServiceMock,
     repositoryMock,
     replyRepairServiceMock,
@@ -87,6 +89,141 @@ describe('PostHistoryDialog timeline search', () => {
 
         const afterOffset = firstItem!.getBoundingClientRect().top - container.getBoundingClientRect().top;
         expect(afterOffset).toBe(beforeOffset);
+        view.unmount();
+    });
+
+    it('インポート後は読み込み済み検索範囲を先頭から再構築する', async () => {
+        const existingPosts = Array.from({ length: 51 }, (_, index) =>
+            createRecord({
+                eventId: `import-search-${index + 1}`,
+                content: `import-search-${index + 1}`,
+            }),
+        );
+        const importedPost = createRecord({
+            eventId: 'import-search-newest',
+            content: 'import-search-newest',
+        });
+        let searchablePosts = [...existingPosts];
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'import-search-normal', content: '通常一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => ({
+                items: searchablePosts.slice((page - 1) * 50, page * 50),
+                total: searchablePosts.length,
+                hasNext: page * 50 < searchablePosts.length,
+            }),
+        );
+        postHistoryJsonlImportServiceMock.importFile.mockImplementation(async () => {
+            searchablePosts = [importedPost, ...existingPosts];
+            return {
+                status: 'completed',
+                insertedPostCount: 1,
+                updatedPostCount: 0,
+                appliedDeletionPostCount: 0,
+            };
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await fireEvent.click(await screen.findByRole('button', { name: 'さらに古い検索結果を表示' }));
+        await waitFor(() => {
+            expect(screen.getByText('import-search-51')).toBeTruthy();
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '投稿履歴メニューを開く' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: 'インポート' }));
+        await screen.findAllByRole('heading', { name: '投稿履歴をインポート' });
+        const input = document.querySelector('.import-file-input');
+        expect(input).toBeInstanceOf(HTMLInputElement);
+        await fireEvent.change(input as HTMLInputElement, {
+            target: {
+                files: [new File(['{}'], 'history.jsonl', { type: 'application/json' })],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('import-search-newest')).toBeTruthy();
+            expect(document.querySelectorAll('.post-history-item')).toHaveLength(52);
+        });
+
+        expect(Array.from(document.querySelectorAll<HTMLElement>('.post-history-item'))
+            .map((item) => item.dataset.postHistoryEventId))
+            .toEqual(searchablePosts.map((post) => post.eventId));
+        expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+            pubkeyHex: PUBKEY_HEX,
+            query: 'alpha',
+            page: 2,
+            pageSize: 50,
+        });
+        view.unmount();
+    });
+
+    it('遅延した検索ページの取得中は次ページを開始せず、staleな結果を適用しない', async () => {
+        const secondPage = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page, query }: { page: number; query: string }) => {
+                if (query === 'beta') {
+                    return {
+                        items: [createRecord({ eventId: 'beta-search', content: 'beta-search' })],
+                        total: 1,
+                        hasNext: false,
+                    };
+                }
+                if (page === 2) {
+                    return secondPage.promise;
+                }
+                return {
+                    items: [createRecord({ eventId: 'alpha-search-1', content: 'alpha-search-1' })],
+                    total: 101,
+                    hasNext: true,
+                };
+            },
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        const loadOlderButton = await screen.findByRole('button', { name: 'さらに古い検索結果を表示' });
+        await fireEvent.click(loadOlderButton);
+        await fireEvent.click(loadOlderButton);
+
+        expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(2);
+        expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+            pubkeyHex: PUBKEY_HEX,
+            query: 'alpha',
+            page: 2,
+            pageSize: 50,
+        });
+
+        await fireEvent.input(searchInput, { target: { value: 'beta' } });
+        await waitForSearchDebounce();
+        secondPage.resolve({
+            items: [createRecord({ eventId: 'alpha-search-2', content: 'alpha-search-2' })],
+            total: 101,
+            hasNext: true,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('beta-search')).toBeTruthy();
+            expect(screen.queryByText('alpha-search-2')).toBeNull();
+            expect(screen.queryByRole('button', { name: 'さらに古い検索結果を表示' })).toBeNull();
+        });
         view.unmount();
     });
 

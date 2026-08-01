@@ -32,7 +32,10 @@ import {
 } from "../postHistoryDialogViewState";
 import { resolvePostHistoryDialogOpenRefreshDecision } from "../postHistoryDialogOpenRefreshDecision";
 import type { PostHistoryDialogScrollState } from "../postHistoryDialogScrollState";
-import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
+import {
+    postHistoryLocalSearchService,
+    type SearchLocalPostsResult,
+} from "../postHistoryLocalSearchService";
 import {
     consumePostHistoryShouldReturnToLatestAfterLocalPost,
     type PendingPostHistoryLatestRequest,
@@ -586,6 +589,7 @@ export function usePostHistoryListing({
 
     let loadRequestId = 0;
     let searchLoadRequestId = 0;
+    let isSearchPageLoading = $state(false);
     let hasStartedInitialSync = false;
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
@@ -646,12 +650,17 @@ export function usePostHistoryListing({
     );
     const canGoFirst = $derived(canGoPrevious);
     const canGoNext = $derived(
-        !isRefetchingAroundCurrentView && isSearchMode && state.searchHasNext,
+        !isRefetchingAroundCurrentView
+        && !isSearchPageLoading
+        && isSearchMode
+        && state.searchHasNext,
     );
     const canGoLast = $derived(canGoNext);
     const showPaging = $derived(false);
     const canLoadOlder = $derived(
-        !isRefetchingAroundCurrentView && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
+        !isRefetchingAroundCurrentView
+        && !isSearchPageLoading
+        && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
     );
     const canLoadNewer = $derived(
         !isRefetchingAroundCurrentView && !isSearchMode && state.hasNewerLocal,
@@ -933,6 +942,7 @@ export function usePostHistoryListing({
     function invalidatePendingLoadRequests(): void {
         loadRequestId += 1;
         searchLoadRequestId += 1;
+        isSearchPageLoading = false;
     }
 
     function prepareForClose(): boolean {
@@ -2264,49 +2274,128 @@ export function usePostHistoryListing({
         return mergedPosts;
     }
 
-    async function loadSearchPage(page: number, query: string): Promise<void> {
+    function isCurrentSearchLoad(
+        requestId: number,
+        query: string,
+    ): boolean {
+        return getShow()
+            && requestId === searchLoadRequestId
+            && query === state.searchQuery;
+    }
+
+    async function fetchSearchPage(
+        page: number,
+        query: string,
+        requestId: number,
+    ): Promise<SearchLocalPostsResult | null> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !query) {
+            return null;
+        }
+
+        const result = await postHistoryLocalSearchService.searchLocalPosts({
+            pubkeyHex,
+            query,
+            page,
+            pageSize,
+        });
+
+        return isCurrentSearchLoad(requestId, query) ? result : null;
+    }
+
+    async function loadSearchPage(page: number, query: string): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !query) {
             state.searchPosts = [];
             state.searchTotalCount = 0;
             state.searchHasNext = false;
-            return;
+            return false;
         }
 
         const requestId = ++searchLoadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const result = await postHistoryLocalSearchService.searchLocalPosts({
-            pubkeyHex,
-            query,
-            page: normalizedPage,
-            pageSize,
-        });
+        isSearchPageLoading = true;
+        try {
+            const result = await fetchSearchPage(
+                normalizedPage,
+                query,
+                requestId,
+            );
+            if (!result) {
+                return false;
+            }
 
-        if (
-            !getShow() ||
-            requestId !== searchLoadRequestId ||
-            query !== state.searchQuery
-        ) {
-            return;
-        }
+            const safePage = resolveSafePage(
+                normalizedPage,
+                result.total,
+                pageSize,
+            );
+            if (safePage !== normalizedPage) {
+                return false;
+            }
 
-        const safePage = resolveSafePage(
-            normalizedPage,
-            result.total,
-            pageSize,
-        );
-        if (safePage !== normalizedPage) {
+            state.searchTotalCount = result.total;
+            state.searchPosts = normalizedPage === 1
+                ? result.items
+                : mergeSearchPageResults(state.searchPosts, result.items);
             state.searchPage = safePage;
-            return;
+            state.searchHasNext = result.hasNext;
+            void prefetchCurrentPageMedia(result.items);
+            return true;
+        } finally {
+            if (requestId === searchLoadRequestId) {
+                isSearchPageLoading = false;
+            }
         }
+    }
 
-        state.searchTotalCount = result.total;
-        state.searchPosts = normalizedPage === 1
-            ? result.items
-            : mergeSearchPageResults(state.searchPosts, result.items);
-        state.searchPage = safePage;
-        state.searchHasNext = result.hasNext;
-        void prefetchCurrentPageMedia(result.items);
+    async function rebuildSearchResultsThroughPage(
+        page: number,
+        query: string,
+    ): Promise<boolean> {
+        const normalizedPage = Math.max(1, Math.trunc(page));
+        const requestId = ++searchLoadRequestId;
+        isSearchPageLoading = true;
+
+        try {
+            const firstPage = await fetchSearchPage(1, query, requestId);
+            if (!firstPage) {
+                return false;
+            }
+
+            const lastPage = resolveSafePage(
+                normalizedPage,
+                firstPage.total,
+                pageSize,
+            );
+            let rebuiltPosts = firstPage.items;
+            let lastResult = firstPage;
+
+            for (let currentPage = 2; currentPage <= lastPage; currentPage += 1) {
+                const result = await fetchSearchPage(
+                    currentPage,
+                    query,
+                    requestId,
+                );
+                if (!result) {
+                    return false;
+                }
+
+                rebuiltPosts = mergeSearchPageResults(rebuiltPosts, result.items);
+                lastResult = result;
+            }
+
+            state.searchPosts = rebuiltPosts;
+            state.searchTotalCount = firstPage.total;
+            state.searchPage = lastPage;
+            state.searchHasNext = lastResult.hasNext;
+            void prefetchCurrentPageMedia(rebuiltPosts);
+            return true;
+        } finally {
+            if (requestId === searchLoadRequestId) {
+                isSearchPageLoading = false;
+            }
+        }
     }
 
     async function bootstrapFromRelays(): Promise<void> {
@@ -2382,7 +2471,10 @@ export function usePostHistoryListing({
         updateRelayHistoryCursor(result);
 
         if (state.searchQuery) {
-            await loadSearchPage(state.searchPage, state.searchQuery);
+            await rebuildSearchResultsThroughPage(
+                state.searchPage,
+                state.searchQuery,
+            );
         } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
             await loadLatestVisiblePosts();
         } else {
@@ -2471,7 +2563,10 @@ export function usePostHistoryListing({
         scheduleSyncStatusMessageClearIfNeeded();
 
         if (refreshDecision.applyAction === "reload-search-page") {
-            await loadSearchPage(state.searchPage, state.searchQuery);
+            await rebuildSearchResultsThroughPage(
+                state.searchPage,
+                state.searchQuery,
+            );
         } else if (refreshDecision.applyAction === "load-latest-visible-posts") {
             await loadLatestVisiblePosts();
         } else if (
@@ -2539,9 +2634,7 @@ export function usePostHistoryListing({
         }
 
         const nextPage = state.searchPage + 1;
-        state.searchPage = nextPage;
-        await loadSearchPage(nextPage, state.searchQuery);
-        return true;
+        return loadSearchPage(nextPage, state.searchQuery);
     }
 
     async function goToLastPage(): Promise<boolean> {
@@ -2921,7 +3014,10 @@ export function usePostHistoryListing({
             };
 
             if (state.searchQuery) {
-                await loadSearchPage(state.searchPage, state.searchQuery);
+                await rebuildSearchResultsThroughPage(
+                    state.searchPage,
+                    state.searchQuery,
+                );
             } else {
                 state.totalCount = nextStoredCount;
                 if (didVisibleCountIncrease || didMateriallyChange) {
@@ -3106,7 +3202,10 @@ export function usePostHistoryListing({
             );
 
             if (state.searchQuery) {
-                await loadSearchPage(state.searchPage, state.searchQuery);
+                await rebuildSearchResultsThroughPage(
+                    state.searchPage,
+                    state.searchQuery,
+                );
             } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
                 await loadLatestVisiblePosts();
             } else {
@@ -3267,7 +3366,10 @@ export function usePostHistoryListing({
         }
 
         if (state.searchQuery) {
-            await loadSearchPage(state.searchPage, state.searchQuery);
+            await rebuildSearchResultsThroughPage(
+                state.searchPage,
+                state.searchQuery,
+            );
             return;
         }
 

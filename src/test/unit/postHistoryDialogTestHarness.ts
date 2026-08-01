@@ -17,6 +17,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.showSearch': '検索',
             'postHistory.hideSearch': '検索を閉じる',
             'postHistory.searchPlaceholder': '投稿履歴を検索',
+            'postHistory.import': 'インポート',
+            'postHistory.importTitle': '投稿履歴をインポート',
+            'postHistory.importDescription': 'JSONLを読み込みます',
+            'postHistory.importChooseFile': 'JSONLファイルを選択',
             'postHistory.visibleRange': `表示中: ${options?.values?.from}〜${options?.values?.to}`,
             'postHistory.visibleCountSummary': `${options?.values?.total}件`,
             'postHistory.searchCountSummary': `${options?.values?.total}件`,
@@ -105,6 +109,9 @@ const hoisted = vi.hoisted(() => {
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
         },
+        postHistoryJsonlImportServiceMock: {
+            importFile: vi.fn(),
+        },
         postMediaCacheServiceMock: {
             canUsePersistentCache: vi.fn(() => false),
             prefetchCachedMediaDescriptors: vi.fn().mockResolvedValue(undefined),
@@ -156,6 +163,7 @@ export const relayFetchServiceMock = hoisted.relayFetchServiceMock;
 export const repairServiceMock = hoisted.repairServiceMock;
 export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
 export const localSearchServiceMock = hoisted.localSearchServiceMock;
+export const postHistoryJsonlImportServiceMock = hoisted.postHistoryJsonlImportServiceMock;
 export const postMediaCacheServiceMock = hoisted.postMediaCacheServiceMock;
 export const clipboardMock = hoisted.clipboardMock;
 export const postDeletionServiceMock = hoisted.postDeletionServiceMock;
@@ -233,6 +241,10 @@ vi.mock('../../lib/postHistoryVisibleRangeChildInteractionRepairService', () => 
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
     postHistoryLocalSearchService: hoisted.localSearchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryJsonlImportService', () => ({
+    postHistoryJsonlImportService: hoisted.postHistoryJsonlImportServiceMock,
 }));
 
 vi.mock('../../lib/postDeletionService', () => ({
@@ -464,6 +476,12 @@ export function resetPostHistoryDialogHarness(): void {
         items: [],
         total: 0,
         hasNext: false,
+    });
+    postHistoryJsonlImportServiceMock.importFile.mockResolvedValue({
+        status: 'completed',
+        insertedPostCount: 0,
+        updatedPostCount: 0,
+        appliedDeletionPostCount: 0,
     });
 }
 
