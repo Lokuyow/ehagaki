@@ -9,7 +9,9 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 
-export const POST_HISTORY_JSONL_IMPORT_BATCH_SIZE = 100;
+export const POST_HISTORY_JSONL_IMPORT_BATCH_SIZE = 500;
+
+const POST_HISTORY_JSONL_IMPORT_PROGRESS_INTERVAL_MS = 250;
 
 const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -120,6 +122,7 @@ export class PostHistoryJsonlImportService {
         const processedEventIds = new Set<string>();
         const buffer: BufferedImportEvent[] = [];
         let hadSaveFailure = false;
+        let lastProgressNotificationAt: number | null = null;
         const hasInputRejections = (): boolean =>
             result.invalidJsonCount > 0
             || result.invalidStructureCount > 0
@@ -134,8 +137,18 @@ export class PostHistoryJsonlImportService {
             }
             return null;
         };
-        const emitProgress = (): void => {
-            input.onProgress?.(copyResult(result));
+        const emitProgress = (force = false): void => {
+            if (!input.onProgress) {
+                return;
+            }
+            const now = performance.now();
+            if (!force
+                && lastProgressNotificationAt !== null
+                && now - lastProgressNotificationAt < POST_HISTORY_JSONL_IMPORT_PROGRESS_INTERVAL_MS) {
+                return;
+            }
+            lastProgressNotificationAt = now;
+            input.onProgress(copyResult(result));
         };
         const flush = async (): Promise<PostHistoryJsonlImportStatus | null> => {
             if (buffer.length === 0) {
@@ -174,7 +187,6 @@ export class PostHistoryJsonlImportService {
 
             const stopAfterPosts = getStopStatus();
             if (stopAfterPosts) {
-                emitProgress();
                 return stopAfterPosts;
             }
 
@@ -265,7 +277,7 @@ export class PostHistoryJsonlImportService {
             reader = input.file.stream().getReader();
         } catch {
             result.status = "failed";
-            emitProgress();
+            emitProgress(true);
             return result;
         }
         const cancelReader = (): void => {
@@ -281,6 +293,7 @@ export class PostHistoryJsonlImportService {
                     result.status = stopStatus;
                     await reader.cancel().catch(() => undefined);
                     buffer.length = 0;
+                    emitProgress(true);
                     return result;
                 }
 
@@ -292,6 +305,7 @@ export class PostHistoryJsonlImportService {
                         if (lineStatus) {
                             result.status = lineStatus;
                             buffer.length = 0;
+                            emitProgress(true);
                             return result;
                         }
                     }
@@ -307,6 +321,7 @@ export class PostHistoryJsonlImportService {
                         result.status = lineStatus;
                         await reader.cancel().catch(() => undefined);
                         buffer.length = 0;
+                        emitProgress(true);
                         return result;
                     }
                 }
@@ -316,16 +331,18 @@ export class PostHistoryJsonlImportService {
             if (stopStatus) {
                 result.status = stopStatus;
                 buffer.length = 0;
+                emitProgress(true);
                 return result;
             }
 
             const flushStopStatus = await flush();
             if (flushStopStatus) {
                 result.status = flushStopStatus;
+                emitProgress(true);
                 return result;
             }
             result.status = result.nonEmptyLineCount > 0 ? "partial" : "failed";
-            emitProgress();
+            emitProgress(true);
             return result;
         } finally {
             input.signal?.removeEventListener("abort", cancelReader);
@@ -335,10 +352,11 @@ export class PostHistoryJsonlImportService {
         const stopStatus = await flush();
         if (stopStatus) {
             result.status = stopStatus;
+            emitProgress(true);
             return result;
         }
         result.status = hadSaveFailure || hasInputRejections() ? "partial" : "completed";
-        emitProgress();
+        emitProgress(true);
         return result;
     }
 }

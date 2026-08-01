@@ -1,5 +1,5 @@
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     POST_HISTORY_JSONL_IMPORT_BATCH_SIZE,
     PostHistoryJsonlImportService,
@@ -82,6 +82,86 @@ function createRepositoryMocks() {
 }
 
 describe("PostHistoryJsonlImportService", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("保存バッチサイズは500件である", () => {
+        expect(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE).toBe(500);
+    });
+
+    it("保存対象イベント500件を1回のflushでrepositoryへ渡す", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const events = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE },
+            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
+        );
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(result.insertedPostCount).toBe(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+        expect(deps.postHistoryRepository.upsertFetchedEvents.mock.calls[0][0].events)
+            .toHaveLength(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
+    });
+
+    it("501件の保存対象イベントを500件と1件へ分けてflushする", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const events = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE + 1 },
+            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
+        );
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        await service.importFile({
+            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(2);
+        expect(deps.postHistoryRepository.upsertFetchedEvents.mock.calls.map(
+            ([input]) => input.events.length,
+        )).toEqual([POST_HISTORY_JSONL_IMPORT_BATCH_SIZE, 1]);
+    });
+
+    it("投稿と削除要求の合計500件で同じflushを実行する", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const posts = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1 },
+            (_, index) => createSignedEvent(secretKey, { content: `post-${index}` }),
+        );
+        const deletion = createSignedEvent(secretKey, {
+            kind: 5,
+            tags: [["e", "1".repeat(64)]],
+        });
+        const deps = createRepositoryMocks();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        await service.importFile({
+            file: createFile([...posts, deletion].map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+        });
+
+        expect(deps.postHistoryRepository.upsertFetchedEvents).toHaveBeenCalledTimes(1);
+        expect(deps.postHistoryRepository.upsertFetchedEvents.mock.calls[0][0].events)
+            .toHaveLength(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1);
+        expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents).toHaveBeenCalledTimes(1);
+        expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents.mock.calls[0][0]
+            .deletionEvents).toHaveLength(1);
+    });
+
     it("同じ新規イベント2行をrepository結果とファイル内重複へ分離する", async () => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);
@@ -504,6 +584,7 @@ describe("PostHistoryJsonlImportService", () => {
             tags: [["e", "1".repeat(64)]],
         }));
         const deps = createRepositoryMocks();
+        const onProgress = vi.fn();
         let currentPubkey = pubkey;
         deps.postHistoryRepository.upsertFetchedEvents.mockImplementationOnce(async (input) => {
             currentPubkey = otherPubkey;
@@ -520,11 +601,125 @@ describe("PostHistoryJsonlImportService", () => {
             file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => currentPubkey,
+            onProgress,
         });
 
         expect(result.status).toBe("account-changed");
         expect(result.insertedPostCount).toBe(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1);
         expect(deps.deletionRequestsRepository.upsertImportedDeletionEvents).not.toHaveBeenCalled();
+        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+            status: "account-changed",
+            insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE - 1,
+        }));
+    });
+
+    it("通常のflush通知を250ms未満では間引き、最新の最終結果を強制通知する", async () => {
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const events = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2 },
+            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
+        );
+        const deps = createRepositoryMocks();
+        let saveCallCount = 0;
+        deps.postHistoryRepository.upsertFetchedEvents.mockImplementation(async (input) => {
+            if (saveCallCount === 1) {
+                now = 100;
+            }
+            saveCallCount += 1;
+            return {
+                insertedCount: input.events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                appliedDeletionCount: 0,
+            };
+        });
+        const onProgress = vi.fn();
+        const service = new PostHistoryJsonlImportService(deps);
+
+        const result = await service.importFile({
+            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+            onProgress,
+        });
+
+        expect(onProgress).toHaveBeenCalledTimes(2);
+        expect(onProgress.mock.calls.map(([progress]) => progress.insertedPostCount))
+            .toEqual([POST_HISTORY_JSONL_IMPORT_BATCH_SIZE, POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2]);
+        expect(onProgress.mock.calls[0][0].status).toBe("completed");
+        expect(onProgress.mock.calls[0][0].insertedPostCount)
+            .toBe(POST_HISTORY_JSONL_IMPORT_BATCH_SIZE);
+        expect(onProgress.mock.calls[1][0]).toEqual(result);
+        await Promise.resolve();
+        expect(onProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it("前回通知から250ms経過したflushでは新しい進捗を通知する", async () => {
+        let now = 0;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const events = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE * 2 },
+            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
+        );
+        const deps = createRepositoryMocks();
+        let saveCallCount = 0;
+        deps.postHistoryRepository.upsertFetchedEvents.mockImplementation(async (input) => {
+            if (saveCallCount === 1) {
+                now = 250;
+            }
+            saveCallCount += 1;
+            return {
+                insertedCount: input.events.length,
+                updatedCount: 0,
+                unchangedCount: 0,
+                appliedDeletionCount: 0,
+            };
+        });
+        const notificationTimes: number[] = [];
+        const onProgress = vi.fn(() => notificationTimes.push(now));
+        const service = new PostHistoryJsonlImportService(deps);
+
+        await service.importFile({
+            file: createFile(events.map((event) => JSON.stringify(event)).join("\n")),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+            onProgress,
+        });
+
+        expect(notificationTimes.slice(0, 2)).toEqual([0, 250]);
+        expect(onProgress).toHaveBeenCalledTimes(3);
+    });
+
+    it("中間通知直後でもpartialの最終結果を強制通知する", async () => {
+        vi.spyOn(performance, "now").mockReturnValue(0);
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const events = Array.from(
+            { length: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE },
+            (_, index) => createSignedEvent(secretKey, { content: `event-${index}` }),
+        );
+        const onProgress = vi.fn();
+        const service = new PostHistoryJsonlImportService(createRepositoryMocks());
+
+        const result = await service.importFile({
+            file: createFile(`${events.map((event) => JSON.stringify(event)).join("\n")}\nnot-json`),
+            ownerPubkeyHex: pubkey,
+            getCurrentPubkeyHex: () => pubkey,
+            onProgress,
+        });
+
+        expect(result.status).toBe("partial");
+        expect(onProgress).toHaveBeenCalledTimes(2);
+        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({
+            status: "partial",
+            insertedPostCount: POST_HISTORY_JSONL_IMPORT_BATCH_SIZE,
+            invalidJsonCount: 1,
+        }));
     });
 
     it("投稿保存が失敗してもkind 5区分を継続し部分成功として返す", async () => {
@@ -557,6 +752,7 @@ describe("PostHistoryJsonlImportService", () => {
         const secretKey = generateSecretKey();
         const pubkey = getPublicKey(secretKey);
         const deps = createRepositoryMocks();
+        const onProgress = vi.fn();
         const service = new PostHistoryJsonlImportService(deps);
 
         const result = await service.importFile({
@@ -567,9 +763,12 @@ describe("PostHistoryJsonlImportService", () => {
             } as unknown as Pick<File, "stream">,
             ownerPubkeyHex: pubkey,
             getCurrentPubkeyHex: () => pubkey,
+            onProgress,
         });
 
         expect(result.status).toBe("failed");
         expect(result.nonEmptyLineCount).toBe(0);
+        expect(onProgress).toHaveBeenCalledTimes(1);
+        expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed" }));
     });
 });
