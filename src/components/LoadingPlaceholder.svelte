@@ -137,14 +137,50 @@
     }
 
     .inline-spinner {
+        --spinner-stroke: clamp(2px, calc(var(--loader-size) * 0.09), 3.5px);
+        position: relative;
         display: block;
+        flex: 0 0 var(--loader-size);
         width: var(--loader-size);
         height: var(--loader-size);
-        border: max(2px, calc(var(--loader-size) * 0.1)) solid currentColor;
-        border-right-color: transparent;
         border-radius: 50%;
-        animation: inline-spinner-rotate 0.8s linear infinite;
         box-sizing: border-box;
+        color: currentColor;
+        animation: inline-spinner-rotate 1.1s linear infinite;
+    }
+
+    .inline-spinner::before,
+    .inline-spinner::after {
+        position: absolute;
+        inset: 0;
+        display: block;
+        border-radius: inherit;
+        content: "";
+    }
+
+    .inline-spinner::before {
+        border: var(--spinner-stroke) solid currentColor;
+        opacity: 0.24;
+    }
+
+    .inline-spinner::after {
+        background: conic-gradient(
+            from -28deg,
+            transparent 0deg,
+            color-mix(in srgb, currentColor 28%, transparent) 26deg,
+            currentColor 88deg,
+            transparent 116deg
+        );
+        mask: radial-gradient(
+            farthest-side,
+            transparent calc(100% - var(--spinner-stroke)),
+            #000 calc(100% - var(--spinner-stroke) + 0.5px)
+        );
+        -webkit-mask: radial-gradient(
+            farthest-side,
+            transparent calc(100% - var(--spinner-stroke)),
+            #000 calc(100% - var(--spinner-stroke) + 0.5px)
+        );
     }
 
     @keyframes inline-spinner-rotate {
