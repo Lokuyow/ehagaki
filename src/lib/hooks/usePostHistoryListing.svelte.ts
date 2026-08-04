@@ -2539,6 +2539,12 @@ export function usePostHistoryListing({
                 pageSize,
             );
             if (safePage !== normalizedPage) {
+                if (
+                    requestId === searchLoadRequestId
+                    && isCurrentSearchLoad(requestId, query, pubkeyHex)
+                ) {
+                    searchResultStatus = "ready";
+                }
                 return false;
             }
 
@@ -3926,6 +3932,8 @@ export function usePostHistoryListing({
     onDestroy(() => {
         loadRequestId += 1;
         searchLoadRequestId += 1;
+        initialLocalLoadGeneration += 1;
+        initialLocalLoadStatus = "idle";
         firstPaintPubkeyKey = null;
         mediaPrefetchReady = false;
     });

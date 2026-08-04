@@ -508,11 +508,13 @@ function createRecord(overrides: Record<string, any> = {}) {
 
 function createDeferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((resolvePromise) => {
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
         resolve = resolvePromise;
+        reject = rejectPromise;
     });
 
-    return { promise, resolve };
+    return { promise, resolve, reject };
 }
 
 function createQuoteNoteUri(eventId: string): string {
@@ -1144,6 +1146,52 @@ describe('PostHistoryDialog', () => {
         await Promise.resolve();
         await Promise.resolve();
         expect(screen.queryByText('投稿履歴はありません')).toBeNull();
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
+        expect(document.querySelector('.post-history-container')?.getAttribute('aria-busy')).toBe('false');
+    });
+
+    it('[initial-local-load] unmount 後の遅延読込 resolve は状態を適用しない', async () => {
+        const deferredPosts = createDeferred<any[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled();
+        });
+
+        view.unmount();
+        deferredPosts.resolve([]);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(document.querySelector('.post-history-container')).toBeNull();
+    });
+
+    it('[initial-local-load] unmount 後の遅延読込 reject は状態を適用せず未処理拒否を残さない', async () => {
+        const deferredPosts = createDeferred<any[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled();
+        });
+
+        view.unmount();
+        deferredPosts.reject(new Error('late IndexedDB read failure'));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(document.querySelector('.post-history-container')).toBeNull();
     });
 
     it('[search-empty] 現在の検索 request が完了するまで空状態を表示しない', async () => {
