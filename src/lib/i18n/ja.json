@@ -137,6 +137,8 @@
     "visibleRange": "{from} → {to}",
     "visibleCountSummary": "{total}件保存",
     "searchCountSummary": "{total}件",
+    "countLoading": "件数を確認中...",
+    "countUnavailable": "件数を確認できません",
     "loadOlder": "さらに古い投稿を表示",
     "loadNewer": "新しい投稿を表示",
     "loadOlderSearchResults": "さらに古い検索結果を表示",

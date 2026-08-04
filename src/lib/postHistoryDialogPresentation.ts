@@ -32,10 +32,14 @@ const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
 
 export function resolvePostHistoryCountSummaryState(input: {
     totalCount: number;
+    totalCountKnown?: boolean;
+    totalCountStatus?: "unknown" | "loading" | "ready" | "refreshing" | "failed";
     isSearchMode: boolean;
 }): PostHistoryDialogMessageState | null {
-    if (input.totalCount <= 0) {
-        return null;
+    if (!input.isSearchMode && !input.totalCountKnown) {
+        return input.totalCountStatus === "failed"
+            ? { key: "postHistory.countUnavailable" }
+            : { key: "postHistory.countLoading" };
     }
 
     return {

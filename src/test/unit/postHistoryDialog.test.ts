@@ -20,6 +20,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.visibleRange': `表示中: ${options?.values?.from}〜${options?.values?.to}`,
         'postHistory.visibleCountSummary': `${options?.values?.total}件`,
         'postHistory.searchCountSummary': `${options?.values?.total}件`,
+        'postHistory.countLoading': '件数を確認中...',
+        'postHistory.countUnavailable': '件数を確認できません',
         'postHistory.loadOlder': 'さらに古い投稿を表示',
         'postHistory.loadNewer': '新しい投稿を表示',
         'postHistory.loadOlderSearchResults': 'さらに古い検索結果を表示',
@@ -1051,6 +1053,65 @@ describe('PostHistoryDialog', () => {
             });
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('[first-post-before-count] 総件数の完了を待たずに最新投稿を表示する', async () => {
+        const post = createRecord({ content: '件数より先に表示する投稿' });
+        const deferredCount = createDeferred<number>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockReturnValue(deferredCount.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await findHistoryItem(post.eventId);
+        expect(screen.getByText('件数を確認中...')).toBeTruthy();
+
+        deferredCount.resolve(1);
+        await waitFor(() => {
+            expect(screen.getByText('1件')).toBeTruthy();
+        });
+    });
+
+    it('[count-survives-window-move] 古い投稿の表示中でも開始済みの総件数を適用する', async () => {
+        const latestPost = createRecord({
+            eventId: '1'.repeat(64),
+            content: '最新投稿',
+        });
+        const olderPost = createRecord({
+            eventId: '2'.repeat(64),
+            content: '古い投稿',
+            createdAt: 1_699_999_000,
+            postedAt: Date.UTC(2024, 0, 1, 3, 4, 0),
+        });
+        const deferredCount = createDeferred<number>();
+        repositoryMock.getPage.mockResolvedValue([latestPost]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([olderPost]);
+        repositoryMock.countForPubkey.mockReturnValue(deferredCount.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await findHistoryItem(latestPost.eventId);
+        await fireEvent.click(await screen.findByRole('button', {
+            name: 'さらに古い投稿を表示',
+        }));
+        await findHistoryItem(olderPost.eventId);
+
+        deferredCount.resolve(2);
+        await waitFor(() => {
+            expect(screen.getByText('2件')).toBeTruthy();
         });
     });
 

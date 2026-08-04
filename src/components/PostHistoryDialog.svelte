@@ -669,6 +669,8 @@
         return translateDialogMessage(
             resolvePostHistoryCountSummaryState({
                 totalCount: history.displayTotalCount,
+                totalCountKnown: history.state.totalCountKnown,
+                totalCountStatus: history.state.totalCountStatus,
                 isSearchMode: history.isSearchMode,
             }),
         );
