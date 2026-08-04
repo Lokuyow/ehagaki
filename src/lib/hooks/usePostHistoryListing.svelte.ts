@@ -1739,7 +1739,11 @@ export function usePostHistoryListing({
             visibleUntil,
         });
 
-        if (!getShow() || requestId !== loadRequestId) {
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+        ) {
             return;
         }
 
@@ -3314,6 +3318,7 @@ export function usePostHistoryListing({
             onProgress: async () => undefined,
         });
         currentViewRefetchTask = task;
+        let primaryRefetchReloadCompleted = false;
 
         try {
             const result = await task.promise;
@@ -3343,11 +3348,11 @@ export function usePostHistoryListing({
             } else {
                 await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
             }
+            primaryRefetchReloadCompleted = true;
 
             let childInteractionRepairResult: PostHistoryRelationRepairSummary | null = null;
             if (
-                result.status === "success"
-                && currentViewRefetchTask === task
+                currentViewRefetchTask === task
                 && getShow()
                 && getPubkeyHex() === pubkeyHex
                 && getRxNostr() === rxNostr
@@ -3371,6 +3376,15 @@ export function usePostHistoryListing({
                 ) {
                     return;
                 }
+            }
+
+            if (
+                currentViewRefetchTask !== task
+                || !getShow()
+                || getPubkeyHex() !== pubkeyHex
+                || getRxNostr() !== rxNostr
+            ) {
+                return;
             }
 
             if (!state.searchQuery) {
@@ -3413,6 +3427,16 @@ export function usePostHistoryListing({
         } catch {
             if (currentViewRefetchTask !== task) {
                 return;
+            }
+
+            if (
+                primaryRefetchReloadCompleted
+                && !state.searchQuery
+                && getShow()
+                && getPubkeyHex() === pubkeyHex
+                && getRxNostr() === rxNostr
+            ) {
+                refreshTotalCountFromRepository({ force: true });
             }
 
             currentViewRefetchTask = null;

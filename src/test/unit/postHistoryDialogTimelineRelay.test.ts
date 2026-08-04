@@ -21,6 +21,7 @@ import {
 } from './postHistoryDialogTestHarness';
 import { classifyPostHistoryInboundInteraction } from '../../lib/postHistoryInboundInteractionClassifier';
 import { PostHistoryInboundReplyReconciliationService } from '../../lib/postHistoryInboundReplyReconciliationService';
+import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
 
 async function clickEnabledMenuAction(name: string): Promise<void> {
     await openPostHistoryMenu();
@@ -1080,13 +1081,80 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledTimes(1);
     });
 
-    it('self repairがpartialならreply repairを起動しない', async () => {
+    it('pubkey切替中に解決した旧latest結果を反映せず、旧pubkeyの後続処理も開始しない', async () => {
+        const nextPubkeyHex = 'b'.repeat(64);
+        const oldPost = createRecord({
+            eventId: 'pubkey-a-post',
+            content: 'Aの投稿',
+            pubkeyHex: PUBKEY_HEX,
+        });
+        const nextPost = createRecord({
+            eventId: 'pubkey-b-post',
+            content: 'Bの投稿',
+            pubkeyHex: nextPubkeyHex,
+        });
+        const oldLatest = createDeferred<Array<typeof oldPost>>();
+        repositoryMock.getLatestVisibleChunk.mockImplementation(
+            async ({ pubkeyHex }: { pubkeyHex: string }) =>
+                pubkeyHex === PUBKEY_HEX ? oldLatest.promise : [nextPost],
+        );
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'cancelled' })),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith(
+                expect.objectContaining({ pubkeyHex: PUBKEY_HEX }),
+            );
+        });
+        await view.rerender({ pubkeyHex: nextPubkeyHex });
+        oldLatest.resolve([oldPost]);
+
+        await waitFor(() => {
+            expect(screen.getByText('Bの投稿')).toBeTruthy();
+        });
+        expect(screen.queryByText('Aの投稿')).toBeNull();
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX).loadedPosts).toEqual([]);
+        expect(repositoryMock.countForPubkey.mock.calls.every(([key]) => key !== PUBKEY_HEX)).toBe(true);
+        expect(jumpCacheAnchorRepositoryMock.getForPubkey.mock.calls.every(([key]) => key !== PUBKEY_HEX)).toBe(true);
+        expect(repositoryMock.getNewerVisibleChunk.mock.calls.every(([options]) => options.pubkeyHex !== PUBKEY_HEX)).toBe(true);
+        expect(repositoryMock.getOlderVisibleChunk.mock.calls.every(([options]) => options.pubkeyHex !== PUBKEY_HEX)).toBe(true);
+        expect(repositoryMock.hasPostsBeforeCreatedAt.mock.calls.every(([key]) => key !== PUBKEY_HEX)).toBe(true);
+        expect(relayFetchServiceMock.fetchLatest.mock.calls.every(([, options]) => options.pubkeyHex !== PUBKEY_HEX)).toBe(true);
+
+        view.unmount();
+    });
+
+    it('self repairがpartialでもrelation repair完了後にforced countを1回だけ開始する', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-partial-visible',
             content: '表示中の投稿',
         });
-        repositoryMock.countForPubkey.mockResolvedValue(1);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        const updatedPost = createRecord({
+            eventId: 'repair-partial-updated',
+            content: '一部取得後の更新',
+        });
+        const repairComplete = createDeferred<{
+            status: 'partial';
+            savedDirectReplyCount: number;
+        }>();
+        repositoryMock.countForPubkey.mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([visiblePost])
+            .mockResolvedValueOnce([updatedPost]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
         repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         relayFetchServiceMock.fetchLatest.mockReturnValue({
@@ -1097,7 +1165,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             promise: Promise.resolve({
                 status: 'partial',
                 addedCount: 0,
-                updatedCount: 0,
+                updatedCount: 1,
                 unchangedCount: 0,
                 processedRangeCount: 1,
                 processedRanges: [],
@@ -1107,6 +1175,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 hadTimeout: false,
                 hadUnfinishedRanges: true,
             }),
+            cancel: vi.fn(),
+        });
+        replyRepairServiceMock.repairVisibleRangeRelations.mockReturnValueOnce({
+            promise: repairComplete.promise,
             cancel: vi.fn(),
         });
 
@@ -1122,15 +1194,28 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalled();
+        });
+        const countCallsBeforeRefetch = repositoryMock.countForPubkey.mock.calls.length;
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(screen.getByText('一部取得後の更新')).toBeTruthy();
+            expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
+        });
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(countCallsBeforeRefetch);
+
+        repairComplete.resolve({ status: 'partial', savedDirectReplyCount: 0 });
+        await waitFor(() => {
+            expect(screen.getByText('一部未確認')).toBeTruthy();
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(countCallsBeforeRefetch + 1);
+        });
 
         view.unmount();
     });
 
-    it('self repairがtimeoutならreply repairを起動しない', async () => {
+    it('self repairがtimeoutでもrelation repairを起動する', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-timeout-visible',
             content: 'timeout後も表示中',
@@ -1174,8 +1259,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(replyRepairServiceMock.repairVisibleRangeRelations).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(replyRepairServiceMock.repairVisibleRangeRelations).toHaveBeenCalledTimes(1);
+        });
 
         view.unmount();
     });
