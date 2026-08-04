@@ -384,6 +384,10 @@ export async function waitForSearchDebounce(): Promise<void> {
 }
 
 export function resetPostHistoryDialogHarness(): void {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+    });
     postHistoryLightweightSyncCoordinator.cancelOwnerTasks(PUBKEY_HEX);
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();

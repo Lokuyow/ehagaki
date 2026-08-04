@@ -950,7 +950,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
         expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        });
         expect(repositoryMock.hasPostsBeforeCreatedAt).toHaveBeenCalledWith(
             PUBKEY_HEX,
             1_000,
@@ -1053,7 +1055,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
         expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        });
 
         view.unmount();
     });
@@ -1197,7 +1201,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
         expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        });
         expect(localSearchServiceMock.searchLocalPosts).not.toHaveBeenCalled();
 
         view.unmount();
@@ -1338,7 +1344,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledTimes(1);
+        });
         expect(localSearchServiceMock.searchLocalPosts).not.toHaveBeenCalled();
 
         view.unmount();

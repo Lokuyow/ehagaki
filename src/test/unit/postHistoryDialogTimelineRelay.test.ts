@@ -867,6 +867,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
+        });
+        await waitFor(() => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
@@ -1055,6 +1058,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
             },
         });
 
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
+        });
         await waitFor(() => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
@@ -1255,6 +1261,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
         await clickEnabledMenuAction('表示中の投稿付近を再取得');

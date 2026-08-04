@@ -535,6 +535,31 @@ function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function controlAnimationFrames() {
+    let nextId = 1;
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const requestAnimationFrameSpy = vi
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation((callback: FrameRequestCallback) => {
+            const id = nextId++;
+            callbacks.set(id, callback);
+            return id;
+        });
+
+    return {
+        async flushFrame(): Promise<void> {
+            const pending = [...callbacks.values()];
+            callbacks.clear();
+            pending.forEach((callback) => callback(0));
+            await Promise.resolve();
+            await Promise.resolve();
+        },
+        restore(): void {
+            requestAnimationFrameSpy.mockRestore();
+        },
+    };
+}
+
 function createMockRect(top: number, height: number): DOMRect {
     return {
         x: 0,
@@ -1100,7 +1125,93 @@ describe('PostHistoryDialog', () => {
         deferredPosts.resolve([post]);
         await findHistoryItem(post.eventId);
 
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+        });
+    });
+
+    it('[first-paint-order] 2回目の animation frame 後まで補助処理と media prefetch を開始しない', async () => {
+        const animationFrames = controlAnimationFrames();
+        const post = createRecord({
+            content: '初回 paint 後に補助処理を開始する投稿',
+        });
+        repositoryMock.getPage.mockResolvedValue([post]);
+
+        try {
+            render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: 'a'.repeat(64),
+                },
+            });
+
+            await findHistoryItem(post.eventId);
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+            expect(repositoryMock.getNewerVisibleChunk).not.toHaveBeenCalled();
+            expect(repositoryMock.getOlderVisibleChunk).not.toHaveBeenCalled();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            await animationFrames.flushFrame();
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+            expect(repositoryMock.getNewerVisibleChunk).not.toHaveBeenCalled();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            await animationFrames.flushFrame();
+            await waitFor(() => {
+                expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+                expect(repositoryMock.getNewerVisibleChunk).toHaveBeenCalled();
+                expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalled();
+                expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).toHaveBeenCalledTimes(1);
+            });
+        } finally {
+            animationFrames.restore();
+        }
+    });
+
+    it('[first-paint-stale] close または pubkey 切替後に古い初回 load の補助処理を開始しない', async () => {
+        const animationFrames = controlAnimationFrames();
+        const firstPubkey = 'a'.repeat(64);
+        const secondPubkey = 'b'.repeat(64);
+        const post = createRecord({ content: 'stale 初回 load', media: [] });
+        repositoryMock.getPage.mockResolvedValue([post]);
+
+        try {
+            const view = render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: firstPubkey,
+                },
+            });
+            await findHistoryItem(post.eventId);
+
+            await view.rerender({
+                show: false,
+                onClose: vi.fn(),
+                pubkeyHex: firstPubkey,
+            });
+            await animationFrames.flushFrame();
+            await animationFrames.flushFrame();
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+
+            await view.rerender({
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: secondPubkey,
+            });
+            await waitFor(() => {
+                expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+            });
+            await animationFrames.flushFrame();
+            await animationFrames.flushFrame();
+            await waitFor(() => {
+                expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(secondPubkey);
+            });
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalledWith(firstPubkey);
+        } finally {
+            animationFrames.restore();
+        }
     });
 
     it('[count-survives-window-move] 古い投稿の表示中でも開始済みの総件数を適用する', async () => {
@@ -3752,10 +3863,12 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await openPostActionMenu();
         await waitFor(() => {
             expect(screen.getByText('open refresh中の親投稿')).toBeTruthy();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+        });
+        await openPostActionMenu();
+        await waitFor(() => {
             expect(screen.getByRole('menuitem', { name: '返信を確認' })).toBeTruthy();
         });
 
@@ -4662,7 +4775,9 @@ describe('PostHistoryDialog', () => {
 
         expect(screen.queryByText('返信')).toBeNull();
         expect(screen.queryByText('自分の返信')).toBeNull();
-        expect(screen.getByText('1件')).toBeTruthy();
+        await waitFor(() => {
+            expect(screen.getByText('1件')).toBeTruthy();
+        });
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
         expect(replyEventsRepositoryMock.upsertDirectReplies).toHaveBeenCalledWith(expect.objectContaining({
             parentEventId: '1'.repeat(64),
