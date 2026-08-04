@@ -618,6 +618,7 @@ export function usePostHistoryListing({
     let hasCompletedFirstPostPaint = false;
     let mediaPrefetchReady = $state(false);
     let firstPaintPubkeyKey = $state<string | null>(null);
+    let lastPrefetchedMediaUrlsKey: string | null = null;
     let totalCountRequestId = 0;
     let currentTotalCountRequest:
         | { requestId: number; pubkeyHex: string; promise: Promise<void> }
@@ -817,6 +818,7 @@ export function usePostHistoryListing({
         hasCompletedFirstPostPaint = false;
         mediaPrefetchReady = false;
         firstPaintPubkeyKey = null;
+        lastPrefetchedMediaUrlsKey = null;
     }
 
     async function waitForFirstPostPaint(
@@ -2552,13 +2554,13 @@ export function usePostHistoryListing({
     async function rebuildSearchResultsThroughPage(
         page: number,
         query: string,
+        requestId: number = ++searchLoadRequestId,
     ): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !query) {
             return false;
         }
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const requestId = ++searchLoadRequestId;
         isSearchPageLoading = true;
 
         try {
@@ -3840,6 +3842,12 @@ export function usePostHistoryListing({
             return;
         }
 
+        const urlsKey = [...urls].sort().join("\u0000");
+        if (urlsKey === lastPrefetchedMediaUrlsKey) {
+            return;
+        }
+        lastPrefetchedMediaUrlsKey = urlsKey;
+
         void Promise.resolve(
             postMediaCacheService.prefetchCachedMediaDescriptors(urls),
         ).catch(() => {
@@ -3913,9 +3921,21 @@ export function usePostHistoryListing({
         appliedSearchQuery = state.searchQuery;
         if (!searchResultsInitialized) {
             searchResultsInitialized = true;
+            const pubkeyHex = getPubkeyHex();
+            const query = state.searchQuery;
+            const requestId = ++searchLoadRequestId;
+            const hasRestoredSearchPosts = state.searchPosts.length > 0;
+            if (pubkeyHex && hasRestoredSearchPosts) {
+                void waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                );
+            }
             void rebuildSearchResultsThroughPage(
                 state.searchPage,
-                state.searchQuery,
+                query,
+                requestId,
             );
         }
     });
