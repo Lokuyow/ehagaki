@@ -62,7 +62,7 @@ import {
 } from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
-import { tick } from "svelte";
+import { onDestroy, tick } from "svelte";
 
 export type PostHistorySyncStatus =
     | "idle"
@@ -615,6 +615,10 @@ export function usePostHistoryListing({
     });
 
     let loadRequestId = 0;
+    let hasCompletedFirstPostPaint = false;
+    let mediaPrefetchReady = $state(false);
+    let firstPaintPubkeyKey = $state<string | null>(null);
+    let lastPrefetchedMediaUrlsKey: string | null = null;
     let totalCountRequestId = 0;
     let currentTotalCountRequest:
         | { requestId: number; pubkeyHex: string; promise: Promise<void> }
@@ -801,6 +805,57 @@ export function usePostHistoryListing({
         return requestId === fetchRequestId;
     }
 
+    function isCurrentPostHistoryLoad(
+        pubkeyHex: string,
+        requestId: number,
+    ): boolean {
+        return getShow()
+            && getPubkeyHex() === pubkeyHex
+            && requestId === loadRequestId;
+    }
+
+    function resetFirstPostPaintState(): void {
+        hasCompletedFirstPostPaint = false;
+        mediaPrefetchReady = false;
+        firstPaintPubkeyKey = null;
+        lastPrefetchedMediaUrlsKey = null;
+    }
+
+    async function waitForFirstPostPaint(
+        pubkeyHex: string,
+        isCurrent: () => boolean,
+        hasPosts: () => boolean,
+    ): Promise<boolean> {
+        await tick();
+        if (!isCurrent()) {
+            return false;
+        }
+
+        if (hasCompletedFirstPostPaint) {
+            firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
+            return true;
+        }
+
+        if (!hasPosts()) {
+            hasCompletedFirstPostPaint = true;
+            firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
+            mediaPrefetchReady = true;
+            return true;
+        }
+
+        await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+        if (!isCurrent()) {
+            return false;
+        }
+
+        hasCompletedFirstPostPaint = true;
+        firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
+        mediaPrefetchReady = true;
+        return true;
+    }
+
     function cancelCurrentViewRefetch(): void {
         currentViewRefetchTask?.cancel();
         currentViewRefetchTask = null;
@@ -884,6 +939,7 @@ export function usePostHistoryListing({
         searchLoadRequestId += 1;
         isSearchPageLoading = false;
         postHistoryLocalSearchService.clearCache?.();
+        resetFirstPostPaintState();
         state.searchInput = "";
         state.searchQuery = "";
         state.searchPage = 1;
@@ -1581,25 +1637,6 @@ export function usePostHistoryListing({
         state.hasSavedPostsOutsideVisibleRange = hasSavedPostsOutsideVisibleRange;
     }
 
-    async function prefetchCurrentPageMedia(
-        posts: PostHistoryRecord[],
-    ): Promise<void> {
-        if (!postMediaCacheService.canUsePersistentCache()) {
-            return;
-        }
-
-        const urls = collectPostHistoryMediaUrls(posts);
-        if (urls.length === 0) {
-            return;
-        }
-
-        try {
-            await postMediaCacheService.prefetchCachedMediaDescriptors(urls);
-        } catch {
-            // Media descriptor prefetch is best-effort and must not block listing updates.
-        }
-    }
-
     function toTimelineCursor(
         post: PostHistoryRecord | null | undefined,
     ): PostHistoryTimelineCursor | null {
@@ -1751,12 +1788,11 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
-        await tick();
-        if (
-            !getShow()
-            || getPubkeyHex() !== pubkeyHex
-            || requestId !== loadRequestId
-        ) {
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
             return;
         }
         if (!skipTotalCountRefresh) {
@@ -1772,9 +1808,6 @@ export function usePostHistoryListing({
             requestId,
         ).catch(() => {
             // Saved-range detection is auxiliary and must not delay the first post.
-        });
-        void prefetchCurrentPageMedia(latestPosts).catch(() => {
-            // Media prefetch is auxiliary and must not create an unhandled rejection.
         });
 
         void refreshTimelineAvailability(pubkeyHex, latestPosts, requestId)
@@ -1840,11 +1873,17 @@ export function usePostHistoryListing({
             return;
         }
 
+        state.loadedPosts = nextPosts;
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
+            return;
+        }
         if (!skipTotalCountRefresh) {
             refreshTotalCountFromRepository();
         }
-        state.loadedPosts = nextPosts;
-        void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
     }
 
@@ -1900,10 +1939,20 @@ export function usePostHistoryListing({
             return;
         }
 
-        refreshTotalCountFromRepository();
         state.hasNewerLocal = newerPosts.length > 0;
         state.hasOlderLocal = olderPosts.length > 0;
-        void prefetchCurrentPageMedia(currentPosts);
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
+            return;
+        }
+        refreshTotalCountFromRepository();
+        await refreshTimelineAvailability(pubkeyHex, state.loadedPosts, requestId);
+        if (!isCurrentPostHistoryLoad(pubkeyHex, requestId)) {
+            return;
+        }
         startOpenRelayFetchAfterLocalLoad(pubkeyHex, state.loadedPosts);
     }
 
@@ -1964,10 +2013,19 @@ export function usePostHistoryListing({
             return false;
         }
 
-        refreshTotalCountFromRepository();
         state.loadedPosts = restoredPosts;
-        void prefetchCurrentPageMedia(restoredPosts);
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
+            return false;
+        }
+        refreshTotalCountFromRepository();
         await refreshTimelineAvailability(pubkeyHex, restoredPosts, requestId);
+        if (!isCurrentPostHistoryLoad(pubkeyHex, requestId)) {
+            return false;
+        }
         void startOpenRelayFetchAfterLocalLoad(pubkeyHex, restoredPosts);
         return true;
     }
@@ -2069,7 +2127,6 @@ export function usePostHistoryListing({
             metrics.didTrimForOlderAppend = mergedResult.didTrimForOlderAppend;
             metrics.didDeferOlderPosts = mergedResult.didDeferOlderPosts;
         }
-        void prefetchCurrentPageMedia(mergedResult.posts);
         await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
         return true;
     }
@@ -2113,7 +2170,6 @@ export function usePostHistoryListing({
             options.anchorEventId,
         );
         state.loadedPosts = mergedResult.posts;
-        void prefetchCurrentPageMedia(mergedResult.posts);
         await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
@@ -2162,7 +2218,6 @@ export function usePostHistoryListing({
             options.anchorEventId,
         );
         state.loadedPosts = mergedResult.posts;
-        void prefetchCurrentPageMedia(mergedResult.posts);
         await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
@@ -2206,7 +2261,6 @@ export function usePostHistoryListing({
         }
 
         state.loadedPosts = nextPosts;
-        void prefetchCurrentPageMedia(nextPosts);
         return true;
     }
 
@@ -2243,7 +2297,6 @@ export function usePostHistoryListing({
             state.sparseSource = null;
             state.loadedPosts = contiguousDatePosts;
             resetOlderBackfillSearchState();
-            void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
         }
@@ -2254,7 +2307,6 @@ export function usePostHistoryListing({
             state.sparseSource = null;
             state.loadedPosts = contiguousDatePosts;
             resetOlderBackfillSearchState();
-            void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
         }
@@ -2290,7 +2342,6 @@ export function usePostHistoryListing({
                 state.sparseSource = "jump";
                 state.loadedPosts = sparseDatePosts;
                 resetOlderBackfillSearchState();
-                void prefetchCurrentPageMedia(sparseDatePosts);
                 await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
                 return true;
             }
@@ -2303,7 +2354,6 @@ export function usePostHistoryListing({
             state.sparseSource = null;
             state.loadedPosts = contiguousDatePosts;
             resetOlderBackfillSearchState();
-            void prefetchCurrentPageMedia(contiguousDatePosts);
             await refreshTimelineAvailability(pubkeyHex, contiguousDatePosts, requestId);
             return true;
         }
@@ -2382,7 +2432,6 @@ export function usePostHistoryListing({
         state.sparseSource = "jump";
         state.loadedPosts = sparseDatePosts;
         resetOlderBackfillSearchState();
-        void prefetchCurrentPageMedia(sparseDatePosts);
         await refreshTimelineAvailability(pubkeyHex, sparseDatePosts, requestId);
         void relationRepairCoordinator.repairJump({
             ownerPubkeyHex: pubkeyHex,
@@ -2420,9 +2469,11 @@ export function usePostHistoryListing({
     function isCurrentSearchLoad(
         requestId: number,
         query: string,
+        pubkeyHex: string,
     ): boolean {
         return getShow()
             && requestId === searchLoadRequestId
+            && getPubkeyHex() === pubkeyHex
             && query === state.searchQuery;
     }
 
@@ -2443,7 +2494,7 @@ export function usePostHistoryListing({
             pageSize,
         });
 
-        return isCurrentSearchLoad(requestId, query) ? result : null;
+        return isCurrentSearchLoad(requestId, query, pubkeyHex) ? result : null;
     }
 
     async function loadSearchPage(page: number, query: string): Promise<boolean> {
@@ -2483,7 +2534,15 @@ export function usePostHistoryListing({
                 : mergeSearchPageResults(state.searchPosts, result.items);
             state.searchPage = safePage;
             state.searchHasNext = result.hasNext;
-            void prefetchCurrentPageMedia(result.items);
+            if (!hasCompletedFirstPostPaint) {
+                if (!await waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                )) {
+                    return false;
+                }
+            }
             return true;
         } finally {
             if (requestId === searchLoadRequestId) {
@@ -2495,9 +2554,13 @@ export function usePostHistoryListing({
     async function rebuildSearchResultsThroughPage(
         page: number,
         query: string,
+        requestId: number = ++searchLoadRequestId,
     ): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !query) {
+            return false;
+        }
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const requestId = ++searchLoadRequestId;
         isSearchPageLoading = true;
 
         try {
@@ -2532,7 +2595,15 @@ export function usePostHistoryListing({
             state.searchTotalCount = firstPage.total;
             state.searchPage = lastPage;
             state.searchHasNext = lastResult.hasNext;
-            void prefetchCurrentPageMedia(rebuiltPosts);
+            if (!hasCompletedFirstPostPaint) {
+                if (!await waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                )) {
+                    return false;
+                }
+            }
             return true;
         } finally {
             if (requestId === searchLoadRequestId) {
@@ -2875,7 +2946,6 @@ export function usePostHistoryListing({
         state.sparseSource = "saved";
         state.loadedPosts = posts;
         refreshTotalCountFromRepository();
-        void prefetchCurrentPageMedia(posts);
         await refreshTimelineAvailability(pubkeyHex, posts, requestId);
         await refreshSavedPostsOutsideVisibleRange(pubkeyHex, visibleUntil, requestId);
         return true;
@@ -3525,7 +3595,6 @@ export function usePostHistoryListing({
             "newer",
         );
         state.loadedPosts = nextPosts;
-        void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         return true;
     }
@@ -3583,6 +3652,7 @@ export function usePostHistoryListing({
         }
 
         activePubkeyKey = nextPubkeyKey;
+        resetFirstPostPaintState();
         stateOwnerPubkeyKey = null;
         forceLatestInitialLoadKey = nextPubkeyKey;
         cancelCurrentSync();
@@ -3744,7 +3814,17 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (!getShow()) {
+        if (getShow()) {
+            return;
+        }
+
+        resetFirstPostPaintState();
+    });
+
+    $effect(() => {
+        if (!getShow()
+            || !mediaPrefetchReady
+            || firstPaintPubkeyKey !== resolveListingSnapshotKey(getPubkeyHex())) {
             return;
         }
 
@@ -3753,7 +3833,33 @@ export function usePostHistoryListing({
             return;
         }
 
-        void prefetchCurrentPageMedia(currentPosts);
+        if (!postMediaCacheService.canUsePersistentCache()) {
+            return;
+        }
+
+        const urls = collectPostHistoryMediaUrls(currentPosts);
+        if (urls.length === 0) {
+            return;
+        }
+
+        const urlsKey = [...urls].sort().join("\u0000");
+        if (urlsKey === lastPrefetchedMediaUrlsKey) {
+            return;
+        }
+        lastPrefetchedMediaUrlsKey = urlsKey;
+
+        void Promise.resolve(
+            postMediaCacheService.prefetchCachedMediaDescriptors(urls),
+        ).catch(() => {
+            // Media descriptor prefetch is best-effort and must not block listing updates.
+        });
+    });
+
+    onDestroy(() => {
+        loadRequestId += 1;
+        searchLoadRequestId += 1;
+        firstPaintPubkeyKey = null;
+        mediaPrefetchReady = false;
     });
 
     $effect(() => {
@@ -3762,6 +3868,8 @@ export function usePostHistoryListing({
         }
 
         if (!state.searchQuery) {
+            const wasSearchMode = appliedSearchQuery !== "";
+            resetFirstPostPaintState();
             searchLoadRequestId += 1;
             isSearchPageLoading = false;
             postHistoryLocalSearchService.clearCache?.();
@@ -3769,16 +3877,37 @@ export function usePostHistoryListing({
             searchResultsInitialized = false;
             if (state.searchPage !== 1) {
                 state.searchPage = 1;
+                if (wasSearchMode) {
+                    const pubkeyHex = getPubkeyHex();
+                    if (pubkeyHex) {
+                        void waitForFirstPostPaint(
+                            pubkeyHex,
+                            () => isCurrentPostHistoryLoad(pubkeyHex, loadRequestId),
+                            () => state.loadedPosts.length > 0,
+                        );
+                    }
+                }
                 return;
             }
 
             state.searchPosts = [];
             state.searchTotalCount = 0;
             state.searchHasNext = false;
+            if (wasSearchMode) {
+                const pubkeyHex = getPubkeyHex();
+                if (pubkeyHex) {
+                    void waitForFirstPostPaint(
+                        pubkeyHex,
+                        () => isCurrentPostHistoryLoad(pubkeyHex, loadRequestId),
+                        () => state.loadedPosts.length > 0,
+                    );
+                }
+            }
             return;
         }
 
         if (state.searchQuery !== appliedSearchQuery) {
+            resetFirstPostPaintState();
             if (appliedSearchQuery === "" && state.searchPosts.length === 0) {
                 state.searchPosts = state.loadedPosts;
             }
@@ -3792,9 +3921,21 @@ export function usePostHistoryListing({
         appliedSearchQuery = state.searchQuery;
         if (!searchResultsInitialized) {
             searchResultsInitialized = true;
+            const pubkeyHex = getPubkeyHex();
+            const query = state.searchQuery;
+            const requestId = ++searchLoadRequestId;
+            const hasRestoredSearchPosts = state.searchPosts.length > 0;
+            if (pubkeyHex && hasRestoredSearchPosts) {
+                void waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                );
+            }
             void rebuildSearchResultsThroughPage(
                 state.searchPage,
-                state.searchQuery,
+                query,
+                requestId,
             );
         }
     });
