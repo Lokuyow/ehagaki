@@ -759,6 +759,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
+        const countCallCountBeforeRepair = repositoryMock.countForPubkey.mock.calls.length;
+
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await waitFor(() => {
@@ -776,10 +778,17 @@ describe('PostHistoryDialog timeline relay flows', () => {
             totalUpdatedCount: 0,
             totalUnchangedCount: 0,
         });
-
-        await waitFor(() => {
-            expect(screen.getByText('51件')).toBeTruthy();
+        await repairParams.onProgress({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            processedRangeCount: 2,
+            attemptedRangeCount: 2,
+            addedCount: 2,
+            totalUpdatedCount: 0,
+            totalUnchangedCount: 0,
         });
+        expect(repositoryMock.countForPubkey.mock.calls.length).toBe(countCallCountBeforeRepair);
 
         repairComplete.resolve({
             status: 'success',
@@ -795,7 +804,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await waitFor(() => {
             expect(screen.getByText('1件追加')).toBeTruthy();
             expect(screen.getByText('修復された投稿')).toBeTruthy();
+            expect(screen.getByText('51件')).toBeTruthy();
         });
+        expect(repositoryMock.countForPubkey.mock.calls.length).toBe(countCallCountBeforeRepair + 1);
 
         view.unmount();
     });

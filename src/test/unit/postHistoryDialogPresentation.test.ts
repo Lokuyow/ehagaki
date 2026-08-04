@@ -11,13 +11,31 @@ import {
 } from "../../lib/postHistoryDialogPresentation";
 
 describe("postHistoryDialogPresentation", () => {
-    it("件数 summary は0件以下では非表示にし、通常/検索で key を切り替える", () => {
+    it("通常表示の件数 summary は未知状態を0件と扱わず、既知の0件は表示する", () => {
         expect(resolvePostHistoryCountSummaryState({
             totalCount: 0,
+            totalCountKnown: false,
+            totalCountStatus: "loading",
             isSearchMode: false,
-        })).toBeNull();
+        })).toEqual({ key: "postHistory.countLoading" });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 0,
+            totalCountKnown: false,
+            totalCountStatus: "failed",
+            isSearchMode: false,
+        })).toEqual({ key: "postHistory.countUnavailable" });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 0,
+            totalCountKnown: true,
+            totalCountStatus: "ready",
+            isSearchMode: false,
+        })).toEqual({
+            key: "postHistory.visibleCountSummary",
+            values: { total: 0 },
+        });
         expect(resolvePostHistoryCountSummaryState({
             totalCount: 3,
+            totalCountKnown: true,
             isSearchMode: false,
         })).toEqual({
             key: "postHistory.visibleCountSummary",
@@ -30,6 +48,10 @@ describe("postHistoryDialogPresentation", () => {
             key: "postHistory.searchCountSummary",
             values: { total: 3 },
         });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 0,
+            isSearchMode: true,
+        })).toBeNull();
     });
 
     it("older/newer の nav label key は検索モードだけ検索結果用に切り替える", () => {

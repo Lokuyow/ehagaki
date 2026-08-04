@@ -32,16 +32,31 @@ const reactionGraphemeSegmenter = new Intl.Segmenter(undefined, {
 
 export function resolvePostHistoryCountSummaryState(input: {
     totalCount: number;
+    totalCountKnown?: boolean;
+    totalCountStatus?: "unknown" | "loading" | "ready" | "refreshing" | "failed";
     isSearchMode: boolean;
 }): PostHistoryDialogMessageState | null {
-    if (input.totalCount <= 0) {
-        return null;
+    if (input.isSearchMode) {
+        if (input.totalCount <= 0) {
+            return null;
+        }
+
+        return {
+            key: "postHistory.searchCountSummary",
+            values: {
+                total: input.totalCount,
+            },
+        };
+    }
+
+    if (!input.totalCountKnown) {
+        return input.totalCountStatus === "failed"
+            ? { key: "postHistory.countUnavailable" }
+            : { key: "postHistory.countLoading" };
     }
 
     return {
-        key: input.isSearchMode
-            ? "postHistory.searchCountSummary"
-            : "postHistory.visibleCountSummary",
+        key: "postHistory.visibleCountSummary",
         values: {
             total: input.totalCount,
         },

@@ -137,6 +137,8 @@
     "visibleRange": "{from} → {to}",
     "visibleCountSummary": "{total} saved",
     "searchCountSummary": "{total} posts",
+    "countLoading": "Checking count...",
+    "countUnavailable": "Count unavailable",
     "loadOlder": "Show older posts",
     "loadNewer": "Show newer posts",
     "loadOlderSearchResults": "Show older search results",
