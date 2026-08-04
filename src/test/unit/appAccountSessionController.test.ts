@@ -6,12 +6,14 @@ function createController(overrides: Record<string, unknown> = {}) {
     let isSwitchingAccount = false;
     let isLoggingOut = false;
     let currentRxNostr: unknown = { dispose: vi.fn() };
+    const switchingAccountStateHistory: boolean[] = [];
 
     const deps = {
         getIsSwitchingAccount: () => isSwitchingAccount,
-        setIsSwitchingAccount: (next: boolean) => {
+        setIsSwitchingAccount: vi.fn((next: boolean) => {
             isSwitchingAccount = next;
-        },
+            switchingAccountStateHistory.push(next);
+        }),
         getIsLoggingOut: () => isLoggingOut,
         setIsLoggingOut: (next: boolean) => {
             isLoggingOut = next;
@@ -64,19 +66,72 @@ function createController(overrides: Record<string, unknown> = {}) {
     return {
         deps,
         controller: createAppAccountSessionController(deps as never),
+        switchingAccountStateHistory,
     };
 }
 
 describe('createAppAccountSessionController', () => {
     it('switchAccount は restoreManagedAccountSession を実行する', async () => {
-        const { deps, controller } = createController();
+        const {
+            deps,
+            controller,
+            switchingAccountStateHistory,
+        } = createController();
 
         await expect(controller.switchAccount('bb'.repeat(32))).resolves.toBe(true);
 
+        expect(switchingAccountStateHistory).toEqual([true, false]);
         expect(deps.setProfileLoading).toHaveBeenCalledWith(false);
         expect(deps.clearNip46RuntimeForAuthChange).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
         expect(deps.restoreManagedAccountSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('switchAccount は非同期処理の開始前に切替状態を有効化する', async () => {
+        let resolveRestore: ((result: boolean) => void) | undefined;
+        let resolveRestoreStarted: (() => void) | undefined;
+        const restoreStarted = new Promise<void>((resolve) => {
+            resolveRestoreStarted = resolve;
+        });
+        const restoreManagedAccountSession = vi.fn(() => {
+            resolveRestoreStarted?.();
+            return new Promise<boolean>((resolve) => {
+                resolveRestore = resolve;
+            });
+        });
+        const { controller, switchingAccountStateHistory } = createController({
+            restoreManagedAccountSession,
+        });
+
+        const switchPromise = controller.switchAccount('bb'.repeat(32));
+
+        await restoreStarted;
+        expect(switchingAccountStateHistory).toEqual([true]);
+        resolveRestore?.(true);
+        await expect(switchPromise).resolves.toBe(true);
+        expect(switchingAccountStateHistory).toEqual([true, false]);
+    });
+
+    it('switchAccount は復元失敗時も切替状態を解除する', async () => {
+        const { controller, switchingAccountStateHistory } = createController({
+            restoreManagedAccountSession: vi.fn(async () => false),
+        });
+
+        await expect(controller.switchAccount('bb'.repeat(32))).resolves.toBe(false);
+
+        expect(switchingAccountStateHistory).toEqual([true, false]);
+    });
+
+    it('switchAccount は例外時も切替状態を解除する', async () => {
+        const { controller, switchingAccountStateHistory } = createController({
+            restoreManagedAccountSession: vi.fn(async () => {
+                throw new Error('restore failed');
+            }),
+        });
+
+        await expect(controller.switchAccount('bb'.repeat(32))).resolves.toBe(false);
+
+        expect(switchingAccountStateHistory).toEqual([true, false]);
     });
 
     it('logoutAccount guest 分岐では認証情報を初期化する', async () => {
