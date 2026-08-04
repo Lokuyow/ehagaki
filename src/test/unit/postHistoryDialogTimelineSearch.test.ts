@@ -143,6 +143,80 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
+    it('存在しない検索ページの結果では表示・ページ状態を維持し、loadingを解除する', async () => {
+        vi.useFakeTimers();
+        const secondPage = createDeferred<{
+            items: ReturnType<typeof createRecord>[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            ({ page }: { page: number }) => page === 1
+                ? Promise.resolve({
+                    items: [createRecord({ eventId: 'missing-page-1', content: '検索1ページ目' })],
+                    total: 51,
+                    hasNext: true,
+                })
+                : secondPage.promise,
+        );
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await vi.advanceTimersByTimeAsync(300);
+        await vi.advanceTimersByTimeAsync(0);
+        await waitFor(() => {
+            expect(screen.getByText('検索1ページ目')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い検索結果を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い検索結果を表示' }));
+        expect(getHistoryContainer().getAttribute('aria-busy')).toBe('true');
+
+        secondPage.resolve({
+            items: [createRecord({ eventId: 'missing-page-2', content: '存在しないページの結果' })],
+            total: 1,
+            hasNext: false,
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        await waitFor(() => {
+            expect(screen.getByText('検索1ページ目')).toBeTruthy();
+            expect(screen.queryByText('存在しないページの結果')).toBeNull();
+            expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false');
+        });
+
+        await vi.advanceTimersByTimeAsync(200);
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
+        expect(screen.getByRole('button', { name: 'さらに古い検索結果を表示' })).toBeTruthy();
+        view.unmount();
+    });
+
+    it('200ms超の初回ローカル読込だけspinnerを表示し、完了後に解除する', async () => {
+        vi.useFakeTimers();
+        const deferredPosts = createDeferred<ReturnType<typeof createRecord>[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+
+        await vi.advanceTimersByTimeAsync(200);
+        expect(document.querySelector('.post-history-list-loading')).not.toBeNull();
+        expect(getHistoryContainer().getAttribute('aria-busy')).toBe('true');
+
+        deferredPosts.resolve([]);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.runAllTicks();
+        expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
+        expect(getHistoryContainer().getAttribute('aria-busy')).toBe('false');
+
+        view.unmount();
+        vi.clearAllTimers();
+    });
+
     it('インポート後は読み込み済み検索範囲を先頭から再構築する', async () => {
         const existingPosts = Array.from({ length: 51 }, (_, index) =>
             createRecord({

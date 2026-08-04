@@ -79,6 +79,12 @@ export type PostHistoryTotalCountStatus =
     | "refreshing"
     | "failed";
 
+export type PostHistoryLocalLoadStatus =
+    | "idle"
+    | "loading"
+    | "ready"
+    | "failed";
+
 type PostHistoryListingMode = "contiguous" | "sparse";
 type PostHistorySparseSource = "jump" | "saved" | null;
 
@@ -625,9 +631,12 @@ export function usePostHistoryListing({
         | null = null;
     let searchLoadRequestId = 0;
     let isSearchPageLoading = $state(false);
+    let searchResultStatus = $state<PostHistoryLocalLoadStatus>("idle");
     let hasStartedInitialSync = false;
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
+    let initialLocalLoadStatus = $state<PostHistoryLocalLoadStatus>("idle");
+    let initialLocalLoadGeneration = 0;
     let activePubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
     let stateOwnerPubkeyKey = $state<string | null>(activePubkeyKey);
     let forceLatestInitialLoadKey: string | null = null;
@@ -938,6 +947,7 @@ export function usePostHistoryListing({
     function resetSearchState(): void {
         searchLoadRequestId += 1;
         isSearchPageLoading = false;
+        searchResultStatus = "idle";
         postHistoryLocalSearchService.clearCache?.();
         resetFirstPostPaintState();
         state.searchInput = "";
@@ -1035,6 +1045,7 @@ export function usePostHistoryListing({
         loadRequestId += 1;
         searchLoadRequestId += 1;
         isSearchPageLoading = false;
+        searchResultStatus = "idle";
     }
 
     function prepareForClose(): boolean {
@@ -1063,6 +1074,8 @@ export function usePostHistoryListing({
         hasStartedInitialSync = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
+        initialLocalLoadGeneration += 1;
+        initialLocalLoadStatus = "idle";
         searchResultsInitialized = false;
     }
 
@@ -2509,6 +2522,7 @@ export function usePostHistoryListing({
         const requestId = ++searchLoadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
         isSearchPageLoading = true;
+        searchResultStatus = "loading";
         try {
             const result = await fetchSearchPage(
                 normalizedPage,
@@ -2525,6 +2539,12 @@ export function usePostHistoryListing({
                 pageSize,
             );
             if (safePage !== normalizedPage) {
+                if (
+                    requestId === searchLoadRequestId
+                    && isCurrentSearchLoad(requestId, query, pubkeyHex)
+                ) {
+                    searchResultStatus = "ready";
+                }
                 return false;
             }
 
@@ -2534,6 +2554,7 @@ export function usePostHistoryListing({
                 : mergeSearchPageResults(state.searchPosts, result.items);
             state.searchPage = safePage;
             state.searchHasNext = result.hasNext;
+            searchResultStatus = "ready";
             if (!hasCompletedFirstPostPaint) {
                 if (!await waitForFirstPostPaint(
                     pubkeyHex,
@@ -2544,6 +2565,11 @@ export function usePostHistoryListing({
                 }
             }
             return true;
+        } catch {
+            if (requestId === searchLoadRequestId) {
+                searchResultStatus = "failed";
+            }
+            return false;
         } finally {
             if (requestId === searchLoadRequestId) {
                 isSearchPageLoading = false;
@@ -2562,6 +2588,7 @@ export function usePostHistoryListing({
         }
         const normalizedPage = Math.max(1, Math.trunc(page));
         isSearchPageLoading = true;
+        searchResultStatus = "loading";
 
         try {
             const firstPage = await fetchSearchPage(1, query, requestId);
@@ -2595,6 +2622,7 @@ export function usePostHistoryListing({
             state.searchTotalCount = firstPage.total;
             state.searchPage = lastPage;
             state.searchHasNext = lastResult.hasNext;
+            searchResultStatus = "ready";
             if (!hasCompletedFirstPostPaint) {
                 if (!await waitForFirstPostPaint(
                     pubkeyHex,
@@ -2605,6 +2633,11 @@ export function usePostHistoryListing({
                 }
             }
             return true;
+        } catch {
+            if (requestId === searchLoadRequestId) {
+                searchResultStatus = "failed";
+            }
+            return false;
         } finally {
             if (requestId === searchLoadRequestId) {
                 isSearchPageLoading = false;
@@ -3645,6 +3678,38 @@ export function usePostHistoryListing({
         state.searchPosts = applyDeletedState(state.searchPosts);
     }
 
+    function startInitialLocalLoad(load: () => Promise<unknown>): void {
+        const pubkeyHex = getPubkeyHex();
+        const pubkeyKey = resolveListingSnapshotKey(pubkeyHex);
+        if (!pubkeyHex || !pubkeyKey) {
+            return;
+        }
+
+        const generation = ++initialLocalLoadGeneration;
+        initialLocalLoadStatus = "loading";
+        void load()
+            .then(() => {
+                if (
+                    getShow()
+                    && getPubkeyHex() === pubkeyHex
+                    && initialLocalLoadKey === pubkeyKey
+                    && generation === initialLocalLoadGeneration
+                ) {
+                    initialLocalLoadStatus = "ready";
+                }
+            })
+            .catch(() => {
+                if (
+                    getShow()
+                    && getPubkeyHex() === pubkeyHex
+                    && initialLocalLoadKey === pubkeyKey
+                    && generation === initialLocalLoadGeneration
+                ) {
+                    initialLocalLoadStatus = "failed";
+                }
+            });
+    }
+
     $effect(() => {
         const nextPubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
         if (nextPubkeyKey === activePubkeyKey) {
@@ -3666,6 +3731,8 @@ export function usePostHistoryListing({
         hasStartedInitialSync = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
+        initialLocalLoadGeneration += 1;
+        initialLocalLoadStatus = "idle";
     });
 
     $effect(() => {
@@ -3757,6 +3824,9 @@ export function usePostHistoryListing({
         }
 
         const nextSearchQuery = state.searchInput.trim();
+        if (nextSearchQuery !== state.searchQuery) {
+            searchResultStatus = "loading";
+        }
         const timeoutId = setTimeout(() => {
             state.searchQuery = nextSearchQuery;
         }, searchDebounceMs);
@@ -3784,7 +3854,7 @@ export function usePostHistoryListing({
 
         if (forceLatestInitialLoadKey === nextInitialLoadKey) {
             forceLatestInitialLoadKey = null;
-            void loadLatestVisiblePosts();
+            startInitialLocalLoad(loadLatestVisiblePosts);
             return;
         }
 
@@ -3793,24 +3863,28 @@ export function usePostHistoryListing({
             consumePostHistoryShouldReturnToLatestAfterLocalPost(getPubkeyHex());
         if (shouldApplyPendingLatestRequest(pendingLatestRequest, sessionScrollState)) {
             onSessionScrollStateInvalidated();
-            void loadLatestVisiblePosts();
+            startInitialLocalLoad(loadLatestVisiblePosts);
             return;
         }
 
         if (canPreserveSessionVisibleWindow(sessionScrollState)) {
-            void refreshPreservedVisibleWindow(
-                sessionScrollState,
-                pendingLatestRequest,
+            startInitialLocalLoad(() =>
+                refreshPreservedVisibleWindow(
+                    sessionScrollState,
+                    pendingLatestRequest,
+                ),
             );
             return;
         }
 
         if (sessionScrollState) {
-            void loadVisibleWindowAroundSessionAnchor(sessionScrollState);
+            startInitialLocalLoad(() =>
+                loadVisibleWindowAroundSessionAnchor(sessionScrollState),
+            );
             return;
         }
 
-        void loadLatestVisiblePosts();
+        startInitialLocalLoad(loadLatestVisiblePosts);
     });
 
     $effect(() => {
@@ -3858,6 +3932,8 @@ export function usePostHistoryListing({
     onDestroy(() => {
         loadRequestId += 1;
         searchLoadRequestId += 1;
+        initialLocalLoadGeneration += 1;
+        initialLocalLoadStatus = "idle";
         firstPaintPubkeyKey = null;
         mediaPrefetchReady = false;
     });
@@ -3872,6 +3948,7 @@ export function usePostHistoryListing({
             resetFirstPostPaintState();
             searchLoadRequestId += 1;
             isSearchPageLoading = false;
+            searchResultStatus = "idle";
             postHistoryLocalSearchService.clearCache?.();
             appliedSearchQuery = "";
             searchResultsInitialized = false;
@@ -4031,6 +4108,12 @@ export function usePostHistoryListing({
         },
         get isSearchPageLoading() {
             return isSearchPageLoading;
+        },
+        get searchResultStatus() {
+            return searchResultStatus;
+        },
+        get initialLocalLoadStatus() {
+            return initialLocalLoadStatus;
         },
         get canRefetchAroundCurrentView() {
             return canRefetchAroundCurrentView;
