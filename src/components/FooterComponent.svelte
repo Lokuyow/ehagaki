@@ -105,7 +105,11 @@
             onClick={onOpenLogoutDialog}
             ariaLabel={$_("profileDialog.title")}
         >
-            <LoadingPlaceholder showLoader={true} />
+            <LoadingPlaceholder
+                showLoader={true}
+                variant="spinner"
+                loaderSize={24}
+            />
         </Button>
     {:else if isAuthenticated && isLoadingProfile}
         <Button
@@ -115,7 +119,11 @@
             onClick={onOpenLogoutDialog}
             ariaLabel={$_("profileDialog.title")}
         >
-            <LoadingPlaceholder showLoader={true} />
+            <LoadingPlaceholder
+                showLoader={true}
+                variant="spinner"
+                loaderSize={24}
+            />
         </Button>
     {:else if isAuthenticated && profileLoaded}
         <Button

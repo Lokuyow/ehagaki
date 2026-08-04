@@ -313,6 +313,8 @@ describe('FooterComponent', () => {
         const { container } = renderFooter();
 
         expect(container.querySelector('.loading-placeholder')).toBeTruthy();
+        expect(container.querySelector('.inline-spinner')).toBeTruthy();
+        expect(container.querySelector('.loader-container')).toBeNull();
         expect(container.querySelector('.profile-picture')).toBeNull();
     });
 
@@ -330,6 +332,8 @@ describe('FooterComponent', () => {
         expect(button?.className).toContain('loading');
         expect(button?.className).toContain('default');
         expect(button?.hasAttribute('disabled')).toBe(false);
+        expect(container.querySelector('.inline-spinner')).toBeTruthy();
+        expect(container.querySelector('.loader-container')).toBeNull();
 
         await fireEvent.click(button as HTMLButtonElement);
 
@@ -350,6 +354,8 @@ describe('FooterComponent', () => {
         expect(button?.className).toContain('loading');
         expect(button?.className).toContain('default');
         expect(button?.hasAttribute('disabled')).toBe(false);
+        expect(container.querySelector('.inline-spinner')).toBeTruthy();
+        expect(container.querySelector('.loader-container')).toBeNull();
 
         await fireEvent.click(button as HTMLButtonElement);
 
