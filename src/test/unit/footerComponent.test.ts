@@ -89,7 +89,7 @@ describe('FooterComponent', () => {
                 isAuthInitialized: true,
                 swNeedRefresh: false,
                 onShowLoginDialog: vi.fn(),
-                onWarmPostHistoryDialog: vi.fn(),
+                onPreloadPostHistoryDialog: vi.fn(),
                 onOpenPostHistoryDialog: vi.fn(),
                 onOpenSettingsDialog: vi.fn(),
                 onOpenLogoutDialog: vi.fn(),
@@ -152,10 +152,10 @@ describe('FooterComponent', () => {
         expect(onOpenPostHistoryDialog).toHaveBeenCalledOnce();
     });
 
-    it('投稿履歴ボタンの hover focus pointerdown で warmup callback を呼ぶ', async () => {
-        const onWarmPostHistoryDialog = vi.fn();
+    it('投稿履歴ボタンの hover focus pointerdown で module preload callback を呼ぶ', async () => {
+        const onPreloadPostHistoryDialog = vi.fn();
 
-        renderFooter({ onWarmPostHistoryDialog });
+        renderFooter({ onPreloadPostHistoryDialog });
 
         const button = screen.getByRole('button', { name: '投稿履歴を開く' });
 
@@ -163,7 +163,7 @@ describe('FooterComponent', () => {
         await fireEvent.focus(button);
         await fireEvent.pointerDown(button);
 
-        expect(onWarmPostHistoryDialog).toHaveBeenCalledTimes(3);
+        expect(onPreloadPostHistoryDialog).toHaveBeenCalledTimes(3);
     });
 
     it('未認証なら情報表示なしでも投稿履歴ボタンを表示しない', () => {

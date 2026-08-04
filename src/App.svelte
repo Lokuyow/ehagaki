@@ -191,11 +191,6 @@
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
-  import {
-    prefetchLatestPostHistoryDescriptors,
-    schedulePostHistoryWarmupOnIdle,
-  } from "./lib/postHistoryPrefetch";
-  import { createPostHistoryWarmupController } from "./lib/postHistoryWarmupController";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
@@ -512,14 +507,6 @@
     onRequestSettled: () => {
       void flushPendingRemoteParentClientAndEmbedActions();
     },
-  });
-  const postHistoryWarmupController = createPostHistoryWarmupController({
-    getCurrentPubkeyHex: () =>
-      authState.value?.isAuthenticated
-        ? (authState.value.pubkey ?? null)
-        : null,
-    prefetchLatestPostHistoryDescriptors: (pubkeyHex) =>
-      prefetchLatestPostHistoryDescriptors({ pubkeyHex }),
   });
   const postHistoryDialogApplyController =
     createPostHistoryDialogApplyController({
@@ -985,45 +972,6 @@
       ) return;
       void loadComposerTargetDialog();
     }
-  });
-
-  $effect(() => {
-    const warmupPubkeyHex = authState.value?.isAuthenticated
-      ? (authState.value.pubkey ?? null)
-      : null;
-    if (
-      !warmupPubkeyHex
-      || isBootstrappingApp
-      || showPostHistoryDialogStore.value
-    ) {
-      return;
-    }
-
-    const scheduled = schedulePostHistoryWarmupOnIdle(() => {
-      const activeElement = document.activeElement;
-      const isPriorityInputFocused =
-        activeElement instanceof HTMLInputElement
-        || activeElement instanceof HTMLTextAreaElement
-        || (activeElement instanceof HTMLElement && activeElement.isContentEditable);
-      if (
-        document.visibilityState !== "visible"
-        || showPostHistoryDialogStore.value
-        || !authState.value?.isAuthenticated
-        || authState.value.pubkey !== warmupPubkeyHex
-        || isPriorityInputFocused
-      ) {
-        return;
-      }
-
-      void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
-    }, {
-      timeoutMs: 10_000,
-      fallbackDelayMs: 3_000,
-    });
-
-    return () => {
-      scheduled.cancel();
-    };
   });
 
   $effect(() => {
@@ -1720,9 +1668,8 @@
     return composerTargetApplyController.applyChannel(target);
   }
 
-  function handleWarmPostHistoryDialog(): void {
+  function handlePreloadPostHistoryDialog(): void {
     void preloadPostHistoryDialog();
-    void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
   }
 
   // バルーンメッセージフック
@@ -1913,7 +1860,7 @@
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh || staleAssetReloadRequired}
         onShowLoginDialog={loginDialog.open}
-        onWarmPostHistoryDialog={handleWarmPostHistoryDialog}
+        onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
         onOpenPostHistoryDialog={postHistoryDialog.open}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
@@ -2078,8 +2025,6 @@
           {latestPostedEvent}
           inboundInteractionSave={latestInboundInteractionSave}
           authoredSelfPostSave={latestAuthoredSelfPostSave}
-          getPostHistoryWarmup={postHistoryWarmupController.getWarmupResultForPubkey}
-          onLocalHistoryInvalidated={postHistoryWarmupController.invalidate}
           reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
           notifySavedAuthoredPosts={postHistoryInboundReplyReconciliation.notifySelfPostsSaved}
         />

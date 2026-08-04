@@ -62,7 +62,6 @@ import {
 } from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
-import type { PostHistoryWarmupResult } from "../postHistoryPrefetch";
 import { tick } from "svelte";
 
 export type PostHistorySyncStatus =
@@ -107,10 +106,6 @@ interface UsePostHistoryListingParams {
         rxNostr: RxNostr,
         params: PostHistoryVisibleRangeRelationRepairRequest,
     ) => Promise<void>;
-    getPostHistoryWarmup?: (
-        pubkeyHex: string,
-    ) => Promise<PostHistoryWarmupResult | null>;
-    onLocalHistoryInvalidated?: (pubkeyHex: string) => void;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -566,8 +561,6 @@ export function usePostHistoryListing({
     onChildInteractionBadgeRefreshRequested = () => undefined,
     onQuoteVisibleRangeRefreshRequested = () => undefined,
     quoteVisibleRangeRepairExecutor = undefined,
-    getPostHistoryWarmup = undefined,
-    onLocalHistoryInvalidated = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -1289,10 +1282,17 @@ export function usePostHistoryListing({
         return visibleRange?.visibleUntil ?? null;
     }
 
-    async function refreshVisibleUntil(pubkeyHex: string): Promise<number | null> {
+    async function refreshVisibleUntil(
+        pubkeyHex: string,
+        expectedRequestId: number | null = null,
+    ): Promise<number | null> {
         const visibleUntil = await readVisibleUntil(pubkeyHex);
 
-        if (getShow() && getPubkeyHex() === pubkeyHex) {
+        if (
+            getShow()
+            && getPubkeyHex() === pubkeyHex
+            && (expectedRequestId === null || expectedRequestId === loadRequestId)
+        ) {
             state.visibleUntil = visibleUntil;
         }
 
@@ -1301,6 +1301,7 @@ export function usePostHistoryListing({
 
     async function refreshJumpCacheAnchorAvailability(
         pubkeyHex: string,
+        expectedRequestId: number | null = null,
     ): Promise<boolean> {
         const anchors = await postHistoryJumpCacheAnchorRepository.getForPubkey(
             pubkeyHex,
@@ -1310,7 +1311,11 @@ export function usePostHistoryListing({
         );
         const hasJumpCacheAnchors = anchors.length > 0;
 
-        if (getShow() && getPubkeyHex() === pubkeyHex) {
+        if (
+            getShow()
+            && getPubkeyHex() === pubkeyHex
+            && (expectedRequestId === null || expectedRequestId === loadRequestId)
+        ) {
             state.hasJumpCacheAnchors = hasJumpCacheAnchors;
         }
 
@@ -1727,29 +1732,12 @@ export function usePostHistoryListing({
         }
 
         const requestId = ++loadRequestId;
-        const warmupResult = await getPostHistoryWarmup?.(pubkeyHex).catch(
-            () => null,
-        );
-        const canReuseWarmupResult =
-            warmupResult && warmupResult.status !== "failed";
-        const visibleUntil = canReuseWarmupResult
-            ? warmupResult.visibleUntil
-            : await refreshVisibleUntil(pubkeyHex);
-        let latestPosts: PostHistoryRecord[];
-        if (canReuseWarmupResult) {
-            if (getShow() && getPubkeyHex() === pubkeyHex) {
-                state.visibleUntil = visibleUntil;
-                state.hasJumpCacheAnchors = warmupResult.hasJumpCacheAnchors;
-            }
-            latestPosts = warmupResult.latestPosts;
-        } else {
-            await refreshJumpCacheAnchorAvailability(pubkeyHex);
-            latestPosts = await postHistoryRepository.getLatestVisibleChunk({
-                pubkeyHex,
-                limit: pageSize,
-                visibleUntil,
-            });
-        }
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+        const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
+            pubkeyHex,
+            limit: pageSize,
+            visibleUntil,
+        });
 
         if (!getShow() || requestId !== loadRequestId) {
             return;
@@ -1759,12 +1747,6 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
-        const timelineAvailabilityPromise = refreshTimelineAvailability(
-            pubkeyHex,
-            latestPosts,
-            requestId,
-        );
-        void prefetchCurrentPageMedia(latestPosts);
         await tick();
         if (
             !getShow()
@@ -1776,9 +1758,37 @@ export function usePostHistoryListing({
         if (!skipTotalCountRefresh) {
             refreshTotalCountFromRepository({ force: forceTotalCount });
         }
-        await timelineAvailabilityPromise;
-        await refreshSavedPostsOutsideVisibleRange(pubkeyHex, visibleUntil, requestId);
-        void startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
+
+        void refreshJumpCacheAnchorAvailability(pubkeyHex, requestId).catch(() => {
+            // Anchor availability is auxiliary and must not delay the first post.
+        });
+        void refreshSavedPostsOutsideVisibleRange(
+            pubkeyHex,
+            visibleUntil,
+            requestId,
+        ).catch(() => {
+            // Saved-range detection is auxiliary and must not delay the first post.
+        });
+        void prefetchCurrentPageMedia(latestPosts).catch(() => {
+            // Media prefetch is auxiliary and must not create an unhandled rejection.
+        });
+
+        void refreshTimelineAvailability(pubkeyHex, latestPosts, requestId)
+            .then(() => {
+                if (
+                    !getShow()
+                    || getPubkeyHex() !== pubkeyHex
+                    || requestId !== loadRequestId
+                ) {
+                    return;
+                }
+
+                startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
+            })
+            .catch(() => {
+                // Preserve the existing behavior: no relay refresh follows a
+                // failed timeline availability check.
+            });
     }
 
     async function reloadVisibleWindowFromCurrentNewest(
@@ -3334,13 +3344,10 @@ export function usePostHistoryListing({
                 await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
             }
 
-            if (!state.searchQuery) {
-                refreshTotalCountFromRepository({ force: true });
-            }
-
             let childInteractionRepairResult: PostHistoryRelationRepairSummary | null = null;
             if (
-                currentViewRefetchTask === task
+                result.status === "success"
+                && currentViewRefetchTask === task
                 && getShow()
                 && getPubkeyHex() === pubkeyHex
                 && getRxNostr() === rxNostr
@@ -3364,6 +3371,10 @@ export function usePostHistoryListing({
                 ) {
                     return;
                 }
+            }
+
+            if (!state.searchQuery) {
+                refreshTotalCountFromRepository({ force: true });
             }
 
             currentViewRefetchTask = null;
@@ -3458,7 +3469,6 @@ export function usePostHistoryListing({
             totalCountKnown: true,
             totalCountFailed: false,
         });
-        onLocalHistoryInvalidated(pubkeyHex);
         return true;
     }
 

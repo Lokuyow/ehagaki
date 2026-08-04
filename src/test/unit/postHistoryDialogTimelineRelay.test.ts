@@ -295,6 +295,116 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('first post は timeline、anchor、saved-range、media、relay を待たずに表示する', async () => {
+        const visibleUntilDeferred = createDeferred<{
+            pubkeyHex: string;
+            kindsKey: string;
+            visibleUntil: number;
+            updatedAt: number;
+        }>();
+        const latestDeferred = createDeferred<ReturnType<typeof createRecord>[]>();
+        const newerAvailability = createDeferred<ReturnType<typeof createRecord>[]>();
+        const olderAvailability = createDeferred<ReturnType<typeof createRecord>[]>();
+        const countDeferred = createDeferred<number>();
+        const anchorDeferred = createDeferred<unknown[]>();
+        const savedRangeDeferred = createDeferred<boolean>();
+        const mediaDeferred = createDeferred<void>();
+        const post = createRecord({
+            eventId: 'first-post-before-auxiliary-work',
+            content: '補助処理を待たずに表示',
+        });
+
+        visibleRangeRepositoryMock.get.mockReturnValue(visibleUntilDeferred.promise);
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(latestDeferred.promise);
+        repositoryMock.getNewerVisibleChunk.mockReturnValue(newerAvailability.promise);
+        repositoryMock.getOlderVisibleChunk.mockReturnValue(olderAvailability.promise);
+        repositoryMock.countForPubkey.mockReturnValue(countDeferred.promise);
+        repositoryMock.hasPostsBeforeCreatedAt.mockReturnValue(savedRangeDeferred.promise);
+        jumpCacheAnchorRepositoryMock.getForPubkey.mockReturnValue(anchorDeferred.promise);
+        postMediaCacheServiceMock.canUsePersistentCache.mockReturnValue(true);
+        postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockReturnValue(mediaDeferred.promise);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+        visibleUntilDeferred.resolve({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_700_000_000,
+            updatedAt: 1,
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    visibleUntil: 1_700_000_000,
+                }),
+            );
+        });
+        expect(screen.queryByText('補助処理を待たずに表示')).toBeNull();
+
+        latestDeferred.resolve([post]);
+
+        await waitFor(() => {
+            expect(screen.getByText('補助処理を待たずに表示')).toBeTruthy();
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledOnce();
+        });
+        expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalled();
+
+        newerAvailability.resolve([]);
+        olderAvailability.resolve([]);
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+        });
+
+        view.unmount();
+    });
+
+    it('timeline availability が失敗しても first post を維持し、relay refresh は開始しない', async () => {
+        const post = createRecord({
+            eventId: 'timeline-failure-first-post',
+            content: 'timeline失敗後も表示',
+        });
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([post]);
+        repositoryMock.getNewerVisibleChunk.mockRejectedValue(new Error('timeline failed'));
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult()),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('timeline失敗後も表示')).toBeTruthy();
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledOnce();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalled();
+        view.unmount();
+    });
+
     it('dialog-open-refresh は TTL 中の再オープンでは繰り返さない', async () => {
         const post = createRecord({
             eventId: 'ttl-local',
