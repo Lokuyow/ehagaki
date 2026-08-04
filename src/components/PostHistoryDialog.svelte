@@ -88,6 +88,7 @@
     };
 
     const POST_HISTORY_REACTION_CUSTOM_EMOJI_SIZE = 18;
+    const POST_HISTORY_LIST_LOADING_DELAY_MS = 200;
 
     interface Props {
         show: boolean;
@@ -277,6 +278,7 @@
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let searchInputElement = $state<HTMLInputElement | null>(null);
+    let showDelayedListLoading = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
         getPosts: () => history.posts,
@@ -373,6 +375,17 @@
     );
     let canUseJumpToOldest = $derived(
         history.canJumpToOldest || !historyViewport.isHistoryScrolledToBottom,
+    );
+    let isHistoryListLoading = $derived(
+        history.isSearchMode
+            ? history.searchResultStatus === "loading"
+            : history.initialLocalLoadStatus === "loading",
+    );
+    let canShowEmptyHistoryState = $derived(
+        history.posts.length === 0
+        && (history.isSearchMode
+            ? history.searchResultStatus === "ready"
+            : history.initialLocalLoadStatus === "ready"),
     );
 
     function addRelatedPreviewModel(
@@ -545,6 +558,24 @@
         }
 
         resetDialogState();
+    });
+
+    $effect(() => {
+        if (!show || !isHistoryListLoading) {
+            showDelayedListLoading = false;
+            return;
+        }
+
+        showDelayedListLoading = false;
+        const timeoutId = setTimeout(() => {
+            if (show && isHistoryListLoading) {
+                showDelayedListLoading = true;
+            }
+        }, POST_HISTORY_LIST_LOADING_DELAY_MS);
+
+        return () => {
+            clearTimeout(timeoutId);
+        };
     });
 
     onDestroy(() => {
@@ -1753,8 +1784,17 @@
         class="post-history-container"
         bind:this={historyContainer}
         onscroll={historyViewport.handleHistoryScroll}
+        aria-busy={isHistoryListLoading ? "true" : "false"}
     >
-        {#if history.posts.length === 0}
+        {#if history.posts.length === 0 && showDelayedListLoading}
+            <div class="post-history-list-loading" aria-hidden="true">
+                <LoadingPlaceholder
+                    variant="spinner"
+                    showLoader={true}
+                    loaderSize={24}
+                />
+            </div>
+        {:else if canShowEmptyHistoryState}
             <div class="empty-state">
                 <div class="empty-message">
                     {history.isSearchMode
@@ -3429,6 +3469,12 @@
         gap: 8px;
         min-height: 100px;
         align-content: center;
+    }
+
+    .post-history-list-loading {
+        display: grid;
+        min-height: 100px;
+        place-items: center;
     }
 
     .empty-message {

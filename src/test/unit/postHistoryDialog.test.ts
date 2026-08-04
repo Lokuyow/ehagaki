@@ -1081,6 +1081,155 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[initial-local-load] IndexedDB 読込中は空状態を表示しない', async () => {
+        const deferredPosts = createDeferred<any[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled();
+        });
+        expect(screen.queryByText('投稿履歴はありません')).toBeNull();
+
+        deferredPosts.resolve([]);
+        await waitFor(() => {
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('[initial-local-load] 200ms 未満で完了した読込は loading 表示を出さない', async () => {
+        vi.useFakeTimers();
+        const deferredPosts = createDeferred<any[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(screen.queryByText('投稿履歴はありません')).toBeNull();
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
+
+        deferredPosts.resolve([]);
+        await vi.advanceTimersByTimeAsync(199);
+        expect(document.querySelector('.post-history-list-loading')).toBeNull();
+        expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+    });
+
+    it('[initial-local-load] 読込失敗を空状態として表示しない', async () => {
+        repositoryMock.getLatestVisibleChunk.mockRejectedValue(new Error('IndexedDB read failed'));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled();
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(screen.queryByText('投稿履歴はありません')).toBeNull();
+    });
+
+    it('[search-empty] 現在の検索 request が完了するまで空状態を表示しない', async () => {
+        const post = createRecord({ content: '検索前に表示する投稿' });
+        const deferredSearch = createDeferred<{
+            items: any[];
+            total: number;
+            hasNext: boolean;
+        }>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        localSearchServiceMock.searchLocalPosts.mockReturnValue(deferredSearch.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await findHistoryItem(post.eventId);
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: '一致しない検索語' } });
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
+        });
+        expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+
+        deferredSearch.resolve({ items: [], total: 0, hasNext: false });
+        await waitFor(() => {
+            expect(screen.getByText('一致する投稿はありません')).toBeTruthy();
+        });
+    });
+
+    it('[search-empty] 次の検索語の debounce 中は前の0件結果を表示しない', async () => {
+        const post = createRecord({ content: 'debounce 検索前の投稿' });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [],
+            total: 0,
+            hasNext: false,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await findHistoryItem(post.eventId);
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: '最初の検索語' } });
+        await waitFor(() => {
+            expect(screen.getByText('一致する投稿はありません')).toBeTruthy();
+        });
+
+        await fireEvent.input(searchInput, { target: { value: '次の検索語' } });
+        expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+    });
+
+    it('[search-empty] 検索失敗を空状態として表示しない', async () => {
+        const post = createRecord({ content: '検索失敗前に表示する投稿' });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        localSearchServiceMock.searchLocalPosts.mockRejectedValue(new Error('search failed'));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+        await findHistoryItem(post.eventId);
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: '失敗する検索語' } });
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+    });
+
     it('[first-post-before-count] 総件数の完了を待たずに最新投稿を表示する', async () => {
         const post = createRecord({ content: '件数より先に表示する投稿' });
         const deferredCount = createDeferred<number>();
