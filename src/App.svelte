@@ -1858,6 +1858,7 @@
       <FooterComponent
         {isAuthenticated}
         {isAuthInitialized}
+        {isSwitchingAccount}
         swNeedRefresh={$swNeedRefresh || staleAssetReloadRequired}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}

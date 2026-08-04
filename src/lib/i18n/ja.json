@@ -97,6 +97,7 @@
   },
   "profileDialog": {
     "title": "プロフィール",
+    "switching_account": "アカウントを切り替えています",
     "anonymous": "名前未設定",
     "npub": "公開鍵",
     "copy_npub": "npubをコピー",

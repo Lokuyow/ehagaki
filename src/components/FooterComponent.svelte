@@ -14,6 +14,7 @@
     interface Props {
         isAuthenticated: boolean;
         isAuthInitialized: boolean;
+        isSwitchingAccount: boolean;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
         onPreloadPostHistoryDialog?: () => void;
@@ -25,6 +26,7 @@
     let {
         isAuthenticated,
         isAuthInitialized,
+        isSwitchingAccount,
         swNeedRefresh,
         onShowLoginDialog,
         onPreloadPostHistoryDialog = undefined,
@@ -80,7 +82,22 @@
 </script>
 
 <div class="footer-bar">
-    {#if !isAuthInitialized}
+    {#if isSwitchingAccount}
+        <Button
+            variant="default"
+            shape="circle"
+            className="profile-display loading"
+            disabled={true}
+            aria-busy="true"
+            ariaLabel={$_("profileDialog.switching_account")}
+        >
+            <LoadingPlaceholder
+                showLoader={true}
+                variant="spinner"
+                loaderSize={24}
+            />
+        </Button>
+    {:else if !isAuthInitialized}
         <Button
             variant="default"
             shape="circle"

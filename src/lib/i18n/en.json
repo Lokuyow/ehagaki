@@ -97,6 +97,7 @@
   },
   "profileDialog": {
     "title": "Profile",
+    "switching_account": "Switching account",
     "anonymous": "Name not set",
     "npub": "Public Key",
     "copy_npub": "Copy npub",

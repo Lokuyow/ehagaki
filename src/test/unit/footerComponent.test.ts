@@ -87,6 +87,7 @@ describe('FooterComponent', () => {
             props: {
                 isAuthenticated: true,
                 isAuthInitialized: true,
+                isSwitchingAccount: false,
                 swNeedRefresh: false,
                 onShowLoginDialog: vi.fn(),
                 onPreloadPostHistoryDialog: vi.fn(),
@@ -265,6 +266,44 @@ describe('FooterComponent', () => {
         await fireEvent.click(button as HTMLButtonElement);
 
         expect(onOpenLogoutDialog).toHaveBeenCalledOnce();
+    });
+
+    it('アカウント切替中はスピナーを優先し、profile-display を無効化する', async () => {
+        const onOpenLogoutDialog = vi.fn();
+        profileDataState.profileData.picture = 'https://example.com/avatar.png';
+        isLoadingProfileStore.set(false);
+        profileLoadedStore.set(true);
+
+        const { container } = renderFooter({
+            isSwitchingAccount: true,
+            onOpenLogoutDialog,
+        });
+        const button = screen.getByRole('button', {
+            name: 'アカウントを切り替えています',
+        });
+
+        expect(button).toBeTruthy();
+        expect(button).toBe(container.querySelector('button.profile-display'));
+        expect(button.hasAttribute('disabled')).toBe(true);
+        expect(button.getAttribute('aria-busy')).toBe('true');
+        expect(container.querySelector('.inline-spinner')).toBeTruthy();
+        expect(container.querySelector('.loader-container')).toBeNull();
+        expect(container.querySelector('.profile-picture')).toBeNull();
+
+        await fireEvent.click(button);
+
+        expect(onOpenLogoutDialog).not.toHaveBeenCalled();
+    });
+
+    it('アカウント切替中のアクセシブルネームを英語でも表示する', async () => {
+        locale.set('en');
+        await waitLocale();
+
+        renderFooter({ isSwitchingAccount: true });
+
+        const button = screen.getByRole('button', { name: 'Switching account' });
+        expect(button.getAttribute('aria-label')).toBe('Switching account');
+        expect(button.getAttribute('aria-busy')).toBe('true');
     });
 
     it('プロフィール読込中の profile-display はアバターではなくローダーを表示する', () => {
