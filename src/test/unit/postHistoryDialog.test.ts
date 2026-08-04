@@ -6022,4 +6022,38 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[delete-local-history-failure-count-state] 件数取得中の削除失敗は実体のない確認中状態を残さない', async () => {
+        const countDeferred = createDeferred<number>();
+        repositoryMock.countForPubkey.mockReturnValueOnce(countDeferred.promise);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+        ]);
+        repositoryMock.deleteLocalHistoryForPubkey.mockRejectedValueOnce(new Error('delete failed'));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('削除対象')).toBeTruthy();
+            expect(screen.getByText('件数を確認中...')).toBeTruthy();
+        });
+
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '保存済み投稿履歴をクリア' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'クリアする' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('保存済み投稿履歴のクリアに失敗しました')).toBeTruthy();
+            expect(screen.getByText('件数を確認できません')).toBeTruthy();
+            expect(screen.queryByText('件数を確認中...')).toBeNull();
+        });
+
+        countDeferred.resolve(1);
+    });
+
 });

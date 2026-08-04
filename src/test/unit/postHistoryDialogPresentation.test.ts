@@ -48,6 +48,10 @@ describe("postHistoryDialogPresentation", () => {
             key: "postHistory.searchCountSummary",
             values: { total: 3 },
         });
+        expect(resolvePostHistoryCountSummaryState({
+            totalCount: 0,
+            isSearchMode: true,
+        })).toBeNull();
     });
 
     it("older/newer の nav label key は検索モードだけ検索結果用に切り替える", () => {

@@ -36,16 +36,27 @@ export function resolvePostHistoryCountSummaryState(input: {
     totalCountStatus?: "unknown" | "loading" | "ready" | "refreshing" | "failed";
     isSearchMode: boolean;
 }): PostHistoryDialogMessageState | null {
-    if (!input.isSearchMode && !input.totalCountKnown) {
+    if (input.isSearchMode) {
+        if (input.totalCount <= 0) {
+            return null;
+        }
+
+        return {
+            key: "postHistory.searchCountSummary",
+            values: {
+                total: input.totalCount,
+            },
+        };
+    }
+
+    if (!input.totalCountKnown) {
         return input.totalCountStatus === "failed"
             ? { key: "postHistory.countUnavailable" }
             : { key: "postHistory.countLoading" };
     }
 
     return {
-        key: input.isSearchMode
-            ? "postHistory.searchCountSummary"
-            : "postHistory.visibleCountSummary",
+        key: "postHistory.visibleCountSummary",
         values: {
             total: input.totalCount,
         },

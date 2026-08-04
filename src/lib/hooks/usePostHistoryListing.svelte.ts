@@ -1703,7 +1703,13 @@ export function usePostHistoryListing({
     }
 
     async function loadLatestVisiblePosts(
-        { forceTotalCount = false }: { forceTotalCount?: boolean } = {},
+        {
+            forceTotalCount = false,
+            skipTotalCountRefresh = false,
+        }: {
+            forceTotalCount?: boolean;
+            skipTotalCountRefresh?: boolean;
+        } = {},
     ): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
@@ -1715,7 +1721,9 @@ export function usePostHistoryListing({
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
         await refreshJumpCacheAnchorAvailability(pubkeyHex);
-        refreshTotalCountFromRepository({ force: forceTotalCount });
+        if (!skipTotalCountRefresh) {
+            refreshTotalCountFromRepository({ force: forceTotalCount });
+        }
         const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
             pubkeyHex,
             limit: pageSize,
@@ -1736,17 +1744,19 @@ export function usePostHistoryListing({
         void startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
     }
 
-    async function reloadVisibleWindowFromCurrentNewest(): Promise<void> {
+    async function reloadVisibleWindowFromCurrentNewest(
+        { skipTotalCountRefresh = false }: { skipTotalCountRefresh?: boolean } = {},
+    ): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || state.loadedPosts.length === 0) {
-            await loadLatestVisiblePosts();
+            await loadLatestVisiblePosts({ skipTotalCountRefresh });
             return;
         }
 
         const newestPost = state.loadedPosts[0];
         const newestCursor = toTimelineCursor(newestPost);
         if (!newestCursor) {
-            await loadLatestVisiblePosts();
+            await loadLatestVisiblePosts({ skipTotalCountRefresh });
             return;
         }
 
@@ -1779,7 +1789,9 @@ export function usePostHistoryListing({
             return;
         }
 
-        refreshTotalCountFromRepository();
+        if (!skipTotalCountRefresh) {
+            refreshTotalCountFromRepository();
+        }
         state.loadedPosts = nextPosts;
         void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
@@ -3252,9 +3264,7 @@ export function usePostHistoryListing({
             pubkeyHex,
             relayConfig: getRelayConfig(),
             preferredRanges,
-            onProgress: async () => {
-                refreshTotalCountFromRepository({ force: true });
-            },
+            onProgress: async () => undefined,
         });
         currentViewRefetchTask = task;
 
@@ -3282,9 +3292,13 @@ export function usePostHistoryListing({
                     state.searchQuery,
                 );
             } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
-                await loadLatestVisiblePosts();
+                await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
             } else {
-                await reloadVisibleWindowFromCurrentNewest();
+                await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
+            }
+
+            if (!state.searchQuery) {
+                refreshTotalCountFromRepository({ force: true });
             }
 
             let childInteractionRepairResult: PostHistoryRelationRepairSummary | null = null;
@@ -3369,7 +3383,6 @@ export function usePostHistoryListing({
 
         cancelCurrentSync();
         cancelCurrentViewRefetch();
-        invalidateTotalCountRequest();
 
         const results = await Promise.allSettled([
             postHistoryRepository.deleteLocalHistoryForPubkey(pubkeyHex),
@@ -3378,6 +3391,13 @@ export function usePostHistoryListing({
         ]);
 
         if (results.some((result) => result.status === "rejected")) {
+            if (getShow() && getPubkeyHex() === pubkeyHex) {
+                invalidateTotalCountRequest();
+                setTotalCountState({
+                    known: state.totalCountKnown,
+                    status: "failed",
+                });
+            }
             clearCurrentViewRefetchFeedback();
             state.currentViewRefetchMessageKey = "postHistory.deleteLocalHistoryFailed";
             state.currentViewRefetchMessageValues = null;
