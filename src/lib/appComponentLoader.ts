@@ -11,6 +11,11 @@ export type ComponentLoadResult<T, Key extends string> =
           error: unknown;
       };
 
+export type ComponentLoader<T, Key extends string> = (() =>
+    Promise<ComponentLoadResult<T, Key>>) & {
+    preload: () => Promise<ComponentLoadResult<T, Key>>;
+};
+
 export function createComponentLoader<T, Key extends string>(
     componentKey: Key,
     importer: ComponentImporter<T>,
@@ -18,11 +23,32 @@ export function createComponentLoader<T, Key extends string>(
         eager?: boolean;
         isStale?: () => boolean;
     } = {},
-): () => Promise<ComponentLoadResult<T, Key>> {
+): ComponentLoader<T, Key> {
     let loadedComponent: T | null = null;
     let modulePromise: Promise<ComponentLoadResult<T, Key>> | null = null;
 
-    const startImport = (): Promise<ComponentLoadResult<T, Key>> => {
+    const failedResult = (
+        failureKind: ComponentLoadFailureKind,
+        error: unknown,
+    ): ComponentLoadResult<T, Key> => ({
+        status: "failed",
+        componentKey,
+        failureKind,
+        error,
+    });
+
+    const startImport = (
+        mode: "load" | "preload" = "load",
+    ): Promise<ComponentLoadResult<T, Key>> => {
+        if (mode === "preload" && options.isStale?.()) {
+            return Promise.resolve(
+                failedResult(
+                    "stale",
+                    new Error(`Cannot preload stale ${componentKey} component`),
+                ),
+            );
+        }
+
         let importedModule: Promise<{ default: T }>;
         try {
             importedModule = importer();
@@ -37,15 +63,20 @@ export function createComponentLoader<T, Key extends string>(
                         `Dynamic import for ${componentKey} returned no default component`,
                     );
                 }
+
+                if (options.isStale?.()) {
+                    return failedResult(
+                        "stale",
+                        new Error(`Loaded stale ${componentKey} component`),
+                    );
+                }
+
                 loadedComponent = module.default;
                 return { status: "loaded", component: module.default };
             })
-            .catch((error): ComponentLoadResult<T, Key> => ({
-                status: "failed",
-                componentKey,
-                failureKind: options.isStale?.() ? "stale" : "transient",
-                error,
-            }))
+            .catch((error): ComponentLoadResult<T, Key> =>
+                failedResult(options.isStale?.() ? "stale" : "transient", error)
+            )
             .then((result) => {
                 if (result.status === "failed" && modulePromise === currentPromise) {
                     modulePromise = null;
@@ -61,7 +92,7 @@ export function createComponentLoader<T, Key extends string>(
         startImport();
     }
 
-    return () => {
+    const loadComponent = (() => {
         if (loadedComponent !== null) {
             return Promise.resolve({
                 status: "loaded",
@@ -69,5 +100,16 @@ export function createComponentLoader<T, Key extends string>(
             });
         }
         return modulePromise ?? startImport();
+    }) as ComponentLoader<T, Key>;
+
+    loadComponent.preload = () => {
+        if (loadedComponent !== null) {
+            return Promise.resolve({
+                status: "loaded",
+                component: loadedComponent,
+            });
+        }
+        return modulePromise ?? startImport("preload");
     };
+    return loadComponent;
 }

@@ -16,7 +16,7 @@
         isAuthInitialized: boolean;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
-        onWarmPostHistoryDialog?: () => void;
+        onPreloadPostHistoryDialog?: () => void;
         onOpenPostHistoryDialog: () => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
@@ -27,7 +27,7 @@
         isAuthInitialized,
         swNeedRefresh,
         onShowLoginDialog,
-        onWarmPostHistoryDialog = undefined,
+        onPreloadPostHistoryDialog = undefined,
         onOpenPostHistoryDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
@@ -75,7 +75,7 @@
     }
 
     function handlePostHistoryIntent(): void {
-        onWarmPostHistoryDialog?.();
+        onPreloadPostHistoryDialog?.();
     }
 </script>
 

@@ -39,6 +39,7 @@ export interface AppComponentLoaders {
     loadWelcomeDialog(): Promise<void>;
     loadDraftListDialog(): Promise<void>;
     loadPostHistoryDialog(): Promise<void>;
+    preloadPostHistoryDialog(): Promise<void>;
     loadComposerTargetDialog(): Promise<void>;
     loadCustomEmojiPicker(): Promise<void>;
 }
@@ -170,6 +171,12 @@ export function createAppComponentLoaders(
                 targets.setPostHistoryDialogComponent,
                 targets.onLoadFailure,
             );
+        },
+        async preloadPostHistoryDialog() {
+            const result = await loadPostHistoryDialogModule.preload();
+            if (result.status === "loaded") {
+                targets.setPostHistoryDialogComponent(result.component);
+            }
         },
         async loadComposerTargetDialog() {
             applyLoadResult(

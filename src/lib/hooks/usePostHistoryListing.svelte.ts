@@ -62,6 +62,7 @@ import {
 } from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
+import { tick } from "svelte";
 
 export type PostHistorySyncStatus =
     | "idle"
@@ -1281,10 +1282,17 @@ export function usePostHistoryListing({
         return visibleRange?.visibleUntil ?? null;
     }
 
-    async function refreshVisibleUntil(pubkeyHex: string): Promise<number | null> {
+    async function refreshVisibleUntil(
+        pubkeyHex: string,
+        expectedRequestId: number | null = null,
+    ): Promise<number | null> {
         const visibleUntil = await readVisibleUntil(pubkeyHex);
 
-        if (getShow() && getPubkeyHex() === pubkeyHex) {
+        if (
+            getShow()
+            && getPubkeyHex() === pubkeyHex
+            && (expectedRequestId === null || expectedRequestId === loadRequestId)
+        ) {
             state.visibleUntil = visibleUntil;
         }
 
@@ -1293,6 +1301,7 @@ export function usePostHistoryListing({
 
     async function refreshJumpCacheAnchorAvailability(
         pubkeyHex: string,
+        expectedRequestId: number | null = null,
     ): Promise<boolean> {
         const anchors = await postHistoryJumpCacheAnchorRepository.getForPubkey(
             pubkeyHex,
@@ -1302,7 +1311,11 @@ export function usePostHistoryListing({
         );
         const hasJumpCacheAnchors = anchors.length > 0;
 
-        if (getShow() && getPubkeyHex() === pubkeyHex) {
+        if (
+            getShow()
+            && getPubkeyHex() === pubkeyHex
+            && (expectedRequestId === null || expectedRequestId === loadRequestId)
+        ) {
             state.hasJumpCacheAnchors = hasJumpCacheAnchors;
         }
 
@@ -1719,18 +1732,18 @@ export function usePostHistoryListing({
         }
 
         const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        await refreshJumpCacheAnchorAvailability(pubkeyHex);
-        if (!skipTotalCountRefresh) {
-            refreshTotalCountFromRepository({ force: forceTotalCount });
-        }
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
         const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
             pubkeyHex,
             limit: pageSize,
             visibleUntil,
         });
 
-        if (!getShow() || requestId !== loadRequestId) {
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+        ) {
             return;
         }
 
@@ -1738,10 +1751,48 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
-        void prefetchCurrentPageMedia(latestPosts);
-        await refreshTimelineAvailability(pubkeyHex, latestPosts, requestId);
-        await refreshSavedPostsOutsideVisibleRange(pubkeyHex, visibleUntil, requestId);
-        void startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
+        await tick();
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+        ) {
+            return;
+        }
+        if (!skipTotalCountRefresh) {
+            refreshTotalCountFromRepository({ force: forceTotalCount });
+        }
+
+        void refreshJumpCacheAnchorAvailability(pubkeyHex, requestId).catch(() => {
+            // Anchor availability is auxiliary and must not delay the first post.
+        });
+        void refreshSavedPostsOutsideVisibleRange(
+            pubkeyHex,
+            visibleUntil,
+            requestId,
+        ).catch(() => {
+            // Saved-range detection is auxiliary and must not delay the first post.
+        });
+        void prefetchCurrentPageMedia(latestPosts).catch(() => {
+            // Media prefetch is auxiliary and must not create an unhandled rejection.
+        });
+
+        void refreshTimelineAvailability(pubkeyHex, latestPosts, requestId)
+            .then(() => {
+                if (
+                    !getShow()
+                    || getPubkeyHex() !== pubkeyHex
+                    || requestId !== loadRequestId
+                ) {
+                    return;
+                }
+
+                startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
+            })
+            .catch(() => {
+                // Preserve the existing behavior: no relay refresh follows a
+                // failed timeline availability check.
+            });
     }
 
     async function reloadVisibleWindowFromCurrentNewest(
@@ -3267,6 +3318,7 @@ export function usePostHistoryListing({
             onProgress: async () => undefined,
         });
         currentViewRefetchTask = task;
+        let primaryRefetchReloadCompleted = false;
 
         try {
             const result = await task.promise;
@@ -3296,10 +3348,7 @@ export function usePostHistoryListing({
             } else {
                 await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
             }
-
-            if (!state.searchQuery) {
-                refreshTotalCountFromRepository({ force: true });
-            }
+            primaryRefetchReloadCompleted = true;
 
             let childInteractionRepairResult: PostHistoryRelationRepairSummary | null = null;
             if (
@@ -3327,6 +3376,19 @@ export function usePostHistoryListing({
                 ) {
                     return;
                 }
+            }
+
+            if (
+                currentViewRefetchTask !== task
+                || !getShow()
+                || getPubkeyHex() !== pubkeyHex
+                || getRxNostr() !== rxNostr
+            ) {
+                return;
+            }
+
+            if (!state.searchQuery) {
+                refreshTotalCountFromRepository({ force: true });
             }
 
             currentViewRefetchTask = null;
@@ -3365,6 +3427,16 @@ export function usePostHistoryListing({
         } catch {
             if (currentViewRefetchTask !== task) {
                 return;
+            }
+
+            if (
+                primaryRefetchReloadCompleted
+                && !state.searchQuery
+                && getShow()
+                && getPubkeyHex() === pubkeyHex
+                && getRxNostr() === rxNostr
+            ) {
+                refreshTotalCountFromRepository({ force: true });
             }
 
             currentViewRefetchTask = null;

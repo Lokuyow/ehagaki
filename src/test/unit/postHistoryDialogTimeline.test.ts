@@ -1968,6 +1968,10 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新メディア投稿')).toBeTruthy();
         });
 
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+
         await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
 
         await waitFor(() => {
@@ -2581,7 +2585,9 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('投稿前の5/16投稿')).toBeTruthy();
         });
         expect(screen.queryByText('保存していた5/12投稿')).toBeNull();
-        expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+        await waitFor(() => {
+            expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+        });
         expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
 
         secondView.unmount();

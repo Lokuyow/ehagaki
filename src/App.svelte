@@ -191,11 +191,6 @@
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
-  import {
-    prefetchLatestPostHistoryDescriptors,
-    schedulePostHistoryWarmupOnIdle,
-  } from "./lib/postHistoryPrefetch";
-  import { createPostHistoryWarmupController } from "./lib/postHistoryWarmupController";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
   import { usePostHistoryAuthoredPostsRealtime } from "./lib/hooks/usePostHistoryAuthoredPostsRealtime.svelte";
@@ -336,6 +331,7 @@
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
+    preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
   } = createAppComponentLoaders({
@@ -511,14 +507,6 @@
     onRequestSettled: () => {
       void flushPendingRemoteParentClientAndEmbedActions();
     },
-  });
-  const postHistoryWarmupController = createPostHistoryWarmupController({
-    getCurrentPubkeyHex: () =>
-      authState.value?.isAuthenticated
-        ? (authState.value.pubkey ?? null)
-        : null,
-    prefetchLatestPostHistoryDescriptors: (pubkeyHex) =>
-      prefetchLatestPostHistoryDescriptors({ pubkeyHex }),
   });
   const postHistoryDialogApplyController =
     createPostHistoryDialogApplyController({
@@ -984,20 +972,6 @@
       ) return;
       void loadComposerTargetDialog();
     }
-  });
-
-  $effect(() => {
-    if (!showPostHistoryDialogStore.value || isBootstrappingApp) {
-      return;
-    }
-
-    const scheduled = schedulePostHistoryWarmupOnIdle(() => {
-      void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
-    });
-
-    return () => {
-      scheduled.cancel();
-    };
   });
 
   $effect(() => {
@@ -1694,8 +1668,8 @@
     return composerTargetApplyController.applyChannel(target);
   }
 
-  function handleWarmPostHistoryDialog(): void {
-    void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
+  function handlePreloadPostHistoryDialog(): void {
+    void preloadPostHistoryDialog();
   }
 
   // バルーンメッセージフック
@@ -1886,7 +1860,7 @@
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh || staleAssetReloadRequired}
         onShowLoginDialog={loginDialog.open}
-        onWarmPostHistoryDialog={handleWarmPostHistoryDialog}
+        onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
         onOpenPostHistoryDialog={postHistoryDialog.open}
         onOpenSettingsDialog={handleOpenSettingsFromFooter}
         onOpenLogoutDialog={logoutDialog.open}
