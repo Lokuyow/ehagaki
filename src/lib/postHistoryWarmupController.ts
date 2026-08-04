@@ -7,6 +7,10 @@ export interface PostHistoryWarmupControllerDependencies {
 
 export interface PostHistoryWarmupController {
     warmLatestPostHistoryDescriptors(): Promise<PostHistoryWarmupResult>;
+    getWarmupResultForPubkey(
+        pubkeyHex: string | null | undefined,
+    ): Promise<PostHistoryWarmupResult | null>;
+    invalidate(pubkeyHex: string | null | undefined): void;
 }
 
 export function createPostHistoryWarmupController(
@@ -15,8 +19,10 @@ export function createPostHistoryWarmupController(
     let warmupPubkey: string | null = null;
     let warmupResult: PostHistoryWarmupResult | null = null;
     let warmupPromise: Promise<PostHistoryWarmupResult> | null = null;
+    let warmupGeneration = 0;
 
     function resetState(pubkeyHex: string | null): void {
+        warmupGeneration += 1;
         warmupPubkey = pubkeyHex;
         warmupResult = null;
         warmupPromise = null;
@@ -27,7 +33,13 @@ export function createPostHistoryWarmupController(
 
         if (!pubkeyHex) {
             resetState(null);
-            return { status: 'skipped', urlCount: 0 };
+            return {
+                status: 'skipped',
+                urlCount: 0,
+                latestPosts: [],
+                visibleUntil: null,
+                hasJumpCacheAnchors: false,
+            };
         }
 
         if (warmupPubkey !== pubkeyHex) {
@@ -43,17 +55,25 @@ export function createPostHistoryWarmupController(
         }
 
         const activePubkeyHex = pubkeyHex;
+        const activeGeneration = warmupGeneration;
         const nextPromise = deps
             .prefetchLatestPostHistoryDescriptors(activePubkeyHex)
             .then((result) => {
-                if (warmupPubkey === activePubkeyHex) {
+                if (
+                    warmupPubkey === activePubkeyHex
+                    && warmupGeneration === activeGeneration
+                ) {
                     warmupResult = result;
                 }
 
                 return result;
             })
             .finally(() => {
-                if (warmupPubkey === activePubkeyHex) {
+                if (
+                    warmupPubkey === activePubkeyHex
+                    && warmupGeneration === activeGeneration
+                    && warmupPromise === nextPromise
+                ) {
                     warmupPromise = null;
                 }
             });
@@ -62,7 +82,32 @@ export function createPostHistoryWarmupController(
         return nextPromise;
     }
 
+    async function getWarmupResultForPubkey(
+        pubkeyHex: string | null | undefined,
+    ): Promise<PostHistoryWarmupResult | null> {
+        const normalizedPubkeyHex = pubkeyHex?.trim() || null;
+        if (!normalizedPubkeyHex || warmupPubkey !== normalizedPubkeyHex) {
+            return null;
+        }
+
+        const result = warmupPromise
+            ? await warmupPromise
+            : warmupResult;
+        return result && result.status !== "failed" ? result : null;
+    }
+
+    function invalidate(pubkeyHex: string | null | undefined): void {
+        const normalizedPubkeyHex = pubkeyHex?.trim() || null;
+        if (normalizedPubkeyHex && warmupPubkey !== normalizedPubkeyHex) {
+            return;
+        }
+
+        resetState(null);
+    }
+
     return {
         warmLatestPostHistoryDescriptors,
+        getWarmupResultForPubkey,
+        invalidate,
     };
 }

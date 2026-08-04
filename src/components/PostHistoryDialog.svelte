@@ -62,6 +62,7 @@
     import { createPostHistoryProfileSyncCoordinator } from "../lib/postHistoryProfileSync";
     import { postHistoryQuoteTargetDiscoveryAdapter } from "../lib/postHistoryRelatedTargetDiscoveryAdapter";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
+    import type { PostHistoryWarmupResult } from "../lib/postHistoryPrefetch";
     import { reconcilePendingDeletionRequestsForParentEventIds } from "../lib/postHistoryPendingDeletionRequestsReconcile";
     import { triggerPostHistoryChildInteractionDeletionLifecycle } from "../lib/postHistoryChildInteractionDeletionLifecycleTrigger";
     import { formatPostHistoryReactionActorLabel } from "../lib/postHistoryReactionReadModel";
@@ -114,6 +115,10 @@
         notifySavedAuthoredPosts?: (
             eventIds: string[],
         ) => Promise<PostHistoryInboundReplyReconciliationResult>;
+        getPostHistoryWarmup?: (
+            pubkeyHex: string,
+        ) => Promise<PostHistoryWarmupResult | null>;
+        onLocalHistoryInvalidated?: (pubkeyHex: string) => void;
     }
 
     let {
@@ -129,6 +134,8 @@
         authoredSelfPostSave = null,
         reconcileInboundDirectReplyCandidates = undefined,
         notifySavedAuthoredPosts = undefined,
+        getPostHistoryWarmup = undefined,
+        onLocalHistoryInvalidated = undefined,
     }: Props = $props();
 
     const profileSyncCoordinator = createPostHistoryProfileSyncCoordinator({
@@ -170,6 +177,10 @@
 
             await relatedTargetResolver.ensureTargets(quoteDescriptors);
         },
+        getPostHistoryWarmup: (nextPubkeyHex) =>
+            getPostHistoryWarmup?.(nextPubkeyHex) ?? Promise.resolve(null),
+        onLocalHistoryInvalidated: (nextPubkeyHex) =>
+            onLocalHistoryInvalidated?.(nextPubkeyHex),
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({

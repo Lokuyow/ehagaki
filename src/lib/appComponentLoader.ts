@@ -11,6 +11,11 @@ export type ComponentLoadResult<T, Key extends string> =
           error: unknown;
       };
 
+export type ComponentLoader<T, Key extends string> = (() =>
+    Promise<ComponentLoadResult<T, Key>>) & {
+    preload: () => Promise<ComponentLoadResult<T, Key>>;
+};
+
 export function createComponentLoader<T, Key extends string>(
     componentKey: Key,
     importer: ComponentImporter<T>,
@@ -18,7 +23,7 @@ export function createComponentLoader<T, Key extends string>(
         eager?: boolean;
         isStale?: () => boolean;
     } = {},
-): () => Promise<ComponentLoadResult<T, Key>> {
+): ComponentLoader<T, Key> {
     let loadedComponent: T | null = null;
     let modulePromise: Promise<ComponentLoadResult<T, Key>> | null = null;
 
@@ -61,7 +66,7 @@ export function createComponentLoader<T, Key extends string>(
         startImport();
     }
 
-    return () => {
+    const loadComponent = (() => {
         if (loadedComponent !== null) {
             return Promise.resolve({
                 status: "loaded",
@@ -69,5 +74,8 @@ export function createComponentLoader<T, Key extends string>(
             });
         }
         return modulePromise ?? startImport();
-    };
+    }) as ComponentLoader<T, Key>;
+
+    loadComponent.preload = loadComponent;
+    return loadComponent;
 }

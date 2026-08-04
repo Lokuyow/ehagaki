@@ -5,6 +5,17 @@ import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from './storage/postHistoryRepository';
+import {
+    buildPostHistoryVisibleKindsKey,
+    postHistoryVisibleRangeRepository,
+    type PostHistoryVisibleRangeRepository,
+} from './storage/postHistoryVisibleRangeRepository';
+import {
+    postHistoryJumpCacheAnchorRepository,
+    type PostHistoryJumpCacheAnchorRepository,
+} from './storage/postHistoryJumpCacheAnchorRepository';
+import type { PostHistoryRecord } from './storage/ehagakiDb';
+import { POST_HISTORY_FETCH_KINDS } from './postHistoryRelayFetchService';
 
 export type PostHistoryWarmupStatus =
     | 'prefetched'
@@ -15,9 +26,15 @@ export type PostHistoryWarmupStatus =
 export interface PostHistoryWarmupResult {
     status: PostHistoryWarmupStatus;
     urlCount: number;
+    latestPosts: PostHistoryRecord[];
+    visibleUntil: number | null;
+    hasJumpCacheAnchors: boolean;
 }
 
-type PostHistoryWarmupRepository = Pick<PostHistoryRepository, 'getPage'>;
+type PostHistoryWarmupRepository = Pick<
+    PostHistoryRepository,
+    'getLatestVisibleChunk'
+>;
 
 interface PostHistoryWarmupMediaCacheService {
     canUsePersistentCache(): boolean;
@@ -27,6 +44,14 @@ interface PostHistoryWarmupMediaCacheService {
 export interface PrefetchLatestPostHistoryDescriptorsOptions {
     pubkeyHex: string | null | undefined;
     postHistoryRepository?: PostHistoryWarmupRepository;
+    postHistoryVisibleRangeRepository?: Pick<
+        PostHistoryVisibleRangeRepository,
+        'get'
+    >;
+    postHistoryJumpCacheAnchorRepository?: Pick<
+        PostHistoryJumpCacheAnchorRepository,
+        'getForPubkey'
+    >;
     postMediaCacheService?: PostHistoryWarmupMediaCacheService;
     pageSize?: number;
 }
@@ -54,33 +79,60 @@ export interface ScheduledPostHistoryWarmup {
 export async function prefetchLatestPostHistoryDescriptors({
     pubkeyHex,
     postHistoryRepository: repository = postHistoryRepository,
+    postHistoryVisibleRangeRepository: visibleRangeRepository =
+        postHistoryVisibleRangeRepository,
+    postHistoryJumpCacheAnchorRepository: jumpCacheAnchorRepository =
+        postHistoryJumpCacheAnchorRepository,
     postMediaCacheService: mediaCacheService = postMediaCacheService,
     pageSize = POST_HISTORY_PAGE_SIZE,
 }: PrefetchLatestPostHistoryDescriptorsOptions): Promise<PostHistoryWarmupResult> {
     const normalizedPubkeyHex = pubkeyHex?.trim();
     if (!normalizedPubkeyHex) {
-        return { status: 'skipped', urlCount: 0 };
-    }
-
-    if (!mediaCacheService.canUsePersistentCache()) {
-        return { status: 'skipped', urlCount: 0 };
+        return {
+            status: 'skipped',
+            urlCount: 0,
+            latestPosts: [],
+            visibleUntil: null,
+            hasJumpCacheAnchors: false,
+        };
     }
 
     try {
-        const posts = await repository.getPage({
-            pubkeyHex: normalizedPubkeyHex,
-            page: 1,
-            pageSize,
-        });
+        const visibleRange = await visibleRangeRepository.get(
+            normalizedPubkeyHex,
+            buildPostHistoryVisibleKindsKey([...POST_HISTORY_FETCH_KINDS]),
+        );
+        const visibleUntil = visibleRange?.visibleUntil ?? null;
+        const [posts, anchors] = await Promise.all([
+            repository.getLatestVisibleChunk({
+                pubkeyHex: normalizedPubkeyHex,
+                limit: pageSize,
+                visibleUntil,
+            }),
+            jumpCacheAnchorRepository.getForPubkey(normalizedPubkeyHex, {
+                maxCount: 1,
+            }),
+        ]);
         const urls = collectPostHistoryMediaUrls(posts);
-        if (urls.length === 0) {
-            return { status: 'empty', urlCount: 0 };
+        if (mediaCacheService.canUsePersistentCache() && urls.length > 0) {
+            await mediaCacheService.prefetchCachedMediaDescriptors(urls);
         }
 
-        await mediaCacheService.prefetchCachedMediaDescriptors(urls);
-        return { status: 'prefetched', urlCount: urls.length };
+        return {
+            status: urls.length > 0 ? 'prefetched' : 'empty',
+            urlCount: urls.length,
+            latestPosts: posts,
+            visibleUntil,
+            hasJumpCacheAnchors: anchors.length > 0,
+        };
     } catch {
-        return { status: 'failed', urlCount: 0 };
+        return {
+            status: 'failed',
+            urlCount: 0,
+            latestPosts: [],
+            visibleUntil: null,
+            hasJumpCacheAnchors: false,
+        };
     }
 }
 
@@ -92,8 +144,8 @@ export function schedulePostHistoryWarmupOnIdle(
             : (window as IdleWindowLike),
         setTimeoutFn = setTimeout,
         clearTimeoutFn = clearTimeout,
-        timeoutMs = 2000,
-        fallbackDelayMs = 0,
+        timeoutMs = 10_000,
+        fallbackDelayMs = 3_000,
     }: SchedulePostHistoryWarmupOnIdleOptions = {},
 ): ScheduledPostHistoryWarmup {
     let idleHandle: number | null = null;

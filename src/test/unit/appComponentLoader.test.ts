@@ -35,6 +35,37 @@ describe("createComponentLoader", () => {
         expect(importer).toHaveBeenCalledOnce();
     });
 
+    it("silent preload と通常 load は同じ in-flight Promise を共有する", async () => {
+        const deferred = createDeferred<{ default: { id: string } }>();
+        const importer = vi.fn(() => deferred.promise);
+        const loadComponent = createComponentLoader("post-history", importer);
+
+        const preload = loadComponent.preload();
+        const open = loadComponent();
+
+        expect(preload).toBe(open);
+        deferred.resolve({ default: { id: "post-history" } });
+        await expect(open).resolves.toMatchObject({ status: "loaded" });
+        expect(importer).toHaveBeenCalledOnce();
+    });
+
+    it("silent preload 失敗後も通常 load は再試行できる", async () => {
+        const importer = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("temporary"))
+            .mockResolvedValueOnce({ default: { id: "recovered" } });
+        const loadComponent = createComponentLoader("post-history", importer);
+
+        await expect(loadComponent.preload()).resolves.toMatchObject({
+            status: "failed",
+        });
+        await expect(loadComponent()).resolves.toEqual({
+            status: "loaded",
+            component: { id: "recovered" },
+        });
+        expect(importer).toHaveBeenCalledTimes(2);
+    });
+
     it("失敗後はPromise cacheを解除してimporterを再度呼べる", async () => {
         const importer = vi
             .fn()

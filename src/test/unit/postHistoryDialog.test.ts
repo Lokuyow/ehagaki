@@ -1079,6 +1079,30 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('[count-after-latest-chunk] 最新チャンク反映前には総件数を開始しない', async () => {
+        const post = createRecord({ content: '最新チャンク後に件数を開始する投稿' });
+        const deferredPosts = createDeferred<any[]>();
+        repositoryMock.getLatestVisibleChunk.mockReturnValue(deferredPosts.promise);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalled();
+        });
+        expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+
+        deferredPosts.resolve([post]);
+        await findHistoryItem(post.eventId);
+
+        expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+    });
+
     it('[count-survives-window-move] 古い投稿の表示中でも開始済みの総件数を適用する', async () => {
         const latestPost = createRecord({
             eventId: '1'.repeat(64),

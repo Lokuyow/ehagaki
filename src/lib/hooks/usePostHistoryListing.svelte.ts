@@ -62,6 +62,8 @@ import {
 } from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
+import type { PostHistoryWarmupResult } from "../postHistoryPrefetch";
+import { tick } from "svelte";
 
 export type PostHistorySyncStatus =
     | "idle"
@@ -105,6 +107,10 @@ interface UsePostHistoryListingParams {
         rxNostr: RxNostr,
         params: PostHistoryVisibleRangeRelationRepairRequest,
     ) => Promise<void>;
+    getPostHistoryWarmup?: (
+        pubkeyHex: string,
+    ) => Promise<PostHistoryWarmupResult | null>;
+    onLocalHistoryInvalidated?: (pubkeyHex: string) => void;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -560,6 +566,8 @@ export function usePostHistoryListing({
     onChildInteractionBadgeRefreshRequested = () => undefined,
     onQuoteVisibleRangeRefreshRequested = () => undefined,
     quoteVisibleRangeRepairExecutor = undefined,
+    getPostHistoryWarmup = undefined,
+    onLocalHistoryInvalidated = () => undefined,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -1719,16 +1727,29 @@ export function usePostHistoryListing({
         }
 
         const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        await refreshJumpCacheAnchorAvailability(pubkeyHex);
-        if (!skipTotalCountRefresh) {
-            refreshTotalCountFromRepository({ force: forceTotalCount });
+        const warmupResult = await getPostHistoryWarmup?.(pubkeyHex).catch(
+            () => null,
+        );
+        const canReuseWarmupResult =
+            warmupResult && warmupResult.status !== "failed";
+        const visibleUntil = canReuseWarmupResult
+            ? warmupResult.visibleUntil
+            : await refreshVisibleUntil(pubkeyHex);
+        let latestPosts: PostHistoryRecord[];
+        if (canReuseWarmupResult) {
+            if (getShow() && getPubkeyHex() === pubkeyHex) {
+                state.visibleUntil = visibleUntil;
+                state.hasJumpCacheAnchors = warmupResult.hasJumpCacheAnchors;
+            }
+            latestPosts = warmupResult.latestPosts;
+        } else {
+            await refreshJumpCacheAnchorAvailability(pubkeyHex);
+            latestPosts = await postHistoryRepository.getLatestVisibleChunk({
+                pubkeyHex,
+                limit: pageSize,
+                visibleUntil,
+            });
         }
-        const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
-            pubkeyHex,
-            limit: pageSize,
-            visibleUntil,
-        });
 
         if (!getShow() || requestId !== loadRequestId) {
             return;
@@ -1738,8 +1759,24 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
+        const timelineAvailabilityPromise = refreshTimelineAvailability(
+            pubkeyHex,
+            latestPosts,
+            requestId,
+        );
         void prefetchCurrentPageMedia(latestPosts);
-        await refreshTimelineAvailability(pubkeyHex, latestPosts, requestId);
+        await tick();
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+        ) {
+            return;
+        }
+        if (!skipTotalCountRefresh) {
+            refreshTotalCountFromRepository({ force: forceTotalCount });
+        }
+        await timelineAvailabilityPromise;
         await refreshSavedPostsOutsideVisibleRange(pubkeyHex, visibleUntil, requestId);
         void startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
     }
@@ -3421,6 +3458,7 @@ export function usePostHistoryListing({
             totalCountKnown: true,
             totalCountFailed: false,
         });
+        onLocalHistoryInvalidated(pubkeyHex);
         return true;
     }
 

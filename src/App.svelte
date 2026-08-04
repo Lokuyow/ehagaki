@@ -336,6 +336,7 @@
     loadWelcomeDialog,
     loadDraftListDialog,
     loadPostHistoryDialog,
+    preloadPostHistoryDialog,
     loadComposerTargetDialog,
     loadCustomEmojiPicker,
   } = createAppComponentLoaders({
@@ -987,12 +988,37 @@
   });
 
   $effect(() => {
-    if (!showPostHistoryDialogStore.value || isBootstrappingApp) {
+    const warmupPubkeyHex = authState.value?.isAuthenticated
+      ? (authState.value.pubkey ?? null)
+      : null;
+    if (
+      !warmupPubkeyHex
+      || isBootstrappingApp
+      || showPostHistoryDialogStore.value
+    ) {
       return;
     }
 
     const scheduled = schedulePostHistoryWarmupOnIdle(() => {
+      const activeElement = document.activeElement;
+      const isPriorityInputFocused =
+        activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement
+        || (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+      if (
+        document.visibilityState !== "visible"
+        || showPostHistoryDialogStore.value
+        || !authState.value?.isAuthenticated
+        || authState.value.pubkey !== warmupPubkeyHex
+        || isPriorityInputFocused
+      ) {
+        return;
+      }
+
       void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
+    }, {
+      timeoutMs: 10_000,
+      fallbackDelayMs: 3_000,
     });
 
     return () => {
@@ -1695,6 +1721,7 @@
   }
 
   function handleWarmPostHistoryDialog(): void {
+    void preloadPostHistoryDialog();
     void postHistoryWarmupController.warmLatestPostHistoryDescriptors();
   }
 
@@ -2051,6 +2078,8 @@
           {latestPostedEvent}
           inboundInteractionSave={latestInboundInteractionSave}
           authoredSelfPostSave={latestAuthoredSelfPostSave}
+          getPostHistoryWarmup={postHistoryWarmupController.getWarmupResultForPubkey}
+          onLocalHistoryInvalidated={postHistoryWarmupController.invalidate}
           reconcileInboundDirectReplyCandidates={postHistoryInboundReplyReconciliation.reconcileDirectReplyCandidates}
           notifySavedAuthoredPosts={postHistoryInboundReplyReconciliation.notifySelfPostsSaved}
         />
