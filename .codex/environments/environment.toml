@@ -10,13 +10,13 @@ script = "npm ci"
 
 [[actions]]
 name = "開発サーバー"
-icon = "tool"
+icon = "run"
 command = "npm run dev"
 platform = "win32"
 
 [[actions]]
 name = "チェック"
-icon = "tool"
+icon = "test"
 command = "npm run check"
 platform = "win32"
 
@@ -24,4 +24,19 @@ platform = "win32"
 name = "テスト"
 icon = "test"
 command = "npm test"
+platform = "win32"
+
+[[actions]]
+name = "mainを最新化"
+icon = "tool"
+command = '''
+$repo = 'D:\ドキュメント\GitHub\ehagaki'
+
+git -C $repo switch main
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+git -C $repo pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+git -C $repo status --short --branch'''
 platform = "win32"
