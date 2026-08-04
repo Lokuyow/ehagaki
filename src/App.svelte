@@ -681,8 +681,8 @@
       rxNostr = next;
     },
     disposeNostrSession,
-    clearNip46RuntimeForAuthChange,
     nip46Service,
+    parentClientService: parentClientAuthService,
     accountManager,
     restoreManagedAccountSession,
     restoreAccount: (pubkeyHex, type) =>

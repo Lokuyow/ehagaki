@@ -110,6 +110,16 @@ describe('AccountManager', () => {
             manager.setActiveAccount('unknown');
             expect(manager.getActiveAccountPubkey()).toBe('pubkey1');
         });
+
+        it('active pointerをclearしても保存アカウントは削除しない', () => {
+            manager.addAccount('pubkey1', 'nsec');
+            manager.clearActiveAccount();
+
+            expect(manager.getActiveAccountPubkey()).toBeNull();
+            expect(manager.getAccounts()).toEqual([
+                expect.objectContaining({ pubkeyHex: 'pubkey1', type: 'nsec' }),
+            ]);
+        });
     });
 
     describe('hasAccount', () => {

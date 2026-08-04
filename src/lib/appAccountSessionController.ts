@@ -1,3 +1,5 @@
+import type { ManagedAccountSessionRestoreResult } from './appAuthUtils';
+
 type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
 
 type LogoutAccountOptions = {
@@ -14,9 +16,14 @@ interface Nip46RuntimeController {
     disconnect: () => Promise<void>;
 }
 
+interface ParentClientRuntimeController {
+    disconnect: (notifyParent?: boolean) => void;
+}
+
 interface AccountManagerLike {
     getAccountType: (pubkeyHex: string) => ManagedAccountType | null;
     setActiveAccount: (pubkeyHex: string) => void;
+    clearActiveAccount: () => void;
 }
 
 interface ProfileGuestSnapshot {
@@ -32,6 +39,15 @@ interface AuthStateSnapshot {
     pubkey?: string;
 }
 
+function isManagedAccountType(
+    type: string | undefined,
+): type is ManagedAccountType {
+    return type === 'nsec'
+        || type === 'nip07'
+        || type === 'nip46'
+        || type === 'parentClient';
+}
+
 export interface AppAccountSessionControllerDependencies {
     getIsSwitchingAccount(): boolean;
     setIsSwitchingAccount(next: boolean): void;
@@ -42,26 +58,18 @@ export interface AppAccountSessionControllerDependencies {
     getCurrentRxNostr(): unknown;
     setCurrentRxNostr(next: undefined): void;
     disposeNostrSession(session: unknown): undefined;
-    clearNip46RuntimeForAuthChange(params: {
-        currentAuthType?: string;
-        currentPubkeyHex?: string | null;
-        nextAuthType: ManagedAccountType;
-        nextPubkeyHex?: string | null;
-        nip46Service: Nip46RuntimeController;
-    }): Promise<void>;
     nip46Service: Nip46RuntimeController;
+    parentClientService: ParentClientRuntimeController;
     accountManager: AccountManagerLike;
     restoreManagedAccountSession(params: {
-        pubkeyHex: string;
-        accountManager: AccountManagerLike;
+        requestedPubkeyHex: string;
+        accountType: ManagedAccountType;
         restoreAccount: (
             pubkeyHex: string,
             type: ManagedAccountType,
         ) => Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
         handlePostAuth: (pubkeyHex: string) => Promise<void>;
-        onMissingAccountType: () => void;
-        onRestoreFailure: () => void;
-    }): Promise<boolean>;
+    }): Promise<ManagedAccountSessionRestoreResult>;
     restoreAccount(
         pubkeyHex: string,
         type: ManagedAccountType,
@@ -94,6 +102,74 @@ export interface AppAccountSessionController {
 export function createAppAccountSessionController(
     deps: AppAccountSessionControllerDependencies,
 ): AppAccountSessionController {
+    async function runCleanupStep(action: () => void | Promise<void>): Promise<void> {
+        try {
+            await action();
+        } catch {
+            deps.logger.error('アカウント切替のruntime cleanupに失敗しました');
+        }
+    }
+
+    async function disposeSession(session: unknown): Promise<void> {
+        try {
+            await deps.disposeNostrSession(session);
+        } catch {
+            deps.logger.error('アカウント切替のNostr runtime cleanupに失敗しました');
+        } finally {
+            deps.setCurrentRxNostr(undefined);
+        }
+    }
+
+    async function cleanupRuntime(
+        authType: string | undefined,
+        session: unknown,
+    ): Promise<void> {
+        if (authType === 'nip46') {
+            await runCleanupStep(() => deps.nip46Service.disconnect());
+        } else if (authType === 'parentClient') {
+            await runCleanupStep(() => deps.parentClientService.disconnect(false));
+        }
+
+        await disposeSession(session);
+        await runCleanupStep(() => deps.clearAuthState());
+    }
+
+    async function convergeToGuest(): Promise<void> {
+        await cleanupRuntime(
+            deps.getAuthStateSnapshot()?.type,
+            deps.getCurrentRxNostr(),
+        );
+        await runCleanupStep(() => deps.accountManager.clearActiveAccount());
+        deps.setGuestProfile({
+            name: '',
+            displayName: '',
+            picture: '',
+            npub: '',
+            nprofile: '',
+        });
+        deps.setProfileLoaded(false);
+
+        try {
+            await deps.initializeNostr();
+        } catch {
+            deps.logger.error('ゲストruntimeの初期化に失敗しました');
+            await disposeSession(deps.getCurrentRxNostr());
+        } finally {
+            deps.setSecretKey('');
+            deps.setErrorMessage('');
+        }
+    }
+
+    function commitActiveAccount(pubkeyHex: string): boolean {
+        try {
+            deps.accountManager.setActiveAccount(pubkeyHex);
+            return true;
+        } catch {
+            deps.logger.error('アクティブアカウントの保存に失敗しました');
+            return false;
+        }
+    }
+
     async function switchAccount(pubkeyHex: string): Promise<boolean> {
         if (deps.getIsSwitchingAccount()) {
             return false;
@@ -101,37 +177,78 @@ export function createAppAccountSessionController(
 
         deps.setIsSwitchingAccount(true);
         deps.setProfileLoading(false);
+        let transactionStarted = false;
 
         try {
             const currentAuth = deps.getAuthStateSnapshot();
-            const nextAccountType = deps.accountManager.getAccountType(pubkeyHex);
+            const currentRuntime = deps.getCurrentRxNostr();
+            const targetAccountType = deps.accountManager.getAccountType(pubkeyHex);
+            const rollbackPubkeyHex = isManagedAccountType(currentAuth?.type)
+                && currentAuth?.pubkey
+                ? currentAuth.pubkey
+                : null;
+            const rollbackAccountType = rollbackPubkeyHex
+                ? deps.accountManager.getAccountType(rollbackPubkeyHex)
+                : null;
 
-            if (nextAccountType) {
-                await deps.clearNip46RuntimeForAuthChange({
-                    currentAuthType: currentAuth?.type,
-                    currentPubkeyHex: currentAuth?.pubkey,
-                    nextAuthType: nextAccountType,
-                    nextPubkeyHex: pubkeyHex,
-                    nip46Service: deps.nip46Service,
-                });
+            if (!targetAccountType) {
+                deps.logger.error('アカウントタイプが見つかりません:', pubkeyHex);
+                return false;
             }
 
-            deps.setCurrentRxNostr(deps.disposeNostrSession(deps.getCurrentRxNostr()));
+            transactionStarted = true;
+            await cleanupRuntime(currentAuth?.type, currentRuntime);
 
-            return await deps.restoreManagedAccountSession({
-                pubkeyHex,
-                accountManager: deps.accountManager,
+            const targetRestore = await deps.restoreManagedAccountSession({
+                requestedPubkeyHex: pubkeyHex,
+                accountType: targetAccountType,
                 restoreAccount: deps.restoreAccount,
                 handlePostAuth: deps.handlePostAuth,
-                onMissingAccountType: () => {
-                    deps.logger.error('アカウントタイプが見つかりません:', pubkeyHex);
-                },
-                onRestoreFailure: () => {
-                    deps.logger.error('アカウント復元に失敗:', pubkeyHex);
-                },
             });
+
+            if (targetRestore.success && commitActiveAccount(targetRestore.pubkeyHex)) {
+                return true;
+            }
+
+            deps.logger.error(
+                'アカウント復元に失敗:',
+                targetRestore.success ? 'active-pointer-commit-failed' : targetRestore.reason,
+            );
+            await cleanupRuntime(targetAccountType, deps.getCurrentRxNostr());
+
+            let rollbackAttempted = false;
+            if (rollbackPubkeyHex && rollbackAccountType) {
+                rollbackAttempted = true;
+                const rollbackRestore = await deps.restoreManagedAccountSession({
+                    requestedPubkeyHex: rollbackPubkeyHex,
+                    accountType: rollbackAccountType,
+                    restoreAccount: deps.restoreAccount,
+                    handlePostAuth: deps.handlePostAuth,
+                });
+
+                if (rollbackRestore.success && commitActiveAccount(rollbackRestore.pubkeyHex)) {
+                    return true;
+                }
+
+                deps.logger.error(
+                    'アカウントrollbackに失敗:',
+                    rollbackRestore.success
+                        ? 'active-pointer-commit-failed'
+                        : rollbackRestore.reason,
+                );
+                await cleanupRuntime(rollbackAccountType, deps.getCurrentRxNostr());
+            }
+
+            if (!rollbackAttempted) {
+                deps.logger.error('アカウントrollbackの対象がありません');
+            }
+            await convergeToGuest();
+            return false;
         } catch (error) {
             deps.logger.error('アカウント切替中にエラー:', error);
+            if (transactionStarted) {
+                await convergeToGuest();
+            }
             return false;
         } finally {
             deps.setIsSwitchingAccount(false);

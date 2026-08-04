@@ -7,11 +7,6 @@ type DisposableSession = {
 
 type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
 
-interface ManagedAccountController {
-    setActiveAccount: (pubkeyHex: string) => void;
-    getAccountType: (pubkeyHex: string) => ManagedAccountType | null;
-}
-
 interface Nip46RuntimeController {
     disconnect: () => Promise<void>;
 }
@@ -150,31 +145,49 @@ export function resolveLogoutAccountAction(nextPubkey: string | null | undefined
     return { kind: 'keep-current' };
 }
 
+export type ManagedAccountSessionRestoreResult =
+    | { success: true; pubkeyHex: string }
+    | {
+        success: false;
+        reason: 'restore-failed' | 'missing-pubkey' | 'pubkey-mismatch' | 'post-auth-failed';
+    };
+
 export async function restoreManagedAccountSession(params: {
-    pubkeyHex: string;
-    accountManager: ManagedAccountController;
+    requestedPubkeyHex: string;
+    accountType: ManagedAccountType;
     restoreAccount: (
         pubkeyHex: string,
         type: ManagedAccountType,
     ) => Promise<RestoreResult>;
     handlePostAuth: (pubkeyHex: string) => Promise<void>;
-    onMissingAccountType?: () => void;
-    onRestoreFailure?: () => void;
-}): Promise<boolean> {
-    params.accountManager.setActiveAccount(params.pubkeyHex);
-    const accountType = params.accountManager.getAccountType(params.pubkeyHex);
-
-    if (!accountType) {
-        params.onMissingAccountType?.();
-        return false;
+}): Promise<ManagedAccountSessionRestoreResult> {
+    let result: RestoreResult;
+    try {
+        result = await params.restoreAccount(
+            params.requestedPubkeyHex,
+            params.accountType,
+        );
+    } catch {
+        return { success: false, reason: 'restore-failed' };
     }
 
-    const result = await params.restoreAccount(params.pubkeyHex, accountType);
-    if (result.hasAuth && result.pubkeyHex) {
+    if (!result.hasAuth) {
+        return { success: false, reason: 'restore-failed' };
+    }
+
+    if (!result.pubkeyHex) {
+        return { success: false, reason: 'missing-pubkey' };
+    }
+
+    if (result.pubkeyHex !== params.requestedPubkeyHex) {
+        return { success: false, reason: 'pubkey-mismatch' };
+    }
+
+    try {
         await params.handlePostAuth(result.pubkeyHex);
-        return true;
+    } catch {
+        return { success: false, reason: 'post-auth-failed' };
     }
 
-    params.onRestoreFailure?.();
-    return false;
+    return { success: true, pubkeyHex: result.pubkeyHex };
 }
