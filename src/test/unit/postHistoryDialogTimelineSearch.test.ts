@@ -19,6 +19,31 @@ import {
 } from './postHistoryDialogTestHarness';
 import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 
+function controlAnimationFrames() {
+    let nextId = 1;
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const requestAnimationFrameSpy = vi
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation((callback: FrameRequestCallback) => {
+            const id = nextId++;
+            callbacks.set(id, callback);
+            return id;
+        });
+
+    return {
+        async flushFrame(): Promise<void> {
+            const pending = [...callbacks.values()];
+            callbacks.clear();
+            pending.forEach((callback) => callback(0));
+            await Promise.resolve();
+            await Promise.resolve();
+        },
+        restore(): void {
+            requestAnimationFrameSpy.mockRestore();
+        },
+    };
+}
+
 describe('PostHistoryDialog timeline search', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
@@ -509,6 +534,80 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         view.unmount();
+    });
+
+    it('保存済み検索結果を再表示した場合も double RAF 後に media prefetch を一度だけ実行する', async () => {
+        postMediaCacheServiceMock.canUsePersistentCache.mockReturnValue(true);
+        const mediaUrl = 'https://example.com/restored-search.jpg';
+        const savedSearchPost = createRecord({
+            eventId: 'restored-search-media',
+            content: '保存済み検索結果',
+            media: [{ url: mediaUrl, mimeType: 'image/jpeg' }],
+        });
+        const searchResult = {
+            items: [savedSearchPost],
+            total: 1,
+            hasNext: false,
+        };
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue(searchResult);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'restored' } });
+        await waitForSearchDebounce();
+        await waitFor(() => {
+            expect(screen.getByText('保存済み検索結果')).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        firstView.unmount();
+
+        postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockClear();
+        const animationFrames = controlAnimationFrames();
+        try {
+            const restoredSearchRequest = createDeferred<typeof searchResult>();
+            localSearchServiceMock.searchLocalPosts.mockReturnValue(restoredSearchRequest.promise);
+            const secondView = render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: PUBKEY_HEX,
+                },
+            });
+
+            await waitFor(() => {
+                expect(screen.getByText('保存済み検索結果')).toBeTruthy();
+            });
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            restoredSearchRequest.resolve(searchResult);
+            await waitFor(() => {
+                expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
+            });
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            await animationFrames.flushFrame();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            await animationFrames.flushFrame();
+            await waitFor(() => {
+                expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                    .toHaveBeenCalledTimes(1);
+                expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                    .toHaveBeenCalledWith([mediaUrl]);
+            });
+            secondView.unmount();
+        } finally {
+            animationFrames.restore();
+        }
     });
 
     it('検索中の古い側移動は relay older fetch を呼ばずローカル検索ページだけ進める', async () => {

@@ -617,6 +617,7 @@ export function usePostHistoryListing({
     let loadRequestId = 0;
     let hasCompletedFirstPostPaint = false;
     let mediaPrefetchReady = $state(false);
+    let firstPaintPubkeyKey = $state<string | null>(null);
     let totalCountRequestId = 0;
     let currentTotalCountRequest:
         | { requestId: number; pubkeyHex: string; promise: Promise<void> }
@@ -812,21 +813,30 @@ export function usePostHistoryListing({
             && requestId === loadRequestId;
     }
 
+    function resetFirstPostPaintState(): void {
+        hasCompletedFirstPostPaint = false;
+        mediaPrefetchReady = false;
+        firstPaintPubkeyKey = null;
+    }
+
     async function waitForFirstPostPaint(
         pubkeyHex: string,
-        requestId: number,
+        isCurrent: () => boolean,
+        hasPosts: () => boolean,
     ): Promise<boolean> {
         await tick();
-        if (!isCurrentPostHistoryLoad(pubkeyHex, requestId)) {
+        if (!isCurrent()) {
             return false;
         }
 
         if (hasCompletedFirstPostPaint) {
+            firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
             return true;
         }
 
-        if (state.loadedPosts.length === 0) {
+        if (!hasPosts()) {
             hasCompletedFirstPostPaint = true;
+            firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
             mediaPrefetchReady = true;
             return true;
         }
@@ -834,11 +844,12 @@ export function usePostHistoryListing({
         await new Promise<void>((resolve) => {
             requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
-        if (!isCurrentPostHistoryLoad(pubkeyHex, requestId)) {
+        if (!isCurrent()) {
             return false;
         }
 
         hasCompletedFirstPostPaint = true;
+        firstPaintPubkeyKey = resolveListingSnapshotKey(pubkeyHex);
         mediaPrefetchReady = true;
         return true;
     }
@@ -926,6 +937,7 @@ export function usePostHistoryListing({
         searchLoadRequestId += 1;
         isSearchPageLoading = false;
         postHistoryLocalSearchService.clearCache?.();
+        resetFirstPostPaintState();
         state.searchInput = "";
         state.searchQuery = "";
         state.searchPage = 1;
@@ -1774,7 +1786,11 @@ export function usePostHistoryListing({
         state.listingMode = "contiguous";
         state.sparseSource = null;
         state.loadedPosts = latestPosts;
-        if (!await waitForFirstPostPaint(pubkeyHex, requestId)) {
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
             return;
         }
         if (!skipTotalCountRefresh) {
@@ -1856,7 +1872,11 @@ export function usePostHistoryListing({
         }
 
         state.loadedPosts = nextPosts;
-        if (!await waitForFirstPostPaint(pubkeyHex, requestId)) {
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
             return;
         }
         if (!skipTotalCountRefresh) {
@@ -1919,7 +1939,11 @@ export function usePostHistoryListing({
 
         state.hasNewerLocal = newerPosts.length > 0;
         state.hasOlderLocal = olderPosts.length > 0;
-        if (!await waitForFirstPostPaint(pubkeyHex, requestId)) {
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
             return;
         }
         refreshTotalCountFromRepository();
@@ -1988,7 +2012,11 @@ export function usePostHistoryListing({
         }
 
         state.loadedPosts = restoredPosts;
-        if (!await waitForFirstPostPaint(pubkeyHex, requestId)) {
+        if (!await waitForFirstPostPaint(
+            pubkeyHex,
+            () => isCurrentPostHistoryLoad(pubkeyHex, requestId),
+            () => state.loadedPosts.length > 0,
+        )) {
             return false;
         }
         refreshTotalCountFromRepository();
@@ -2439,9 +2467,11 @@ export function usePostHistoryListing({
     function isCurrentSearchLoad(
         requestId: number,
         query: string,
+        pubkeyHex: string,
     ): boolean {
         return getShow()
             && requestId === searchLoadRequestId
+            && getPubkeyHex() === pubkeyHex
             && query === state.searchQuery;
     }
 
@@ -2462,7 +2492,7 @@ export function usePostHistoryListing({
             pageSize,
         });
 
-        return isCurrentSearchLoad(requestId, query) ? result : null;
+        return isCurrentSearchLoad(requestId, query, pubkeyHex) ? result : null;
     }
 
     async function loadSearchPage(page: number, query: string): Promise<boolean> {
@@ -2502,6 +2532,15 @@ export function usePostHistoryListing({
                 : mergeSearchPageResults(state.searchPosts, result.items);
             state.searchPage = safePage;
             state.searchHasNext = result.hasNext;
+            if (!hasCompletedFirstPostPaint) {
+                if (!await waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                )) {
+                    return false;
+                }
+            }
             return true;
         } finally {
             if (requestId === searchLoadRequestId) {
@@ -2514,6 +2553,10 @@ export function usePostHistoryListing({
         page: number,
         query: string,
     ): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !query) {
+            return false;
+        }
         const normalizedPage = Math.max(1, Math.trunc(page));
         const requestId = ++searchLoadRequestId;
         isSearchPageLoading = true;
@@ -2550,6 +2593,15 @@ export function usePostHistoryListing({
             state.searchTotalCount = firstPage.total;
             state.searchPage = lastPage;
             state.searchHasNext = lastResult.hasNext;
+            if (!hasCompletedFirstPostPaint) {
+                if (!await waitForFirstPostPaint(
+                    pubkeyHex,
+                    () => isCurrentSearchLoad(requestId, query, pubkeyHex),
+                    () => state.searchPosts.length > 0,
+                )) {
+                    return false;
+                }
+            }
             return true;
         } finally {
             if (requestId === searchLoadRequestId) {
@@ -3598,6 +3650,7 @@ export function usePostHistoryListing({
         }
 
         activePubkeyKey = nextPubkeyKey;
+        resetFirstPostPaintState();
         stateOwnerPubkeyKey = null;
         forceLatestInitialLoadKey = nextPubkeyKey;
         cancelCurrentSync();
@@ -3763,12 +3816,13 @@ export function usePostHistoryListing({
             return;
         }
 
-        hasCompletedFirstPostPaint = false;
-        mediaPrefetchReady = false;
+        resetFirstPostPaintState();
     });
 
     $effect(() => {
-        if (!getShow() || !mediaPrefetchReady) {
+        if (!getShow()
+            || !mediaPrefetchReady
+            || firstPaintPubkeyKey !== resolveListingSnapshotKey(getPubkeyHex())) {
             return;
         }
 
@@ -3795,6 +3849,8 @@ export function usePostHistoryListing({
 
     onDestroy(() => {
         loadRequestId += 1;
+        searchLoadRequestId += 1;
+        firstPaintPubkeyKey = null;
         mediaPrefetchReady = false;
     });
 
@@ -3804,6 +3860,8 @@ export function usePostHistoryListing({
         }
 
         if (!state.searchQuery) {
+            const wasSearchMode = appliedSearchQuery !== "";
+            resetFirstPostPaintState();
             searchLoadRequestId += 1;
             isSearchPageLoading = false;
             postHistoryLocalSearchService.clearCache?.();
@@ -3811,16 +3869,37 @@ export function usePostHistoryListing({
             searchResultsInitialized = false;
             if (state.searchPage !== 1) {
                 state.searchPage = 1;
+                if (wasSearchMode) {
+                    const pubkeyHex = getPubkeyHex();
+                    if (pubkeyHex) {
+                        void waitForFirstPostPaint(
+                            pubkeyHex,
+                            () => isCurrentPostHistoryLoad(pubkeyHex, loadRequestId),
+                            () => state.loadedPosts.length > 0,
+                        );
+                    }
+                }
                 return;
             }
 
             state.searchPosts = [];
             state.searchTotalCount = 0;
             state.searchHasNext = false;
+            if (wasSearchMode) {
+                const pubkeyHex = getPubkeyHex();
+                if (pubkeyHex) {
+                    void waitForFirstPostPaint(
+                        pubkeyHex,
+                        () => isCurrentPostHistoryLoad(pubkeyHex, loadRequestId),
+                        () => state.loadedPosts.length > 0,
+                    );
+                }
+            }
             return;
         }
 
         if (state.searchQuery !== appliedSearchQuery) {
+            resetFirstPostPaintState();
             if (appliedSearchQuery === "" && state.searchPosts.length === 0) {
                 state.searchPosts = state.loadedPosts;
             }

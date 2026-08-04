@@ -1723,7 +1723,9 @@ describe('PostHistoryDialog timeline navigation', () => {
         );
         expect(repositoryMock.getSparseChunk).not.toHaveBeenCalled();
         expect(repositoryMock.getVisibleChunkAroundEventId).not.toHaveBeenCalled();
-        expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(otherPubkeyHex);
+        await waitFor(() => {
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(otherPubkeyHex);
+        });
 
         view.unmount();
     });

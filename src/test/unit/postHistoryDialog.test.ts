@@ -1214,6 +1214,85 @@ describe('PostHistoryDialog', () => {
         }
     });
 
+    it('[first-paint-pubkey-switch] 表示中の pubkey 切替でも新しい投稿の double RAF 後に補助処理を開始する', async () => {
+        const animationFrames = controlAnimationFrames();
+        const firstPubkey = 'a'.repeat(64);
+        const secondPubkey = 'b'.repeat(64);
+        const firstPost = createRecord({
+            eventId: 'first-paint-pubkey-a',
+            content: 'pubkey A の投稿',
+            pubkeyHex: firstPubkey,
+            media: [{ url: 'https://example.com/pubkey-a.jpg', mimeType: 'image/jpeg' }],
+        });
+        const secondPost = createRecord({
+            eventId: 'first-paint-pubkey-b',
+            content: 'pubkey B の投稿',
+            pubkeyHex: secondPubkey,
+            media: [{ url: 'https://example.com/pubkey-b.jpg', mimeType: 'image/jpeg' }],
+        });
+        const staleFirstCount = createDeferred<number>();
+        repositoryMock.countForPubkey.mockImplementation((pubkeyHex: string) =>
+            pubkeyHex === firstPubkey ? staleFirstCount.promise : Promise.resolve(1));
+        repositoryMock.getPage
+            .mockResolvedValueOnce([firstPost])
+            .mockResolvedValueOnce([secondPost]);
+
+        try {
+            const view = render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: firstPubkey,
+                },
+            });
+
+            await findHistoryItem(firstPost.eventId);
+            await animationFrames.flushFrame();
+            await animationFrames.flushFrame();
+            await waitFor(() => {
+                expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(firstPubkey);
+            });
+
+            repositoryMock.countForPubkey.mockClear();
+            repositoryMock.getNewerVisibleChunk.mockClear();
+            repositoryMock.getOlderVisibleChunk.mockClear();
+            postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockClear();
+
+            await view.rerender({
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: secondPubkey,
+            });
+            await findHistoryItem(secondPost.eventId);
+
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+            expect(repositoryMock.getNewerVisibleChunk).not.toHaveBeenCalled();
+            expect(repositoryMock.getOlderVisibleChunk).not.toHaveBeenCalled();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            await animationFrames.flushFrame();
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalled();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).not.toHaveBeenCalled();
+
+            await animationFrames.flushFrame();
+            await waitFor(() => {
+                expect(repositoryMock.countForPubkey).toHaveBeenCalledWith(secondPubkey);
+                expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                    .toHaveBeenCalledTimes(1);
+                expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                    .toHaveBeenCalledWith(['https://example.com/pubkey-b.jpg']);
+            });
+            expect(repositoryMock.countForPubkey).not.toHaveBeenCalledWith(firstPubkey);
+            staleFirstCount.resolve(99);
+            await waitFor(() => {
+                expect(screen.getByText('1件')).toBeTruthy();
+            });
+            view.unmount();
+        } finally {
+            animationFrames.restore();
+        }
+    });
+
     it('[count-survives-window-move] 古い投稿の表示中でも開始済みの総件数を適用する', async () => {
         const latestPost = createRecord({
             eventId: '1'.repeat(64),
