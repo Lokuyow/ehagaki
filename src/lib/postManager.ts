@@ -115,8 +115,11 @@ export class PostManager {
     return { success: false, error };
   }
 
-  private handleSubmissionError(logMessage: string, error: unknown): PostResult {
-    this.deps.console?.error(logMessage, error);
+  private handleSubmissionError(logMessage: string): PostResult {
+    this.deps.console?.error(logMessage, {
+      stage: 'submission',
+      reason: 'unexpected',
+    });
     return this.notifyPostFailure('post_error');
   }
 
@@ -154,8 +157,11 @@ export class PostManager {
     rqNotifyOptions?: ReplyQuoteNotifyOptions,
   ): PostResult {
     if (result.success) {
-      void Promise.resolve(this.deps.saveHashtagsToHistoryFn?.(hashtags)).catch((error) => {
-        this.deps.console?.warn?.("hashtag_history_save_failed", error);
+      void Promise.resolve(this.deps.saveHashtagsToHistoryFn?.(hashtags)).catch(() => {
+        this.deps.console?.warn?.("hashtag_history_save_failed", {
+          stage: 'post-success',
+          reason: 'unexpected',
+        });
       });
       this.clearReplyQuoteAfterSuccess();
       this.deps.iframeMessageService?.notifyPostSuccess({
@@ -191,8 +197,11 @@ export class PostManager {
         acceptedRelays,
         relayHints,
       });
-    } catch (error) {
-      this.deps.console?.warn?.("post_history_save_failed", error);
+    } catch {
+      this.deps.console?.warn?.("post_history_save_failed", {
+        stage: 'post-history',
+        reason: 'unexpected',
+      });
     }
   }
 
@@ -206,13 +215,7 @@ export class PostManager {
     logSignedEvent?: boolean;
   }): Promise<PostResult> {
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent start', {
-      hasSigner: Boolean(params.signer),
-      hasSignEventFn: Boolean(params.signEvent),
       eventKind: params.event?.kind,
-      eventCreatedAt: params.event?.created_at,
-      tagsLength: Array.isArray(params.event?.tags) ? params.event.tags.length : 0,
-      contentLength: typeof params.event?.content === 'string' ? params.event.content.length : 0,
-      additionalWriteRelaysCount: params.additionalWriteRelays?.length ?? 0,
     });
 
     const signEvent = params.signEvent
@@ -228,20 +231,20 @@ export class PostManager {
       : params.event;
 
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent signed', {
-      eventId: eventToSend?.id ?? '(missing)',
       eventKind: eventToSend?.kind ?? '(missing)',
-      eventPubkey: eventToSend?.pubkey ?? '(missing)',
     });
 
     if (signEvent && params.logSignedEvent) {
-      this.deps.console?.log('署名済みイベント:', eventToSend);
+      this.deps.console?.debug?.('[PostManager] signed event ready');
     }
 
     const result = await this.eventSender!.sendEvent(eventToSend, {
       targetRelays: params.additionalWriteRelays,
       includeDefaultWriteRelays: true,
     });
-    this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish result', result);
+    this.deps.console?.debug?.('[PostManager] sendPreparedEvent publish completed', {
+      success: result.success,
+    });
     const resultWithEvent: PostResult = result.success
       ? {
         ...result,
@@ -453,7 +456,7 @@ export class PostManager {
             additionalWriteRelays,
           });
         } catch (err) {
-          return this.handleSubmissionError('window.nostrでの投稿エラー:', err);
+          return this.handleSubmissionError('window.nostrでの投稿エラー:');
         }
       }
 
@@ -497,7 +500,7 @@ export class PostManager {
             additionalWriteRelays,
           });
         } catch (err) {
-          return this.handleSubmissionError('NIP-46での投稿エラー:', err);
+          return this.handleSubmissionError('NIP-46での投稿エラー:');
         }
       }
 
@@ -535,7 +538,7 @@ export class PostManager {
             additionalWriteRelays,
           });
         } catch (err) {
-          return this.handleSubmissionError('親クライアント連携での投稿エラー:', err);
+          return this.handleSubmissionError('親クライアント連携での投稿エラー:');
         }
       }
 
@@ -569,7 +572,7 @@ export class PostManager {
       });
 
     } catch (err) {
-      return this.handleSubmissionError('投稿エラー:', err);
+      return this.handleSubmissionError('投稿エラー:');
     }
   }
 

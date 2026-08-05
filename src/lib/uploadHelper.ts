@@ -180,7 +180,10 @@ async function uploadValidFiles(
     } catch (error) {
         if (devMode) {
             const modeLabel = import.meta.env.MODE === "development" ? "[dev]" : "[preview]";
-            console.error(`${modeLabel} [uploadHelper] Upload error:`, error);
+            console.error(`${modeLabel} [uploadHelper] Upload error`, {
+                stage: 'upload',
+                reason: 'unexpected',
+            });
         }
         throw error;
     }
@@ -506,8 +509,11 @@ export async function uploadHelper({
                 imageXMap,
                 dependencies,
             });
-        } catch (e) {
-            console.warn(`${modeLabel} [dev] imetaタグ生成失敗`, e);
+        } catch {
+            console.warn(`${modeLabel} [dev] imetaタグ生成失敗`, {
+                stage: 'imeta-tag',
+                reason: 'unexpected',
+            });
         }
     }
 

@@ -190,8 +190,11 @@ export class PostDeletionService {
                 ) {
                     return { success: false, error: "nip46_signer_not_available" };
                 }
-            } catch (error) {
-                this.deps.console.error("post_deletion_nip46_signer_failed", error);
+            } catch {
+                this.deps.console.error("post_deletion_nip46_signer_failed", {
+                    stage: 'resolve-signer',
+                    reason: 'unexpected',
+                });
                 return { success: false, error: "post_error" };
             }
         }
@@ -209,8 +212,11 @@ export class PostDeletionService {
         let signedEvent: any;
         try {
             signedEvent = await signerResolution.signEvent!(deletionEvent);
-        } catch (error) {
-            this.deps.console.error("post_deletion_sign_failed", error);
+        } catch {
+            this.deps.console.error("post_deletion_sign_failed", {
+                stage: 'sign-event',
+                reason: 'unexpected',
+            });
             return { success: false, error: "post_error" };
         }
 
@@ -228,8 +234,11 @@ export class PostDeletionService {
                     includeDefaultWriteRelays: true,
                 },
             );
-        } catch (error) {
-            this.deps.console.error("post_deletion_send_failed", error);
+        } catch {
+            this.deps.console.error("post_deletion_send_failed", {
+                stage: 'publish',
+                reason: 'unexpected',
+            });
             return { success: false, error: "post_error" };
         }
 
@@ -250,8 +259,11 @@ export class PostDeletionService {
                 deletionEventId,
                 deletedAt,
             );
-        } catch (error) {
-            this.deps.console.warn("post_history_mark_deleted_failed", error);
+        } catch {
+            this.deps.console.warn("post_history_mark_deleted_failed", {
+                stage: 'post-history',
+                reason: 'unexpected',
+            });
         }
 
         return {

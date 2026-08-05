@@ -228,7 +228,10 @@ export class PostEventSender {
 
             const observer = {
                 next: (packet: any) => {
-                    this.console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗", packet.notice ? `(${packet.notice})` : "");
+                    this.console.log('リレー送信結果', {
+                        stage: 'publish',
+                        outcome: packet.ok ? 'success' : 'failure',
+                    });
                     const relay = typeof packet.from === "string" ? packet.from : "";
                     if (!relay) return;
                     resultEventId = packet.event?.id || packet.eventId || resultEventId;
@@ -264,8 +267,11 @@ export class PostEventSender {
                         }
                     }
                 },
-                error: (error: any) => {
-                    this.console.error("送信エラー:", error);
+                error: () => {
+                    this.console.error("送信エラー", {
+                        stage: 'publish',
+                        reason: 'unexpected',
+                    });
                     safeResolve({ success: false, error: "post_network_error" });
                 },
                 complete: () => {

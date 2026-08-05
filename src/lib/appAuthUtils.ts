@@ -86,7 +86,10 @@ export async function runNip07Login(
 
         const result = await deps.authenticateWithNip07();
         if (!result.success) {
-            deps.console.error('NIP-07認証失敗:', result.error);
+            deps.console.error('NIP-07認証失敗', {
+                stage: 'result',
+                reason: 'unexpected',
+            });
             return result.error ?? 'nip07_auth_error';
         }
 
@@ -100,7 +103,10 @@ export async function runNip07Login(
         await handleSuccessfulAuthResult(result, deps.handlePostAuth);
         return undefined;
     } catch (error) {
-        deps.console.error('NIP-07ログインでエラー:', error);
+        deps.console.error('NIP-07ログインでエラー', {
+            stage: 'request',
+            reason: 'unexpected',
+        });
         return error instanceof Error ? error.message : 'nip07_auth_error';
     } finally {
         deps.setLoading(false);
@@ -116,14 +122,20 @@ export async function runNip46Login(
     try {
         const result = await deps.authenticateWithNip46(bunkerUrl);
         if (!result.success) {
-            deps.console.error('NIP-46認証失敗:', result.error);
+            deps.console.error('NIP-46認証失敗', {
+                stage: 'result',
+                reason: 'unexpected',
+            });
             return result.error ?? 'NIP-46 authentication failed';
         }
 
         await handleSuccessfulAuthResult(result, deps.handlePostAuth);
         return undefined;
     } catch (error) {
-        deps.console.error('NIP-46ログインでエラー:', error);
+        deps.console.error('NIP-46ログインでエラー', {
+            stage: 'request',
+            reason: 'unexpected',
+        });
         return error instanceof Error ? error.message : 'NIP-46 login failed';
     } finally {
         deps.setLoading(false);

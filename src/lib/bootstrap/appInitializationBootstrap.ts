@@ -88,8 +88,11 @@ export async function runAppInitializationBootstrap({
         if (resolveAuthenticatedSession) {
             try {
                 authResult = await resolveAuthenticatedSession(authResult);
-            } catch (error) {
-                console.error('親クライアント連携自動認証中にエラー:', error);
+            } catch {
+                console.error('親クライアント連携自動認証中にエラー', {
+                    stage: 'resolve-session',
+                    reason: 'unexpected',
+                });
             }
         }
 
@@ -101,8 +104,11 @@ export async function runAppInitializationBootstrap({
         }
 
         refreshAccountList();
-    } catch (error) {
-        console.error("認証初期化中にエラー:", error);
+    } catch {
+        console.error("認証初期化中にエラー", {
+            stage: 'initialize-auth',
+            reason: 'unexpected',
+        });
         await initializeGuestSession();
         stopProfileLoading();
     } finally {
@@ -145,9 +151,7 @@ export function registerNip46VisibilityHandler({
             && nip46Service.hasRecoverableSession()
             && !nip46Service.isManualCheckInProgress()
         ) {
-            console.debug?.("NIP-46 visibility auto recovery started", {
-                hiddenDuration,
-            });
+            console.debug?.("NIP-46 visibility auto recovery started");
             nip46Service.ensureConnection()
                 .then((recovered) => {
                     if (recovered) {
@@ -156,8 +160,11 @@ export function registerNip46VisibilityHandler({
                         console.warn?.("NIP-46 visibility auto recovery failed");
                     }
                 })
-                .catch((error) => {
-                    console.error("NIP-46 visibility auto recovery threw unexpectedly:", error);
+                .catch(() => {
+                    console.error("NIP-46 visibility auto recovery threw unexpectedly", {
+                        stage: 'visibility-recovery',
+                        reason: 'unexpected',
+                    });
                 });
         }
     }
