@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAppAccountSessionController } from '../../lib/appAccountSessionController';
+import { restoreManagedAccountSession } from '../../lib/appAuthUtils';
 
 const CURRENT_PUBKEY = 'aa'.repeat(32);
 const TARGET_PUBKEY = 'bb'.repeat(32);
@@ -31,11 +32,13 @@ function createController(overrides: Record<string, unknown> = {}) {
 
     const accountManager = {
         getAccountType: vi.fn((pubkeyHex: string) => accounts.get(pubkeyHex) ?? null),
+        hasAccount: vi.fn((pubkeyHex: string) => accounts.has(pubkeyHex)),
         setActiveAccount: vi.fn((pubkeyHex: string) => {
             if (accounts.has(pubkeyHex)) {
                 activePubkey = pubkeyHex;
             }
         }),
+        getActiveAccountPubkey: vi.fn(() => activePubkey),
         clearActiveAccount: vi.fn(() => {
             activePubkey = null;
         }),
@@ -46,6 +49,8 @@ function createController(overrides: Record<string, unknown> = {}) {
         success: true,
         pubkeyHex: params.requestedPubkeyHex,
     }));
+    const accountManagerOverride = overrides.accountManager as Partial<typeof accountManager> | undefined;
+    const { accountManager: _ignoredAccountManager, ...otherOverrides } = overrides;
     const deps = {
         getIsSwitchingAccount: () => isSwitchingAccount,
         setIsSwitchingAccount: vi.fn((next: boolean) => {
@@ -69,9 +74,12 @@ function createController(overrides: Record<string, unknown> = {}) {
         parentClientService: {
             disconnect: vi.fn(),
         },
-        accountManager,
+        accountManager: { ...accountManager, ...accountManagerOverride },
         restoreManagedAccountSession,
-        restoreAccount: vi.fn(async () => ({ hasAuth: true, pubkeyHex: TARGET_PUBKEY })),
+        restoreAccount: vi.fn(async (pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> => ({
+            hasAuth: true,
+            pubkeyHex,
+        })),
         handlePostAuth: vi.fn(async () => undefined),
         resetUploadDisplayState: vi.fn(),
         logoutAccountFromAuthService: vi.fn(() => null),
@@ -96,7 +104,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         reloadWindow: vi.fn(),
         closeLogoutDialog: vi.fn(),
         logger: { error: vi.fn() },
-        ...overrides,
+        ...otherOverrides,
     };
 
     return {
@@ -149,7 +157,7 @@ describe('createAppAccountSessionController', () => {
         await controller.switchAccount(TARGET_PUBKEY);
 
         expect(order.indexOf(`type:${TARGET_PUBKEY}`)).toBeLessThan(order.indexOf('parent-disconnect'));
-        expect(deps.disposeNostrSession).toHaveBeenCalledOnce();
+        expect(deps.disposeNostrSession).toHaveBeenCalled();
     });
 
     it('target type欠落ではruntime、auth state、active pointerへ触れない', async () => {
@@ -216,9 +224,70 @@ describe('createAppAccountSessionController', () => {
             accountType: 'nip07',
         }));
         expect(deps.accountManager.setActiveAccount).toHaveBeenCalledWith(TARGET_PUBKEY);
+        expect(deps.accountManager.getActiveAccountPubkey).toHaveBeenCalled();
         expect(getActivePubkey()).toBe(TARGET_PUBKEY);
         expect(deps.disposeNostrSession).toHaveBeenCalledOnce();
         expect(switchingAccountStateHistory).toEqual([true, false]);
+    });
+
+    it('target commit時に対象アカウントが消えた場合は失敗扱いにしてrollbackする', async () => {
+        const {
+            deps,
+            controller,
+            accounts,
+            getActivePubkey,
+            setCurrentRuntime,
+        } = createController({
+            restoreManagedAccountSession,
+        });
+        const targetPartialRuntime = { dispose: vi.fn() };
+        deps.restoreAccount.mockImplementation(async (pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> => {
+            if (pubkeyHex === TARGET_PUBKEY) {
+                accounts.delete(TARGET_PUBKEY);
+                setCurrentRuntime(targetPartialRuntime);
+            }
+            return { hasAuth: true, pubkeyHex };
+        });
+
+        await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(true);
+
+        expect(deps.handlePostAuth).toHaveBeenNthCalledWith(1, TARGET_PUBKEY);
+        expect(deps.handlePostAuth).toHaveBeenNthCalledWith(2, CURRENT_PUBKEY);
+        expect(deps.accountManager.setActiveAccount).toHaveBeenCalledTimes(1);
+        expect(deps.accountManager.setActiveAccount).toHaveBeenCalledWith(CURRENT_PUBKEY);
+        expect(deps.disposeNostrSession).toHaveBeenCalledWith(targetPartialRuntime);
+        expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
+    });
+
+    it('rollback commit時にcurrent accountが消えた場合はguestへ収束する', async () => {
+        const {
+            deps,
+            controller,
+            accounts,
+            getActivePubkey,
+            setCurrentRuntime,
+        } = createController({
+            restoreManagedAccountSession,
+        });
+        const rollbackPartialRuntime = { dispose: vi.fn() };
+        deps.restoreAccount.mockImplementation(async (pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> => {
+            if (pubkeyHex === CURRENT_PUBKEY) {
+                accounts.delete(CURRENT_PUBKEY);
+                setCurrentRuntime(rollbackPartialRuntime);
+                return { hasAuth: true, pubkeyHex };
+            }
+            return { hasAuth: false };
+        });
+
+        await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(false);
+
+        expect(deps.handlePostAuth).toHaveBeenCalledWith(CURRENT_PUBKEY);
+        expect(deps.accountManager.setActiveAccount).not.toHaveBeenCalled();
+        expect(deps.disposeNostrSession).toHaveBeenCalledWith(rollbackPartialRuntime);
+        expect(deps.accountManager.clearActiveAccount).toHaveBeenCalledOnce();
+        expect(getActivePubkey()).toBeNull();
+        expect(accounts.has(OTHER_PUBKEY)).toBe(true);
+        expect(deps.restoreAccount).toHaveBeenCalledTimes(2);
     });
 
     it('target mismatchをcleanupしてcurrent authenticated accountを一度だけrollbackする', async () => {

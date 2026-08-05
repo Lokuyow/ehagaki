@@ -22,7 +22,9 @@ interface ParentClientRuntimeController {
 
 interface AccountManagerLike {
     getAccountType: (pubkeyHex: string) => ManagedAccountType | null;
+    hasAccount: (pubkeyHex: string) => boolean;
     setActiveAccount: (pubkeyHex: string) => void;
+    getActiveAccountPubkey: () => string | null;
     clearActiveAccount: () => void;
 }
 
@@ -162,8 +164,13 @@ export function createAppAccountSessionController(
 
     function commitActiveAccount(pubkeyHex: string): boolean {
         try {
+            if (!deps.accountManager.hasAccount(pubkeyHex)) {
+                return false;
+            }
+
             deps.accountManager.setActiveAccount(pubkeyHex);
-            return true;
+            return deps.accountManager.hasAccount(pubkeyHex)
+                && deps.accountManager.getActiveAccountPubkey() === pubkeyHex;
         } catch {
             deps.logger.error('アクティブアカウントの保存に失敗しました');
             return false;
