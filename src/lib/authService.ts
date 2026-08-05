@@ -6,6 +6,7 @@ import {
     createManagedAuthRestoreDependencies,
     restoreManagedAccount,
     runManagedAuthRestore,
+    type ManagedRestoreResult,
     runLegacyAuthChecks,
     type RestoreResult,
 } from './authRestoreUtils';
@@ -271,11 +272,26 @@ export class AuthService {
     /**
      * 指定アカウントの認証を復元する。
      */
-    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46' | 'parentClient'): Promise<RestoreResult> {
+    async restoreAccount(
+        pubkeyHex: string,
+        type: 'nsec' | 'nip07' | 'nip46' | 'parentClient',
+    ): Promise<ManagedRestoreResult> {
+        if (!/^[0-9a-fA-F]{64}$/.test(pubkeyHex)) {
+            return { hasAuth: false, reason: 'invalid-requested-pubkey' };
+        }
+
+        if (!this.accountManager || this.accountManager.getAccountType(pubkeyHex) !== type) {
+            return { hasAuth: false, reason: 'account-record-mismatch' };
+        }
+
         return restoreManagedAccount(
             pubkeyHex,
             type,
-            createManagedAuthRestoreDependencies(this.createRestoreDependencies()),
+            createManagedAuthRestoreDependencies({
+                ...this.createRestoreDependencies(),
+                isExpectedAccount: (targetPubkeyHex, expectedType) =>
+                    this.accountManager?.getAccountType(targetPubkeyHex) === expectedType,
+            }),
         );
     }
 

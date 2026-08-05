@@ -4,6 +4,11 @@ import { vi } from 'vitest';
 import type { RxNostr } from 'rx-nostr';
 import type { KeyManagerInterface } from '../lib/types';
 
+type StoredKeyReadResult =
+    | { status: 'found'; secretKey: string }
+    | { status: 'missing' }
+    | { status: 'error' };
+
 export type MockConsole = Console & {
     log: ReturnType<typeof vi.fn>;
     debug: ReturnType<typeof vi.fn>;
@@ -74,6 +79,12 @@ export class MockKeyManager implements KeyManagerInterface {
 
     getFromStore = vi.fn(() => this.storedKey);
     loadFromStorage = vi.fn(() => this.storageKey);
+    readStoredKey = vi.fn<(pubkeyHex: string) => StoredKeyReadResult>(() => this.storageKey
+        ? { status: 'found' as const, secretKey: this.storageKey }
+        : { status: 'missing' as const });
+    setCurrentSecretKey = vi.fn((secretKey: string | null) => {
+        this.storedKey = secretKey;
+    });
     isWindowNostrAvailable = vi.fn(() => this.windowNostrAvailable);
 
     // Additional methods for authService tests

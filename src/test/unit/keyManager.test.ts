@@ -185,6 +185,37 @@ describe('KeyStorage', () => {
         });
     });
 
+    describe('readStoredKey', () => {
+        it('指定アカウントの保存済みキーを秘密鍵ストアへ反映せずに読む', () => {
+            mockLocalStorage.setItem('nostr-secret-key-test-pubkey', 'stored-key');
+
+            const result = storage.readStoredKey('test-pubkey');
+
+            expect(result).toEqual({ status: 'found', secretKey: 'stored-key' });
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+
+        it('キーがない場合はmissingを返す', () => {
+            expect(storage.readStoredKey('missing-pubkey')).toEqual({ status: 'missing' });
+        });
+
+        it('ストレージ読出し例外はerrorを返し、秘密鍵ストアを変更しない', () => {
+            mockLocalStorage.getItem = vi.fn(() => {
+                throw new Error('Storage access error');
+            });
+
+            expect(storage.readStoredKey('test-pubkey')).toEqual({ status: 'error' });
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+    });
+
+    it('setCurrentSecretKeyは保存済みキーを変更せずにin-memory stateだけを更新する', () => {
+        storage.setCurrentSecretKey('runtime-key');
+
+        expect(mockSecretKeyStore.set).toHaveBeenCalledWith('runtime-key');
+        expect(mockLocalStorage.getItem('nostr-secret-key')).toBeNull();
+    });
+
     describe('hasStoredKey', () => {
         it('キーが存在する場合はtrueを返す', () => {
             mockLocalStorage.setItem('nostr-secret-key', 'some-key');

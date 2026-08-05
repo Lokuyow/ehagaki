@@ -74,6 +74,24 @@ export class KeyStorage {
         }
     }
 
+    readStoredKey(pubkeyHex: string):
+        | { status: 'found'; secretKey: string }
+        | { status: 'missing' }
+        | { status: 'error' } {
+        try {
+            const secretKey = this.localStorage.getItem(getNsecStorageKey(pubkeyHex));
+            return secretKey
+                ? { status: 'found', secretKey }
+                : { status: 'missing' };
+        } catch {
+            return { status: 'error' };
+        }
+    }
+
+    setCurrentSecretKey(secretKey: string | null): void {
+        this.secretKeyStore.set(secretKey);
+    }
+
     getFromStore(): string | null {
         return this.secretKeyStore.value;
     }
@@ -236,6 +254,17 @@ export class KeyManager {
 
     loadFromStorage(pubkeyHex?: string): string | null {
         return this.storage.loadFromStorage(pubkeyHex);
+    }
+
+    readStoredKey(pubkeyHex: string):
+        | { status: 'found'; secretKey: string }
+        | { status: 'missing' }
+        | { status: 'error' } {
+        return this.storage.readStoredKey(pubkeyHex);
+    }
+
+    setCurrentSecretKey(secretKey: string | null): void {
+        this.storage.setCurrentSecretKey(secretKey);
     }
 
     getFromStore(): string | null {
