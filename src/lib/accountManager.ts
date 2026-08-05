@@ -55,6 +55,10 @@ export class AccountManager {
         this.saveActiveAccountPubkey(pubkeyHex);
     }
 
+    clearActiveAccount(): void {
+        this.clearActiveAccountPubkey();
+    }
+
     addAccount(pubkeyHex: string, type: StoredAccount['type']): void {
         const accounts = this.getAccounts();
         const existing = accounts.find(a => a.pubkeyHex === pubkeyHex);
