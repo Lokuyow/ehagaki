@@ -68,13 +68,30 @@ export class Nip07AuthService {
     /**
      * NIP-07拡張機能から公開鍵を取得し、npub/nprofileを導出
      */
-    async authenticate(): Promise<AuthResult & { pubkeyData?: PublicKeyData }> {
+    async authenticate(
+        options: { timeoutMs?: number } = {},
+    ): Promise<AuthResult & { pubkeyData?: PublicKeyData }> {
         if (!this.isAvailable()) {
             return { success: false, error: 'nip07_not_available' };
         }
 
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
         try {
-            const pubkeyHex: string = await this.capturedNostr.getPublicKey();
+            const readPromise = Promise.resolve().then(
+                () => this.capturedNostr.getPublicKey(),
+            );
+            const timeoutMs = options.timeoutMs;
+            const pubkeyHex: string = typeof timeoutMs === 'number' && timeoutMs > 0
+                ? await Promise.race([
+                    readPromise,
+                    new Promise<never>((_, reject) => {
+                        timeoutId = setTimeout(() => {
+                            reject(new Error('nip07_identity_read_timeout'));
+                        }, timeoutMs);
+                    }),
+                ])
+                : await readPromise;
 
             if (!pubkeyHex) {
                 return { success: false, error: 'nip07_no_pubkey' };
@@ -89,8 +106,14 @@ export class Nip07AuthService {
                 pubkeyData: { hex: pubkeyHex, npub, nprofile },
             };
         } catch (error) {
-            this.console.error('NIP-07認証エラー:', error);
+            if (typeof options.timeoutMs !== 'number' || options.timeoutMs <= 0) {
+                this.console.error('NIP-07認証エラー:', error);
+            }
             return { success: false, error: 'nip07_auth_error' };
+        } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
         }
     }
 

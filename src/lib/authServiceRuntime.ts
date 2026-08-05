@@ -12,6 +12,11 @@ interface AuthServiceKeyManager {
     derivePublicKey(secretKey: string): PublicKeyData;
     saveToStorage(secretKey: string, pubkeyHex?: string): unknown;
     loadFromStorage(pubkeyHex?: string): string | null;
+    readStoredKey(pubkeyHex: string):
+        | { status: 'found'; secretKey: string }
+        | { status: 'missing' }
+        | { status: 'error' };
+    setCurrentSecretKey(secretKey: string | null): void;
 }
 
 function isAuthServiceKeyManager(
@@ -23,7 +28,9 @@ function isAuthServiceKeyManager(
         && typeof candidate.isValidNsec === 'function'
         && typeof candidate.derivePublicKey === 'function'
         && typeof candidate.saveToStorage === 'function'
-        && typeof candidate.loadFromStorage === 'function';
+        && typeof candidate.loadFromStorage === 'function'
+        && typeof candidate.readStoredKey === 'function'
+        && typeof candidate.setCurrentSecretKey === 'function';
 }
 
 export interface AuthServiceRuntime {

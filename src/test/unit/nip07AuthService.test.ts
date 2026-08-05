@@ -22,6 +22,10 @@ describe('Nip07AuthService', () => {
         mockConsole = createMockConsole();
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     describe('isAvailable', () => {
         it('window.nostrが存在しない場合はfalseを返す', () => {
             const service = new Nip07AuthService(createMockWindow(), mockConsole);
@@ -170,6 +174,61 @@ describe('Nip07AuthService', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('nip07_no_pubkey');
+        });
+
+        it('timeout指定時はidentity readを有限時間で失敗させ、詳細をログ出力しない', async () => {
+            vi.useFakeTimers();
+            let resolvePublicKey: ((value: string) => void) | undefined;
+            const service = new Nip07AuthService(
+                createMockWindow({
+                    getPublicKey: vi.fn(() => new Promise<string>((resolve) => {
+                        resolvePublicKey = resolve;
+                    })),
+                    signEvent: vi.fn(),
+                }),
+                mockConsole,
+            );
+
+            const resultPromise = service.authenticate({ timeoutMs: 3_000 });
+            await vi.advanceTimersByTimeAsync(3_000);
+
+            await expect(resultPromise).resolves.toEqual({
+                success: false,
+                error: 'nip07_auth_error',
+            });
+            expect(mockConsole.error).not.toHaveBeenCalled();
+
+            resolvePublicKey?.('a'.repeat(64));
+            await Promise.resolve();
+            expect(mockConsole.error).not.toHaveBeenCalled();
+        });
+
+        it('timeout未指定の明示認証は遅延identity readを待ち続ける', async () => {
+            vi.useFakeTimers();
+            let resolvePublicKey: ((value: string) => void) | undefined;
+            const service = new Nip07AuthService(
+                createMockWindow({
+                    getPublicKey: vi.fn(() => new Promise<string>((resolve) => {
+                        resolvePublicKey = resolve;
+                    })),
+                    signEvent: vi.fn(),
+                }),
+                mockConsole,
+            );
+
+            let settled = false;
+            const resultPromise = service.authenticate().then((result) => {
+                settled = true;
+                return result;
+            });
+            await vi.advanceTimersByTimeAsync(3_001);
+            expect(settled).toBe(false);
+
+            resolvePublicKey?.('a'.repeat(64));
+            await expect(resultPromise).resolves.toMatchObject({
+                success: true,
+                pubkeyHex: 'a'.repeat(64),
+            });
         });
     });
 

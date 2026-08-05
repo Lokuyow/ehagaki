@@ -324,6 +324,26 @@ describe('createAppAccountSessionController', () => {
         expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
     });
 
+    it('NIP-07 targetのidentity read失敗後はcurrent accountを一度だけrollbackする', async () => {
+        const { deps, controller, getActivePubkey } = createController({
+            restoreManagedAccountSession,
+        });
+        deps.restoreAccount.mockImplementation(async (pubkeyHex: string) =>
+            pubkeyHex === TARGET_PUBKEY
+                ? { hasAuth: false, reason: 'identity-read-failed' }
+                : { hasAuth: true, pubkeyHex },
+        );
+
+        await expect(controller.switchAccount(TARGET_PUBKEY)).resolves.toBe(true);
+
+        expect(deps.restoreAccount).toHaveBeenCalledTimes(2);
+        expect(deps.restoreAccount).toHaveBeenNthCalledWith(1, TARGET_PUBKEY, 'nip07');
+        expect(deps.restoreAccount).toHaveBeenNthCalledWith(2, CURRENT_PUBKEY, 'parentClient');
+        expect(deps.handlePostAuth).toHaveBeenCalledTimes(1);
+        expect(deps.handlePostAuth).toHaveBeenCalledWith(CURRENT_PUBKEY);
+        expect(getActivePubkey()).toBe(CURRENT_PUBKEY);
+    });
+
     it('rollback mismatch後は再rollbackせずguestへ収束する', async () => {
         const { deps, controller, getActivePubkey } = createController();
         deps.restoreManagedAccountSession
