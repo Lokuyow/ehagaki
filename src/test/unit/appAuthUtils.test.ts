@@ -102,56 +102,70 @@ describe('resolveLogoutAccountAction', () => {
 });
 
 describe('restoreManagedAccountSession', () => {
-    it('account type があって restore に成功すれば post auth を呼ぶ', async () => {
+    it('要求pubkeyとrestore結果が一致すればpost-auth後に同じpubkeyを返す', async () => {
         const handlePostAuth = vi.fn(async () => undefined);
-        const accountManager = {
-            setActiveAccount: vi.fn(),
-            getAccountType: vi.fn(() => 'nip07' as const),
-        };
 
         await expect(restoreManagedAccountSession({
-            pubkeyHex: 'pubkey-1',
-            accountManager,
+            requestedPubkeyHex: 'pubkey-1',
+            accountType: 'nip07',
             restoreAccount: vi.fn(async () => ({ hasAuth: true, pubkeyHex: 'pubkey-1' })),
             handlePostAuth,
-        })).resolves.toBe(true);
+        })).resolves.toEqual({ success: true, pubkeyHex: 'pubkey-1' });
 
-        expect(accountManager.setActiveAccount).toHaveBeenCalledWith('pubkey-1');
         expect(handlePostAuth).toHaveBeenCalledWith('pubkey-1');
     });
 
-    it('account type がなければ missing callback を呼ぶ', async () => {
-        const onMissingAccountType = vi.fn();
+    it('restore失敗ではpost-authを呼ばない', async () => {
+        const handlePostAuth = vi.fn(async () => undefined);
 
         await expect(restoreManagedAccountSession({
-            pubkeyHex: 'pubkey-1',
-            accountManager: {
-                setActiveAccount: vi.fn(),
-                getAccountType: vi.fn(() => null),
-            },
-            restoreAccount: vi.fn(),
-            handlePostAuth: vi.fn(async () => undefined),
-            onMissingAccountType,
-        })).resolves.toBe(false);
+            requestedPubkeyHex: 'pubkey-1',
+            accountType: 'nsec',
+            restoreAccount: vi.fn(async () => ({ hasAuth: false })),
+            handlePostAuth,
+        })).resolves.toEqual({ success: false, reason: 'restore-failed' });
 
-        expect(onMissingAccountType).toHaveBeenCalledOnce();
+        expect(handlePostAuth).not.toHaveBeenCalled();
     });
 
-    it('restore に失敗すれば failure callback を呼ぶ', async () => {
-        const onRestoreFailure = vi.fn();
+    it('結果pubkeyがなければpost-authを呼ばない', async () => {
+        const handlePostAuth = vi.fn(async () => undefined);
 
         await expect(restoreManagedAccountSession({
-            pubkeyHex: 'pubkey-1',
-            accountManager: {
-                setActiveAccount: vi.fn(),
-                getAccountType: vi.fn(() => 'nsec' as const),
-            },
-            restoreAccount: vi.fn(async () => ({ hasAuth: false })),
-            handlePostAuth: vi.fn(async () => undefined),
-            onRestoreFailure,
-        })).resolves.toBe(false);
+            requestedPubkeyHex: 'pubkey-1',
+            accountType: 'nsec',
+            restoreAccount: vi.fn(async () => ({ hasAuth: true })),
+            handlePostAuth,
+        })).resolves.toEqual({ success: false, reason: 'missing-pubkey' });
 
-        expect(onRestoreFailure).toHaveBeenCalledOnce();
+        expect(handlePostAuth).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['未登録の結果pubkey', 'pubkey-unregistered'],
+        ['別の登録済み結果pubkey', 'pubkey-2'],
+    ])('%sでも一致しなければpost-authを呼ばない', async (_label, resultPubkeyHex) => {
+        const handlePostAuth = vi.fn(async () => undefined);
+
+        await expect(restoreManagedAccountSession({
+            requestedPubkeyHex: 'pubkey-1',
+            accountType: 'nip07',
+            restoreAccount: vi.fn(async () => ({ hasAuth: true, pubkeyHex: resultPubkeyHex })),
+            handlePostAuth,
+        })).resolves.toEqual({ success: false, reason: 'pubkey-mismatch' });
+
+        expect(handlePostAuth).not.toHaveBeenCalled();
+    });
+
+    it('post-auth失敗を成功扱いしない', async () => {
+        await expect(restoreManagedAccountSession({
+            requestedPubkeyHex: 'pubkey-1',
+            accountType: 'nip07',
+            restoreAccount: vi.fn(async () => ({ hasAuth: true, pubkeyHex: 'pubkey-1' })),
+            handlePostAuth: vi.fn(async () => {
+                throw new Error('post-auth failed');
+            }),
+        })).resolves.toEqual({ success: false, reason: 'post-auth-failed' });
     });
 });
 
