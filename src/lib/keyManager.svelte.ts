@@ -74,7 +74,7 @@ export class KeyStorage {
         }
     }
 
-    readStoredKey(pubkeyHex: string):
+    readStoredKey(pubkeyHex?: string):
         | { status: 'found'; secretKey: string }
         | { status: 'missing' }
         | { status: 'error' } {
@@ -83,6 +83,41 @@ export class KeyStorage {
             return secretKey
                 ? { status: 'found', secretKey }
                 : { status: 'missing' };
+        } catch {
+            return { status: 'error' };
+        }
+    }
+
+    /**
+     * Legacy migration only: persist a per-account key without changing the
+     * runtime secret-key store, and confirm the stored value immediately.
+     */
+    writeStoredKeyForMigration(pubkeyHex: string, secretKey: string):
+        | { status: 'saved' }
+        | { status: 'error' } {
+        try {
+            this.localStorage.setItem(getNsecStorageKey(pubkeyHex), secretKey);
+            return this.localStorage.getItem(getNsecStorageKey(pubkeyHex)) === secretKey
+                ? { status: 'saved' }
+                : { status: 'error' };
+        } catch {
+            return { status: 'error' };
+        }
+    }
+
+    /**
+     * Legacy migration only: remove a stored key without changing the runtime
+     * secret-key store, and confirm that the key is absent immediately.
+     */
+    removeStoredKeyForMigration(pubkeyHex?: string):
+        | { status: 'removed' }
+        | { status: 'error' } {
+        try {
+            const storageKey = getNsecStorageKey(pubkeyHex);
+            this.localStorage.removeItem(storageKey);
+            return this.localStorage.getItem(storageKey) === null
+                ? { status: 'removed' }
+                : { status: 'error' };
         } catch {
             return { status: 'error' };
         }
@@ -256,11 +291,23 @@ export class KeyManager {
         return this.storage.loadFromStorage(pubkeyHex);
     }
 
-    readStoredKey(pubkeyHex: string):
+    readStoredKey(pubkeyHex?: string):
         | { status: 'found'; secretKey: string }
         | { status: 'missing' }
         | { status: 'error' } {
         return this.storage.readStoredKey(pubkeyHex);
+    }
+
+    writeStoredKeyForMigration(pubkeyHex: string, secretKey: string):
+        | { status: 'saved' }
+        | { status: 'error' } {
+        return this.storage.writeStoredKeyForMigration(pubkeyHex, secretKey);
+    }
+
+    removeStoredKeyForMigration(pubkeyHex?: string):
+        | { status: 'removed' }
+        | { status: 'error' } {
+        return this.storage.removeStoredKeyForMigration(pubkeyHex);
     }
 
     setCurrentSecretKey(secretKey: string | null): void {

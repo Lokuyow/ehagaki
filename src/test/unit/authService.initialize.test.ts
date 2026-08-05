@@ -5,6 +5,9 @@ import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
 import { MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
+import { AccountManager } from '../../lib/accountManager';
+import { getNsecStorageKey } from '../../lib/authStorageKeys';
+import { STORAGE_KEYS } from '../../lib/constants';
 import {
     createMockAccountManager,
     createMockDependencies,
@@ -61,7 +64,7 @@ describe('AuthService.initializeAuth', () => {
             { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 2000 },
         ]);
 
-        mockKeyManager.readStoredKey.mockImplementation((pubkey: string) => {
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) => {
             if (pubkey === FALLBACK_PUBKEY) return { status: 'found', secretKey: 'fallback-nsec' };
             return { status: 'missing' };
         });
@@ -112,7 +115,7 @@ describe('AuthService.initializeAuth', () => {
             { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 2000 },
         ]);
 
-        mockKeyManager.readStoredKey.mockImplementation((pubkey: string) => {
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) => {
             if (pubkey === FALLBACK_PUBKEY) return { status: 'found', secretKey: 'fallback-nsec' };
             return { status: 'missing' };
         });
@@ -148,7 +151,7 @@ describe('AuthService.initializeAuth', () => {
             { pubkeyHex: NIP07_PUBKEY, type: 'nip07', addedAt: 1000 },
             { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 2000 },
         ]);
-        mockKeyManager.readStoredKey.mockImplementation((pubkey: string) =>
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) =>
             pubkey === FALLBACK_PUBKEY
                 ? { status: 'found', secretKey: 'fallback-nsec' }
                 : { status: 'missing' },
@@ -179,6 +182,72 @@ describe('AuthService.initializeAuth', () => {
         });
         expect(mockDependencies.setNip07Auth).not.toHaveBeenCalled();
         expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+    });
+
+    it('account listがない場合はlegacy NIP-07移行後にderived nsecをactiveとしてmanaged restoreする', async () => {
+        const storage = new MockStorage();
+        const derivedPubkey = 'ef'.repeat(32);
+        storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'legacy-credential');
+        storage.setItem(STORAGE_KEYS.NOSTR_NIP07_PUBKEY, 'ab'.repeat(32));
+
+        const keyManager = {
+            isValidNsec: vi.fn(() => true),
+            derivePublicKey: vi.fn(() => ({
+                hex: derivedPubkey,
+                npub: 'npub1derived',
+                nprofile: 'nprofile1derived',
+            })),
+            saveToStorage: vi.fn(),
+            loadFromStorage: vi.fn(() => storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)),
+            readStoredKey: vi.fn((pubkeyHex?: string) => {
+                const secretKey = storage.getItem(getNsecStorageKey(pubkeyHex));
+                return secretKey ? { status: 'found' as const, secretKey } : { status: 'missing' as const };
+            }),
+            writeStoredKeyForMigration: vi.fn((pubkeyHex: string, secretKey: string) => {
+                storage.setItem(getNsecStorageKey(pubkeyHex), secretKey);
+                return storage.getItem(getNsecStorageKey(pubkeyHex)) === secretKey
+                    ? { status: 'saved' as const }
+                    : { status: 'error' as const };
+            }),
+            removeStoredKeyForMigration: vi.fn((pubkeyHex?: string) => {
+                storage.removeItem(getNsecStorageKey(pubkeyHex));
+                return storage.getItem(getNsecStorageKey(pubkeyHex)) === null
+                    ? { status: 'removed' as const }
+                    : { status: 'error' as const };
+            }),
+            setCurrentSecretKey: vi.fn(),
+        };
+        const service = new AuthService({
+            ...createMockDependencies(),
+            localStorage: storage,
+            keyManager: keyManager as any,
+        });
+        const accountManager = new AccountManager({ localStorage: storage });
+        service.setAccountManager(accountManager);
+
+        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: true, pubkeyHex: derivedPubkey });
+        expect(accountManager.getActiveAccountPubkey()).toBe(derivedPubkey);
+        expect(accountManager.getAccounts()).toEqual([
+            expect.objectContaining({ pubkeyHex: 'ab'.repeat(32), type: 'nip07' }),
+            expect.objectContaining({ pubkeyHex: derivedPubkey, type: 'nsec' }),
+        ]);
+        expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBeNull();
+        expect(keyManager.setCurrentSecretKey).toHaveBeenCalledTimes(1);
+    });
+
+    it('migration snapshot失敗時はlegacy migrationとmanaged restoreを開始しない', async () => {
+        const storage = new MockStorage();
+        storage.getItem = vi.fn(() => {
+            throw new Error('storage unavailable');
+        });
+        mockDependencies.localStorage = storage;
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        expect(mockAccountManager.cleanupNostrLoginData).not.toHaveBeenCalled();
+        expect(mockAccountManager.migrateFromSingleAccount).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
     });
 
     it('アカウントなし→レガシーnsec検出', async () => {

@@ -112,27 +112,14 @@ export class AccountManager {
     }
 
     /**
-     * 旧形式（シングルアカウント）からマルチアカウント形式へのマイグレーション。
-     * nostr-accounts キーが存在しない場合のみ実行。
+     * 旧形式（シングルアカウント）からマルチアカウント形式へのNIP-07/NIP-46移行。
+     * legacy nsec は自身からidentityを導出する専用migrationが扱う。
      */
     migrateFromSingleAccount(): void {
         if (this.localStorage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS) !== null) return;
 
         const accounts: StoredAccount[] = [];
         let activePubkey: string | null = null;
-
-        // nsec認証のマイグレーション
-        const legacyNsec = this.localStorage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY);
-        if (legacyNsec) {
-            // nsecからpubkeyHexを特定するため、既存のprofileデータを探す
-            const nsecPubkey = this.findPubkeyForLegacyNsec();
-            if (nsecPubkey) {
-                this.localStorage.setItem(getNsecStorageKey(nsecPubkey), legacyNsec);
-                accounts.push({ pubkeyHex: nsecPubkey, type: 'nsec', addedAt: Date.now() });
-                activePubkey = nsecPubkey;
-            }
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY);
-        }
 
         // NIP-07認証のマイグレーション
         const nip07Pubkey = this.localStorage.getItem(STORAGE_KEYS.NOSTR_NIP07_PUBKEY);
@@ -162,37 +149,14 @@ export class AccountManager {
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_LEGACY);
         }
 
-        // アカウントリストを保存
-        this.saveAccounts(accounts);
-        if (activePubkey) {
-            this.saveActiveAccountPubkey(activePubkey);
-        }
-    }
-
-    /**
-     * レガシーnsecに対応するpubkeyHexを見つける。
-     * localStorageの nostr-profile-{pubkey} キーを走査して特定。
-     */
-    private findPubkeyForLegacyNsec(): string | null {
-        try {
-            return (
-                this.findFirstStorageKeySuffix(STORAGE_KEYS.NOSTR_PROFILE)
-                ?? this.findFirstStorageKeySuffix(STORAGE_KEYS.NOSTR_RELAYS)
-            );
-        } catch {
-            // localStorageアクセスエラー
-        }
-        return null;
-    }
-
-    private findFirstStorageKeySuffix(prefix: string): string | null {
-        for (let i = 0; i < this.localStorage.length; i++) {
-            const key = this.localStorage.key(i);
-            if (key?.startsWith(prefix)) {
-                return key.substring(prefix.length);
+        // legacy nsecしかない場合は、nsec専用migrationが安全な保存を完了するまで
+        // nostr-accounts を作らない。
+        if (accounts.length > 0) {
+            this.saveAccounts(accounts);
+            if (activePubkey) {
+                this.saveActiveAccountPubkey(activePubkey);
             }
         }
-        return null;
     }
 
     /**

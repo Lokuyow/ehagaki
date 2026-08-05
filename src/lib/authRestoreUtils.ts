@@ -48,10 +48,8 @@ interface NsecRestoreDependencies {
     publicKeyState: PublicKeyState;
     keyManager: {
         derivePublicKey(secretKey: string): PublicKeyData;
-        saveToStorage(secretKey: string): unknown;
     };
     setNsecAuthFn: SetAuthFn;
-    accountManager?: AccountMigrationTarget | null;
 }
 
 interface LegacyNsecDependencies extends NsecRestoreDependencies {
@@ -134,28 +132,18 @@ export function applyPublicKeyAuth(
 export function restoreNsecFromStoredKey(
     secretKey: string,
     dependencies: NsecRestoreDependencies,
-    options: { clearLegacyKeyOnFailure?: boolean; migrateLegacyAccount?: boolean } = {},
 ): RestoreResult {
     dependencies.publicKeyState.setNsec(secretKey);
 
     try {
         const derived = dependencies.keyManager.derivePublicKey(secretKey);
         if (!derived.hex) {
-            if (options.clearLegacyKeyOnFailure) {
-                dependencies.keyManager.saveToStorage('');
-            }
             return { hasAuth: false };
         }
 
         dependencies.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
-        if (options.migrateLegacyAccount) {
-            dependencies.accountManager?.addAccount(derived.hex, 'nsec');
-        }
         return { hasAuth: true, pubkeyHex: derived.hex };
     } catch {
-        if (options.clearLegacyKeyOnFailure) {
-            dependencies.keyManager.saveToStorage('');
-        }
         return { hasAuth: false };
     }
 }
@@ -354,10 +342,7 @@ export async function checkLegacyNsecAuth(
     const storedKey = dependencies.keyManager.loadFromStorage();
     if (!storedKey) return { hasAuth: false };
 
-    return restoreNsecFromStoredKey(storedKey, dependencies, {
-        clearLegacyKeyOnFailure: true,
-        migrateLegacyAccount: true,
-    });
+    return restoreNsecFromStoredKey(storedKey, dependencies);
 }
 
 export async function checkLegacyNip07Auth(
