@@ -14,6 +14,10 @@ import { createAuthServiceRuntime, type AuthServiceRuntime } from './authService
 import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
 import { resetManagedAccountData } from './accountDataReset';
 import type { Nip46PendingNostrConnectSession } from './nip46Service';
+import {
+    captureLegacyNsecMigrationSnapshot,
+    migrateLegacyNsec,
+} from './legacyNsecMigration';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
 
@@ -224,8 +228,20 @@ export class AuthService {
     async initializeAuth(): Promise<RestoreResult> {
         try {
             if (this.accountManager) {
+                const snapshotResult = captureLegacyNsecMigrationSnapshot(this.runtime.localStorage);
+                if (snapshotResult.status === 'failed') {
+                    return { hasAuth: false };
+                }
+
                 this.accountManager.cleanupNostrLoginData();
-                this.accountManager.migrateFromSingleAccount();
+                if (!snapshotResult.snapshot.accountListExisted) {
+                    this.accountManager.migrateFromSingleAccount();
+                }
+                migrateLegacyNsec({
+                    localStorage: this.runtime.localStorage,
+                    keyManager: this.runtime.keyManager,
+                    snapshot: snapshotResult.snapshot,
+                });
                 return await runManagedAuthRestore({
                     accountManager: this.accountManager,
                     restoreAccount: (pubkeyHex, type) => this.restoreAccount(pubkeyHex, type),

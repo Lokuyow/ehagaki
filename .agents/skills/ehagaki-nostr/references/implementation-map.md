@@ -109,6 +109,15 @@
 - 関連テスト: `src/test/unit/customEmoji.test.ts`、`src/test/unit/editorDocumentUtils.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/ehagakiDb.test.ts`
 - 注意点: shortcodeだけで同名画像を潰さず、選択したURLと必要なset addressを保持する。network testはmockする。
 
+## legacy nsec credential migration
+
+- 機能: 旧single-accountの`nostr-secret-key`を、nsec自身から導出したpubkeyのcredential、`nsec` account record、activation policyに沿うactive pointerへ安全に移行する。
+- 関連NIP: nsecのdecode/identity導出はNIP-19。migrationはrelay eventを生成・取得しない。
+- 主な実装ファイル: `src/lib/legacyNsecMigration.ts`、`src/lib/authService.ts`、`src/lib/keyManager.svelte.ts`、`src/lib/accountManager.ts`。
+- 主な関数または責務: `captureLegacyNsecMigrationSnapshot`がaccount listとactive pointerをstrictに取得し、`migrateLegacyNsec`がcredential readback、account record readback、activation policy、legacy削除を順に所有する。`AuthService.initializeAuth`はsnapshot後にNIP-07/NIP-46の旧single-account移行を必要時だけ実行し、nsec migrationの後に既存managed restoreへ進む。
+- 関連テスト: `src/test/unit/legacyNsecMigration.test.ts`、`src/test/unit/keyManager.test.ts`、`src/test/unit/accountManager.test.ts`、`src/test/unit/authService.initialize.test.ts`。
+- 注意点: profile/relay storage keyのsuffixをidentity根拠に使わない。legacy credentialはすべての永続条件をreadbackで確認するまで削除しない。既存の有効なactive pointerはtypeにかかわらずmigration中に維持し、Parent clientは起動時managed restore候補へ追加しない。
+
 ## NIP-07
 
 - 機能: browser extensionを待機し、公開鍵取得とevent署名を行う。

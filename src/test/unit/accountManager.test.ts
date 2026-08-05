@@ -179,29 +179,23 @@ describe('AccountManager', () => {
     describe('migrateFromSingleAccount', () => {
         it('nostr-accountsが存在する場合はスキップ', () => {
             storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, '[]');
-            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'nsec1...');
+            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'legacy-value');
 
             manager.migrateFromSingleAccount();
 
-            // nsecがそのまま残る（マイグレーションされない）
-            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBe('nsec1...');
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBe('legacy-value');
         });
 
-        it('nsec認証をマイグレーション（profileキーからpubkey特定）', () => {
-            const pubkey = 'abc123';
-            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'nsec1testkey');
-            storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + pubkey, JSON.stringify({ name: 'Test' }));
+        it('legacy nsecとprofileまたはrelay keyを変更せず専用migrationへ残す', () => {
+            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'legacy-value');
+            storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + 'profile-pubkey', JSON.stringify({ name: 'Test' }));
+            storage.setItem(STORAGE_KEYS.NOSTR_RELAYS + 'relay-pubkey', JSON.stringify(['wss://relay.example']));
 
             manager.migrateFromSingleAccount();
 
-            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkey)).toBe('nsec1testkey');
-            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBeNull();
-
-            const accounts = manager.getAccounts();
-            expect(accounts).toHaveLength(1);
-            expect(accounts[0].pubkeyHex).toBe(pubkey);
-            expect(accounts[0].type).toBe('nsec');
-            expect(manager.getActiveAccountPubkey()).toBe(pubkey);
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBe('legacy-value');
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).toBeNull();
+            expect(manager.getActiveAccountPubkey()).toBeNull();
         });
 
         it('NIP-07認証をマイグレーション', () => {
@@ -234,21 +228,20 @@ describe('AccountManager', () => {
             expect(accounts[0].type).toBe('nip46');
         });
 
-        it('複数認証タイプの同時マイグレーション', () => {
-            const nsecPub = 'nsecpub';
+        it('複数の非nsec認証タイプを同時にマイグレーション', () => {
             const nip07Pub = 'nip07pub';
-            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'nsec1key');
-            storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + nsecPub, '{}');
             storage.setItem(STORAGE_KEYS.NOSTR_NIP07_PUBKEY, nip07Pub);
+            const nip46Pub = 'nip46pub';
+            const session = JSON.stringify({ userPubkey: nip46Pub, relayUrl: 'wss://relay' });
+            storage.setItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_LEGACY, session);
 
             manager.migrateFromSingleAccount();
 
             const accounts = manager.getAccounts();
             expect(accounts).toHaveLength(2);
-            expect(accounts.find(a => a.pubkeyHex === nsecPub)?.type).toBe('nsec');
             expect(accounts.find(a => a.pubkeyHex === nip07Pub)?.type).toBe('nip07');
-            // 最初に見つかったnsecがアクティブ
-            expect(manager.getActiveAccountPubkey()).toBe(nsecPub);
+            expect(accounts.find(a => a.pubkeyHex === nip46Pub)?.type).toBe('nip46');
+            expect(manager.getActiveAccountPubkey()).toBe(nip07Pub);
         });
     });
 

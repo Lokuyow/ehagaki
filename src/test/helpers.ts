@@ -79,9 +79,11 @@ export class MockKeyManager implements KeyManagerInterface {
 
     getFromStore = vi.fn(() => this.storedKey);
     loadFromStorage = vi.fn(() => this.storageKey);
-    readStoredKey = vi.fn<(pubkeyHex: string) => StoredKeyReadResult>(() => this.storageKey
+    readStoredKey = vi.fn<(pubkeyHex?: string) => StoredKeyReadResult>(() => this.storageKey
         ? { status: 'found' as const, secretKey: this.storageKey }
         : { status: 'missing' as const });
+    writeStoredKeyForMigration = vi.fn(() => ({ status: 'saved' as const }));
+    removeStoredKeyForMigration = vi.fn(() => ({ status: 'removed' as const }));
     setCurrentSecretKey = vi.fn((secretKey: string | null) => {
         this.storedKey = secretKey;
     });

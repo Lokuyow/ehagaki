@@ -209,6 +209,40 @@ describe('KeyStorage', () => {
         });
     });
 
+    describe('legacy migration storage operations', () => {
+        it('pubkey別credentialをin-memory stateへ反映せずに保存し、readbackを確認する', () => {
+            const result = storage.writeStoredKeyForMigration('migration-pubkey', 'migration-value');
+
+            expect(result).toEqual({ status: 'saved' });
+            expect(mockLocalStorage.getItem('nostr-secret-key-migration-pubkey')).toBe('migration-value');
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+
+        it('silent write failureを成功扱いしない', () => {
+            mockLocalStorage.setItem = vi.fn();
+
+            expect(storage.writeStoredKeyForMigration('migration-pubkey', 'migration-value'))
+                .toEqual({ status: 'error' });
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+
+        it('legacy credentialの削除をin-memory stateへ反映せずに確認する', () => {
+            mockLocalStorage.setItem('nostr-secret-key', 'migration-value');
+
+            expect(storage.removeStoredKeyForMigration()).toEqual({ status: 'removed' });
+            expect(mockLocalStorage.getItem('nostr-secret-key')).toBeNull();
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+
+        it('silent remove failureを成功扱いしない', () => {
+            mockLocalStorage.setItem('nostr-secret-key', 'migration-value');
+            mockLocalStorage.removeItem = vi.fn();
+
+            expect(storage.removeStoredKeyForMigration()).toEqual({ status: 'error' });
+            expect(mockSecretKeyStore.set).not.toHaveBeenCalled();
+        });
+    });
+
     it('setCurrentSecretKeyは保存済みキーを変更せずにin-memory stateだけを更新する', () => {
         storage.setCurrentSecretKey('runtime-key');
 

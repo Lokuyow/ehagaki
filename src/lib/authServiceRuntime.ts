@@ -12,9 +12,15 @@ interface AuthServiceKeyManager {
     derivePublicKey(secretKey: string): PublicKeyData;
     saveToStorage(secretKey: string, pubkeyHex?: string): unknown;
     loadFromStorage(pubkeyHex?: string): string | null;
-    readStoredKey(pubkeyHex: string):
+    readStoredKey(pubkeyHex?: string):
         | { status: 'found'; secretKey: string }
         | { status: 'missing' }
+        | { status: 'error' };
+    writeStoredKeyForMigration(pubkeyHex: string, secretKey: string):
+        | { status: 'saved' }
+        | { status: 'error' };
+    removeStoredKeyForMigration(pubkeyHex?: string):
+        | { status: 'removed' }
         | { status: 'error' };
     setCurrentSecretKey(secretKey: string | null): void;
 }
@@ -30,6 +36,8 @@ function isAuthServiceKeyManager(
         && typeof candidate.saveToStorage === 'function'
         && typeof candidate.loadFromStorage === 'function'
         && typeof candidate.readStoredKey === 'function'
+        && typeof candidate.writeStoredKeyForMigration === 'function'
+        && typeof candidate.removeStoredKeyForMigration === 'function'
         && typeof candidate.setCurrentSecretKey === 'function';
 }
 
