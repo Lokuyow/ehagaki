@@ -55,6 +55,18 @@ const NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE =
 const NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE =
     'Communication could not be verified on the relay selected by the remote signer';
 
+type Nip46LogFailureReason =
+    | 'unexpected'
+    | 'identity-invalid'
+    | 'identity-mismatch'
+    | 'permission-denied'
+    | 'timeout'
+    | 'auth-challenge'
+    | 'relay-unreachable'
+    | 'relay-negotiation-invalid'
+    | 'cancelled'
+    | 'method-unsupported';
+
 type RelayConnectionLogMessages = {
     connecting: string;
     connected: string;
@@ -320,28 +332,29 @@ export class Nip46SignerAdapter {
         };
         const startedAt = Date.now();
         console.debug('[NIP-46] sign_event start', {
+            method: 'sign_event',
+            stage: 'start',
             kind: template.kind,
-            created_at: template.created_at,
-            tagsLength: template.tags.length,
-            contentLength: template.content.length,
-            hasPubkey: typeof effectivePubkey === 'string' && effectivePubkey.length > 0,
         });
 
         try {
             const signedEvent = await this.bunkerSigner.signEvent(template);
             const durationMs = Date.now() - startedAt;
             console.debug('[NIP-46] sign_event resolved', {
+                method: 'sign_event',
+                stage: 'success',
+                kind: template.kind,
                 durationMs,
-                eventId: typeof signedEvent?.id === 'string' ? signedEvent.id : '(missing)',
-                pubkey: typeof signedEvent?.pubkey === 'string' ? signedEvent.pubkey : '(missing)',
-                kind: typeof signedEvent?.kind === 'number' ? signedEvent.kind : '(missing)',
             });
             return signedEvent;
         } catch (error) {
             const durationMs = Date.now() - startedAt;
             console.error('[NIP-46] sign_event failed', {
+                method: 'sign_event',
+                stage: 'failure',
+                kind: template.kind,
                 durationMs,
-                error,
+                reason: 'unexpected' satisfies Nip46LogFailureReason,
             });
             throw error;
         }
@@ -362,19 +375,20 @@ export class Nip46SignerAdapter {
 class Nip46WebSocket extends WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
-        const wsUrl = url.toString();
         this.addEventListener('open', () => {
-            console.debug('[NIP-46 WS] connected:', wsUrl);
+            console.debug('[NIP-46 WS] open', { direction: 'transport' });
         });
-        this.addEventListener('message', (ev: MessageEvent) => {
-            const data = typeof ev.data === 'string' ? ev.data : '[binary]';
-            console.debug('[NIP-46 WS] ←', data.length > 300 ? data.substring(0, 300) + '…' : data);
+        this.addEventListener('message', () => {
+            console.debug('[NIP-46 WS] receive', { direction: 'inbound' });
         });
         this.addEventListener('close', (ev: CloseEvent) => {
-            console.debug('[NIP-46 WS] closed:', wsUrl, ev.code, ev.reason);
+            console.debug('[NIP-46 WS] close', {
+                direction: 'transport',
+                closeCode: ev.code,
+            });
         });
         this.addEventListener('error', () => {
-            console.debug('[NIP-46 WS] error:', wsUrl);
+            console.debug('[NIP-46 WS] error', { direction: 'transport' });
         });
     }
     send(data: string | Blob | BufferSource): void {
@@ -398,8 +412,7 @@ class Nip46WebSocket extends WebSocket {
                 }
             } catch { /* not JSON, send as-is */ }
         }
-        const msg = typeof outData === 'string' ? outData : '[binary]';
-        console.debug('[NIP-46 WS] →', msg.length > 300 ? msg.substring(0, 300) + '…' : msg);
+        console.debug('[NIP-46 WS] send', { direction: 'outbound' });
         super.send(outData);
     }
 }
@@ -420,17 +433,28 @@ async function createConnectedPool(
     const connectedRelays: string[] = [];
     const connectionErrors: string[] = [];
 
-    for (const relay of [...new Set(relays)]) {
+    const uniqueRelays = [...new Set(relays)];
+    for (const [index, relay] of uniqueRelays.entries()) {
         try {
-            console.debug('[NIP-46] connecting to relay:', relay);
+            console.debug('[NIP-46] relay connection attempt', {
+                attempt: index + 1,
+                total: uniqueRelays.length,
+            });
             await pool.ensureRelay(relay, {
                 connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
             });
-            console.debug('[NIP-46] relay connected:', relay);
+            console.debug('[NIP-46] relay connection succeeded', {
+                connected: connectedRelays.length + 1,
+                total: uniqueRelays.length,
+            });
             connectedRelays.push(relay);
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.warn('[NIP-46] relay connection failed:', relay, msg);
+            console.warn('[NIP-46] relay connection failed', {
+                reason: 'relay-unreachable' satisfies Nip46LogFailureReason,
+                failed: connectionErrors.length + 1,
+                total: uniqueRelays.length,
+            });
             connectionErrors.push(`${relay}: ${msg}`);
         }
     }
@@ -449,10 +473,10 @@ async function createConnectedPool(
     }
 
     if (connectionErrors.length > 0) {
-        console.warn(
-            '[NIP-46] continuing with reachable relays only:',
-            connectedRelays,
-        );
+        console.warn('[NIP-46] continuing with reachable relays only', {
+            connected: connectedRelays.length,
+            failed: connectionErrors.length,
+        });
     }
 
     return { pool, connectedRelays };
@@ -516,19 +540,29 @@ async function createConnectedPoolReadyOnFirstReachable(
         rejectAllFailed = null;
     };
 
-    const connectionAttempts = uniqueRelays.map(async (relay) => {
+    const connectionAttempts = uniqueRelays.map(async (relay, index) => {
         try {
-            console.debug(logMessages.connecting, relay);
+            console.debug(logMessages.connecting, {
+                attempt: index + 1,
+                total: uniqueRelays.length,
+            });
             await pool.ensureRelay(relay, {
                 connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
             });
-            console.debug(logMessages.connected, relay);
+            console.debug(logMessages.connected, {
+                connected: connectedRelays.length + 1,
+                total: uniqueRelays.length,
+            });
             connectedRelaySet.add(relay);
             connectedRelays.push(relay);
             settleFirstReachable();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.warn(logMessages.failed, relay, msg);
+            console.warn(logMessages.failed, {
+                reason: 'relay-unreachable' satisfies Nip46LogFailureReason,
+                failed: connectionErrors.length + 1,
+                total: uniqueRelays.length,
+            });
             connectionErrors.push(`${relay}: ${msg}`);
         } finally {
             remainingAttempts -= 1;
@@ -574,7 +608,10 @@ async function createConnectedPoolReadyOnFirstReachable(
     );
 
     if (connectionErrors.length > 0) {
-        console.warn(logMessages.partial, finalizedConnectedRelays);
+        console.warn(logMessages.partial, {
+            connected: finalizedConnectedRelays.length,
+            failed: connectionErrors.length,
+        });
     }
 
     return {
@@ -597,17 +634,27 @@ async function createConnectedPoolForReachableRelays(
     const connectionErrors: string[] = [];
 
     await Promise.all(
-        uniqueRelays.map(async (relay) => {
+        uniqueRelays.map(async (relay, index) => {
             try {
-                console.debug(logMessages.connecting, relay);
+                console.debug(logMessages.connecting, {
+                    attempt: index + 1,
+                    total: uniqueRelays.length,
+                });
                 await pool.ensureRelay(relay, {
                     connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
                 });
-                console.debug(logMessages.connected, relay);
+                console.debug(logMessages.connected, {
+                    connected: connectedRelaySet.size + 1,
+                    total: uniqueRelays.length,
+                });
                 connectedRelaySet.add(relay);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                console.warn(logMessages.failed, relay, msg);
+                console.warn(logMessages.failed, {
+                    reason: 'relay-unreachable' satisfies Nip46LogFailureReason,
+                    failed: connectionErrors.length + 1,
+                    total: uniqueRelays.length,
+                });
                 connectionErrors.push(`${relay}: ${msg}`);
             }
         }),
@@ -631,7 +678,10 @@ async function createConnectedPoolForReachableRelays(
     }
 
     if (connectionErrors.length > 0) {
-        console.warn(logMessages.partial, finalizedConnectedRelays);
+        console.warn(logMessages.partial, {
+            connected: finalizedConnectedRelays.length,
+            failed: connectionErrors.length,
+        });
     }
 
     return {
@@ -795,28 +845,10 @@ export function sanitizeNip46NostrConnectRelays(relays: string[]): string[] {
     return sanitized;
 }
 
-function sanitizeRelayForLog(relay: string): string {
-    const trimmed = relay.trim();
-    if (!trimmed) {
-        return '[empty relay]';
-    }
-
-    try {
-        const relayUrl = new URL(trimmed);
-        if (relayUrl.username || relayUrl.password) {
-            relayUrl.username = '';
-            relayUrl.password = '';
-        }
-        return relayUrl.toString();
-    } catch {
-        return '[invalid relay string]';
-    }
-}
-
 function parseDeterministicRelayList(value: string): {
-    parsedRelays: string[];
     supportedRelays: string[];
-    unsupportedRelays: string[];
+    parsedCount: number;
+    unsupportedCount: number;
 } {
     let parsed: unknown;
 
@@ -838,9 +870,8 @@ function parseDeterministicRelayList(value: string): {
         throw new Error(NIP46_FINAL_RELAY_LIST_MISSING_MESSAGE);
     }
 
-    const parsedRelays: string[] = [];
     const supportedRelays: string[] = [];
-    const unsupportedRelays: string[] = [];
+    let unsupportedCount = 0;
     const seen = new Set<string>();
 
     for (const relay of parsed) {
@@ -852,11 +883,9 @@ function parseDeterministicRelayList(value: string): {
             throw new Error(NIP46_FINAL_RELAY_LIST_INVALID_MESSAGE);
         }
 
-        parsedRelays.push(sanitizeRelayForLog(relay));
-
         const normalizedRelay = normalizeSupportedNip46FinalRelay(relay);
         if (!normalizedRelay) {
-            unsupportedRelays.push(sanitizeRelayForLog(relay));
+            unsupportedCount += 1;
             continue;
         }
 
@@ -869,9 +898,9 @@ function parseDeterministicRelayList(value: string): {
     }
 
     return {
-        parsedRelays,
         supportedRelays,
-        unsupportedRelays,
+        parsedCount: parsed.length,
+        unsupportedCount,
     };
 }
 
@@ -998,7 +1027,11 @@ async function resolveNostrConnectRelayResolution(
 
     if (reconciliationResult.type === 'error') {
         if (isUnsupportedSwitchRelaysError(reconciliationResult.error)) {
-            console.warn('[NIP-46] switch_relays not supported by signer; using client initial relays:', reconciliationResult.error);
+            console.warn('[NIP-46] switch_relays not supported by signer', {
+                method: 'switch_relays',
+                outcome: 'method-unsupported',
+                reason: 'method-unsupported' satisfies Nip46LogFailureReason,
+            });
             return {
                 kind: 'method-unsupported',
                 finalRelays: [...fallbackRelays],
@@ -1021,15 +1054,12 @@ async function resolveNostrConnectRelayResolution(
     const relayList = parseDeterministicRelayList(
         reconciliationResult.value,
     );
-    console.debug('[NIP-46] switch_relays returned relays:', relayList.parsedRelays);
-    console.debug(
-        '[NIP-46] supported final relay candidates:',
-        relayList.supportedRelays,
-    );
-    console.debug(
-        '[NIP-46] unsupported final relays:',
-        relayList.unsupportedRelays,
-    );
+    console.debug('[NIP-46] switch_relays response classified', {
+        method: 'switch_relays',
+        parsed: relayList.parsedCount,
+        supported: relayList.supportedRelays.length,
+        unsupported: relayList.unsupportedCount,
+    });
 
     if (relayList.supportedRelays.length === 0) {
         throw new Error(NIP46_FINAL_RELAY_NO_USABLE_MESSAGE);
@@ -1408,7 +1438,7 @@ export class Nip46Service {
             await this.closeRuntimeSnapshot(runtime);
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
-        } catch (error) {
+        } catch {
             await failCandidate();
             console.warn('[NIP-46] rebuildConnection candidate verification failed');
             return false;
@@ -1478,12 +1508,17 @@ export class Nip46Service {
     }
 
     async connect(bunkerUrl: string, timeoutMs: number = 30000): Promise<string> {
-        console.debug('[NIP-46] connect: parsing bunker URL...');
+        console.debug('[NIP-46] bunker connect parsing', {
+            stage: 'start',
+        });
         const bp = await parseBunkerInput(bunkerUrl);
         if (!bp) {
             throw new Error('Invalid bunker URL');
         }
-        console.debug('[NIP-46] connect: parsed bp =', { pubkey: bp.pubkey, relays: bp.relays, secret: bp.secret ? '***' : null });
+        console.debug('[NIP-46] bunker connect input parsed', {
+            stage: 'parsed',
+            relays: bp.relays.length,
+        });
 
         if (bp.relays.length === 0) {
             throw new Error('No relays specified in bunker URL');
@@ -1837,8 +1872,10 @@ export class Nip46Service {
 
                     if (verifiedUserPubkey !== expectedUserPubkey) {
                         console.warn(
-                            '[NIP-46] negotiated final relay returned unexpected public key:',
-                            selectedRelay,
+                            '[NIP-46] negotiated final relay identity mismatch',
+                            {
+                                reason: 'identity-mismatch' satisfies Nip46LogFailureReason,
+                            },
                         );
                         throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
                     }
@@ -1854,10 +1891,9 @@ export class Nip46Service {
                         throw createNostrConnectCancellationError();
                     }
 
-                    console.warn(
-                        '[NIP-46] negotiated final relay verification failed',
-                        selectedRelay,
-                    );
+                    console.warn('[NIP-46] negotiated final relay verification failed', {
+                        reason: 'relay-negotiation-invalid' satisfies Nip46LogFailureReason,
+                    });
 
                     await closeNostrConnectTemporarySigner(finalSignerCandidate);
                     finalSignerCandidate = null;
@@ -1998,7 +2034,9 @@ export class Nip46Service {
                             console.debug('[NIP-46] EOSE received on handshake subscription; subscription remains open awaiting signer response');
                         },
                         onevent: async (event: { id?: string; content: string; pubkey: string }) => {
-                            console.debug('[NIP-46] EVENT received', event.id ?? '(no id)', 'from', event.pubkey);
+                            console.debug('[NIP-46] handshake response received', {
+                                stage: 'response-received',
+                            });
 
                             if (settled) {
                                 console.debug('[NIP-46] EVENT ignored: already settled');
@@ -2008,7 +2046,9 @@ export class Nip46Service {
                             settleHandshakeStartedSuccess();
 
                             try {
-                                console.debug('[NIP-46] decrypt start', 'pubkey:', event.pubkey);
+                                console.debug('[NIP-46] handshake decrypt started', {
+                                    stage: 'decrypt-start',
+                                });
                                 const temporaryConversationKey = nip44.getConversationKey(
                                     clientSecretKey,
                                     event.pubkey,
@@ -2019,9 +2059,14 @@ export class Nip46Service {
                                         event.content,
                                         temporaryConversationKey,
                                     );
-                                    console.debug('[NIP-46] decrypt ok');
+                                    console.debug('[NIP-46] handshake decrypt succeeded', {
+                                        stage: 'decrypt-success',
+                                    });
                                 } catch (decryptErr) {
-                                    console.debug('[NIP-46] decrypt fail', decryptErr);
+                                    console.debug('[NIP-46] handshake decrypt failed', {
+                                        stage: 'decrypt-failure',
+                                        reason: 'unexpected' satisfies Nip46LogFailureReason,
+                                    });
                                     throw decryptErr;
                                 }
                                 const response = JSON.parse(decrypted) as {
@@ -2031,29 +2076,25 @@ export class Nip46Service {
                                     error?: string;
                                 };
                                 const resultValue = response.result;
-                                const resultType = typeof resultValue;
                                 const isKnownAck = resultValue === 'ack';
-                                console.debug('[NIP-46] parsed payload detail:', {
-                                    keys: Object.keys(response),
-                                    id: response.id ?? 'none',
-                                    method: response.method ?? 'none',
-                                    resultType,
-                                    resultIsKnown: isKnownAck ? 'ack' : undefined,
-                                    resultLength: resultType === 'string' ? (resultValue as string).length : 'n/a',
-                                    expectedLength: sharedSecret.length,
-                                    error: response.error ?? 'none',
-                                });
 
                                 const isSecretMatch = resultValue === sharedSecret;
                                 if (!isSecretMatch && !isKnownAck) {
-                                    console.debug('[NIP-46] result mismatch; ignoring event');
+                                    console.debug('[NIP-46] handshake response rejected', {
+                                        stage: 'response-rejected',
+                                        reason: 'unexpected' satisfies Nip46LogFailureReason,
+                                    });
                                     return;
                                 }
                                 if (isKnownAck && !isSecretMatch) {
-                                    console.warn('[NIP-46] remote signer responded with "ack" instead of the secret — accepting for compatibility (secret validation skipped)');
+                                    console.warn('[NIP-46] handshake accepted compatibility acknowledgement', {
+                                        stage: 'compatibility-ack',
+                                    });
                                 }
 
-                                console.debug('[NIP-46] handshake accepted; isSecretMatch:', isSecretMatch, 'isAck:', isKnownAck);
+                                console.debug('[NIP-46] handshake accepted', {
+                                    stage: 'accepted',
+                                });
                                 handshakeAccepted = true;
                                 handshakeSubscription?.close();
                                 handshakeSubscription = null;
@@ -2190,8 +2231,10 @@ export class Nip46Service {
                                 rejectCompletion?.(error);
                             }
                         },
-                        onclose: async (reasons?: string[]) => {
-                            console.debug('[NIP-46] handshake subscription closed; settled:', settled, 'handshakeAccepted:', handshakeAccepted, 'reasons:', reasons);
+                        onclose: async () => {
+                            console.debug('[NIP-46] handshake subscription closed', {
+                                stage: 'closed',
+                            });
                             if (settled || handshakeAccepted) {
                                 return;
                             }
@@ -2414,11 +2457,11 @@ export class Nip46Service {
         if (pendingOperationPromise) {
             try {
                 pendingOperationSucceeded = await pendingOperationPromise;
-            } catch (error) {
+            } catch {
                 pendingOperationSucceeded = false;
-                console.warn('[NIP-46] signer request: pending operation failed unexpectedly', {
+                console.warn('[NIP-46] signer request: pending operation failed', {
                     operationKind: pendingOperationKind,
-                    message: error instanceof Error ? error.message : 'Unknown error',
+                    reason: 'unexpected' satisfies Nip46LogFailureReason,
                 });
             }
         }
@@ -2445,17 +2488,15 @@ export class Nip46Service {
 
         console.debug('[NIP-46] signer request: starting limited reconnect', {
             operationKind: pendingOperationKind,
-            hasRecoverableSession: this.hasRecoverableSession(),
-            hasRuntimeSigner: this.signerAdapter !== null,
         });
 
         let recovered: boolean;
         try {
             recovered = await this.ensureConnection();
-        } catch (error) {
+        } catch {
             console.error('[NIP-46] signer request: reconnect threw unexpectedly', {
                 operationKind: pendingOperationKind,
-                message: error instanceof Error ? error.message : 'Unknown error',
+                reason: 'unexpected' satisfies Nip46LogFailureReason,
             });
             return null;
         }

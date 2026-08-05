@@ -218,7 +218,10 @@ describe('runNip07Login', () => {
             console: { error: consoleError },
         })).resolves.toBe('nip07_auth_error');
 
-        expect(consoleError).toHaveBeenCalledWith('NIP-07認証失敗:', 'nip07_auth_error');
+        expect(consoleError).toHaveBeenCalledWith(
+            'NIP-07認証失敗',
+            { stage: 'result', reason: 'unexpected' },
+        );
     });
 });
 

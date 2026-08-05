@@ -90,8 +90,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
         file,
         mimeType: file.type || undefined,
       });
-    } catch (error) {
-      console.warn('post_media_cache_persist_failed', error);
+    } catch {
+      console.warn('post_media_cache_persist_failed', {
+        stage: 'media-cache',
+        reason: 'unexpected',
+      });
     }
   }
 
@@ -272,7 +275,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
       }
 
       if (devMode) {
-        console.error("[dev] Upload error:", error);
+        console.error("[dev] Upload error", {
+          stage: 'upload',
+          reason: 'unexpected',
+        });
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -440,8 +446,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
       );
 
       return await promise;
-    } catch (error) {
-      console.error('Service Workerからの共有メディア取得に失敗:', error);
+    } catch {
+      console.error('Service Workerからの共有メディア取得に失敗', {
+        stage: 'shared-media',
+        reason: 'unexpected',
+      });
       return null;
     }
   }
@@ -479,5 +488,4 @@ export class FileUploadManager implements FileUploadManagerInterface {
     }
   }
 }
-
 

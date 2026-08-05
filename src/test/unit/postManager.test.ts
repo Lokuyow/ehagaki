@@ -1050,7 +1050,10 @@ describe('PostEventSender', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('post_network_error');
-        expect(mockConsole.error).toHaveBeenCalledWith('送信エラー:', expect.any(Error));
+        expect(mockConsole.error).toHaveBeenCalledWith(
+            '送信エラー',
+            { stage: 'publish', reason: 'unexpected' },
+        );
     });
 
     it('応答なしタイムアウトを適切に処理する', async () => {

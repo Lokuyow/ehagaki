@@ -251,18 +251,25 @@ export function createNip42Authenticator(sessionPubkey: string): (boundRelayUrl:
                 const authEvent = makeAuthEvent(relayUrl, challenge);
 
                 try {
-                    console.debug('nip42_auth_sign_requested', { relay: relayUrl });
+                    console.debug('nip42_auth_sign_requested', {
+                        method: 'sign_event:22242',
+                        stage: 'start',
+                    });
                     const signer = await authService.getEventSigner(sessionPubkey);
                     assertCurrentSession(sessionPubkey);
                     const signed = await signer.signEvent(authEvent);
                     assertCurrentSession(sessionPubkey);
                     validateAuthEvent(signed, relayUrl, challenge, sessionPubkey);
-                    console.debug('nip42_auth_sign_succeeded', { relay: relayUrl });
+                    console.debug('nip42_auth_sign_succeeded', {
+                        method: 'sign_event:22242',
+                        stage: 'success',
+                    });
                     return signed as any;
                 } catch (error) {
                     console.warn('nip42_auth_sign_failed', {
-                        relay: relayUrl,
-                        message: error instanceof Error ? error.message : 'Unknown error',
+                        method: 'sign_event:22242',
+                        stage: 'failure',
+                        reason: 'unexpected',
                     });
                     throw error;
                 }

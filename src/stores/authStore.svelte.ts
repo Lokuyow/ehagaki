@@ -32,7 +32,6 @@ export function updateAuthState(newState: Partial<AuthState>): void {
         type: updated.type,
         isAuthenticated: updated.isAuthenticated,
         isValid: updated.isValid,
-        pubkey: updated.pubkey ? updated.pubkey.substring(0, 8) + '...' : 'empty'
     });
 }
 

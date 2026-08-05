@@ -66,8 +66,11 @@ export class AuthService {
             this.runtime.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
             this.accountManager?.addAccount(derived.hex, 'nsec');
             return { success: true, pubkeyHex: derived.hex };
-        } catch (error) {
-            this.runtime.console.error('nsec認証処理中にエラー:', error);
+        } catch {
+            this.runtime.console.error('nsec認証処理中にエラー', {
+                stage: 'nsec-authentication',
+                reason: 'unexpected',
+            });
             return { success: false, error: 'authentication_error' };
         }
     }
@@ -101,7 +104,10 @@ export class AuthService {
             const pubkeyHex = await this.runtime.nip46Svc.connect(bunkerUrl);
             return this.finalizeNip46Authentication(pubkeyHex);
         } catch (error) {
-            this.runtime.console.error('NIP-46認証エラー:', error);
+            this.runtime.console.error('NIP-46認証エラー', {
+                stage: 'bunker-connect',
+                reason: 'unexpected',
+            });
             const msg = error instanceof Error ? error.message : 'nip46_connection_failed';
             return { success: false, error: msg };
         }
@@ -152,7 +158,10 @@ export class AuthService {
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'parent_client_auth_error';
             if (!options.silent) {
-                this.runtime.console.error('親クライアント連携認証エラー:', error);
+                this.runtime.console.error('親クライアント連携認証エラー', {
+                    stage: 'parent-client-connect',
+                    reason: 'unexpected',
+                });
             }
             return { success: false, error: msg };
         }
@@ -180,7 +189,10 @@ export class AuthService {
                 ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
             } else if (accountType === 'nip46') {
                 this.runtime.nip46Svc.disconnect().catch(e => {
-                    this.runtime.console.error('NIP-46切断エラー:', e);
+                    this.runtime.console.error('NIP-46切断エラー', {
+                        stage: 'disconnect',
+                        reason: 'unexpected',
+                    });
                 });
             }
 
@@ -194,8 +206,11 @@ export class AuthService {
 
             // string: 次のアクティブアカウント, null: アカウント残なし, undefined: 非アクティブ削除
             return nextPubkey;
-        } catch (error) {
-            this.runtime.console.error('ログアウト処理中に予期しないエラー:', error);
+        } catch {
+            this.runtime.console.error('ログアウト処理中に予期しないエラー', {
+                stage: 'logout',
+                reason: 'unexpected',
+            });
             return null;
         }
     }
@@ -250,7 +265,10 @@ export class AuthService {
 
             return await this.initializeLegacyAuth();
         } catch (error) {
-            this.runtime.console.error('認証初期化失敗:', error);
+            this.runtime.console.error('認証初期化失敗', {
+                stage: 'restore',
+                reason: 'unexpected',
+            });
             return { hasAuth: false };
         }
     }
@@ -275,7 +293,10 @@ export class AuthService {
             const pubkeyHex = await pending.completion;
             return { success: true, pubkeyHex };
         } catch (error) {
-            this.runtime.console.error('NIP-46 nostrconnect認証エラー:', error);
+            this.runtime.console.error('NIP-46 nostrconnect認証エラー', {
+                stage: 'nostrconnect-completion',
+                reason: 'unexpected',
+            });
             return {
                 success: false,
                 error: error instanceof Error
@@ -336,7 +357,10 @@ export class AuthService {
                 if (event.data.success) {
                     this.runtime.console.log('プロフィール画像キャッシュをクリアしました');
                 } else {
-                    this.runtime.console.error('プロフィール画像キャッシュクリア失敗:', event.data.error);
+                    this.runtime.console.error('プロフィール画像キャッシュクリア失敗', {
+                        stage: 'profile-image-cache',
+                        reason: 'unexpected',
+                    });
                 }
             };
 
@@ -344,8 +368,11 @@ export class AuthService {
                 { action: 'clearProfileCache' },
                 [messageChannel.port2]
             );
-        } catch (error) {
-            this.runtime.console.error('プロフィール画像キャッシュクリア中にエラー:', error);
+        } catch {
+            this.runtime.console.error('プロフィール画像キャッシュクリア中にエラー', {
+                stage: 'profile-image-cache',
+                reason: 'unexpected',
+            });
         }
     }
 

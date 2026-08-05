@@ -199,7 +199,10 @@ export function createAppAccountSessionController(
                 : null;
 
             if (!targetAccountType) {
-                deps.logger.error('アカウントタイプが見つかりません:', pubkeyHex);
+                deps.logger.error('アカウントタイプが見つかりません', {
+                    stage: 'switch-account',
+                    reason: 'account-not-found',
+                });
                 return false;
             }
 
@@ -251,8 +254,11 @@ export function createAppAccountSessionController(
             }
             await convergeToGuest();
             return false;
-        } catch (error) {
-            deps.logger.error('アカウント切替中にエラー:', error);
+        } catch {
+            deps.logger.error('アカウント切替中にエラー', {
+                stage: 'switch-account',
+                reason: 'unexpected',
+            });
             if (transactionStarted) {
                 await convergeToGuest();
             }
@@ -306,8 +312,11 @@ export function createAppAccountSessionController(
             if (options.closeDialog !== false && nextAction.kind !== 'keep-current') {
                 deps.closeLogoutDialog();
             }
-        } catch (error) {
-            deps.logger.error('ログアウト処理中にエラー:', error);
+        } catch {
+            deps.logger.error('ログアウト処理中にエラー', {
+                stage: 'logout-account',
+                reason: 'unexpected',
+            });
         } finally {
             deps.setIsLoggingOut(false);
         }

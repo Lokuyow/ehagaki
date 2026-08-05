@@ -177,7 +177,10 @@ export function createNip46AuthFlowController(
         return undefined;
       }
 
-      deps.console.error("NIP-46 nostrconnectログインでエラー:", error);
+      deps.console.error("NIP-46 nostrconnectログインでエラー", {
+        stage: 'start',
+        reason: 'unexpected',
+      });
       resetPendingState({ preserveError: true });
       const message = error instanceof Error ? error.message : "NIP-46 login failed";
       deps.state.setErrorMessage(message);

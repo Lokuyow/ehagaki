@@ -5,6 +5,7 @@ import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
 import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies, createMockParentClientSession } from './authServiceTestUtils';
+import { expectConsoleCallsNotToContain } from '../logAssertions';
 
 describe('AuthService.authenticateWithNsec', () => {
     let authService: AuthService;
@@ -81,7 +82,10 @@ describe('AuthService.authenticateWithNsec', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('authentication_error');
-        expect(mockConsole.error).toHaveBeenCalledWith('nsec認証処理中にエラー:', expect.any(Error));
+        expect(mockConsole.error).toHaveBeenCalledWith(
+            'nsec認証処理中にエラー',
+            { stage: 'nsec-authentication', reason: 'unexpected' },
+        );
     });
 
     it('短すぎるNsecが拒否される', async () => {
@@ -232,13 +236,20 @@ describe('AuthService.authenticateWithNip46', () => {
 
     it('接続失敗でエラーを返す', async () => {
         const { nip46Service } = await import('../../lib/nip46Service');
-        vi.mocked(nip46Service.connect).mockRejectedValue(new Error('Connection timeout'));
+        const sentinel = 'Connection timeout with bunker secret';
+        const error = new Error(sentinel);
+        error.stack = `stack:${sentinel}`;
+        error.cause = { nested: sentinel };
+        (error as { customPayload?: unknown }).customPayload = { sentinel };
+        (error as { cycle?: unknown }).cycle = error;
+        vi.mocked(nip46Service.connect).mockRejectedValue(error);
 
         const service = new AuthService(mockDependencies);
         const result = await service.authenticateWithNip46('bunker://invalid');
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe('Connection timeout');
+        expect(result.error).toBe(sentinel);
+        expectConsoleCallsNotToContain([mockDependencies.console!.error as never], [sentinel]);
     });
 
     it('nostrconnect 待機成功は pubkey を返し、認証状態はまだ確定しない', async () => {

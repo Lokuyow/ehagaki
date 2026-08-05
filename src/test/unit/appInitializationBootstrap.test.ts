@@ -141,7 +141,10 @@ describe('runAppInitializationBootstrap', () => {
 
         await runAppInitializationBootstrap(params as never);
 
-        expect(params.console.error).toHaveBeenCalledWith('親クライアント連携自動認証中にエラー:', error);
+        expect(params.console.error).toHaveBeenCalledWith(
+            '親クライアント連携自動認証中にエラー',
+            { stage: 'resolve-session', reason: 'unexpected' },
+        );
         expect(params.handleAuthenticated).toHaveBeenCalledWith('restored-pubkey');
     });
 
@@ -153,7 +156,10 @@ describe('runAppInitializationBootstrap', () => {
 
         await runAppInitializationBootstrap(params as never);
 
-        expect(params.console.error).toHaveBeenCalledWith('認証初期化中にエラー:', error);
+        expect(params.console.error).toHaveBeenCalledWith(
+            '認証初期化中にエラー',
+            { stage: 'initialize-auth', reason: 'unexpected' },
+        );
         expect(params.initializeGuestSession).toHaveBeenCalledOnce();
         expect(params.stopProfileLoading).toHaveBeenCalledOnce();
         expect(params.refreshAccountList).not.toHaveBeenCalled();
@@ -270,8 +276,8 @@ describe('registerNip46VisibilityHandler', () => {
         await Promise.resolve();
 
         expect(recoveryConsole.error).toHaveBeenCalledWith(
-            'NIP-46 visibility auto recovery threw unexpectedly:',
-            error,
+            'NIP-46 visibility auto recovery threw unexpectedly',
+            { stage: 'visibility-recovery', reason: 'unexpected' },
         );
     });
 

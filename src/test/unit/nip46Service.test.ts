@@ -12,6 +12,7 @@ import {
 } from '../../lib/nip46Service';
 import { createDeferred } from '../deferredTestUtils';
 import { MockStorage } from '../helpers';
+import { expectConsoleCallsNotToContain } from '../logAssertions';
 
 const TEST_USER_PUBKEY = 'b'.repeat(64);
 const TEST_RECONNECT_PUBKEY = 'c'.repeat(64);
@@ -147,6 +148,42 @@ describe('Nip46SignerAdapter', () => {
 
         expect(pubkey).toBe('user-pubkey');
         expect(mockBunkerSigner.getPublicKey).toHaveBeenCalled();
+    });
+
+    it('signEvent失敗時は元のErrorをthrowするが、Errorの詳細やイベント内容をログへ渡さない', async () => {
+        const eventSecret = 'event-content-secret';
+        const errorSecret = 'signer-error-secret';
+        const cause = new Error(`${errorSecret}: cause`);
+        Object.defineProperty(cause, 'customPayload', {
+            value: eventSecret,
+            enumerable: true,
+        });
+        const error = new Error(errorSecret);
+        error.stack = `stack:${errorSecret}`;
+        error.cause = cause;
+        Object.defineProperty(error, 'customPayload', {
+            value: { nested: eventSecret },
+            enumerable: true,
+        });
+        (error as { cycle?: unknown }).cycle = error;
+        mockBunkerSigner.signEvent.mockRejectedValueOnce(error);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+
+        try {
+            await expect(adapter.signEvent({
+                kind: 1,
+                content: eventSecret,
+                tags: [['p', eventSecret]],
+                pubkey: eventSecret,
+            })).rejects.toBe(error);
+            expectConsoleCallsNotToContain([errorSpy], [
+                eventSecret,
+                errorSecret,
+                `stack:${errorSecret}`,
+            ]);
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 });
 
@@ -795,6 +832,38 @@ describe('Nip46Service', () => {
 
             await expect(pendingFlow.pending.handshakeStarted).resolves.toBeUndefined();
             await expect(pendingFlow.pending.completion).resolves.toBe(TEST_USER_PUBKEY);
+        });
+
+        it('handshakeのイベント本文・応答payload・pubkey・Error詳細をログへ渡さない', async () => {
+            const frameSecret = 'handshake-frame-secret';
+            const payloadSecret = 'handshake-payload-secret';
+            const error = new Error(payloadSecret);
+            error.stack = `stack:${payloadSecret}`;
+            error.cause = { frameSecret };
+            (error as { cycle?: unknown }).cycle = error;
+            const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => { });
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+            const pendingFlow = await createPendingFallbackNostrConnect();
+            const { nip44 } = await import('nostr-tools');
+            vi.mocked(nip44.decrypt).mockImplementation(() => {
+                throw error;
+            });
+
+            try {
+                await pendingFlow.handlers.onevent({
+                    content: frameSecret,
+                    pubkey: pendingFlow.remoteSignerPubkey,
+                });
+                await pendingFlow.pending.cancel();
+                expectConsoleCallsNotToContain([debugSpy, warnSpy], [
+                    frameSecret,
+                    payloadSecret,
+                    `stack:${payloadSecret}`,
+                ]);
+            } finally {
+                debugSpy.mockRestore();
+                warnSpy.mockRestore();
+            }
         });
 
         it('最初の ready 後 1500ms の収集猶予時間内に ready になった initial relay だけを URI に含める', async () => {
@@ -1514,34 +1583,26 @@ describe('Nip46Service', () => {
                 await pendingFlow.pending.completion;
 
                 expect(debugSpy).toHaveBeenCalledWith(
-                    '[NIP-46] switch_relays returned relays:',
-                    [
-                        'ws://127.0.0.1:4869/',
-                        'wss://relay.final.example.com/',
-                        'ws://relay.example.com/',
-                    ],
-                );
-                expect(debugSpy).toHaveBeenCalledWith(
-                    '[NIP-46] supported final relay candidates:',
-                    ['ws://127.0.0.1:4869/', 'wss://relay.final.example.com'],
-                );
-                expect(debugSpy).toHaveBeenCalledWith(
-                    '[NIP-46] unsupported final relays:',
-                    ['ws://relay.example.com/'],
+                    '[NIP-46] switch_relays response classified',
+                    {
+                        method: 'switch_relays',
+                        parsed: 3,
+                        supported: 2,
+                        unsupported: 1,
+                    },
                 );
                 expect(warnSpy).toHaveBeenCalledWith(
                     '[NIP-46] negotiated final relay connection failed:',
-                    'ws://127.0.0.1:4869/',
-                    'connection refused',
+                    expect.objectContaining({
+                        reason: 'relay-unreachable',
+                    }),
                 );
-
-                const loggedText = [...debugSpy.mock.calls, ...warnSpy.mock.calls]
-                    .flat()
-                    .map((value) =>
-                        typeof value === 'string' ? value : JSON.stringify(value),
-                    )
-                    .join(' ');
-                expect(loggedText).not.toContain('ab'.repeat(32));
+                expectConsoleCallsNotToContain([debugSpy, warnSpy], [
+                    'wss://relay.final.example.com',
+                    'ws://relay.example.com',
+                    'connection refused',
+                    'ab'.repeat(32),
+                ]);
             } finally {
                 debugSpy.mockRestore();
                 warnSpy.mockRestore();

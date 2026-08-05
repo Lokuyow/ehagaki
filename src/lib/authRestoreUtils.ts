@@ -363,7 +363,10 @@ export async function checkLegacyNip07Auth(
         dependencies.localStorage.removeItem(LEGACY_NIP07_STORAGE_KEY);
         return result;
     } catch (error) {
-        dependencies.console.error('NIP-07セッション復元エラー:', error);
+        dependencies.console.error('NIP-07セッション復元エラー', {
+            stage: 'legacy-restore',
+            reason: 'unexpected',
+        });
         dependencies.localStorage.removeItem(LEGACY_NIP07_STORAGE_KEY);
         return { hasAuth: false };
     }
@@ -384,7 +387,10 @@ export async function checkLegacyNip46Auth(
         Nip46Storage.clearSession(dependencies.localStorage);
         return result;
     } catch (error) {
-        dependencies.console.error('NIP-46セッション復元エラー:', error);
+        dependencies.console.error('NIP-46セッション復元エラー', {
+            stage: 'legacy-restore',
+            reason: 'unexpected',
+        });
         return { hasAuth: false };
     }
 }
