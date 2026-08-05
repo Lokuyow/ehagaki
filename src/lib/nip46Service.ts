@@ -29,8 +29,15 @@ export const NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS = 1000;
 export const NIP46_INITIAL_RELAY_COLLECTION_WINDOW_MS = 1500;
 const NIP46_RELAY_RECONCILIATION_TIMEOUT_MS = 5000;
 const NIP46_GET_PUBLIC_KEY_TIMEOUT_MS = 5000;
+const NIP46_LIVE_IDENTITY_TIMEOUT_MS = 5000;
 const NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE =
     'Timed out waiting for get_public_key response';
+const NIP46_LIVE_IDENTITY_AUTH_CHALLENGE_MESSAGE =
+    'Remote signer requested authentication during automatic identity verification';
+const NIP46_LIVE_IDENTITY_INVALID_MESSAGE =
+    'Remote signer returned an invalid user public key';
+const NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE =
+    'Remote signer returned an unexpected user public key';
 const LOCAL_NETWORK_IFRAME_ALLOW_VALUE = 'local-network-access; local-network; loopback-network';
 const LOCAL_NETWORK_PERMISSION_FEATURES = [
     'loopback-network',
@@ -72,6 +79,19 @@ const NEGOTIATED_FINAL_RELAY_CONNECTION_LOG_MESSAGES: RelayConnectionLogMessages
 type SessionPersistenceBinding = {
     storage: Storage;
     pubkeyHex?: string;
+};
+
+type Nip46RuntimeSnapshot = {
+    pool: SimplePool | null;
+    bunkerSigner: BunkerSigner | null;
+    signerAdapter: Nip46SignerAdapter | null;
+    userPubkey: string | null;
+    clientSecretKeyHex: string | null;
+};
+
+type LiveIdentityAuthChallenge = {
+    promise: Promise<never>;
+    reject: () => void;
 };
 
 type Nip46OperationKind = 'manual-check' | 'auto-recovery';
@@ -712,6 +732,52 @@ function withTimeout<T>(
     });
 }
 
+function createLiveIdentityAuthChallenge(): LiveIdentityAuthChallenge {
+    let rejected = false;
+    let rejectChallenge: ((reason?: unknown) => void) | null = null;
+
+    const promise = new Promise<never>((_, reject) => {
+        rejectChallenge = reject;
+    });
+
+    return {
+        promise,
+        reject: () => {
+            if (rejected) {
+                return;
+            }
+
+            rejected = true;
+            rejectChallenge?.(new Error(NIP46_LIVE_IDENTITY_AUTH_CHALLENGE_MESSAGE));
+        },
+    };
+}
+
+function isValidNip46UserPubkey(value: unknown): value is string {
+    return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+async function readLiveNip46UserPubkey(
+    signer: BunkerSigner,
+    authChallenge: LiveIdentityAuthChallenge,
+    timeoutMs: number = NIP46_LIVE_IDENTITY_TIMEOUT_MS,
+): Promise<string> {
+    const response = await withTimeout(
+        Promise.race([
+            signer.sendRequest('get_public_key', []),
+            authChallenge.promise,
+        ]),
+        timeoutMs,
+        NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE,
+    );
+
+    if (!isValidNip46UserPubkey(response)) {
+        throw new Error(NIP46_LIVE_IDENTITY_INVALID_MESSAGE);
+    }
+
+    return response;
+}
+
 export function sanitizeNip46NostrConnectRelays(relays: string[]): string[] {
     const seen = new Set<string>();
     const sanitized: string[] = [];
@@ -859,8 +925,9 @@ function createNostrConnectBunkerSigner(
     relays: string[],
     sharedSecret: string,
     pool: SimplePool,
-): BunkerSigner {
-    return BunkerSigner.fromBunker(
+): { signer: BunkerSigner; authChallenge: LiveIdentityAuthChallenge } {
+    const authChallenge = createLiveIdentityAuthChallenge();
+    const signer = BunkerSigner.fromBunker(
         clientSecretKey,
         {
             pubkey: remoteSignerPubkey,
@@ -869,11 +936,11 @@ function createNostrConnectBunkerSigner(
         },
         {
             pool,
-            onauth: (url: string) => {
-                console.debug('[NIP-46] onauth URL:', url);
-            },
+            onauth: authChallenge.reject,
         },
     );
+
+    return { signer, authChallenge };
 }
 
 async function closeNostrConnectTemporarySigner(
@@ -892,13 +959,10 @@ async function closeNostrConnectTemporarySigner(
 
 async function getNostrConnectPublicKeyWithTimeout(
     signer: BunkerSigner,
+    authChallenge: LiveIdentityAuthChallenge,
     timeoutMs: number = NIP46_GET_PUBLIC_KEY_TIMEOUT_MS,
 ): Promise<string> {
-    return await withTimeout(
-        signer.getPublicKey(),
-        timeoutMs,
-        NIP46_GET_PUBLIC_KEY_TIMEOUT_MESSAGE,
-    );
+    return await readLiveNip46UserPubkey(signer, authChallenge, timeoutMs);
 }
 
 function isNostrConnectPublicKeyTimeoutError(error: unknown): boolean {
@@ -1068,15 +1132,23 @@ export class Nip46Service {
         });
     }
 
+    private writeSessionSnapshot(
+        storage: Storage,
+        pubkeyHex: string | undefined,
+        session: Nip46SessionData,
+    ): void {
+        storage.setItem(
+            getNip46SessionStorageKey(pubkeyHex),
+            JSON.stringify(session),
+        );
+    }
+
     private writeSession(storage: Storage, pubkeyHex?: string): void {
         if (!this.currentSession) {
             return;
         }
 
-        storage.setItem(
-            getNip46SessionStorageKey(pubkeyHex),
-            JSON.stringify(this.currentSession),
-        );
+        this.writeSessionSnapshot(storage, pubkeyHex, this.currentSession);
     }
 
     private persistBoundSession(): void {
@@ -1111,6 +1183,77 @@ export class Nip46Service {
         if (pool) {
             pool.destroy();
         }
+    }
+
+    private snapshotRuntime(): Nip46RuntimeSnapshot {
+        return {
+            pool: this.pool,
+            bunkerSigner: this.bunkerSigner,
+            signerAdapter: this.signerAdapter,
+            userPubkey: this.userPubkey,
+            clientSecretKeyHex: this.clientSecretKeyHex,
+        };
+    }
+
+    private isCurrentRuntime(snapshot: Nip46RuntimeSnapshot): boolean {
+        return this.pool === snapshot.pool
+            && this.bunkerSigner === snapshot.bunkerSigner
+            && this.signerAdapter === snapshot.signerAdapter
+            && this.userPubkey === snapshot.userPubkey
+            && this.clientSecretKeyHex === snapshot.clientSecretKeyHex;
+    }
+
+    private isCurrentSessionSnapshot(snapshot: Nip46SessionData): boolean {
+        const current = this.currentSession;
+        return current !== null
+            && current.clientSecretKeyHex === snapshot.clientSecretKeyHex
+            && current.remoteSignerPubkey === snapshot.remoteSignerPubkey
+            && current.userPubkey === snapshot.userPubkey
+            && current.pingVerified === snapshot.pingVerified
+            && current.relayResolution === snapshot.relayResolution
+            && current.relays.length === snapshot.relays.length
+            && current.relays.every((relay, index) => relay === snapshot.relays[index]);
+    }
+
+    private isCurrentPersistenceBinding(
+        snapshot: SessionPersistenceBinding | null,
+    ): boolean {
+        const current = this.persistenceBinding;
+        if (!snapshot || !current) {
+            return snapshot === current;
+        }
+
+        return current.storage === snapshot.storage
+            && current.pubkeyHex === snapshot.pubkeyHex;
+    }
+
+    private detachRuntimeIfCurrent(
+        snapshot: Nip46RuntimeSnapshot,
+    ): Nip46RuntimeSnapshot | null {
+        if (!this.isCurrentRuntime(snapshot)) {
+            return null;
+        }
+
+        this.bunkerSigner = null;
+        this.signerAdapter = null;
+        this.userPubkey = null;
+        this.clientSecretKeyHex = null;
+        this.pool = null;
+        return snapshot;
+    }
+
+    private async closeRuntimeSnapshot(
+        snapshot: Nip46RuntimeSnapshot,
+    ): Promise<void> {
+        if (snapshot.bunkerSigner) {
+            try {
+                await snapshot.bunkerSigner.close();
+            } catch {
+                // noop
+            }
+        }
+
+        snapshot.pool?.destroy();
     }
 
     private isCurrentSession(
@@ -1164,7 +1307,14 @@ export class Nip46Service {
             return false;
         }
 
-        const session = { ...this.currentSession };
+        const session: Nip46SessionData = {
+            ...this.currentSession,
+            relays: [...this.currentSession.relays],
+        };
+        const runtime = this.snapshotRuntime();
+        const binding = this.persistenceBinding
+            ? { ...this.persistenceBinding }
+            : null;
         let candidatePool: SimplePool | null = null;
         let candidateBunkerSigner: BunkerSigner | null = null;
 
@@ -1182,29 +1332,69 @@ export class Nip46Service {
             candidatePool = null;
         };
 
-        try {
-            await this.closeRuntimeResources();
+        const failCandidate = async (): Promise<boolean> => {
+            await closeCandidateResources();
 
+            if (
+                !this.isCurrentSessionSnapshot(session)
+                || !this.isCurrentRuntime(runtime)
+            ) {
+                return false;
+            }
+
+            const detachedRuntime = this.detachRuntimeIfCurrent(runtime);
+            if (detachedRuntime) {
+                await this.closeRuntimeSnapshot(detachedRuntime);
+            }
+
+            return false;
+        };
+
+        try {
             const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
             const { pool, connectedRelays } = await createConnectedPool(session.relays);
             candidatePool = pool;
+            const authChallenge = createLiveIdentityAuthChallenge();
             candidateBunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
                 pubkey: session.remoteSignerPubkey,
                 relays: connectedRelays,
                 secret: null,
             }, {
                 pool,
-                onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+                onauth: authChallenge.reject,
             });
             const candidateSignerAdapter = new Nip46SignerAdapter(
                 candidateBunkerSigner,
                 session.userPubkey,
             );
 
-            if (!this.isCurrentSession(session)) {
-                console.warn('[NIP-46] rebuildConnection: session changed; discarding candidate runtime');
-                await closeCandidateResources();
-                return false;
+            const liveUserPubkey = await readLiveNip46UserPubkey(
+                candidateBunkerSigner,
+                authChallenge,
+            );
+            if (liveUserPubkey !== session.userPubkey) {
+                throw new Error(NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE);
+            }
+
+            const nextSession: Nip46SessionData = {
+                ...session,
+                relays: [...connectedRelays],
+            };
+
+            if (
+                !this.isCurrentSessionSnapshot(session)
+                || !this.isCurrentRuntime(runtime)
+                || !this.isCurrentPersistenceBinding(binding)
+            ) {
+                return await failCandidate();
+            }
+
+            if (binding) {
+                this.writeSessionSnapshot(
+                    binding.storage,
+                    binding.pubkeyHex,
+                    nextSession,
+                );
             }
 
             this.pool = candidatePool;
@@ -1212,20 +1402,15 @@ export class Nip46Service {
             this.userPubkey = session.userPubkey;
             this.bunkerSigner = candidateBunkerSigner;
             this.signerAdapter = candidateSignerAdapter;
-            this.setCurrentSession({
-                ...session,
-                relays: connectedRelays,
-            });
-            this.persistBoundSession();
+            this.setCurrentSession(nextSession);
             candidatePool = null;
             candidateBunkerSigner = null;
+            await this.closeRuntimeSnapshot(runtime);
             console.debug('[NIP-46] rebuildConnection: pool + BunkerSigner rebuilt');
             return true;
         } catch (error) {
-            await closeCandidateResources();
-            console.warn('[NIP-46] rebuildConnection failed', {
-                message: error instanceof Error ? error.message : 'Unknown error',
-            });
+            await failCandidate();
+            console.warn('[NIP-46] rebuildConnection candidate verification failed');
             return false;
         }
     }
@@ -1304,149 +1489,135 @@ export class Nip46Service {
             throw new Error('No relays specified in bunker URL');
         }
 
-        // リレーへの接続を事前に確認
-        const { pool, connectedRelays } = await createConnectedPool(bp.relays);
-        this.pool = pool;
+        let candidatePool: SimplePool | null = null;
+        let candidateBunkerSigner: BunkerSigner | null = null;
 
-        const bunkerPointer = {
-            ...bp,
-            relays: connectedRelays,
+        const closeCandidateResources = async (): Promise<void> => {
+            if (candidateBunkerSigner) {
+                try {
+                    await candidateBunkerSigner.close();
+                } catch {
+                    // noop
+                }
+                candidateBunkerSigner = null;
+            }
+
+            candidatePool?.destroy();
+            candidatePool = null;
         };
 
-        const clientSecretKey = generateSecretKey();
-        this.clientSecretKeyHex = bytesToHex(clientSecretKey);
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
-            pool,
-            onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
-        });
-        console.debug('[NIP-46] connect: BunkerSigner created, subscription initiated (check WS logs for REQ)');
-
-        const originalSecret = bunkerPointer.secret || '';
-        const normalizedSecret = originalSecret.includes(' ')
-            ? originalSecret.replace(/ /g, '+')
-            : originalSecret;
-        const secretCandidates = normalizedSecret === originalSecret
-            ? [originalSecret]
-            : [originalSecret, normalizedSecret];
-        const connectParamCandidates = secretCandidates.flatMap((secret) => [
-            [bunkerPointer.pubkey, secret, NIP46_REQUESTED_PERMS],
-            [bunkerPointer.pubkey, secret],
-        ]);
-
-        console.debug('[NIP-46] connect: attempting bunker connect compatibility flow', {
-            hasSecret: originalSecret.length > 0,
-            secretLength: originalSecret.length,
-            secretContainsSpace: originalSecret.includes(' '),
-            secretContainsPlus: originalSecret.includes('+'),
-            attemptCount: connectParamCandidates.length,
-        });
-
-        let connectError: unknown = null;
-        let resolvedUserPubkey: string | null = null;
-        for (let attemptIndex = 0; attemptIndex < connectParamCandidates.length; attemptIndex += 1) {
-            const params = connectParamCandidates[attemptIndex];
-            console.debug('[NIP-46] connect attempt', {
-                attempt: attemptIndex + 1,
-                total: connectParamCandidates.length,
-                paramCount: params.length,
-                usingNormalizedSecret: params[1] === normalizedSecret && normalizedSecret !== originalSecret,
-                withPerms: params.length >= 3,
+        try {
+            const { pool, connectedRelays } = await createConnectedPool(bp.relays);
+            candidatePool = pool;
+            const bunkerPointer = {
+                ...bp,
+                relays: connectedRelays,
+            };
+            const clientSecretKey = generateSecretKey();
+            const clientSecretKeyHex = bytesToHex(clientSecretKey);
+            const authChallenge = createLiveIdentityAuthChallenge();
+            candidateBunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
+                pool,
+                onauth: authChallenge.reject,
             });
 
-            try {
-                await Promise.race([
-                    this.bunkerSigner.sendRequest('connect', params),
-                    new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error('Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.')), timeoutMs)
-                    ),
-                ]);
+            const originalSecret = bunkerPointer.secret || '';
+            const normalizedSecret = originalSecret.includes(' ')
+                ? originalSecret.replace(/ /g, '+')
+                : originalSecret;
+            const secretCandidates = normalizedSecret === originalSecret
+                ? [originalSecret]
+                : [originalSecret, normalizedSecret];
+            const connectParamCandidates = secretCandidates.flatMap((secret) => [
+                [bunkerPointer.pubkey, secret, NIP46_REQUESTED_PERMS],
+                [bunkerPointer.pubkey, secret],
+            ]);
 
+            let connectError: unknown = null;
+            let resolvedUserPubkey: string | null = null;
+            for (const params of connectParamCandidates) {
+                let connectSucceeded = false;
                 try {
-                    const candidateUserPubkey = await Promise.race([
-                        this.bunkerSigner.getPublicKey(),
-                        new Promise<never>((_, reject) =>
-                            setTimeout(() => reject(new Error('Timed out waiting for get_public_key response')), timeoutMs)
-                        ),
-                    ]);
-                    resolvedUserPubkey = candidateUserPubkey;
-                    connectError = null;
-                    break;
-                } catch (error) {
-                    let signEventFallbackPermissionDenied = false;
-                    if (isNoPermissionError(error)) {
-                        console.warn('[NIP-46] get_public_key returned no permission; trying sign_event pubkey fallback');
-                        try {
-                            const signedProbe = await Promise.race([
-                                this.bunkerSigner.signEvent({
-                                    kind: 1,
-                                    content: '',
-                                    tags: [],
-                                    created_at: Math.floor(Date.now() / 1000),
-                                }),
-                                new Promise<never>((_, reject) =>
-                                    setTimeout(() => reject(new Error('Timed out waiting for sign_event pubkey fallback response')), timeoutMs)
-                                ),
-                            ]) as { pubkey?: unknown };
+                    await withTimeout(
+                        Promise.race([
+                            candidateBunkerSigner.sendRequest('connect', params),
+                            authChallenge.promise,
+                        ]),
+                        timeoutMs,
+                        'Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.',
+                    );
+                    connectSucceeded = true;
 
-                            if (typeof signedProbe.pubkey === 'string' && signedProbe.pubkey.length > 0) {
-                                console.debug('[NIP-46] sign_event pubkey fallback succeeded');
-                                resolvedUserPubkey = signedProbe.pubkey;
-                                connectError = null;
-                                break;
+                    try {
+                        resolvedUserPubkey = await readLiveNip46UserPubkey(
+                            candidateBunkerSigner,
+                            authChallenge,
+                        );
+                        connectError = null;
+                    } catch (error) {
+                        if (isNoPermissionError(error)) {
+                            const signedProbe = await withTimeout(
+                                Promise.race([
+                                    candidateBunkerSigner.signEvent({
+                                        kind: 1,
+                                        content: '',
+                                        tags: [],
+                                        created_at: Math.floor(Date.now() / 1000),
+                                    }),
+                                    authChallenge.promise,
+                                ]),
+                                timeoutMs,
+                                'Timed out waiting for sign_event pubkey fallback response',
+                            ) as { pubkey?: unknown };
+
+                            if (!isValidNip46UserPubkey(signedProbe.pubkey)) {
+                                throw new Error(NIP46_LIVE_IDENTITY_INVALID_MESSAGE);
                             }
-
-                            console.warn('[NIP-46] sign_event pubkey fallback returned invalid pubkey');
-                        } catch (fallbackError) {
-                            console.warn('[NIP-46] sign_event pubkey fallback failed', fallbackError);
-                            signEventFallbackPermissionDenied = isNoPermissionError(fallbackError);
-                        }
-
-                        if (signEventFallbackPermissionDenied) {
-                            console.warn('[NIP-46] get_public_key and sign_event are both denied; falling back to remote signer pubkey as user pubkey');
-                            resolvedUserPubkey = bunkerPointer.pubkey;
+                            resolvedUserPubkey = signedProbe.pubkey;
                             connectError = null;
-                            break;
+                        } else {
+                            connectError = error;
                         }
                     }
 
-                    connectError = error;
-                    console.warn('[NIP-46] get_public_key failed after connect attempt', {
-                        attempt: attemptIndex + 1,
-                        total: connectParamCandidates.length,
-                        withPerms: params.length >= 3,
-                        error,
-                    });
                     // connect request already succeeded; re-sending connect can consume one-time secrets.
                     break;
+                } catch (error) {
+                    connectError = error;
+                    if (connectSucceeded) {
+                        break;
+                    }
                 }
-            } catch (error) {
-                connectError = error;
-                console.warn('[NIP-46] connect attempt failed', {
-                    attempt: attemptIndex + 1,
-                    total: connectParamCandidates.length,
-                    paramCount: params.length,
-                    error,
-                });
             }
+
+            if (connectError || !resolvedUserPubkey) {
+                throw connectError ?? new Error('Failed to resolve user public key after connect');
+            }
+
+            const candidateSignerAdapter = new Nip46SignerAdapter(
+                candidateBunkerSigner,
+                resolvedUserPubkey,
+            );
+            await this.closeRuntimeResources();
+            this.pool = candidatePool;
+            this.clientSecretKeyHex = clientSecretKeyHex;
+            this.userPubkey = resolvedUserPubkey;
+            this.bunkerSigner = candidateBunkerSigner;
+            this.signerAdapter = candidateSignerAdapter;
+            this.setCurrentSession({
+                clientSecretKeyHex,
+                remoteSignerPubkey: bunkerPointer.pubkey,
+                relays: [...connectedRelays],
+                userPubkey: resolvedUserPubkey,
+                pingVerified: false,
+            });
+            candidatePool = null;
+            candidateBunkerSigner = null;
+            return resolvedUserPubkey;
+        } catch (error) {
+            await closeCandidateResources();
+            throw error;
         }
-
-        if (connectError) {
-            throw connectError;
-        }
-        console.debug('[NIP-46] connect: connected successfully');
-
-        if (!resolvedUserPubkey) {
-            throw new Error('Failed to resolve user public key after connect');
-        }
-
-        this.userPubkey = resolvedUserPubkey;
-        this.signerAdapter = new Nip46SignerAdapter(
-            this.bunkerSigner,
-            this.userPubkey,
-        );
-        this.updateCurrentSessionFromRuntime(false);
-
-        return this.userPubkey;
     }
 
     async startNostrConnect(
@@ -1557,18 +1728,20 @@ export class Nip46Service {
             while (true) {
                 ensurePendingActive();
 
-                const attemptSigner = createNostrConnectBunkerSigner(
+                const attemptCandidate = createNostrConnectBunkerSigner(
                     clientSecretKey,
                     remoteSignerPubkey,
                     connectedRelays,
                     sharedSecret,
                     pool,
                 );
+                const attemptSigner = attemptCandidate.signer;
                 interimSigner = attemptSigner;
 
                 try {
                     const userPubkey = await getNostrConnectPublicKeyWithTimeout(
                         attemptSigner,
+                        attemptCandidate.authChallenge,
                         NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS,
                     );
                     ensurePendingActive();
@@ -1647,16 +1820,18 @@ export class Nip46Service {
 
             for (const selectedRelay of finalConnection.connectedRelays) {
                 try {
-                    finalSignerCandidate = createNostrConnectBunkerSigner(
+                    const finalCandidate = createNostrConnectBunkerSigner(
                         clientSecretKey,
                         remoteSignerPubkey,
                         [selectedRelay],
                         sharedSecret,
                         finalConnection.pool,
                     );
+                    finalSignerCandidate = finalCandidate.signer;
 
                     const verifiedUserPubkey = await getNostrConnectPublicKeyWithTimeout(
                         finalSignerCandidate,
+                        finalCandidate.authChallenge,
                     );
                     ensurePendingActive();
 
@@ -1679,13 +1854,9 @@ export class Nip46Service {
                         throw createNostrConnectCancellationError();
                     }
 
-                    const message = error instanceof Error
-                        ? error.message
-                        : String(error);
                     console.warn(
-                        '[NIP-46] negotiated final relay verification failed:',
+                        '[NIP-46] negotiated final relay verification failed',
                         selectedRelay,
-                        message,
                     );
 
                     await closeNostrConnectTemporarySigner(finalSignerCandidate);
@@ -1952,18 +2123,25 @@ export class Nip46Service {
                                     await closeNostrConnectTemporarySigner(interimSigner);
                                     interimSigner = null;
 
-                                    fallbackSigner = createNostrConnectBunkerSigner(
+                                    const fallbackCandidate = createNostrConnectBunkerSigner(
                                         clientSecretKey,
                                         event.pubkey,
                                         finalRelays,
                                         sharedSecret,
                                         fallbackPool,
                                     );
+                                    fallbackSigner = fallbackCandidate.signer;
                                     finalSigner = fallbackSigner;
                                     resolvedUserPubkey = await getNostrConnectPublicKeyWithTimeout(
                                         finalSigner,
+                                        fallbackCandidate.authChallenge,
                                     );
                                     ensurePendingActive();
+                                    if (resolvedUserPubkey !== readiness.userPubkey) {
+                                        throw new Error(
+                                            NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE,
+                                        );
+                                    }
                                     finalSessionRelays = [...finalRelays];
                                 }
 
@@ -1997,7 +2175,7 @@ export class Nip46Service {
                                         relayResolution.sessionRelayResolution,
                                 });
 
-                                console.debug('[NIP-46] auth completed; user pubkey:', resolvedUserPubkey);
+                                console.debug('[NIP-46] auth completed after identity verification');
                                 settled = true;
                                 resolveCompletion?.(resolvedUserPubkey);
                             } catch (error) {
@@ -2006,7 +2184,7 @@ export class Nip46Service {
                                     return;
                                 }
 
-                                console.debug('[NIP-46] onevent error (not settled):', error);
+                                console.debug('[NIP-46] Nostr Connect candidate verification failed');
                                 settled = true;
                                 await closeHandshakeResources();
                                 rejectCompletion?.(error);
@@ -2052,93 +2230,104 @@ export class Nip46Service {
     }
 
     async reconnect(session: Nip46SessionData): Promise<string> {
-        this.setCurrentSession({
+        const sessionSnapshot: Nip46SessionData = {
             ...session,
+            relays: [...session.relays],
             pingVerified: session.pingVerified === true,
-        });
-
-        const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
-        const bp = {
-            pubkey: session.remoteSignerPubkey,
-            relays: session.relays,
-            secret: null,
         };
+        let candidatePool: SimplePool | null = null;
+        let candidateBunkerSigner: BunkerSigner | null = null;
 
-        // リレーへの接続を事前に確認
-        const { pool, connectedRelays } = await createConnectedPool(bp.relays);
-        this.pool = pool;
-
-        const bunkerPointer = {
-            ...bp,
-            relays: connectedRelays,
-        };
-
-        this.clientSecretKeyHex = session.clientSecretKeyHex;
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
-            pool,
-            onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
-        });
-
-        const reconnectConnectParamCandidates = [
-            [bunkerPointer.pubkey, '', NIP46_REQUESTED_PERMS],
-            [bunkerPointer.pubkey, ''],
-        ];
-
-        let reconnectConnectError: unknown = null;
-        for (let attemptIndex = 0; attemptIndex < reconnectConnectParamCandidates.length; attemptIndex += 1) {
-            const params = reconnectConnectParamCandidates[attemptIndex];
-            console.debug('[NIP-46] reconnect connect attempt', {
-                attempt: attemptIndex + 1,
-                total: reconnectConnectParamCandidates.length,
-                paramCount: params.length,
-                withPerms: params.length >= 3,
-            });
-            try {
-                const reconnectResponse = await this.bunkerSigner.sendRequest('connect', params);
-                console.debug('[NIP-46] reconnect connect attempt succeeded', {
-                    attempt: attemptIndex + 1,
-                    total: reconnectConnectParamCandidates.length,
-                    withPerms: params.length >= 3,
-                    responseType: typeof reconnectResponse,
-                    responsePreview:
-                        typeof reconnectResponse === 'string'
-                            ? reconnectResponse.slice(0, 120)
-                            : reconnectResponse,
-                });
-                reconnectConnectError = null;
-                break;
-            } catch (error) {
-                reconnectConnectError = error;
-                console.warn('[NIP-46] reconnect connect attempt failed', {
-                    attempt: attemptIndex + 1,
-                    total: reconnectConnectParamCandidates.length,
-                    paramCount: params.length,
-                    error,
-                });
+        const closeCandidateResources = async (): Promise<void> => {
+            if (candidateBunkerSigner) {
+                try {
+                    await candidateBunkerSigner.close();
+                } catch {
+                    // noop
+                }
+                candidateBunkerSigner = null;
             }
+
+            candidatePool?.destroy();
+            candidatePool = null;
+        };
+
+        try {
+            const clientSecretKey = hexToBytes(sessionSnapshot.clientSecretKeyHex);
+            const { pool, connectedRelays } = await createConnectedPool(sessionSnapshot.relays);
+            candidatePool = pool;
+            const bunkerPointer = {
+                pubkey: sessionSnapshot.remoteSignerPubkey,
+                relays: connectedRelays,
+                secret: null,
+            };
+            const authChallenge = createLiveIdentityAuthChallenge();
+            candidateBunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
+                pool,
+                onauth: authChallenge.reject,
+            });
+
+            const reconnectConnectParamCandidates = [
+                [bunkerPointer.pubkey, '', NIP46_REQUESTED_PERMS],
+                [bunkerPointer.pubkey, ''],
+            ];
+
+            let reconnectConnectError: unknown = null;
+            for (const params of reconnectConnectParamCandidates) {
+                try {
+                    await withTimeout(
+                        Promise.race([
+                            candidateBunkerSigner.sendRequest('connect', params),
+                            authChallenge.promise,
+                        ]),
+                        NIP46_LIVE_IDENTITY_TIMEOUT_MS,
+                        'Timed out waiting for reconnect connect response',
+                    );
+                    reconnectConnectError = null;
+                    break;
+                } catch (error) {
+                    reconnectConnectError = error;
+                }
+            }
+
+            if (reconnectConnectError) {
+                throw reconnectConnectError;
+            }
+
+            const liveUserPubkey = await readLiveNip46UserPubkey(
+                candidateBunkerSigner,
+                authChallenge,
+            );
+            if (liveUserPubkey !== sessionSnapshot.userPubkey) {
+                throw new Error(NIP46_LIVE_IDENTITY_MISMATCH_MESSAGE);
+            }
+
+            const candidateSignerAdapter = new Nip46SignerAdapter(
+                candidateBunkerSigner,
+                sessionSnapshot.userPubkey,
+            );
+            const nextSession: Nip46SessionData = {
+                ...sessionSnapshot,
+                relays: [...connectedRelays],
+            };
+
+            await this.closeRuntimeResources();
+            this.pool = candidatePool;
+            this.clientSecretKeyHex = sessionSnapshot.clientSecretKeyHex;
+            this.userPubkey = sessionSnapshot.userPubkey;
+            this.bunkerSigner = candidateBunkerSigner;
+            this.signerAdapter = candidateSignerAdapter;
+            this.setCurrentSession(nextSession);
+            candidatePool = null;
+            candidateBunkerSigner = null;
+
+            // セッション復元時はping()を行わない。
+            console.debug('[NIP-46] reconnect: session restored after live identity verification');
+            return sessionSnapshot.userPubkey;
+        } catch (error) {
+            await closeCandidateResources();
+            throw error;
         }
-
-        if (reconnectConnectError) {
-            throw reconnectConnectError;
-        }
-
-        // セッション復元時はping()を行わない。
-        // permission を扱うリモートサイナーでは ping に初回許可操作が必要になり得る一方、
-        // permission を参照しないリモートサイナーも存在し得る。
-        // eHagaki は signer 種別を推測せず、手動確認に成功した session だけを
-        // 後続の auto ping 対象として扱う。
-        // リレー接続の確認は createConnectedPool() で行われており、
-        // 実際のリモートサイナーとの疎通は手動接続確認または確認済み session の auto ping で検証する。
-        console.debug('[NIP-46] reconnect: session restored (relay connected, ping skipped)');
-
-        this.userPubkey = session.userPubkey;
-        this.signerAdapter = new Nip46SignerAdapter(
-            this.bunkerSigner,
-            this.userPubkey,
-        );
-        this.updateCurrentSessionFromRuntime(session.pingVerified === true);
-
-        return this.userPubkey;
     }
 
     async disconnect(): Promise<void> {
