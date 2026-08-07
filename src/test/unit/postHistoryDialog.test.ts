@@ -419,7 +419,7 @@ describe('PostHistoryDialog', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness({ listingMode: 'page-adapter' });
         setPostHistoryDialogTranslationOverrides({
-            'postHistory.import': '投稿履歴を読み込む',
+            'postHistory.import': 'JSONLをインポート',
         });
     });
 
@@ -923,10 +923,13 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         const menuItems = await screen.findAllByRole('menuitem');
         const labels = menuItems.map((item) => item.textContent?.trim());
-        expect(labels.indexOf('投稿履歴を読み込む')).toBeGreaterThan(
+        expect(labels.indexOf('表示中の投稿付近を再取得')).toBe(
+            labels.indexOf('検索') + 1,
+        );
+        expect(labels.indexOf('JSONLをインポート')).toBeGreaterThan(
             labels.indexOf('表示中の投稿付近を再取得'),
         );
-        expect(labels.indexOf('投稿履歴を読み込む')).toBeLessThan(
+        expect(labels.indexOf('JSONLをインポート')).toBeLessThan(
             labels.indexOf('保存済み投稿履歴をクリア'),
         );
     });
@@ -948,8 +951,41 @@ describe('PostHistoryDialog', () => {
             labels.indexOf('表示中の投稿付近を再取得'),
         );
         expect(labels.indexOf('エクスポート')).toBeLessThan(
-            labels.indexOf('投稿履歴を読み込む'),
+            labels.indexOf('JSONLをインポート'),
         );
+    });
+
+    it('[menu-separators] importと履歴クリアの間に区切りを表示する', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await openPostHistoryMenu();
+        const menu = await screen.findByRole('menu');
+        const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+        const separators = Array.from(
+            menu.querySelectorAll('.post-history-menu-separator'),
+        );
+        const importIndex = menuItems.findIndex(
+            (item) => item.textContent?.trim() === 'JSONLをインポート',
+        );
+        const deleteIndex = menuItems.findIndex(
+            (item) => item.textContent?.trim() === '保存済み投稿履歴をクリア',
+        );
+
+        expect(deleteIndex).toBe(importIndex + 1);
+        expect(
+            separators.some(
+                (separator) =>
+                    Boolean(separator.compareDocumentPosition(menuItems[deleteIndex]) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+                    Boolean(menuItems[importIndex].compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING),
+            ),
+        ).toBe(true);
     });
 
     it('[export-download] menuからJSONLをダウンロードし、ファイル情報とObject URL解放を設定する', async () => {
