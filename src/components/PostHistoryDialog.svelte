@@ -1638,6 +1638,17 @@
                                 ></div>
                                 <span>{$_("postHistory.showSearch")}</span>
                             </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!history.canRefetchAroundCurrentView}
+                                onSelect={handleRefetchAroundCurrentViewFromMenu}
+                            >
+                                <div
+                                    class="repair-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.repair")}</span>
+                            </DropdownMenu.Item>
                             <DropdownMenu.Separator
                                 class="post-history-menu-separator"
                             />
@@ -1676,17 +1687,6 @@
                             <DropdownMenu.Separator
                                 class="post-history-menu-separator"
                             />
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                disabled={!history.canRefetchAroundCurrentView}
-                                onSelect={handleRefetchAroundCurrentViewFromMenu}
-                            >
-                                <div
-                                    class="repair-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.repair")}</span>
-                            </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
                                 disabled={!pubkeyHex || exportRunning}

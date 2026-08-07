@@ -923,6 +923,9 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         const menuItems = await screen.findAllByRole('menuitem');
         const labels = menuItems.map((item) => item.textContent?.trim());
+        expect(labels.indexOf('表示中の投稿付近を再取得')).toBe(
+            labels.indexOf('検索') + 1,
+        );
         expect(labels.indexOf('JSONLをインポート')).toBeGreaterThan(
             labels.indexOf('表示中の投稿付近を再取得'),
         );
