@@ -37,6 +37,7 @@ const translations = {
             uploadDestinationDisabled: "無効",
             uploadDestinationMimeCollapse: "折りたたむ",
             uploadDestinationMimeExpand: "すべて表示",
+            uploadDestinationInvalidNip96Url: "NIP-96 のURLは絶対HTTP(S) URLである必要があります。",
             upload_destination: "アップロード先",
         },
         postComponent: {
@@ -74,6 +75,7 @@ const translations = {
             uploadDestinationDisabled: "Disabled",
             uploadDestinationMimeCollapse: "Collapse",
             uploadDestinationMimeExpand: "Show all",
+            uploadDestinationInvalidNip96Url: "The NIP-96 URL must be an absolute HTTP(S) URL.",
             upload_destination: "Upload destinations",
         },
         postComponent: {
@@ -250,5 +252,22 @@ describe("SettingsUploadDestinationSection", () => {
         const japaneseClearButton = screen.getByRole("button", { name: "入力内容を消去" });
         expect(japaneseClearButton).toBeTruthy();
         expect(japaneseInput).toBeInstanceOf(HTMLInputElement);
+    });
+
+    it("rejects an invalid custom NIP-96 URL before saving", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const input = screen.getByLabelText("URL") as HTMLInputElement;
+        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
+
+        await fireEvent.change(protocolSelect, { target: { value: "nip96" } });
+        await fireEvent.input(input, { target: { value: "//example.com/upload" } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(mockUploadDestinationStore.save).not.toHaveBeenCalled();
+        expect(screen.getByRole("alert").textContent).toContain(
+            "NIP-96 のURLは絶対HTTP(S) URLである必要があります。",
+        );
     });
 });

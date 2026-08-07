@@ -19,6 +19,7 @@
         getUploadDestinationDisplayName,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
+    import { canonicalizeNip96UploadUrl } from "../../lib/upload/nip96UrlPolicy";
 
     interface Props {
         rxNostr?: RxNostr | null;
@@ -41,6 +42,7 @@
     let serverUrlInputElement: HTMLInputElement | null = $state(null);
     let form = $state({ ...emptyForm });
     let testingId: string | null = $state(null);
+    let formError: string | null = $state(null);
     let expandedMimeDestinations = $state<Record<string, boolean>>({});
     let destinationState = $derived(uploadDestinationStore.value);
     let currentScope = $state<string | null>(null);
@@ -123,6 +125,7 @@
 
     function startAdd(): void {
         form = { ...emptyForm };
+        formError = null;
         editing = true;
         editingTargetId = null;
         expanded = true;
@@ -131,6 +134,7 @@
     function cancelEdit(): void {
         editing = false;
         editingTargetId = null;
+        formError = null;
     }
 
     function startEdit(destination: UploadDestination): void {
@@ -146,6 +150,7 @@
             enabled: destination.enabled,
             isDefault: destination.isDefault,
         };
+        formError = null;
         editing = true;
         editingTargetId = destination.id;
         expanded = true;
@@ -153,6 +158,7 @@
 
     function applyPreset(presetId: UploadPresetId): void {
         form.presetId = presetId;
+        formError = null;
         if (presetId === "custom") {
             form.serverUrl = "";
             return;
@@ -168,6 +174,7 @@
     function handleClearServerUrl(): void {
         form.serverUrl = "";
         form.presetId = "custom";
+        formError = null;
         setTimeout(() => {
             serverUrlInputElement?.focus({ preventScroll: true });
         }, 0);
@@ -181,9 +188,19 @@
         const existing = destinationState.destinations.find(
             (destination) => destination.id === form.id,
         );
-        const serverUrl = normalizeServerUrl(
-            form.serverUrl || preset?.serverUrl || "",
-        );
+        const rawServerUrl = form.serverUrl || preset?.serverUrl || "";
+        const protocol = preset?.protocol ?? form.protocol;
+        let serverUrl = normalizeServerUrl(rawServerUrl);
+        if (protocol === "nip96") {
+            try {
+                serverUrl = canonicalizeNip96UploadUrl(rawServerUrl).url;
+            } catch {
+                formError = $_("settingsDialog.uploadDestinationInvalidNip96Url")
+                    || "有効な絶対 HTTP(S) URL を入力してください";
+                return;
+            }
+        }
+        formError = null;
         const resolvedUploadUrl =
             [preset?.resolvedUploadUrl, existing?.resolvedUploadUrl].find(
                 (candidate) =>
@@ -226,7 +243,7 @@
                               now: timestamp,
                           })),
                       name: destinationName,
-                      protocol: form.protocol,
+                      protocol,
                       serverUrl,
                       presetId: form.presetId,
                       enabled: form.enabled,
@@ -320,6 +337,7 @@
                     class="upload-destination-url-input"
                     bind:this={serverUrlInputElement}
                     bind:value={form.serverUrl}
+                    oninput={() => (formError = null)}
                     inputmode="url"
                 />
                 {#if form.serverUrl.trim().length > 0}
@@ -341,6 +359,9 @@
                     </Button>
                 {/if}
             </div>
+            {#if formError}
+                <span class="form-error" role="alert">{formError}</span>
+            {/if}
         </div>
         <div class="checkbox-group">
             <label class="checkbox-row">
@@ -779,6 +800,11 @@
 
     .test-result.error {
         color: #c62828;
+    }
+
+    .form-error {
+        color: #c62828;
+        font-size: 0.875rem;
     }
 
     .bud03-popover {

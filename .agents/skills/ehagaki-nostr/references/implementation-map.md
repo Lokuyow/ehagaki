@@ -191,9 +191,9 @@
 - event kind: NIP-94 file metadata `1063`はserver応答の`nip94_event`として扱う。eHagakiがkind 1063をpublishする処理は確認できなかった。`imeta`の利用先は`1`/`42`。
 - 主なtag: NIP-94応答の`url`、`m`、`x`、`ox`、`size`、`dim`、`blurhash`、`alt`など。投稿側は`imeta`。
 - 主な実装ファイル: `src/lib/upload/Nip96UploadAdapter.ts`、`src/lib/upload/BlossomUploadAdapter.ts`、`src/lib/tags/imetaTag.ts`、`src/lib/uploadImetaUtils.ts`、`src/lib/postEventBuilder.ts`
-- 主な関数または責務: `Nip96UploadAdapter.upload`の`parseNip94Tags`が応答を正規化し、`createImetaTag`と`generateDevImetaTags`が投稿用metadataを作る。
-- 関連テスト: `src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/uploadImetaUtils.test.ts`、`src/test/unit/postManager.test.ts`
-- 注意点: server descriptor、投稿用imeta、event kind 1063のpublishを同一機能とみなさない。未知tagを勝手にprotocol要件へ昇格させない。
+- 主な関数または責務: `Nip96UploadAdapter.upload`は最初のNIP-94 `url`をNIP-96限定policyで検証し、literal fragmentだけを除いた同じURLをavailability、result、投稿用metadataへ渡す。`createImetaTag`と`generateDevImetaTags`が投稿用metadataを作る。
+- 関連テスト: `src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/nip96UrlPolicy.test.ts`、`src/test/unit/uploadedMediaAvailability.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/uploadImetaUtils.test.ts`、`src/test/unit/postManager.test.ts`
+- 注意点: server descriptor、投稿用imeta、event kind 1063のpublishを同一機能とみなさない。NIP-94 URLはquery-sensitiveな公開CDN URLを許可するが、相対・非HTTP・userinfo・未信頼local/private URLはavailability前に拒否する。
 
 ## 読み取り専用投稿コンテンツ表示
 
@@ -212,10 +212,10 @@
 - 関連NIP: NIP-96、NIP-98。Blossom側はBUD-11/BUD-03でありNIP-98と混同しない。
 - event kind: NIP-98 `27235`、Blossom authorization `24242`、BUD-03 server list `10063`
 - 主なtag: NIP-98のURL/HTTP method/payload関連tagは`nostr-tools/nip98`へ委譲する。Blossomは`expiration`、`t`、任意の`x`。BUD-03はserver `r`。
-- 主な実装ファイル: `src/lib/nostrAuthService.ts`、`src/lib/upload/Nip96UploadAdapter.ts`、`src/lib/upload/BlossomUploadAdapter.ts`、`src/lib/upload/bud03ServerList.ts`、`src/lib/upload/uploadAdapterRegistry.ts`
-- 主な関数または責務: `NostrAuthService.buildAuthHeader`は`nostr-tools/nip98.getToken`を使い、`Nip96UploadAdapter.upload`がPOSTとprocessing URL用GET tokenを別々に作る。`buildBlossomAuthorizationHeader`はkind 24242を構築する。
+- 主な実装ファイル: `src/lib/nostrAuthService.ts`、`src/lib/upload/Nip96UploadAdapter.ts`、`src/lib/upload/nip96UrlPolicy.ts`、`src/lib/upload/BlossomUploadAdapter.ts`、`src/lib/upload/bud03ServerList.ts`、`src/lib/upload/uploadAdapterRegistry.ts`
+- 主な関数または責務: `NostrAuthService.buildAuthHeader`は`nostr-tools/nip98.getToken`を使う。NIP-96 adapterはcanonicalized upload URLをPOST tokenと初回fetchへ共通利用し、明示upload originとsame-originのprocessing URLだけにGET tokenを付ける。public HTTPS cross-origin processingは認証なしでpollし、discoveryはconnection test内でredirect拒否・delegation depth/loop検証を行う。`buildBlossomAuthorizationHeader`はkind 24242を構築する。
 - 関連テスト: `src/test/unit/nostrAuthService.test.ts`、`src/test/unit/nip96UploadAdapter.test.ts`、`src/test/unit/blossomUploadAdapter.test.ts`、`src/test/unit/bud03ServerList.test.ts`、`src/test/integration/file-upload-flow.integration.test.ts`
-- 注意点: tokenをログやfixtureへ残さない。URLとmethodを実requestに一致させ、processing URLでは新しいGET tokenを作る。NIP-96とBlossomの認証方式を統合しない。
+- 注意点: tokenをログやfixtureへ残さない。same-origin processingでは既存どおり短いpolling中に同じGET tokenを再利用し、cross-origin processingへの自動署名はしない。NIP-96 POST redirect hardeningとpreset endpoint見直しはPhase Bであり、この経路では変更しない。NIP-96とBlossomの認証方式を統合しない。
 
 ## 横断的な購読・テスト境界
 

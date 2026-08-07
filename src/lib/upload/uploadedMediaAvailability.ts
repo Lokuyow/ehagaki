@@ -9,17 +9,14 @@ const MEDIA_UNAVAILABLE_REASON_PATTERNS = [
 
 type AvailabilityProbeResult = "available" | "unavailable" | "inconclusive";
 
-function buildProbeUrl(url: string): string {
-    try {
-        const probeUrl = new URL(
-            url,
-            typeof window !== "undefined" ? window.location.href : "https://example.invalid",
+export class UploadedMediaAvailabilityError extends Error {
+    constructor(readonly reason: Exclude<AvailabilityProbeResult, "available">) {
+        super(
+            reason === "unavailable"
+                ? UPLOADED_MEDIA_AVAILABILITY_CONFIG.TIMEOUT_MESSAGE
+                : "Uploaded media availability could not be verified",
         );
-        probeUrl.searchParams.set("_ehagaki_ready", `${Date.now()}`);
-        return probeUrl.toString();
-    } catch {
-        const separator = url.includes("?") ? "&" : "?";
-        return `${url}${separator}_ehagaki_ready=${Date.now()}`;
+        this.name = "UploadedMediaAvailabilityError";
     }
 }
 
@@ -71,7 +68,8 @@ function probeImageUrl(url: string): Promise<boolean> {
 
         image.onload = () => resolve(true);
         image.onerror = () => resolve(false);
-        image.src = buildProbeUrl(url);
+        image.referrerPolicy = "no-referrer";
+        image.src = url;
     });
 }
 
@@ -80,12 +78,12 @@ async function probeUrlWithFetch(params: {
     mimeType?: string;
     fetch: typeof fetch;
 }): Promise<AvailabilityProbeResult> {
-    const probeUrl = buildProbeUrl(params.url);
-
     try {
-        const response = await params.fetch(probeUrl, {
+        const response = await params.fetch(params.url, {
             method: "HEAD",
             cache: "no-store",
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
         });
 
         if (response.ok && !hasUnavailableReasonHeader(response)) {
@@ -104,9 +102,11 @@ async function probeUrlWithFetch(params: {
     }
 
     try {
-        const response = await params.fetch(probeUrl, {
+        const response = await params.fetch(params.url, {
             method: "GET",
             cache: "no-store",
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
         });
         if (!response.ok || hasUnavailableReasonHeader(response)) {
             return "unavailable";
@@ -130,21 +130,21 @@ async function isUploadedMediaAvailable(params: {
     url: string;
     mimeType?: string;
     fetch: typeof fetch;
-}): Promise<boolean> {
+}): Promise<AvailabilityProbeResult> {
     const fetchProbeResult = await probeUrlWithFetch(params);
     if (fetchProbeResult === "available") {
-        return true;
+        return "available";
     }
 
     if (fetchProbeResult === "unavailable") {
-        return false;
+        return "unavailable";
     }
 
     if (params.mimeType?.startsWith("image/") && typeof Image !== "undefined") {
-        return await probeImageUrl(params.url);
+        return await probeImageUrl(params.url) ? "available" : "inconclusive";
     }
 
-    return false;
+    return "inconclusive";
 }
 
 export async function waitForUploadedMediaAvailability(params: {
@@ -157,14 +157,17 @@ export async function waitForUploadedMediaAvailability(params: {
     const maxWaitTime = params.maxWaitTime ?? UPLOADED_MEDIA_AVAILABILITY_CONFIG.MAX_WAIT_TIME;
     const retryInterval = params.retryInterval ?? UPLOADED_MEDIA_AVAILABILITY_CONFIG.RETRY_INTERVAL;
     const deadline = Date.now() + maxWaitTime;
+    let lastProbeResult: Exclude<AvailabilityProbeResult, "available"> = "inconclusive";
 
     while (true) {
-        if (await isUploadedMediaAvailable(params)) {
+        const probeResult = await isUploadedMediaAvailable(params);
+        if (probeResult === "available") {
             return;
         }
+        lastProbeResult = probeResult;
 
         if (Date.now() >= deadline) {
-            throw new Error(UPLOADED_MEDIA_AVAILABILITY_CONFIG.TIMEOUT_MESSAGE);
+            throw new UploadedMediaAvailabilityError(lastProbeResult);
         }
 
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
