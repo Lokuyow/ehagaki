@@ -1,6 +1,25 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const repositoryMocks = vi.hoisted(() => ({
+    profileDelete: vi.fn(),
+    relayConfigDelete: vi.fn(),
+}));
+
+vi.mock('../../lib/storage/profilesRepository', () => ({
+    profilesRepository: {
+        delete: repositoryMocks.profileDelete,
+    },
+}));
+
+vi.mock('../../lib/storage/relayConfigsRepository', () => ({
+    relayConfigsRepository: {
+        delete: repositoryMocks.relayConfigDelete,
+    },
+}));
+
 import { AccountManager } from '../../lib/accountManager';
 import { STORAGE_KEYS } from '../../lib/constants';
+import { getNsecStorageKey } from '../../lib/authStorageKeys';
 import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 
 describe('AccountManager', () => {
@@ -13,6 +32,8 @@ describe('AccountManager', () => {
         mockConsole = createMockConsole();
         manager = new AccountManager({ localStorage: storage, console: mockConsole });
         vi.clearAllMocks();
+        repositoryMocks.profileDelete.mockReset().mockResolvedValue(undefined);
+        repositoryMocks.relayConfigDelete.mockReset().mockResolvedValue(undefined);
     });
 
     describe('getAccounts', () => {
@@ -145,34 +166,132 @@ describe('AccountManager', () => {
     });
 
     describe('cleanupAccountData', () => {
-        it('指定アカウントの全データを削除する', () => {
+        it('指定アカウントの全データを削除する', async () => {
             const pubkey = 'abc123';
             storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkey, 'nsec1...');
             storage.setItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkey, '{}');
+            storage.setItem(STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkey, '{}');
             storage.setItem(STORAGE_KEYS.NOSTR_RELAYS + pubkey, '[]');
             storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + pubkey, '{}');
 
-            manager.cleanupAccountData(pubkey);
+            await manager.cleanupAccountData(pubkey);
 
             expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkey)).toBeNull();
             expect(storage.getItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkey)).toBeNull();
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkey)).toBeNull();
             expect(storage.getItem(STORAGE_KEYS.NOSTR_RELAYS + pubkey)).toBeNull();
             expect(storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + pubkey)).toBeNull();
+            expect(repositoryMocks.profileDelete).toHaveBeenCalledWith(pubkey);
+            expect(repositoryMocks.relayConfigDelete).toHaveBeenCalledWith(pubkey);
         });
 
-        it('localStorage.removeItemが例外を投げた場合にエラーログを出力する', () => {
+        it('repository削除がsettleするまでresolveせず、rejectしても他方を待つ', async () => {
+            let resolveProfile!: () => void;
+            let resolveRelayConfig!: () => void;
+            const profileDeletion = new Promise<void>((resolve) => {
+                resolveProfile = resolve;
+            });
+            const relayConfigDeletion = new Promise<void>((resolve) => {
+                resolveRelayConfig = resolve;
+            });
+            repositoryMocks.profileDelete.mockReturnValue(profileDeletion);
+            repositoryMocks.relayConfigDelete.mockReturnValue(relayConfigDeletion);
+
+            let cleanupSettled = false;
+            const cleanupPromise = manager.cleanupAccountData('abc123').then(() => {
+                cleanupSettled = true;
+            });
+
+            await Promise.resolve();
+            expect(repositoryMocks.profileDelete).toHaveBeenCalledWith('abc123');
+            expect(repositoryMocks.relayConfigDelete).toHaveBeenCalledWith('abc123');
+            expect(cleanupSettled).toBe(false);
+
+            resolveProfile();
+            await Promise.resolve();
+            expect(cleanupSettled).toBe(false);
+
+            resolveRelayConfig();
+            await cleanupPromise;
+            expect(cleanupSettled).toBe(true);
+        });
+
+        it('profile削除がrejectしてもrelay削除を待ち、安全なmetadataをログへ残す', async () => {
+            let resolveRelayConfig!: () => void;
+            repositoryMocks.profileDelete.mockRejectedValue(new Error('profile failure'));
+            repositoryMocks.relayConfigDelete.mockReturnValue(new Promise<void>((resolve) => {
+                resolveRelayConfig = resolve;
+            }));
+
+            const cleanupPromise = manager.cleanupAccountData('abc123');
+            await Promise.resolve();
+
+            expect(repositoryMocks.relayConfigDelete).toHaveBeenCalledWith('abc123');
+            resolveRelayConfig();
+            await expect(cleanupPromise).resolves.toBeUndefined();
+            expect(mockConsole.error).toHaveBeenCalledWith(
+                'アカウントデータ削除に失敗しました',
+                { stage: 'indexeddb', target: 'profile-repository', reason: 'rejected' },
+            );
+        });
+
+        it('relay削除がrejectしてもprofile削除を待ち、安全なmetadataをログへ残す', async () => {
+            let resolveProfile!: () => void;
+            repositoryMocks.relayConfigDelete.mockRejectedValue(new Error('relay failure'));
+            repositoryMocks.profileDelete.mockReturnValue(new Promise<void>((resolve) => {
+                resolveProfile = resolve;
+            }));
+
+            const cleanupPromise = manager.cleanupAccountData('abc123');
+            await Promise.resolve();
+
+            expect(repositoryMocks.profileDelete).toHaveBeenCalledWith('abc123');
+            resolveProfile();
+            await expect(cleanupPromise).resolves.toBeUndefined();
+            expect(mockConsole.error).toHaveBeenCalledWith(
+                'アカウントデータ削除に失敗しました',
+                { stage: 'indexeddb', target: 'relay-config-repository', reason: 'rejected' },
+            );
+        });
+
+        it('localStorageの一部が例外でも残りのkeyとrepository削除を試行する', async () => {
             const throwingStorage = new MockStorage();
-            throwingStorage.removeItem = vi.fn().mockImplementation(() => {
-                throw new Error('Storage error');
+            const originalRemoveItem = throwingStorage.removeItem.bind(throwingStorage);
+            throwingStorage.removeItem = vi.fn().mockImplementation((key: string) => {
+                if (key === getNsecStorageKey('abc123')) {
+                    throw new Error('Storage error');
+                }
+                originalRemoveItem(key);
             });
             const errorManager = new AccountManager({ localStorage: throwingStorage, console: mockConsole });
 
-            errorManager.cleanupAccountData('abc123');
+            await errorManager.cleanupAccountData('abc123');
 
+            expect(throwingStorage.removeItem).toHaveBeenCalledTimes(5);
+            expect(repositoryMocks.profileDelete).toHaveBeenCalledWith('abc123');
+            expect(repositoryMocks.relayConfigDelete).toHaveBeenCalledWith('abc123');
             expect(mockConsole.error).toHaveBeenCalledWith(
-                'アカウントデータ削除エラー:',
-                expect.any(Error)
+                'アカウントデータ削除に失敗しました',
+                { stage: 'local-storage', target: 'nsec', reason: 'unexpected' },
             );
+        });
+
+        it('対象外アカウントのlocalStorageとrepository dataへ触れない', async () => {
+            const targetPubkey = 'target';
+            const otherPubkey = 'other';
+            storage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + otherPubkey, 'other-secret');
+            storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + otherPubkey, 'other-profile');
+            storage.setItem(STORAGE_KEYS.NOSTR_RELAYS + otherPubkey, 'other-relays');
+
+            await manager.cleanupAccountData(targetPubkey);
+
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + otherPubkey)).toBe('other-secret');
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + otherPubkey)).toBe('other-profile');
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_RELAYS + otherPubkey)).toBe('other-relays');
+            expect(repositoryMocks.profileDelete).toHaveBeenCalledWith(targetPubkey);
+            expect(repositoryMocks.profileDelete).not.toHaveBeenCalledWith(otherPubkey);
+            expect(repositoryMocks.relayConfigDelete).toHaveBeenCalledWith(targetPubkey);
+            expect(repositoryMocks.relayConfigDelete).not.toHaveBeenCalledWith(otherPubkey);
         });
     });
 

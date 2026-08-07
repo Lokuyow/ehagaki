@@ -173,10 +173,10 @@ export class AuthService {
      * 指定アカウントをログアウトする。
      * @returns 次のアクティブアカウントのpubkeyHex。アカウントが残っていない場合はnull。
      */
-    logoutAccount(
+    async logoutAccount(
         pubkeyHex: string,
         options: { notifyParentClient?: boolean } = {},
-    ): string | null | undefined {
+    ): Promise<string | null | undefined> {
         try {
             const isRuntimeParentClientAccount =
                 this.runtime.parentClientSvc.isConnected()
@@ -188,16 +188,18 @@ export class AuthService {
                 this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
                 ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
             } else if (accountType === 'nip46') {
-                this.runtime.nip46Svc.disconnect().catch(e => {
+                try {
+                    await this.runtime.nip46Svc.disconnect();
+                } catch {
                     this.runtime.console.error('NIP-46切断エラー', {
                         stage: 'disconnect',
                         reason: 'unexpected',
                     });
-                });
+                }
             }
 
             // per-accountデータを削除
-            this.accountManager?.cleanupAccountData(pubkeyHex);
+            await this.accountManager?.cleanupAccountData(pubkeyHex);
 
             // アカウントリストから削除
             const nextPubkey = this.accountManager?.removeAccount(pubkeyHex);

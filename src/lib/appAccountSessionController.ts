@@ -81,7 +81,7 @@ export interface AppAccountSessionControllerDependencies {
     logoutAccountFromAuthService(
         pubkeyHex: string,
         options: { notifyParentClient?: boolean },
-    ): string | null | undefined;
+    ): Promise<string | null | undefined>;
     resolveLogoutAccountAction(nextPubkey: string | null | undefined): LogoutActionResult;
     clearAuthState(): void;
     setGuestProfile(profile: ProfileGuestSnapshot): void;
@@ -277,10 +277,11 @@ export function createAppAccountSessionController(
         try {
             deps.resetUploadDisplayState();
 
+            const nextPubkey = await deps.logoutAccountFromAuthService(pubkeyHex, {
+                notifyParentClient: options.notifyParentClient,
+            });
             const nextAction = deps.resolveLogoutAccountAction(
-                deps.logoutAccountFromAuthService(pubkeyHex, {
-                    notifyParentClient: options.notifyParentClient,
-                }),
+                nextPubkey,
             );
 
             if (nextAction.kind === 'switch') {
