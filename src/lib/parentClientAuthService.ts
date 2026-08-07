@@ -570,6 +570,19 @@ export class ParentClientAuthService {
         const pending = this.pendingRequests.get(requestId);
         if (!pending) return;
 
+        const responseFamily =
+            message.type === "auth.result" || message.type === "auth.error"
+                ? 'auth'
+                : message.type === "rpc.result" || message.type === "rpc.error"
+                    ? 'rpc'
+                    : null;
+        if (responseFamily && responseFamily !== pending.kind) {
+            globalThis.clearTimeout(pending.timeoutId);
+            this.pendingRequests.delete(requestId);
+            pending.reject(new Error("parent_client_invalid_response"));
+            return;
+        }
+
         globalThis.clearTimeout(pending.timeoutId);
         this.pendingRequests.delete(requestId);
 
