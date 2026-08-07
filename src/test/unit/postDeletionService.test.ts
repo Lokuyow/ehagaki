@@ -1,4 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../lib/postHistoryRawEventVerification", () => ({
+    RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
+    attestFullyVerifiedPostHistoryRawEvent: (event: unknown) => ({
+        event,
+        attestation: {},
+    }),
+}));
 import type { AuthState } from "../../lib/types";
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import {

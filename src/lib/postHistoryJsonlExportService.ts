@@ -1,3 +1,4 @@
+import { getEventHash as getRxNostrEventHash } from "@rx-nostr/crypto";
 import { validateEvent, verifyEvent } from "nostr-tools";
 import {
     extractDeletionTargetEventIds,
@@ -19,6 +20,13 @@ import {
     postHistoryRepository,
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
+import {
+    RAW_EVENT_VERIFICATION_RULE_VERSION,
+} from "./postHistoryRawEventVerification";
+import type {
+    PostHistoryJsonlExportProgress,
+    PostHistoryJsonlExportWorkerResponse,
+} from "./postHistoryJsonlExportWorkerProtocol";
 
 export interface PostHistoryJsonlExportResult {
     jsonl: string;
@@ -37,7 +45,25 @@ export interface PostHistoryJsonlExportServiceDeps {
         PostHistoryDeletionRequestsRepository,
         "getAllForTargetAuthorPubkey"
     >;
+    workerFactory?: () => PostHistoryJsonlExportWorker;
 }
+
+export interface PostHistoryJsonlExportWorker {
+    onmessage: ((event: MessageEvent<PostHistoryJsonlExportWorkerResponse>) => void) | null;
+    onerror: ((event: ErrorEvent) => void) | null;
+    postMessage(message: { type: "export"; pubkeyHex: string }): void;
+    terminate(): void;
+}
+
+export type PostHistoryJsonlExportWorkerResult = {
+    result: Omit<PostHistoryJsonlExportResult, "jsonl">;
+    blob: Blob;
+};
+
+export type PostHistoryJsonlExportWorkerOptions = {
+    onProgress?: (progress: PostHistoryJsonlExportProgress) => void;
+    signal?: AbortSignal;
+};
 
 function isImportCompatibleSignedEvent(rawEvent: unknown, expectedKind: number): rawEvent is NostrEvent {
     if (!isSignedNostrEvent(rawEvent) || rawEvent.kind !== expectedKind) {
@@ -46,6 +72,30 @@ function isImportCompatibleSignedEvent(rawEvent: unknown, expectedKind: number):
 
     try {
         return validateEvent(rawEvent as never) && verifyEvent(rawEvent as never);
+    } catch {
+        return false;
+    }
+}
+
+function isCurrentValidRawEventVerification(
+    verification: PostHistoryRecord["rawEventVerification"]
+        | PostHistoryDeletionRequestRecord["rawEventVerification"],
+): boolean {
+    return verification?.status === "valid"
+        && verification.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION;
+}
+
+function isLightweightImportCompatibleSignedEvent(
+    rawEvent: unknown,
+    expectedKind: number,
+): rawEvent is NostrEvent {
+    if (!isSignedNostrEvent(rawEvent) || rawEvent.kind !== expectedKind) {
+        return false;
+    }
+
+    try {
+        return validateEvent(rawEvent as never)
+            && getRxNostrEventHash(rawEvent as never) === rawEvent.id;
     } catch {
         return false;
     }
@@ -80,8 +130,13 @@ function isConsistentDeletionEvent(
     rawEvent: unknown,
     ownerPubkeyHex: string,
 ): rawEvent is NostrEvent {
-    if (
-        !isImportCompatibleSignedEvent(rawEvent, 5)
+    if (!isSignedNostrEvent(rawEvent)) {
+        return false;
+    }
+    const isValid = isCurrentValidRawEventVerification(record.rawEventVerification)
+        ? isLightweightImportCompatibleSignedEvent(rawEvent, 5)
+        : isImportCompatibleSignedEvent(rawEvent, 5);
+    if (!isValid
         || rawEvent.pubkey !== ownerPubkeyHex
         || record.targetAuthorPubkey !== ownerPubkeyHex
         || record.deletionEventPubkey !== ownerPubkeyHex
@@ -112,11 +167,74 @@ export class PostHistoryJsonlExportService {
         PostHistoryDeletionRequestsRepository,
         "getAllForTargetAuthorPubkey"
     >;
+    private readonly workerFactory: () => PostHistoryJsonlExportWorker;
 
     constructor(deps: PostHistoryJsonlExportServiceDeps = {}) {
         this.postHistoryRepository = deps.postHistoryRepository ?? postHistoryRepository;
         this.deletionRequestsRepository = deps.deletionRequestsRepository
             ?? postHistoryDeletionRequestsRepository;
+        this.workerFactory = deps.workerFactory ?? (() =>
+            new Worker(
+                new URL("./postHistoryJsonlExportWorker.ts", import.meta.url),
+                { type: "module" },
+            ));
+    }
+
+    exportForPubkeyInWorker(
+        pubkeyHex: string | null | undefined,
+        options: PostHistoryJsonlExportWorkerOptions = {},
+    ): Promise<PostHistoryJsonlExportWorkerResult> {
+        if (!pubkeyHex) {
+            const { jsonl: _jsonl, ...result } = createEmptyResult();
+            return Promise.resolve({
+                result,
+                blob: new Blob([], { type: "application/x-ndjson;charset=utf-8" }),
+            });
+        }
+
+        return new Promise((resolve, reject) => {
+            const worker = this.workerFactory();
+            let settled = false;
+            const cleanup = () => {
+                worker.onmessage = null;
+                worker.onerror = null;
+                options.signal?.removeEventListener("abort", onAbort);
+                worker.terminate();
+            };
+            const fail = (error: Error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(error);
+            };
+            const onAbort = () => fail(new DOMException("Export aborted", "AbortError"));
+
+            if (options.signal?.aborted) {
+                onAbort();
+                return;
+            }
+
+            options.signal?.addEventListener("abort", onAbort, { once: true });
+            worker.onmessage = (event) => {
+                const message = event.data;
+                if (message.type === "progress") {
+                    options.onProgress?.(message.progress);
+                    return;
+                }
+                if (message.type === "error") {
+                    fail(new Error(message.message));
+                    return;
+                }
+                if (message.type === "complete") {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    resolve({ result: message.result, blob: message.blob });
+                }
+            };
+            worker.onerror = () => fail(new Error("post_history_export_worker_failed"));
+            worker.postMessage({ type: "export", pubkeyHex });
+        });
     }
 
     async exportForPubkey(
@@ -148,7 +266,12 @@ export class PostHistoryJsonlExportService {
                 continue;
             }
 
-            if (!isImportCompatibleSignedEvent(record.rawEvent, record.kind)) {
+            const isValid = isCurrentValidRawEventVerification(
+                record.rawEventVerification,
+            )
+                ? isLightweightImportCompatibleSignedEvent(record.rawEvent, record.kind)
+                : isImportCompatibleSignedEvent(record.rawEvent, record.kind);
+            if (!isValid) {
                 result.skippedPostCount += 1;
                 continue;
             }

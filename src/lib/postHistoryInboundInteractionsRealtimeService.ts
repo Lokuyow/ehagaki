@@ -19,6 +19,7 @@ import {
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_INBOUND_INTERACTIONS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -97,7 +98,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
             }
 
             const rxReq = createRxForwardReq();
-            subscription = rxNostr.use(rxReq, {
+            subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                 on: relayUrls.length > 0
                     ? { relays: relayUrls }
                     : { defaultReadRelays: true },

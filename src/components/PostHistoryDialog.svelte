@@ -74,6 +74,7 @@
         postHistoryJsonlExportService,
         type PostHistoryJsonlExportResult,
     } from "../lib/postHistoryJsonlExportService";
+    import type { PostHistoryJsonlExportProgress } from "../lib/postHistoryJsonlExportWorkerProtocol";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
@@ -256,6 +257,11 @@
     let headingMenuOpen = $state(false);
     let importDialogOpen = $state(false);
     let exportRunning = $state(false);
+    let exportProgress = $state<PostHistoryJsonlExportProgress>({
+        phase: "loading",
+    });
+    let exportAbortController: AbortController | undefined;
+    let exportPubkeyHex: string | undefined;
     let showExportFloatingMessage = $state(false);
     let exportFloatingMessageKey = $state<
         | "postHistory.exportComplete"
@@ -524,6 +530,10 @@
         showImageFullscreen = false;
     }
 
+    function cancelExport(): void {
+        exportAbortController?.abort();
+    }
+
     function handleClose() {
         const shouldClearAllSessionScrollState = history.prepareForClose();
         if (shouldClearAllSessionScrollState) {
@@ -542,6 +552,7 @@
         copyNeventUi.hideCopyFloatingMessage();
         hideBroadcastFloatingMessage();
         hideExportFloatingMessage();
+        cancelExport();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -575,7 +586,14 @@
             return;
         }
 
+        cancelExport();
         resetDialogState();
+    });
+
+    $effect(() => {
+        if (exportRunning && exportPubkeyHex && pubkeyHex !== exportPubkeyHex) {
+            cancelExport();
+        }
     });
 
     $effect(() => {
@@ -597,6 +615,7 @@
     });
 
     onDestroy(() => {
+        cancelExport();
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
         hideExportFloatingMessage();
@@ -1329,7 +1348,9 @@
         ].join("-");
     }
 
-    function showExportResultMessage(result: PostHistoryJsonlExportResult): void {
+    function showExportResultMessage(
+        result: Omit<PostHistoryJsonlExportResult, "jsonl">,
+    ): void {
         hideExportFloatingMessage();
         exportFloatingMessageKey = result.isPartial
             ? "postHistory.exportPartial"
@@ -1353,13 +1374,23 @@
         }
 
         exportRunning = true;
+        exportProgress = { phase: "loading" };
+        const controller = new AbortController();
+        exportAbortController = controller;
+        exportPubkeyHex = pubkeyHex;
         headingMenuOpen = false;
         hideExportFloatingMessage();
         try {
-            const result = await postHistoryJsonlExportService.exportForPubkey(pubkeyHex);
-            const blob = new Blob([result.jsonl], {
-                type: "application/x-ndjson;charset=utf-8",
-            });
+            const { result, blob } = await postHistoryJsonlExportService
+                .exportForPubkeyInWorker(pubkeyHex, {
+                    signal: controller.signal,
+                    onProgress: (progress) => {
+                        exportProgress = progress;
+                    },
+                });
+            if (controller.signal.aborted) {
+                return;
+            }
             const objectUrl = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = objectUrl;
@@ -1372,7 +1403,11 @@
                 URL.revokeObjectURL?.(objectUrl);
             }, 1000);
             showExportResultMessage(result);
-        } catch {
+        } catch (error) {
+            if (controller.signal.aborted || (error instanceof DOMException
+                && error.name === "AbortError")) {
+                return;
+            }
             exportFloatingMessageKey = "postHistory.exportFailed";
             exportFloatingMessageValues = {};
             showExportFloatingMessage = true;
@@ -1381,7 +1416,11 @@
                 exportFloatingMessageTimeout = undefined;
             }, 5000);
         } finally {
-            exportRunning = false;
+            if (exportAbortController === controller) {
+                exportAbortController = undefined;
+                exportPubkeyHex = undefined;
+                exportRunning = false;
+            }
         }
     }
 
@@ -1471,6 +1510,7 @@
                     eventId: targetPost.eventId,
                     authorPubkey: targetPost.pubkeyHex,
                     deletionEvent: result.deletionEvent ?? null,
+                    deletionEventAttestation: result.deletionEventAttestation,
                 })
                 .catch(() => undefined);
             deleteRequestState = {
@@ -1526,7 +1566,24 @@
             {/if}
         </div>
         <div class="post-history-heading-actions">
-            {#if headingStatusMessageKey}
+            {#if exportRunning}
+                <LoadingPlaceholder
+                    text={exportProgress.phase === "loading"
+                        ? $_("postHistory.exportLoading")
+                        : exportProgress.phase === "verifying"
+                          ? $_("postHistory.exportVerifying", {
+                              values: {
+                                  processed: exportProgress.processed ?? 0,
+                                  total: exportProgress.total ?? 0,
+                              },
+                          })
+                          : $_("postHistory.exportCreating")}
+                    showLoader={true}
+                    loaderSize={30}
+                    state="loading"
+                    customClass="status-loading-placeholder"
+                />
+            {:else if headingStatusMessageKey}
                 <LoadingPlaceholder
                     text={headingStatusMessageValues
                         ? $_(headingStatusMessageKey, {

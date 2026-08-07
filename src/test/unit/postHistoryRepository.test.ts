@@ -1,6 +1,18 @@
 import "fake-indexeddb/auto";
 import Dexie, { cmp } from "dexie";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Most repository tests exercise persistence and merge policy with compact
+// fixtures. The cryptographic boundary is covered separately with real signed
+// events; treat these fixtures as already attested here.
+vi.mock("../../lib/postHistoryRawEventVerification", () => ({
+    RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
+    attestFullyVerifiedPostHistoryRawEvent: (event: unknown) => ({
+        event,
+        attestation: {},
+    }),
+    isCurrentPostHistoryRawEventAttestation: () => true,
+}));
 import {
     getPostHistorySearchRevision,
     resetPostHistoryLocalSearchRevisionsForTesting,

@@ -23,6 +23,9 @@ const hoisted = vi.hoisted(() => {
             'postHistory.searchResults': '検索結果',
             'postHistory.import': 'インポート',
             'postHistory.export': 'エクスポート',
+            'postHistory.exportLoading': 'JSONLを読み込み中...',
+            'postHistory.exportVerifying': `未検証データを検証中... ${options?.values?.processed ?? 0}/${options?.values?.total ?? 0}`,
+            'postHistory.exportCreating': 'JSONLファイルを作成中...',
             'postHistory.exportComplete': `${options?.values?.exported ?? 0}件をエクスポートしました`,
             'postHistory.exportPartial': `${options?.values?.exported ?? 0}件をエクスポートしました。一部${options?.values?.skipped ?? 0}件は復元できません`,
             'postHistory.exportFailed': 'エクスポートに失敗しました',
@@ -227,7 +230,7 @@ const hoisted = vi.hoisted(() => {
             importFile: vi.fn(),
         },
         postHistoryJsonlExportServiceMock: {
-            exportForPubkey: vi.fn(),
+            exportForPubkeyInWorker: vi.fn(),
         },
         postMediaCacheServiceMock: {
             canUsePersistentCache: vi.fn(() => false),
@@ -849,15 +852,17 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
         updatedPostCount: 0,
         appliedDeletionPostCount: 0,
     });
-    postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValue({
-        jsonl: '',
-        exportedEventCount: 0,
-        exportedPostEventCount: 0,
-        exportedDeletionEventCount: 0,
-        skippedPostCount: 0,
-        missingDeletionRawEventCount: 0,
-        invalidDeletionRawEventCount: 0,
-        isPartial: false,
+    postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockResolvedValue({
+        result: {
+            exportedEventCount: 0,
+            exportedPostEventCount: 0,
+            exportedDeletionEventCount: 0,
+            skippedPostCount: 0,
+            missingDeletionRawEventCount: 0,
+            invalidDeletionRawEventCount: 0,
+            isPartial: false,
+        },
+        blob: new Blob([], { type: 'application/x-ndjson;charset=utf-8' }),
     });
 }
 

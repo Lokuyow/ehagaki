@@ -1,6 +1,17 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The persistence cases below use deliberately compact fixture events. Real
+// full-verification coverage lives with the raw-event verification boundary.
+vi.mock("../../lib/postHistoryRawEventVerification", () => ({
+    RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
+    attestFullyVerifiedPostHistoryRawEvent: (event: unknown) => ({
+        event,
+        attestation: {},
+    }),
+    isCurrentPostHistoryRawEventAttestation: () => true,
+}));
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import {
     getPostHistorySearchRevision,

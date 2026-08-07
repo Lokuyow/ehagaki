@@ -6,6 +6,7 @@ import { FALLBACK_RELAYS } from "./constants";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 const POST_HISTORY_DELETION_FETCH_TIMEOUT_MS = 4_000;
 const POST_HISTORY_DELETION_FETCH_RELAY_LIMIT = 8;
@@ -156,7 +157,7 @@ export class PostHistoryDeletionFetchService {
 
             try {
                 const rxReq = createRxBackwardReq();
-                subscription = rxNostr.use(rxReq, {
+                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },

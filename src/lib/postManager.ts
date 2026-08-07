@@ -20,6 +20,10 @@ import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svel
 import { settingsStore } from "../stores/settingsStore.svelte";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import {
+  attestFullyVerifiedPostHistoryRawEvent,
+  type PostHistoryRawEventAttestation,
+} from "./postHistoryRawEventVerification";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -177,6 +181,7 @@ export class PostManager {
 
   private async saveSubmittedPostHistory(params: {
     event: any;
+    attestation: PostHistoryRawEventAttestation;
     result: PostResult;
     additionalWriteRelays?: string[];
   }): Promise<void> {
@@ -194,6 +199,7 @@ export class PostManager {
     try {
       await this.deps.savePostHistoryFn({
         event: params.event,
+        attestation: params.attestation,
         acceptedRelays,
         relayHints,
       });
@@ -230,6 +236,11 @@ export class PostManager {
       ? await signEvent(params.event)
       : params.event;
 
+    const verifiedEvent = attestFullyVerifiedPostHistoryRawEvent(eventToSend);
+    if (!verifiedEvent) {
+      return this.notifyPostFailure("post_error");
+    }
+
     this.deps.console?.debug?.('[PostManager] sendPreparedEvent signed', {
       eventKind: eventToSend?.kind ?? '(missing)',
     });
@@ -238,7 +249,7 @@ export class PostManager {
       this.deps.console?.debug?.('[PostManager] signed event ready');
     }
 
-    const result = await this.eventSender!.sendEvent(eventToSend, {
+    const result = await this.eventSender!.sendEvent(verifiedEvent.event, {
       targetRelays: params.additionalWriteRelays,
       includeDefaultWriteRelays: true,
     });
@@ -248,12 +259,13 @@ export class PostManager {
     const resultWithEvent: PostResult = result.success
       ? {
         ...result,
-        eventId: result.eventId ?? eventToSend.id,
-        event: eventToSend,
+        eventId: result.eventId ?? verifiedEvent.event.id,
+        event: verifiedEvent.event,
       }
       : result;
     await this.saveSubmittedPostHistory({
-      event: eventToSend,
+      event: verifiedEvent.event,
+      attestation: verifiedEvent.attestation,
       result: resultWithEvent,
       additionalWriteRelays: params.additionalWriteRelays,
     });
