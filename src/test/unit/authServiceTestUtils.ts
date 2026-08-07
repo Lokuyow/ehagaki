@@ -85,7 +85,7 @@ export function createMockAccountManager(overrides: Record<string, unknown> = {}
         addAccount: vi.fn(),
         getAccountType: vi.fn(),
         removeAccount: vi.fn(),
-        cleanupAccountData: vi.fn(),
+        cleanupAccountData: vi.fn().mockResolvedValue(undefined),
         cleanupNostrLoginData: vi.fn(),
         getActiveAccountPubkey: vi.fn().mockReturnValue(null),
         getAccounts: vi.fn().mockReturnValue([]),

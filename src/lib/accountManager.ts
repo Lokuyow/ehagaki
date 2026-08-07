@@ -178,17 +178,41 @@ export class AccountManager {
     /**
      * 指定アカウントの per-user データ（認証情報、リレー、プロフィール）を全て削除する。
      */
-    cleanupAccountData(pubkeyHex: string): void {
-        try {
-            this.localStorage.removeItem(getNsecStorageKey(pubkeyHex));
-            this.localStorage.removeItem(getNip46SessionStorageKey(pubkeyHex));
-            this.localStorage.removeItem(getParentClientSessionStorageKey(pubkeyHex));
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex);
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex);
-            void profilesRepository.delete(pubkeyHex);
-            void relayConfigsRepository.delete(pubkeyHex);
-        } catch (error) {
-            this.console.error('アカウントデータ削除エラー:', error);
+    async cleanupAccountData(pubkeyHex: string): Promise<void> {
+        const localStorageKeys = [
+            { key: getNsecStorageKey(pubkeyHex), target: 'nsec' },
+            { key: getNip46SessionStorageKey(pubkeyHex), target: 'nip46-session' },
+            { key: getParentClientSessionStorageKey(pubkeyHex), target: 'parent-client-session' },
+            { key: STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex, target: 'relay-config' },
+            { key: STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex, target: 'profile' },
+        ] as const;
+
+        for (const { key, target } of localStorageKeys) {
+            try {
+                this.localStorage.removeItem(key);
+            } catch {
+                this.console.error('アカウントデータ削除に失敗しました', {
+                    stage: 'local-storage',
+                    target,
+                    reason: 'unexpected',
+                });
+            }
         }
+
+        const repositoryResults = await Promise.allSettled([
+            Promise.resolve().then(() => profilesRepository.delete(pubkeyHex)),
+            Promise.resolve().then(() => relayConfigsRepository.delete(pubkeyHex)),
+        ]);
+
+        const repositoryTargets = ['profile-repository', 'relay-config-repository'] as const;
+        repositoryResults.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                this.console.error('アカウントデータ削除に失敗しました', {
+                    stage: 'indexeddb',
+                    target: repositoryTargets[index],
+                    reason: 'rejected',
+                });
+            }
+        });
     }
 }

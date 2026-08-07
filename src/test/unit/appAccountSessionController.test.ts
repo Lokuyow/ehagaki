@@ -29,6 +29,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         [OTHER_PUBKEY, 'nsec'],
     ]);
     const switchingAccountStateHistory: boolean[] = [];
+    const loggingOutStateHistory: boolean[] = [];
 
     const accountManager = {
         getAccountType: vi.fn((pubkeyHex: string) => accounts.get(pubkeyHex) ?? null),
@@ -58,9 +59,10 @@ function createController(overrides: Record<string, unknown> = {}) {
             switchingAccountStateHistory.push(next);
         }),
         getIsLoggingOut: () => isLoggingOut,
-        setIsLoggingOut: (next: boolean) => {
+        setIsLoggingOut: vi.fn((next: boolean) => {
             isLoggingOut = next;
-        },
+            loggingOutStateHistory.push(next);
+        }),
         setProfileLoading: vi.fn(),
         getAuthStateSnapshot: () => authSnapshot,
         getCurrentRxNostr: () => currentRxNostr,
@@ -82,7 +84,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         })),
         handlePostAuth: vi.fn(async () => undefined),
         resetUploadDisplayState: vi.fn(),
-        logoutAccountFromAuthService: vi.fn(() => null),
+        logoutAccountFromAuthService: vi.fn(async () => null),
         resolveLogoutAccountAction: vi.fn((nextPubkey: string | null | undefined) => {
             if (typeof nextPubkey === 'string') {
                 return { kind: 'switch', pubkeyHex: nextPubkey };
@@ -111,6 +113,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         deps,
         controller: createAppAccountSessionController(deps as never),
         switchingAccountStateHistory,
+        loggingOutStateHistory,
         getActivePubkey: () => activePubkey,
         setActivePubkey: (next: string | null) => {
             activePubkey = next;
@@ -424,7 +427,7 @@ describe('createAppAccountSessionController', () => {
 
     it('logoutAccount guest 分岐では認証情報を初期化する', async () => {
         const { deps, controller } = createController({
-            logoutAccountFromAuthService: vi.fn(() => null),
+            logoutAccountFromAuthService: vi.fn(async () => null),
         });
 
         await controller.logoutAccount(CURRENT_PUBKEY);
@@ -432,6 +435,53 @@ describe('createAppAccountSessionController', () => {
         expect(deps.resetUploadDisplayState).toHaveBeenCalledOnce();
         expect(deps.clearAuthState).toHaveBeenCalledOnce();
         expect(deps.setGuestProfile).toHaveBeenCalledOnce();
+        expect(deps.initializeNostr).toHaveBeenCalledOnce();
+        expect(deps.refreshAccountList).toHaveBeenCalledOnce();
+        expect(deps.closeLogoutDialog).toHaveBeenCalledOnce();
+    });
+
+    it('cleanup完了までlogout actionとreloadを実行せず、isLoggingOutを維持する', async () => {
+        let resolveLogout: ((value: string) => void) | undefined;
+        const { deps, controller, loggingOutStateHistory } = createController({
+            logoutAccountFromAuthService: vi.fn(() => new Promise<string>((resolve) => {
+                resolveLogout = resolve;
+            })),
+        });
+
+        const logoutPromise = controller.logoutAccount(CURRENT_PUBKEY);
+        await Promise.resolve();
+
+        expect(deps.resolveLogoutAccountAction).not.toHaveBeenCalled();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
+        expect(loggingOutStateHistory).toEqual([true]);
+
+        resolveLogout?.(TARGET_PUBKEY);
+        await logoutPromise;
+
+        expect(deps.resolveLogoutAccountAction).toHaveBeenCalledWith(TARGET_PUBKEY);
+        expect(deps.reloadWindow).toHaveBeenCalledOnce();
+        expect(loggingOutStateHistory).toEqual([true, false]);
+    });
+
+    it('cleanup完了後にguest遷移、refresh、dialog closeを実行する', async () => {
+        let resolveLogout: ((value: null) => void) | undefined;
+        const { deps, controller } = createController({
+            logoutAccountFromAuthService: vi.fn(() => new Promise<null>((resolve) => {
+                resolveLogout = resolve;
+            })),
+        });
+
+        const logoutPromise = controller.logoutAccount(CURRENT_PUBKEY);
+        await Promise.resolve();
+
+        expect(deps.resolveLogoutAccountAction).not.toHaveBeenCalled();
+        expect(deps.initializeNostr).not.toHaveBeenCalled();
+        expect(deps.refreshAccountList).not.toHaveBeenCalled();
+        expect(deps.closeLogoutDialog).not.toHaveBeenCalled();
+
+        resolveLogout?.(null);
+        await logoutPromise;
+
         expect(deps.initializeNostr).toHaveBeenCalledOnce();
         expect(deps.refreshAccountList).toHaveBeenCalledOnce();
         expect(deps.closeLogoutDialog).toHaveBeenCalledOnce();
@@ -460,7 +510,7 @@ describe('createAppAccountSessionController', () => {
 
     it('logoutAccount のswitch分岐では再読み込みする', async () => {
         const { deps, controller } = createController({
-            logoutAccountFromAuthService: vi.fn(() => TARGET_PUBKEY),
+            logoutAccountFromAuthService: vi.fn(async () => TARGET_PUBKEY),
         });
 
         await controller.logoutAccount(CURRENT_PUBKEY);
@@ -468,5 +518,45 @@ describe('createAppAccountSessionController', () => {
         expect(deps.reloadWindow).toHaveBeenCalledOnce();
         expect(deps.restoreManagedAccountSession).not.toHaveBeenCalled();
         expect(deps.closeLogoutDialog).not.toHaveBeenCalled();
+    });
+
+    it('remote Parent client logoutもcleanup await後に完了する', async () => {
+        let resolveLogout: ((value: null) => void) | undefined;
+        const { deps, controller } = createController({
+            logoutAccountFromAuthService: vi.fn(() => new Promise<null>((resolve) => {
+                resolveLogout = resolve;
+            })),
+        });
+
+        const logoutPromise = controller.handleRemoteParentClientLogout(CURRENT_PUBKEY);
+        await Promise.resolve();
+
+        expect(deps.resolveLogoutAccountAction).not.toHaveBeenCalled();
+        expect(deps.refreshAccountList).not.toHaveBeenCalled();
+
+        resolveLogout?.(null);
+        await logoutPromise;
+
+        expect(deps.logoutAccountFromAuthService).toHaveBeenCalledWith(
+            CURRENT_PUBKEY,
+            { notifyParentClient: false },
+        );
+        expect(deps.refreshAccountList).toHaveBeenCalledOnce();
+    });
+
+    it('logoutの予期しないreject時にerrorを記録してisLoggingOutを解除する', async () => {
+        const { deps, controller, loggingOutStateHistory } = createController({
+            logoutAccountFromAuthService: vi.fn(async () => {
+                throw new Error('logout failed');
+            }),
+        });
+
+        await controller.logoutAccount(CURRENT_PUBKEY);
+
+        expect(deps.logger.error).toHaveBeenCalledWith('ログアウト処理中にエラー', {
+            stage: 'logout-account',
+            reason: 'unexpected',
+        });
+        expect(loggingOutStateHistory).toEqual([true, false]);
     });
 });
