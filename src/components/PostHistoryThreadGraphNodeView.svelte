@@ -3,6 +3,7 @@
     import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostHistoryDeletionLifecycleStatusBadge from "./PostHistoryDeletionLifecycleStatusBadge.svelte";
     import PostHistoryRepliesBadgeButton from "./PostHistoryRepliesBadgeButton.svelte";
     import PostHistoryThreadToggleButton from "./PostHistoryThreadToggleButton.svelte";
@@ -309,63 +310,21 @@
                             ></div>
                             <span>{getRepliesActionLabel()}</span>
                         </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                            class="menu-action-button"
-                            onSelect={handleShowRawJson}
-                        >
-                            <div
-                                class="raw-json-icon svg-icon"
-                                aria-hidden="true"
-                            ></div>
-                            <span>{$_("postHistory.rawJson")}</span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                            class="menu-action-button"
-                            onpointerdown={handleCopyPointerDown}
-                            onSelect={handleCopyNevent}
-                        >
-                            <div
-                                class="copy-icon svg-icon"
-                                aria-hidden="true"
-                            ></div>
-                            <span>
-                                {copyFailed
-                                    ? $_("postHistory.copyFailed")
-                                    : $_("postHistory.copyNevent")}
-                            </span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                            class="menu-action-button"
-                            disabled={broadcastSending}
-                            onpointerdown={handleBroadcastPointerDown}
-                            onSelect={handleBroadcastPost}
-                        >
-                            <div
-                                class="broadcast-icon svg-icon"
-                                aria-hidden="true"
-                            ></div>
-                            <span>{$_("postHistory.broadcast")}</span>
-                        </DropdownMenu.Item>
-                        {#if canDelete}
-                            <DropdownMenu.Separator
-                                class="post-history-menu-separator"
-                            />
-                            <DropdownMenu.Item
-                                class="menu-action-button menu-action-button-danger"
-                                disabled={deletionSending}
-                                onSelect={openDeleteConfirm}
-                            >
-                                <div
-                                    class="trash-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>
-                                    {deletionSending
-                                        ? $_("postHistory.deleteSending")
-                                        : $_("postHistory.delete")}
-                                </span>
-                            </DropdownMenu.Item>
-                        {/if}
+                        <PostHistoryRecordActionItems
+                            order="raw-json-first"
+                            {copyFailed}
+                            showBroadcast={true}
+                            {broadcastSending}
+                            showDelete={canDelete}
+                            showDeleteSeparator={true}
+                            {deletionSending}
+                            onCopyPointerDown={handleCopyPointerDown}
+                            onCopyNevent={handleCopyNevent}
+                            onShowRawJson={handleShowRawJson}
+                            onBroadcastPointerDown={handleBroadcastPointerDown}
+                            onBroadcastPost={handleBroadcastPost}
+                            onOpenDeleteConfirm={openDeleteConfirm}
+                        />
                     {/snippet}
                 </PostHistoryActionMenu>
             {/snippet}

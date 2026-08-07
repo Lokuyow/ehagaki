@@ -11,6 +11,7 @@
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryActionMenu from "./PostHistoryActionMenu.svelte";
+    import PostHistoryRecordActionItems from "./PostHistoryRecordActionItems.svelte";
     import PostContentPreview from "./PostContentPreview.svelte";
     import PostHistoryPreviewFooter from "./PostHistoryPreviewFooter.svelte";
     import PostHistoryQuotePreview from "./PostHistoryQuotePreview.svelte";
@@ -875,10 +876,6 @@
 
     function isBroadcastSending(post: PostHistoryRecord): boolean {
         return broadcastRequestState[post.eventId] === "sending";
-    }
-
-    function getBroadcastLabel(): string {
-        return $_("postHistory.broadcast");
     }
 
     function canBroadcastPost(post: PostHistoryRecord): boolean {
@@ -1952,117 +1949,47 @@
                                                                         class="post-history-menu-separator"
                                                                     />
                                                                 {/if}
-                                                                <DropdownMenu.Item
-                                                                    class="menu-action-button"
-                                                                    onpointerdown={(
-                                                                        event,
-                                                                    ) =>
+                                                                <PostHistoryRecordActionItems
+                                                                    order="standard"
+                                                                    copyFailed={copyNeventUi.copyState[
+                                                                        post.eventId
+                                                                    ] === "failed"}
+                                                                    showBroadcast={canBroadcastPost(
+                                                                        post,
+                                                                    )}
+                                                                    broadcastSending={isBroadcastSending(
+                                                                        post,
+                                                                    )}
+                                                                    showDelete={canDeletePost(post)}
+                                                                    showDeleteSeparator={false}
+                                                                    deletionSending={isDeletionSending(
+                                                                        post,
+                                                                    )}
+                                                                    onCopyPointerDown={(event) =>
                                                                         copyNeventUi.captureCopyPointerPosition(
                                                                             post,
                                                                             event,
                                                                         )}
-                                                                    onSelect={(
-                                                                        event,
-                                                                    ) =>
+                                                                    onCopyNevent={(event) =>
                                                                         void copyNeventUi.handleCopyNevent(
                                                                             post,
                                                                             event,
                                                                         )}
-                                                                >
-                                                                    <div
-                                                                        class="copy-icon svg-icon"
-                                                                        aria-hidden="true"
-                                                                    ></div>
-                                                                    <span>
-                                                                        {copyNeventUi
-                                                                            .copyState[
-                                                                            post
-                                                                                .eventId
-                                                                        ] ===
-                                                                        "failed"
-                                                                            ? $_(
-                                                                                  "postHistory.copyFailed",
-                                                                              )
-                                                                            : $_(
-                                                                                  "postHistory.copyNevent",
-                                                                              )}
-                                                                    </span>
-                                                                </DropdownMenu.Item>
-                                                                <DropdownMenu.Item
-                                                                    class="menu-action-button"
-                                                                    onSelect={() =>
-                                                                        openRawJson(
-                                                                            post.rawEvent,
-                                                                        )}
-                                                                >
-                                                                    <div
-                                                                        class="raw-json-icon svg-icon"
-                                                                        aria-hidden="true"
-                                                                    ></div>
-                                                                    <span>
-                                                                        {$_(
-                                                                            "postHistory.rawJson",
-                                                                        )}
-                                                                    </span>
-                                                                </DropdownMenu.Item>
-                                                                {#if canBroadcastPost(post)}
-                                                                    <DropdownMenu.Item
-                                                                        class="menu-action-button"
-                                                                        disabled={isBroadcastSending(
+                                                                    onShowRawJson={() =>
+                                                                        openRawJson(post.rawEvent)}
+                                                                    onBroadcastPointerDown={(event) =>
+                                                                        captureBroadcastPointerPosition(
                                                                             post,
+                                                                            event,
                                                                         )}
-                                                                        onpointerdown={(
-                                                                            event,
-                                                                        ) =>
-                                                                            captureBroadcastPointerPosition(
-                                                                                post,
-                                                                                event,
-                                                                            )}
-                                                                        onSelect={(
-                                                                            event,
-                                                                        ) =>
-                                                                            void handleBroadcastPost(
-                                                                                post,
-                                                                                event,
-                                                                            )}
-                                                                    >
-                                                                        <div
-                                                                            class="broadcast-icon svg-icon"
-                                                                            aria-hidden="true"
-                                                                        ></div>
-                                                                        <span>
-                                                                            {getBroadcastLabel()}
-                                                                        </span>
-                                                                    </DropdownMenu.Item>
-                                                                {/if}
-                                                                {#if canDeletePost(post)}
-                                                                    <DropdownMenu.Item
-                                                                        class="menu-action-button menu-action-button-danger"
-                                                                        disabled={isDeletionSending(
+                                                                    onBroadcastPost={(event) =>
+                                                                        void handleBroadcastPost(
                                                                             post,
+                                                                            event,
                                                                         )}
-                                                                        onSelect={() =>
-                                                                            openDeleteConfirm(
-                                                                                post,
-                                                                            )}
-                                                                    >
-                                                                        <div
-                                                                            class="trash-icon svg-icon"
-                                                                            aria-hidden="true"
-                                                                        ></div>
-                                                                        <span>
-                                                                            {isDeletionSending(
-                                                                                post,
-                                                                            )
-                                                                                ? $_(
-                                                                                      "postHistory.deleteSending",
-                                                                                  )
-                                                                                : $_(
-                                                                                      "postHistory.delete",
-                                                                                  )}
-                                                                        </span>
-                                                                    </DropdownMenu.Item>
-                                                                {/if}
+                                                                    onOpenDeleteConfirm={() =>
+                                                                        openDeleteConfirm(post)}
+                                                                />
                                                             </div>
                                                         </DropdownMenu.Content>
                                                     </DropdownMenu.Portal>
@@ -2222,124 +2149,54 @@
                                                                     )}
                                                                 >
                                                                     {#snippet items()}
-                                                                        <DropdownMenu.Item
-                                                                            class="menu-action-button"
-                                                                            onpointerdown={(
-                                                                                event,
-                                                                            ) =>
+                                                                        <PostHistoryRecordActionItems
+                                                                            order="standard"
+                                                                            copyFailed={copyNeventUi.copyState[
+                                                                                quotePreviewPost
+                                                                                    .eventId
+                                                                            ] === "failed"}
+                                                                            showBroadcast={canBroadcastPost(
+                                                                                quotePreviewPost,
+                                                                            )}
+                                                                            broadcastSending={isBroadcastSending(
+                                                                                quotePreviewPost,
+                                                                            )}
+                                                                            showDelete={canDeletePost(
+                                                                                quotePreviewPost,
+                                                                            )}
+                                                                            showDeleteSeparator={true}
+                                                                            deletionSending={isDeletionSending(
+                                                                                quotePreviewPost,
+                                                                            )}
+                                                                            onCopyPointerDown={(event) =>
                                                                                 copyNeventUi.captureCopyPointerPosition(
                                                                                     quotePreviewPost,
                                                                                     event,
                                                                                 )}
-                                                                            onSelect={(
-                                                                                event,
-                                                                            ) =>
+                                                                            onCopyNevent={(event) =>
                                                                                 void copyNeventUi.handleCopyNevent(
                                                                                     quotePreviewPost,
                                                                                     event,
                                                                                 )}
-                                                                        >
-                                                                            <div
-                                                                                class="copy-icon svg-icon"
-                                                                                aria-hidden="true"
-                                                                            ></div>
-                                                                            <span
-                                                                            >
-                                                                                {copyNeventUi
-                                                                                    .copyState[
-                                                                                    quotePreviewPost
-                                                                                        .eventId
-                                                                                ] ===
-                                                                                "failed"
-                                                                                    ? $_(
-                                                                                          "postHistory.copyFailed",
-                                                                                      )
-                                                                                    : $_(
-                                                                                          "postHistory.copyNevent",
-                                                                                      )}
-                                                                            </span>
-                                                                        </DropdownMenu.Item>
-                                                                        <DropdownMenu.Item
-                                                                            class="menu-action-button"
-                                                                            onSelect={() =>
+                                                                            onShowRawJson={() =>
                                                                                 openRawJson(
                                                                                     quotePreviewPost.rawEvent,
                                                                                 )}
-                                                                        >
-                                                                            <div
-                                                                                class="raw-json-icon svg-icon"
-                                                                                aria-hidden="true"
-                                                                            ></div>
-                                                                            <span
-                                                                            >
-                                                                                {$_(
-                                                                                    "postHistory.rawJson",
+                                                                            onBroadcastPointerDown={(event) =>
+                                                                                captureBroadcastPointerPosition(
+                                                                                    quotePreviewPost,
+                                                                                    event,
                                                                                 )}
-                                                                            </span>
-                                                                        </DropdownMenu.Item>
-                                                                        {#if canBroadcastPost(quotePreviewPost)}
-                                                                            <DropdownMenu.Item
-                                                                                class="menu-action-button"
-                                                                                disabled={isBroadcastSending(
+                                                                            onBroadcastPost={(event) =>
+                                                                                void handleBroadcastPost(
+                                                                                    quotePreviewPost,
+                                                                                    event,
+                                                                                )}
+                                                                            onOpenDeleteConfirm={() =>
+                                                                                openDeleteConfirm(
                                                                                     quotePreviewPost,
                                                                                 )}
-                                                                                onpointerdown={(
-                                                                                    event,
-                                                                                ) =>
-                                                                                    captureBroadcastPointerPosition(
-                                                                                        quotePreviewPost,
-                                                                                        event,
-                                                                                    )}
-                                                                                onSelect={(
-                                                                                    event,
-                                                                                ) =>
-                                                                                    void handleBroadcastPost(
-                                                                                        quotePreviewPost,
-                                                                                        event,
-                                                                                    )}
-                                                                            >
-                                                                                <div
-                                                                                    class="broadcast-icon svg-icon"
-                                                                                    aria-hidden="true"
-                                                                                ></div>
-                                                                                <span
-                                                                                >
-                                                                                    {getBroadcastLabel()}
-                                                                                </span>
-                                                                            </DropdownMenu.Item>
-                                                                        {/if}
-                                                                        {#if canDeletePost(quotePreviewPost)}
-                                                                            <DropdownMenu.Separator
-                                                                                class="post-history-menu-separator"
-                                                                            />
-                                                                            <DropdownMenu.Item
-                                                                                class="menu-action-button menu-action-button-danger"
-                                                                                disabled={isDeletionSending(
-                                                                                    quotePreviewPost,
-                                                                                )}
-                                                                                onSelect={() =>
-                                                                                    openDeleteConfirm(
-                                                                                        quotePreviewPost,
-                                                                                    )}
-                                                                            >
-                                                                                <div
-                                                                                    class="trash-icon svg-icon"
-                                                                                    aria-hidden="true"
-                                                                                ></div>
-                                                                                <span
-                                                                                >
-                                                                                    {isDeletionSending(
-                                                                                        quotePreviewPost,
-                                                                                    )
-                                                                                        ? $_(
-                                                                                              "postHistory.deleteSending",
-                                                                                          )
-                                                                                        : $_(
-                                                                                              "postHistory.delete",
-                                                                                          )}
-                                                                                </span>
-                                                                            </DropdownMenu.Item>
-                                                                        {/if}
+                                                                        />
                                                                     {/snippet}
                                                                 </PostHistoryActionMenu>
                                                             {/if}
@@ -2536,116 +2393,47 @@
                                                                 </span>
                                                             </DropdownMenu.Item>
                                                         {/if}
-                                                        <DropdownMenu.Item
-                                                            class="menu-action-button"
-                                                            onpointerdown={(
-                                                                event,
-                                                            ) =>
+                                                        <PostHistoryRecordActionItems
+                                                            order="standard"
+                                                            copyFailed={copyNeventUi.copyState[
+                                                                post.eventId
+                                                            ] === "failed"}
+                                                            showBroadcast={canBroadcastPost(
+                                                                post,
+                                                            )}
+                                                            broadcastSending={isBroadcastSending(
+                                                                post,
+                                                            )}
+                                                            showDelete={canDeletePost(post)}
+                                                            showDeleteSeparator={true}
+                                                            deletionSending={isDeletionSending(
+                                                                post,
+                                                            )}
+                                                            onCopyPointerDown={(event) =>
                                                                 copyNeventUi.captureCopyPointerPosition(
                                                                     post,
                                                                     event,
                                                                 )}
-                                                            onSelect={(event) =>
+                                                            onCopyNevent={(event) =>
                                                                 void copyNeventUi.handleCopyNevent(
                                                                     post,
                                                                     event,
                                                                 )}
-                                                        >
-                                                            <div
-                                                                class="copy-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {copyNeventUi
-                                                                    .copyState[
-                                                                    post.eventId
-                                                                ] === "failed"
-                                                                    ? $_(
-                                                                          "postHistory.copyFailed",
-                                                                      )
-                                                                    : $_(
-                                                                          "postHistory.copyNevent",
-                                                                      )}
-                                                            </span>
-                                                        </DropdownMenu.Item>
-                                                        <DropdownMenu.Item
-                                                            class="menu-action-button"
-                                                            onSelect={() =>
-                                                                openRawJson(
-                                                                    post.rawEvent,
-                                                                )}
-                                                        >
-                                                            <div
-                                                                class="raw-json-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {$_(
-                                                                    "postHistory.rawJson",
-                                                                )}
-                                                            </span>
-                                                        </DropdownMenu.Item>
-                                                        {#if canBroadcastPost(post)}
-                                                            <DropdownMenu.Item
-                                                                class="menu-action-button"
-                                                                disabled={isBroadcastSending(
+                                                            onShowRawJson={() =>
+                                                                openRawJson(post.rawEvent)}
+                                                            onBroadcastPointerDown={(event) =>
+                                                                captureBroadcastPointerPosition(
                                                                     post,
+                                                                    event,
                                                                 )}
-                                                                onpointerdown={(
-                                                                    event,
-                                                                ) =>
-                                                                    captureBroadcastPointerPosition(
-                                                                        post,
-                                                                        event,
-                                                                    )}
-                                                                onSelect={(
-                                                                    event,
-                                                                ) =>
-                                                                    void handleBroadcastPost(
-                                                                        post,
-                                                                        event,
-                                                                    )}
-                                                            >
-                                                                <div
-                                                                    class="broadcast-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {getBroadcastLabel()}
-                                                                </span>
-                                                            </DropdownMenu.Item>
-                                                        {/if}
-                                                        {#if canDeletePost(post)}
-                                                            <DropdownMenu.Separator
-                                                                class="post-history-menu-separator"
-                                                            />
-                                                            <DropdownMenu.Item
-                                                                class="menu-action-button menu-action-button-danger"
-                                                                disabled={isDeletionSending(
+                                                            onBroadcastPost={(event) =>
+                                                                void handleBroadcastPost(
                                                                     post,
+                                                                    event,
                                                                 )}
-                                                                onSelect={() =>
-                                                                    openDeleteConfirm(
-                                                                        post,
-                                                                    )}
-                                                            >
-                                                                <div
-                                                                    class="trash-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {isDeletionSending(
-                                                                        post,
-                                                                    )
-                                                                        ? $_(
-                                                                              "postHistory.deleteSending",
-                                                                          )
-                                                                        : $_(
-                                                                              "postHistory.delete",
-                                                                          )}
-                                                                </span>
-                                                            </DropdownMenu.Item>
-                                                        {/if}
+                                                            onOpenDeleteConfirm={() =>
+                                                                openDeleteConfirm(post)}
+                                                        />
                                                     {/snippet}
                                                 </PostHistoryActionMenu>
                                             {/snippet}
