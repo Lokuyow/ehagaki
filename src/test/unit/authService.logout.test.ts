@@ -9,7 +9,10 @@ vi.mock('../../lib/accountDataReset', () => ({
 import { AuthService } from '../../lib/authService';
 import { resetManagedAccountData } from '../../lib/accountDataReset';
 import { nip46Service } from '../../lib/nip46Service';
-import { parentClientAuthService } from '../../lib/parentClientAuthService';
+import {
+    parentClientAuthService,
+    ParentClientAuthService,
+} from '../../lib/parentClientAuthService';
 import { createMockAccountManager, createMockDependencies } from './authServiceTestUtils';
 
 describe('AuthService.logoutAccount', () => {
@@ -22,6 +25,7 @@ describe('AuthService.logoutAccount', () => {
         vi.mocked(parentClientAuthService.disconnect).mockReset();
         vi.mocked(parentClientAuthService.isConnected).mockReset().mockReturnValue(false);
         vi.mocked(parentClientAuthService.getUserPubkey).mockReset().mockReturnValue(null);
+        vi.mocked(ParentClientAuthService.clearSession).mockReset();
         mockDependencies = createMockDependencies();
         authService = new AuthService(mockDependencies);
         mockAccountManager = createMockAccountManager({
@@ -97,6 +101,53 @@ describe('AuthService.logoutAccount', () => {
 
         expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(false);
     });
+
+    it.each([true, false])(
+        'Parent client session削除失敗後もcleanupとregistry削除を継続する（notify=%s）',
+        async (notifyParentClient) => {
+            const events: string[] = [];
+            mockAccountManager.getAccountType.mockReturnValue('parentClient');
+            vi.mocked(parentClientAuthService.disconnect).mockImplementation((notify) => {
+                events.push(`disconnect:${notify}`);
+            });
+            vi.mocked(ParentClientAuthService.clearSession).mockImplementation(() => {
+                events.push('clearSession');
+                throw new Error('session deletion failed');
+            });
+            mockAccountManager.cleanupAccountData.mockImplementation(async () => {
+                events.push('cleanup');
+            });
+            mockAccountManager.removeAccount.mockImplementation(() => {
+                events.push('removeAccount');
+                return 'next-pubkey';
+            });
+
+            await expect(authService.logoutAccount('pubkey1', { notifyParentClient }))
+                .resolves.toBe('next-pubkey');
+
+            expect(events).toEqual([
+                `disconnect:${notifyParentClient}`,
+                'clearSession',
+                'cleanup',
+                'removeAccount',
+            ]);
+            expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(notifyParentClient);
+            expect(mockAccountManager.cleanupAccountData).toHaveBeenCalledWith('pubkey1');
+            expect(mockAccountManager.removeAccount).toHaveBeenCalledWith('pubkey1');
+            expect(mockDependencies.console?.error).toHaveBeenCalledWith(
+                'アカウントデータ削除に失敗しました',
+                {
+                    stage: 'local-storage',
+                    target: 'parent-client-session',
+                    reason: 'unexpected',
+                },
+            );
+            expect(mockDependencies.console?.error).not.toHaveBeenCalledWith(
+                expect.anything(),
+                expect.any(Error),
+            );
+        },
+    );
 
     it('NIP-46 disconnect errorでもlogoutを完了する', async () => {
         const { nip46Service } = await import('../../lib/nip46Service');

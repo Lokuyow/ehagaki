@@ -186,7 +186,15 @@ export class AuthService {
             const accountType = this.accountManager?.getAccountType(pubkeyHex);
             if (accountType === 'parentClient' || isRuntimeParentClientAccount) {
                 this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
-                ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
+                try {
+                    ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
+                } catch {
+                    this.runtime.console.error('アカウントデータ削除に失敗しました', {
+                        stage: 'local-storage',
+                        target: 'parent-client-session',
+                        reason: 'unexpected',
+                    });
+                }
             } else if (accountType === 'nip46') {
                 try {
                     await this.runtime.nip46Svc.disconnect();
