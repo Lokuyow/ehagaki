@@ -127,6 +127,9 @@ describe("PostHistoryInboundInteractionsSyncService", () => {
             relayConfig: { "wss://read.example.com/": { read: true, write: false } },
         }).promise;
 
+        expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
+            on: { relays: ["wss://read.example.com/"] },
+        });
         expect(rxNostrMock.emittedFilters).toEqual([{
             kinds: [1, 7, 42],
             "#p": [OWNER_PUBKEY],

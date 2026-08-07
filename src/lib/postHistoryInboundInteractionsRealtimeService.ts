@@ -1,6 +1,6 @@
 import { createRxForwardReq, type RxNostr } from "rx-nostr";
-import { FALLBACK_RELAYS } from "./constants";
 import { classifyPostHistoryInboundInteraction } from "./postHistoryInboundInteractionClassifier";
+import { resolvePostHistoryRelayUrls } from "./postHistoryRelayResolver";
 import type {
     PostHistoryInboundDirectReplyCandidate,
     PostHistoryInboundReplyReconciliationResult,
@@ -78,7 +78,7 @@ export class PostHistoryInboundInteractionsRealtimeService {
         let active = true;
         let subscription: SubscriptionLike | undefined;
         let workQueue: Promise<void> = Promise.resolve();
-        const relayUrls = this.resolveRelayUrls(
+        const relayUrls = resolvePostHistoryRelayUrls(
             params.relayConfig,
             normalizeRelayLimit(params.relayLimit),
         );
@@ -283,21 +283,6 @@ export class PostHistoryInboundInteractionsRealtimeService {
         }
     }
 
-    private resolveRelayUrls(relayConfig: RelayConfig | null | undefined, relayLimit: number): string[] {
-        const configuredRelays = relayConfig
-            ? [
-                ...RelayConfigUtils.extractReadRelays(relayConfig),
-                ...RelayConfigUtils.extractWriteRelays(relayConfig),
-            ]
-            : [];
-        const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(configuredRelays, {
-            limit: relayLimit,
-        });
-
-        return relayUrls.length > 0
-            ? relayUrls
-            : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS, { limit: relayLimit });
-    }
 }
 
 export const postHistoryInboundInteractionsRealtimeService =

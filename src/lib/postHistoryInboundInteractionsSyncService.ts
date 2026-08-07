@@ -1,5 +1,4 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
-import { FALLBACK_RELAYS } from "./constants";
 import {
     classifyPostHistoryInboundInteraction,
     type PostHistoryInboundInteractionClassification,
@@ -9,6 +8,7 @@ import type {
     PostHistoryInboundReplyReconciliationResult,
 } from "./postHistoryInboundReplyReconciliationService";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
+import { resolvePostHistoryRelayUrls } from "./postHistoryRelayResolver";
 import {
     buildPostHistoryDirectReplyParentContext,
     validatePostHistoryDirectReplyRelation,
@@ -202,7 +202,7 @@ export class PostHistoryInboundInteractionsSyncService {
             const state = await this.syncStateRepository.get(params.ownerPubkeyHex);
             const limit = resolveLimit(params.reason, params.limit);
             const timeoutMs = resolveTimeoutMs(params.reason, params.timeoutMs);
-            const relayUrls = this.resolveRelayUrls(
+            const relayUrls = resolvePostHistoryRelayUrls(
                 params.relayConfig,
                 resolveRelayLimit(params.reason, params.relayLimit),
             );
@@ -588,22 +588,6 @@ export class PostHistoryInboundInteractionsSyncService {
             0,
             Math.floor(this.now() / 1000) - POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_LOOKBACK_SECONDS,
         );
-    }
-
-    private resolveRelayUrls(relayConfig: RelayConfig | null | undefined, relayLimit: number): string[] {
-        const configuredRelays = relayConfig
-            ? [
-                ...RelayConfigUtils.extractReadRelays(relayConfig),
-                ...RelayConfigUtils.extractWriteRelays(relayConfig),
-            ]
-            : [];
-        const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(configuredRelays, {
-            limit: relayLimit,
-        });
-
-        return relayUrls.length > 0
-            ? relayUrls
-            : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS, { limit: relayLimit });
     }
 
     private handlePacket(
