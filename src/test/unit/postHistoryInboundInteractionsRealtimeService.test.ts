@@ -118,6 +118,9 @@ describe("PostHistoryInboundInteractionsRealtimeService", () => {
         observer.next({ event: directReply, from: "wss://relay.example.com" });
         await subscription.waitForIdle();
 
+        expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
+            on: { relays: ["wss://read.example.com/"] },
+        });
         expect(rxNostrMock.emittedFilters).toEqual([{
             kinds: [1, 7, 42],
             "#p": [OWNER_PUBKEY],

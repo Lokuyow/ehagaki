@@ -74,6 +74,9 @@ describe("PostHistoryAuthoredPostsRealtimeService", () => {
         observer.next({ event, from: "wss://relay.example.com" });
         await subscription.waitForIdle();
 
+        expect(rxNostrMock.use).toHaveBeenCalledWith(expect.anything(), {
+            on: { relays: ["wss://read.example.com/"] },
+        });
         expect(rxNostrMock.emittedFilters).toEqual([{
             authors: [OWNER_PUBKEY],
             kinds: [1, 42],
