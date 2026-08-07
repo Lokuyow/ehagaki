@@ -1,12 +1,12 @@
-import type { PostHistoryJsonlExportResult } from "./postHistoryJsonlExportService";
+import type {
+    PostHistoryJsonlExportProgress,
+    PostHistoryJsonlExportResult,
+} from "./postHistoryJsonlExportEngine";
 
-export type PostHistoryJsonlExportPhase = "loading" | "verifying" | "creating";
-
-export type PostHistoryJsonlExportProgress = {
-    phase: PostHistoryJsonlExportPhase;
-    processed?: number;
-    total?: number;
-};
+export type {
+    PostHistoryJsonlExportProgress,
+    PostHistoryJsonlExportResult,
+} from "./postHistoryJsonlExportEngine";
 
 export type PostHistoryJsonlExportWorkerRequest = {
     type: "export";
