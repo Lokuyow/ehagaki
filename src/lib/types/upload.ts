@@ -44,6 +44,7 @@ export interface FileUploadResponse {
     success: boolean;
     url?: string;
     error?: string;
+    errorCode?: UploadErrorCode;
     filename?: string;
     sizeInfo?: FileSizeInfo;
     nip94?: Record<string, string>;
@@ -51,6 +52,14 @@ export interface FileUploadResponse {
     uploadProtocol?: UploadProtocol;
     aborted?: boolean;
 }
+
+export type UploadErrorCode =
+    | "nip96InvalidDestinationUrl"
+    | "nip96InvalidProcessingUrl"
+    | "nip96InvalidMediaUrl"
+    | "nip96InsecureMediaUrl"
+    | "nip96MediaAvailabilityTimeout"
+    | "nip96MediaAvailabilityUnverified";
 
 export type UploadProtocol = "blossom" | "nip96" | "custom-http";
 export type UploadPresetId =

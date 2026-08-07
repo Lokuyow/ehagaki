@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsUploadDestinationSection from "../../components/settings/SettingsUploadDestinationSection.svelte";
+import type { UploadDestination } from "../../lib/types";
 
 let currentLocale = "ja";
 
@@ -37,6 +38,7 @@ const translations = {
             uploadDestinationDisabled: "無効",
             uploadDestinationMimeCollapse: "折りたたむ",
             uploadDestinationMimeExpand: "すべて表示",
+            uploadDestinationInvalidNip96Url: "NIP-96 のURLは絶対HTTP(S) URLである必要があります。",
             upload_destination: "アップロード先",
         },
         postComponent: {
@@ -74,6 +76,7 @@ const translations = {
             uploadDestinationDisabled: "Disabled",
             uploadDestinationMimeCollapse: "Collapse",
             uploadDestinationMimeExpand: "Show all",
+            uploadDestinationInvalidNip96Url: "The NIP-96 URL must be an absolute HTTP(S) URL.",
             upload_destination: "Upload destinations",
         },
         postComponent: {
@@ -154,6 +157,37 @@ async function openAddForm(): Promise<void> {
     await tick();
     fireEvent.click(screen.getByRole("button", { name: addLabel }));
     await tick();
+}
+
+function setExistingNip96Destination(): void {
+    const destination: UploadDestination = {
+            id: "existing-nip96",
+            pubkeyHex: null,
+            name: "share.yabu.me",
+            protocol: "nip96",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
+            presetId: "share-yabu-me",
+            isDefault: true,
+            enabled: true,
+            createdAt: 1,
+            updatedAt: 1,
+            capabilities: {
+                maxUploadSize: null,
+                supportedMimeTypes: [],
+                supportsDelete: false,
+                supportsList: false,
+                supportsMirror: false,
+                supportsMediaOptimization: false,
+                authRequired: true,
+                source: "preset",
+            },
+            auth: { type: "nip98" },
+            schemaVersion: 1,
+    };
+    (mockUploadDestinationStore.value as unknown as { destinations: UploadDestination[] }).destinations = [
+        destination,
+    ];
 }
 
 describe("SettingsUploadDestinationSection", () => {
@@ -250,5 +284,78 @@ describe("SettingsUploadDestinationSection", () => {
         const japaneseClearButton = screen.getByRole("button", { name: "入力内容を消去" });
         expect(japaneseClearButton).toBeTruthy();
         expect(japaneseInput).toBeInstanceOf(HTMLInputElement);
+    });
+
+    it("rejects an invalid custom NIP-96 URL before saving", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const input = screen.getByLabelText("URL") as HTMLInputElement;
+        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
+
+        await fireEvent.change(protocolSelect, { target: { value: "nip96" } });
+        await fireEvent.input(input, { target: { value: "//example.com/upload" } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(mockUploadDestinationStore.save).not.toHaveBeenCalled();
+        expect(screen.getByRole("alert").textContent).toContain(
+            "NIP-96 のURLは絶対HTTP(S) URLである必要があります。",
+        );
+    });
+
+    it("preserves a manually selected protocol when editing a preset destination", async () => {
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection);
+        await tick();
+        fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await tick();
+        fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await tick();
+
+        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
+        expect(protocolSelect.value).toBe("nip96");
+        await fireEvent.change(protocolSelect, { target: { value: "custom-http" } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(mockUploadDestinationStore.save).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: "existing-nip96",
+                protocol: "custom-http",
+                presetId: "share-yabu-me",
+            }),
+        );
+    });
+
+    it("clears the NIP-96 validation error when another protocol is selected", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const input = screen.getByLabelText("URL") as HTMLInputElement;
+        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
+        await fireEvent.change(protocolSelect, { target: { value: "nip96" } });
+        await fireEvent.input(input, { target: { value: "relative/upload" } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+        expect(screen.getByRole("alert")).toBeTruthy();
+
+        await fireEvent.change(protocolSelect, { target: { value: "blossom" } });
+        expect(screen.queryByRole("alert")).toBeNull();
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(mockUploadDestinationStore.save).toHaveBeenCalledWith(
+            expect.objectContaining({ protocol: "blossom" }),
+        );
+    });
+
+    it("keeps preset protocol and URL when a preset is selected", async () => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        const presetSelect = screen.getByLabelText("プリセット") as HTMLSelectElement;
+        const protocolSelect = screen.getByLabelText("Protocol") as HTMLSelectElement;
+        const input = screen.getByLabelText("URL") as HTMLInputElement;
+        await fireEvent.change(presetSelect, { target: { value: "share-yabu-me" } });
+
+        expect(protocolSelect.value).toBe("nip96");
+        expect(input.value).toBe("https://share.yabu.me/api/v2/media");
     });
 });

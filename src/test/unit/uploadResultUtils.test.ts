@@ -17,6 +17,18 @@ describe('buildUploadFailureMessage', () => {
         ], 'fallback')).toBe('fallback');
     });
 
+    it('単一のNIP-96 policy error は呼び出し元の翻訳を使う', () => {
+        expect(buildUploadFailureMessage([
+            {
+                success: false,
+                error: 'The media URL is invalid',
+                errorCode: 'nip96InvalidMediaUrl',
+            },
+        ], 'fallback', (errorCode) => `translated:${errorCode}`)).toBe(
+            'translated:nip96InvalidMediaUrl',
+        );
+    });
+
     it('複数失敗では件数ベースのメッセージを返す', () => {
         expect(buildUploadFailureMessage([
             { success: false, error: 'a' },

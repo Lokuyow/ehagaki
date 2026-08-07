@@ -590,10 +590,11 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
 
     if (result.failedResults?.length) {
         showUploadErrorMessage(
-            result.errorMessage || buildUploadFailureMessage(
+            buildUploadFailureMessage(
                 result.failedResults,
                 getUploadFailedText("postComponent.upload_failed"),
-            ),
+                (errorCode) => getUploadFailedText(`postComponent.${errorCode}`),
+            ) || result.errorMessage,
             5000,
             { updateUploadState }
         );

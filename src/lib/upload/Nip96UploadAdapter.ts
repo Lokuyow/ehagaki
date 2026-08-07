@@ -1,5 +1,15 @@
 import { UPLOAD_POLLING_CONFIG } from "../constants";
-import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
+import {
+    UploadedMediaAvailabilityError,
+    waitForUploadedMediaAvailability,
+} from "./uploadedMediaAvailability";
+import {
+    Nip96UrlPolicyError,
+    canonicalizeNip96UploadUrl,
+    validateNip96DiscoveryUrl,
+    validateNip96MediaUrl,
+    validateNip96ProcessingUrl,
+} from "./nip96UrlPolicy";
 import type {
     FileUploadResponse,
     UploadAdapterUploadParams,
@@ -8,6 +18,33 @@ import type {
     UploadDestinationCapabilities,
     UploadProtocolAdapter,
 } from "../types";
+
+function toNip96UploadError(
+    error: unknown,
+    context: "destination" | "processing" | "media",
+): Pick<FileUploadResponse, "error" | "errorCode"> {
+    if (error instanceof Nip96UrlPolicyError) {
+        const errorCode = context === "destination"
+            ? "nip96InvalidDestinationUrl"
+            : context === "processing"
+                ? "nip96InvalidProcessingUrl"
+                : error.code === "insecure-media-url"
+                    ? "nip96InsecureMediaUrl"
+                    : "nip96InvalidMediaUrl";
+        return { error: error.message, errorCode };
+    }
+
+    if (error instanceof UploadedMediaAvailabilityError) {
+        return {
+            error: error.message,
+            errorCode: error.reason === "inconclusive"
+                ? "nip96MediaAvailabilityUnverified"
+                : "nip96MediaAvailabilityTimeout",
+        };
+    }
+
+    return { error: error instanceof Error ? error.message : String(error) };
+}
 
 function getNip96UploadUrl(destination: UploadDestination): string {
     return destination.resolvedUploadUrl || destination.serverUrl;
@@ -29,7 +66,7 @@ function parseNip94Tags(data: any): Record<string, string> {
 
 async function pollUploadStatus(params: {
     processingUrl: string;
-    authHeader: string;
+    authHeader?: string;
     fetch: typeof fetch;
     maxWaitTime?: number;
 }): Promise<any> {
@@ -43,7 +80,10 @@ async function pollUploadStatus(params: {
 
         const response = await params.fetch(params.processingUrl, {
             method: "GET",
-            headers: { Authorization: params.authHeader },
+            ...(params.authHeader ? { headers: { Authorization: params.authHeader } } : {}),
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
+            redirect: "error",
         });
         if (response.status === 404) {
             await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
@@ -101,7 +141,7 @@ function parseNip96Capabilities(config: any, now: number): UploadDestinationCapa
         supportsList: false,
         supportsMirror: false,
         supportsMediaOptimization: false,
-        authRequired: config?.is_nip98_required !== false,
+        authRequired: config?.plans?.free?.is_nip98_required !== false,
         lastCheckedAt: now,
         source: "protocol-discovery",
         raw: config,
@@ -112,7 +152,17 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "nip96" as const;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
-        const finalUrl = getNip96UploadUrl(params.destination);
+        let uploadUrl;
+        try {
+            uploadUrl = canonicalizeNip96UploadUrl(getNip96UploadUrl(params.destination));
+        } catch (error) {
+            return {
+                success: false,
+                ...toNip96UploadError(error, "destination"),
+            };
+        }
+
+        const finalUrl = uploadUrl.url;
         const authHeader = await params.authService.buildAuthHeader(finalUrl, "POST");
         const response = await params.fetch(finalUrl, {
             method: "POST",
@@ -138,14 +188,20 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
 
         if ((response.status === 200 || response.status === 202) && data.processing_url) {
             try {
-                const processingAuthToken = await params.authService.buildAuthHeader(data.processing_url, "GET");
+                const processingUrl = validateNip96ProcessingUrl({
+                    rawUrl: data.processing_url,
+                    trustedUploadUrl: uploadUrl,
+                });
+                const processingAuthToken = processingUrl.sameOrigin
+                    ? await params.authService.buildAuthHeader(processingUrl.url, "GET")
+                    : undefined;
                 data = await pollUploadStatus({
-                    processingUrl: data.processing_url,
+                    processingUrl: processingUrl.url,
                     authHeader: processingAuthToken,
                     fetch: params.fetch,
                 });
             } catch (error) {
-                return { success: false, error: error instanceof Error ? error.message : String(error) };
+                return { success: false, ...toNip96UploadError(error, "processing") };
             }
         }
 
@@ -154,20 +210,25 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
             const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === "url");
             if (urlTag?.[1]) {
                 try {
+                    const mediaUrl = validateNip96MediaUrl({
+                        rawUrl: urlTag[1],
+                        trustedUploadUrl: uploadUrl,
+                    });
+                    parsedNip94.url = mediaUrl.url;
                     await waitForUploadedMediaAvailability({
-                        url: urlTag[1],
+                        url: mediaUrl.url,
                         mimeType: params.file.type,
                         fetch: params.fetch,
                     });
                 } catch (error) {
                     return {
                         success: false,
-                        error: error instanceof Error ? error.message : String(error),
+                        ...toNip96UploadError(error, "media"),
                         nip94: Object.keys(parsedNip94).length ? parsedNip94 : undefined,
                     };
                 }
 
-                return { success: true, url: urlTag[1], nip94: parsedNip94 };
+                return { success: true, url: parsedNip94.url, nip94: parsedNip94 };
             }
         }
 
@@ -182,22 +243,84 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
         destination: UploadDestination;
         fetch: typeof fetch;
     }): Promise<UploadConnectionTestResult> {
-        const baseUrl = params.destination.serverUrl.replace(/\/api\/.*$/, "");
-        const configUrl = new URL("/.well-known/nostr/nip96.json", baseUrl).toString();
-        const response = await params.fetch(configUrl, { method: "GET" });
-        if (!response.ok) {
+        try {
+            const uploadUrl = canonicalizeNip96UploadUrl(params.destination.serverUrl);
+            const { config, status } = await fetchNip96DiscoveryConfig({
+                trustedUploadUrl: uploadUrl,
+                fetch: params.fetch,
+            });
+            return {
+                success: true,
+                status,
+                capabilities: parseNip96Capabilities(config, Date.now()),
+            };
+        } catch (error) {
             return {
                 success: false,
-                status: response.status,
-                message: `NIP-96 config request failed: ${response.status}`,
+                message: error instanceof Error ? error.message : String(error),
             };
         }
-
-        const config = await response.json();
-        return {
-            success: true,
-            status: response.status,
-            capabilities: parseNip96Capabilities(config, Date.now()),
-        };
     }
+}
+
+async function fetchNip96DiscoveryConfig(params: {
+    trustedUploadUrl: ReturnType<typeof canonicalizeNip96UploadUrl>;
+    fetch: typeof fetch;
+}): Promise<{ config: any; status: number }> {
+    const visitedConfigUrls = new Set<string>();
+    let discoveryServerUrl = params.trustedUploadUrl;
+
+    for (let depth = 0; depth <= 3; depth += 1) {
+        const configUrl = new URL("/.well-known/nostr/nip96.json", discoveryServerUrl.url).toString();
+        if (visitedConfigUrls.has(configUrl)) {
+            throw new Error("NIP-96 discovery delegation loop detected");
+        }
+        visitedConfigUrls.add(configUrl);
+
+        const response = await params.fetch(configUrl, {
+            method: "GET",
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
+            redirect: "error",
+        });
+        if (!response.ok) {
+            throw new Error(`NIP-96 config request failed: ${response.status}`);
+        }
+
+        let config: any;
+        try {
+            config = await response.json();
+        } catch {
+            throw new Error("Could not parse NIP-96 config response");
+        }
+
+        if (!config || typeof config !== "object") {
+            throw new Error("Invalid NIP-96 config response");
+        }
+
+        const delegatedToUrl = typeof config.delegated_to_url === "string"
+            ? config.delegated_to_url.trim()
+            : "";
+        if (delegatedToUrl) {
+            if (depth === 3) {
+                throw new Error("NIP-96 discovery delegation limit exceeded");
+            }
+            discoveryServerUrl = validateNip96DiscoveryUrl({
+                rawUrl: delegatedToUrl,
+                trustedUploadUrl: params.trustedUploadUrl,
+            });
+            continue;
+        }
+
+        if (typeof config.api_url !== "string" || !config.api_url.trim()) {
+            throw new Error("NIP-96 config is missing api_url");
+        }
+        validateNip96DiscoveryUrl({
+            rawUrl: config.api_url,
+            trustedUploadUrl: params.trustedUploadUrl,
+        });
+        return { config, status: response.status };
+    }
+
+    throw new Nip96UrlPolicyError("invalid-processing-url", "Invalid NIP-96 discovery response");
 }
