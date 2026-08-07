@@ -9,6 +9,26 @@ import { createMockConsole, type MockConsole, MockStorage } from '../helpers';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 import { createMockWindow } from '../embedWindowTestUtils';
 
+function dispatchParentMessage(
+    listeners: Map<string, (event: MessageEvent) => void>,
+    parent: { postMessage: ReturnType<typeof vi.fn> },
+    type: string,
+    requestId: string,
+    payload: unknown,
+): void {
+    listeners.get('message')?.({
+        data: {
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: 1,
+            type,
+            requestId,
+            payload,
+        },
+        origin: 'https://parent.example.com',
+        source: parent,
+    } as unknown as MessageEvent);
+}
+
 describe('ParentClientAuthService', () => {
     let mockConsole: MockConsole;
 
@@ -99,6 +119,156 @@ describe('ParentClientAuthService', () => {
             id: 'signed-event',
             sig: 'signature',
         });
+    });
+
+    it('auth pending への rpc.result は protocol error で reject し、後続の auth.result を無視する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        dispatchParentMessage(listeners, parent, 'rpc.result', authRequest.requestId, {
+            result: {
+                id: 'wrong-family-result',
+                sig: 'wrong-family-signature',
+            },
+        });
+
+        await expect(connectPromise).rejects.toThrow('parent_client_invalid_response');
+        expect(service.isConnected()).toBe(false);
+
+        dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+            pubkeyHex: 'ab'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+
+        expect(service.isConnected()).toBe(false);
+    });
+
+    it('auth pending への rpc.error は error code/message を伝播せず cleanup する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        dispatchParentMessage(listeners, parent, 'rpc.error', authRequest.requestId, {
+            code: 'wrong_rpc_code',
+            message: 'wrong rpc message',
+        });
+
+        await expect(connectPromise).rejects.toThrow('parent_client_invalid_response');
+        expect(service.isConnected()).toBe(false);
+
+        dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+            pubkeyHex: 'cd'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+
+        expect(service.isConnected()).toBe(false);
+    });
+
+    it('rpc pending への auth.result は protocol error で reject し、後続の rpc.result を無視する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+            pubkeyHex: 'ef'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+        await connectPromise;
+        const sessionBeforeRpc = service.getSessionData();
+
+        const rpcPromise = service.signEvent({ kind: 1, content: 'hello', tags: [] });
+        const rpcRequest = vi.mocked(parent.postMessage).mock.calls[2][0] as any;
+        dispatchParentMessage(listeners, parent, 'auth.result', rpcRequest.requestId, {
+            pubkeyHex: '12'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+
+        await expect(rpcPromise).rejects.toThrow('parent_client_invalid_response');
+        expect(service.getSessionData()).toEqual(sessionBeforeRpc);
+
+        dispatchParentMessage(listeners, parent, 'rpc.result', rpcRequest.requestId, {
+            result: {
+                id: 'late-result',
+                sig: 'late-signature',
+            },
+        });
+
+        expect(service.getSessionData()).toEqual(sessionBeforeRpc);
+    });
+
+    it('rpc pending への auth.error は error code/message を伝播せず cleanup する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+            pubkeyHex: '34'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+        await connectPromise;
+
+        const rpcPromise = service.signEvent({ kind: 1, content: 'hello', tags: [] });
+        const rpcRequest = vi.mocked(parent.postMessage).mock.calls[2][0] as any;
+        dispatchParentMessage(listeners, parent, 'auth.error', rpcRequest.requestId, {
+            code: 'wrong_auth_code',
+            message: 'wrong auth message',
+        });
+
+        await expect(rpcPromise).rejects.toThrow('parent_client_invalid_response');
+        expect(service.isConnected()).toBe(true);
+
+        dispatchParentMessage(listeners, parent, 'rpc.result', rpcRequest.requestId, {
+            result: {
+                id: 'late-result',
+                sig: 'late-signature',
+            },
+        });
+
+        expect(service.isConnected()).toBe(true);
+    });
+
+    it('rpc.error は同familyの error code/message を維持する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        dispatchParentMessage(listeners, parent, 'auth.result', authRequest.requestId, {
+            pubkeyHex: '56'.repeat(32),
+            capabilities: ['signEvent'],
+        });
+        await connectPromise;
+
+        const rpcPromise = service.signEvent({ kind: 1, content: 'hello', tags: [] });
+        const rpcRequest = vi.mocked(parent.postMessage).mock.calls[2][0] as any;
+        dispatchParentMessage(listeners, parent, 'rpc.error', rpcRequest.requestId, {
+            code: 'rpc_failed',
+            message: 'rpc failed',
+        });
+
+        await expect(rpcPromise).rejects.toThrow('rpc failed');
+    });
+
+    it('response 未着時は通常どおり timeout で reject する', async () => {
+        vi.useFakeTimers();
+        try {
+            const { windowObj } = createMockWindow();
+            const service = new ParentClientAuthService(windowObj, mockConsole);
+            const connectPromise = service.connect({ timeoutMs: 100 });
+            const timeoutExpectation = expect(connectPromise).rejects.toThrow('parent_client_timeout');
+
+            await vi.advanceTimersByTimeAsync(100);
+
+            await timeoutExpectation;
+            expect(service.isConnected()).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('capabilities 未指定時は signEvent のみを既定要求する', () => {
