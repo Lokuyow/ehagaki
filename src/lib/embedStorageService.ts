@@ -3,7 +3,6 @@ import {
     EMBED_MESSAGE_VERSION,
     embedMessageRequiresRequestId,
     getParentOriginFromSearch,
-    isEmbedMessageEnvelope,
     isValidEmbedRequestId,
     type EmbedStorageErrorPayload,
     type EmbedStorageGetPayload,
@@ -11,6 +10,7 @@ import {
     type EmbedStorageResultPayload,
     type EmbedStorageSetPayload,
 } from "./embedProtocol";
+import { getTrustedParentEmbedMessage } from "./embedMessageTrustGate";
 import {
     EMBED_STORAGE_KEYS,
     filterAllowedEmbedStorageKeys,
@@ -248,12 +248,12 @@ export class EmbedStorageService {
     }
 
     private handleMessage = (event: MessageEvent): void => {
-        if (!this.windowObj) return;
-        if (!isEmbedMessageEnvelope(event.data)) return;
-        if (event.source !== this.windowObj.parent) return;
-        if (this.trustedParentOrigin && event.origin !== this.trustedParentOrigin) return;
-
-        const message = event.data;
+        const message = getTrustedParentEmbedMessage(
+            event,
+            this.windowObj,
+            this.trustedParentOrigin,
+        );
+        if (!message) return;
         if (message.type !== "storage.result" && message.type !== "storage.error") {
             return;
         }

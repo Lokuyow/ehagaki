@@ -92,6 +92,50 @@ describe('EmbedStorageService', () => {
         });
     });
 
+    it('sourceまたはenvelopeが不正なresponseではpendingを消費しない', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedStorageService(windowObj, mockConsole);
+        service.initialize();
+
+        const pending = service.get([STORAGE_KEYS.THEME_MODE]);
+        const sentMessage = parent.postMessage.mock.calls[0][0];
+        const response = {
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'storage.result',
+            requestId: sentMessage.requestId,
+            payload: {
+                timestamp: Date.now(),
+                values: { [STORAGE_KEYS.THEME_MODE]: 'dark' },
+            },
+        };
+
+        listeners.get('message')?.({
+            data: response,
+            origin: 'https://parent.example.com',
+            source: {},
+        } as unknown as MessageEvent);
+        listeners.get('message')?.({
+            data: { ...response, namespace: 'other.embed' },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+        listeners.get('message')?.({
+            data: { ...response, type: 'settings.set' },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+        listeners.get('message')?.({
+            data: response,
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(pending).resolves.toMatchObject({
+            values: { [STORAGE_KEYS.THEME_MODE]: 'dark' },
+        });
+    });
+
     it('localStorage の値と削除状態を親へ保存要求する', () => {
         const { windowObj, parent } = createMockWindow();
         const storage = new MockStorage();

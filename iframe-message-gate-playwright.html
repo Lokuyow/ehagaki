@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iframe Message Gate Playwright Harness</title>
+</head>
+<body>
+    <output id="harness-ready" aria-label="Harness ready">false</output>
+    <output id="storage-request-id" aria-label="Storage request ID"></output>
+    <output id="sibling-send-status" aria-label="Sibling send status"></output>
+    <div id="frames"></div>
+    <script type="module" src="/src/test/e2e/iframeMessageGateHarnessEntry.ts"></script>
+</body>
+</html>

@@ -3,7 +3,6 @@ import {
     EMBED_MESSAGE_VERSION,
     embedMessageRequiresRequestId,
     getParentOriginFromSearch,
-    isEmbedMessageEnvelope,
     isValidEmbedRequestId,
     type EmbedIndexedDbErrorPayload,
     type EmbedIndexedDbGetSnapshotPayload,
@@ -11,6 +10,7 @@ import {
     type EmbedIndexedDbSetSnapshotPayload,
     type EmbedIndexedDbStoreName,
 } from "./embedProtocol";
+import { getTrustedParentEmbedMessage } from "./embedMessageTrustGate";
 import type { UploadDestinationRecord } from "./storage/ehagakiDb";
 import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
@@ -266,12 +266,12 @@ export class EmbedIndexedDbService {
     }
 
     private handleMessage = (event: MessageEvent): void => {
-        if (!this.windowObj) return;
-        if (!isEmbedMessageEnvelope(event.data)) return;
-        if (event.source !== this.windowObj.parent) return;
-        if (this.trustedParentOrigin && event.origin !== this.trustedParentOrigin) return;
-
-        const message = event.data;
+        const message = getTrustedParentEmbedMessage(
+            event,
+            this.windowObj,
+            this.trustedParentOrigin,
+        );
+        if (!message) return;
         if (message.type !== "idb.result" && message.type !== "idb.error") {
             return;
         }

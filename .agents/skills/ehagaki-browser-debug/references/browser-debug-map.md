@@ -108,13 +108,13 @@
 
 - **主な症状または責務:** trusted parent origin、message envelope、requestId、remote auth/settings/composer context、親委譲storage/IndexedDBを扱う。
 - **主な実装ファイル:** `src/lib/embedProtocol.ts`、`src/lib/iframeMessageService.ts`、`src/lib/parentClientAuthService.ts`、`src/lib/embedComposerContextService.ts`、`src/lib/embedSettingsService.ts`、`src/lib/embedStorageService.ts`、`src/lib/embedIndexedDbService.ts`、`src/lib/appEmbedController.ts`、`src/lib/appRuntimeBindings.ts`、`public/embed-parent-client-example.js`。
-- **主な関数、store、hook、controller:** `getParentOriginFromSearch()`、`isEmbedMessageEnvelope()`、各serviceの`initialize()`/`handleMessage`、`createAppEmbedController()`、`setupAppRuntimeBindings()`。
+- **主な関数、store、hook、controller:** `getParentOriginFromSearch()`、`isEmbedMessageEnvelope()`、`getTrustedParentEmbedMessage()`、各serviceの`initialize()`/`handleMessage`、`createAppEmbedController()`、`setupAppRuntimeBindings()`。
 - **Event source:** `window.message`、`window.parent.postMessage()`、request timeout、remote login/logout/settings/context event。
 - **StateまたはCSS変数:** `trustedParentOrigin`、`pendingRequests`、listener Set、controller pending action、namespace/version/requestId/capability payload。
 - **Cleanup所有者:** `setupAppRuntimeBindings()` cleanupがremote listener subscriptionを解除する。request timeoutは各serviceがclearする。service singletonのwindow `message` listenerは一度登録して存続する現行設計。
 - **関連テスト:** `src/test/integration/app-parent-client.integration.test.ts`、`src/test/unit/iframeMessageService.test.ts`、`src/test/unit/parentClientAuthService.test.ts`、`src/test/unit/appEmbedController.test.ts`、`src/test/unit/embedComposerContextService.test.ts`、`src/test/unit/embedSettingsService.test.ts`、`src/test/unit/embedStorageService.test.ts`、`src/test/unit/embedIndexedDbService.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** real iframe source/origin、sandbox/Permissions Policy、storage partitioning、parent navigation、focus境界はbrowser harnessが必要。
-- **注意点:** `event.source`と`event.origin`の検証を弱めない。親sample、protocol、parser/bootstrap、testsを同じcontract surfaceとして確認する。
+- **注意点:** composer context、settings、storage、IndexedDBは共通の受信 trust gate で envelope・exact parent source・exact trusted origin だけを判定し、routing、requestId、payload、pending map、lifecycleは各serviceが所有する。Parent clientはこのhelper対象外であり、queryで確立したparent origin契約も維持する。`event.source`と`event.origin`の検証を弱めない。親sample、protocol、parser/bootstrap、testsを同じcontract surfaceとして確認する。
 
 ## URL queryと外部入力
 

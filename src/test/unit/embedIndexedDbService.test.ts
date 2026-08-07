@@ -177,4 +177,48 @@ describe("EmbedIndexedDbService", () => {
             code: "idb_request_timeout",
         });
     });
+
+    it("sourceまたはenvelopeが不正なresponseではpendingを消費しない", async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedIndexedDbService(windowObj, mockConsole);
+        service.initialize();
+
+        const pending = service.getUploadDestinationsSnapshot(UPLOAD_DESTINATION_GLOBAL_SCOPE);
+        const sentMessage = parent.postMessage.mock.calls[0][0];
+        const response = {
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: "idb.result",
+            requestId: sentMessage.requestId,
+            payload: {
+                timestamp: Date.now(),
+                store: "uploadDestinations",
+                scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+                records: [createDestinationRecord()],
+            },
+        };
+
+        listeners.get("message")?.({
+            data: response,
+            origin: "https://parent.example.com",
+            source: {},
+        } as unknown as MessageEvent);
+        listeners.get("message")?.({
+            data: { ...response, namespace: "other.embed" },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+        listeners.get("message")?.({
+            data: { ...response, type: "settings.set" },
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+        listeners.get("message")?.({
+            data: response,
+            origin: "https://parent.example.com",
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(pending).resolves.toEqual(response.payload.records);
+    });
 });

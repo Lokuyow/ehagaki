@@ -98,6 +98,26 @@ describe('EmbedComposerContextService', () => {
         expect(onRemoteSetContext).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ['source がparentではない', { namespace: EMBED_MESSAGE_NAMESPACE, version: 1, type: 'composer.setContext', requestId: 'composer-request-3' }, {}],
+        ['envelopeが不正', { namespace: 'other.embed', version: 1, type: 'composer.setContext', requestId: 'composer-request-3' }, null],
+        ['serviceと無関係なtype', { namespace: EMBED_MESSAGE_NAMESPACE, version: 1, type: 'settings.set', requestId: 'composer-request-3' }, null],
+    ])('%s messageはroutingしない', (_description, data, source) => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedComposerContextService(windowObj, mockConsole);
+        const onRemoteSetContext = vi.fn();
+        service.onRemoteSetContext(onRemoteSetContext);
+        service.initialize();
+
+        listeners.get('message')?.({
+            data,
+            origin: 'https://parent.example.com',
+            source: source ?? parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteSetContext).not.toHaveBeenCalled();
+    });
+
     it('有効requestIdの不正payloadもControllerがerror ackできるようlistenerへ渡す', () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
