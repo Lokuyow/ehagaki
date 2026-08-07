@@ -451,6 +451,148 @@ describe('PostHistoryDialog timeline relay flows', () => {
         secondView.unmount();
     });
 
+    it('dialog-open-refresh後も最新からのcontiguous進捗を再利用して境界queryをboundedに保つ', async () => {
+        const newest = createRecord({
+            eventId: 'refresh-progress-newest',
+            content: 'refresh progress newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const older = createRecord({
+            eventId: 'refresh-progress-older',
+            content: 'refresh progress older',
+            createdAt: 1_000,
+            postedAt: 1_000_000,
+        });
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_500,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([older]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('refresh progress newest')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+        await waitFor(() => expect(screen.getByText('refresh progress older')).toBeTruthy());
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledOnce();
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
+        expect(repositoryMock.getOlderVisibleChunk.mock.calls[1]?.[0]).toEqual(
+            expect.objectContaining({ limit: 1 }),
+        );
+        view.unmount();
+    });
+
+    it('dialog-open-refreshで新規投稿が追加されてもolder availabilityを再走査しない', async () => {
+        const newest = createRecord({
+            eventId: 'refresh-insert-newest',
+            content: 'refresh insert newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const olderPosts = [
+            createRecord({
+                eventId: 'refresh-insert-older-1',
+                content: 'refresh insert older 1',
+                createdAt: 1_400,
+                postedAt: 1_400_000,
+            }),
+            createRecord({
+                eventId: 'refresh-insert-older-2',
+                content: 'refresh insert older 2',
+                createdAt: 1_300,
+                postedAt: 1_300_000,
+            }),
+        ];
+        const insertedEvent = {
+            id: 'refresh-insert-event'.repeat(4),
+            pubkey: PUBKEY_HEX,
+            kind: 1,
+            content: 'relay inserted newer post',
+            tags: [],
+            created_at: 2_100,
+            sig: 'e'.repeat(128),
+        };
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_500,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(2)
+            .mockResolvedValue(3);
+        repositoryMock.countVisibleForPubkey
+            .mockResolvedValueOnce(2)
+            .mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getOlderVisibleChunk
+            .mockResolvedValueOnce([olderPosts[0]])
+            .mockResolvedValue(olderPosts);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({
+                fetchedAt: 1000,
+                events: [{ event: insertedEvent, relayUrls: [] }],
+                oldestCreatedAt: insertedEvent.created_at,
+                newestCreatedAt: insertedEvent.created_at,
+            })),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('refresh insert newest')).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+            expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(1);
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+        await waitFor(() => expect(screen.getByText('refresh insert older 1')).toBeTruthy());
+
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledOnce();
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
+        expect(repositoryMock.getOlderVisibleChunk.mock.calls[1]?.[0]).toEqual(
+            expect.objectContaining({ limit: 2 }),
+        );
+        view.unmount();
+    });
+
     it('dialog-open-refresh は保守的継続時だけ notice を出し、close 後も既存 cursor から続ける', async () => {
         const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
         const post = createRecord({

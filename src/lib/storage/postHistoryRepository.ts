@@ -692,50 +692,37 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                 )
             );
 
-        const lowerPostedAt = options.direction === "newer" && cursor
-            ? cursor.postedAt
-            : Dexie.minKey;
-        const upperPostedAt = options.direction === "older" && cursor
-            ? cursor.postedAt
-            : Dexie.maxKey;
-        const postedAtRange = this.db.postHistory
-            .where("[pubkeyHex+postedAt]")
-            .between(
-                [options.pubkeyHex, lowerPostedAt],
-                [options.pubkeyHex, upperPostedAt],
-                true,
-                true,
-            );
-        const candidates = await (
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        const cursorKey = cursor
+            ? toTimelineKey(options.pubkeyHex, cursor)
+            : null;
+        const range = options.direction === "latest"
+            ? this.db.postHistory
+                .where(POST_HISTORY_TIMELINE_INDEX)
+                .between(bounds.lower, bounds.upper)
+            : options.direction === "older"
+                ? this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(bounds.lower, cursorKey!, true, false)
+                : this.db.postHistory
+                    .where(POST_HISTORY_TIMELINE_INDEX)
+                    .between(cursorKey!, bounds.upper, false, true);
+
+        const records = await (
             options.direction === "newer"
-                ? postedAtRange
-                : postedAtRange.reverse()
+                ? range
+                : range.reverse()
         )
             .filter(matchesSparseRange)
             .limit(limit)
             .toArray();
 
-        if (candidates.length === 0) {
-            return [];
-        }
-
-        const boundaryPostedAt = candidates[candidates.length - 1]!.postedAt;
-        const boundaryRecords = candidates.length < limit
-            ? []
-            : await this.db.postHistory
-                .where("[pubkeyHex+postedAt]")
-                .equals([options.pubkeyHex, boundaryPostedAt])
-                .filter(matchesSparseRange)
-                .toArray();
-        const recordsByEventId = new Map<string, PostHistoryRecord>();
-        for (const record of [...candidates, ...boundaryRecords]) {
-            recordsByEventId.set(record.eventId, record);
-        }
-        const records = sortPostHistoryRecords(Array.from(recordsByEventId.values()));
-
+        // The timeline index already contains the complete tie-breaker. Keep
+        // the display order (newest first) while avoiding a second same-
+        // postedAt group scan and JavaScript-side re-sort.
         return options.direction === "newer"
-            ? records.slice(Math.max(0, records.length - limit))
-            : records.slice(0, limit);
+            ? records.reverse()
+            : records;
     }
 
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {
