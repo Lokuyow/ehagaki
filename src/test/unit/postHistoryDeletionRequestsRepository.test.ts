@@ -2,6 +2,10 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
+import {
+    getPostHistorySearchRevision,
+    resetPostHistoryLocalSearchRevisionsForTesting,
+} from "../../lib/postHistoryLocalSearchRevision";
 import { DexiePostHistoryDeletionRequestsRepository } from "../../lib/storage/postHistoryDeletionRequestsRepository";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 
@@ -454,6 +458,63 @@ describe("DexiePostHistoryDeletionRequestsRepository", () => {
             targetVerified: true,
             relayUrls: ["wss://existing.example.com/"],
         });
+
+        db.close();
+    });
+
+    it("local kind:5保存ではrequestの秒と投稿の送信成功時刻msを分離しrevisionを更新する", async () => {
+        const db = createTestDb();
+        resetPostHistoryLocalSearchRevisionsForTesting();
+        const postRepository = new DexiePostHistoryRepository(db, () => 1000);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 2000);
+        const targetEvent = createSignedEvent();
+        const deletionEvent = createDeletionEvent({
+            tags: [["e", targetEvent.id]],
+            created_at: 250,
+        });
+        await postRepository.putPostedEvent({ event: targetEvent });
+        const revisionBefore = getPostHistorySearchRevision(targetEvent.pubkey);
+
+        await repository.saveLocalDeletion({
+            targetEventId: targetEvent.id,
+            deletionEvent,
+            deletedAt: 987654321,
+        });
+
+        await expect(db.postHistoryDeletionRequests.get(
+            `${targetEvent.pubkey}:${targetEvent.id}:${deletionEvent.id}`,
+        )).resolves.toMatchObject({
+            deletedAt: 250,
+            rawEvent: deletionEvent,
+        });
+        await expect(db.postHistory.get(targetEvent.id)).resolves.toMatchObject({
+            deletedAt: 987654321,
+            deletionEventId: deletionEvent.id,
+        });
+        expect(getPostHistorySearchRevision(targetEvent.pubkey)).toBe(revisionBefore + 1);
+
+        db.close();
+    });
+
+    it("local kind:5保存のtransaction失敗時は片側だけ残さずrevisionも更新しない", async () => {
+        const db = createTestDb();
+        resetPostHistoryLocalSearchRevisionsForTesting();
+        const postRepository = new DexiePostHistoryRepository(db, () => 1000);
+        const repository = new DexiePostHistoryDeletionRequestsRepository(db, () => 2000);
+        const targetEvent = createSignedEvent();
+        const deletionEvent = createDeletionEvent({ tags: [["e", targetEvent.id]] });
+        await postRepository.putPostedEvent({ event: targetEvent });
+        const revisionBefore = getPostHistorySearchRevision(targetEvent.pubkey);
+        db.postHistory.put = (() => Promise.reject(new Error("forced_post_history_failure"))) as unknown as typeof db.postHistory.put;
+
+        await expect(repository.saveLocalDeletion({
+            targetEventId: targetEvent.id,
+            deletionEvent,
+            deletedAt: 987654321,
+        })).rejects.toThrow("forced_post_history_failure");
+        await expect(db.postHistoryDeletionRequests.count()).resolves.toBe(0);
+        await expect(db.postHistory.get(targetEvent.id)).resolves.not.toHaveProperty("deletionEventId");
+        expect(getPostHistorySearchRevision(targetEvent.pubkey)).toBe(revisionBefore);
 
         db.close();
     });

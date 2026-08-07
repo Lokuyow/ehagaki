@@ -70,6 +70,10 @@
         postBroadcastService,
         resolveBroadcastEvent,
     } from "../lib/postBroadcastService";
+    import {
+        postHistoryJsonlExportService,
+        type PostHistoryJsonlExportResult,
+    } from "../lib/postHistoryJsonlExportService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
@@ -251,6 +255,17 @@
     let appliedLatestPostedReplyEventId: string | null = null;
     let headingMenuOpen = $state(false);
     let importDialogOpen = $state(false);
+    let exportRunning = $state(false);
+    let showExportFloatingMessage = $state(false);
+    let exportFloatingMessageKey = $state<
+        | "postHistory.exportComplete"
+        | "postHistory.exportPartial"
+        | "postHistory.exportFailed"
+    >("postHistory.exportComplete");
+    let exportFloatingMessageValues = $state<Record<string, number>>({});
+    let exportFloatingMessageTimeout:
+        | ReturnType<typeof setTimeout>
+        | undefined;
     let rawJsonDialogOpen = $state(false);
     let selectedRawEvent = $state<unknown>(null);
     let deleteRequestState = $state<
@@ -488,6 +503,7 @@
         profileSyncCoordinator.reset();
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
+        hideExportFloatingMessage();
         postActionUi.resetDeleteConfirmation();
         importDialogOpen = false;
         rawJsonDialogOpen = false;
@@ -525,6 +541,7 @@
         headingMenuOpen = false;
         copyNeventUi.hideCopyFloatingMessage();
         hideBroadcastFloatingMessage();
+        hideExportFloatingMessage();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -582,6 +599,7 @@
     onDestroy(() => {
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
+        hideExportFloatingMessage();
     });
 
     $effect(() => {
@@ -1294,6 +1312,79 @@
         headingMenuOpen = false;
     }
 
+    function hideExportFloatingMessage(): void {
+        if (exportFloatingMessageTimeout) {
+            clearTimeout(exportFloatingMessageTimeout);
+            exportFloatingMessageTimeout = undefined;
+        }
+        showExportFloatingMessage = false;
+    }
+
+    function getLocalExportDate(): string {
+        const now = new Date();
+        return [
+            String(now.getFullYear()).padStart(4, "0"),
+            String(now.getMonth() + 1).padStart(2, "0"),
+            String(now.getDate()).padStart(2, "0"),
+        ].join("-");
+    }
+
+    function showExportResultMessage(result: PostHistoryJsonlExportResult): void {
+        hideExportFloatingMessage();
+        exportFloatingMessageKey = result.isPartial
+            ? "postHistory.exportPartial"
+            : "postHistory.exportComplete";
+        exportFloatingMessageValues = {
+            exported: result.exportedEventCount,
+            skipped: result.skippedPostCount
+                + result.missingDeletionRawEventCount
+                + result.invalidDeletionRawEventCount,
+        };
+        showExportFloatingMessage = true;
+        exportFloatingMessageTimeout = setTimeout(() => {
+            showExportFloatingMessage = false;
+            exportFloatingMessageTimeout = undefined;
+        }, 5000);
+    }
+
+    async function handleExportPostHistory(): Promise<void> {
+        if (!pubkeyHex || exportRunning) {
+            return;
+        }
+
+        exportRunning = true;
+        headingMenuOpen = false;
+        hideExportFloatingMessage();
+        try {
+            const result = await postHistoryJsonlExportService.exportForPubkey(pubkeyHex);
+            const blob = new Blob([result.jsonl], {
+                type: "application/x-ndjson;charset=utf-8",
+            });
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = objectUrl;
+            anchor.download = `ehagaki-post-history-${getLocalExportDate()}.jsonl`;
+            anchor.style.display = "none";
+            document.body.appendChild(anchor);
+            anchor.click();
+            setTimeout(() => {
+                anchor.remove();
+                URL.revokeObjectURL?.(objectUrl);
+            }, 1000);
+            showExportResultMessage(result);
+        } catch {
+            exportFloatingMessageKey = "postHistory.exportFailed";
+            exportFloatingMessageValues = {};
+            showExportFloatingMessage = true;
+            exportFloatingMessageTimeout = setTimeout(() => {
+                showExportFloatingMessage = false;
+                exportFloatingMessageTimeout = undefined;
+            }, 5000);
+        } finally {
+            exportRunning = false;
+        }
+    }
+
     async function handleImportedPostHistory(): Promise<void> {
         const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
@@ -1538,6 +1629,17 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.repair")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!pubkeyHex || exportRunning}
+                                onSelect={handleExportPostHistory}
+                            >
+                                <div
+                                    class="export-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.export")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
@@ -2828,6 +2930,14 @@
     <div>{$_(broadcastFloatingMessageKey)}</div>
 </FloatingMessage>
 
+<FloatingMessage show={showExportFloatingMessage} variant="top-right">
+    <div>
+        {$_(exportFloatingMessageKey, {
+            values: exportFloatingMessageValues,
+        })}
+    </div>
+</FloatingMessage>
+
 <style>
     :global(.post-history-dialog.dialog) {
         top: 0;
@@ -3373,6 +3483,11 @@
 
     :global(.post-history-menu-content .menu-action-button .raw-json-icon) {
         mask-image: url("/icons/data_object_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .export-icon) {
+        mask-image: url("/icons/cloud_download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 

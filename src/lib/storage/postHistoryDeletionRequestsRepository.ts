@@ -4,6 +4,7 @@ import {
     isPostHistoryDeletionTargetVerified,
     isSupportedPostHistoryDeletionTargetKind,
     POST_HISTORY_DELETION_REQUEST_SCHEMA_VERSION,
+    isValidDeletionRequestForTarget,
     toPostHistoryDeletionRequestReferenceRecord,
     toPostHistoryDeletionRequestRecord,
     toPostHistoryDeletionState,
@@ -11,6 +12,7 @@ import {
 import { RelayConfigUtils } from "../relayConfigUtils";
 import type { NostrEvent } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
+import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import {
     ehagakiDb,
     type EHagakiDB,
@@ -54,10 +56,20 @@ export interface UpsertImportedPostHistoryDeletionEventsResult {
     appliedDeletionCount: number;
 }
 
+export interface SaveLocalPostHistoryDeletionInput {
+    targetEventId: string;
+    deletionEvent: NostrEvent;
+    deletedAt: number;
+    relayUrls?: string[];
+    fetchedAt?: number;
+}
+
 export interface PostHistoryDeletionRequestsRepository {
     getDeletedTargets(targets: PostHistoryDeletionTarget[]): Promise<Map<string, Set<string>>>;
+    getAllForTargetAuthorPubkey(pubkeyHex: string | null | undefined): Promise<PostHistoryDeletionRequestRecord[]>;
     upsertValidDeletionRequests(input: UpsertPostHistoryDeletionRequestsInput): Promise<UpsertPostHistoryDeletionRequestsResult>;
     upsertImportedDeletionEvents(input: UpsertImportedPostHistoryDeletionEventsInput): Promise<UpsertImportedPostHistoryDeletionEventsResult>;
+    saveLocalDeletion(input: SaveLocalPostHistoryDeletionInput): Promise<void>;
 }
 
 const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
@@ -181,6 +193,85 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         }
 
         return deletedTargets;
+    }
+
+    async getAllForTargetAuthorPubkey(
+        pubkeyHex: string | null | undefined,
+    ): Promise<PostHistoryDeletionRequestRecord[]> {
+        if (!pubkeyHex) {
+            return [];
+        }
+
+        return this.db.postHistoryDeletionRequests
+            .where("targetAuthorPubkey")
+            .equals(pubkeyHex)
+            .toArray();
+    }
+
+    async saveLocalDeletion(input: SaveLocalPostHistoryDeletionInput): Promise<void> {
+        const deletionEvent = input.deletionEvent;
+        if (
+            !input.targetEventId
+            || deletionEvent.kind !== 5
+            || !NOSTR_EVENT_ID_PATTERN.test(deletionEvent.id)
+        ) {
+            throw new Error("invalid_local_deletion_event");
+        }
+
+        const fetchedAt = input.fetchedAt ?? this.now();
+        let changedPubkeyHex: string | null = null;
+
+        await this.db.transaction(
+            "rw",
+            this.db.postHistoryDeletionRequests,
+            this.db.postHistory,
+            async () => {
+                const targetRecord = await this.db.postHistory.get(input.targetEventId);
+                if (
+                    !targetRecord
+                    || !isSupportedPostHistoryDeletionTargetKind(targetRecord.kind)
+                    || !isValidDeletionRequestForTarget(deletionEvent, {
+                        id: targetRecord.eventId,
+                        pubkey: targetRecord.pubkeyHex,
+                    })
+                ) {
+                    throw new Error("local_deletion_target_not_found");
+                }
+
+                const nextRecord = toPostHistoryDeletionRequestReferenceRecord({
+                    deletionEvent,
+                    targetEventId: targetRecord.eventId,
+                    targetVerified: true,
+                    relayUrls: input.relayUrls,
+                    fetchedAt,
+                }, this.now);
+                const existingRecord = await this.db.postHistoryDeletionRequests.get(
+                    nextRecord.id,
+                );
+                const mergedRecord = existingRecord
+                    ? mergeDeletionRequestRecord(existingRecord, nextRecord, this.now)
+                    : nextRecord;
+
+                await this.db.postHistoryDeletionRequests.put(mergedRecord);
+
+                if (
+                    targetRecord.deletedAt !== input.deletedAt
+                    || targetRecord.deletionEventId !== deletionEvent.id
+                ) {
+                    await this.db.postHistory.put({
+                        ...targetRecord,
+                        deletedAt: input.deletedAt,
+                        deletionEventId: deletionEvent.id,
+                        updatedAt: this.now(),
+                    });
+                    changedPubkeyHex = targetRecord.pubkeyHex;
+                }
+            },
+        );
+
+        if (changedPubkeyHex) {
+            bumpPostHistorySearchRevision(changedPubkeyHex);
+        }
     }
 
     async upsertValidDeletionRequests(
