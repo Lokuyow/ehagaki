@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
     UPLOAD_DESTINATION_PRESETS,
+    createUploadDestinationFromPreset,
     createLegacyUploadDestination,
+    findUploadDestinationPresetIdentity,
     findUploadPresetByEndpoint,
+    getUploadDestinationDisplayName,
 } from "../../lib/upload/uploadDestinationPresets";
 
 describe("uploadDestinationPresets", () => {
@@ -20,33 +23,62 @@ describe("uploadDestinationPresets", () => {
         ]);
     });
 
-    it("includes configured NIP-96 upload endpoints as service presets", () => {
-        expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                id: "share-yabu-me",
-                name: "share.yabu.me",
+    it("keeps NIP-96 preset server identities separate from direct upload endpoints", () => {
+        const expectedPresets = [
+            ["share-yabu-me", "share.yabu.me", "https://share.yabu.me/api/v2/media", "https://yabu.me/api/v2/media"],
+            ["nostrcheck-me", "nostrcheck.me", "https://nostrcheck.me/api/v2/media", "https://cdn.nostrcheck.me/"],
+            ["nostr-build", "nostr.build", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload"],
+            ["nostpic-com", "nostpic.com", "https://nostpic.com/api/v2/media", "https://nostpic.com/api/v2/media"],
+            ["files-sovbit-host", "files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload"],
+        ] as const;
+
+        for (const [id, name, serverUrl, resolvedUploadUrl] of expectedPresets) {
+            const preset = UPLOAD_DESTINATION_PRESETS.find((candidate) => candidate.id === id)!;
+            expect(preset).toEqual(expect.objectContaining({
+                id,
+                name,
                 protocol: "nip96",
-                resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "nostpic-com",
-                name: "nostpic.com",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://nostpic.com/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "nostrcheck-me",
-                name: "nostrcheck.me",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://nostrcheck.me/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "files-sovbit-host",
-                name: "files.sovbit.host",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://files.sovbit.host/api/v2/media",
-            }),
-        ]));
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+            expect(findUploadPresetByEndpoint(serverUrl)).toBe(preset);
+            if (id === "nostrcheck-me") {
+                expect(findUploadPresetByEndpoint(resolvedUploadUrl)?.id).toBe("cdn-nostrcheck-me");
+            } else {
+                expect(findUploadPresetByEndpoint(resolvedUploadUrl)).toBe(preset);
+            }
+            expect(createUploadDestinationFromPreset({ preset, now: 1 })).toEqual(expect.objectContaining({
+                name,
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+            expect(createLegacyUploadDestination({ endpoint: serverUrl, now: 1 })).toEqual(expect.objectContaining({
+                name,
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+        }
+    });
+
+    it("uses a preset name only while its protocol and fixed or resolved endpoint still match", () => {
+        expect(getUploadDestinationDisplayName({
+            protocol: "nip96",
+            presetId: "share-yabu-me",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("share.yabu.me");
+        expect(getUploadDestinationDisplayName({
+            protocol: "custom-http",
+            presetId: "share-yabu-me",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("share.yabu.me");
+        expect(getUploadDestinationDisplayName({
+            protocol: "nip96",
+            presetId: "share-yabu-me",
+            serverUrl: "https://custom.example/upload",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("custom.example");
     });
 
     it("includes generic Blossom presets for alternate Blossom servers", () => {
@@ -83,6 +115,36 @@ describe("uploadDestinationPresets", () => {
         expect(createLegacyUploadDestination({
             endpoint: "https://share.yabu.me/api/v2/media",
         }).presetId).toBe("share-yabu-me");
+    });
+
+    it("prefers the existing Blossom identity for the cdn.nostrcheck.me fixed endpoint", () => {
+        expect(findUploadPresetByEndpoint("https://cdn.nostrcheck.me")).toEqual(expect.objectContaining({
+            id: "cdn-nostrcheck-me",
+            protocol: "blossom",
+        }));
+        expect(findUploadPresetByEndpoint("https://cdn.nostrcheck.me/")?.id).toBe("cdn-nostrcheck-me");
+    });
+
+    it("keeps fixed and direct cdn.nostrcheck.me identities distinct with context", () => {
+        expect(findUploadDestinationPresetIdentity({
+            protocol: "nip96",
+            presetId: "nostrcheck-me",
+            serverUrl: "https://cdn.nostrcheck.me/",
+        })?.id).toBe("nostrcheck-me");
+        expect(findUploadDestinationPresetIdentity({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            serverUrl: "https://cdn.nostrcheck.me",
+        })?.id).toBe("cdn-nostrcheck-me");
+    });
+
+    it("keeps cdn.nostrcheck.me legacy migration as Blossom", () => {
+        expect(createLegacyUploadDestination({ endpoint: "https://cdn.nostrcheck.me" })).toEqual(expect.objectContaining({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            auth: { type: "blossom-bud11" },
+        }));
+        expect(createLegacyUploadDestination({ endpoint: "https://cdn.nostrcheck.me" })).not.toHaveProperty("resolvedUploadUrl");
     });
 
     it("derives fallback destination names from the endpoint hostname", () => {

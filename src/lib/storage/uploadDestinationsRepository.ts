@@ -7,6 +7,7 @@ import {
     UPLOAD_DESTINATION_SCHEMA_VERSION,
     createUploadDestinationFromPreset,
     createLegacyUploadDestination,
+    findUploadDestinationPresetIdentity,
     findUploadPresetByEndpoint,
     getUploadDestinationDisplayName,
     getPreferredDefaultUploadPresetIds,
@@ -81,6 +82,8 @@ function toPlainDestination(destination: UploadDestination): UploadDestination {
             serverUrl: destination.serverUrl,
             resolvedUploadUrl: destination.resolvedUploadUrl,
             fallbackName: destination.name,
+            protocol: destination.protocol,
+            presetId: destination.presetId,
         }),
         protocol: destination.protocol,
         serverUrl: destination.serverUrl.trim(),
@@ -131,6 +134,8 @@ function normalizeLegacyShareYabuMeDestination(destination: UploadDestination): 
             serverUrl: normalizedPreset.serverUrl,
             resolvedUploadUrl: normalizedPreset.resolvedUploadUrl,
             fallbackName: destination.name,
+            protocol: normalizedPreset.protocol,
+            presetId: normalizedPreset.presetId,
         }),
         protocol: normalizedPreset.protocol,
         serverUrl: normalizedPreset.serverUrl,
@@ -145,7 +150,11 @@ function normalizeLegacyShareYabuMeDestination(destination: UploadDestination): 
 
 function toDestination(record: UploadDestinationRecord): UploadDestination {
     const { scopeKey: _scopeKey, ...destination } = record;
-    return normalizeLegacyShareYabuMeDestination(destination);
+    const normalizedDestination = normalizeLegacyShareYabuMeDestination(destination);
+    const preset = findUploadDestinationPresetIdentity(normalizedDestination);
+    return preset
+        ? { ...normalizedDestination, name: preset.name }
+        : normalizedDestination;
 }
 
 function sortDestinations(a: UploadDestination, b: UploadDestination): number {

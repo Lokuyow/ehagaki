@@ -72,8 +72,8 @@ describe("Nip96UploadAdapter", () => {
         expect(authService.buildAuthHeader).toHaveBeenCalledWith(canonicalUrl, "POST");
         expect(fetchMock).toHaveBeenNthCalledWith(1, canonicalUrl, expect.objectContaining({
             method: "POST",
+            redirect: "error",
         }));
-        expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("redirect");
         expect(fetchMock).toHaveBeenNthCalledWith(
             2,
             "https://cdn.example:8443/file%2Fname?signature=a%2Bb&part=2",
@@ -101,6 +101,30 @@ describe("Nip96UploadAdapter", () => {
         }));
         expect(authService.buildAuthHeader).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("returns a safe initial-upload failure without processing or media work when the POST is blocked", async () => {
+        const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+        const authService = { buildAuthHeader: vi.fn(async () => "Nostr upload") };
+
+        const result = await new Nip96UploadAdapter().upload({
+            file: new File(["image"], "test.png", { type: "image/png" }),
+            destination: createDestination(),
+            authService,
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        expect(result).toEqual({
+            success: false,
+            errorCode: "nip96UploadRequestBlocked",
+            error: "The upload request could not be completed safely",
+        });
+        expect(authService.buildAuthHeader).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://share.yabu.me/api/v1/upload",
+            expect.objectContaining({ method: "POST", redirect: "error" }),
+        );
     });
 
     it("keeps same-origin processing authentication and protects its fetch options", async () => {

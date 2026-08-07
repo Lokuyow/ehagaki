@@ -16,6 +16,7 @@
         DEFAULT_UPLOAD_CAPABILITIES,
         UPLOAD_DESTINATION_PRESETS,
         createUploadDestinationFromPreset,
+        findUploadDestinationPresetIdentity,
         getUploadDestinationDisplayName,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
@@ -201,17 +202,22 @@
             }
         }
         formError = null;
-        const resolvedUploadUrl =
-            [preset?.resolvedUploadUrl, existing?.resolvedUploadUrl].find(
-                (candidate) =>
-                    candidate && normalizeServerUrl(candidate) === serverUrl,
-            ) ?? null;
+        const presetIdentity = findUploadDestinationPresetIdentity({
+            protocol,
+            presetId: form.presetId,
+            serverUrl,
+        });
+        const resolvedUploadUrl = protocol === "nip96"
+            ? presetIdentity?.resolvedUploadUrl ?? null
+            : null;
         const destinationName = getUploadDestinationDisplayName({
             serverUrl,
             resolvedUploadUrl,
             fallbackName: preset?.name ?? existing?.name ?? "Custom NIP-96",
+            protocol,
+            presetId: form.presetId,
         });
-        const destination: UploadDestination =
+        const baseDestination =
             preset && !existing
                 ? {
                       ...createUploadDestinationFromPreset({
@@ -226,30 +232,33 @@
                       serverUrl,
                       enabled: form.enabled,
                   }
-                : {
-                      ...(existing ??
-                          createUploadDestinationFromPreset({
-                              preset: preset ?? {
-                                  id: "custom",
-                                  name: destinationName,
-                                  protocol: form.protocol,
-                                  serverUrl: form.serverUrl,
-                                  capabilities: DEFAULT_UPLOAD_CAPABILITIES,
-                              },
-                              pubkeyHex,
-                              isDefault:
-                                  form.isDefault ||
-                                  destinationState.destinations.length === 0,
-                              now: timestamp,
-                          })),
-                      name: destinationName,
-                      protocol,
-                      serverUrl,
-                      presetId: form.presetId,
-                      enabled: form.enabled,
-                      isDefault: form.isDefault,
-                      updatedAt: timestamp,
-                  };
+                : existing ??
+                    createUploadDestinationFromPreset({
+                        preset: preset ?? {
+                            id: "custom",
+                            name: destinationName,
+                            protocol: form.protocol,
+                            serverUrl: form.serverUrl,
+                            capabilities: DEFAULT_UPLOAD_CAPABILITIES,
+                        },
+                        pubkeyHex,
+                        isDefault:
+                            form.isDefault ||
+                            destinationState.destinations.length === 0,
+                        now: timestamp,
+                    });
+        const { resolvedUploadUrl: _previousResolvedUploadUrl, ...destinationWithoutResolvedUploadUrl } = baseDestination;
+        const destination: UploadDestination = {
+            ...destinationWithoutResolvedUploadUrl,
+            name: destinationName,
+            protocol,
+            serverUrl,
+            presetId: form.presetId,
+            enabled: form.enabled,
+            isDefault: form.isDefault,
+            updatedAt: timestamp,
+            ...(resolvedUploadUrl ? { resolvedUploadUrl } : {}),
+        };
 
         await uploadDestinationStore.save(destination);
         editing = false;

@@ -55,6 +55,7 @@ export interface FileUploadResponse {
 
 export type UploadErrorCode =
     | "nip96InvalidDestinationUrl"
+    | "nip96UploadRequestBlocked"
     | "nip96InvalidProcessingUrl"
     | "nip96InvalidMediaUrl"
     | "nip96InsecureMediaUrl"

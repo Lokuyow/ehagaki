@@ -481,12 +481,12 @@ describe('FileUploadManager', () => {
             await uploadManager.uploadFile(file);
 
             expect(mockAuthService.buildAuthHeader).toHaveBeenCalledWith(
-                'https://share.yabu.me/api/v2/media',
+                'https://yabu.me/api/v2/media',
                 'POST'
             );
             expect(mockFetch).toHaveBeenCalledWith(
-                'https://share.yabu.me/api/v2/media',
-                expect.objectContaining({ method: 'POST' })
+                'https://yabu.me/api/v2/media',
+                expect.objectContaining({ method: 'POST', redirect: 'error' })
             );
             expect(mockDependencies.localStorage.getItem('uploadEndpoint')).toBeNull();
         });
@@ -713,7 +713,7 @@ describe('FileUploadManager', () => {
             expect(setImageSizeInfoFromFileSize).not.toHaveBeenCalled();
         });
 
-        it('ネットワークエラーを適切に処理する', async () => {
+        it('初回NIP-96 requestのnetwork errorを安全停止として処理する', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
 
             // 認証サービスをモックして認証エラーを回避
@@ -744,7 +744,10 @@ describe('FileUploadManager', () => {
             const result = await uploadManager.uploadFile(file);
 
             expect(result.success).toBe(false);
-            expect(result.error).toBe('Network error');
+            expect(result).toEqual(expect.objectContaining({
+                errorCode: 'nip96UploadRequestBlocked',
+                error: 'The upload request could not be completed safely',
+            }));
         });
 
         it('処理URLによる非同期処理を正しく扱う', async () => {

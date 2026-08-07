@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import en from '../../lib/i18n/en.json';
+import ja from '../../lib/i18n/ja.json';
 import { buildUploadFailureMessage } from '../../lib/uploadResultUtils';
 
 describe('buildUploadFailureMessage', () => {
@@ -27,6 +29,23 @@ describe('buildUploadFailureMessage', () => {
         ], 'fallback', (errorCode) => `translated:${errorCode}`)).toBe(
             'translated:nip96InvalidMediaUrl',
         );
+    });
+
+    it('NIP-96初回requestの安全停止errorも呼び出し元の翻訳を使う', () => {
+        expect(buildUploadFailureMessage([
+            {
+                success: false,
+                error: 'The upload request could not be completed safely',
+                errorCode: 'nip96UploadRequestBlocked',
+            },
+        ], 'fallback', (errorCode) => `translated:${errorCode}`)).toBe(
+            'translated:nip96UploadRequestBlocked',
+        );
+    });
+
+    it('NIP-96初回requestの安全停止errorを日本語と英語で定義する', () => {
+        expect(ja.postComponent.nip96UploadRequestBlocked).toContain('アップロード完了は確認できません');
+        expect(en.postComponent.nip96UploadRequestBlocked).toContain('Completion could not be confirmed');
     });
 
     it('複数失敗では件数ベースのメッセージを返す', () => {

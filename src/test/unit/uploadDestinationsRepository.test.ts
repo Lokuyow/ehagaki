@@ -61,7 +61,7 @@ describe("uploadDestinationsRepository", () => {
             name: "share.yabu.me",
             protocol: "nip96",
             presetId: "share-yabu-me",
-            resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
             auth: { type: "nip98" },
         }));
         expect(defaultDestination.capabilities.supportedMimeTypes).toEqual(["image/*", "video/*"]);
@@ -90,6 +90,24 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("keeps the cdn.nostrcheck.me legacy endpoint as Blossom during migration", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://cdn.nostrcheck.me");
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination).toEqual(expect.objectContaining({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            auth: { type: "blossom-bud11" },
+        }));
+        expect(destination).not.toHaveProperty("resolvedUploadUrl");
+
+        db.close();
+    });
+
     it("uses the locale-specific share.yabu.me preset when no legacy uploadEndpoint exists", async () => {
         const db = createTestDb();
         const storage = new MockStorage();
@@ -102,7 +120,7 @@ describe("uploadDestinationsRepository", () => {
         expect(destination.presetId).toBe("share-yabu-me");
         expect(destination.name).toBe("share.yabu.me");
         expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
-        expect(destination.resolvedUploadUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.resolvedUploadUrl).toBe("https://yabu.me/api/v2/media");
         expect(destination.isDefault).toBe(true);
 
         db.close();
@@ -125,7 +143,7 @@ describe("uploadDestinationsRepository", () => {
         expect(destination.presetId).toBe("share-yabu-me");
         expect(destination.name).toBe("share.yabu.me");
         expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
-        expect(destination.resolvedUploadUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.resolvedUploadUrl).toBe("https://yabu.me/api/v2/media");
         expect(destination.isDefault).toBe(true);
 
         db.close();

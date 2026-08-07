@@ -1,5 +1,9 @@
 import { nip19 } from "nostr-tools";
 import type { UploadDestination } from "../types";
+import {
+    findUploadDestinationPresetIdentity,
+    normalizeServerUrl,
+} from "./uploadDestinationPresets";
 
 const BLOSSOM_BAND_HOST = "blossom.band";
 
@@ -29,13 +33,35 @@ export function resolveBlossomBandServerUrl(identity: UploadDestinationIdentity)
     return npub ? `https://${npub}.${BLOSSOM_BAND_HOST}` : null;
 }
 
+function resolveNip96PresetUploadUrl(destination: UploadDestination): UploadDestination {
+    const preset = findUploadDestinationPresetIdentity(destination);
+    if (!preset?.resolvedUploadUrl) return destination;
+
+    const resolvedUploadUrl = destination.resolvedUploadUrl;
+    const normalizedResolvedUrl = resolvedUploadUrl ? normalizeServerUrl(resolvedUploadUrl) : "";
+    const isKnownResolvedUrl = !resolvedUploadUrl
+        || normalizedResolvedUrl === normalizeServerUrl(preset.serverUrl)
+        || normalizedResolvedUrl === normalizeServerUrl(preset.resolvedUploadUrl);
+
+    if (!isKnownResolvedUrl || resolvedUploadUrl === preset.resolvedUploadUrl) {
+        return destination;
+    }
+
+    return {
+        ...destination,
+        resolvedUploadUrl: preset.resolvedUploadUrl,
+    };
+}
+
 export function resolveUploadDestinationForUse(
     destination: UploadDestination,
     identity: UploadDestinationIdentity,
 ): UploadDestination {
-    const withoutResolvedUploadUrl = destination.protocol === "nip96"
-        ? destination
-        : stripOptionalField(destination, "resolvedUploadUrl");
+    if (destination.protocol === "nip96") {
+        return resolveNip96PresetUploadUrl(destination);
+    }
+
+    const withoutResolvedUploadUrl = stripOptionalField(destination, "resolvedUploadUrl");
 
     if (destination.protocol !== "blossom" || destination.presetId !== "blossom-band") {
         return withoutResolvedUploadUrl;

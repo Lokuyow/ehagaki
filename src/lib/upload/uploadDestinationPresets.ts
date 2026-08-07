@@ -32,6 +32,14 @@ const NIP96_PRESET_IDS: Record<string, UploadPresetId> = {
     "https://files.sovbit.host/api/v2/media": "files-sovbit-host",
 };
 
+const NIP96_DIRECT_UPLOAD_URLS: Record<string, string> = {
+    "https://share.yabu.me/api/v2/media": "https://yabu.me/api/v2/media",
+    "https://nostrcheck.me/api/v2/media": "https://cdn.nostrcheck.me/",
+    "https://nostr.build/api/v2/nip96/upload": "https://nostr.build/api/v2/nip96/upload",
+    "https://nostpic.com/api/v2/media": "https://nostpic.com/api/v2/media",
+    "https://files.sovbit.host/api/v2/media": "https://files.sovbit.host/upload",
+};
+
 function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
     const endpoint = uploadEndpoints.find((candidate) => candidate.url === endpointUrl);
 
@@ -44,7 +52,7 @@ function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
         name: endpoint.label,
         protocol: "nip96",
         serverUrl: endpoint.url,
-        resolvedUploadUrl: endpoint.url,
+        resolvedUploadUrl: NIP96_DIRECT_UPLOAD_URLS[endpoint.url] ?? endpoint.url,
         capabilities: {
             ...DEFAULT_UPLOAD_CAPABILITIES,
             supportedMimeTypes: ["image/*", "video/*"],
@@ -67,7 +75,19 @@ export function getUploadDestinationDisplayName(params: {
     serverUrl: string;
     resolvedUploadUrl?: string | null;
     fallbackName?: string | null;
+    protocol?: UploadProtocol;
+    presetId?: UploadPresetId | null;
 }): string {
+    const preset = findUploadDestinationPresetIdentity(params);
+    if (preset) return preset.name;
+
+    if (params.presetId && params.presetId !== "custom") {
+        return getUrlHost(params.serverUrl)
+            ?? params.fallbackName?.trim()
+            ?? normalizeServerUrl(params.serverUrl)
+            ?? "Custom NIP-96";
+    }
+
     return getUrlHost(params.resolvedUploadUrl)
         ?? getUrlHost(params.serverUrl)
         ?? params.fallbackName?.trim()
@@ -167,18 +187,35 @@ export function findUploadPresetByEndpoint(endpoint: string | null | undefined):
     if (!endpoint) return null;
     const normalizedEndpoint = normalizeServerUrl(endpoint);
 
-    const resolvedUploadUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        preset.resolvedUploadUrl
-        && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedEndpoint,
+    const serverUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
+        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
     );
-
-    if (resolvedUploadUrlMatch) {
-        return resolvedUploadUrlMatch;
-    }
+    if (serverUrlMatch) return serverUrlMatch;
 
     return UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
+        preset.resolvedUploadUrl
+        && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedEndpoint,
     ) ?? null;
+}
+
+export function findUploadDestinationPresetIdentity(params: {
+    protocol?: UploadProtocol;
+    presetId?: UploadPresetId | null;
+    serverUrl: string;
+}): UploadDestinationPreset | null {
+    if (!params.presetId || params.presetId === "custom") return null;
+
+    const preset = UPLOAD_DESTINATION_PRESETS.find((candidate) => candidate.id === params.presetId);
+    if (!preset || preset.protocol !== params.protocol) return null;
+
+    const normalizedServerUrl = normalizeServerUrl(params.serverUrl);
+    const matchesPresetEndpoint = normalizeServerUrl(preset.serverUrl) === normalizedServerUrl
+        || (preset.resolvedUploadUrl !== undefined
+            && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedServerUrl);
+
+    return matchesPresetEndpoint
+        ? preset
+        : null;
 }
 
 export function createUploadDestinationFromPreset(params: {
@@ -197,6 +234,8 @@ export function createUploadDestinationFromPreset(params: {
             serverUrl,
             resolvedUploadUrl: params.preset.resolvedUploadUrl,
             fallbackName: params.preset.name,
+            protocol: params.preset.protocol,
+            presetId: params.preset.id,
         }),
         protocol: params.preset.protocol,
         serverUrl,
