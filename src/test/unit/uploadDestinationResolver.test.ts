@@ -123,6 +123,22 @@ describe("uploadDestinationResolver", () => {
         expect(legacyDestination.resolvedUploadUrl).toBe("https://share.yabu.me/api/v2/media");
     });
 
+    it("keeps the cdn.nostrcheck.me direct endpoint in the NIP-96 context", () => {
+        const destination = createNip96Destination({
+            name: "nostrcheck.me",
+            serverUrl: "https://cdn.nostrcheck.me/",
+            resolvedUploadUrl: "https://cdn.nostrcheck.me/",
+            presetId: "nostrcheck-me",
+        });
+
+        expect(resolveUploadDestinationForUse(destination, {})).toEqual(expect.objectContaining({
+            protocol: "nip96",
+            presetId: "nostrcheck-me",
+            serverUrl: "https://cdn.nostrcheck.me/",
+            resolvedUploadUrl: "https://cdn.nostrcheck.me/",
+        }));
+    });
+
     it.each([
         createNip96Destination({ presetId: "custom" }),
         createNip96Destination({ serverUrl: "https://custom.example/upload" }),

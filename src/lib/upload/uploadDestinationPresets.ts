@@ -187,17 +187,14 @@ export function findUploadPresetByEndpoint(endpoint: string | null | undefined):
     if (!endpoint) return null;
     const normalizedEndpoint = normalizeServerUrl(endpoint);
 
-    const resolvedUploadUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        preset.resolvedUploadUrl
-        && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedEndpoint,
+    const serverUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
+        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
     );
-
-    if (resolvedUploadUrlMatch) {
-        return resolvedUploadUrlMatch;
-    }
+    if (serverUrlMatch) return serverUrlMatch;
 
     return UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
+        preset.resolvedUploadUrl
+        && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedEndpoint,
     ) ?? null;
 }
 
@@ -211,7 +208,12 @@ export function findUploadDestinationPresetIdentity(params: {
     const preset = UPLOAD_DESTINATION_PRESETS.find((candidate) => candidate.id === params.presetId);
     if (!preset || preset.protocol !== params.protocol) return null;
 
-    return findUploadPresetByEndpoint(params.serverUrl)?.id === preset.id
+    const normalizedServerUrl = normalizeServerUrl(params.serverUrl);
+    const matchesPresetEndpoint = normalizeServerUrl(preset.serverUrl) === normalizedServerUrl
+        || (preset.resolvedUploadUrl !== undefined
+            && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedServerUrl);
+
+    return matchesPresetEndpoint
         ? preset
         : null;
 }

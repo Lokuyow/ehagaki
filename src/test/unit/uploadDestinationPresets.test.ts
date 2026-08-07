@@ -3,6 +3,7 @@ import {
     UPLOAD_DESTINATION_PRESETS,
     createUploadDestinationFromPreset,
     createLegacyUploadDestination,
+    findUploadDestinationPresetIdentity,
     findUploadPresetByEndpoint,
     getUploadDestinationDisplayName,
 } from "../../lib/upload/uploadDestinationPresets";
@@ -41,7 +42,11 @@ describe("uploadDestinationPresets", () => {
                 resolvedUploadUrl,
             }));
             expect(findUploadPresetByEndpoint(serverUrl)).toBe(preset);
-            expect(findUploadPresetByEndpoint(resolvedUploadUrl)).toBe(preset);
+            if (id === "nostrcheck-me") {
+                expect(findUploadPresetByEndpoint(resolvedUploadUrl)?.id).toBe("cdn-nostrcheck-me");
+            } else {
+                expect(findUploadPresetByEndpoint(resolvedUploadUrl)).toBe(preset);
+            }
             expect(createUploadDestinationFromPreset({ preset, now: 1 })).toEqual(expect.objectContaining({
                 name,
                 serverUrl,
@@ -110,6 +115,36 @@ describe("uploadDestinationPresets", () => {
         expect(createLegacyUploadDestination({
             endpoint: "https://share.yabu.me/api/v2/media",
         }).presetId).toBe("share-yabu-me");
+    });
+
+    it("prefers the existing Blossom identity for the cdn.nostrcheck.me fixed endpoint", () => {
+        expect(findUploadPresetByEndpoint("https://cdn.nostrcheck.me")).toEqual(expect.objectContaining({
+            id: "cdn-nostrcheck-me",
+            protocol: "blossom",
+        }));
+        expect(findUploadPresetByEndpoint("https://cdn.nostrcheck.me/")?.id).toBe("cdn-nostrcheck-me");
+    });
+
+    it("keeps fixed and direct cdn.nostrcheck.me identities distinct with context", () => {
+        expect(findUploadDestinationPresetIdentity({
+            protocol: "nip96",
+            presetId: "nostrcheck-me",
+            serverUrl: "https://cdn.nostrcheck.me/",
+        })?.id).toBe("nostrcheck-me");
+        expect(findUploadDestinationPresetIdentity({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            serverUrl: "https://cdn.nostrcheck.me",
+        })?.id).toBe("cdn-nostrcheck-me");
+    });
+
+    it("keeps cdn.nostrcheck.me legacy migration as Blossom", () => {
+        expect(createLegacyUploadDestination({ endpoint: "https://cdn.nostrcheck.me" })).toEqual(expect.objectContaining({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            auth: { type: "blossom-bud11" },
+        }));
+        expect(createLegacyUploadDestination({ endpoint: "https://cdn.nostrcheck.me" })).not.toHaveProperty("resolvedUploadUrl");
     });
 
     it("derives fallback destination names from the endpoint hostname", () => {

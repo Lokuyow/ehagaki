@@ -90,6 +90,24 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("keeps the cdn.nostrcheck.me legacy endpoint as Blossom during migration", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://cdn.nostrcheck.me");
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination).toEqual(expect.objectContaining({
+            protocol: "blossom",
+            presetId: "cdn-nostrcheck-me",
+            auth: { type: "blossom-bud11" },
+        }));
+        expect(destination).not.toHaveProperty("resolvedUploadUrl");
+
+        db.close();
+    });
+
     it("uses the locale-specific share.yabu.me preset when no legacy uploadEndpoint exists", async () => {
         const db = createTestDb();
         const storage = new MockStorage();
