@@ -7,6 +7,10 @@ import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
 import { PostEventSender } from "./postEventBuilder";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import {
+    attestFullyVerifiedPostHistoryRawEvent,
+    type PostHistoryRawEventAttestation,
+} from "./postHistoryRawEventVerification";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import {
     postHistoryDeletionRequestsRepository,
@@ -20,6 +24,7 @@ export interface DeletionRequestResult extends PostResult {
     deletedAt?: number;
     deletionEventId?: string;
     deletionEvent?: NostrEvent;
+    deletionEventAttestation?: PostHistoryRawEventAttestation;
 }
 
 export interface DeletionSigner {
@@ -228,6 +233,13 @@ export class PostDeletionService {
             return { success: false, error: "post_error" };
         }
 
+        const verifiedDeletionEvent = attestFullyVerifiedPostHistoryRawEvent(
+            signedEvent,
+        );
+        if (!verifiedDeletionEvent) {
+            return { success: false, error: "post_error" };
+        }
+
         const additionalWriteRelays = buildDeletionRelayUrls(
             params.post,
             this.deps.writeRelaysStore.value,
@@ -236,7 +248,7 @@ export class PostDeletionService {
         let result: PostResult;
         try {
             result = await this.createEventSender(params.rxNostr).sendEvent(
-                signedEvent,
+                verifiedDeletionEvent.event,
                 {
                     targetRelays: additionalWriteRelays,
                     includeDefaultWriteRelays: true,
@@ -254,7 +266,7 @@ export class PostDeletionService {
             return result;
         }
 
-        const deletionEventId = signedEvent.id ?? result.eventId;
+        const deletionEventId = verifiedDeletionEvent.event.id ?? result.eventId;
         if (!deletionEventId) {
             return { success: false, error: "post_error" };
         }
@@ -264,7 +276,8 @@ export class PostDeletionService {
         try {
             await this.deps.postHistoryDeletionRequestsRepository.saveLocalDeletion({
                 targetEventId: params.post.eventId,
-                deletionEvent: signedEvent as NostrEvent,
+                deletionEvent: verifiedDeletionEvent.event,
+                attestation: verifiedDeletionEvent.attestation,
                 deletedAt,
                 relayUrls: additionalWriteRelays,
             });
@@ -279,7 +292,8 @@ export class PostDeletionService {
             ...result,
             eventId: deletionEventId,
             deletionEventId,
-            deletionEvent: signedEvent as NostrEvent,
+            deletionEvent: verifiedDeletionEvent.event,
+            deletionEventAttestation: verifiedDeletionEvent.attestation,
             deletedAt,
         };
     }

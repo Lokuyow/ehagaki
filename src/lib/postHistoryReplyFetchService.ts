@@ -11,6 +11,7 @@ import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT = 100;
 export const POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS = 86_400;
@@ -220,7 +221,7 @@ export class PostHistoryReplyFetchService {
                     return;
                 }
 
-                subscription = rxNostr.use(rxReq, {
+                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },

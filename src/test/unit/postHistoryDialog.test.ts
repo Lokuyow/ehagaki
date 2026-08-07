@@ -966,15 +966,17 @@ describe('PostHistoryDialog', () => {
             value: revokeObjectURL,
         });
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-        postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValueOnce({
-            jsonl: '{"kind":1}\n',
-            exportedEventCount: 1,
-            exportedPostEventCount: 1,
-            exportedDeletionEventCount: 0,
-            skippedPostCount: 0,
-            missingDeletionRawEventCount: 0,
-            invalidDeletionRawEventCount: 0,
-            isPartial: false,
+        postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockResolvedValueOnce({
+            result: {
+                exportedEventCount: 1,
+                exportedPostEventCount: 1,
+                exportedDeletionEventCount: 0,
+                skippedPostCount: 0,
+                missingDeletionRawEventCount: 0,
+                invalidDeletionRawEventCount: 0,
+                isPartial: false,
+            },
+            blob: new Blob(['{"kind":1}\n'], { type: 'application/x-ndjson;charset=utf-8' }),
         });
 
         try {
@@ -989,8 +991,11 @@ describe('PostHistoryDialog', () => {
             await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
 
             await waitFor(() => {
-                expect(postHistoryJsonlExportServiceMock.exportForPubkey)
-                    .toHaveBeenCalledWith('a'.repeat(64));
+                expect(postHistoryJsonlExportServiceMock.exportForPubkeyInWorker)
+                    .toHaveBeenCalledWith('a'.repeat(64), expect.objectContaining({
+                        signal: expect.any(AbortSignal),
+                        onProgress: expect.any(Function),
+                    }));
                 expect(createObjectURL).toHaveBeenCalledOnce();
                 expect(click).toHaveBeenCalledOnce();
             });
@@ -1027,7 +1032,7 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         const exportItem = await screen.findByRole('menuitem', { name: 'エクスポート' });
         expect(exportItem.getAttribute('data-disabled')).not.toBeNull();
-        expect(postHistoryJsonlExportServiceMock.exportForPubkey).not.toHaveBeenCalled();
+        expect(postHistoryJsonlExportServiceMock.exportForPubkeyInWorker).not.toHaveBeenCalled();
     });
 
     it('[export-partial] raw event不足を部分成功通知で伝える', async () => {
@@ -1042,15 +1047,17 @@ describe('PostHistoryDialog', () => {
             value: vi.fn(),
         });
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-        postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValueOnce({
-            jsonl: '{"kind":1}\n',
-            exportedEventCount: 1,
-            exportedPostEventCount: 1,
-            exportedDeletionEventCount: 0,
-            skippedPostCount: 0,
-            missingDeletionRawEventCount: 2,
-            invalidDeletionRawEventCount: 0,
-            isPartial: true,
+        postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockResolvedValueOnce({
+            result: {
+                exportedEventCount: 1,
+                exportedPostEventCount: 1,
+                exportedDeletionEventCount: 0,
+                skippedPostCount: 0,
+                missingDeletionRawEventCount: 2,
+                invalidDeletionRawEventCount: 0,
+                isPartial: true,
+            },
+            blob: new Blob(['{"kind":1}\n'], { type: 'application/x-ndjson;charset=utf-8' }),
         });
 
         try {
@@ -1080,7 +1087,7 @@ describe('PostHistoryDialog', () => {
             configurable: true,
             value: createObjectURL,
         });
-        postHistoryJsonlExportServiceMock.exportForPubkey.mockRejectedValueOnce(new Error('export failed'));
+        postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockRejectedValueOnce(new Error('export failed'));
 
         try {
             render(PostHistoryDialog, {
@@ -1101,7 +1108,7 @@ describe('PostHistoryDialog', () => {
     it('[export-running] export実行中は再実行を操作不可にする', async () => {
         const deferred = createDeferred<any>();
         const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-        postHistoryJsonlExportServiceMock.exportForPubkey.mockReturnValueOnce(deferred.promise);
+        postHistoryJsonlExportServiceMock.exportForPubkeyInWorker.mockReturnValueOnce(deferred.promise);
         try {
             render(PostHistoryDialog, {
                 props: {
@@ -1117,14 +1124,53 @@ describe('PostHistoryDialog', () => {
             const exportItem = await screen.findByRole('menuitem', { name: 'エクスポート' });
             expect(exportItem.getAttribute('data-disabled')).not.toBeNull();
             deferred.resolve({
-                jsonl: '',
-                exportedEventCount: 0,
-                exportedPostEventCount: 0,
-                exportedDeletionEventCount: 0,
-                skippedPostCount: 0,
-                missingDeletionRawEventCount: 0,
-                invalidDeletionRawEventCount: 0,
-                isPartial: false,
+                result: {
+                    exportedEventCount: 0,
+                    exportedPostEventCount: 0,
+                    exportedDeletionEventCount: 0,
+                    skippedPostCount: 0,
+                    missingDeletionRawEventCount: 0,
+                    invalidDeletionRawEventCount: 0,
+                    isPartial: false,
+                },
+                blob: new Blob([], { type: 'application/x-ndjson;charset=utf-8' }),
+            });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        } finally {
+            click.mockRestore();
+        }
+    });
+
+    it('[export-progress] Workerからのphaseと件数進捗を表示する', async () => {
+        const deferred = createDeferred<any>();
+        postHistoryJsonlExportServiceMock.exportForPubkeyInWorker
+            .mockImplementationOnce((_pubkey: string, options: any) => {
+                options.onProgress({
+                    phase: 'verifying',
+                    processed: 25,
+                    total: 100,
+                });
+                return deferred.promise;
+            });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        try {
+            render(PostHistoryDialog, {
+                props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+            });
+            await openPostHistoryMenu();
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+            await expect(screen.findByText('未検証データを検証中... 25/100')).resolves.toBeTruthy();
+            deferred.resolve({
+                result: {
+                    exportedEventCount: 0,
+                    exportedPostEventCount: 0,
+                    exportedDeletionEventCount: 0,
+                    skippedPostCount: 0,
+                    missingDeletionRawEventCount: 0,
+                    invalidDeletionRawEventCount: 0,
+                    isPartial: false,
+                },
+                blob: new Blob([], { type: 'application/x-ndjson;charset=utf-8' }),
             });
             await new Promise((resolve) => setTimeout(resolve, 0));
         } finally {

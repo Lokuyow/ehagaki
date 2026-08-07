@@ -5,6 +5,7 @@ import {
 import { FALLBACK_RELAYS } from "./constants";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export interface PostHistoryContextFetchRequest {
     eventId: string;
@@ -83,7 +84,7 @@ export class PostHistoryContextFetchService {
             resolveTask = safeResolve;
 
             try {
-                subscription = rxNostr.use(rxReq, {
+                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },

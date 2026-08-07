@@ -25,7 +25,16 @@ export default defineConfig({
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util', '@jsquash/webp']
   },
   worker: {
-    format: 'es'
+    format: 'es',
+    // Worker output is also precached by the service worker. Keep it in the
+    // bridge namespace so the fixed legacy assets remain the only non-bridge
+    // entries in that manifest.
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-bridge-[hash].js',
+        chunkFileNames: 'assets/[name]-bridge-[hash].js'
+      }
+    }
   },
   assetsInclude: ['**/*.wasm'],
   build: {

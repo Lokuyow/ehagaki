@@ -17,6 +17,14 @@ import type { RxNostr } from 'rx-nostr';
 import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers';
 import { nip19 } from 'nostr-tools';
 
+vi.mock('../../lib/postHistoryRawEventVerification', () => ({
+    RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
+    attestFullyVerifiedPostHistoryRawEvent: (event: unknown) => ({
+        event,
+        attestation: {},
+    }),
+}));
+
 class MockClassList {
     private classes = new Set<string>();
 
@@ -1278,7 +1286,7 @@ describe('PostManager統合テスト', () => {
         const result = await manager.submitPost('Test post content');
 
         expect(result.success).toBe(true);
-        expect(savePostHistoryFn).toHaveBeenCalledWith({
+        expect(savePostHistoryFn).toHaveBeenCalledWith(expect.objectContaining({
             event: expect.objectContaining({
                 id: 'signed-test-event-id',
                 sig: 'mock-signature',
@@ -1290,7 +1298,7 @@ describe('PostManager統合テスト', () => {
                 'wss://write.example.com/',
                 'wss://other-write.example.com/',
             ],
-        });
+        }));
     });
 
     it('投稿失敗時は投稿履歴保存関数を呼ばない', async () => {

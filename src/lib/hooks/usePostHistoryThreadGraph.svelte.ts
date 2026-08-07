@@ -27,6 +27,7 @@ import {
 import { RelayConfigUtils } from "../relayConfigUtils";
 import { postHistoryReplyParentTargetDiscoveryAdapter } from "../postHistoryRelatedTargetDiscoveryAdapter";
 import type { NostrEvent, ProfileData, RelayConfig } from "../types";
+import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 import type { PostHistoryRecord, PostHistoryChildInteractionRecord } from "../storage/ehagakiDb";
 import {
     postHistoryRepository,
@@ -2697,6 +2698,7 @@ export function usePostHistoryThreadGraph({
         eventId: string;
         authorPubkey: string;
         deletionEvent?: NostrEvent | null;
+        deletionEventAttestation?: PostHistoryRawEventAttestation;
     }): Promise<void> {
         if (!input.eventId || !input.authorPubkey) {
             return;
@@ -2717,7 +2719,12 @@ export function usePostHistoryThreadGraph({
                     created_at: input.deletionEvent.created_at,
                     sig: "",
                 }],
-                deletionEvents: [{ event: input.deletionEvent }],
+                deletionEvents: [{
+                    event: input.deletionEvent,
+                    ...(input.deletionEventAttestation
+                        ? { attestation: input.deletionEventAttestation }
+                        : {}),
+                }],
                 fetchedAt: Date.now(),
             });
         }

@@ -207,6 +207,10 @@ export interface PostHistoryRecord {
     fetchedRelays?: string[];
     media: PostHistoryMediaRecord[];
     rawEvent: unknown;
+    rawEventVerification?: {
+        status: 'valid' | 'invalid';
+        ruleVersion: number;
+    };
     fetchedAt?: number;
     lastSeenAt?: number;
     channelEventId?: string;
@@ -245,6 +249,10 @@ export interface PostHistoryDeletionRequestRecord {
     deletedAt: number;
     reason: string | null;
     rawEvent: unknown;
+    rawEventVerification?: {
+        status: 'valid' | 'invalid';
+        ruleVersion: number;
+    };
     relayUrls: string[];
     fetchedAt: number;
     updatedAt: number;

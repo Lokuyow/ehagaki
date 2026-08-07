@@ -1,4 +1,8 @@
-import { validateEvent, verifyEvent } from "nostr-tools";
+import { validateEvent } from "nostr-tools";
+import {
+    attestFullyVerifiedPostHistoryRawEvent,
+    type PostHistoryRawEventAttestation,
+} from "./postHistoryRawEventVerification";
 import type { NostrEvent } from "./types";
 import {
     postHistoryDeletionRequestsRepository,
@@ -69,8 +73,8 @@ export interface PostHistoryJsonlImportServiceDeps {
 }
 
 type BufferedImportEvent =
-    | { type: "post"; event: NostrEvent }
-    | { type: "deletion"; event: NostrEvent };
+    | { type: "post"; event: NostrEvent; attestation: PostHistoryRawEventAttestation }
+    | { type: "deletion"; event: NostrEvent; attestation: PostHistoryRawEventAttestation };
 
 function createEmptyResult(): PostHistoryJsonlImportResult {
     return {
@@ -186,7 +190,10 @@ export class PostHistoryJsonlImportService {
             const posts = buffer
                 .filter((item): item is Extract<BufferedImportEvent, { type: "post" }> =>
                     item.type === "post")
-                .map((item) => item.event);
+                .map((item) => ({
+                    event: item.event,
+                    attestation: item.attestation,
+                }));
             const deletionEvents = buffer
                 .filter((item): item is Extract<BufferedImportEvent, { type: "deletion" }> =>
                     item.type === "deletion")
@@ -196,7 +203,7 @@ export class PostHistoryJsonlImportService {
             if (posts.length > 0) {
                 try {
                     const summary = await this.postHistoryRepository.upsertFetchedEvents({
-                        events: posts.map((event) => ({ event })),
+                        events: posts,
                     });
                     result.insertedPostCount += summary.insertedCount;
                     result.updatedPostCount += summary.updatedCount;
@@ -265,7 +272,8 @@ export class PostHistoryJsonlImportService {
                 result.unsupportedKindCount += 1;
                 return null;
             }
-            if (!verifyEvent(event as never)) {
+            const verified = attestFullyVerifiedPostHistoryRawEvent(event);
+            if (!verified) {
                 result.invalidIdOrSignatureCount += 1;
                 return null;
             }
@@ -277,7 +285,7 @@ export class PostHistoryJsonlImportService {
 
             if (event.kind === 1 || event.kind === 42) {
                 result.uniquePostEventCount += 1;
-                buffer.push({ type: "post", event });
+                buffer.push({ type: "post", ...verified });
             } else if (event.kind === 5) {
                 result.uniqueDeletionEventCount += 1;
                 const validETagCount = getValidDeletionETagCount(event);
@@ -286,7 +294,7 @@ export class PostHistoryJsonlImportService {
                     result.unsupportedDeletionEventCount += 1;
                     return null;
                 }
-                buffer.push({ type: "deletion", event });
+                buffer.push({ type: "deletion", ...verified });
             }
 
             if (buffer.length >= POST_HISTORY_JSONL_IMPORT_BATCH_SIZE) {

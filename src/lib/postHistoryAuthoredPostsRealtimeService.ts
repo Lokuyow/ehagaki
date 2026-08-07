@@ -6,6 +6,7 @@ import {
     type PostHistoryRepository,
 } from "./storage/postHistoryRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_RELAY_LIMIT = 6;
 export const POST_HISTORY_AUTHORED_POSTS_REALTIME_SINCE_OVERLAP_SECONDS = 60;
@@ -77,7 +78,7 @@ export class PostHistoryAuthoredPostsRealtimeService {
             }
 
             const rxReq = createRxForwardReq();
-            subscription = rxNostr.use(rxReq, {
+            subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                 on: relayUrls.length > 0
                     ? { relays: relayUrls }
                     : { defaultReadRelays: true },

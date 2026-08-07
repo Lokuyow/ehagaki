@@ -28,6 +28,7 @@ import {
     type PostHistoryInboundInteractionsSyncStateRepository,
 } from "./storage/postHistoryInboundInteractionsSyncStateRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_INBOUND_INTERACTIONS_INITIAL_LOOKBACK_SECONDS =
     7 * 24 * 60 * 60;
@@ -241,7 +242,7 @@ export class PostHistoryInboundInteractionsSyncService {
                     }
 
                     const rxReq = createRxBackwardReq();
-                    subscription = rxNostr.use(rxReq, {
+                    subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                         on: relayUrls.length > 0
                             ? { relays: relayUrls }
                             : { defaultReadRelays: true },

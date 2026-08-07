@@ -59,6 +59,37 @@ async function readDownload(download: Download): Promise<string> {
     return Buffer.concat(chunks).toString('utf-8');
 }
 
+async function readExportVerificationStates(page: Page): Promise<Array<{
+    status?: string;
+    ruleVersion?: number;
+}>> {
+    return page.evaluate(async () => {
+        const openRequest = indexedDB.open('eHagakiDB');
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            openRequest.onsuccess = () => resolve(openRequest.result);
+            openRequest.onerror = () => reject(openRequest.error);
+        });
+        try {
+            const transaction = database.transaction(
+                ['postHistory', 'postHistoryDeletionRequests'],
+                'readonly',
+            );
+            const getAll = (storeName: string) => new Promise<any[]>((resolve, reject) => {
+                const request = transaction.objectStore(storeName).getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+            const [posts, deletions] = await Promise.all([
+                getAll('postHistory'),
+                getAll('postHistoryDeletionRequests'),
+            ]);
+            return [...posts, ...deletions].map((record) => record.rawEventVerification);
+        } finally {
+            database.close();
+        }
+    });
+}
+
 async function expectSummary(page: Page, total: number) {
     const summary = page.locator('.post-history-summary-count');
     await expect(summary).toBeVisible();
@@ -230,6 +261,11 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(content).not.toContain('relayHints');
         expect(content.endsWith('\n')).toBe(true);
         await expect(page.getByText(/投稿履歴を3件エクスポートしました/)).toBeVisible();
+        await expect.poll(() => readExportVerificationStates(page)).toEqual([
+            { status: 'valid', ruleVersion: 1 },
+            { status: 'valid', ruleVersion: 1 },
+            { status: 'valid', ruleVersion: 1 },
+        ]);
     });
 
     test('desktop JSONL import saves a post and refreshes the local history', async ({ page, isMobile }) => {

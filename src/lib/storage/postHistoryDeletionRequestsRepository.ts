@@ -9,7 +9,15 @@ import {
     toPostHistoryDeletionRequestRecord,
     toPostHistoryDeletionState,
 } from "../postHistoryDeletionUtils";
+import { isSameSignedNostrEvent } from "../postHistoryEventUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
+import {
+    attestFullyVerifiedPostHistoryRawEvent,
+    isCurrentPostHistoryRawEventAttestation,
+    RAW_EVENT_VERIFICATION_RULE_VERSION,
+    type PostHistoryRawEventAttestation,
+    type RawEventVerificationState,
+} from "../postHistoryRawEventVerification";
 import type { NostrEvent } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
@@ -26,6 +34,7 @@ export interface PostHistoryDeletionTarget {
 
 export interface PostHistoryDeletionRequestItem {
     event: NostrEvent;
+    attestation?: PostHistoryRawEventAttestation;
     relayUrls?: string[];
 }
 
@@ -59,6 +68,7 @@ export interface UpsertImportedPostHistoryDeletionEventsResult {
 export interface SaveLocalPostHistoryDeletionInput {
     targetEventId: string;
     deletionEvent: NostrEvent;
+    attestation?: PostHistoryRawEventAttestation;
     deletedAt: number;
     relayUrls?: string[];
     fetchedAt?: number;
@@ -74,6 +84,29 @@ export interface PostHistoryDeletionRequestsRepository {
 
 const NOSTR_EVENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 const NOSTR_KIND_TAG_PATTERN = /^(0|[1-9]\d{0,4})$/;
+
+const VALID_RAW_EVENT_VERIFICATION: RawEventVerificationState = {
+    status: "valid",
+    ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+};
+
+function isCurrentValidRawEventVerification(
+    verification: PostHistoryDeletionRequestRecord["rawEventVerification"],
+): boolean {
+    return verification?.status === "valid"
+        && verification.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION;
+}
+
+function ensureAttestedDeletionEvent(
+    event: NostrEvent,
+    attestation: PostHistoryRawEventAttestation | undefined,
+): { event: NostrEvent; attestation: PostHistoryRawEventAttestation } | null {
+    if (isCurrentPostHistoryRawEventAttestation(event, attestation)) {
+        return { event, attestation: attestation! };
+    }
+
+    return attestFullyVerifiedPostHistoryRawEvent(event);
+}
 
 interface ImportedDeletionRequestCandidate {
     record: PostHistoryDeletionRequestRecord;
@@ -138,6 +171,9 @@ function hasMaterialDeletionRequestChanges(
             !== isPostHistoryDeletionTargetVerified(nextRecord)
         || existingRecord.deletedAt !== nextRecord.deletedAt
         || existingRecord.reason !== nextRecord.reason
+        || !isSameSignedNostrEvent(existingRecord.rawEvent, nextRecord.rawEvent as NostrEvent)
+        || existingRecord.rawEventVerification?.status !== nextRecord.rawEventVerification?.status
+        || existingRecord.rawEventVerification?.ruleVersion !== nextRecord.rawEventVerification?.ruleVersion
         || !areStringArraysEqual(existingRecord.relayUrls, nextRecord.relayUrls);
 }
 
@@ -146,8 +182,17 @@ function mergeDeletionRequestRecord(
     nextRecord: PostHistoryDeletionRequestRecord,
     now: () => number,
 ): PostHistoryDeletionRequestRecord {
+    const keepExistingRaw = isCurrentValidRawEventVerification(
+        existingRecord.rawEventVerification,
+    ) && !isSameSignedNostrEvent(existingRecord.rawEvent, nextRecord.rawEvent as NostrEvent);
     return {
         ...nextRecord,
+        ...(keepExistingRaw
+            ? {
+                rawEvent: existingRecord.rawEvent,
+                rawEventVerification: existingRecord.rawEventVerification,
+            }
+            : {}),
         targetVerified: isPostHistoryDeletionTargetVerified(existingRecord)
             || isPostHistoryDeletionTargetVerified(nextRecord),
         relayUrls: RelayConfigUtils.sanitizeExternalRelayUrls([
@@ -209,7 +254,14 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
     }
 
     async saveLocalDeletion(input: SaveLocalPostHistoryDeletionInput): Promise<void> {
-        const deletionEvent = input.deletionEvent;
+        const verified = ensureAttestedDeletionEvent(
+            input.deletionEvent,
+            input.attestation,
+        );
+        if (!verified) {
+            throw new Error("invalid_local_deletion_event");
+        }
+        const deletionEvent = verified.event;
         if (
             !input.targetEventId
             || deletionEvent.kind !== 5
@@ -245,6 +297,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                     relayUrls: input.relayUrls,
                     fetchedAt,
                 }, this.now);
+                nextRecord.rawEventVerification = { ...VALID_RAW_EVENT_VERIFICATION };
                 const existingRecord = await this.db.postHistoryDeletionRequests.get(
                     nextRecord.id,
                 );
@@ -286,12 +339,18 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             };
         }
 
+        const verifiedDeletionEvents = input.deletionEvents.flatMap((item) => {
+            const verified = ensureAttestedDeletionEvent(item.event, item.attestation);
+            return verified
+                ? [{ ...item, event: verified.event, attestation: verified.attestation }]
+                : [];
+        });
         const targetsByEventId = makeTargetMap(input.targetEvents);
         const fetchedAt = input.fetchedAt ?? this.now();
         const nextRecordsById = new Map<string, PostHistoryDeletionRequestRecord>();
-        let ignoredCount = 0;
+        let ignoredCount = input.deletionEvents.length - verifiedDeletionEvents.length;
 
-        for (const item of input.deletionEvents) {
+        for (const item of verifiedDeletionEvents) {
             const targetEventIds = item.event.tags
                 .filter((tag) => tag[0] === "e" && typeof tag[1] === "string")
                 .map((tag) => tag[1]);
@@ -319,6 +378,7 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
                 if (!record) {
                     continue;
                 }
+                record.rawEventVerification = { ...VALID_RAW_EVENT_VERIFICATION };
 
                 nextRecordsById.set(record.id, record);
                 matched = true;
@@ -394,16 +454,22 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
         let ignoredCount = 0;
 
         for (const deletionEvent of input.deletionEvents) {
+            const verified = ensureAttestedDeletionEvent(deletionEvent, undefined);
+            if (!verified) {
+                ignoredCount += 1;
+                continue;
+            }
+            const verifiedDeletionEvent = verified.event;
             if (
-                deletionEvent.kind !== 5
-                || deletionEvent.pubkey !== input.ownerPubkeyHex
-                || !NOSTR_EVENT_ID_PATTERN.test(deletionEvent.id)
+                verifiedDeletionEvent.kind !== 5
+                || verifiedDeletionEvent.pubkey !== input.ownerPubkeyHex
+                || !NOSTR_EVENT_ID_PATTERN.test(verifiedDeletionEvent.id)
             ) {
                 ignoredCount += 1;
                 continue;
             }
 
-            const targetEventIds = deletionEvent.tags
+            const targetEventIds = verifiedDeletionEvent.tags
                 .filter((tag) => tag[0] === "e"
                     && typeof tag[1] === "string"
                     && NOSTR_EVENT_ID_PATTERN.test(tag[1]))
@@ -415,17 +481,18 @@ export class DexiePostHistoryDeletionRequestsRepository implements PostHistoryDe
             }
 
             const shouldStoreWithoutTarget = shouldStoreImportedDeletionWithoutTarget(
-                deletionEvent,
+                verifiedDeletionEvent,
             );
-            candidateDeletionEventIds.add(deletionEvent.id);
+            candidateDeletionEventIds.add(verifiedDeletionEvent.id);
             for (const targetEventId of uniqueTargetEventIds) {
                 const record = toPostHistoryDeletionRequestReferenceRecord({
-                    deletionEvent,
+                    deletionEvent: verifiedDeletionEvent,
                     targetEventId,
                     targetVerified: false,
                     relayUrls: [],
                     fetchedAt,
                 }, this.now);
+                record.rawEventVerification = { ...VALID_RAW_EVENT_VERIFICATION };
                 candidatesById.set(record.id, {
                     record,
                     shouldStoreWithoutTarget,

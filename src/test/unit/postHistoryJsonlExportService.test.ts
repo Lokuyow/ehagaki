@@ -1,11 +1,12 @@
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
     PostHistoryDeletionRequestRecord,
     PostHistoryRecord,
 } from "../../lib/storage/ehagakiDb";
 import { PostHistoryJsonlExportService } from "../../lib/postHistoryJsonlExportService";
 import { PostHistoryJsonlImportService } from "../../lib/postHistoryJsonlImportService";
+import { RAW_EVENT_VERIFICATION_RULE_VERSION } from "../../lib/postHistoryRawEventVerification";
 
 function createEvent(
     secretKey: Uint8Array,
@@ -325,5 +326,103 @@ describe("PostHistoryJsonlExportService", () => {
             exportedEventCount: 0,
             isPartial: false,
         });
+    });
+
+    it("現在のvalid verification stateなら定常exportで署名を再検証しない", async () => {
+        const secretKey = generateSecretKey();
+        const event = createEvent(secretKey, {
+            kind: 1,
+            content: "already verified",
+            created_at: 10,
+        });
+        const record = createPostRecord(event);
+        record.rawEvent = { ...event, sig: "0".repeat(128) };
+        record.rawEventVerification = {
+            status: "valid",
+            ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+        };
+        const service = new PostHistoryJsonlExportService({
+            postHistoryRepository: { getAll: async () => [record] },
+            deletionRequestsRepository: { getAllForTargetAuthorPubkey: async () => [] },
+        });
+
+        const result = await service.exportForPubkey(event.pubkey);
+
+        expect(result).toMatchObject({
+            exportedEventCount: 1,
+            skippedPostCount: 0,
+            isPartial: false,
+        });
+    });
+
+    it("Workerの進捗・完了・terminateを呼び出す", async () => {
+        const terminate = vi.fn();
+        const worker = {
+            onmessage: null as any,
+            onerror: null as any,
+            postMessage: vi.fn(),
+            terminate,
+        };
+        worker.postMessage.mockImplementation(() => {
+            worker.onmessage?.({ data: {
+                type: "progress",
+                progress: { phase: "verifying", processed: 50, total: 100 },
+            } });
+            worker.onmessage?.({ data: {
+                type: "complete",
+                result: {
+                    exportedEventCount: 1,
+                    exportedPostEventCount: 1,
+                    exportedDeletionEventCount: 0,
+                    skippedPostCount: 0,
+                    missingDeletionRawEventCount: 0,
+                    invalidDeletionRawEventCount: 0,
+                    isPartial: false,
+                },
+                blob: new Blob(["{}\n"], { type: "application/x-ndjson;charset=utf-8" }),
+            } });
+        });
+        const service = new PostHistoryJsonlExportService({
+            workerFactory: () => worker,
+        });
+        const progress = vi.fn();
+
+        const exported = await service.exportForPubkeyInWorker("a".repeat(64), {
+            onProgress: progress,
+        });
+
+        expect(worker.postMessage).toHaveBeenCalledWith({
+            type: "export",
+            pubkeyHex: "a".repeat(64),
+        });
+        expect(progress).toHaveBeenCalledWith({
+            phase: "verifying",
+            processed: 50,
+            total: 100,
+        });
+        expect(exported.blob.type).toBe("application/x-ndjson;charset=utf-8");
+        expect(terminate).toHaveBeenCalledOnce();
+    });
+
+    it("Workerをabortするとterminateして完了を待たない", async () => {
+        const terminate = vi.fn();
+        const worker = {
+            onmessage: null as any,
+            onerror: null as any,
+            postMessage: vi.fn(),
+            terminate,
+        };
+        const service = new PostHistoryJsonlExportService({
+            workerFactory: () => worker,
+        });
+        const controller = new AbortController();
+        const exportPromise = service.exportForPubkeyInWorker("a".repeat(64), {
+            signal: controller.signal,
+        });
+
+        controller.abort();
+
+        await expect(exportPromise).rejects.toMatchObject({ name: "AbortError" });
+        expect(terminate).toHaveBeenCalledOnce();
     });
 });

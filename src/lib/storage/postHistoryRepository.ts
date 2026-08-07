@@ -15,6 +15,13 @@ import { markPostHistoryShouldReturnToLatestAfterLocalPost } from "../postHistor
 import { bumpPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import { extractPostHistoryMedia } from "../postHistoryMediaUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
+import {
+    attestFullyVerifiedPostHistoryRawEvent,
+    isCurrentPostHistoryRawEventAttestation,
+    RAW_EVENT_VERIFICATION_RULE_VERSION,
+    type PostHistoryRawEventAttestation,
+    type RawEventVerificationState,
+} from "../postHistoryRawEventVerification";
 import type { NostrEvent } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import type {
@@ -30,6 +37,7 @@ export const POST_HISTORY_SCHEMA_VERSION = 2;
 
 export type PostHistorySaveInput = {
     event: NostrEvent;
+    attestation?: PostHistoryRawEventAttestation;
     acceptedRelays?: string[];
     relayHints?: string[];
     postedAt?: number;
@@ -85,6 +93,7 @@ export type PostHistorySparseChunkOptions = PostHistoryRepositoryOptions & {
 
 export type PostHistoryFetchedEventItem = {
     event: NostrEvent;
+    attestation?: PostHistoryRawEventAttestation;
     relayUrls?: string[];
 };
 
@@ -131,8 +140,32 @@ export interface PostHistoryRepository {
 
 type NormalizedFetchedEventItem = {
     event: NostrEvent;
+    attestation?: PostHistoryRawEventAttestation;
     relayUrls: string[];
 };
+
+const VALID_RAW_EVENT_VERIFICATION: RawEventVerificationState = {
+    status: "valid",
+    ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+};
+
+function isCurrentValidRawEventVerification(
+    verification: PostHistoryRecord["rawEventVerification"],
+): boolean {
+    return verification?.status === "valid"
+        && verification.ruleVersion === RAW_EVENT_VERIFICATION_RULE_VERSION;
+}
+
+function ensureAttestedEvent(
+    event: NostrEvent,
+    attestation: PostHistoryRawEventAttestation | undefined,
+): { event: NostrEvent; attestation: PostHistoryRawEventAttestation } | null {
+    if (isCurrentPostHistoryRawEventAttestation(event, attestation)) {
+        return { event, attestation: attestation! };
+    }
+
+    return attestFullyVerifiedPostHistoryRawEvent(event);
+}
 
 function cloneMedia(media: PostHistoryMediaRecord[]): PostHistoryMediaRecord[] {
     return media.map((item) => ({ ...item }));
@@ -254,6 +287,7 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         acceptedRelays,
         media: extractPostHistoryMedia(event),
         rawEvent: cloneNostrEvent(event),
+        rawEventVerification: { ...VALID_RAW_EVENT_VERIFICATION },
         ...(channelReference.channelEventId
             ? { channelEventId: channelReference.channelEventId }
             : {}),
@@ -282,6 +316,7 @@ function normalizeFetchedEventItems(
         if (!existing) {
             normalized.set(item.event.id, {
                 event: item.event,
+                ...(item.attestation ? { attestation: item.attestation } : {}),
                 relayUrls,
             });
             continue;
@@ -296,6 +331,9 @@ function normalizeFetchedEventItems(
             ...existing.relayUrls,
             ...relayUrls,
         ]);
+        if (!existing.attestation && item.attestation) {
+            existing.attestation = item.attestation;
+        }
     }
 
     return Array.from(normalized.values());
@@ -357,6 +395,10 @@ function hasMaterialPostHistoryChanges(
         || existingRecord.deletionEventId !== nextRecord.deletionEventId
         || existingRecord.channelEventId !== nextRecord.channelEventId
         || !isSameSignedNostrEvent(existingRecord.rawEvent, nextRecord.rawEvent as NostrEvent)
+        || existingRecord.rawEventVerification?.status
+            !== nextRecord.rawEventVerification?.status
+        || existingRecord.rawEventVerification?.ruleVersion
+            !== nextRecord.rawEventVerification?.ruleVersion
         || !areStringArraysEqual(existingRecord.relayHints, nextRecord.relayHints)
         || !areStringArraysEqual(existingRecord.acceptedRelays, nextRecord.acceptedRelays)
         || !areStringArraysEqual(existingRecord.fetchedRelays, nextRecord.fetchedRelays)
@@ -720,16 +762,30 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
     }
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
-        await this.db.postHistory.put(toRecord(input, this.now));
-        bumpPostHistorySearchRevision(input.event.pubkey);
+        const verified = ensureAttestedEvent(input.event, input.attestation);
+        if (!verified) {
+            throw new Error("invalid_post_history_raw_event");
+        }
+
+        await this.db.postHistory.put(toRecord({ ...input, event: verified.event }, this.now));
+        bumpPostHistorySearchRevision(verified.event.pubkey);
         markPostHistoryShouldReturnToLatestAfterLocalPost({
-            pubkeyHex: input.event.pubkey,
-            eventId: input.event.id,
+            pubkeyHex: verified.event.pubkey,
+            eventId: verified.event.id,
         });
     }
 
     async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult> {
-        const normalizedItems = normalizeFetchedEventItems(input.events, this.console);
+        const normalizedItems = normalizeFetchedEventItems(input.events, this.console)
+            .flatMap((item) => {
+                const verified = ensureAttestedEvent(item.event, item.attestation);
+                if (!verified) {
+                    this.console.warn("post_history_invalid_fetched_event", item.event.id);
+                    return [];
+                }
+
+                return [{ ...item, event: verified.event, attestation: verified.attestation }];
+            });
         if (normalizedItems.length === 0) {
             return {
                 insertedCount: 0,
@@ -774,12 +830,17 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     ]);
                     const rawEventChanged = !!existingRecord
                         && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
+                    const replaceRawEvent = !existingRecord
+                        || !rawEventChanged
+                        || !isCurrentValidRawEventVerification(
+                            existingRecord.rawEventVerification,
+                        );
 
                     if (rawEventChanged) {
                         this.console.warn("post_history_raw_event_conflict", item.event.id);
                     }
 
-                    const channelReference = rawEventChanged && existingRecord
+                    const channelReference = !replaceRawEvent && existingRecord
                         ? {
                             channelEventId: existingRecord.channelEventId,
                             channelRelayHints: existingRecord.channelRelayHints,
@@ -795,22 +856,25 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                         id: item.event.id,
                         eventId: item.event.id,
                         pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
-                        kind: rawEventChanged && existingRecord ? existingRecord.kind : item.event.kind,
-                        content: rawEventChanged && existingRecord ? existingRecord.content : item.event.content,
-                        tags: rawEventChanged && existingRecord
+                        kind: !replaceRawEvent && existingRecord ? existingRecord.kind : item.event.kind,
+                        content: !replaceRawEvent && existingRecord ? existingRecord.content : item.event.content,
+                        tags: !replaceRawEvent && existingRecord
                             ? existingRecord.tags.map((tag) => [...tag])
                             : item.event.tags.map((tag) => [...tag]),
-                        createdAt: rawEventChanged && existingRecord ? existingRecord.createdAt : item.event.created_at,
+                        createdAt: !replaceRawEvent && existingRecord ? existingRecord.createdAt : item.event.created_at,
                         postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
                         relayHints,
                         acceptedRelays: existingRecord?.acceptedRelays ?? [],
                         ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
-                        media: rawEventChanged && existingRecord
+                        media: !replaceRawEvent && existingRecord
                             ? cloneMedia(existingRecord.media)
                             : extractPostHistoryMedia(item.event),
-                        rawEvent: rawEventChanged && existingRecord
+                        rawEvent: !replaceRawEvent && existingRecord
                             ? existingRecord.rawEvent
                             : cloneNostrEvent(item.event),
+                        rawEventVerification: !replaceRawEvent && existingRecord
+                            ? existingRecord.rawEventVerification
+                            : { ...VALID_RAW_EVENT_VERIFICATION },
                         fetchedAt,
                         lastSeenAt: fetchedAt,
                         ...(channelReference.channelEventId

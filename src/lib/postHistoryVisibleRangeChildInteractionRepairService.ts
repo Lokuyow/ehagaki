@@ -26,6 +26,7 @@ import {
     type PostHistoryChildInteractionsRepository,
 } from "./storage/postHistoryChildInteractionsRepository";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 import type { PostHistoryRelationKind } from "./postHistoryRelationLifecycleTypes";
 import {
     POST_HISTORY_RELATION_REPAIR_KINDS,
@@ -642,7 +643,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                     return;
                 }
 
-                subscription = rxNostr.use(rxReq, {
+                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },

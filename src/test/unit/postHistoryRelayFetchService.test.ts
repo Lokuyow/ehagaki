@@ -11,6 +11,13 @@ const createRxBackwardReqMock = vi.hoisted(() => vi.fn((_rxReqId?: string) => ({
 vi.mock("rx-nostr", () => ({
     createRxBackwardReq: createRxBackwardReqMock,
 }));
+vi.mock("../../lib/postHistoryRawEventVerification", () => ({
+    RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
+    attestFullyVerifiedPostHistoryRawEvent: (event: unknown) => ({ event, attestation: {} }),
+    isCurrentPostHistoryRawEventAttestation: () => true,
+    usePostHistoryRelayEvents: (rxNostr: { use: Function }, rxReq: unknown, options: unknown) =>
+        rxNostr.use(rxReq, options),
+}));
 
 import type { RxNostr } from "rx-nostr";
 import {

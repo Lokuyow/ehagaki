@@ -2,6 +2,7 @@
 
 import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 
 // App Store types
 export interface AuthState {
@@ -189,6 +190,7 @@ export interface PostManagerDeps {
     getParentClientSignerFn?: () => any;
     savePostHistoryFn?: (input: {
         event: NostrEvent;
+        attestation?: PostHistoryRawEventAttestation;
         acceptedRelays?: string[];
         relayHints?: string[];
     }) => void | Promise<void>;

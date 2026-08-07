@@ -2,6 +2,7 @@ import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_SELF_PARENT_FETCH_TIMEOUT_MS = 5_000;
 export const POST_HISTORY_SELF_PARENT_FETCH_RELAY_LIMIT = 6;
@@ -84,7 +85,7 @@ export class PostHistorySelfParentFetchService {
                 }
 
                 const rxReq = createRxBackwardReq();
-                subscription = rxNostr.use(rxReq, {
+                subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
                     on: relayUrls.length > 0
                         ? { relays: relayUrls }
                         : { defaultReadRelays: true },

@@ -9,6 +9,7 @@ import { FALLBACK_RELAYS } from "./constants";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
+import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
 
 export const POST_HISTORY_FETCH_KINDS = [1, 42] as const;
 export const POST_HISTORY_PAGE_SIZE = 50;
@@ -363,7 +364,7 @@ export class PostHistoryRelayFetchService {
                 });
 
                 subscription = relayUrls.length > 0
-                    ? rxNostr.use(rxReq, { on: { relays: relayUrls } }).subscribe({
+                    ? usePostHistoryRelayEvents(rxNostr, rxReq, { on: { relays: relayUrls } }).subscribe({
                         next: (packet: { event?: NostrEvent; from?: string }) => {
                             rawCount = this.handlePacket(eventsById, relayPackets, eventRelayUrls, rawCount, packet);
                         },
@@ -376,7 +377,7 @@ export class PostHistoryRelayFetchService {
                             safeResolve("error");
                         },
                     })
-                    : rxNostr.use(rxReq).subscribe({
+                    : usePostHistoryRelayEvents(rxNostr, rxReq).subscribe({
                         next: (packet: { event?: NostrEvent; from?: string }) => {
                             rawCount = this.handlePacket(eventsById, relayPackets, eventRelayUrls, rawCount, packet);
                         },
