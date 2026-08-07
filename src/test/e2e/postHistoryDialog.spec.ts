@@ -178,6 +178,10 @@ async function expectNoHorizontalOverflow(
     expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
+function visiblePostHistoryActionMenu(page: Page) {
+    return page.locator('.post-history-menu-content:visible').last();
+}
+
 async function expectTooltip(
     page: Page,
     trigger: ReturnType<Page['locator']>,
@@ -622,6 +626,89 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
     });
 
+    test('normal post action menu keeps extracted actions and opens raw JSON on both browser sizes', async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        const postItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.plainPostEventId}"]`,
+        );
+        const actionTrigger = postItem
+            .locator('.post-preview-footer-right')
+            .getByRole('button', { name: 'アクションを表示' });
+
+        await actionTrigger.click();
+        const actionMenu = visiblePostHistoryActionMenu(page);
+        await expect(actionMenu.getByRole('menuitem')).toHaveText([
+            '返信 1件を表示',
+            'イベントIDをコピー',
+            'イベントJSONを表示',
+            '削除',
+        ]);
+
+        await actionMenu
+            .getByRole('menuitem', { name: 'イベントJSONを表示' })
+            .click();
+        const rawJsonDialog = page.getByRole('dialog', { name: 'イベントJSON' });
+        await expect(rawJsonDialog).toBeVisible();
+        await expect(rawJsonDialog.locator('.raw-json-content')).toHaveText('null');
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+
+        await page.locator('.dialog-overlay').last().click({ position: { x: 8, y: 8 } });
+        await expect(rawJsonDialog).toHaveCount(0);
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+    });
+
+    test('resolved quote preview action menu keeps the extracted actions usable', async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        const quoteItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`,
+        );
+        const quoteCard = quoteItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+
+        await expect(quoteCard).toBeVisible();
+        await quoteCard
+            .getByRole('button', { name: 'アクションを表示' })
+            .click();
+        const actionMenu = visiblePostHistoryActionMenu(page);
+        await expect(actionMenu.getByRole('menuitem')).toHaveText([
+            'イベントIDをコピー',
+            'イベントJSONを表示',
+            'ブロードキャスト',
+        ]);
+    });
+
+    test('thread graph node action menu keeps raw JSON before copy', async ({
+        page,
+    }) => {
+        const harness = await gotoHarness(page);
+        const threadParentItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.threadParentPostEventId}"]`,
+        );
+
+        await threadParentItem
+            .getByRole('button', { name: '返信先を見る' })
+            .click();
+        const parentCard = threadParentItem
+            .locator('.post-history-related-card')
+            .filter({ hasText: harness.quoteContent });
+        await expect(parentCard).toBeVisible();
+        await parentCard
+            .getByRole('button', { name: 'アクションを表示' })
+            .click();
+        const actionMenu = visiblePostHistoryActionMenu(page);
+        await expect(actionMenu.getByRole('menuitem')).toHaveText([
+            '返信を確認',
+            'イベントJSONを表示',
+            'イベントIDをコピー',
+            'ブロードキャスト',
+        ]);
+    });
+
     test('mobile reference link stays tappable without changing parent state or overflowing', async ({
         page,
         isMobile,
@@ -715,20 +802,4 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByRole('menuitem', { name: '削除' })).toHaveCount(0);
     });
 
-    test('raw JSON opens above post history and closes from its overlay only', async ({ page, isMobile }) => {
-        test.skip(isMobile, 'desktop only');
-
-        await gotoHarness(page);
-        await page.getByRole('button', { name: 'アクションを表示' }).first().click();
-        await page.getByRole('menuitem', { name: 'イベントJSONを表示' }).click();
-
-        const rawJsonDialog = page.getByRole('dialog', { name: 'イベントJSON' });
-        await expect(rawJsonDialog).toBeVisible();
-        await expect(rawJsonDialog.locator('.raw-json-content')).toHaveText('null');
-        await expect(page.locator('.post-history-dialog')).toBeVisible();
-
-        await page.locator('.dialog-overlay').last().click({ position: { x: 8, y: 8 } });
-        await expect(rawJsonDialog).toHaveCount(0);
-        await expect(page.locator('.post-history-dialog')).toBeVisible();
-    });
 });

@@ -439,7 +439,7 @@ vi.mock('../../lib/postDeletionService', () => ({
     canRequestPostDeletion: (post: { pubkeyHex: string; deletedAt?: number; kind: number }, currentPubkey?: string | null) =>
         !!currentPubkey
         && post.pubkeyHex === currentPubkey
-        && post.deletedAt === undefined
+        && typeof post.deletedAt !== 'number'
         && [1, 42].includes(post.kind),
     postDeletionService: postDeletionServiceMock,
 }));
@@ -6469,6 +6469,160 @@ describe('PostHistoryDialog', () => {
         });
 
         countDeferred.resolve(1);
+    });
+
+    function expectDeleteSeparatorInOpenMenu(expected: boolean): void {
+        const body = document.querySelector<HTMLElement>(
+            '.post-history-menu-content .post-history-menu-body',
+        );
+        expect(body).toBeTruthy();
+
+        const children = Array.from(body!.children);
+        const broadcastIndex = children.findIndex((element) =>
+            element.textContent?.includes('ブロードキャスト'),
+        );
+        const deleteIndex = children.findIndex((element) =>
+            element.textContent?.includes('削除'),
+        );
+        expect(broadcastIndex).toBeGreaterThanOrEqual(0);
+        expect(deleteIndex).toBeGreaterThan(broadcastIndex);
+        expect(
+            children
+                .slice(broadcastIndex + 1, deleteIndex)
+                .some((element) =>
+                    element.classList.contains('post-history-menu-separator'),
+                ),
+        ).toBe(expected);
+    }
+
+    async function waitForOpenRecordActionMenu(): Promise<void> {
+        await waitFor(() => {
+            expect(
+                document.querySelector(
+                    '.post-history-menu-content .post-history-menu-body',
+                ),
+            ).toBeTruthy();
+        });
+    }
+
+    function createBroadcastableRecord(overrides: Record<string, any> = {}) {
+        const eventId = overrides.eventId ?? 'c'.repeat(64);
+        const content = overrides.content ?? 'action separator target';
+        return createRecord({
+            ...overrides,
+            eventId,
+            content,
+            rawEvent: {
+                id: eventId,
+                pubkey: overrides.pubkeyHex ?? 'a'.repeat(64),
+                kind: overrides.kind ?? 1,
+                content,
+                tags: overrides.tags ?? [],
+                created_at: 1_700_000_000,
+                sig: 'd'.repeat(128),
+            },
+        });
+    }
+
+    it('[record-action-items-header-separator] header keeps broadcast and delete adjacent', async () => {
+        const post = createBroadcastableRecord();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+
+        render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const headerActions = historyItem.querySelector<HTMLElement>(
+            '.post-preview-header-right',
+        );
+        expect(headerActions).toBeTruthy();
+        await fireEvent.click(within(headerActions!).getByRole('button', {
+            name: 'アクションを表示',
+        }));
+        await waitForOpenRecordActionMenu();
+        expectDeleteSeparatorInOpenMenu(false);
+    });
+
+    it('[record-action-items-footer-separator] footer keeps the delete separator', async () => {
+        const post = createBroadcastableRecord();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onQuotePost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const footerActions = historyItem.querySelector<HTMLElement>(
+            '.post-preview-footer-right',
+        );
+        expect(footerActions).toBeTruthy();
+        await fireEvent.click(within(footerActions!).getByRole('button', {
+            name: 'アクションを表示',
+        }));
+        await waitForOpenRecordActionMenu();
+        expectDeleteSeparatorInOpenMenu(true);
+    });
+
+    it('[record-action-items-quote-separator] quote preview keeps the delete separator', async () => {
+        const { quotedRecord, post, quoteId } = createQuoteContextRecords({
+            quoteAuthorPubkey: 'a'.repeat(64),
+        });
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === quoteId ? quotedRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+        });
+
+        const historyItem = await findHistoryItem(post.eventId);
+        const quoteCard = (await within(historyItem).findByText('引用元の投稿'))
+            .closest('.post-history-related-card') as HTMLElement;
+        await fireEvent.click(within(quoteCard).getByRole('button', {
+            name: 'アクションを表示',
+        }));
+        await waitForOpenRecordActionMenu();
+        expectDeleteSeparatorInOpenMenu(true);
+    });
+
+    it('[record-action-items-node-separator] thread node keeps the delete separator', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const ownParentRecord = {
+            ...parentRecord,
+            pubkeyHex: 'a'.repeat(64),
+            rawEvent: {
+                ...parentRecord.rawEvent,
+                pubkey: 'a'.repeat(64),
+            },
+        };
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation(async (eventId: string) =>
+            eventId === replyId ? ownParentRecord : null,
+        );
+
+        render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        const relatedNode = (await screen.findByText('返信先の投稿'))
+            .closest('.post-history-thread-node-anchor') as HTMLElement;
+        await fireEvent.click(within(relatedNode).getByRole('button', {
+            name: 'アクションを表示',
+        }));
+        await waitForOpenRecordActionMenu();
+        expectDeleteSeparatorInOpenMenu(true);
     });
 
 });
