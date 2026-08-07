@@ -101,6 +101,8 @@ describe("PostHistoryJsonlExportService", () => {
             tags: [["e", post1.id]],
         });
         const post1Record = createPostRecord(post1);
+        post1Record.deletedAt = 25_000;
+        post1Record.deletionEventId = deletion.id;
         post1Record.rawEvent = {
             ...post1,
             acceptedRelays: ["wss://local-only.example.com/"],
@@ -130,6 +132,8 @@ describe("PostHistoryJsonlExportService", () => {
             exportedEventCount: 3,
             exportedPostEventCount: 2,
             exportedDeletionEventCount: 1,
+            missingDeletionRawEventCount: 0,
+            invalidDeletionRawEventCount: 0,
             isPartial: false,
         });
         expect(events.map((event) => [event.kind, event.created_at])).toEqual([
@@ -175,6 +179,69 @@ describe("PostHistoryJsonlExportService", () => {
         expect(result.jsonl).toBe("");
         expect(result.skippedPostCount).toBe(1);
         expect(result.missingDeletionRawEventCount).toBe(1);
+        expect(result.isPartial).toBe(true);
+    });
+
+    it("旧形式の削除済み投稿はkind 5がなくても出力するが部分結果として返す", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const post = createEvent(secretKey, {
+            kind: 1,
+            content: "legacy deleted post",
+            created_at: 10,
+        });
+        const postRecord = createPostRecord(post);
+        postRecord.deletedAt = 1_700_000_000_000;
+        postRecord.deletionEventId = "d".repeat(64);
+        const service = new PostHistoryJsonlExportService({
+            postHistoryRepository: { getAll: async () => [postRecord] },
+            deletionRequestsRepository: { getAllForTargetAuthorPubkey: async () => [] },
+        });
+
+        const result = await service.exportForPubkey(pubkey);
+        const events = result.jsonl.trim().split("\n").map((line) => JSON.parse(line));
+
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ id: post.id, kind: 1 });
+        expect(events.some((event) => event.kind === 5)).toBe(false);
+        expect(result).toMatchObject({
+            exportedPostEventCount: 1,
+            exportedDeletionEventCount: 0,
+            missingDeletionRawEventCount: 1,
+            isPartial: true,
+        });
+    });
+
+    it("同じ削除rawEvent欠落を削除requestと投稿状態で二重計上しない", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const post = createEvent(secretKey, {
+            kind: 1,
+            content: "deleted post",
+            created_at: 10,
+        });
+        const deletion = createEvent(secretKey, {
+            kind: 5,
+            content: "",
+            created_at: 20,
+            tags: [["e", post.id]],
+        });
+        const postRecord = createPostRecord(post);
+        postRecord.deletedAt = 21_000;
+        postRecord.deletionEventId = deletion.id;
+        const service = new PostHistoryJsonlExportService({
+            postHistoryRepository: { getAll: async () => [postRecord] },
+            deletionRequestsRepository: {
+                getAllForTargetAuthorPubkey: async () => [
+                    createDeletionRecord(deletion, post.id, pubkey, null),
+                ],
+            },
+        });
+
+        const result = await service.exportForPubkey(pubkey);
+
+        expect(result.missingDeletionRawEventCount).toBe(1);
+        expect(result.invalidDeletionRawEventCount).toBe(0);
         expect(result.isPartial).toBe(true);
     });
 

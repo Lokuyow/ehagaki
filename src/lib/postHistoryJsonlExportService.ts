@@ -129,6 +129,9 @@ export class PostHistoryJsonlExportService {
         const result = createEmptyResult();
         const postEvents: NostrEvent[] = [];
         const deletionEvents: NostrEvent[] = [];
+        const exportablePostEventIds = new Set<string>();
+        const validDeletionTargetEventIds = new Set<string>();
+        const deletionTargetsWithUnavailableRawEvent = new Set<string>();
         const postRecords = await this.postHistoryRepository.getAll({ pubkeyHex });
 
         for (const record of postRecords) {
@@ -151,6 +154,7 @@ export class PostHistoryJsonlExportService {
             }
 
             postEvents.push(toExportableSignedEvent(record.rawEvent));
+            exportablePostEventIds.add(record.eventId);
             result.exportedPostEventCount += 1;
         }
 
@@ -167,9 +171,17 @@ export class PostHistoryJsonlExportService {
             const validRecord = records.find((record) =>
                 isConsistentDeletionEvent(record, record.rawEvent, pubkeyHex));
             if (validRecord) {
-                deletionEvents.push(toExportableSignedEvent(validRecord.rawEvent as NostrEvent));
+                const deletionEvent = toExportableSignedEvent(validRecord.rawEvent as NostrEvent);
+                deletionEvents.push(deletionEvent);
+                for (const targetEventId of extractDeletionTargetEventIds(deletionEvent)) {
+                    validDeletionTargetEventIds.add(targetEventId);
+                }
                 result.exportedDeletionEventCount += 1;
                 continue;
+            }
+
+            for (const record of records) {
+                deletionTargetsWithUnavailableRawEvent.add(record.targetEventId);
             }
 
             if (records.every((record) => !hasRawDeletionEvent(record))) {
@@ -178,6 +190,25 @@ export class PostHistoryJsonlExportService {
                 result.invalidDeletionRawEventCount += 1;
             }
         }
+
+        // Older eHagaki versions persisted the post's deletion state without
+        // saving the signed kind 5 raw event. Count those states as partial as
+        // well, unless the exported kind 5 actually references this post.
+        const unrecoverableDeletedPostEventIds = new Set<string>();
+        for (const record of postRecords) {
+            if (
+                (record.kind !== 1 && record.kind !== 42)
+                || record.deletedAt === undefined
+                || !exportablePostEventIds.has(record.eventId)
+                || validDeletionTargetEventIds.has(record.eventId)
+                || deletionTargetsWithUnavailableRawEvent.has(record.eventId)
+            ) {
+                continue;
+            }
+
+            unrecoverableDeletedPostEventIds.add(record.eventId);
+        }
+        result.missingDeletionRawEventCount += unrecoverableDeletedPostEventIds.size;
 
         postEvents.sort(compareExportEvents);
         deletionEvents.sort(compareExportEvents);
