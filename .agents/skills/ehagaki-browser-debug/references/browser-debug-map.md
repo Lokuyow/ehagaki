@@ -182,11 +182,11 @@
 - **主な実装ファイル:** `playwright.config.ts`、`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/ComposerTargetDialogHarness.svelte`、`src/test/e2e/composerTargetDialogHarnessEntry.ts`、`src/test/e2e/postHistoryDialog.spec.ts`、`src/test/e2e/PostHistoryDialogHarness.svelte`、`src/test/e2e/postHistoryDialogHarnessEntry.ts`、`composer-target-dialog-playwright.html`、`post-history-dialog-playwright.html`。
 - **主な関数、store、hook、controller:** Playwright標準`test` fixtureの`page`と`isMobile`、各`gotoHarness()`、window上の`__COMPOSER_TARGET_HARNESS__`/`__POST_HISTORY_HARNESS__` ready state。独立したcustom fixture moduleは現checkoutにない。
 - **Event source:** page navigation、role/label locator操作、keyboard/tap/click、route mock、viewport resize、popup/history、DOM evaluation。
-- **StateまたはCSS変数:** config `baseURL=http://127.0.0.1:4173/ehagaki/`、`locale=ja-JP`、trace `on-first-retry`、workers `1`、harness-injected deterministic data。
+- **StateまたはCSS変数:** config `locale=ja-JP`、trace `on-first-retry`、workers `1`、harness-injected deterministic data。`EHAGAKI_E2E_PORT`を指定した場合はそのportを使用し、未指定時はworktree rootを正規化して決定的に算出する。
 - **Cleanup所有者:** Playwright runnerがpage/contextを破棄し、route/popupはtestがcloseする。temporary artifactは調査完了時に削除する。
 - **関連テスト:** `src/test/e2e/composerTargetDialog.spec.ts`と`src/test/e2e/postHistoryDialog.spec.ts`。unit/component mock基盤は`src/test/setup.ts`と`src/test/mocks/`。
 - **Playwrightまたは実端末確認が必要になる条件:** config上の全projectは実browser engineでDOMを描画するが、IME/browser chrome/PWA standalone/WebViewは実端末確認を別途行う。
-- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示し、`composerTargetDialog.spec.ts`だけに限定される。`webServer`はVite dev serverを4173で起動し、post-history harness URLをready checkに使う。
+- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示し、`composerTargetDialog.spec.ts`だけに限定される。base URL、Vite command、post-history harness ready URLは同じresolved portを使用し、Vite commandは`--strictPort`で自動移動を禁止する。worktree rootごとにportが異なるため、通常の複数worktreeが固定`4173`を共有しない。`reuseExistingServer: false`で古いserverを再利用せず、常に現在checkoutのViteを起動する。
 
 ## 関連テストの選択
 

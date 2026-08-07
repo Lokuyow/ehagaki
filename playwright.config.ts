@@ -1,4 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
+import { fileURLToPath, URL as NodeURL } from 'node:url';
+import {
+    buildPlaywrightEndpoints,
+    buildPlaywrightViteCommand,
+    resolvePlaywrightPort,
+} from './scripts/playwrightWorktreePort';
+
+const worktreeRoot = import.meta.url.startsWith('file://')
+    ? fileURLToPath(new NodeURL('.', import.meta.url))
+    : process.cwd();
+const resolvedPort = resolvePlaywrightPort({ rootPath: worktreeRoot });
+const endpoints = buildPlaywrightEndpoints(resolvedPort);
 
 export default defineConfig({
     testDir: './src/test/e2e',
@@ -9,14 +21,14 @@ export default defineConfig({
     fullyParallel: false,
     workers: 1,
     use: {
-        baseURL: 'http://127.0.0.1:4173/ehagaki/',
+        baseURL: endpoints.appBaseURL,
         locale: 'ja-JP',
         trace: 'on-first-retry',
     },
     webServer: {
-        command: 'npx vite --host 127.0.0.1 --port 4173',
-        url: 'http://127.0.0.1:4173/ehagaki/post-history-dialog-playwright.html',
-        reuseExistingServer: true,
+        command: buildPlaywrightViteCommand(resolvedPort),
+        url: endpoints.readyURL,
+        reuseExistingServer: false,
         timeout: 120_000,
     },
     projects: [
