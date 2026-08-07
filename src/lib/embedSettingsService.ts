@@ -1,10 +1,10 @@
 import {
     embedMessageRequiresRequestId,
     getParentOriginFromSearch,
-    isEmbedMessageEnvelope,
     isValidEmbedRequestId,
     type EmbedSettingsSetPayload,
 } from "./embedProtocol";
+import { getTrustedParentEmbedMessage } from "./embedMessageTrustGate";
 
 type RemoteSettingsSetListener = (
     payload: EmbedSettingsSetPayload,
@@ -133,14 +133,12 @@ export class EmbedSettingsService {
     }
 
     private handleMessage = (event: MessageEvent): void => {
-        if (!this.windowObj) return;
-        if (!isEmbedMessageEnvelope(event.data)) return;
-        if (event.source !== this.windowObj.parent) return;
-        if (this.trustedParentOrigin && event.origin !== this.trustedParentOrigin) {
-            return;
-        }
-
-        const message = event.data;
+        const message = getTrustedParentEmbedMessage(
+            event,
+            this.windowObj,
+            this.trustedParentOrigin,
+        );
+        if (!message) return;
 
         if (message.type !== "settings.set") {
             return;
