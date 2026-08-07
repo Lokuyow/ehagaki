@@ -190,6 +190,10 @@ function setExistingNip96Destination(): void {
     ];
 }
 
+function getSavedDestination(): UploadDestination {
+    return (mockUploadDestinationStore.save.mock.calls as unknown as Array<[UploadDestination]>)[0]![0];
+}
+
 describe("SettingsUploadDestinationSection", () => {
     beforeEach(() => {
         mockUploadDestinationStore.load.mockClear();
@@ -317,13 +321,13 @@ describe("SettingsUploadDestinationSection", () => {
         await fireEvent.change(protocolSelect, { target: { value: "custom-http" } });
         await fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-        expect(mockUploadDestinationStore.save).toHaveBeenCalledWith(
-            expect.objectContaining({
-                id: "existing-nip96",
-                protocol: "custom-http",
-                presetId: "share-yabu-me",
-            }),
-        );
+        const savedDestination = getSavedDestination();
+        expect(savedDestination).toEqual(expect.objectContaining({
+            id: "existing-nip96",
+            protocol: "custom-http",
+            presetId: "share-yabu-me",
+        }));
+        expect(savedDestination).not.toHaveProperty("resolvedUploadUrl");
     });
 
     it("clears the NIP-96 validation error when another protocol is selected", async () => {
@@ -357,5 +361,63 @@ describe("SettingsUploadDestinationSection", () => {
 
         expect(protocolSelect.value).toBe("nip96");
         expect(input.value).toBe("https://share.yabu.me/api/v2/media");
+    });
+
+    it.each([
+        ["share-yabu-me", "share.yabu.me", "https://share.yabu.me/api/v2/media", "https://yabu.me/api/v2/media"],
+        ["nostrcheck-me", "nostrcheck.me", "https://nostrcheck.me/api/v2/media", "https://cdn.nostrcheck.me/"],
+        ["nostr-build", "nostr.build", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload"],
+        ["nostpic-com", "nostpic.com", "https://nostpic.com/api/v2/media", "https://nostpic.com/api/v2/media"],
+        ["files-sovbit-host", "files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload"],
+    ])("saves %s with its fixed identity and direct NIP-96 endpoint", async (presetId, name, serverUrl, resolvedUploadUrl) => {
+        render(SettingsUploadDestinationSection);
+        await openAddForm();
+
+        await fireEvent.change(screen.getByLabelText("プリセット"), { target: { value: presetId } });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(mockUploadDestinationStore.save).toHaveBeenCalledWith(expect.objectContaining({
+            name,
+            protocol: "nip96",
+            serverUrl,
+            resolvedUploadUrl,
+            presetId,
+        }));
+    });
+
+    it("does not retain a preset direct endpoint after a user edits the server URL", async () => {
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection);
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await tick();
+
+        await fireEvent.input(screen.getByLabelText("URL"), {
+            target: { value: "https://custom.example/upload" },
+        });
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        const savedDestination = getSavedDestination();
+        expect(savedDestination.name).toBe("custom.example");
+        expect(savedDestination).not.toHaveProperty("resolvedUploadUrl");
+    });
+
+    it("keeps the preset display name while re-saving an unchanged preset destination", async () => {
+        setExistingNip96Destination();
+        render(SettingsUploadDestinationSection);
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "編集" }));
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+        expect(getSavedDestination()).toEqual(expect.objectContaining({
+            name: "share.yabu.me",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        }));
     });
 });

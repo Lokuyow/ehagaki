@@ -61,7 +61,7 @@ describe("uploadDestinationsRepository", () => {
             name: "share.yabu.me",
             protocol: "nip96",
             presetId: "share-yabu-me",
-            resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
             auth: { type: "nip98" },
         }));
         expect(defaultDestination.capabilities.supportedMimeTypes).toEqual(["image/*", "video/*"]);
@@ -102,7 +102,7 @@ describe("uploadDestinationsRepository", () => {
         expect(destination.presetId).toBe("share-yabu-me");
         expect(destination.name).toBe("share.yabu.me");
         expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
-        expect(destination.resolvedUploadUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.resolvedUploadUrl).toBe("https://yabu.me/api/v2/media");
         expect(destination.isDefault).toBe(true);
 
         db.close();
@@ -125,7 +125,7 @@ describe("uploadDestinationsRepository", () => {
         expect(destination.presetId).toBe("share-yabu-me");
         expect(destination.name).toBe("share.yabu.me");
         expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
-        expect(destination.resolvedUploadUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.resolvedUploadUrl).toBe("https://yabu.me/api/v2/media");
         expect(destination.isDefault).toBe(true);
 
         db.close();

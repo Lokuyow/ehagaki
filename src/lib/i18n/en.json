@@ -376,6 +376,7 @@
     "upload_image": "Upload media",
     "upload_failed": "Upload failed",
     "nip96InvalidDestinationUrl": "The NIP-96 upload destination URL is invalid",
+    "nip96UploadRequestBlocked": "The upload was stopped because the destination response could not be handled safely. Completion could not be confirmed. For a custom server, check its direct upload URL.",
     "nip96InvalidProcessingUrl": "The processing URL returned by the upload server is invalid",
     "nip96InvalidMediaUrl": "The media URL returned by the upload server is invalid",
     "nip96InsecureMediaUrl": "HTTP media URLs cannot be used from an HTTPS page",

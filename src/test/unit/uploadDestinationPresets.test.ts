@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
     UPLOAD_DESTINATION_PRESETS,
+    createUploadDestinationFromPreset,
     createLegacyUploadDestination,
     findUploadPresetByEndpoint,
+    getUploadDestinationDisplayName,
 } from "../../lib/upload/uploadDestinationPresets";
 
 describe("uploadDestinationPresets", () => {
@@ -20,33 +22,58 @@ describe("uploadDestinationPresets", () => {
         ]);
     });
 
-    it("includes configured NIP-96 upload endpoints as service presets", () => {
-        expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                id: "share-yabu-me",
-                name: "share.yabu.me",
+    it("keeps NIP-96 preset server identities separate from direct upload endpoints", () => {
+        const expectedPresets = [
+            ["share-yabu-me", "share.yabu.me", "https://share.yabu.me/api/v2/media", "https://yabu.me/api/v2/media"],
+            ["nostrcheck-me", "nostrcheck.me", "https://nostrcheck.me/api/v2/media", "https://cdn.nostrcheck.me/"],
+            ["nostr-build", "nostr.build", "https://nostr.build/api/v2/nip96/upload", "https://nostr.build/api/v2/nip96/upload"],
+            ["nostpic-com", "nostpic.com", "https://nostpic.com/api/v2/media", "https://nostpic.com/api/v2/media"],
+            ["files-sovbit-host", "files.sovbit.host", "https://files.sovbit.host/api/v2/media", "https://files.sovbit.host/upload"],
+        ] as const;
+
+        for (const [id, name, serverUrl, resolvedUploadUrl] of expectedPresets) {
+            const preset = UPLOAD_DESTINATION_PRESETS.find((candidate) => candidate.id === id)!;
+            expect(preset).toEqual(expect.objectContaining({
+                id,
+                name,
                 protocol: "nip96",
-                resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "nostpic-com",
-                name: "nostpic.com",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://nostpic.com/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "nostrcheck-me",
-                name: "nostrcheck.me",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://nostrcheck.me/api/v2/media",
-            }),
-            expect.objectContaining({
-                id: "files-sovbit-host",
-                name: "files.sovbit.host",
-                protocol: "nip96",
-                resolvedUploadUrl: "https://files.sovbit.host/api/v2/media",
-            }),
-        ]));
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+            expect(findUploadPresetByEndpoint(serverUrl)).toBe(preset);
+            expect(findUploadPresetByEndpoint(resolvedUploadUrl)).toBe(preset);
+            expect(createUploadDestinationFromPreset({ preset, now: 1 })).toEqual(expect.objectContaining({
+                name,
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+            expect(createLegacyUploadDestination({ endpoint: serverUrl, now: 1 })).toEqual(expect.objectContaining({
+                name,
+                serverUrl,
+                resolvedUploadUrl,
+            }));
+        }
+    });
+
+    it("uses a preset name only while its protocol and fixed or resolved endpoint still match", () => {
+        expect(getUploadDestinationDisplayName({
+            protocol: "nip96",
+            presetId: "share-yabu-me",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("share.yabu.me");
+        expect(getUploadDestinationDisplayName({
+            protocol: "custom-http",
+            presetId: "share-yabu-me",
+            serverUrl: "https://share.yabu.me/api/v2/media",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("share.yabu.me");
+        expect(getUploadDestinationDisplayName({
+            protocol: "nip96",
+            presetId: "share-yabu-me",
+            serverUrl: "https://custom.example/upload",
+            resolvedUploadUrl: "https://yabu.me/api/v2/media",
+        })).toBe("custom.example");
     });
 
     it("includes generic Blossom presets for alternate Blossom servers", () => {

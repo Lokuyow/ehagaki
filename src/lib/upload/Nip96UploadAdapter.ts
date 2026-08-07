@@ -164,11 +164,21 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
 
         const finalUrl = uploadUrl.url;
         const authHeader = await params.authService.buildAuthHeader(finalUrl, "POST");
-        const response = await params.fetch(finalUrl, {
-            method: "POST",
-            headers: { Authorization: authHeader },
-            body: buildNip96FormData(params.file, params.metadata),
-        });
+        let response: Response;
+        try {
+            response = await params.fetch(finalUrl, {
+                method: "POST",
+                headers: { Authorization: authHeader },
+                body: buildNip96FormData(params.file, params.metadata),
+                redirect: "error",
+            });
+        } catch {
+            return {
+                success: false,
+                errorCode: "nip96UploadRequestBlocked",
+                error: "The upload request could not be completed safely",
+            };
+        }
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => "Unknown error");
