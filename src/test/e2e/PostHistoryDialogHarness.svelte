@@ -14,12 +14,14 @@
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
     import { postHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
     import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
+    import { toPostHistoryDeletionRequestReferenceRecord } from "../../lib/postHistoryDeletionUtils";
 
     const HARNESS_SECRET_KEY = generateSecretKey();
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
     const TOTAL_POSTS = 70;
     const SEARCH_MATCHING_POSTS = 55;
     const isSparseScenario = new URLSearchParams(window.location.search).has("sparse");
+    const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
     const IMPORT_POST_CONTENT = "playwright imported JSONL post";
@@ -142,6 +144,52 @@
     const posts = Array.from({ length: TOTAL_POSTS }, (_, index) =>
         buildPost(index),
     );
+    const exportPostEvent = finalizeEvent({
+        kind: 1,
+        content: "playwright export post",
+        tags: [],
+        created_at: Math.floor(Date.now() / 1000) - 30,
+    }, HARNESS_SECRET_KEY);
+    const exportChannelEvent = finalizeEvent({
+        kind: 42,
+        content: "playwright export channel post",
+        tags: [],
+        created_at: Math.floor(Date.now() / 1000) - 20,
+    }, HARNESS_SECRET_KEY);
+    const exportDeletionEvent = finalizeEvent({
+        kind: 5,
+        content: "",
+        tags: [["e", exportPostEvent.id]],
+        created_at: Math.floor(Date.now() / 1000) - 10,
+    }, HARNESS_SECRET_KEY);
+    function buildExportPostRecord(event: NostrEvent): PostHistoryRecord {
+        return {
+            id: event.id,
+            eventId: event.id,
+            pubkeyHex: event.pubkey,
+            kind: event.kind,
+            content: event.content,
+            tags: event.tags,
+            createdAt: event.created_at,
+            postedAt: event.created_at * 1000,
+            relayHints: [],
+            acceptedRelays: [],
+            media: [],
+            rawEvent: event,
+            updatedAt: event.created_at * 1000,
+            schemaVersion: 2,
+        };
+    }
+    const exportPostRecords = [
+        buildExportPostRecord(exportPostEvent),
+        buildExportPostRecord(exportChannelEvent),
+    ];
+    const exportDeletionRecord = toPostHistoryDeletionRequestReferenceRecord({
+        deletionEvent: exportDeletionEvent,
+        targetEventId: exportPostEvent.id,
+        targetVerified: true,
+        fetchedAt: exportDeletionEvent.created_at * 1000,
+    });
     const linkTargetUrl = new URL(
         "reference-link-target",
         window.location.href,
@@ -296,8 +344,17 @@
             .where("pubkeyHex")
             .equals(HARNESS_PUBKEY)
             .delete();
+        await ehagakiDb.postHistoryDeletionRequests
+            .where("targetAuthorPubkey")
+            .equals(HARNESS_PUBKEY)
+            .delete();
         await ehagakiDb.postHistoryChildInteractions.clear();
-        await ehagakiDb.postHistory.bulkPut([...posts, quoteRecord]);
+        await ehagakiDb.postHistory.bulkPut(
+            isExportScenario ? exportPostRecords : [...posts, quoteRecord],
+        );
+        if (isExportScenario) {
+            await ehagakiDb.postHistoryDeletionRequests.put(exportDeletionRecord);
+        }
         await ehagakiDb.postHistoryChildInteractions.bulkPut(
             interactionRecords,
         );

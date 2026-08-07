@@ -18,6 +18,7 @@ import {
     localSearchServiceMock,
     nostrUtilsMock,
     postDeletionServiceMock,
+    postHistoryJsonlExportServiceMock,
     postMediaCacheServiceMock,
     profileFetchDataMock,
     profilesRepositoryMock,
@@ -928,6 +929,207 @@ describe('PostHistoryDialog', () => {
         expect(labels.indexOf('投稿履歴を読み込む')).toBeLessThan(
             labels.indexOf('保存済み投稿履歴をクリア'),
         );
+    });
+
+    it('[export-menu-button] repair、export、import、履歴クリアの順で表示する', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await openPostHistoryMenu();
+        const menuItems = await screen.findAllByRole('menuitem');
+        const labels = menuItems.map((item) => item.textContent?.trim());
+        expect(labels.indexOf('エクスポート')).toBeGreaterThan(
+            labels.indexOf('表示中の投稿付近を再取得'),
+        );
+        expect(labels.indexOf('エクスポート')).toBeLessThan(
+            labels.indexOf('投稿履歴を読み込む'),
+        );
+    });
+
+    it('[export-download] menuからJSONLをダウンロードし、ファイル情報とObject URL解放を設定する', async () => {
+        const createObjectURL = vi.fn((_blob: Blob) => 'blob:post-history');
+        const revokeObjectURL = vi.fn();
+        const originalCreateObjectURL = URL.createObjectURL;
+        const originalRevokeObjectURL = URL.revokeObjectURL;
+        Object.defineProperty(URL, 'createObjectURL', {
+            configurable: true,
+            value: createObjectURL,
+        });
+        Object.defineProperty(URL, 'revokeObjectURL', {
+            configurable: true,
+            value: revokeObjectURL,
+        });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValueOnce({
+            jsonl: '{"kind":1}\n',
+            exportedEventCount: 1,
+            exportedPostEventCount: 1,
+            exportedDeletionEventCount: 0,
+            skippedPostCount: 0,
+            missingDeletionRawEventCount: 0,
+            invalidDeletionRawEventCount: 0,
+            isPartial: false,
+        });
+
+        try {
+            render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: 'a'.repeat(64),
+                },
+            });
+            await openPostHistoryMenu();
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+
+            await waitFor(() => {
+                expect(postHistoryJsonlExportServiceMock.exportForPubkey)
+                    .toHaveBeenCalledWith('a'.repeat(64));
+                expect(createObjectURL).toHaveBeenCalledOnce();
+                expect(click).toHaveBeenCalledOnce();
+            });
+            const blob = createObjectURL.mock.calls[0][0] as Blob;
+            expect(blob).toBeInstanceOf(Blob);
+            expect(blob.type).toBe('application/x-ndjson;charset=utf-8');
+            const anchor = click.mock.instances[0] as HTMLAnchorElement;
+            expect(anchor.download).toMatch(/^ehagaki-post-history-\d{4}-\d{2}-\d{2}\.jsonl$/);
+            expect(anchor.href).toContain('blob:post-history');
+            await new Promise((resolve) => setTimeout(resolve, 1100));
+            expect(revokeObjectURL).toHaveBeenCalledWith('blob:post-history');
+        } finally {
+            Object.defineProperty(URL, 'createObjectURL', {
+                configurable: true,
+                value: originalCreateObjectURL,
+            });
+            Object.defineProperty(URL, 'revokeObjectURL', {
+                configurable: true,
+                value: originalRevokeObjectURL,
+            });
+            click.mockRestore();
+        }
+    });
+
+    it('[export-disabled-without-account] pubkeyがない場合はexportを操作不可にする', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: null,
+            },
+        });
+
+        await openPostHistoryMenu();
+        const exportItem = await screen.findByRole('menuitem', { name: 'エクスポート' });
+        expect(exportItem.getAttribute('data-disabled')).not.toBeNull();
+        expect(postHistoryJsonlExportServiceMock.exportForPubkey).not.toHaveBeenCalled();
+    });
+
+    it('[export-partial] raw event不足を部分成功通知で伝える', async () => {
+        const originalCreateObjectURL = URL.createObjectURL;
+        const originalRevokeObjectURL = URL.revokeObjectURL;
+        Object.defineProperty(URL, 'createObjectURL', {
+            configurable: true,
+            value: vi.fn((_blob: Blob) => 'blob:partial-export'),
+        });
+        Object.defineProperty(URL, 'revokeObjectURL', {
+            configurable: true,
+            value: vi.fn(),
+        });
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValueOnce({
+            jsonl: '{"kind":1}\n',
+            exportedEventCount: 1,
+            exportedPostEventCount: 1,
+            exportedDeletionEventCount: 0,
+            skippedPostCount: 0,
+            missingDeletionRawEventCount: 2,
+            invalidDeletionRawEventCount: 0,
+            isPartial: true,
+        });
+
+        try {
+            render(PostHistoryDialog, {
+                props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+            });
+            await openPostHistoryMenu();
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+            await expect(screen.findByText('1件をエクスポートしました。一部2件は復元できません')).resolves.toBeTruthy();
+        } finally {
+            click.mockRestore();
+            Object.defineProperty(URL, 'createObjectURL', {
+                configurable: true,
+                value: originalCreateObjectURL,
+            });
+            Object.defineProperty(URL, 'revokeObjectURL', {
+                configurable: true,
+                value: originalRevokeObjectURL,
+            });
+        }
+    });
+
+    it('[export-failure] service失敗時はファイルを生成せず失敗通知を表示する', async () => {
+        const createObjectURL = vi.fn((_blob: Blob) => 'blob:unexpected');
+        const originalCreateObjectURL = URL.createObjectURL;
+        Object.defineProperty(URL, 'createObjectURL', {
+            configurable: true,
+            value: createObjectURL,
+        });
+        postHistoryJsonlExportServiceMock.exportForPubkey.mockRejectedValueOnce(new Error('export failed'));
+
+        try {
+            render(PostHistoryDialog, {
+                props: { show: true, onClose: vi.fn(), pubkeyHex: 'a'.repeat(64) },
+            });
+            await openPostHistoryMenu();
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+            await expect(screen.findByText('エクスポートに失敗しました')).resolves.toBeTruthy();
+            expect(createObjectURL).not.toHaveBeenCalled();
+        } finally {
+            Object.defineProperty(URL, 'createObjectURL', {
+                configurable: true,
+                value: originalCreateObjectURL,
+            });
+        }
+    });
+
+    it('[export-running] export実行中は再実行を操作不可にする', async () => {
+        const deferred = createDeferred<any>();
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        postHistoryJsonlExportServiceMock.exportForPubkey.mockReturnValueOnce(deferred.promise);
+        try {
+            render(PostHistoryDialog, {
+                props: {
+                    show: true,
+                    onClose: vi.fn(),
+                    pubkeyHex: 'a'.repeat(64),
+                },
+            });
+
+            await openPostHistoryMenu();
+            await fireEvent.click(await screen.findByRole('menuitem', { name: 'エクスポート' }));
+            await openPostHistoryMenu();
+            const exportItem = await screen.findByRole('menuitem', { name: 'エクスポート' });
+            expect(exportItem.getAttribute('data-disabled')).not.toBeNull();
+            deferred.resolve({
+                jsonl: '',
+                exportedEventCount: 0,
+                exportedPostEventCount: 0,
+                exportedDeletionEventCount: 0,
+                skippedPostCount: 0,
+                missingDeletionRawEventCount: 0,
+                invalidDeletionRawEventCount: 0,
+                isPartial: false,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        } finally {
+            click.mockRestore();
+        }
     });
 
     it('[reply-context] 履歴内の返信投稿の上に返信先を表示し、再表示時は取得済み event を再利用する', async () => {

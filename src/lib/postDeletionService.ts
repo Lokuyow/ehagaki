@@ -9,9 +9,9 @@ import { PostEventSender } from "./postEventBuilder";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
 import {
-    postHistoryRepository,
-    type PostHistoryRepository,
-} from "./storage/postHistoryRepository";
+    postHistoryDeletionRequestsRepository,
+    type PostHistoryDeletionRequestsRepository,
+} from "./storage/postHistoryDeletionRequestsRepository";
 import type { PostResult, AuthState, KeyManagerInterface, NostrEvent } from "./types";
 
 export const POST_DELETION_SUPPORTED_KINDS = [1, 42] as const;
@@ -45,7 +45,10 @@ export interface PostDeletionServiceDeps {
     writeRelaysStore?: {
         value: string[];
     };
-    postHistoryRepository?: Pick<PostHistoryRepository, "markDeleted">;
+    postHistoryDeletionRequestsRepository?: Pick<
+        PostHistoryDeletionRequestsRepository,
+        "saveLocalDeletion"
+    >;
     eventSenderFactory?: (
         rxNostr: RxNostr,
         console: Console,
@@ -129,7 +132,10 @@ export class PostDeletionService {
         >
     > & {
         eventSenderFactory?: PostDeletionServiceDeps["eventSenderFactory"];
-        postHistoryRepository: Pick<PostHistoryRepository, "markDeleted">;
+        postHistoryDeletionRequestsRepository: Pick<
+            PostHistoryDeletionRequestsRepository,
+            "saveLocalDeletion"
+        >;
     };
 
     constructor(deps: PostDeletionServiceDeps = {}) {
@@ -150,7 +156,9 @@ export class PostDeletionService {
                 deps.getParentClientSignerFn
                 ?? (() => parentClientAuthService.getSigner()),
             writeRelaysStore: deps.writeRelaysStore ?? writeRelaysStore,
-            postHistoryRepository: deps.postHistoryRepository ?? postHistoryRepository,
+            postHistoryDeletionRequestsRepository:
+                deps.postHistoryDeletionRequestsRepository
+                ?? postHistoryDeletionRequestsRepository,
             eventSenderFactory: deps.eventSenderFactory,
             now: deps.now ?? Date.now,
         };
@@ -254,13 +262,14 @@ export class PostDeletionService {
         const deletedAt = this.deps.now();
 
         try {
-            await this.deps.postHistoryRepository.markDeleted(
-                params.post.eventId,
-                deletionEventId,
+            await this.deps.postHistoryDeletionRequestsRepository.saveLocalDeletion({
+                targetEventId: params.post.eventId,
+                deletionEvent: signedEvent as NostrEvent,
                 deletedAt,
-            );
+                relayUrls: additionalWriteRelays,
+            });
         } catch {
-            this.deps.console.warn("post_history_mark_deleted_failed", {
+            this.deps.console.warn("post_history_local_deletion_save_failed", {
                 stage: 'post-history',
                 reason: 'unexpected',
             });

@@ -22,6 +22,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.searchNoResults': '一致する投稿はありません',
             'postHistory.searchResults': '検索結果',
             'postHistory.import': 'インポート',
+            'postHistory.export': 'エクスポート',
+            'postHistory.exportComplete': `${options?.values?.exported ?? 0}件をエクスポートしました`,
+            'postHistory.exportPartial': `${options?.values?.exported ?? 0}件をエクスポートしました。一部${options?.values?.skipped ?? 0}件は復元できません`,
+            'postHistory.exportFailed': 'エクスポートに失敗しました',
             'postHistory.importTitle': '投稿履歴をインポート',
             'postHistory.importDescription': 'JSONLを読み込みます',
             'postHistory.importChooseFile': 'JSONLファイルを選択',
@@ -222,6 +226,9 @@ const hoisted = vi.hoisted(() => {
         postHistoryJsonlImportServiceMock: {
             importFile: vi.fn(),
         },
+        postHistoryJsonlExportServiceMock: {
+            exportForPubkey: vi.fn(),
+        },
         postMediaCacheServiceMock: {
             canUsePersistentCache: vi.fn(() => false),
             prefetchCachedMediaDescriptors: vi.fn().mockResolvedValue(undefined),
@@ -294,6 +301,7 @@ export const repairServiceMock = hoisted.repairServiceMock;
 export const replyRepairServiceMock = hoisted.replyRepairServiceMock;
 export const localSearchServiceMock = hoisted.localSearchServiceMock;
 export const postHistoryJsonlImportServiceMock = hoisted.postHistoryJsonlImportServiceMock;
+export const postHistoryJsonlExportServiceMock = hoisted.postHistoryJsonlExportServiceMock;
 export const postMediaCacheServiceMock = hoisted.postMediaCacheServiceMock;
 export const clipboardMock = hoisted.clipboardMock;
 export const postDeletionServiceMock = hoisted.postDeletionServiceMock;
@@ -466,6 +474,10 @@ vi.mock('../../lib/postHistoryLocalSearchService', () => ({
 
 vi.mock('../../lib/postHistoryJsonlImportService', () => ({
     postHistoryJsonlImportService: hoisted.postHistoryJsonlImportServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryJsonlExportService', () => ({
+    postHistoryJsonlExportService: hoisted.postHistoryJsonlExportServiceMock,
 }));
 
 vi.mock('../../lib/postDeletionService', () => ({
@@ -836,6 +848,16 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
         insertedPostCount: 0,
         updatedPostCount: 0,
         appliedDeletionPostCount: 0,
+    });
+    postHistoryJsonlExportServiceMock.exportForPubkey.mockResolvedValue({
+        jsonl: '',
+        exportedEventCount: 0,
+        exportedPostEventCount: 0,
+        exportedDeletionEventCount: 0,
+        skippedPostCount: 0,
+        missingDeletionRawEventCount: 0,
+        invalidDeletionRawEventCount: 0,
+        isPartial: false,
     });
 }
 

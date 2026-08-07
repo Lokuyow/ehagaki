@@ -111,8 +111,8 @@ describe("postDeletionService helpers", () => {
 });
 
 describe("PostDeletionService", () => {
-    it("nsec signer で署名送信し、markDeleted を呼ぶ", async () => {
-        const markDeleted = vi.fn().mockResolvedValue(undefined);
+    it("nsec signer で署名送信し、atomicなローカル削除保存を呼ぶ", async () => {
+        const saveLocalDeletion = vi.fn().mockResolvedValue(undefined);
         const sendEvent = vi.fn().mockResolvedValue({
             success: true,
             eventId: "delete-event-id",
@@ -136,7 +136,7 @@ describe("PostDeletionService", () => {
             },
             seckeySignerFn: vi.fn().mockReturnValue({ signEvent }),
             writeRelaysStore: { value: ["wss://write.example.com/"] },
-            postHistoryRepository: { markDeleted },
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 5000,
             console: createMockConsole(),
@@ -174,11 +174,52 @@ describe("PostDeletionService", () => {
                 ],
             },
         );
-        expect(markDeleted).toHaveBeenCalledWith(
-            "e".repeat(64),
-            "delete-event-id",
-            5000,
-        );
+        expect(saveLocalDeletion).toHaveBeenCalledWith(expect.objectContaining({
+            targetEventId: "e".repeat(64),
+            deletionEvent: expect.objectContaining({ id: "delete-event-id", kind: 5 }),
+            deletedAt: 5000,
+        }));
+    });
+
+    it("atomicなローカル保存失敗でもpublish成功結果を失敗扱いにしない", async () => {
+        const saveLocalDeletion = vi.fn().mockRejectedValue(new Error("local save failed"));
+        const sendEvent = vi.fn().mockResolvedValue({
+            success: true,
+            eventId: "delete-event-id",
+        });
+        const signEvent = vi.fn().mockResolvedValue({
+            id: "delete-event-id",
+            sig: "s".repeat(128),
+            kind: 5,
+            content: "",
+            tags: [["e", "e".repeat(64)], ["k", "1"]],
+            pubkey: "a".repeat(64),
+            created_at: 5,
+        });
+        const service = new PostDeletionService({
+            authStateStore: { value: createAuthState() },
+            keyManager: {
+                getFromStore: () => "nsec1test",
+                loadFromStorage: () => null,
+                isWindowNostrAvailable: () => false,
+            },
+            seckeySignerFn: vi.fn().mockReturnValue({ signEvent }),
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion },
+            eventSenderFactory: () => ({ sendEvent }),
+            now: () => 5000,
+            console: createMockConsole(),
+        });
+
+        const result = await service.requestDeletion({
+            post: createRecord(),
+            rxNostr: {} as any,
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            deletionEventId: "delete-event-id",
+            deletedAt: 5000,
+        });
     });
 
     it("他人の投稿には deletion request を送らない", async () => {
@@ -223,7 +264,7 @@ describe("PostDeletionService", () => {
         const service = new PostDeletionService({
             authStateStore: { value: createAuthState({ type: "nip07" }) },
             window: { nostr: { signEvent } },
-            postHistoryRepository: { markDeleted: vi.fn().mockResolvedValue(undefined) },
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion: vi.fn().mockResolvedValue(undefined) },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 10_000,
         });
@@ -258,14 +299,14 @@ describe("PostDeletionService", () => {
         const nip46ServiceInstance = new PostDeletionService({
             authStateStore: { value: createAuthState({ type: "nip46" }) },
             getNip46SignerForSessionFn: vi.fn().mockResolvedValue({ signEvent: nip46SignEvent }),
-            postHistoryRepository: { markDeleted: vi.fn().mockResolvedValue(undefined) },
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion: vi.fn().mockResolvedValue(undefined) },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 20_000,
         });
         const parentServiceInstance = new PostDeletionService({
             authStateStore: { value: createAuthState({ type: "parentClient" }) },
             getParentClientSignerFn: () => ({ signEvent: parentSignEvent }),
-            postHistoryRepository: { markDeleted: vi.fn().mockResolvedValue(undefined) },
+            postHistoryDeletionRequestsRepository: { saveLocalDeletion: vi.fn().mockResolvedValue(undefined) },
             eventSenderFactory: () => ({ sendEvent }),
             now: () => 30_000,
         });

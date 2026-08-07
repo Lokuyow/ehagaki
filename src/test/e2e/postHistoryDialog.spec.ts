@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Download, type Page } from '@playwright/test';
 
 type HarnessState = {
     ready: boolean;
@@ -39,6 +39,24 @@ async function gotoSparseHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html?sparse=1');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function gotoExportHarness(page: Page) {
+    await page.goto('post-history-dialog-playwright.html?export=1');
+    await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function readDownload(download: Download): Promise<string> {
+    const stream = await download.createReadStream();
+    if (!stream) {
+        return '';
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf-8');
 }
 
 async function expectSummary(page: Page, total: number) {
@@ -195,6 +213,25 @@ async function expectTooltip(
 }
 
 test.describe('PostHistoryDialog Playwright', () => {
+    test('JSONL export downloads signed post and deletion events from the current account', async ({ page }) => {
+        await gotoExportHarness(page);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        const downloadPromise = page.waitForEvent('download');
+        await page.getByRole('menuitem', { name: 'JSONLをエクスポート' }).click();
+        const download = await downloadPromise;
+        expect(download.suggestedFilename()).toMatch(/^ehagaki-post-history-\d{4}-\d{2}-\d{2}\.jsonl$/);
+
+        const content = await readDownload(download);
+        const events = content.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+        expect(events).toHaveLength(3);
+        expect(events.map((event) => event.kind)).toEqual([1, 42, 5]);
+        expect(content).not.toContain('schemaVersion');
+        expect(content).not.toContain('relayHints');
+        expect(content.endsWith('\n')).toBe(true);
+        await expect(page.getByText(/投稿履歴を3件エクスポートしました/)).toBeVisible();
+    });
+
     test('desktop JSONL import saves a post and refreshes the local history', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
 
