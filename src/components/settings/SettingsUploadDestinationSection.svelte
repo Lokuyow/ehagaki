@@ -189,7 +189,7 @@
             (destination) => destination.id === form.id,
         );
         const rawServerUrl = form.serverUrl || preset?.serverUrl || "";
-        const protocol = preset?.protocol ?? form.protocol;
+        const protocol = form.protocol;
         let serverUrl = normalizeServerUrl(rawServerUrl);
         if (protocol === "nip96") {
             try {
@@ -321,7 +321,10 @@
                 >{$_("settingsDialog.uploadDestinationProtocol") ||
                     "Protocol"}</span
             >
-            <select bind:value={form.protocol}>
+            <select
+                bind:value={form.protocol}
+                onchange={() => (formError = null)}
+            >
                 <option value="blossom">Blossom</option>
                 <option value="nip96">NIP-96 legacy</option>
                 <option value="custom-http">Custom HTTP</option>
