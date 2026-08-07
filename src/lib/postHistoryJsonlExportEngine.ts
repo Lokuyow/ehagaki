@@ -2,6 +2,7 @@ import { getEventHash as getRxNostrEventHash } from "@rx-nostr/crypto";
 import { validateEvent, verifyEvent } from "nostr-tools";
 import { extractDeletionTargetEventIds } from "./postHistoryDeletionUtils";
 import {
+    createPlainNostrEventSnapshot,
     isPostHistoryRawEventConsistent,
     isSignedNostrEvent,
 } from "./postHistoryEventUtils";
@@ -133,11 +134,10 @@ function fullyVerifyRawEvent(rawEvent: unknown): RawEventVerificationState {
     }
 
     try {
-        return validateEvent(rawEvent as never)
-            && verifyEvent({
-                ...rawEvent,
-                tags: rawEvent.tags.map((tag) => [...tag]),
-            } as never)
+        const snapshot = createPlainNostrEventSnapshot(rawEvent);
+        return validateEvent(snapshot as never)
+            && getRxNostrEventHash(snapshot as never) === snapshot.id
+            && verifyEvent(snapshot as never)
             ? { ...VALID_RAW_EVENT_VERIFICATION }
             : { ...INVALID_RAW_EVENT_VERIFICATION };
     } catch {
@@ -189,11 +189,14 @@ export async function migratePostHistoryLegacyVerifications(
     stores: PostHistoryVerificationStores,
     onProgress?: (progress: PostHistoryJsonlExportProgress) => void,
 ): Promise<void> {
-    const allRecords: MigrationItem[] = [
+    const candidates: MigrationItem[] = [
         ...postRecords.map((record) => ({ type: "post" as const, record })),
         ...deletionRecords.map((record) => ({ type: "deletion" as const, record })),
-    ];
-    const total = allRecords.length;
+    ].filter((item) => !isCurrentRawEventVerification(item.record.rawEventVerification));
+    const total = candidates.length;
+    if (total === 0) {
+        return;
+    }
     let processed = 0;
     const verificationByFingerprint = new Map<string, RawEventVerificationState>();
     const postBatch: MigrationWrite[] = [];
@@ -213,19 +216,17 @@ export async function migratePostHistoryLegacyVerifications(
     }
 
     onProgress?.({ phase: "verifying", processed, total });
-    for (const item of allRecords) {
-        if (!isCurrentRawEventVerification(item.record.rawEventVerification)) {
-            const fingerprint = createRawFingerprint(item.record.rawEvent);
-            const verification = verificationByFingerprint.get(fingerprint)
-                ?? fullyVerifyRawEvent(item.record.rawEvent);
-            verificationByFingerprint.set(fingerprint, verification);
-            item.record.rawEventVerification = verification;
-            const write = { id: item.record.id, fingerprint, verification };
-            if (item.type === "post") {
-                postBatch.push(write);
-            } else {
-                deletionBatch.push(write);
-            }
+    for (const item of candidates) {
+        const fingerprint = createRawFingerprint(item.record.rawEvent);
+        const verification = verificationByFingerprint.get(fingerprint)
+            ?? fullyVerifyRawEvent(item.record.rawEvent);
+        verificationByFingerprint.set(fingerprint, verification);
+        item.record.rawEventVerification = verification;
+        const write = { id: item.record.id, fingerprint, verification };
+        if (item.type === "post") {
+            postBatch.push(write);
+        } else {
+            deletionBatch.push(write);
         }
 
         processed += 1;

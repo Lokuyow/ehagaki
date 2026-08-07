@@ -6,7 +6,7 @@ import {
     createRxForwardReq,
     createRxNostr,
 } from "rx-nostr";
-import { finalizeEvent, generateSecretKey } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, verifyEvent } from "nostr-tools";
 import { afterEach, describe, expect, it } from "vitest";
 import {
     attestFullyVerifiedPostHistoryRawEvent,
@@ -200,6 +200,18 @@ describe("post-history raw event verification", () => {
         )).toBe(false);
     });
 
+    it("fully verifies a plain snapshot instead of trusting nostr-tools' verifiedSymbol cache", () => {
+        const validEvent = createEvent();
+        expect(attestFullyVerifiedPostHistoryRawEvent(validEvent)).not.toBeNull();
+
+        const staleCachedEvent = createEvent();
+        staleCachedEvent.sig = "0".repeat(128);
+        // finalizeEvent marked the source object as verified before its sig
+        // changed, so direct nostr-tools verification demonstrates the cache.
+        expect(verifyEvent(staleCachedEvent as never)).toBe(true);
+        expect(attestFullyVerifiedPostHistoryRawEvent(staleCachedEvent)).toBeNull();
+    });
+
     it("keeps the repository direct-call fallback cryptographic", async () => {
         const databaseName = `${EHAGAKI_DB_NAME}-raw-verification-${Date.now()}`;
         testDbNames.add(databaseName);
@@ -209,6 +221,11 @@ describe("post-history raw event verification", () => {
         await repository.putPostedEvent({ event });
         await expect(repository.putPostedEvent({
             event: { ...event, id: "f".repeat(64) },
+        })).rejects.toThrow("invalid_post_history_raw_event");
+        const staleCachedEvent = createEvent();
+        staleCachedEvent.sig = "0".repeat(128);
+        await expect(repository.putPostedEvent({
+            event: staleCachedEvent,
         })).rejects.toThrow("invalid_post_history_raw_event");
         await expect(db.postHistory.count()).resolves.toBe(1);
         db.close();

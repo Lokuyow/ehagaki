@@ -7,7 +7,7 @@ import type {
 } from "rx-nostr";
 import { filter, map, type Observable } from "rxjs";
 import { validateEvent, verifyEvent } from "nostr-tools";
-import { cloneNostrEvent } from "./postHistoryEventUtils";
+import { createPlainNostrEventSnapshot } from "./postHistoryEventUtils";
 import type { NostrEvent } from "./types";
 
 /**
@@ -81,7 +81,7 @@ function createAttestation(
     event: NostrEvent,
     evidence: AttestationEvidence,
 ): AttestedPostHistoryRawEvent | null {
-    const snapshot = cloneNostrEvent(event);
+    const snapshot = createPlainNostrEventSnapshot(event);
     const fingerprint = createFingerprint(snapshot);
     if (!fingerprint) {
         return null;
@@ -105,7 +105,7 @@ function createAttestation(
 export function attestFullyVerifiedPostHistoryRawEvent(
     event: NostrEvent,
 ): AttestedPostHistoryRawEvent | null {
-    const snapshot = cloneNostrEvent(event);
+    const snapshot = createPlainNostrEventSnapshot(event);
     const fingerprint = createFingerprint(snapshot);
     if (!fingerprint) {
         return null;

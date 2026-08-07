@@ -302,11 +302,8 @@ describe("postHistoryJsonlExportEngine", () => {
             content: "legacy invalid",
             created_at: 2,
         });
-        const invalidLegacy = createPostRecord({
-            ...plainEvent(invalidLegacyEvent, {
-                sig: "0".repeat(128),
-            }),
-        });
+        invalidLegacyEvent.sig = "0".repeat(128);
+        const invalidLegacy = createPostRecord(invalidLegacyEvent);
         const currentValid = markValid(createPostRecord({
             ...plainEvent(createEvent(secretKey, {
                 kind: 1,
@@ -391,6 +388,67 @@ describe("postHistoryJsonlExportEngine", () => {
 
         expect(update).toHaveBeenCalledTimes(2);
         expect(update.mock.calls.map(([id]) => id)).toEqual([old.id, missing.id]);
+    });
+
+    it("reports verification progress only for migration candidates", async () => {
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        const currentValid = markValid(createPostRecord(createEvent(secretKey, {
+            kind: 1,
+            content: "current valid",
+            created_at: 1,
+        })));
+        const currentInvalid = createPostRecord(createEvent(secretKey, {
+            kind: 1,
+            content: "current invalid",
+            created_at: 2,
+        }));
+        currentInvalid.rawEventVerification = {
+            status: "invalid",
+            ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+        };
+        const missing = createPostRecord(createEvent(secretKey, {
+            kind: 1,
+            content: "missing",
+            created_at: 3,
+        }));
+        const old = createPostRecord(createEvent(secretKey, {
+            kind: 1,
+            content: "old",
+            created_at: 4,
+        }));
+        old.rawEventVerification = { status: "valid", ruleVersion: 0 };
+        const stored = [
+            cloneRecord(currentValid),
+            cloneRecord(currentInvalid),
+            cloneRecord(missing),
+            cloneRecord(old),
+        ];
+        const firstProgress: Array<{ phase: string; processed?: number; total?: number }> = [];
+
+        await runPostHistoryJsonlExportEngine({
+            pubkeyHex: pubkey,
+            postRecords: [currentValid, currentInvalid, missing, old],
+            deletionRecords: [],
+            verificationStores: createStores(stored),
+            onProgress: (progress) => firstProgress.push(progress),
+        });
+
+        const verifyingProgress = firstProgress.filter((progress) => progress.phase === "verifying");
+        expect(verifyingProgress).toEqual([
+            { phase: "verifying", processed: 0, total: 2 },
+            { phase: "verifying", processed: 2, total: 2 },
+        ]);
+
+        const secondProgress: Array<{ phase: string; processed?: number; total?: number }> = [];
+        await runPostHistoryJsonlExportEngine({
+            pubkeyHex: pubkey,
+            postRecords: [currentValid, currentInvalid, missing, old],
+            deletionRecords: [],
+            verificationStores: createStores(stored),
+            onProgress: (progress) => secondProgress.push(progress),
+        });
+        expect(secondProgress.filter((progress) => progress.phase === "verifying")).toEqual([]);
     });
 
     it("scopes migration and export to the current account", async () => {

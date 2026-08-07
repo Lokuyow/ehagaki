@@ -31,6 +31,23 @@ export function cloneNostrEvent(event: NostrEvent): NostrEvent {
     };
 }
 
+/**
+ * Creates a NIP-01 event snapshot for cryptographic verification. Unlike the
+ * general clone above, this deliberately drops symbols, library caches, and
+ * non-wire properties such as nostr-tools' verifiedSymbol.
+ */
+export function createPlainNostrEventSnapshot(event: NostrEvent): NostrEvent {
+    return {
+        id: event.id,
+        pubkey: event.pubkey,
+        created_at: event.created_at,
+        kind: event.kind,
+        tags: cloneTags(event.tags),
+        content: event.content,
+        sig: event.sig,
+    };
+}
+
 export function isSignedNostrEvent(rawEvent: unknown): rawEvent is NostrEvent {
     if (!rawEvent || typeof rawEvent !== "object") {
         return false;
