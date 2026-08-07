@@ -8,6 +8,7 @@ import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogS
 import { clearPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 
 const hoisted = vi.hoisted(() => {
+    const translationOverrides: Record<string, string> = {};
     const mockTranslate = (key: string, options?: { values?: Record<string, unknown> }) => {
         const translations: Record<string, string> = {
             'postHistory.title': '投稿履歴',
@@ -16,7 +17,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.openMenu': '投稿履歴メニューを開く',
             'postHistory.showSearch': '検索',
             'postHistory.hideSearch': '検索を閉じる',
+            'postHistory.clearSearch': '検索をクリア',
             'postHistory.searchPlaceholder': '投稿履歴を検索',
+            'postHistory.searchNoResults': '一致する投稿はありません',
+            'postHistory.searchResults': '検索結果',
             'postHistory.import': 'インポート',
             'postHistory.importTitle': '投稿履歴をインポート',
             'postHistory.importDescription': 'JSONLを読み込みます',
@@ -53,17 +57,87 @@ const hoisted = vi.hoisted(() => {
             'postHistory.repairNoChanges': '追加なし',
             'postHistory.repairPartialFailure': '一部未確認',
             'postHistory.repairFetchFailed': '取得失敗',
+            'postHistory.copyNevent': 'neventをコピー',
+            'postHistory.copied': 'コピーしました',
+            'postHistory.copyFailed': 'コピーに失敗しました',
+            'postHistory.expand': 'もっと見る',
+            'postHistory.collapse': '折りたたむ',
+            'postHistory.delete': '削除',
+            'postHistory.deleteRequest': '削除リクエスト',
+            'postHistory.deleteRequestTitle': '削除リクエストを送信',
+            'postHistory.deleteRequestDescription': 'この投稿の削除リクエストをリレーへ送信します。',
+            'postHistory.deleteRequestWarning': '削除はリレーへのリクエストであり、完全な削除は保証されません。',
+            'postHistory.deleteConfirm': '送信',
+            'postHistory.deleteCancel': 'キャンセル',
+            'postHistory.deleteSending': '送信中',
+            'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
+            'postHistory.deleteLocalHistory': '保存済み投稿履歴をクリア',
+            'postHistory.deleteLocalHistoryTitle': '保存済み投稿履歴をクリア',
+            'postHistory.deleteLocalHistoryDescription': 'このアカウントについて、この端末に保存された投稿履歴、関連キャッシュ、表示位置の記録をクリアします。Nostrリレー上の投稿は削除されません。投稿履歴は、後で同期や再取得によって再び表示される場合があります。',
+            'postHistory.deleteLocalHistoryConfirm': 'クリアする',
+            'postHistory.deleteLocalHistoryCancel': 'キャンセル',
+            'postHistory.deleteLocalHistorySuccess': '保存済み投稿履歴をクリアしました',
+            'postHistory.deleteLocalHistoryFailed': '保存済み投稿履歴のクリアに失敗しました',
+            'postHistory.deletedBadge': '削除リクエスト済み',
+            'postHistory.eventId': 'event id',
+            'postHistory.media': 'メディア',
+            'postHistory.mediaOpen': '開く',
+            'postHistory.deleted': '削除済み',
+            'postHistory.firstPage': '最初のページ',
+            'postHistory.previousPage': '前へ',
+            'postHistory.nextPage': '次へ',
+            'postHistory.lastPage': '最後のページ',
+            'postHistory.channel': 'チャンネル',
+            'postHistory.channelLoading': '読み込み中...',
+            'postHistory.channelUnknown': '不明',
+            'postHistory.rawJson': 'イベントJSONを表示',
+            'postHistory.rawJsonTitle': 'イベントJSON',
+            'postHistory.rawJsonDescription': '投稿イベントのイベントJSONを表示します。',
+            'postHistory.broadcast': 'ブロードキャスト',
+            'postHistory.broadcastSent': 'ブロードキャストしました',
+            'postHistory.broadcastFailed': 'ブロードキャストに失敗しました',
+            'postHistory.contextLoading': '関連投稿を読み込み中...',
+            'postHistory.contextNotFound': '返信先が見つかりませんでした',
+            'postHistory.contextFetchFailed': '関連投稿を取得できませんでした',
+            'postHistory.contextRetry': '再試行',
+            'postHistory.quoteLoading': '引用投稿を読み込み中...',
+            'postHistory.quoteNotFound': '引用投稿が見つかりませんでした',
+            'postHistory.quoteFetchFailed': '引用投稿を取得できませんでした',
+            'postHistory.quoteDeleted': '引用元削除済み',
+            'postHistory.replyTargetDeleted': '返信先削除済み',
+            'postHistory.showReplyTarget': '返信先を見る',
+            'postHistory.hideReplyTarget': '返信先を隠す',
+            'postHistory.checkReplies': '返信を確認',
+            'postHistory.recheckReplies': '返信を再確認',
+            'postHistory.checkingReplies': '返信を確認中',
+            'postHistory.showReplies': '返信を表示',
+            'postHistory.showRepliesWithCount': `返信 ${options?.values?.count}件を表示`,
+            'postHistory.hideReplies': '返信を隠す',
+            'postHistory.showReactionsWithCount': `リアクション ${options?.values?.count}件を表示`,
+            'postHistory.hideReactions': 'リアクションを隠す',
+            'postHistory.repliesLoading': '返信を取得中...',
+            'postHistory.repliesNotFound': 'この範囲では返信が見つかりませんでした',
+            'postHistory.repliesFetchFailed': '返信を取得できませんでした',
+            'postHistory.directReply': '返信',
+            'postHistory.ownReply': '自分の返信',
+            'postHistory.countLoading': '件数を確認中...',
+            'postHistory.countUnavailable': '件数を確認できません',
+            'replyQuote.reply_label': 'リプライ',
+            'replyQuote.quote_label': '引用',
+            'common.showActions': 'アクションを表示',
             'common.cancel': 'キャンセル',
             'global.close': '閉じる',
         };
 
-        return translations[key] || key;
+        return translationOverrides[key] ?? translations[key] ?? key;
     };
 
     return {
         mockTranslate,
+        translationOverrides,
         repositoryMock: {
             getByEventId: vi.fn(),
+            getPage: vi.fn(),
             getLatestVisibleChunk: vi.fn(),
             getOlderVisibleChunk: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
@@ -73,13 +147,49 @@ const hoisted = vi.hoisted(() => {
             getSparseChunk: vi.fn(),
             countForPubkey: vi.fn(),
             countVisibleForPubkey: vi.fn(),
+            getExistingEventIdsForPubkey: vi.fn(),
             getOldestCreatedAt: vi.fn(),
             upsertFetchedEvents: vi.fn(),
             deleteForPubkey: vi.fn(),
+            deleteLocalHistoryForPubkey: vi.fn(),
         },
+        replyEventsRepositoryMock: (() => {
+            const getChildInteractions = vi.fn();
+            const getDirectReplyInteractions = vi.fn();
+            const getReactionInteractions = vi.fn();
+            const upsertChildInteractions = vi.fn();
+            const deleteChildInteractionByEventId = vi.fn();
+            const deleteChildInteractionsForPostHistoryPubkey = vi.fn();
+            return {
+                getChildInteractions,
+                getDirectReplyInteractions,
+                getReactionInteractions,
+                upsertChildInteractions,
+                deleteChildInteractionByEventId,
+                deleteChildInteractionsForPostHistoryPubkey,
+                getRelatedEvents: getChildInteractions,
+                getDirectReplies: getDirectReplyInteractions,
+                upsertDirectReplies: upsertChildInteractions,
+                deleteByEventId: deleteChildInteractionByEventId,
+                deleteForPostHistoryPubkey: deleteChildInteractionsForPostHistoryPubkey,
+            };
+        })(),
+        deletionRequestsRepositoryMock: {
+            getDeletedTargets: vi.fn(),
+            upsertValidDeletionRequests: vi.fn(),
+        },
+        directReplyFetchMetadataRepositoryMock: { get: vi.fn(), save: vi.fn() },
+        inboundInteractionsSyncStateRepositoryMock: { get: vi.fn(), save: vi.fn(), clearForPubkey: vi.fn() },
+        authoredSyncStateRepositoryMock: { get: vi.fn(), save: vi.fn(), saveLatestObservedCreatedAt: vi.fn(), clearForPubkey: vi.fn() },
+        profilesRepositoryMock: { get: vi.fn() },
+        profileFetchDataMock: vi.fn(),
+        replyFetchServiceMock: { fetchDirectReplies: vi.fn() },
+        contextFetchServiceMock: { fetchEventById: vi.fn() },
+        deletionFetchServiceMock: { fetchDeletionRequests: vi.fn() },
         visibleRangeRepositoryMock: {
             get: vi.fn(),
             save: vi.fn(),
+            clear: vi.fn(),
             clearForPubkey: vi.fn(),
         },
         jumpCacheAnchorRepositoryMock: {
@@ -129,6 +239,7 @@ const hoisted = vi.hoisted(() => {
             requestDeletion: vi.fn(),
         },
         channelMetadataRepositoryMock: {
+            get: vi.fn(),
             getMany: vi.fn().mockResolvedValue([]),
             upsertResolvedChannel: vi.fn(),
             shouldRefresh: vi.fn().mockReturnValue(false),
@@ -150,11 +261,30 @@ const hoisted = vi.hoisted(() => {
                 aspectRatio: 2,
             }),
         },
+        nostrUtilsMock: { toNevent: vi.fn(() => 'nevent1mock') },
+        channelContextServiceMock: {
+            resolveChannelContext: vi.fn(),
+            resolveChannelMetadata: vi.fn(),
+            resolveChannelMetadataWithInternalHints: vi.fn(),
+        },
     };
 });
 
 const mockTranslate = hoisted.mockTranslate;
+export function setPostHistoryDialogTranslationOverrides(overrides: Record<string, string>): void {
+    Object.assign(hoisted.translationOverrides, overrides);
+}
 export const repositoryMock = hoisted.repositoryMock;
+export const replyEventsRepositoryMock = hoisted.replyEventsRepositoryMock;
+export const deletionRequestsRepositoryMock = hoisted.deletionRequestsRepositoryMock;
+export const directReplyFetchMetadataRepositoryMock = hoisted.directReplyFetchMetadataRepositoryMock;
+export const inboundInteractionsSyncStateRepositoryMock = hoisted.inboundInteractionsSyncStateRepositoryMock;
+export const authoredSyncStateRepositoryMock = hoisted.authoredSyncStateRepositoryMock;
+export const profilesRepositoryMock = hoisted.profilesRepositoryMock;
+export const profileFetchDataMock = hoisted.profileFetchDataMock;
+export const replyFetchServiceMock = hoisted.replyFetchServiceMock;
+export const contextFetchServiceMock = hoisted.contextFetchServiceMock;
+export const deletionFetchServiceMock = hoisted.deletionFetchServiceMock;
 export const visibleRangeRepositoryMock = hoisted.visibleRangeRepositoryMock;
 export const jumpCacheAnchorRepositoryMock = hoisted.jumpCacheAnchorRepositoryMock;
 export const repairCursorRepositoryMock = hoisted.repairCursorRepositoryMock;
@@ -170,6 +300,8 @@ export const postDeletionServiceMock = hoisted.postDeletionServiceMock;
 export const channelMetadataRepositoryMock = hoisted.channelMetadataRepositoryMock;
 export const customEmojiImageMetaRepositoryMock = hoisted.customEmojiImageMetaRepositoryMock;
 export const customEmojiMock = hoisted.customEmojiMock;
+export const nostrUtilsMock = hoisted.nostrUtilsMock;
+export const channelContextServiceMock = hoisted.channelContextServiceMock;
 
 vi.mock('svelte-i18n', () => ({
     _: readable(hoisted.mockTranslate),
@@ -178,12 +310,37 @@ vi.mock('svelte-i18n', () => ({
 
 vi.mock('photoswipe', () => ({
     default: class MockPhotoSwipe {
-        constructor(public options: Record<string, unknown>) { }
+        currIndex: number;
+        element: HTMLElement | null = null;
+        template: HTMLElement | null = null;
+
+        constructor(public options: Record<string, any>) {
+            this.currIndex = options.index ?? 0;
+        }
+
         on() { }
-        init() { }
+
+        init() {
+            const root = document.createElement('div');
+            root.className = `pswp ${this.options.mainClass ?? ''}`.trim();
+            root.tabIndex = -1;
+            document.body.appendChild(root);
+            root.focus();
+            this.element = root;
+            this.template = root;
+        }
+
         close() { }
-        destroy() { }
-        goTo() { }
+
+        destroy() {
+            this.element?.remove();
+            this.element = null;
+            this.template = null;
+        }
+
+        goTo(index: number) {
+            this.currIndex = index;
+        }
     },
 }));
 
@@ -199,6 +356,70 @@ vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
 
 vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: hoisted.repositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryChildInteractionsRepository', () => ({
+    postHistoryChildInteractionsRepository: {
+        ...hoisted.replyEventsRepositoryMock,
+        getRelatedEvents: hoisted.replyEventsRepositoryMock.getChildInteractions,
+        getDirectReplies: hoisted.replyEventsRepositoryMock.getDirectReplyInteractions,
+        upsertDirectReplies: hoisted.replyEventsRepositoryMock.upsertChildInteractions,
+        deleteByEventId: hoisted.replyEventsRepositoryMock.deleteChildInteractionByEventId,
+        deleteForPostHistoryPubkey: hoisted.replyEventsRepositoryMock.deleteChildInteractionsForPostHistoryPubkey,
+    },
+}));
+
+vi.mock('../../lib/storage/postHistoryDirectReplyFetchMetadataRepository', () => ({
+    postHistoryDirectReplyFetchMetadataRepository: hoisted.directReplyFetchMetadataRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryInboundInteractionsSyncStateRepository', () => ({
+    postHistoryInboundInteractionsSyncStateRepository: hoisted.inboundInteractionsSyncStateRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryAuthoredSyncStateRepository', () => ({
+    postHistoryAuthoredSyncStateRepository: hoisted.authoredSyncStateRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/postHistoryDeletionRequestsRepository', () => ({
+    postHistoryDeletionRequestsRepository: hoisted.deletionRequestsRepositoryMock,
+}));
+
+vi.mock('../../lib/storage/profilesRepository', () => ({
+    profilesRepository: hoisted.profilesRepositoryMock,
+}));
+
+vi.mock('../../lib/profileManager', () => ({
+    ProfileManager: vi.fn(function () {
+        return { fetchProfileData: hoisted.profileFetchDataMock };
+    }),
+}));
+
+vi.mock('../../lib/profileMetadataCache.svelte', () => ({
+    profileMetadataCache: {
+        getProfile: hoisted.profileFetchDataMock,
+        getProfiles: vi.fn(async (pubkeys: string[]) => Object.fromEntries(
+            await Promise.all(pubkeys.map(async (pubkey) => [
+                pubkey,
+                await hoisted.profileFetchDataMock(pubkey, {}) ?? null,
+            ])),
+        )),
+        subscribe: vi.fn(() => vi.fn()),
+    },
+}));
+
+vi.mock('../../lib/postHistoryReplyFetchService', () => ({
+    POST_HISTORY_DIRECT_REPLY_FETCH_LIMIT: 100,
+    POST_HISTORY_DIRECT_REPLY_FETCH_LOOKBACK_SECONDS: 86_400,
+    postHistoryReplyFetchService: hoisted.replyFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryContextFetchService', () => ({
+    postHistoryContextFetchService: hoisted.contextFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryDeletionFetchService', () => ({
+    postHistoryDeletionFetchService: hoisted.deletionFetchServiceMock,
 }));
 
 vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
@@ -248,7 +469,11 @@ vi.mock('../../lib/postHistoryJsonlImportService', () => ({
 }));
 
 vi.mock('../../lib/postDeletionService', () => ({
-    canRequestPostDeletion: () => true,
+    canRequestPostDeletion: (post: { pubkeyHex: string; deletedAt?: number; kind: number }, currentPubkey?: string | null) =>
+        !!currentPubkey
+        && post.pubkeyHex === currentPubkey
+        && typeof post.deletedAt !== 'number'
+        && [1, 42].includes(post.kind),
     postDeletionService: hoisted.postDeletionServiceMock,
 }));
 
@@ -261,12 +486,7 @@ vi.mock('../../lib/storage/customEmojiImageMetaRepository', () => ({
 }));
 
 vi.mock('../../lib/channelContextService', () => ({
-    ChannelContextService: vi.fn(function () {
-        return {
-            resolveChannelContext: vi.fn(),
-            resolveChannelMetadata: vi.fn(),
-        };
-    }),
+    ChannelContextService: vi.fn(function () { return hoisted.channelContextServiceMock; }),
 }));
 
 vi.mock('../../lib/customEmoji', async () => {
@@ -283,6 +503,11 @@ vi.mock('../../lib/utils/clipboardUtils', () => hoisted.clipboardMock);
 vi.mock('../../lib/postMediaCacheService', () => ({
     postMediaCacheService: hoisted.postMediaCacheServiceMock,
 }));
+
+vi.mock('../../lib/utils/nostrUtils', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/utils/nostrUtils')>('../../lib/utils/nostrUtils');
+    return { ...actual, toNevent: hoisted.nostrUtilsMock.toNevent };
+});
 
 import PostHistoryDialogComponent from '../../components/PostHistoryDialog.svelte';
 
@@ -383,7 +608,7 @@ export async function waitForSearchDebounce(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
-export function resetPostHistoryDialogHarness(): void {
+export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' | 'page-adapter' } = {}): void {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
         callback(0);
         return 1;
@@ -394,12 +619,24 @@ export function resetPostHistoryDialogHarness(): void {
     clearPostHistoryDialogScrollStates();
     clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.resetAllMocks();
+    for (const key of Object.keys(hoisted.translationOverrides)) {
+        delete hoisted.translationOverrides[key];
+    }
 
-    repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
+    repositoryMock.getPage.mockResolvedValue([]);
     repositoryMock.getByEventId.mockResolvedValue(null);
+    repositoryMock.getLatestVisibleChunk.mockImplementation(async ({ pubkeyHex, limit }: Record<string, unknown>) => {
+        if (options.listingMode === 'page-adapter') {
+            return repositoryMock.getPage({ pubkeyHex, page: 1, pageSize: limit });
+        }
+
+        return [];
+    });
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
     repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
-    repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([]);
+    repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({ pubkeyHex, visibleUntil, limit }: Record<string, unknown>) =>
+        repositoryMock.getLatestVisibleChunk({ pubkeyHex, visibleUntil, limit }),
+    );
     repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
     repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(false);
     repositoryMock.getSparseChunk.mockResolvedValue([]);
@@ -407,6 +644,7 @@ export function resetPostHistoryDialogHarness(): void {
     repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
         repositoryMock.countForPubkey(pubkeyHex),
     );
+    repositoryMock.getExistingEventIdsForPubkey.mockResolvedValue([]);
     repositoryMock.getOldestCreatedAt.mockResolvedValue(null);
     repositoryMock.upsertFetchedEvents.mockResolvedValue({
         insertedCount: 0,
@@ -414,10 +652,50 @@ export function resetPostHistoryDialogHarness(): void {
         unchangedCount: 0,
     });
     repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
+    repositoryMock.deleteLocalHistoryForPubkey.mockResolvedValue(undefined);
+    replyEventsRepositoryMock.getChildInteractions.mockResolvedValue([]);
+    replyEventsRepositoryMock.getDirectReplies.mockResolvedValue([]);
+    replyEventsRepositoryMock.getReactionInteractions.mockResolvedValue([]);
+    replyEventsRepositoryMock.upsertDirectReplies.mockResolvedValue({
+        insertedCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        ignoredCount: 0,
+    });
+    replyEventsRepositoryMock.deleteByEventId.mockResolvedValue(undefined);
+    replyEventsRepositoryMock.deleteForPostHistoryPubkey.mockResolvedValue(undefined);
+    directReplyFetchMetadataRepositoryMock.get.mockResolvedValue(null);
+    directReplyFetchMetadataRepositoryMock.save.mockImplementation(async (input: unknown) => input);
+    deletionRequestsRepositoryMock.getDeletedTargets.mockResolvedValue(new Map());
+    deletionRequestsRepositoryMock.upsertValidDeletionRequests.mockResolvedValue({
+        insertedCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        ignoredCount: 0,
+    });
+    profilesRepositoryMock.get.mockResolvedValue(null);
+    profileFetchDataMock.mockImplementation(async (pubkeyHex: string) => profilesRepositoryMock.get(pubkeyHex));
+    replyFetchServiceMock.fetchDirectReplies.mockReturnValue({
+        promise: Promise.resolve({ events: [], fetchedAt: 0, relayUrls: [] }),
+        cancel: vi.fn(),
+    });
+    contextFetchServiceMock.fetchEventById.mockReturnValue({
+        promise: Promise.resolve({ event: null, relayUrl: null }),
+        cancel: vi.fn(),
+    });
+    deletionFetchServiceMock.fetchDeletionRequests.mockReturnValue({
+        promise: Promise.resolve({ events: [], fetchedAt: 0, relayUrls: [] }),
+        cancel: vi.fn(),
+    });
 
     visibleRangeRepositoryMock.get.mockResolvedValue(null);
     visibleRangeRepositoryMock.save.mockResolvedValue(null);
+    visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
     visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+    inboundInteractionsSyncStateRepositoryMock.get.mockResolvedValue(null);
+    inboundInteractionsSyncStateRepositoryMock.save.mockResolvedValue({});
+    inboundInteractionsSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+    authoredSyncStateRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
     jumpCacheAnchorRepositoryMock.getForPubkey.mockResolvedValue([]);
     jumpCacheAnchorRepositoryMock.addForPubkey.mockResolvedValue([]);
     jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(false);
@@ -432,6 +710,78 @@ export function resetPostHistoryDialogHarness(): void {
     repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
     syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
     syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
+
+    clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
+    postMediaCacheServiceMock.canUsePersistentCache.mockReturnValue(options.listingMode === 'page-adapter');
+    postMediaCacheServiceMock.getCachedMediaDescriptorSnapshot.mockReturnValue(undefined);
+    postMediaCacheServiceMock.getCachedMediaObjectUrlSnapshot.mockReturnValue(null);
+    postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockResolvedValue(undefined);
+    postMediaCacheServiceMock.getCachedMediaDescriptor.mockResolvedValue(null);
+    postMediaCacheServiceMock.createCachedMediaObjectUrl.mockResolvedValue(null);
+    postMediaCacheServiceMock.fetchAndCacheMedia.mockResolvedValue(null);
+    localSearchServiceMock.searchLocalPosts.mockResolvedValue({ items: [], total: 0, hasNext: false });
+    postDeletionServiceMock.requestDeletion.mockResolvedValue({
+        success: true,
+        eventId: 'delete-event-id',
+        deletionEventId: 'delete-event-id',
+        deletedAt: 1234,
+    });
+    channelMetadataRepositoryMock.get.mockResolvedValue(null);
+    channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
+    channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
+        channelEventId: input.channelEventId,
+        name: input.name ?? null,
+        about: input.about ?? null,
+        picture: input.picture ?? null,
+        relays: input.relays ?? [],
+        relayHints: input.verifiedSourceRelays ?? [],
+        creatorPubkey: input.creatorPubkey,
+        createEventCreatedAt: input.createEventCreatedAt,
+        metadataEventId: input.metadataEventId,
+        metadataCreatedAt: input.metadataCreatedAt,
+        fetchedAt: 1000,
+    }));
+    channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(true);
+    channelMetadataRepositoryMock.markFetchFailed.mockResolvedValue(undefined);
+    customEmojiImageMetaRepositoryMock.get.mockResolvedValue(null);
+    customEmojiImageMetaRepositoryMock.getMany.mockResolvedValue({});
+    customEmojiImageMetaRepositoryMock.upsert.mockResolvedValue(null);
+    customEmojiImageMetaRepositoryMock.touchMany.mockResolvedValue(undefined);
+    customEmojiImageMetaRepositoryMock.prune.mockResolvedValue(undefined);
+    channelContextServiceMock.resolveChannelContext.mockResolvedValue({
+        eventId: 'channel-id',
+        relayHints: ['wss://channel.example.com/'],
+        name: 'general',
+        about: null,
+        picture: null,
+    });
+    channelContextServiceMock.resolveChannelMetadata.mockResolvedValue(undefined);
+    channelContextServiceMock.resolveChannelMetadataWithInternalHints.mockResolvedValue({
+        status: 'resolved',
+        quality: 'verified-metadata',
+        metadataLookup: 'complete',
+        metadata: {
+            channelEventId: 'channel-id',
+            relayHints: ['wss://channel.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
+            name: 'general',
+            about: null,
+            picture: null,
+            creatorPubkey: 'c'.repeat(64),
+            createEventCreatedAt: 100,
+            metadataEventId: 'm'.repeat(64),
+            metadataCreatedAt: 200,
+            verifiedSourceRelays: ['wss://channel.example.com/'],
+        },
+    });
+    nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
+    customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(true);
+    customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
+        ready: true,
+        width: 120,
+        height: 60,
+        aspectRatio: 2,
+    });
 
     repairServiceMock.refetchAroundCurrentView.mockReturnValue({
         promise: Promise.resolve({
@@ -497,6 +847,7 @@ export function cleanupPostHistoryDialogHarness(): void {
     clearPostHistoryDialogScrollStates();
     clearPostHistoryShouldReturnToLatestAfterLocalPost();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
 }
 
 export {
