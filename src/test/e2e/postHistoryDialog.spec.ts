@@ -275,7 +275,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.totalPosts);
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '投稿履歴を読み込む' }).click();
+        await page.getByRole('menuitem', { name: 'JSONLをインポート' }).click();
 
         const importDialog = page.locator('.post-history-import-dialog');
         await expect(importDialog).toBeVisible();
@@ -298,7 +298,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         const harness = await gotoHarness(page);
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '投稿履歴を読み込む' }).click();
+        await page.getByRole('menuitem', { name: 'JSONLをインポート' }).click();
 
         const importDialog = page.locator('.post-history-import-dialog');
         const dropZone = importDialog.locator('.import-drop-zone');

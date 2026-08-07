@@ -419,7 +419,7 @@ describe('PostHistoryDialog', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness({ listingMode: 'page-adapter' });
         setPostHistoryDialogTranslationOverrides({
-            'postHistory.import': '投稿履歴を読み込む',
+            'postHistory.import': 'JSONLをインポート',
         });
     });
 
@@ -923,10 +923,10 @@ describe('PostHistoryDialog', () => {
         await openPostHistoryMenu();
         const menuItems = await screen.findAllByRole('menuitem');
         const labels = menuItems.map((item) => item.textContent?.trim());
-        expect(labels.indexOf('投稿履歴を読み込む')).toBeGreaterThan(
+        expect(labels.indexOf('JSONLをインポート')).toBeGreaterThan(
             labels.indexOf('表示中の投稿付近を再取得'),
         );
-        expect(labels.indexOf('投稿履歴を読み込む')).toBeLessThan(
+        expect(labels.indexOf('JSONLをインポート')).toBeLessThan(
             labels.indexOf('保存済み投稿履歴をクリア'),
         );
     });
@@ -948,7 +948,7 @@ describe('PostHistoryDialog', () => {
             labels.indexOf('表示中の投稿付近を再取得'),
         );
         expect(labels.indexOf('エクスポート')).toBeLessThan(
-            labels.indexOf('投稿履歴を読み込む'),
+            labels.indexOf('JSONLをインポート'),
         );
     });
 
@@ -969,7 +969,7 @@ describe('PostHistoryDialog', () => {
             menu.querySelectorAll('.post-history-menu-separator'),
         );
         const importIndex = menuItems.findIndex(
-            (item) => item.textContent?.trim() === '投稿履歴を読み込む',
+            (item) => item.textContent?.trim() === 'JSONLをインポート',
         );
         const deleteIndex = menuItems.findIndex(
             (item) => item.textContent?.trim() === '保存済み投稿履歴をクリア',

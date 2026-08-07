@@ -20,7 +20,7 @@ vi.mock("../../lib/postHistoryJsonlImportService", async (importOriginal) => {
 });
 
 const translations: Record<string, string> = {
-    "postHistory.importTitle": "投稿履歴を読み込む",
+    "postHistory.importTitle": "JSONLをインポート",
     "postHistory.importDescription": "Citrineなどから書き出したNostr JSONLに対応",
     "postHistory.importChooseFile": "JSONLファイルを選択",
     "postHistory.importDropHint": "JSONLファイルをここにドラッグ＆ドロップ",
@@ -123,7 +123,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         const firstFile = createFile();
         await fireEvent.change(input, {
@@ -295,7 +295,7 @@ describe("PostHistoryImportDialog", () => {
             },
         });
 
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, { target: { files: [] } });
 
@@ -317,7 +317,7 @@ describe("PostHistoryImportDialog", () => {
                 onImported,
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         const file = new File(["{}"], "history.jsonl", { type: "application/x-ndjson" });
 
@@ -341,7 +341,7 @@ describe("PostHistoryImportDialog", () => {
         }));
         await waitFor(() => expect(screen.getByText("読み込みが完了しました")).toBeTruthy());
 
-        const dialog = screen.getByRole("dialog", { name: "投稿履歴を読み込む" });
+        const dialog = screen.getByRole("dialog", { name: "JSONLをインポート" });
         expect(within(dialog).getByRole("heading", { name: "入力" })).toBeTruthy();
         expect(within(dialog).getByRole("heading", { name: "投稿履歴" })).toBeTruthy();
         expect(within(dialog).getByRole("heading", { name: "削除要求" })).toBeTruthy();
@@ -372,7 +372,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
 
         await fireEvent.change(input, {
@@ -404,7 +404,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
 
         await fireEvent.change(input, {
@@ -451,7 +451,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, {
             target: { files: [new File(["1"], "history.jsonl")] },
@@ -482,7 +482,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, {
             target: { files: [new File(["1"], "history.jsonl")] },
@@ -520,7 +520,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, {
             target: { files: [new File(["1"], "history.jsonl")] },
@@ -559,7 +559,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, {
             target: { files: [new File(["1"], "history.jsonl")] },
@@ -587,7 +587,7 @@ describe("PostHistoryImportDialog", () => {
                 getCurrentPubkeyHex: () => "a".repeat(64),
             },
         });
-        const input = screen.getByRole("dialog", { name: "投稿履歴を読み込む" })
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
         await fireEvent.change(input, {
             target: { files: [new File(["1"], "history.jsonl")] },
