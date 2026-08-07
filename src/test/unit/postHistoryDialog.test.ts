@@ -952,6 +952,39 @@ describe('PostHistoryDialog', () => {
         );
     });
 
+    it('[menu-separators] importと履歴クリアの間に区切りを表示する', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await openPostHistoryMenu();
+        const menu = await screen.findByRole('menu');
+        const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+        const separators = Array.from(
+            menu.querySelectorAll('.post-history-menu-separator'),
+        );
+        const importIndex = menuItems.findIndex(
+            (item) => item.textContent?.trim() === '投稿履歴を読み込む',
+        );
+        const deleteIndex = menuItems.findIndex(
+            (item) => item.textContent?.trim() === '保存済み投稿履歴をクリア',
+        );
+
+        expect(deleteIndex).toBe(importIndex + 1);
+        expect(
+            separators.some(
+                (separator) =>
+                    Boolean(separator.compareDocumentPosition(menuItems[deleteIndex]) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+                    Boolean(menuItems[importIndex].compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING),
+            ),
+        ).toBe(true);
+    });
+
     it('[export-download] menuからJSONLをダウンロードし、ファイル情報とObject URL解放を設定する', async () => {
         const createObjectURL = vi.fn((_blob: Blob) => 'blob:post-history');
         const revokeObjectURL = vi.fn();

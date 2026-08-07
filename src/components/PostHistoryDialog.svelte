@@ -1709,6 +1709,9 @@
                                 ></div>
                                 <span>{$_("postHistory.import")}</span>
                             </DropdownMenu.Item>
+                            <DropdownMenu.Separator
+                                class="post-history-menu-separator"
+                            />
                             <DropdownMenu.Item
                                 class="menu-action-button menu-action-button-danger"
                                 onSelect={openLocalHistoryDeleteConfirm}
