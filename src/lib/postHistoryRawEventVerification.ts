@@ -7,7 +7,10 @@ import type {
 } from "rx-nostr";
 import { filter, map, type Observable } from "rxjs";
 import { validateEvent, verifyEvent } from "nostr-tools";
-import { createPlainNostrEventSnapshot } from "./postHistoryEventUtils";
+import {
+    createPlainNostrEventSnapshot,
+    isSignedNostrEvent,
+} from "./postHistoryEventUtils";
 import type { NostrEvent } from "./types";
 
 /**
@@ -103,30 +106,34 @@ function createAttestation(
  * signers, JSONL import and the repository fallback.
  */
 export function attestFullyVerifiedPostHistoryRawEvent(
-    event: NostrEvent,
+    event: unknown,
 ): AttestedPostHistoryRawEvent | null {
-    const snapshot = createPlainNostrEventSnapshot(event);
-    const fingerprint = createFingerprint(snapshot);
-    if (!fingerprint) {
-        return null;
-    }
-
     try {
+        if (!isSignedNostrEvent(event)) {
+            return null;
+        }
+
+        const snapshot = createPlainNostrEventSnapshot(event);
+        const fingerprint = createFingerprint(snapshot);
+        if (!fingerprint) {
+            return null;
+        }
+
         if (!verifyEvent(snapshot as never)) {
             return null;
         }
+
+        const token: PostHistoryRawEventAttestation = {};
+        attestations.set(token, {
+            fingerprint,
+            ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
+            evidence: "full",
+        });
+        eventAttestations.set(snapshot, token);
+        return { event: snapshot, attestation: token };
     } catch {
         return null;
     }
-
-    const token: PostHistoryRawEventAttestation = {};
-    attestations.set(token, {
-        fingerprint,
-        ruleVersion: RAW_EVENT_VERIFICATION_RULE_VERSION,
-        evidence: "full",
-    });
-    eventAttestations.set(snapshot, token);
-    return { event: snapshot, attestation: token };
 }
 
 /**

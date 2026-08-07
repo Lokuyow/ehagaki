@@ -234,7 +234,7 @@ export class PostDeletionService {
         }
 
         const verifiedDeletionEvent = attestFullyVerifiedPostHistoryRawEvent(
-            signedEvent as NostrEvent,
+            signedEvent,
         );
         if (!verifiedDeletionEvent) {
             return { success: false, error: "post_error" };

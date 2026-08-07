@@ -212,6 +212,24 @@ describe("post-history raw event verification", () => {
         expect(attestFullyVerifiedPostHistoryRawEvent(staleCachedEvent)).toBeNull();
     });
 
+    it.each([
+        null,
+        undefined,
+        { tags: null },
+        {
+            id: "a".repeat(64),
+            pubkey: "b".repeat(64),
+            created_at: 1,
+            kind: 1,
+            tags: "not-an-array",
+            content: "invalid",
+            sig: "c".repeat(128),
+        },
+    ])("treats malformed external signer output as a failed full verification", (event) => {
+        expect(() => attestFullyVerifiedPostHistoryRawEvent(event)).not.toThrow();
+        expect(attestFullyVerifiedPostHistoryRawEvent(event)).toBeNull();
+    });
+
     it("keeps the repository direct-call fallback cryptographic", async () => {
         const databaseName = `${EHAGAKI_DB_NAME}-raw-verification-${Date.now()}`;
         testDbNames.add(databaseName);
