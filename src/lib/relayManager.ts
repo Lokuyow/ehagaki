@@ -1,6 +1,6 @@
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
-import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
+import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./relayLists";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
 import {
@@ -52,7 +52,8 @@ export class RelayStorage {
                 return;
             }
 
-            await this.repository.put(pubkeyHex, relays, {
+            const filteredRelays = RelayConfigUtils.filterDecommissionedRelayConfig(relays);
+            await this.repository.put(pubkeyHex, filteredRelays, {
                 source: options.source,
                 updatedAtFromEvent: options.updatedAtFromEvent,
             });
@@ -60,7 +61,7 @@ export class RelayStorage {
             // UI側のストア更新は呼び出し元から注入された callback に委譲する
             if (this.onRelayConfigSaved) {
                 try {
-                    await this.onRelayConfigSaved(pubkeyHex, relays);
+                    await this.onRelayConfigSaved(pubkeyHex, filteredRelays);
                 } catch (e) {
                     // ストア更新失敗は無視（IndexedDB保存は成功）
                     this.console.warn('ストアの更新に失敗:', e);
@@ -156,8 +157,10 @@ export class RelayNetworkFetcher {
 
                         if (packet.event?.kind === 10002 && packet.event.pubkey === pubkeyHex) {
                             try {
-                                const relayConfigs = RelayConfigParser.parseKind10002Tags(packet.event.tags);
-                                if (Object.keys(relayConfigs).length > 0) {
+                                const relayConfigs = RelayConfigUtils.filterDecommissionedRelayConfig(
+                                    RelayConfigParser.parseKind10002Tags(packet.event.tags),
+                                );
+                                if (RelayConfigUtils.hasRelayEntries(relayConfigs)) {
                                     found = true;
                                     this.console.log("Kind 10002からリレーを取得:", relayConfigs);
                                     safeResolve({
@@ -238,8 +241,11 @@ export class RelayNetworkFetcher {
                         if (resolved) return;
 
                         if (packet.event?.kind === 3 && packet.event.pubkey === pubkeyHex) {
-                            const relayObj = RelayConfigParser.parseKind3Content(packet.event.content);
-                            if (relayObj) {
+                            const parsedRelayConfig = RelayConfigParser.parseKind3Content(packet.event.content);
+                            const relayObj = parsedRelayConfig
+                                ? RelayConfigUtils.filterDecommissionedRelayConfig(parsedRelayConfig)
+                                : null;
+                            if (relayObj && RelayConfigUtils.hasRelayEntries(relayObj)) {
                                 found = true;
                                 this.console.log("Kind 3からリレーを取得:", relayObj);
                                 safeResolve({

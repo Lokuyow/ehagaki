@@ -5,7 +5,7 @@ import {
     channelContextServiceInternals,
 } from "../../lib/channelContextService";
 import { CHANNEL_TEMPORARY_READ_RELAY_LIMIT } from "../../lib/channelContextConstants";
-import { FALLBACK_RELAYS } from "../../lib/constants";
+import { FALLBACK_RELAYS } from "../../lib/relayLists";
 import type { NostrEvent } from "../../lib/types";
 import { createMockConsole } from "../helpers";
 import type { MockConsole } from "../helpers";

@@ -152,6 +152,15 @@ export class PostEventSender {
         event: any,
         signerOrOptions?: any | SendEventOptions,
     ): Promise<PostResult> {
+        const options = normalizeSendEventOptions(signerOrOptions);
+        if (
+            hasExplicitTargetRelays(signerOrOptions)
+            && !options.includeDefaultWriteRelays
+            && (options.targetRelays?.length ?? 0) === 0
+        ) {
+            return Promise.resolve({ success: false, error: "no_write_relays" });
+        }
+
         return new Promise((resolve) => {
             let resolved = false;
             let subscription: any = null;
@@ -163,7 +172,6 @@ export class PostEventSender {
             const authRequiredRelays = new Set<string>();
             const pendingAuthRelays = new Set<string>();
 
-            const options = normalizeSendEventOptions(signerOrOptions);
             const targetRelays = resolveTargetRelays(this.rxNostr, options);
 
             const safeUnsubscribe = () => {
@@ -298,6 +306,12 @@ export class PostEventSender {
             subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
         });
     }
+}
+
+function hasExplicitTargetRelays(signerOrOptions?: any | SendEventOptions): boolean {
+    return !!signerOrOptions
+        && typeof signerOrOptions === "object"
+        && "targetRelays" in signerOrOptions;
 }
 
 export interface SendEventOptions {

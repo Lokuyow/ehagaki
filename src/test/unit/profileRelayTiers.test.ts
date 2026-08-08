@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "../../lib/constants";
+import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "../../lib/relayLists";
 import {
     buildProfileRelayTiers,
     groupPubkeysByRelaySet,

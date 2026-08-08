@@ -9,7 +9,9 @@ import {
     NIP46_REQUESTED_PERMISSIONS,
     NIP46_REQUESTED_PERMS,
     normalizeSupportedNip46FinalRelay,
+    sanitizeNip46NostrConnectRelays,
 } from '../../lib/nip46Service';
+import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 import { createDeferred } from '../deferredTestUtils';
 import { MockStorage } from '../helpers';
 import { expectConsoleCallsNotToContain } from '../logAssertions';
@@ -22,6 +24,15 @@ describe('NIP46_REQUESTED_PERMISSIONS', () => {
     it('NIP-42 AUTHイベントの署名許可を要求する', () => {
         expect(NIP46_REQUESTED_PERMISSIONS).toContain('sign_event:22242');
         expect(NIP46_REQUESTED_PERMS).toContain('sign_event:22242');
+    });
+});
+
+describe('sanitizeNip46NostrConnectRelays', () => {
+    it('サービス終了 relay を Nostr Connect 候補から除外する', () => {
+        expect(sanitizeNip46NostrConnectRelays([
+            DECOMMISSIONED_RELAYS[0],
+            'wss://relay.example.com',
+        ])).toEqual(['wss://relay.example.com']);
     });
 });
 
@@ -216,6 +227,10 @@ describe('normalizeSupportedNip46FinalRelay', () => {
         'not a relay',
     ])('rejects %s as an unsupported final relay candidate', (relay) => {
         expect(normalizeSupportedNip46FinalRelay(relay)).toBeNull();
+    });
+
+    it('終了済み relay を final relay candidate として拒否する', () => {
+        expect(normalizeSupportedNip46FinalRelay(DECOMMISSIONED_RELAYS[0])).toBeNull();
     });
 });
 
@@ -778,6 +793,21 @@ describe('Nip46Service', () => {
             });
 
             await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow('No relays specified');
+        });
+
+        it('終了済み relay だけの bunker input は接続試行せず直ちに失敗する', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            (parseBunkerInput as any).mockResolvedValue({
+                pubkey: 'a'.repeat(64),
+                relays: [DECOMMISSIONED_RELAYS[0]],
+                secret: null,
+            });
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow(
+                'Relay connection failed: no reachable relays',
+            );
+            expect(mockPool.ensureRelay).not.toHaveBeenCalled();
+            expect(BunkerSigner.fromBunker).not.toHaveBeenCalled();
         });
     });
 
@@ -2459,6 +2489,22 @@ describe('Nip46Service', () => {
 
             const loaded = Nip46Service.loadSession(mockStorage);
             expect(loaded).toEqual(sessionData);
+        });
+
+        it('loadSession: 保存済み relay の終了済み URL を除外する', () => {
+            const sessionData = {
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: 'c'.repeat(64),
+                relays: [DECOMMISSIONED_RELAYS[2], 'wss://relay.test.com'],
+                userPubkey: 'user-pub',
+                pingVerified: true,
+            };
+            mockStorage.setItem('nostr-nip46-session', JSON.stringify(sessionData));
+
+            expect(Nip46Service.loadSession(mockStorage)).toEqual({
+                ...sessionData,
+                relays: ['wss://relay.test.com'],
+            });
         });
 
         it('loadSession: pubkeyHex指定時にprefixキーから読み取る', () => {

@@ -1,18 +1,3 @@
-export const BOOTSTRAP_RELAYS = [
-    "wss://purplepag.es/",
-    "wss://directory.yabu.me/",
-    "wss://indexer.coracle.social/",
-    "wss://user.kindpag.es/",
-];
-
-export const FALLBACK_RELAYS = [
-    "wss://nos.lol/",
-    "wss://relay.damus.io/",
-    "wss://relay.nostr.wirednet.jp/",
-    "wss://yabu.me/",
-    "wss://x.kojira.io/",
-];
-
 // --- fileUploadManager用定数 ---
 export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
 export const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB

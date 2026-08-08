@@ -3,7 +3,7 @@ import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
 import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { FALLBACK_RELAYS } from "./constants";
+import { FALLBACK_RELAYS } from "./relayLists";
 
 export interface ReplyQuoteServiceDeps {
     console?: Console;

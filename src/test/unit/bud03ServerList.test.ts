@@ -6,6 +6,7 @@ import {
     parseBud03ServerTags,
     publishBud03ServerList,
 } from "../../lib/upload/bud03ServerList";
+import { DECOMMISSIONED_RELAYS } from "../../lib/relayLists";
 
 describe("bud03ServerList", () => {
     it("parses server tags with normalization, de-duplication, and ordering", () => {
@@ -75,6 +76,39 @@ describe("bud03ServerList", () => {
 
         expect(result.success).toBe(true);
         expect(result.servers).toEqual(["https://new.example.com"]);
+    });
+
+    it("explicit relay が終了済みのみならデフォルト relay を使わず即時に失敗する", async () => {
+        const rxNostr = { use: vi.fn() };
+
+        await expect(fetchBud03ServerList({
+            rxNostr: rxNostr as never,
+            pubkeyHex: "pubkey",
+            relays: [DECOMMISSIONED_RELAYS[0]],
+        })).resolves.toEqual({ success: false, servers: [], error: "not_found" });
+
+        expect(rxNostr.use).not.toHaveBeenCalled();
+    });
+
+    it("explicit relay の混在時は有効 relay だけを rx-nostr に渡す", async () => {
+        const rxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer) => {
+                    observer.complete();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        };
+
+        await fetchBud03ServerList({
+            rxNostr: rxNostr as never,
+            pubkeyHex: "pubkey",
+            relays: [DECOMMISSIONED_RELAYS[0], "wss://relay.example.com"],
+        });
+
+        expect(rxNostr.use).toHaveBeenCalledWith(expect.anything(), {
+            on: { relays: ["wss://relay.example.com/"] },
+        });
     });
 
     it("signs and sends a BUD-03 event", async () => {
