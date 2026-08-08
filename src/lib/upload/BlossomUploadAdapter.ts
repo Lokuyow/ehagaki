@@ -1,6 +1,7 @@
 import { BlossomClient, type BlobDescriptor } from "nostr-tools/nipb7";
 import { calculateSHA256Hex } from "../utils/fileUtils";
 import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
+import { canonicalizeBlossomAuthorizationHeader } from "./blossomAuthorization";
 import {
     prepareSignedEventTemplate,
     validateSignedEventResult,
@@ -88,7 +89,7 @@ function normalizeUploadBlob(file: File): File | Blob {
     return blob;
 }
 
-function createBlossomClient(
+export function createBlossomClient(
     destination: UploadDestination,
     signer: NonNullable<UploadAdapterUploadParams["authService"]["getBlossomSigner"]> extends () => Promise<infer T>
         ? T
@@ -124,7 +125,7 @@ function createBlossomClient(
         if (addAuthorization) {
             const auth = await addAuthorization();
             if (!auth) throw new Error("Blossom authorization failed");
-            headers.Authorization = auth;
+            headers.Authorization = canonicalizeBlossomAuthorizationHeader(auth);
         }
 
         const response = await fetchImpl(`${baseUrl}${url}`, {
