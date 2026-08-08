@@ -25,7 +25,10 @@ import {
   type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
 import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
-import { validateSignedEventResult } from "./signedEventResultValidator";
+import {
+  prepareSignedEventTemplate,
+  validateSignedEventResult,
+} from "./signedEventResultValidator";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -236,15 +239,16 @@ export class PostManager {
     }
 
     assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+    const prepared = prepareSignedEventTemplate(params.event);
     const signedEvent = signEvent
-      ? await signEvent(params.event)
+      ? await signEvent(prepared.signerTemplate)
       : params.event;
     assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
 
     let eventToSend: any;
     try {
       eventToSend = validateSignedEventResult(
-        params.event,
+        prepared.expectedTemplate,
         signedEvent,
         params.sessionPubkey,
       );

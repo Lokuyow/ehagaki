@@ -9,7 +9,10 @@ import { authState } from "../stores/authStore.svelte";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { AuthService } from "./types";
 import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
-import { validateSignedEventResult } from "./signedEventResultValidator";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "./signedEventResultValidator";
 
 function base64Encode(value: string): string {
     const binary = encodeURIComponent(value).replace(
@@ -91,10 +94,11 @@ export class NostrAuthService implements AuthService {
             },
             signEvent: async (template) => {
                 assertCurrentSession(sessionPubkey);
-                const signedEvent = await signer.signEvent(template);
+                const prepared = prepareSignedEventTemplate(template);
+                const signedEvent = await signer.signEvent(prepared.signerTemplate);
                 assertCurrentSession(sessionPubkey);
                 const validated = validateSignedEventResult(
-                    template,
+                    prepared.expectedTemplate,
                     signedEvent,
                     sessionPubkey,
                 );

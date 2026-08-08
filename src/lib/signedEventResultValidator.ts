@@ -1,5 +1,7 @@
-import { getEventHash, validateEvent, verifyEvent } from "nostr-tools";
+import { getEventHash, validateEvent, verifyEvent, type EventTemplate } from "nostr-tools";
 import type { NostrEvent } from "./types";
+
+type SignerEventTemplate = EventTemplate & Record<string, unknown>;
 
 function cloneTags(tags: unknown): string[][] {
     if (!Array.isArray(tags)) {
@@ -22,6 +24,48 @@ function tagsEqual(left: string[][], right: string[][]): boolean {
         ));
 }
 
+function snapshotEventTemplate(template: unknown): EventTemplate {
+    if (!template || typeof template !== "object") {
+        throw new Error("Invalid signed event result");
+    }
+
+    const source = template as Record<string, unknown>;
+    if (typeof source.kind !== "number"
+        || typeof source.content !== "string"
+        || typeof source.created_at !== "number") {
+        throw new Error("Invalid signed event result");
+    }
+
+    return {
+        kind: source.kind,
+        content: source.content,
+        created_at: source.created_at,
+        tags: cloneTags(source.tags),
+    };
+}
+
+function cloneSignerEventTemplate(template: unknown): SignerEventTemplate {
+    const signingFields = snapshotEventTemplate(template);
+    return {
+        ...(template as Record<string, unknown>),
+        ...signingFields,
+    } as SignerEventTemplate;
+}
+
+/**
+ * Captures the caller's requested signing fields before an external signer can
+ * mutate them, and provides the signer with a separate mutable copy.
+ */
+export function prepareSignedEventTemplate(template: unknown): {
+    expectedTemplate: EventTemplate;
+    signerTemplate: SignerEventTemplate;
+} {
+    return {
+        expectedTemplate: snapshotEventTemplate(template),
+        signerTemplate: cloneSignerEventTemplate(template),
+    };
+}
+
 /**
  * Verifies that a signer returned the exact Nostr signing fields requested by
  * the caller, signed by the active operation's expected public key.
@@ -37,9 +81,8 @@ export function validateSignedEventResult(
         throw new Error("Invalid signed event result");
     }
 
-    const requested = template as Record<string, unknown>;
+    const requested = snapshotEventTemplate(template);
     const returned = signedEvent as Record<string, unknown>;
-    const requestedTags = cloneTags(requested.tags);
     const returnedTags = cloneTags(returned.tags);
     const snapshot = {
         id: returned.id,
@@ -59,7 +102,7 @@ export function validateSignedEventResult(
             || snapshot.kind !== requested.kind
             || snapshot.content !== requested.content
             || snapshot.created_at !== requested.created_at
-            || !tagsEqual(returnedTags, requestedTags)) {
+            || !tagsEqual(returnedTags, requested.tags)) {
             throw new Error("Invalid signed event result");
         }
     } catch {

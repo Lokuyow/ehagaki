@@ -14,7 +14,8 @@ import {
 import { createDeferred } from '../deferredTestUtils';
 import { mockAuthStoreModule } from '../mocks/storeModules';
 
-vi.mock('../../lib/signedEventResultValidator', () => ({
+vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../lib/signedEventResultValidator')>(),
     validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
 }));
 

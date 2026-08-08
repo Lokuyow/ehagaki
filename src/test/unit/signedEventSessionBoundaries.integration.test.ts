@@ -186,6 +186,23 @@ describe("signed-event contract at post-history boundaries", () => {
         expect(savePostHistoryFn).not.toHaveBeenCalled();
     });
 
+    it("rejects a normal post when the signer mutates its template in place", async () => {
+        const authStateStore = { value: createAuthState() };
+        const signEvent = vi.fn(async (template: any) => {
+            template.content = "changed in place by signer";
+            template.tags.push(["t", "changed"]);
+            return finalizeEvent(template, secretKeyA);
+        });
+        const { manager, sendEvent, savePostHistoryFn } = createPostManager(authStateStore, signEvent);
+
+        await expect(manager.submitPost("requested content")).resolves.toMatchObject({
+            success: false,
+            error: "post_error",
+        });
+        expect(sendEvent).not.toHaveBeenCalled();
+        expect(savePostHistoryFn).not.toHaveBeenCalled();
+    });
+
     it("rejects a NIP-07 result signed by a different pubkey", async () => {
         const authStateStore = { value: createAuthState() };
         const otherSecretKey = generateSecretKey();
@@ -259,6 +276,26 @@ describe("signed-event contract at post-history boundaries", () => {
         expect(saveLocalDeletion).not.toHaveBeenCalled();
     });
 
+    it("rejects a deletion request when the signer mutates a nested tag in place", async () => {
+        const authStateStore = { value: createAuthState("nsec") };
+        const sendEvent = vi.fn();
+        const saveLocalDeletion = vi.fn();
+        const service = createDeletionService({
+            authStateStore,
+            signEvent: async (template: any) => {
+                template.tags[0][1] = "f".repeat(64);
+                return finalizeEvent(template, secretKeyA);
+            },
+            sendEvent,
+            saveLocalDeletion,
+        });
+
+        await expect(service.requestDeletion({ post: createPostRecord(), rxNostr: {} as never }))
+            .resolves.toEqual({ success: false, error: "post_error" });
+        expect(sendEvent).not.toHaveBeenCalled();
+        expect(saveLocalDeletion).not.toHaveBeenCalled();
+    });
+
     it("does not publish a correct deletion after logout during signing", async () => {
         const authStateStore = { value: createAuthState("nsec") };
         const deferred = createDeferred<any>();
@@ -310,6 +347,35 @@ describe("signed-event contract at post-history boundaries", () => {
 });
 
 describe("active session liveness at authorization and protocol boundaries", () => {
+    it("rejects an external signer that mutates the session-bound template in place", async () => {
+        (authState as any).value = createAuthState();
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent: vi.fn(async (template: any) => {
+                template.content = "changed in place by signer";
+                template.tags[0][1] = "changed";
+                return finalizeEvent(template, secretKeyA);
+            }),
+        };
+        const signer = await new NostrAuthService().getEventSigner(pubkeyA);
+        const requestedTemplate = {
+            kind: 27235,
+            content: "requested",
+            created_at: 1_700_000_000,
+            tags: [["u", "https://upload.example/api"]],
+        };
+
+        await expect(signer.signEvent(requestedTemplate)).rejects.toThrow(
+            "Invalid signed event result",
+        );
+        expect(requestedTemplate).toEqual({
+            kind: 27235,
+            content: "requested",
+            created_at: 1_700_000_000,
+            tags: [["u", "https://upload.example/api"]],
+        });
+    });
+
     it("does not start a NIP-98 HTTP request after switching accounts during signing", async () => {
         (authState as any).value = createAuthState();
         const signer = installDeferredNip07Signer();
@@ -391,6 +457,47 @@ describe("active session liveness at authorization and protocol boundaries", () 
 
         expect(result).toMatchObject({ success: false });
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not start a normal Blossom PUT when the injected signer mutates its template in place", async () => {
+        const fetchMock = vi.fn();
+        const result = await new BlossomUploadAdapter().upload({
+            file: new File(["data"], "test.png", { type: "image/png" }),
+            destination: createBlossomDestination(),
+            authService: {
+                buildAuthHeader: vi.fn(),
+                getBlossomSigner: async () => ({
+                    getPublicKey: async () => pubkeyA,
+                    signEvent: async (template: any) => {
+                        template.content = "changed in place by signer";
+                        return finalizeEvent(template, secretKeyA);
+                    },
+                }),
+            },
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        expect(result).toMatchObject({ success: false });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not publish BUD-03 when the signer mutates its template in place", async () => {
+        const send = vi.fn();
+
+        await expect(publishBud03ServerList({
+            rxNostr: { send } as never,
+            signer: {
+                getPublicKey: async () => pubkeyA,
+                signEvent: async (template: any) => {
+                    template.tags[0][1] = "https://changed.example";
+                    return finalizeEvent(template, secretKeyA);
+                },
+            },
+            servers: ["https://blossom.example"],
+            expectedPubkey: pubkeyA,
+            assertSession: () => undefined,
+        })).rejects.toThrow("Invalid signed event result");
+        expect(send).not.toHaveBeenCalled();
     });
 
     it("does not publish BUD-03 after logout during signing", async () => {

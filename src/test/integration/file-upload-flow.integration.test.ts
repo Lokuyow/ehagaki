@@ -16,7 +16,8 @@ const nip46RuntimeMocks = vi.hoisted(() => ({
     getSignerForSession: vi.fn(),
 }));
 
-vi.mock('../../lib/signedEventResultValidator', () => ({
+vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../lib/signedEventResultValidator')>(),
     validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
 }));
 

@@ -18,7 +18,10 @@ import {
 } from "./storage/postHistoryDeletionRequestsRepository";
 import type { PostResult, AuthState, KeyManagerInterface, NostrEvent } from "./types";
 import { assertActiveSession } from "./sessionLiveness";
-import { validateSignedEventResult } from "./signedEventResultValidator";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "./signedEventResultValidator";
 
 export const POST_DELETION_SUPPORTED_KINDS = [1, 42] as const;
 
@@ -239,10 +242,11 @@ export class PostDeletionService {
         let signedEvent: any;
         try {
             assertSession();
-            signedEvent = await signerResolution.signEvent!(deletionEvent);
+            const prepared = prepareSignedEventTemplate(deletionEvent);
+            signedEvent = await signerResolution.signEvent!(prepared.signerTemplate);
             assertSession();
             signedEvent = validateSignedEventResult(
-                deletionEvent,
+                prepared.expectedTemplate,
                 signedEvent,
                 currentPubkey,
             );

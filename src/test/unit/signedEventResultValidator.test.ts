@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
-import { validateSignedEventResult } from "../../lib/signedEventResultValidator";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "../../lib/signedEventResultValidator";
 
 const secretKey = generateSecretKey();
 const pubkey = getPublicKey(secretKey);
@@ -22,6 +25,32 @@ function sign(overrides: Partial<typeof template> = {}) {
 }
 
 describe("validateSignedEventResult", () => {
+    it("captures independent expected and signer template snapshots including nested tags", () => {
+        const input = {
+            ...template,
+            pubkey,
+            tags: template.tags.map((tag) => [...tag]),
+        };
+        const prepared = prepareSignedEventTemplate(input);
+
+        expect(prepared.expectedTemplate).not.toBe(input);
+        expect(prepared.signerTemplate).not.toBe(input);
+        expect(prepared.signerTemplate).not.toBe(prepared.expectedTemplate);
+        expect(prepared.expectedTemplate.tags).not.toBe(input.tags);
+        expect(prepared.signerTemplate.tags).not.toBe(prepared.expectedTemplate.tags);
+        expect(prepared.signerTemplate.tags[0]).not.toBe(prepared.expectedTemplate.tags[0]);
+        expect(prepared.signerTemplate.pubkey).toBe(pubkey);
+        expect(prepared.expectedTemplate).not.toHaveProperty("pubkey");
+
+        input.content = "changed by caller";
+        input.tags[0][1] = "changed by caller";
+        prepared.signerTemplate.content = "changed by signer";
+        prepared.signerTemplate.tags[0][1] = "changed by signer";
+        prepared.signerTemplate.tags.reverse();
+
+        expect(prepared.expectedTemplate).toEqual(template);
+    });
+
     it("accepts a valid event matching the requested template and pubkey", () => {
         const signedEvent = sign();
 

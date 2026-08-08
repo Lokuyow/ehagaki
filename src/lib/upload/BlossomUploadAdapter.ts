@@ -1,7 +1,10 @@
 import { BlossomClient, type BlobDescriptor } from "nostr-tools/nipb7";
 import { calculateSHA256Hex } from "../utils/fileUtils";
 import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
-import { validateSignedEventResult } from "../signedEventResultValidator";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "../signedEventResultValidator";
 import type {
     FileUploadResponse,
     UploadAdapterUploadParams,
@@ -256,11 +259,14 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                     }
                     return pubkey;
                 },
-                signEvent: async (template: any) => validateSignedEventResult(
-                    template,
-                    await signer.signEvent(template),
-                    expectedPubkey,
-                ) as any,
+                signEvent: async (template: any) => {
+                    const prepared = prepareSignedEventTemplate(template);
+                    return validateSignedEventResult(
+                        prepared.expectedTemplate,
+                        await signer.signEvent(prepared.signerTemplate),
+                        expectedPubkey,
+                    ) as any;
+                },
             };
             const client = createBlossomClient(
                 params.destination,
