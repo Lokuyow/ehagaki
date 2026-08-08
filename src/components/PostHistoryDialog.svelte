@@ -3925,6 +3925,23 @@
         gap: 8px;
     }
 
+    :global(.post-history-saved-boundary-actions .post-history-nav-button) {
+        height: 52px;
+    }
+
+    @media (max-width: 600px) {
+        .post-history-saved-boundary-actions {
+            width: min(100%, 320px);
+            flex-direction: column;
+            align-items: center;
+        }
+
+        :global(.post-history-saved-boundary-actions .post-history-nav-button) {
+            width: 100%;
+            flex: 0 0 52px;
+        }
+    }
+
     .import-icon {
         mask-image: url("/icons/cloud_download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }

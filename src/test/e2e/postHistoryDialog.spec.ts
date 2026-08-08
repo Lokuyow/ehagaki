@@ -381,7 +381,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
     });
 
-    test('saved posts outside the visible range can be viewed without changing the range', async ({ page }) => {
+    test('saved posts outside the visible range can be viewed without changing the range', async ({ page, isMobile }) => {
         const harness = await gotoSparseHarness(page);
 
         await expectSummary(page, harness.totalPosts);
@@ -402,7 +402,7 @@ test.describe('PostHistoryDialog Playwright', () => {
             };
         });
         expect(boundaryLayout.justifyContent).toBe('center');
-        expect(boundaryLayout.alignItems).toBe('flex-start');
+        expect(boundaryLayout.alignItems).toBe(isMobile ? 'center' : 'flex-start');
         expect(boundaryLayout.buttonRects.length).toBeGreaterThan(0);
         expect(new Set(boundaryLayout.buttonRects.map((rect) => rect.height)).size).toBe(1);
 
