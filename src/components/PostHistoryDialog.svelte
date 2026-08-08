@@ -3901,6 +3901,13 @@
         background: color-mix(in srgb, var(--bg-input) 72%, transparent);
     }
 
+    .post-history-saved-boundary {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
     .post-history-saved-boundary p,
     .post-history-sparse-state p {
         margin: 0;
