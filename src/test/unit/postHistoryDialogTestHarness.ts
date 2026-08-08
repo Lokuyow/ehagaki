@@ -656,9 +656,13 @@ export function resetPostHistoryDialogHarness(options: { listingMode?: 'chunk' |
     repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(false);
     repositoryMock.getSparseChunk.mockResolvedValue([]);
     repositoryMock.countForPubkey.mockResolvedValue(0);
-    repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
-        repositoryMock.countForPubkey(pubkeyHex),
-    );
+    repositoryMock.countVisibleForPubkey.mockImplementation(async () => {
+        const lastCount = repositoryMock.countForPubkey.mock.results.at(-1);
+        if (lastCount?.type === 'return') {
+            return await lastCount.value;
+        }
+        return 0;
+    });
     repositoryMock.getExistingEventIdsForPubkey.mockResolvedValue([]);
     repositoryMock.getOldestCreatedAt.mockResolvedValue(null);
     repositoryMock.upsertFetchedEvents.mockResolvedValue({

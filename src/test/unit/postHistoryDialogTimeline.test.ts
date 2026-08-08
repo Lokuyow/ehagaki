@@ -28,6 +28,7 @@ import {
 import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
+import { bumpPostHistorySearchRevision } from '../../lib/postHistoryLocalSearchRevision';
 
 function createMockRect(top: number, height: number) {
     return {
@@ -224,6 +225,185 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
         expect(visibleRangeRepositoryMock.save).not.toHaveBeenCalled();
 
+        view.unmount();
+    });
+
+    it('最終通常ページのremainingだけをqueryし、到達済み後のavailability older queryを省略する', async () => {
+        const newest = createRecord({
+            eventId: 'bounded-newest',
+            content: 'bounded newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const older = createRecord({
+            eventId: 'bounded-older',
+            content: 'bounded older',
+            createdAt: 1_000,
+            postedAt: 1_000_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_500,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk
+            .mockResolvedValueOnce([older])
+            .mockResolvedValueOnce([older]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('bounded newest')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => expect(screen.getByText('bounded older')).toBeTruthy());
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
+        expect(repositoryMock.getOlderVisibleChunk.mock.calls[1]?.[0]).toEqual(
+            expect.objectContaining({ limit: 1 }),
+        );
+
+        view.unmount();
+    });
+
+    it('remainingが0と確定した場合はolder availabilityを再走査しない', async () => {
+        const newest = createRecord({
+            eventId: 'zero-remaining-newest',
+            content: 'zero remaining newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const staleAvailabilityPost = createRecord({
+            eventId: 'zero-remaining-stale',
+            content: 'stale availability result',
+            createdAt: 1_000,
+            postedAt: 1_000_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_500,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([staleAvailabilityPost]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('zero remaining newest')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+        await waitFor(() => expect(screen.queryByText('stale availability result')).toBeNull());
+
+        // The original availability probe is the only older scan; the
+        // remaining count lets the click skip both the older page and probe.
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(1);
+        view.unmount();
+    });
+
+    it('revisionまたはvisible件数が変わった進捗は再baseし、older投稿を誤って消費しない', async () => {
+        const newest = createRecord({
+            eventId: 'stale-progress-newest',
+            content: 'stale progress newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const older = createRecord({
+            eventId: 'stale-progress-older',
+            content: 'stale progress older',
+            createdAt: 1_000,
+            postedAt: 1_000_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_500,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([older]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        await waitFor(() => {
+            expect(screen.getByText('stale progress newest')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+
+        bumpPostHistorySearchRevision(PUBKEY_HEX);
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+            expect(screen.getByText('stale progress newest')).toBeTruthy();
+        });
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
+        view.unmount();
+    });
+
+    it('ページング途中にvisibleUntilが古い方向へ更新された場合は再baseして見落とさない', async () => {
+        const newest = createRecord({
+            eventId: 'frontier-rebase-newest',
+            content: 'frontier rebase newest',
+            createdAt: 2_000,
+            postedAt: 2_000_000,
+        });
+        const older = createRecord({
+            eventId: 'frontier-rebase-older',
+            content: 'frontier rebase older',
+            createdAt: 1_000,
+            postedAt: 1_000_000,
+        });
+        let visibleUntil = 1_500;
+
+        visibleRangeRepositoryMock.get.mockImplementation(async () => ({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil,
+            updatedAt: 1,
+        }));
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.countVisibleForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([older]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        await waitFor(() => {
+            expect(screen.getByText('frontier rebase newest')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+
+        visibleUntil = 1_400;
+        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+
+        await waitFor(() => {
+            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+            expect(screen.queryByText('frontier rebase older')).toBeNull();
+        });
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
         view.unmount();
     });
 

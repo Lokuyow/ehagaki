@@ -44,6 +44,7 @@ import {
     postHistoryCurrentViewRefetchService,
     type PostHistoryCurrentViewRefetchTask,
 } from "../postHistoryCurrentViewRefetchService";
+import { getPostHistorySearchRevision } from "../postHistoryLocalSearchRevision";
 import {
     type PostHistoryVisibleRangeRelationRepairRequest,
 } from "../postHistoryVisibleRangeChildInteractionRepairService";
@@ -168,6 +169,18 @@ interface LoadOlderVisiblePostsOptions {
     anchorEventId?: string | null;
     metrics?: LoadOlderVisiblePostsMetrics;
     reason?: LoadOlderVisiblePostsReason;
+    useContiguousProgress?: boolean;
+    preserveContiguousProgressAfterDatabaseChange?: boolean;
+}
+
+interface ContiguousProgressSnapshot {
+    pubkeyHex: string;
+    visibleUntil: number | null;
+    revision: number;
+    totalVisibleCount: number;
+    reachedVisibleCount: number;
+    oldestCursor: PostHistoryTimelineCursor;
+    latestEventId: string | null;
 }
 
 type LoadOlderVisiblePostsReason = "normal-older-reveal";
@@ -643,6 +656,7 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | PostHistoryLightweightAuthoredSyncTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
+    let contiguousProgress: ContiguousProgressSnapshot | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let activeOlderRevealChildInteractionRepairRxNostr = getRxNostr();
@@ -810,6 +824,20 @@ export function usePostHistoryListing({
         currentFetchTask = null;
     }
 
+    function clearContiguousProgress(): void {
+        contiguousProgress = null;
+    }
+
+    function sameTimelineCursor(
+        left: PostHistoryTimelineCursor | null | undefined,
+        right: PostHistoryTimelineCursor | null | undefined,
+    ): boolean {
+        return !!left && !!right
+            && left.postedAt === right.postedAt
+            && left.createdAt === right.createdAt
+            && left.eventId === right.eventId;
+    }
+
     function isCurrentFetchRequest(requestId: number): boolean {
         return requestId === fetchRequestId;
     }
@@ -960,6 +988,7 @@ export function usePostHistoryListing({
     }
 
     function clearCurrentListingState(): void {
+        clearContiguousProgress();
         invalidateTotalCountRequest();
         state.loadedPosts = [];
         setTotalCountState({ known: false, status: "unknown" });
@@ -989,6 +1018,7 @@ export function usePostHistoryListing({
     }
 
     function resetListingStateAfterLocalDelete(): void {
+        clearContiguousProgress();
         invalidateTotalCountRequest();
         relationRepairCoordinator.resetOlderRevealRepairContext();
         state.loadedPosts = [];
@@ -1042,6 +1072,7 @@ export function usePostHistoryListing({
     }
 
     function invalidatePendingLoadRequests(): void {
+        clearContiguousProgress();
         loadRequestId += 1;
         searchLoadRequestId += 1;
         isSearchPageLoading = false;
@@ -1505,6 +1536,208 @@ export function usePostHistoryListing({
             : postHistoryRepository.countForPubkey(pubkeyHex);
     }
 
+    async function countVisiblePostsForProgress(
+        pubkeyHex: string,
+        visibleUntil: number | null,
+    ): Promise<number> {
+        if (typeof visibleUntil === "number") {
+            return postHistoryRepository.countVisibleForPubkey(
+                pubkeyHex,
+                visibleUntil,
+            );
+        }
+
+        const pendingTotalCount = currentTotalCountRequest;
+        if (pendingTotalCount?.pubkeyHex === pubkeyHex) {
+            await pendingTotalCount.promise;
+            if (state.totalCountKnown) {
+                return state.totalCount;
+            }
+        }
+
+        if (state.totalCountKnown) {
+            return state.totalCount;
+        }
+
+        return postHistoryRepository.countForPubkey(pubkeyHex);
+    }
+
+    function isContiguousProgressShapeValid(
+        pubkeyHex: string,
+        snapshot: ContiguousProgressSnapshot,
+    ): boolean {
+        if (
+            isSearchMode
+            || state.listingMode !== "contiguous"
+            || state.sparseSource !== null
+            || getPubkeyHex() !== pubkeyHex
+            || state.visibleUntil !== snapshot.visibleUntil
+        ) {
+            return false;
+        }
+
+        const oldestCursor = toTimelineCursor(
+            state.loadedPosts[state.loadedPosts.length - 1],
+        );
+        return sameTimelineCursor(oldestCursor, snapshot.oldestCursor);
+    }
+
+    async function validateContiguousProgress(
+        pubkeyHex: string,
+        expectedRequestId: number,
+    ): Promise<ContiguousProgressSnapshot | null> {
+        const snapshot = contiguousProgress;
+        if (!snapshot || snapshot.pubkeyHex !== pubkeyHex) {
+            return null;
+        }
+
+        const visibleUntil = await refreshVisibleUntil(
+            pubkeyHex,
+            expectedRequestId,
+        );
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || expectedRequestId !== loadRequestId
+            || !isContiguousProgressShapeValid(pubkeyHex, snapshot)
+        ) {
+            return null;
+        }
+
+        const [revision, totalVisibleCount] = await Promise.all([
+            Promise.resolve(getPostHistorySearchRevision(pubkeyHex)),
+            countVisiblePostsForProgress(pubkeyHex, visibleUntil),
+        ]);
+        if (
+            !isContiguousProgressShapeValid(pubkeyHex, snapshot)
+            || revision !== snapshot.revision
+            || totalVisibleCount !== snapshot.totalVisibleCount
+        ) {
+            return null;
+        }
+
+        return snapshot;
+    }
+
+    async function establishContiguousProgress(
+        pubkeyHex: string,
+        requestId: number,
+        latestPosts: PostHistoryRecord[],
+        visibleUntil: number | null,
+        revisionBeforeQuery: number,
+    ): Promise<boolean> {
+        clearContiguousProgress();
+        if (
+            latestPosts.length === 0
+            || !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+            || state.listingMode !== "contiguous"
+            || state.sparseSource !== null
+        ) {
+            return false;
+        }
+
+        const totalVisibleCount = await countVisiblePostsForProgress(
+            pubkeyHex,
+            visibleUntil,
+        );
+        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
+        const revisionAfterQuery = getPostHistorySearchRevision(pubkeyHex);
+        if (
+            revisionAfterQuery !== revisionBeforeQuery
+            || currentVisibleUntil !== visibleUntil
+            || !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || requestId !== loadRequestId
+            || state.listingMode !== "contiguous"
+            || state.sparseSource !== null
+            || state.loadedPosts[0]?.eventId !== latestPosts[0]?.eventId
+            || state.loadedPosts[state.loadedPosts.length - 1]?.eventId !==
+                latestPosts[latestPosts.length - 1]?.eventId
+        ) {
+            return false;
+        }
+
+        const oldestCursor = toTimelineCursor(
+            latestPosts[latestPosts.length - 1],
+        );
+        if (!oldestCursor) {
+            return false;
+        }
+
+        contiguousProgress = {
+            pubkeyHex,
+            visibleUntil,
+            revision: revisionAfterQuery,
+            totalVisibleCount,
+            reachedVisibleCount: latestPosts.length,
+            oldestCursor,
+            latestEventId: latestPosts[0]?.eventId ?? null,
+        };
+        return true;
+    }
+
+    async function reconcileContiguousProgressAfterDatabaseChange(
+        pubkeyHex: string,
+        visibleUntil: number | null,
+        options: { preserveReachedVisibleCount: boolean },
+    ): Promise<boolean> {
+        const snapshot = contiguousProgress;
+        if (
+            !snapshot
+            || snapshot.pubkeyHex !== pubkeyHex
+            || isSearchMode
+            || state.listingMode !== "contiguous"
+            || state.sparseSource !== null
+            || getPubkeyHex() !== pubkeyHex
+        ) {
+            return false;
+        }
+
+        // Only the older relay backfill path can prove that new visible
+        // records are strictly older than the current cursor. Other DB
+        // changes may add or reorder records above the cursor and must rebase.
+        if (!options.preserveReachedVisibleCount) {
+            return false;
+        }
+
+        const oldestCursor = toTimelineCursor(
+            state.loadedPosts[state.loadedPosts.length - 1],
+        );
+        if (!sameTimelineCursor(oldestCursor, snapshot.oldestCursor)) {
+            return false;
+        }
+
+        const totalVisibleCount = await countVisiblePostsForProgress(
+            pubkeyHex,
+            visibleUntil,
+        );
+        if (
+            !getShow()
+            || getPubkeyHex() !== pubkeyHex
+            || !sameTimelineCursor(
+                oldestCursor,
+                toTimelineCursor(state.loadedPosts[state.loadedPosts.length - 1]),
+            )
+        ) {
+            return false;
+        }
+
+        contiguousProgress = {
+            ...snapshot,
+            visibleUntil,
+            revision: getPostHistorySearchRevision(pubkeyHex),
+            totalVisibleCount,
+        };
+        return true;
+    }
+
+    async function rebaseContiguousProgress(): Promise<void> {
+        clearContiguousProgress();
+        await loadLatestVisiblePosts();
+    }
+
     function isSparseListingContext(
         visibleUntil: number | null,
         currentPosts: PostHistoryRecord[] = state.loadedPosts,
@@ -1695,6 +1928,7 @@ export function usePostHistoryListing({
         pubkeyHex: string,
         currentPosts: PostHistoryRecord[] = state.loadedPosts,
         expectedRequestId: number | null = null,
+        options: { skipOlderCheck?: boolean } = {},
     ): Promise<void> {
         if (currentPosts.length === 0) {
             if (
@@ -1711,47 +1945,48 @@ export function usePostHistoryListing({
         const newestCursor = toTimelineCursor(currentPosts[0]);
         const oldestCursor = toTimelineCursor(currentPosts[currentPosts.length - 1]);
         const visibleUntil = state.visibleUntil;
-        const [newerPosts, olderPosts] = await Promise.all(
-            state.sparseSource === "saved" && typeof visibleUntil === "number"
-                ? [
-                    newestCursor
-                        ? postHistoryRepository.getSparseChunk({
-                            pubkeyHex,
-                            visibleUntil,
-                            cursor: newestCursor,
-                            direction: "newer",
-                            limit: 1,
-                        })
-                        : Promise.resolve([]),
-                    oldestCursor
-                        ? postHistoryRepository.getSparseChunk({
-                            pubkeyHex,
-                            visibleUntil,
-                            cursor: oldestCursor,
-                            direction: "older",
-                            limit: 1,
-                        })
-                        : Promise.resolve([]),
-                ]
-                : [
-                    newestCursor
-                        ? postHistoryRepository.getNewerVisibleChunk({
-                            pubkeyHex,
-                            visibleUntil,
-                            cursor: newestCursor,
-                            limit: 1,
-                        })
-                        : Promise.resolve([]),
-                    oldestCursor
-                        ? postHistoryRepository.getOlderVisibleChunk({
-                            pubkeyHex,
-                            visibleUntil,
-                            cursor: oldestCursor,
-                            limit: 1,
-                        })
-                        : Promise.resolve([]),
-                ],
-        );
+        const newerPostsPromise = state.sparseSource === "saved" && typeof visibleUntil === "number"
+            ? newestCursor
+                ? postHistoryRepository.getSparseChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: newestCursor,
+                    direction: "newer",
+                    limit: 1,
+                })
+                : Promise.resolve([])
+            : newestCursor
+                ? postHistoryRepository.getNewerVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: newestCursor,
+                    limit: 1,
+                })
+                : Promise.resolve([]);
+        const olderPostsPromise = options.skipOlderCheck
+            ? Promise.resolve([])
+            : state.sparseSource === "saved" && typeof visibleUntil === "number"
+                ? oldestCursor
+                    ? postHistoryRepository.getSparseChunk({
+                        pubkeyHex,
+                        visibleUntil,
+                        cursor: oldestCursor,
+                        direction: "older",
+                        limit: 1,
+                    })
+                    : Promise.resolve([])
+                : oldestCursor
+                    ? postHistoryRepository.getOlderVisibleChunk({
+                        pubkeyHex,
+                        visibleUntil,
+                        cursor: oldestCursor,
+                        limit: 1,
+                    })
+                    : Promise.resolve([]);
+        const [newerPosts, olderPosts] = await Promise.all([
+            newerPostsPromise,
+            olderPostsPromise,
+        ]);
 
         if (
             !getShow() ||
@@ -1762,18 +1997,25 @@ export function usePostHistoryListing({
         }
 
         state.hasNewerLocal = newerPosts.length > 0;
-        state.hasOlderLocal = olderPosts.length > 0;
+        if (!options.skipOlderCheck) {
+            state.hasOlderLocal = olderPosts.length > 0;
+        }
     }
 
     async function loadLatestVisiblePosts(
         {
             forceTotalCount = false,
             skipTotalCountRefresh = false,
+            skipOlderAvailabilityCheck = false,
+            awaitProgress = false,
         }: {
             forceTotalCount?: boolean;
             skipTotalCountRefresh?: boolean;
+            skipOlderAvailabilityCheck?: boolean;
+            awaitProgress?: boolean;
         } = {},
     ): Promise<void> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
             stateOwnerPubkeyKey = null;
@@ -1783,6 +2025,7 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+        const revisionBeforeLatestQuery = getPostHistorySearchRevision(pubkeyHex);
         const latestPosts = await postHistoryRepository.getLatestVisibleChunk({
             pubkeyHex,
             limit: pageSize,
@@ -1815,6 +2058,40 @@ export function usePostHistoryListing({
         void refreshJumpCacheAnchorAvailability(pubkeyHex, requestId).catch(() => {
             // Anchor availability is auxiliary and must not delay the first post.
         });
+
+        const progressReady = establishContiguousProgress(
+            pubkeyHex,
+            requestId,
+            latestPosts,
+            visibleUntil,
+            revisionBeforeLatestQuery,
+        );
+        let progressEstablished = false;
+        if (awaitProgress) {
+            progressEstablished = await progressReady.catch(() => {
+                clearContiguousProgress();
+                return false;
+            });
+        } else {
+            void progressReady.catch(() => {
+                clearContiguousProgress();
+            });
+        }
+
+        const canSkipOlderAvailability =
+            skipOlderAvailabilityCheck && progressEstablished;
+        if (skipOlderAvailabilityCheck && !canSkipOlderAvailability) {
+            // A failed/stale rebase must not leave the previous window's
+            // availability value visible while the safe query recomputes it.
+            state.hasOlderLocal = false;
+        } else if (canSkipOlderAvailability && contiguousProgress) {
+            // The awaited snapshot describes this exact latest window, so its
+            // remaining visible count is the authoritative older availability.
+            state.hasOlderLocal =
+                contiguousProgress.totalVisibleCount
+                > contiguousProgress.reachedVisibleCount;
+        }
+
         void refreshSavedPostsOutsideVisibleRange(
             pubkeyHex,
             visibleUntil,
@@ -1823,7 +2100,12 @@ export function usePostHistoryListing({
             // Saved-range detection is auxiliary and must not delay the first post.
         });
 
-        void refreshTimelineAvailability(pubkeyHex, latestPosts, requestId)
+        void refreshTimelineAvailability(
+            pubkeyHex,
+            latestPosts,
+            requestId,
+            { skipOlderCheck: canSkipOlderAvailability },
+        )
             .then(() => {
                 if (
                     !getShow()
@@ -1844,6 +2126,7 @@ export function usePostHistoryListing({
     async function reloadVisibleWindowFromCurrentNewest(
         { skipTotalCountRefresh = false }: { skipTotalCountRefresh?: boolean } = {},
     ): Promise<void> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || state.loadedPosts.length === 0) {
             await loadLatestVisiblePosts({ skipTotalCountRefresh });
@@ -1912,6 +2195,7 @@ export function usePostHistoryListing({
         scrollState: PostHistoryDialogScrollState | null,
         pendingLatestRequest: PendingPostHistoryLatestRequest | null,
     ): Promise<void> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         const currentPosts = state.loadedPosts;
         const newestCursor = toTimelineCursor(currentPosts[0]);
@@ -2001,6 +2285,7 @@ export function usePostHistoryListing({
     async function loadVisibleWindowAroundSessionAnchor(
         scrollState: PostHistoryDialogScrollState,
     ): Promise<boolean> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !getShow()) {
             return false;
@@ -2082,13 +2367,58 @@ export function usePostHistoryListing({
             return state.loadedPosts.length > 0;
         }
 
+        const useContiguousProgress = options.useContiguousProgress !== false
+            && contiguousProgress !== null;
+        const progressToExtend = options.preserveContiguousProgressAfterDatabaseChange
+            ? contiguousProgress
+            : null;
+
         const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const progress = useContiguousProgress
+            ? await validateContiguousProgress(pubkeyHex, requestId)
+            : null;
+        if (useContiguousProgress && !progress) {
+            await rebaseContiguousProgress();
+            if (metrics) {
+                metrics.loadedPostsAfterLength = state.loadedPosts.length;
+                metrics.visibleOldestAfter = state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null;
+            }
+            return false;
+        }
+
+        const visibleUntil = progress?.visibleUntil ??
+            await refreshVisibleUntil(pubkeyHex, requestId);
+        const remainingVisibleCount = progress
+            ? Math.max(
+                0,
+                progress.totalVisibleCount - progress.reachedVisibleCount,
+            )
+            : pageSize;
+        if (progress && remainingVisibleCount === 0) {
+            state.hasOlderLocal = false;
+            if (metrics) {
+                metrics.loadedPostsAfterLength = state.loadedPosts.length;
+                metrics.visibleOldestAfter = state.loadedPosts.length > 0
+                    ? state.loadedPosts[state.loadedPosts.length - 1]?.createdAt ?? null
+                    : null;
+            }
+            await refreshTimelineAvailability(
+                pubkeyHex,
+                state.loadedPosts,
+                requestId,
+                { skipOlderCheck: true },
+            );
+            return false;
+        }
+
+        const queryLimit = Math.min(pageSize, remainingVisibleCount);
         const olderPosts = await postHistoryRepository.getOlderVisibleChunk({
             pubkeyHex,
             visibleUntil,
             cursor: oldestCursor,
-            limit: pageSize,
+            limit: queryLimit,
         });
         if (metrics) {
             metrics.olderPostsLength = olderPosts.length;
@@ -2098,8 +2428,23 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const progressAfterQuery = progress
+            ? await validateContiguousProgress(pubkeyHex, requestId)
+            : null;
+        if (progress && !progressAfterQuery) {
+            await rebaseContiguousProgress();
+            return false;
+        }
+
         if (olderPosts.length === 0) {
-            state.hasOlderLocal = false;
+            if (progress) {
+                // A non-zero remaining count is an invariant violation unless
+                // the database changed between the bounded query and this
+                // check. Do not convert it into a false end-of-history result.
+                await rebaseContiguousProgress();
+            } else {
+                state.hasOlderLocal = false;
+            }
             if (metrics) {
                 metrics.loadedPostsAfterLength = state.loadedPosts.length;
                 metrics.visibleOldestAfter =
@@ -2131,6 +2476,41 @@ export function usePostHistoryListing({
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
         }
+        const newlyVisibleCount = newlyVisibleOlderPosts.length;
+        if (progressAfterQuery) {
+            contiguousProgress = {
+                ...progressAfterQuery,
+                reachedVisibleCount: Math.min(
+                    progressAfterQuery.totalVisibleCount,
+                    progressAfterQuery.reachedVisibleCount + newlyVisibleCount,
+                ),
+                oldestCursor: toTimelineCursor(
+                    mergedResult.posts[mergedResult.posts.length - 1],
+                ) ?? progressAfterQuery.oldestCursor,
+            };
+        } else if (
+            !useContiguousProgress
+            && progressToExtend
+            && getPostHistorySearchRevision(pubkeyHex) === progressToExtend.revision
+        ) {
+            if (sameTimelineCursor(oldestCursor, progressToExtend.oldestCursor)) {
+                contiguousProgress = {
+                    ...progressToExtend,
+                    reachedVisibleCount: Math.min(
+                        progressToExtend.totalVisibleCount,
+                        progressToExtend.reachedVisibleCount + newlyVisibleCount,
+                    ),
+                    oldestCursor: toTimelineCursor(
+                        mergedResult.posts[mergedResult.posts.length - 1],
+                    ) ?? progressToExtend.oldestCursor,
+                };
+            } else {
+                clearContiguousProgress();
+            }
+        }
+        const hasReachedVisibleEnd = !!contiguousProgress
+            && contiguousProgress.reachedVisibleCount >=
+                contiguousProgress.totalVisibleCount;
         if (metrics) {
             metrics.loadedPostsAfterLength = mergedResult.posts.length;
             metrics.visibleOldestAfter =
@@ -2140,7 +2520,12 @@ export function usePostHistoryListing({
             metrics.didTrimForOlderAppend = mergedResult.didTrimForOlderAppend;
             metrics.didDeferOlderPosts = mergedResult.didDeferOlderPosts;
         }
-        await refreshTimelineAvailability(pubkeyHex, mergedResult.posts, requestId);
+        await refreshTimelineAvailability(
+            pubkeyHex,
+            mergedResult.posts,
+            requestId,
+            { skipOlderCheck: useContiguousProgress && hasReachedVisibleEnd },
+        );
         return true;
     }
 
@@ -2149,6 +2534,7 @@ export function usePostHistoryListing({
         requestId: number,
         options: LoadOlderVisiblePostsOptions = {},
     ): Promise<boolean> {
+        clearContiguousProgress();
         const currentLoadedPosts = state.loadedPosts;
         const oldestCreatedAt =
             currentLoadedPosts.length > 0
@@ -2196,6 +2582,7 @@ export function usePostHistoryListing({
         requestId: number,
         options: LoadOlderVisiblePostsOptions = {},
     ): Promise<boolean> {
+        clearContiguousProgress();
         const currentLoadedPosts = state.loadedPosts;
         if (typeof state.visibleUntil !== "number") {
             return false;
@@ -2247,7 +2634,16 @@ export function usePostHistoryListing({
         }
 
         const requestId = ++loadRequestId;
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const progressBefore = contiguousProgress;
+        const progress = progressBefore
+            ? await validateContiguousProgress(pubkeyHex, requestId)
+            : null;
+        if (progressBefore && !progress) {
+            await rebaseContiguousProgress();
+            return false;
+        }
+        const visibleUntil = progress?.visibleUntil ??
+            await refreshVisibleUntil(pubkeyHex, requestId);
         const newerPosts = await postHistoryRepository.getNewerVisibleChunk({
             pubkeyHex,
             visibleUntil,
@@ -2264,20 +2660,48 @@ export function usePostHistoryListing({
             return false;
         }
 
+        if (progress) {
+            const progressAfterQuery = await validateContiguousProgress(
+                pubkeyHex,
+                requestId,
+            );
+            if (!progressAfterQuery) {
+                await rebaseContiguousProgress();
+                return false;
+            }
+        }
+
+        const currentPosts = state.loadedPosts;
         const nextPosts = trimVisiblePosts(
-            [...newerPosts, ...state.loadedPosts],
+            [...newerPosts, ...currentPosts],
             "newer",
         );
+        state.loadedPosts = nextPosts;
+        if (progress) {
+            const removedOlderCount = Math.max(
+                0,
+                currentPosts.length + newerPosts.length - nextPosts.length,
+            );
+            contiguousProgress = {
+                ...progress,
+                reachedVisibleCount: Math.max(
+                    0,
+                    progress.reachedVisibleCount - removedOlderCount,
+                ),
+                oldestCursor: toTimelineCursor(
+                    nextPosts[nextPosts.length - 1],
+                ) ?? progress.oldestCursor,
+            };
+        }
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         if (!getShow() || requestId !== loadRequestId) {
             return false;
         }
-
-        state.loadedPosts = nextPosts;
         return true;
     }
 
     async function jumpToCreatedAt(createdAt: number): Promise<boolean> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
             return false;
@@ -2646,6 +3070,7 @@ export function usePostHistoryListing({
     }
 
     async function bootstrapFromRelays(): Promise<void> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
         if (!pubkeyHex || !rxNostr) {
@@ -2820,16 +3245,34 @@ export function usePostHistoryListing({
                 state.searchQuery,
             );
         } else if (refreshDecision.applyAction === "load-latest-visible-posts") {
+            const requiresBoundedRebase =
+                refreshDecision.didMateriallyChange
+                && !refreshDecision.didVisibleMateriallyChange;
             await loadLatestVisiblePosts({
                 forceTotalCount: refreshDecision.didMateriallyChange,
+                skipOlderAvailabilityCheck: requiresBoundedRebase,
+                awaitProgress: requiresBoundedRebase,
             });
         } else if (
             refreshDecision.applyAction === "refresh-count-and-availability"
         ) {
-            refreshTotalCountFromRepository({
-                force: refreshDecision.didMateriallyChange,
-            });
-            await refreshTimelineAvailability(pubkeyHex);
+            if (refreshDecision.didMateriallyChange) {
+                // Any dialog-open insert/update can add or reorder records above
+                // the current cursor. Rebuild the latest window and establish a
+                // fresh progress snapshot instead of carrying reached forward.
+                await loadLatestVisiblePosts({
+                    forceTotalCount: refreshDecision.didMateriallyChange,
+                    skipOlderAvailabilityCheck:
+                        !refreshDecision.didVisibleMateriallyChange,
+                    awaitProgress: !refreshDecision.didVisibleMateriallyChange,
+                });
+            } else {
+                clearContiguousProgress();
+                refreshTotalCountFromRepository({
+                    force: refreshDecision.didMateriallyChange,
+                });
+                await refreshTimelineAvailability(pubkeyHex);
+            }
         }
     }
 
@@ -3182,6 +3625,16 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
+            let canPreserveContiguousProgress = false;
+            if (!isSparseBackfillContext) {
+                canPreserveContiguousProgress =
+                    await reconcileContiguousProgressAfterDatabaseChange(
+                        pubkeyHex,
+                        effectiveVisibleUntil,
+                        { preserveReachedVisibleCount: true },
+                    );
+            }
+
             await refreshSavedPostsOutsideVisibleRange(
                 pubkeyHex,
                 effectiveVisibleUntil,
@@ -3274,6 +3727,9 @@ export function usePostHistoryListing({
                                 anchorEventId: options.anchorEventId,
                                 metrics: olderLoadMetrics,
                                 reason: "normal-older-reveal",
+                                useContiguousProgress: false,
+                                preserveContiguousProgressAfterDatabaseChange:
+                                    canPreserveContiguousProgress,
                             });
                 } else {
                     await refreshTimelineAvailability(pubkeyHex);
@@ -3400,6 +3856,7 @@ export function usePostHistoryListing({
     }
 
     async function refetchAroundCurrentView(): Promise<void> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
         if (!pubkeyHex || !rxNostr || !canRefetchAroundCurrentView) {
@@ -3600,6 +4057,7 @@ export function usePostHistoryListing({
     }
 
     async function loadNewerSparsePosts(): Promise<boolean> {
+        clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         const newestCursor = toTimelineCursor(state.loadedPosts[0]);
         if (!pubkeyHex || !newestCursor || typeof state.visibleUntil !== "number") {
@@ -3633,6 +4091,7 @@ export function usePostHistoryListing({
     }
 
     async function refreshAfterLocalImport(): Promise<void> {
+        clearContiguousProgress();
         if (!getPubkeyHex()) {
             return;
         }
