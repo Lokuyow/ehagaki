@@ -1625,7 +1625,7 @@ export function usePostHistoryListing({
         latestPosts: PostHistoryRecord[],
         visibleUntil: number | null,
         revisionBeforeQuery: number,
-    ): Promise<void> {
+    ): Promise<boolean> {
         clearContiguousProgress();
         if (
             latestPosts.length === 0
@@ -1635,7 +1635,7 @@ export function usePostHistoryListing({
             || state.listingMode !== "contiguous"
             || state.sparseSource !== null
         ) {
-            return;
+            return false;
         }
 
         const totalVisibleCount = await countVisiblePostsForProgress(
@@ -1656,14 +1656,14 @@ export function usePostHistoryListing({
             || state.loadedPosts[state.loadedPosts.length - 1]?.eventId !==
                 latestPosts[latestPosts.length - 1]?.eventId
         ) {
-            return;
+            return false;
         }
 
         const oldestCursor = toTimelineCursor(
             latestPosts[latestPosts.length - 1],
         );
         if (!oldestCursor) {
-            return;
+            return false;
         }
 
         contiguousProgress = {
@@ -1675,6 +1675,7 @@ export function usePostHistoryListing({
             oldestCursor,
             latestEventId: latestPosts[0]?.eventId ?? null,
         };
+        return true;
     }
 
     async function reconcileContiguousProgressAfterDatabaseChange(
@@ -2065,14 +2066,30 @@ export function usePostHistoryListing({
             visibleUntil,
             revisionBeforeLatestQuery,
         );
+        let progressEstablished = false;
         if (awaitProgress) {
-            await progressReady.catch(() => {
+            progressEstablished = await progressReady.catch(() => {
                 clearContiguousProgress();
+                return false;
             });
         } else {
             void progressReady.catch(() => {
                 clearContiguousProgress();
             });
+        }
+
+        const canSkipOlderAvailability =
+            skipOlderAvailabilityCheck && progressEstablished;
+        if (skipOlderAvailabilityCheck && !canSkipOlderAvailability) {
+            // A failed/stale rebase must not leave the previous window's
+            // availability value visible while the safe query recomputes it.
+            state.hasOlderLocal = false;
+        } else if (canSkipOlderAvailability && contiguousProgress) {
+            // The awaited snapshot describes this exact latest window, so its
+            // remaining visible count is the authoritative older availability.
+            state.hasOlderLocal =
+                contiguousProgress.totalVisibleCount
+                > contiguousProgress.reachedVisibleCount;
         }
 
         void refreshSavedPostsOutsideVisibleRange(
@@ -2087,7 +2104,7 @@ export function usePostHistoryListing({
             pubkeyHex,
             latestPosts,
             requestId,
-            { skipOlderCheck: skipOlderAvailabilityCheck },
+            { skipOlderCheck: canSkipOlderAvailability },
         )
             .then(() => {
                 if (

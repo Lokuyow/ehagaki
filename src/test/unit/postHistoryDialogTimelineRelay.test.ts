@@ -562,7 +562,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([newest]);
         repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
             repositoryMock.getOlderVisibleChunk.mock.calls.length === 1
-                ? [olderPosts[0]]
+                ? []
                 : olderPosts.slice(0, limit),
         );
         repositoryMock.upsertFetchedEvents.mockImplementation(async () => {
@@ -600,6 +600,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         await waitFor(() => expect(visibleCounts.at(-1)).toBe(4));
         await waitFor(() => expect(repositoryMock.getNewerVisibleChunk).toHaveBeenCalledTimes(2));
+        expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
         await waitFor(() => {
             expect(screen.getByText('refresh insert older 1')).toBeTruthy();
