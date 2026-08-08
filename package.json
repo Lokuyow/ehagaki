@@ -29,6 +29,7 @@
     "gh-pages": "^6.3.0",
     "happy-dom": "^20.0.8",
     "jsdom": "^26.1.0",
+    "picomatch": "^4.0.5",
     "svelte": "^5.55.7",
     "svelte-check": "^4.4.8",
     "typescript": "~5.8.3",
