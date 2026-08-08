@@ -148,6 +148,7 @@ const hoisted = vi.hoisted(() => {
             getLatestVisibleChunk: vi.fn(),
             getOlderVisibleChunk: vi.fn(),
             getNewerVisibleChunk: vi.fn(),
+            getOldestVisibleChunk: vi.fn(),
             getVisibleChunkFromCreatedAt: vi.fn(),
             getVisibleChunkAroundEventId: vi.fn(),
             hasPostsBeforeCreatedAt: vi.fn(),

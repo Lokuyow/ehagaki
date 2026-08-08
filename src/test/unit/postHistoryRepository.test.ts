@@ -659,6 +659,50 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("oldest visible chunk はtimeline順で最古ページを取得し、query種別ごとのboundaryを守る", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 500 }),
+            postedAt: 1000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 300 }),
+            postedAt: 2000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 400 }),
+            postedAt: 3000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "4".repeat(64), pubkey, created_at: 200 }),
+            postedAt: 4000,
+        });
+
+        await expect(repository.getOldestVisibleChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 350,
+            limit: 2,
+        })).resolves.toMatchObject([
+            { eventId: "3".repeat(64), createdAt: 400, postedAt: 3000 },
+            { eventId: "1".repeat(64), createdAt: 500, postedAt: 1000 },
+        ]);
+
+        await expect(repository.getOldestVisibleChunk({
+            pubkeyHex: pubkey,
+            visibleUntil: 350,
+            limit: 2,
+            query: { contiguous: false },
+        })).resolves.toMatchObject([
+            { eventId: "2".repeat(64), createdAt: 300, postedAt: 2000 },
+            { eventId: "1".repeat(64), createdAt: 500, postedAt: 1000 },
+        ]);
+
+        db.close();
+    });
+
     it("countVisibleForPubkey は visibleUntil 境界を inclusive に扱い他 pubkey を含めない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
