@@ -475,10 +475,11 @@ describe('ファイルアップロードフロー統合テスト', () => {
             const { visibilityRecovery, cleanup } = await prepareRecovery(signer);
             const fetchMock = vi.fn()
                .mockResolvedValueOnce(createJsonResponse({
-                    url: 'https://blossom.example/photo.png',
-                    sha256: 'a'.repeat(64),
+                    url: 'https://blossom.example/039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81.png',
+                    sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
                     size: 3,
                     type: 'image/png',
+                    uploaded: 1_700_000_000,
                }, {
                     status: 200,
                }))
@@ -487,8 +488,16 @@ describe('ファイルアップロードフロー統合テスト', () => {
                    headers: { 'content-type': 'image/png' },
                }));
 
+            const blossomFile = new File(
+                [new Uint8Array([1, 2, 3])],
+                'photo.png',
+                { type: 'image/png' },
+            );
+            Object.defineProperty(blossomFile, 'arrayBuffer', {
+                value: async () => new Uint8Array([1, 2, 3]).buffer,
+            });
             const uploadPromise = new BlossomUploadAdapter().upload({
-                file: new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' }),
+                file: blossomFile,
                 destination: createDestination('blossom'),
                 authService: new NostrAuthService(),
                 fetch: fetchMock as unknown as typeof fetch,

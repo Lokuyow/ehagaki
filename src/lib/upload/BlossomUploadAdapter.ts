@@ -3,6 +3,11 @@ import { calculateSHA256Hex } from "../utils/fileUtils";
 import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
 import { canonicalizeBlossomAuthorizationHeader } from "./blossomAuthorization";
 import {
+    blossomDescriptorToNip94,
+    validateBlossomDescriptor,
+    type VerifiedBlossomDescriptor,
+} from "./blossomDescriptor";
+import {
     prepareSignedEventTemplate,
     validateSignedEventResult,
 } from "../signedEventResultValidator";
@@ -37,28 +42,11 @@ const BLOSSOM_MIME_PROBE_TYPES = [
     "audio/wav",
 ];
 
-function descriptorToNip94(data: any, file: File, sha256: string = ""): Record<string, string> {
-    return {
-        url: String(data?.url ?? ""),
-        x: String(data?.sha256 ?? data?.x ?? sha256),
-        size: String(data?.size ?? file.size),
-        m: String(data?.type ?? data?.content_type ?? file.type ?? ""),
-    };
-}
-
-function parseBlobDescriptor(data: BlobDescriptor | any, file: File, sha256?: string): FileUploadResponse {
-    const url = typeof data?.url === "string" ? data.url : "";
-    if (!url) {
-        return {
-            success: false,
-            error: "Could not extract URL from Blossom response",
-        };
-    }
-
+function toUploadResponse(descriptor: VerifiedBlossomDescriptor): FileUploadResponse {
     return {
         success: true,
-        url,
-        nip94: descriptorToNip94(data, file, sha256),
+        url: descriptor.url,
+        nip94: blossomDescriptorToNip94(descriptor),
     };
 }
 
@@ -132,6 +120,13 @@ export function createBlossomClient(
             method,
             headers,
             body,
+            ...(method.toUpperCase() === "PUT"
+                ? {
+                    redirect: "error" as const,
+                    credentials: "omit" as const,
+                    referrerPolicy: "no-referrer" as const,
+                }
+                : {}),
         });
 
         if (response.status >= 300) {
@@ -249,7 +244,7 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
             return { success: false, error: "Blossom signer is not available" };
         }
 
-        let uploadResult: FileUploadResponse;
+        let verifiedDescriptor: VerifiedBlossomDescriptor;
         try {
             const expectedPubkey = await signer.getPublicKey();
             const validatedSigner = {
@@ -274,12 +269,20 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 validatedSigner,
                 params.fetch,
             );
+            const uploadBody = normalizeUploadBlob(params.file);
+            const expectedSha256 = await calculateSHA256Hex(uploadBody);
+            const expectedSize = uploadBody.size;
             const descriptor = await client.uploadBlob(
-                normalizeUploadBlob(params.file),
+                uploadBody,
                 params.file.type,
             );
 
-            uploadResult = parseBlobDescriptor(descriptor, params.file);
+            verifiedDescriptor = validateBlossomDescriptor({
+                descriptor: descriptor as BlobDescriptor,
+                expectedSha256,
+                expectedSize,
+                trustedServerUrl: params.destination.serverUrl,
+            });
         } catch (error) {
             return {
                 success: false,
@@ -287,14 +290,12 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
             };
         }
 
-        if (!uploadResult.success || !uploadResult.url) {
-            return uploadResult;
-        }
+        const uploadResult = toUploadResponse(verifiedDescriptor);
 
         try {
             await waitForUploadedMediaAvailability({
-                url: uploadResult.url,
-                mimeType: params.file.type,
+                url: verifiedDescriptor.url,
+                mimeType: verifiedDescriptor.type,
                 fetch: params.fetch,
             });
         } catch (error) {

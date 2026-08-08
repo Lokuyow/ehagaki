@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BlossomUploadAdapter, createBlossomClient } from "../../lib/upload/BlossomUploadAdapter";
+import { calculateSHA256Hex } from "../../lib/utils/fileUtils";
 import type { UploadDestination } from "../../lib/types";
 import { createJsonResponse } from "../uploadResponseTestUtils";
 
@@ -36,6 +37,19 @@ function createDestination(): UploadDestination {
         },
         auth: { type: "blossom-bud11" },
         schemaVersion: 1,
+    };
+}
+
+const SHA256 = "a".repeat(64);
+
+function createValidDescriptor(overrides: Record<string, unknown> = {}) {
+    return {
+        url: `https://npub1example.blossom.band/${SHA256}.png`,
+        sha256: SHA256,
+        size: 4,
+        type: "image/png",
+        uploaded: 1_700_000_000,
+        ...overrides,
     };
 }
 
@@ -90,12 +104,7 @@ describe("BlossomUploadAdapter", () => {
 
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(createJsonResponse({
-                url: "https://npub1example.blossom.band/mockhash.png",
-                sha256: "a".repeat(64),
-                size: 4,
-                type: "image/png",
-            }, {
+            .mockResolvedValueOnce(createJsonResponse(createValidDescriptor(), {
                 status: 200,
             }))
             .mockResolvedValueOnce(new Response(null, {
@@ -131,6 +140,9 @@ describe("BlossomUploadAdapter", () => {
             "https://npub1example.blossom.band/upload",
             expect.objectContaining({
                 method: "PUT",
+                redirect: "error",
+                credentials: "omit",
+                referrerPolicy: "no-referrer",
             }),
         );
         const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -139,6 +151,16 @@ describe("BlossomUploadAdapter", () => {
         expect(authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
         expect(authorization).not.toMatch(/[+/=]/);
         expect(JSON.parse(decodeBase64UrlHeader(authorization))).toEqual(await signer.signEvent.mock.results[0].value);
+        expect(result).toMatchObject({
+            success: true,
+            url: `https://npub1example.blossom.band/${SHA256}.png`,
+            nip94: {
+                url: `https://npub1example.blossom.band/${SHA256}.png`,
+                x: SHA256,
+                size: "4",
+                m: "image/png",
+            },
+        });
     });
 
     it.each([
@@ -202,6 +224,140 @@ describe("BlossomUploadAdapter", () => {
 
         const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
         expect((firstCall[1].headers as Record<string, string>).Authorization).toBe(`Nostr ${token}`);
+        expect(firstCall[1]).toEqual(expect.objectContaining({
+            redirect: "error",
+            credentials: "omit",
+            referrerPolicy: "no-referrer",
+        }));
+    });
+
+    it("hashes and sizes the exact body passed to BlossomClient.uploadBlob", async () => {
+        mockImageLoads([true]);
+        const fileWithoutArrayBuffer = new File(
+            [new Uint8Array([0x89, 0x50, 0x4e, 0x47])],
+            "test.png",
+            { type: "image/png" },
+        );
+        Object.defineProperty(fileWithoutArrayBuffer, "arrayBuffer", { value: undefined });
+        let uploadedBody: Blob | undefined;
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+            if (init?.method === "PUT") {
+                uploadedBody = init.body as Blob;
+                return createJsonResponse(createValidDescriptor(), { status: 200 });
+            }
+            return new Response(null, {
+                status: 200,
+                headers: { "content-type": "image/png" },
+            });
+        });
+        const signer = {
+            getPublicKey: vi.fn(async () => "f".repeat(64)),
+            signEvent: vi.fn(async (event) => ({
+                ...event,
+                id: "signed-event",
+                pubkey: "f".repeat(64),
+                sig: "signature",
+            })),
+        };
+
+        const result = await new BlossomUploadAdapter().upload({
+            file: fileWithoutArrayBuffer,
+            destination: createDestination(),
+            authService: {
+                buildAuthHeader: vi.fn(),
+                getBlossomSigner: vi.fn(async () => signer),
+            },
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        const hashedBody = vi.mocked(calculateSHA256Hex).mock.calls.at(-1)?.[0];
+        expect(result.success).toBe(true);
+        expect(hashedBody).toBe(uploadedBody);
+        expect(uploadedBody?.size).toBe(4);
+    });
+
+    it("uses verified descriptor MIME for NIP-94 and availability when it differs from File MIME", async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(createJsonResponse(createValidDescriptor({
+                type: "application/octet-stream",
+                nip94: {
+                    url: "https://attacker.example/other.png",
+                    x: "b".repeat(64),
+                    size: "999",
+                    m: "text/html",
+                },
+            }), { status: 200 }))
+            .mockResolvedValueOnce(new Response(null, {
+                status: 200,
+                headers: { "content-type": "application/octet-stream" },
+            }));
+        const signer = {
+            getPublicKey: vi.fn(async () => "f".repeat(64)),
+            signEvent: vi.fn(async (event) => ({
+                ...event,
+                id: "signed-event",
+                pubkey: "f".repeat(64),
+                sig: "signature",
+            })),
+        };
+
+        const result = await new BlossomUploadAdapter().upload({
+            file: new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "test.png", {
+                type: "image/png",
+            }),
+            destination: createDestination(),
+            authService: {
+                buildAuthHeader: vi.fn(),
+                getBlossomSigner: vi.fn(async () => signer),
+            },
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.nip94).toEqual({
+            url: `https://npub1example.blossom.band/${SHA256}.png`,
+            x: SHA256,
+            size: "4",
+            m: "application/octet-stream",
+        });
+        expect(fetchMock).toHaveBeenNthCalledWith(
+            2,
+            `https://npub1example.blossom.band/${SHA256}.png`,
+            expect.objectContaining({ method: "HEAD" }),
+        );
+    });
+
+    it("fails closed before availability when the server returns an invalid descriptor", async () => {
+        const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(createValidDescriptor({
+            sha256: "b".repeat(64),
+        }), { status: 200 }));
+        const signer = {
+            getPublicKey: vi.fn(async () => "f".repeat(64)),
+            signEvent: vi.fn(async (event) => ({
+                ...event,
+                id: "signed-event",
+                pubkey: "f".repeat(64),
+                sig: "signature",
+            })),
+        };
+
+        const result = await new BlossomUploadAdapter().upload({
+            file: new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "test.png", {
+                type: "image/png",
+            }),
+            destination: createDestination(),
+            authService: {
+                buildAuthHeader: vi.fn(),
+                getBlossomSigner: vi.fn(async () => signer),
+            },
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe("PUT");
+        expect(result).toMatchObject({ success: false });
+        expect(result.url).toBeUndefined();
+        expect(result.nip94).toBeUndefined();
     });
 
     it("waits until an uploaded image URL becomes loadable", async () => {
@@ -210,12 +366,7 @@ describe("BlossomUploadAdapter", () => {
         const adapter = new BlossomUploadAdapter();
         const imageSpy = mockImageLoads([false, true]);
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(createJsonResponse({
-                url: "https://npub1example.blossom.band/mockhash.png",
-                sha256: "a".repeat(64),
-                size: 4,
-                type: "image/png",
-            }, {
+            .mockResolvedValueOnce(createJsonResponse(createValidDescriptor(), {
                 status: 200,
             }))
             .mockRejectedValue(new TypeError("Failed to fetch"));
