@@ -58,6 +58,7 @@
         importEventJsonl: string;
         sparseVisiblePostContent: string;
         sparseStoredPostContent: string;
+        oldestPostContent: string;
     };
 
     type HarnessWindow = Window &
@@ -334,6 +335,7 @@
         importEventJsonl: IMPORT_EVENT_JSONL,
         sparseVisiblePostContent: sparseVisiblePost.content,
         sparseStoredPostContent: sparseStoredPost.content,
+        oldestPostContent: posts[posts.length - 1].content,
     };
 
     onMount(async () => {
@@ -401,6 +403,7 @@
             importEventJsonl: IMPORT_EVENT_JSONL,
             sparseVisiblePostContent: sparseVisiblePost.content,
             sparseStoredPostContent: sparseStoredPost.content,
+            oldestPostContent: posts[posts.length - 1].content,
         };
     });
 </script>

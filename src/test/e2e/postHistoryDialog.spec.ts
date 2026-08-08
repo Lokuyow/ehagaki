@@ -23,6 +23,7 @@ type HarnessState = {
     importEventJsonl: string;
     sparseVisiblePostContent: string;
     sparseStoredPostContent: string;
+    oldestPostContent: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -421,6 +422,28 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, harness.matchingPosts);
         await expect(page.getByRole('button', { name: '新しい検索結果を表示' })).toHaveCount(0);
+    });
+
+    test('desktop menu jump to oldest shows the locally oldest post at the bottom with rxNostr present', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoHarness(page);
+        await expectVisiblePostCount(page, 50);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '最古へ移動' }).click();
+
+        await expect(page.getByText(harness.oldestPostContent, { exact: true })).toBeVisible();
+        await expectVisiblePostCount(page, 50);
+
+        const scrollState = await page.locator('.post-history-container').evaluate((element) => {
+            const container = element as HTMLElement;
+            return {
+                scrollTop: container.scrollTop,
+                maxScrollTop: container.scrollHeight - container.clientHeight,
+            };
+        });
+        expect(scrollState.scrollTop).toBeGreaterThanOrEqual(scrollState.maxScrollTop - 1);
     });
 
     test('desktop newer prepend keeps the current post anchored', async ({ page, isMobile }) => {

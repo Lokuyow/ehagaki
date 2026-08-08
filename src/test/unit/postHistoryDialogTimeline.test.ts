@@ -1910,7 +1910,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
-    it('メニューの最古へ移動はリレー同期せずローカル最古ページへ移動する', async () => {
+    it('rxNostr があってもメニューの最古へ移動は repair relay 同期せずローカル最古ページへ移動する', async () => {
         const newest = createRecord({
             eventId: 'oldest-menu-newest',
             content: '最新投稿',
@@ -1959,6 +1959,8 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
+        relayFetchServiceMock.fetchLatest.mockClear();
+
         const historyContainer = getHistoryContainer();
         Object.defineProperty(historyContainer, 'scrollHeight', {
             configurable: true,
@@ -1977,8 +1979,12 @@ describe('PostHistoryDialog timeline navigation', () => {
                     createdAt: 0,
                 }),
             );
-            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });
+
+        expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ reason: 'repair-visible-range' }),
+        );
 
         view.unmount();
     });

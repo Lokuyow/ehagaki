@@ -223,6 +223,10 @@ interface FetchOlderFromRelaysOptions {
     anchorEventId?: string | null;
 }
 
+interface JumpToCreatedAtOptions {
+    allowRelayRepair?: boolean;
+}
+
 function resolveFetchedAuthoredEventIds(
     events: Array<{ event?: { id?: string } }>,
 ): string[] {
@@ -2700,7 +2704,10 @@ export function usePostHistoryListing({
         return true;
     }
 
-    async function jumpToCreatedAt(createdAt: number): Promise<boolean> {
+    async function jumpToCreatedAt(
+        createdAt: number,
+        options: JumpToCreatedAtOptions = {},
+    ): Promise<boolean> {
         clearContiguousProgress();
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
@@ -2738,7 +2745,7 @@ export function usePostHistoryListing({
             return true;
         }
 
-        if (createdAt <= 0) {
+        if (options.allowRelayRepair === false) {
             refreshTotalCountFromRepository();
             state.listingMode = "contiguous";
             state.sparseSource = null;
@@ -3432,7 +3439,7 @@ export function usePostHistoryListing({
             return false;
         }
 
-        return jumpToCreatedAt(0);
+        return jumpToCreatedAt(0, { allowRelayRepair: false });
     }
 
     async function fetchOlderFromRelays(
