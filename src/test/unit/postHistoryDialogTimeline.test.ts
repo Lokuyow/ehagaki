@@ -522,13 +522,10 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
         repositoryMock.countForPubkey.mockResolvedValue(4);
         repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getOldestVisibleChunk.mockResolvedValue([oldest]);
         repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({
-            createdAt,
             query,
         }: Record<string, any>) => {
-            if (createdAt === 0 && query?.contiguous === false) {
-                return [oldest];
-            }
             return query?.contiguous === false ? [jumpTarget] : [newest];
         });
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
@@ -591,14 +588,16 @@ describe('PostHistoryDialog timeline navigation', () => {
                 limit: 1,
             }),
         );
-        expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+        expect(repositoryMock.getOldestVisibleChunk).toHaveBeenCalledWith(
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
-                createdAt: 0,
                 query: { contiguous: false },
             }),
         );
-        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenLastCalledWith(
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalledWith(
+            expect.objectContaining({ createdAt: 0 }),
+        );
+        expect(repositoryMock.getOlderVisibleChunk).not.toHaveBeenCalledWith(
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
                 visibleUntil: null,
@@ -661,7 +660,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             }
             return [];
         });
-        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([oldest]);
+        repositoryMock.getOldestVisibleChunk.mockResolvedValue([oldest]);
 
         const view = render(PostHistoryDialog, {
             props: {
@@ -700,15 +699,17 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('saved oldest 最古投稿')).toBeTruthy();
             expect(historyContainer.scrollTop).toBe(720);
         });
-        expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+        expect(repositoryMock.getOldestVisibleChunk).toHaveBeenCalledWith(
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
-                createdAt: 0,
                 visibleUntil: 1_000,
                 query: { contiguous: false },
             }),
         );
-        expect(repositoryMock.getSparseChunk).toHaveBeenLastCalledWith(
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalledWith(
+            expect.objectContaining({ createdAt: 0 }),
+        );
+        expect(repositoryMock.getSparseChunk).not.toHaveBeenCalledWith(
             expect.objectContaining({
                 pubkeyHex: PUBKEY_HEX,
                 cursor: expect.objectContaining({ eventId: oldest.eventId }),
@@ -2174,7 +2175,7 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         repositoryMock.countForPubkey.mockResolvedValue(4);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, middle]);
-        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([older, oldest]);
+        repositoryMock.getOldestVisibleChunk.mockResolvedValueOnce([older, oldest]);
         repositoryMock.getNewerVisibleChunk
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([middle]);
@@ -2207,11 +2208,13 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => {
             expect(screen.getByText('最古投稿')).toBeTruthy();
             expect(historyContainer.scrollTop).toBe(720);
-            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+            expect(repositoryMock.getOldestVisibleChunk).toHaveBeenCalledWith(
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,
-                    createdAt: 0,
                 }),
+            );
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalledWith(
+                expect.objectContaining({ createdAt: 0 }),
             );
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });

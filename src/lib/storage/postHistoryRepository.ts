@@ -72,6 +72,11 @@ export type PostHistoryVisibleChunkFromCreatedAtOptions =
         query?: PostHistoryDateChunkQuery;
     };
 
+export type PostHistoryOldestVisibleChunkOptions =
+    PostHistoryVisibleChunkOptions & {
+        query?: PostHistoryDateChunkQuery;
+    };
+
 export type PostHistoryDateChunkQuery = {
     contiguous?: boolean;
 };
@@ -124,6 +129,7 @@ export interface PostHistoryRepository {
     getLatestVisibleChunk(options: PostHistoryVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getOlderVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
     getNewerVisibleChunk(options: PostHistoryVisibleChunkCursorOptions): Promise<PostHistoryRecord[]>;
+    getOldestVisibleChunk(options: PostHistoryOldestVisibleChunkOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkFromCreatedAt(options: PostHistoryVisibleChunkFromCreatedAtOptions): Promise<PostHistoryRecord[]>;
     getVisibleChunkAroundEventId(options: PostHistoryVisibleChunkAroundEventIdOptions): Promise<PostHistoryRecord[]>;
     hasPostsBeforeCreatedAt(pubkeyHex: string | null | undefined, createdAt: number): Promise<boolean>;
@@ -524,6 +530,40 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .toArray();
 
         return records.reverse();
+    }
+
+    async getOldestVisibleChunk(
+        options: PostHistoryOldestVisibleChunkOptions,
+    ): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
+        const limit = normalizeChunkLimit(options.limit);
+        const query = normalizePostHistoryDateChunkQuery(options.query);
+        const visibleUntil = query.contiguous
+            ? normalizeVisibleUntil(options.visibleUntil)
+            : null;
+        const bounds = getTimelineBounds(options.pubkeyHex);
+        if (visibleUntil !== null) {
+            const visibleRecords = await this.db.postHistory
+                .where("[pubkeyHex+createdAt]")
+                .between(
+                    [options.pubkeyHex, visibleUntil],
+                    [options.pubkeyHex, Dexie.maxKey],
+                )
+                .toArray();
+
+            return visibleRecords
+                .sort(comparePostHistoryTimelineOrder)
+                .slice(-limit);
+        }
+
+        const oldestRecords = await this.db.postHistory
+            .where(POST_HISTORY_TIMELINE_INDEX)
+            .between(bounds.lower, bounds.upper)
+            .limit(limit)
+            .toArray();
+
+        return oldestRecords.reverse();
     }
 
     async getVisibleChunkFromCreatedAt(

@@ -3452,10 +3452,9 @@ export function usePostHistoryListing({
             }
 
             const requestId = ++loadRequestId;
-            const posts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
+            const posts = await postHistoryRepository.getOldestVisibleChunk({
                 pubkeyHex,
                 visibleUntil: state.visibleUntil,
-                createdAt: 0,
                 limit: pageSize,
                 query: {
                     contiguous: false,
@@ -3473,11 +3472,55 @@ export function usePostHistoryListing({
             refreshTotalCountFromRepository();
             state.loadedPosts = posts;
             resetOlderBackfillSearchState();
-            await refreshTimelineAvailability(pubkeyHex, posts, requestId);
+            state.hasOlderLocal = false;
+            await refreshTimelineAvailability(
+                pubkeyHex,
+                posts,
+                requestId,
+                { skipOlderCheck: true },
+            );
             return true;
         }
 
-        return jumpToCreatedAt(0);
+        clearContiguousProgress();
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex) {
+            return false;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+        const posts = await postHistoryRepository.getOldestVisibleChunk({
+            pubkeyHex,
+            visibleUntil,
+            limit: pageSize,
+        });
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (posts.length === 0) {
+            refreshTotalCountFromRepository();
+            state.loadedPosts = [];
+            state.hasOlderLocal = false;
+            state.hasNewerLocal = false;
+            return false;
+        }
+
+        refreshTotalCountFromRepository();
+        state.listingMode = "contiguous";
+        state.sparseSource = null;
+        state.loadedPosts = posts;
+        resetOlderBackfillSearchState();
+        state.hasOlderLocal = false;
+        await refreshTimelineAvailability(
+            pubkeyHex,
+            posts,
+            requestId,
+            { skipOlderCheck: true },
+        );
+        return true;
     }
 
     async function fetchOlderFromRelays(
