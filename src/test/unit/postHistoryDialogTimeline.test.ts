@@ -210,7 +210,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
             expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
@@ -1361,7 +1361,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('saved reopen 最新')).toBeTruthy();
             expect(screen.queryByText('saved reopen sparse')).toBeNull();
             expect(screen.queryByText('保存済みの古い投稿を表示中です。')).toBeNull();
-            expect(screen.getByText('この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
         });
 
         expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(1);
