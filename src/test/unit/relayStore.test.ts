@@ -21,6 +21,7 @@ import {
     loadRelayConfigFromStorage,
     relayConfigStore,
     relayListUpdatedStore,
+    invalidatePendingRelayConfigOperations,
     resetRelayConfigStore,
     saveRelayConfigToStorage,
     setRelayManager,
@@ -119,5 +120,19 @@ describe("relayStore", () => {
         expect(relayConfigStore.value).toBeNull();
         expect(writeRelaysStore.value).toEqual([]);
         expect(relayListUpdatedStore.value).toBe(0);
+    });
+
+    it("invalidates pending relay loads without clearing the current relay state", async () => {
+        await saveRelayConfigToStorage("account-a", ["wss://current.example.com/"]);
+        const result = createDeferred<{ relayConfig: string[]; writeRelays: string[] } | null>();
+        setRelayManager({ loadRelayConfigForUI: vi.fn(() => result.promise) } as never);
+
+        const load = loadRelayConfigFromStorage("account-a");
+        invalidatePendingRelayConfigOperations();
+        result.resolve({ relayConfig: ["wss://stale.example.com/"], writeRelays: ["wss://stale.example.com/"] });
+        await load;
+
+        expect(relayConfigStore.value).toEqual(["wss://current.example.com/"]);
+        expect(writeRelaysStore.value).toEqual(["wss://current.example.com/"]);
     });
 });

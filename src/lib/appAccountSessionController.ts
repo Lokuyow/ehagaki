@@ -78,7 +78,8 @@ export interface AppAccountSessionControllerDependencies {
     ): Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
     handlePostAuth(pubkeyHex: string): Promise<void>;
     resetUploadDisplayState(): void;
-    resetAccountScopedAsyncState?(): void;
+    invalidatePendingAccountScopedAsyncState?(): void;
+    clearAccountScopedAsyncState?(): void;
     logoutAccountFromAuthService(
         pubkeyHex: string,
         options: { notifyParentClient?: boolean },
@@ -127,7 +128,7 @@ export function createAppAccountSessionController(
         authType: string | undefined,
         session: unknown,
     ): Promise<void> {
-        deps.resetAccountScopedAsyncState?.();
+        deps.clearAccountScopedAsyncState?.();
 
         if (authType === 'nip46') {
             await runCleanupStep(() => deps.nip46Service.disconnect());
@@ -279,9 +280,8 @@ export function createAppAccountSessionController(
 
         try {
             deps.resetUploadDisplayState();
-            if (deps.getAuthStateSnapshot()?.pubkey === pubkeyHex) {
-                deps.resetAccountScopedAsyncState?.();
-            }
+            const isCurrentAccount = deps.getAuthStateSnapshot()?.pubkey === pubkeyHex;
+            if (isCurrentAccount) deps.invalidatePendingAccountScopedAsyncState?.();
 
             const nextPubkey = await deps.logoutAccountFromAuthService(pubkeyHex, {
                 notifyParentClient: options.notifyParentClient,
@@ -291,6 +291,7 @@ export function createAppAccountSessionController(
             );
 
             if (nextAction.kind === 'switch') {
+                if (isCurrentAccount) deps.clearAccountScopedAsyncState?.();
                 deps.setCurrentRxNostr(
                     deps.disposeNostrSession(deps.getCurrentRxNostr()),
                 );
@@ -298,6 +299,7 @@ export function createAppAccountSessionController(
                 deps.reloadWindow();
                 return;
             } else if (nextAction.kind === 'guest') {
+                if (isCurrentAccount) deps.clearAccountScopedAsyncState?.();
                 deps.setCurrentRxNostr(
                     deps.disposeNostrSession(deps.getCurrentRxNostr()),
                 );

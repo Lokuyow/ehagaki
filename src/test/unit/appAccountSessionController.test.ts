@@ -84,7 +84,8 @@ function createController(overrides: Record<string, unknown> = {}) {
         })),
         handlePostAuth: vi.fn(async () => undefined),
         resetUploadDisplayState: vi.fn(),
-        resetAccountScopedAsyncState: vi.fn(),
+        invalidatePendingAccountScopedAsyncState: vi.fn(),
+        clearAccountScopedAsyncState: vi.fn(),
         logoutAccountFromAuthService: vi.fn(async () => null),
         resolveLogoutAccountAction: vi.fn((nextPubkey: string | null | undefined) => {
             if (typeof nextPubkey === 'string') {
@@ -189,7 +190,7 @@ describe('createAppAccountSessionController', () => {
 
         expect(deps.parentClientService.disconnect).toHaveBeenCalledWith(false);
         expect(deps.nip46Service.disconnect).not.toHaveBeenCalled();
-        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledOnce();
+        expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledOnce();
     });
 
     it('current NIP-46 runtimeをcleanupする', async () => {
@@ -435,7 +436,8 @@ describe('createAppAccountSessionController', () => {
         await controller.logoutAccount(CURRENT_PUBKEY);
 
         expect(deps.resetUploadDisplayState).toHaveBeenCalledOnce();
-        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledOnce();
+        expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledOnce();
+        expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledOnce();
         expect(deps.clearAuthState).toHaveBeenCalledOnce();
         expect(deps.setGuestProfile).toHaveBeenCalledOnce();
         expect(deps.initializeNostr).toHaveBeenCalledOnce();
@@ -560,6 +562,8 @@ describe('createAppAccountSessionController', () => {
             stage: 'logout-account',
             reason: 'unexpected',
         });
+        expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledOnce();
+        expect(deps.clearAccountScopedAsyncState).not.toHaveBeenCalled();
         expect(loggingOutStateHistory).toEqual([true, false]);
     });
 });

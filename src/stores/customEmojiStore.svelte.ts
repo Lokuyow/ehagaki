@@ -15,22 +15,59 @@ let error = $state<string | null>(null);
 let lastLoadKey = $state<LoadKey | null>(null);
 let lastFetchedLoadKey: LoadKey | null = null;
 let activeLoadKey: LoadKey | null = null;
+let ownerEpoch = 0;
 let loadGeneration = 0;
+let prefetchGeneration = 0;
 const cacheReadPromises = new Map<LoadKey, Promise<CustomEmojiItem[]>>();
 
 interface LoadScope {
     loadKey: LoadKey;
+    ownerEpoch: number;
     generation: number;
 }
 
+interface PrefetchScope extends LoadScope {
+    foregroundGeneration: number;
+}
+
+function ensureOwner(loadKey: LoadKey): number {
+    if (activeLoadKey !== loadKey) {
+        activeLoadKey = loadKey;
+        ownerEpoch += 1;
+    }
+    return ownerEpoch;
+}
+
 function beginLoad(loadKey: LoadKey): LoadScope {
-    activeLoadKey = loadKey;
     loadGeneration += 1;
-    return { loadKey, generation: loadGeneration };
+    return {
+        loadKey,
+        ownerEpoch: ensureOwner(loadKey),
+        generation: loadGeneration,
+    };
 }
 
 function isCurrentLoad(scope: LoadScope): boolean {
-    return activeLoadKey === scope.loadKey && loadGeneration === scope.generation;
+    return activeLoadKey === scope.loadKey
+        && ownerEpoch === scope.ownerEpoch
+        && loadGeneration === scope.generation;
+}
+
+function beginPrefetch(loadKey: LoadKey): PrefetchScope {
+    prefetchGeneration += 1;
+    return {
+        loadKey,
+        ownerEpoch: ensureOwner(loadKey),
+        generation: prefetchGeneration,
+        foregroundGeneration: loadGeneration,
+    };
+}
+
+function isCurrentPrefetch(scope: PrefetchScope): boolean {
+    return activeLoadKey === scope.loadKey
+        && ownerEpoch === scope.ownerEpoch
+        && prefetchGeneration === scope.generation
+        && loadGeneration === scope.foregroundGeneration;
 }
 
 function clearState(): void {
@@ -40,6 +77,11 @@ function clearState(): void {
     lastLoadKey = null;
     lastFetchedLoadKey = null;
     activeLoadKey = null;
+}
+
+function invalidatePendingLoads(): void {
+    ownerEpoch += 1;
+    loading = false;
 }
 
 function getCachedItems(loadKey: LoadKey): Promise<CustomEmojiItem[]> {
@@ -53,9 +95,12 @@ function getCachedItems(loadKey: LoadKey): Promise<CustomEmojiItem[]> {
     return promise;
 }
 
-async function applyCachedItems(scope: LoadScope): Promise<boolean> {
+async function applyCachedItems(
+    scope: Pick<LoadScope, "loadKey">,
+    isCurrent: () => boolean,
+): Promise<boolean> {
     const cachedItems = await getCachedItems(scope.loadKey);
-    if (!isCurrentLoad(scope) || cachedItems.length === 0) {
+    if (!isCurrent() || cachedItems.length === 0) {
         return false;
     }
 
@@ -84,9 +129,10 @@ export const customEmojiStore = {
             return;
         }
 
-        const scope = beginLoad(loadKey);
+        const scope = beginPrefetch(loadKey);
         try {
-            await applyCachedItems(scope);
+            if (loading && activeLoadKey === loadKey) return;
+            await applyCachedItems(scope, () => isCurrentPrefetch(scope));
         } catch {
             // Cache preloading is best-effort.
         }
@@ -94,7 +140,7 @@ export const customEmojiStore = {
 
     async load(params: { rxNostr?: RxNostr | null; pubkey?: string | null; force?: boolean }): Promise<void> {
         if (!params.rxNostr || !params.pubkey) {
-            loadGeneration += 1;
+            ownerEpoch += 1;
             clearState();
             return;
         }
@@ -107,7 +153,8 @@ export const customEmojiStore = {
 
         const hasCachedItems = params.force
             ? false
-            : (lastLoadKey === loadKey && items.length > 0) || await applyCachedItems(scope);
+            : (lastLoadKey === loadKey && items.length > 0)
+                || await applyCachedItems(scope, () => isCurrentLoad(scope));
 
         if (!isCurrentLoad(scope)) {
             return;
@@ -150,8 +197,12 @@ export const customEmojiStore = {
         }
     },
 
+    invalidatePendingLoads(): void {
+        invalidatePendingLoads();
+    },
+
     reset(): void {
-        loadGeneration += 1;
+        invalidatePendingLoads();
         clearState();
         cacheReadPromises.clear();
     },

@@ -25,7 +25,8 @@ function createController(overrides: Record<string, unknown> = {}) {
         },
         setShowLastAccountLogoutConfirm: vi.fn(),
         resetUploadDisplayState: vi.fn(),
-        resetAccountScopedAsyncState: vi.fn(),
+        invalidatePendingAccountScopedAsyncState: vi.fn(),
+        clearAccountScopedAsyncState: vi.fn(),
         getCurrentRxNostr: vi.fn(() => ({ dispose: vi.fn() })),
         setCurrentRxNostr: vi.fn(),
         disposeNostrSession: vi.fn(() => undefined),
@@ -86,10 +87,26 @@ describe('createAppAccountDialogController', () => {
         await controller.confirmLastAccountLogout();
 
         expect(deps.resetUploadDisplayState).toHaveBeenCalledTimes(1);
-        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledTimes(1);
+        expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledTimes(1);
+        expect(deps.clearAccountScopedAsyncState).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
         expect(deps.logoutLastAccount).toHaveBeenCalledWith('ab'.repeat(32));
         expect(deps.reloadWindow).toHaveBeenCalledTimes(1);
+    });
+
+    it('last-account logout失敗時はpending operationだけをinvalidateし、表示state clearを行わない', async () => {
+        const { deps, controller } = createController({
+            getPendingLastLogoutPubkey: () => 'ab'.repeat(32),
+            logoutLastAccount: vi.fn(async () => {
+                throw new Error('logout failed');
+            }),
+        });
+
+        await controller.confirmLastAccountLogout();
+
+        expect(deps.invalidatePendingAccountScopedAsyncState).toHaveBeenCalledTimes(1);
+        expect(deps.clearAccountScopedAsyncState).not.toHaveBeenCalled();
+        expect(deps.reloadWindow).not.toHaveBeenCalled();
     });
 
     it('handleAddAccount は overlay つきで add account dialog を開く', () => {

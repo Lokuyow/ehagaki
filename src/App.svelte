@@ -62,6 +62,7 @@
     setRelayManager,
     relayListUpdatedStore,
     saveRelayConfigToStorage,
+    invalidatePendingRelayConfigOperations,
     resetRelayConfigStore,
   } from "./stores/relayStore.svelte";
   import {
@@ -691,7 +692,12 @@
       authService.restoreAccount(pubkeyHex, type),
     handlePostAuth,
     resetUploadDisplayState,
-    resetAccountScopedAsyncState: () => {
+    invalidatePendingAccountScopedAsyncState: () => {
+      customEmojiStore.invalidatePendingLoads();
+      uploadDestinationStore.invalidatePendingOperations();
+      invalidatePendingRelayConfigOperations();
+    },
+    clearAccountScopedAsyncState: () => {
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();
@@ -743,7 +749,12 @@
       showLastAccountLogoutConfirm = next;
     },
     resetUploadDisplayState,
-    resetAccountScopedAsyncState: () => {
+    invalidatePendingAccountScopedAsyncState: () => {
+      customEmojiStore.invalidatePendingLoads();
+      uploadDestinationStore.invalidatePendingOperations();
+      invalidatePendingRelayConfigOperations();
+    },
+    clearAccountScopedAsyncState: () => {
       customEmojiStore.reset();
       uploadDestinationStore.reset();
       resetRelayConfigStore();

@@ -15,7 +15,8 @@ export interface AppAccountDialogControllerDependencies {
     setIsLoggingOut(next: boolean): void;
     setShowLastAccountLogoutConfirm(next: boolean): void;
     resetUploadDisplayState(): void;
-    resetAccountScopedAsyncState?(): void;
+    invalidatePendingAccountScopedAsyncState?(): void;
+    clearAccountScopedAsyncState?(): void;
     getCurrentRxNostr(): unknown;
     setCurrentRxNostr(next: undefined): void;
     disposeNostrSession(session: unknown): undefined;
@@ -82,9 +83,10 @@ export function createAppAccountDialogController(
 
         try {
             deps.resetUploadDisplayState();
-            deps.resetAccountScopedAsyncState?.();
+            deps.invalidatePendingAccountScopedAsyncState?.();
             deps.setCurrentRxNostr(deps.disposeNostrSession(deps.getCurrentRxNostr()));
             await deps.logoutLastAccount(pendingLastLogoutPubkey);
+            deps.clearAccountScopedAsyncState?.();
             deps.reloadWindow();
         } catch (error) {
             deps.logger.error('最後のアカウントのリセット中にエラー:', error);

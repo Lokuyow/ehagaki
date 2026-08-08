@@ -66,8 +66,19 @@ export function setRelayManager(relayManager: RelayManager): void {
     relayManagerInstance = relayManager;
 }
 
+export function invalidatePendingRelayConfigOperations(): void {
+    activeRelayConfigScope = {
+        ...activeRelayConfigScope,
+        generation: activeRelayConfigScope.generation + 1,
+    };
+}
+
 export function resetRelayConfigStore(): void {
-    beginRelayConfigOperation(null);
+    invalidatePendingRelayConfigOperations();
+    activeRelayConfigScope = {
+        pubkeyHex: null,
+        generation: activeRelayConfigScope.generation,
+    };
     relayConfigStore.set(null);
     writeRelaysStore.set([]);
 }
