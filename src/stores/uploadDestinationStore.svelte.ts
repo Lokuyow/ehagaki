@@ -6,6 +6,7 @@ import { fetchBud03ServerList, publishBud03ServerList } from "../lib/upload/bud0
 import { NostrAuthService } from "../lib/nostrAuthService";
 import { authState } from "./authStore.svelte";
 import type { RxNostr } from "rx-nostr";
+import { assertActiveSession } from "../lib/sessionLiveness";
 
 interface UploadDestinationState {
     destinations: UploadDestination[];
@@ -104,7 +105,10 @@ export const uploadDestinationStore = {
         uploadDestinationState.error = null;
 
         try {
+            const assertSession = () => assertActiveSession(authState, pubkeyHex);
+            assertSession();
             const destinations = await uploadDestinationsRepository.getAll(pubkeyHex);
+            assertSession();
             const servers = destinations
                 .filter((destination) => destination.protocol === "blossom" && destination.enabled)
                 .map((destination) => destination.serverUrl);
@@ -113,11 +117,14 @@ export const uploadDestinationStore = {
                 return;
             }
 
-            const signer = await new NostrAuthService().getEventSigner();
+            const signer = await new NostrAuthService().getEventSigner(pubkeyHex);
+            assertSession();
             const result = await publishBud03ServerList({
                 rxNostr,
                 signer,
                 servers,
+                expectedPubkey: pubkeyHex,
+                assertSession,
             });
             uploadDestinationState.bud03Status = result.success
                 ? "BUD-03 published"

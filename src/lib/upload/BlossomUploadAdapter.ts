@@ -1,6 +1,7 @@
 import { BlossomClient, type BlobDescriptor } from "nostr-tools/nipb7";
 import { calculateSHA256Hex } from "../utils/fileUtils";
 import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
+import { validateSignedEventResult } from "../signedEventResultValidator";
 import type {
     FileUploadResponse,
     UploadAdapterUploadParams,
@@ -119,9 +120,8 @@ function createBlossomClient(
         }
         if (addAuthorization) {
             const auth = await addAuthorization();
-            if (auth) {
-                headers.Authorization = auth;
-            }
+            if (!auth) throw new Error("Blossom authorization failed");
+            headers.Authorization = auth;
         }
 
         const response = await fetchImpl(`${baseUrl}${url}`, {
@@ -247,9 +247,24 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
 
         let uploadResult: FileUploadResponse;
         try {
+            const expectedPubkey = await signer.getPublicKey();
+            const validatedSigner = {
+                getPublicKey: async () => {
+                    const pubkey = await signer.getPublicKey();
+                    if (pubkey !== expectedPubkey) {
+                        throw new Error("Authentication required");
+                    }
+                    return pubkey;
+                },
+                signEvent: async (template: any) => validateSignedEventResult(
+                    template,
+                    await signer.signEvent(template),
+                    expectedPubkey,
+                ) as any,
+            };
             const client = createBlossomClient(
                 params.destination,
-                signer,
+                validatedSigner,
                 params.fetch,
             );
             const descriptor = await client.uploadBlob(

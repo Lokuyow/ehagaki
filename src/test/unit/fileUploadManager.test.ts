@@ -15,6 +15,10 @@ const postMediaCacheServiceMock = vi.hoisted(() => ({
     persistUploadedMedia: vi.fn(),
 }));
 
+vi.mock('../../lib/signedEventResultValidator', () => ({
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
+
 vi.mock('../../lib/postMediaCacheService', () => ({
     postMediaCacheService: postMediaCacheServiceMock,
 }));

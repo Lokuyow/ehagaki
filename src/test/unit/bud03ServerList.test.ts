@@ -8,6 +8,10 @@ import {
 } from "../../lib/upload/bud03ServerList";
 import { DECOMMISSIONED_RELAYS } from "../../lib/relayLists";
 
+vi.mock("../../lib/signedEventResultValidator", () => ({
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
+
 describe("bud03ServerList", () => {
     it("parses server tags with normalization, de-duplication, and ordering", () => {
         expect(parseBud03ServerTags([
