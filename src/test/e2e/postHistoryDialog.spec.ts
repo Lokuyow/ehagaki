@@ -23,6 +23,7 @@ type HarnessState = {
     importEventJsonl: string;
     sparseVisiblePostContent: string;
     sparseStoredPostContent: string;
+    absoluteOldestPostContent: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -37,6 +38,12 @@ async function gotoHarness(page: Page) {
 
 async function gotoSparseHarness(page: Page) {
     await page.goto('post-history-dialog-playwright.html?sparse=1');
+    await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
+    return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
+}
+
+async function gotoSparseOldestHarness(page: Page) {
+    await page.goto('post-history-dialog-playwright.html?sparse-oldest=1');
     await page.waitForFunction(() => Boolean((window as HarnessWindow).__POST_HISTORY_HARNESS__?.ready));
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
@@ -387,6 +394,36 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByText(harness.sparseStoredPostContent, { exact: true })).toBeVisible();
         await page.getByRole('button', { name: '最新へ戻る' }).click();
         await expect(page.getByText(harness.sparseVisiblePostContent, { exact: true })).toBeVisible();
+    });
+
+    test('saved sparse pages can jump to the absolute local oldest and scroll to the bottom', async ({
+        page,
+        isMobile,
+    }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoSparseOldestHarness(page);
+        await expect(page.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeVisible();
+
+        await page.getByRole('button', { name: '保存済みの古い投稿を表示' }).click();
+        await expect(page.getByText('保存済みの古い投稿を表示中です。', { exact: true })).toBeVisible();
+        await expect(page.getByText(harness.sparseStoredPostContent, { exact: true })).toBeVisible();
+
+        const container = page.locator('.post-history-container');
+        await container.evaluate((element) => {
+            const historyContainer = element as HTMLDivElement;
+            historyContainer.scrollTop = 0;
+            historyContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '最古へ移動' }).click();
+
+        await expect(page.getByText(harness.absoluteOldestPostContent, { exact: true })).toBeVisible();
+        await expect.poll(() => container.evaluate((element) => {
+            const historyContainer = element as HTMLDivElement;
+            return historyContainer.scrollHeight - historyContainer.clientHeight - historyContainer.scrollTop;
+        })).toBeLessThanOrEqual(1);
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {

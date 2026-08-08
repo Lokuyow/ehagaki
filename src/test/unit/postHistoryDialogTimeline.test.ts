@@ -488,6 +488,242 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('jump sparse では jump cache anchor があってもローカル最古へ移動し、リレー修復しない', async () => {
+        const newest = createRecord({
+            eventId: 'jump-oldest-newest',
+            content: 'jump oldest 最新',
+            createdAt: 1_700_000_000,
+            postedAt: 1_700_000_000_000,
+        });
+        const jumpTarget = createRecord({
+            eventId: 'jump-oldest-target',
+            content: 'jump oldest 対象',
+            createdAt: 1_600_000_000,
+            postedAt: 1_600_000_000_000,
+        });
+        const older = createRecord({
+            eventId: 'jump-oldest-older',
+            content: 'jump oldest 古い投稿',
+            createdAt: 1_599_900_000,
+            postedAt: 1_599_900_000_000,
+        });
+        const oldest = createRecord({
+            eventId: 'jump-oldest-oldest',
+            content: 'jump oldest 最古投稿',
+            createdAt: 1_500_000_000,
+            postedAt: 1_500_000_000_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_650_000_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(4);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockImplementation(async ({
+            createdAt,
+            query,
+        }: Record<string, any>) => {
+            if (createdAt === 0 && query?.contiguous === false) {
+                return [oldest];
+            }
+            return query?.contiguous === false ? [jumpTarget] : [newest];
+        });
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({
+            cursor,
+            visibleUntil,
+        }: Record<string, any>) => (
+            cursor?.eventId === jumpTarget.eventId && visibleUntil === null
+                ? [older]
+                : []
+        ));
+        jumpCacheAnchorRepositoryMock.getForPubkey.mockResolvedValue([{
+            centerCreatedAt: 1_600_000_000,
+            radiusSec: 86_400,
+            fetchedAt: Date.now(),
+        }]);
+        jumpCacheAnchorRepositoryMock.hasNearbyAnchorForPubkey.mockResolvedValue(true);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => expect(screen.getByText('jump oldest 最新')).toBeTruthy());
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
+        relayFetchServiceMock.fetchLatest.mockClear();
+        await clickMenuAction('日付へ移動');
+        await setJumpDateValue('2020-09-13');
+        await fireEvent.click(getJumpDateSubmitButton());
+        await waitFor(() => expect(screen.getByText('jump oldest 対象')).toBeTruthy());
+
+        const historyContainer = getHistoryContainer();
+        Object.defineProperty(historyContainer, 'clientHeight', {
+            configurable: true,
+            value: 320,
+        });
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            value: 720,
+        });
+        historyContainer.scrollTop = 0;
+        await fireEvent.scroll(historyContainer);
+
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '最古へ移動' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('jump oldest 最古投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(720);
+        });
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                visibleUntil: null,
+                cursor: expect.objectContaining({ eventId: jumpTarget.eventId }),
+                limit: 1,
+            }),
+        );
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                createdAt: 0,
+                query: { contiguous: false },
+            }),
+        );
+        expect(repositoryMock.getOlderVisibleChunk).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                visibleUntil: null,
+                cursor: expect.objectContaining({ eventId: oldest.eventId }),
+                limit: 1,
+            }),
+        );
+        await openPostHistoryMenu();
+        expect((await screen.findByRole('menuitem', { name: '最古へ移動' }))
+            .getAttribute('aria-disabled')).toBe('true');
+        expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
+    it('saved sparse でも最古へ移動すると absolute local oldest へ移動し source を維持する', async () => {
+        const newest = createRecord({
+            eventId: 'saved-oldest-newest',
+            content: 'saved oldest 最新',
+            createdAt: 1_700,
+            postedAt: 1_700_000,
+        });
+        const savedFirst = createRecord({
+            eventId: 'saved-oldest-first',
+            content: 'saved oldest first',
+            createdAt: 900,
+            postedAt: 900_000,
+        });
+        const savedOlder = createRecord({
+            eventId: 'saved-oldest-older',
+            content: 'saved oldest older',
+            createdAt: 800,
+            postedAt: 800_000,
+        });
+        const oldest = createRecord({
+            eventId: 'saved-oldest-oldest',
+            content: 'saved oldest 最古投稿',
+            createdAt: 700,
+            postedAt: 700_000,
+        });
+
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_000,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(4);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.hasPostsBeforeCreatedAt.mockResolvedValue(true);
+        repositoryMock.getSparseChunk.mockImplementation(async ({
+            direction,
+            cursor,
+        }: Record<string, any>) => {
+            if (direction === 'latest') return [savedFirst];
+            if (direction === 'older' && cursor?.eventId === savedFirst.eventId) {
+                return [savedOlder];
+            }
+            return [];
+        });
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValue([oldest]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('saved oldest 最新')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '保存済みの古い投稿を表示' })).toBeTruthy();
+        });
+        await waitFor(() => expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled());
+        relayFetchServiceMock.fetchLatest.mockClear();
+        await fireEvent.click(screen.getByRole('button', { name: '保存済みの古い投稿を表示' }));
+        await waitFor(() => expect(screen.getByText('saved oldest first')).toBeTruthy());
+
+        const historyContainer = getHistoryContainer();
+        Object.defineProperty(historyContainer, 'clientHeight', {
+            configurable: true,
+            value: 320,
+        });
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            value: 720,
+        });
+        historyContainer.scrollTop = 0;
+        await fireEvent.scroll(historyContainer);
+
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '最古へ移動' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('saved oldest 最古投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(720);
+        });
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                createdAt: 0,
+                visibleUntil: 1_000,
+                query: { contiguous: false },
+            }),
+        );
+        expect(repositoryMock.getSparseChunk).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                pubkeyHex: PUBKEY_HEX,
+                cursor: expect.objectContaining({ eventId: oldest.eventId }),
+                direction: 'older',
+                limit: 1,
+            }),
+        );
+        await openPostHistoryMenu();
+        expect((await screen.findByRole('menuitem', { name: '最古へ移動' }))
+            .getAttribute('aria-disabled')).toBe('true');
+        expect(relayFetchServiceMock.fetchLatest).not.toHaveBeenCalled();
+
+        view.unmount();
+    });
+
     it('visibleUntil が null の日付ジャンプ後も jump 用 sparse 経路で古い投稿を読む', async () => {
         const newest = createRecord({
             eventId: 'jump-null-newest',
