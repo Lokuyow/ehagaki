@@ -535,6 +535,14 @@ describe('PostHistoryDialog timeline relay flows', () => {
             created_at: 2_100,
             sig: 'e'.repeat(128),
         };
+        const insertedPost = createRecord({
+            eventId: insertedEvent.id,
+            content: insertedEvent.content,
+            createdAt: insertedEvent.created_at,
+            postedAt: insertedEvent.created_at * 1000,
+        });
+        let inserted = false;
+        const visibleCounts: number[] = [];
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
             pubkeyHex: PUBKEY_HEX,
@@ -542,21 +550,28 @@ describe('PostHistoryDialog timeline relay flows', () => {
             visibleUntil: 1_500,
             updatedAt: 1,
         });
-        repositoryMock.countForPubkey
-            .mockResolvedValueOnce(2)
-            .mockResolvedValue(3);
-        repositoryMock.countVisibleForPubkey
-            .mockResolvedValueOnce(2)
-            .mockResolvedValue(3);
-        repositoryMock.getLatestVisibleChunk.mockResolvedValue([newest]);
+        repositoryMock.countForPubkey.mockImplementation(async () => inserted ? 4 : 3);
+        repositoryMock.countVisibleForPubkey.mockImplementation(async () => {
+            const count = inserted ? 4 : 3;
+            visibleCounts.push(count);
+            return count;
+        });
+        repositoryMock.getLatestVisibleChunk.mockImplementation(async () =>
+            inserted ? [insertedPost, newest] : [newest],
+        );
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([newest]);
-        repositoryMock.getOlderVisibleChunk
-            .mockResolvedValueOnce([olderPosts[0]])
-            .mockResolvedValue(olderPosts);
-        repositoryMock.upsertFetchedEvents.mockResolvedValue({
-            insertedCount: 1,
-            updatedCount: 0,
-            unchangedCount: 0,
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) =>
+            repositoryMock.getOlderVisibleChunk.mock.calls.length === 1
+                ? [olderPosts[0]]
+                : olderPosts.slice(0, limit),
+        );
+        repositoryMock.upsertFetchedEvents.mockImplementation(async () => {
+            inserted = true;
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
         });
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: Promise.resolve(createRelayFetchResult({
@@ -579,13 +594,21 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await waitFor(() => {
             expect(screen.getByText('refresh insert newest')).toBeTruthy();
+            expect(screen.getByText('relay inserted newer post')).toBeTruthy();
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
             expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(1);
         });
+        await waitFor(() => expect(visibleCounts.at(-1)).toBe(4));
+        await waitFor(() => expect(repositoryMock.getNewerVisibleChunk).toHaveBeenCalledTimes(2));
         await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
-        await waitFor(() => expect(screen.getByText('refresh insert older 1')).toBeTruthy());
+        await waitFor(() => {
+            expect(screen.getByText('refresh insert older 1')).toBeTruthy();
+            expect(screen.getByText('refresh insert older 2')).toBeTruthy();
+        });
 
-        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledOnce();
+        expect(visibleCounts).toContain(3);
+        expect(visibleCounts.at(-1)).toBe(4);
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
         expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledTimes(2);
         expect(repositoryMock.getOlderVisibleChunk.mock.calls[1]?.[0]).toEqual(
             expect.objectContaining({ limit: 2 }),

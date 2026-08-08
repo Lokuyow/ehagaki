@@ -170,6 +170,7 @@ interface LoadOlderVisiblePostsOptions {
     metrics?: LoadOlderVisiblePostsMetrics;
     reason?: LoadOlderVisiblePostsReason;
     useContiguousProgress?: boolean;
+    preserveContiguousProgressAfterDatabaseChange?: boolean;
 }
 
 interface ContiguousProgressSnapshot {
@@ -1679,6 +1680,7 @@ export function usePostHistoryListing({
     async function reconcileContiguousProgressAfterDatabaseChange(
         pubkeyHex: string,
         visibleUntil: number | null,
+        options: { preserveReachedVisibleCount: boolean },
     ): Promise<boolean> {
         const snapshot = contiguousProgress;
         if (
@@ -1689,6 +1691,13 @@ export function usePostHistoryListing({
             || state.sparseSource !== null
             || getPubkeyHex() !== pubkeyHex
         ) {
+            return false;
+        }
+
+        // Only the older relay backfill path can prove that new visible
+        // records are strictly older than the current cursor. Other DB
+        // changes may add or reorder records above the cursor and must rebase.
+        if (!options.preserveReachedVisibleCount) {
             return false;
         }
 
@@ -1996,9 +2005,13 @@ export function usePostHistoryListing({
         {
             forceTotalCount = false,
             skipTotalCountRefresh = false,
+            skipOlderAvailabilityCheck = false,
+            awaitProgress = false,
         }: {
             forceTotalCount?: boolean;
             skipTotalCountRefresh?: boolean;
+            skipOlderAvailabilityCheck?: boolean;
+            awaitProgress?: boolean;
         } = {},
     ): Promise<void> {
         clearContiguousProgress();
@@ -2052,9 +2065,15 @@ export function usePostHistoryListing({
             visibleUntil,
             revisionBeforeLatestQuery,
         );
-        void progressReady.catch(() => {
-            clearContiguousProgress();
-        });
+        if (awaitProgress) {
+            await progressReady.catch(() => {
+                clearContiguousProgress();
+            });
+        } else {
+            void progressReady.catch(() => {
+                clearContiguousProgress();
+            });
+        }
 
         void refreshSavedPostsOutsideVisibleRange(
             pubkeyHex,
@@ -2064,7 +2083,12 @@ export function usePostHistoryListing({
             // Saved-range detection is auxiliary and must not delay the first post.
         });
 
-        void refreshTimelineAvailability(pubkeyHex, latestPosts, requestId)
+        void refreshTimelineAvailability(
+            pubkeyHex,
+            latestPosts,
+            requestId,
+            { skipOlderCheck: skipOlderAvailabilityCheck },
+        )
             .then(() => {
                 if (
                     !getShow()
@@ -2328,6 +2352,9 @@ export function usePostHistoryListing({
 
         const useContiguousProgress = options.useContiguousProgress !== false
             && contiguousProgress !== null;
+        const progressToExtend = options.preserveContiguousProgressAfterDatabaseChange
+            ? contiguousProgress
+            : null;
 
         const requestId = ++loadRequestId;
         const progress = useContiguousProgress
@@ -2444,22 +2471,24 @@ export function usePostHistoryListing({
                     mergedResult.posts[mergedResult.posts.length - 1],
                 ) ?? progressAfterQuery.oldestCursor,
             };
-        } else if (!useContiguousProgress) {
-            const didReconcile = await reconcileContiguousProgressAfterDatabaseChange(
-                pubkeyHex,
-                visibleUntil,
-            );
-            if (didReconcile && contiguousProgress) {
+        } else if (
+            !useContiguousProgress
+            && progressToExtend
+            && getPostHistorySearchRevision(pubkeyHex) === progressToExtend.revision
+        ) {
+            if (sameTimelineCursor(oldestCursor, progressToExtend.oldestCursor)) {
                 contiguousProgress = {
-                    ...contiguousProgress,
+                    ...progressToExtend,
                     reachedVisibleCount: Math.min(
-                        contiguousProgress.totalVisibleCount,
-                        contiguousProgress.reachedVisibleCount + newlyVisibleCount,
+                        progressToExtend.totalVisibleCount,
+                        progressToExtend.reachedVisibleCount + newlyVisibleCount,
                     ),
                     oldestCursor: toTimelineCursor(
                         mergedResult.posts[mergedResult.posts.length - 1],
-                    ) ?? contiguousProgress.oldestCursor,
+                    ) ?? progressToExtend.oldestCursor,
                 };
+            } else {
+                clearContiguousProgress();
             }
         }
         const hasReachedVisibleEnd = !!contiguousProgress
@@ -3199,32 +3228,27 @@ export function usePostHistoryListing({
                 state.searchQuery,
             );
         } else if (refreshDecision.applyAction === "load-latest-visible-posts") {
+            const requiresBoundedRebase =
+                refreshDecision.didMateriallyChange
+                && !refreshDecision.didVisibleMateriallyChange;
             await loadLatestVisiblePosts({
                 forceTotalCount: refreshDecision.didMateriallyChange,
+                skipOlderAvailabilityCheck: requiresBoundedRebase,
+                awaitProgress: requiresBoundedRebase,
             });
         } else if (
             refreshDecision.applyAction === "refresh-count-and-availability"
         ) {
-            if (refreshDecision.didVisibleMateriallyChange) {
-                // A changed visible frontier can expose a different contiguous
-                // range. Rebuild the latest window so the progress snapshot is
-                // re-established against that frontier before paging resumes.
+            if (refreshDecision.didMateriallyChange) {
+                // Any dialog-open insert/update can add or reorder records above
+                // the current cursor. Rebuild the latest window and establish a
+                // fresh progress snapshot instead of carrying reached forward.
                 await loadLatestVisiblePosts({
                     forceTotalCount: refreshDecision.didMateriallyChange,
+                    skipOlderAvailabilityCheck:
+                        !refreshDecision.didVisibleMateriallyChange,
+                    awaitProgress: !refreshDecision.didVisibleMateriallyChange,
                 });
-            } else if (await reconcileContiguousProgressAfterDatabaseChange(
-                pubkeyHex,
-                nextVisibleUntil,
-            )) {
-                refreshTotalCountFromRepository({
-                    force: refreshDecision.didMateriallyChange,
-                });
-                await refreshTimelineAvailability(
-                    pubkeyHex,
-                    state.loadedPosts,
-                    null,
-                    { skipOlderCheck: true },
-                );
             } else {
                 clearContiguousProgress();
                 refreshTotalCountFromRepository({
@@ -3584,11 +3608,14 @@ export function usePostHistoryListing({
                 return batchChanged;
             }
 
+            let canPreserveContiguousProgress = false;
             if (!isSparseBackfillContext) {
-                await reconcileContiguousProgressAfterDatabaseChange(
-                    pubkeyHex,
-                    effectiveVisibleUntil,
-                );
+                canPreserveContiguousProgress =
+                    await reconcileContiguousProgressAfterDatabaseChange(
+                        pubkeyHex,
+                        effectiveVisibleUntil,
+                        { preserveReachedVisibleCount: true },
+                    );
             }
 
             await refreshSavedPostsOutsideVisibleRange(
@@ -3684,6 +3711,8 @@ export function usePostHistoryListing({
                                 metrics: olderLoadMetrics,
                                 reason: "normal-older-reveal",
                                 useContiguousProgress: false,
+                                preserveContiguousProgressAfterDatabaseChange:
+                                    canPreserveContiguousProgress,
                             });
                 } else {
                     await refreshTimelineAvailability(pubkeyHex);

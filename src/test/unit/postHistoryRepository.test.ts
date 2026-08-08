@@ -154,12 +154,22 @@ function createInstrumentedTimelineDb(records: PostHistoryRecord[]) {
                 if (
                     (lowerComparison < 0 || (!this.includeLower && lowerComparison === 0))
                     || (upperComparison > 0 || (!this.includeUpper && upperComparison === 0))
-                    || this.predicates.some((predicate) => !predicate(record))
                 ) {
                     continue;
                 }
 
-                this.filterEvaluated += this.predicates.length;
+                let rejected = false;
+                for (const predicate of this.predicates) {
+                    this.filterEvaluated += 1;
+                    if (!predicate(record)) {
+                        rejected = true;
+                        break;
+                    }
+                }
+                if (rejected) {
+                    continue;
+                }
+
                 result.push(record);
                 if (result.length >= this.maximum) break;
             }
@@ -1244,12 +1254,14 @@ describe("DexiePostHistoryRepository", () => {
         expect(Math.max(...materializedCounts)).toBeLessThanOrEqual(25);
     });
 
-    it("最終通常ページのbounded limitは後続の範囲外保存投稿をfilter評価しない", async () => {
+    it.each([7_000, 35_000, 64_999])(
+        "最終通常ページのbounded limitは後続の範囲外保存投稿をfilter評価しない (%d件)",
+        async (outOfRangeCount) => {
         const pubkey = "b".repeat(64);
         const records = [
             createPostHistoryRecord({ eventId: "newest", pubkeyHex: pubkey, postedAt: 70_000, createdAt: 2_000 }),
             createPostHistoryRecord({ eventId: "last-visible", pubkeyHex: pubkey, postedAt: 69_999, createdAt: 1_500 }),
-            ...Array.from({ length: 64_999 }, (_, index) => createPostHistoryRecord({
+            ...Array.from({ length: outOfRangeCount }, (_, index) => createPostHistoryRecord({
                 eventId: `imported-${index}`,
                 pubkeyHex: pubkey,
                 postedAt: 69_998 - index,
@@ -1272,7 +1284,36 @@ describe("DexiePostHistoryRepository", () => {
         });
 
         expect(filterEvaluatedCounts.at(-1)).toBe(1);
-    });
+        },
+    );
+
+    it.each([7_000, 35_000, 64_999])(
+        "unbounded older queryは範囲外保存投稿のfilter評価を検出する (%d件)",
+        async (outOfRangeCount) => {
+            const pubkey = "b".repeat(64);
+            const records = [
+                createPostHistoryRecord({ eventId: "newest", pubkeyHex: pubkey, postedAt: 70_000, createdAt: 2_000 }),
+                createPostHistoryRecord({ eventId: "last-visible", pubkeyHex: pubkey, postedAt: 69_999, createdAt: 1_500 }),
+                ...Array.from({ length: outOfRangeCount }, (_, index) => createPostHistoryRecord({
+                    eventId: `imported-${index}`,
+                    pubkeyHex: pubkey,
+                    postedAt: 69_998 - index,
+                    createdAt: 999 - index,
+                })),
+            ];
+            const { db, filterEvaluatedCounts } = createInstrumentedTimelineDb(records);
+            const repository = new DexiePostHistoryRepository(db as any, () => 1000);
+
+            await repository.getOlderVisibleChunk({
+                pubkeyHex: pubkey,
+                visibleUntil: 1_000,
+                cursor: records[1]!,
+                limit: 1,
+            });
+
+            expect(filterEvaluatedCounts.at(-1)).toBe(outOfRangeCount);
+        },
+    );
 
     it("visibleUntil より古い保存投稿を index で検出し、sparse chunk を前後へ移動できる", async () => {
         const db = createTestDb();
