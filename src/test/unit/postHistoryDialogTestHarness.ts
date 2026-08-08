@@ -49,7 +49,6 @@ const hoisted = vi.hoisted(() => {
             'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
             'postHistory.fetchOlderFromRelaysLoading': 'リレーから取得中...',
             'postHistory.showSavedOlderPosts': '保存済みの古い投稿を表示',
-            'postHistory.savedOlderPostsBoundary': 'この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。',
             'postHistory.savedOlderPostsShowing': '保存済みの古い投稿を表示中です。',
             'postHistory.savedOlderPostsGapNotice': '最近の投稿との間に未取得の期間がある可能性があります。',
             'postHistory.repair': '表示中の投稿付近を再取得',

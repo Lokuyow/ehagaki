@@ -2773,7 +2773,6 @@
 
             {#if history.showSavedPostsBoundary}
                 <div class="post-history-saved-boundary" role="status">
-                    <p>{$_("postHistory.savedOlderPostsBoundary")}</p>
                     <div class="post-history-saved-boundary-actions">
                         {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays}
                             <Button
@@ -3909,7 +3908,13 @@
 
     .post-history-saved-boundary-actions {
         display: flex;
+        width: fit-content;
+        max-width: 100%;
+        box-sizing: border-box;
+        justify-self: center;
         flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
         gap: 8px;
     }
 
