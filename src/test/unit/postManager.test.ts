@@ -26,6 +26,11 @@ vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     }),
 }));
 
+vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../lib/signedEventResultValidator')>(),
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
+
 class MockClassList {
     private classes = new Set<string>();
 

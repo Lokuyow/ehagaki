@@ -1,5 +1,9 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { Signer } from "nostr-tools/signer";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "../signedEventResultValidator";
 import type { PostResult } from "../types";
 import { PostEventSender } from "../postEventBuilder";
 import { RelayConfigUtils } from "../relayConfigUtils";
@@ -164,10 +168,20 @@ export async function publishBud03ServerList(params: {
     servers: string[];
     relays?: string[];
     console?: Console;
+    expectedPubkey?: string;
+    assertSession?: () => void;
 }): Promise<PostResult> {
     const template = buildBud03EventTemplate(params.servers);
-    const event = await params.signer.signEvent(template);
+    params.assertSession?.();
+    const prepared = prepareSignedEventTemplate(template);
+    const signedEvent = await params.signer.signEvent(prepared.signerTemplate);
+    params.assertSession?.();
+    const event = params.expectedPubkey
+        ? validateSignedEventResult(prepared.expectedTemplate, signedEvent, params.expectedPubkey)
+        : signedEvent;
+    params.assertSession?.();
     const sender = new PostEventSender(params.rxNostr, params.console ?? console);
+    params.assertSession?.();
     return sender.sendEvent(event, {
         targetRelays: params.relays,
         includeDefaultWriteRelays: true,

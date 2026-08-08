@@ -14,6 +14,11 @@ import {
 import { createDeferred } from '../deferredTestUtils';
 import { mockAuthStoreModule } from '../mocks/storeModules';
 
+vi.mock('../../lib/signedEventResultValidator', async (importOriginal) => ({
+    ...await importOriginal<typeof import('../../lib/signedEventResultValidator')>(),
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
+
 // nostr-tools/nip98 をモック（buildAuthHeader のユニットテスト用）
 vi.mock('nostr-tools/nip98', () => ({
     getToken: vi.fn().mockResolvedValue('Nostr mock-nip98-token'),
@@ -40,6 +45,7 @@ vi.mock('../../lib/keyManager.svelte', async () => {
         keyManager: {
             getFromStore: vi.fn().mockReturnValue(null),
             loadFromStorage: vi.fn().mockReturnValue(null),
+            derivePublicKey: vi.fn().mockReturnValue({ hex: 'testpubkey123' }),
         },
     };
 });
@@ -111,6 +117,10 @@ describe('NostrAuthService', () => {
             (window as any).nostr = {
                 signEvent: vi.fn().mockResolvedValue({ id: 'test', sig: 'test' }),
             };
+            mockAuthStoreModule.authState.value = {
+                ...mockAuthStoreModule.authState.value,
+                type: 'nip07',
+            };
 
             const result = await service.buildAuthHeader(
                 'https://example.com/upload',
@@ -131,6 +141,10 @@ describe('NostrAuthService', () => {
 
             // クリーンアップ
             (window as any).nostr = originalNostr;
+            mockAuthStoreModule.authState.value = {
+                ...mockAuthStoreModule.authState.value,
+                type: 'nsec',
+            };
         });
 
         it('秘密鍵（getFromStore）でseckeySigner署名→トークン生成', async () => {

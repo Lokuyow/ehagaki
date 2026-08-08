@@ -7,6 +7,10 @@ vi.mock("../../lib/postHistoryRawEventVerification", () => ({
         attestation: {},
     }),
 }));
+vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
+    ...await importOriginal<typeof import("../../lib/signedEventResultValidator")>(),
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
 import type { AuthState } from "../../lib/types";
 import type { PostHistoryRecord } from "../../lib/storage/ehagakiDb";
 import {

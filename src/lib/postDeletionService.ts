@@ -17,6 +17,11 @@ import {
     type PostHistoryDeletionRequestsRepository,
 } from "./storage/postHistoryDeletionRequestsRepository";
 import type { PostResult, AuthState, KeyManagerInterface, NostrEvent } from "./types";
+import { assertActiveSession } from "./sessionLiveness";
+import {
+    prepareSignedEventTemplate,
+    validateSignedEventResult,
+} from "./signedEventResultValidator";
 
 export const POST_DELETION_SUPPORTED_KINDS = [1, 42] as const;
 
@@ -180,9 +185,14 @@ export class PostDeletionService {
             return { success: false, error: "nostr_not_ready" };
         }
 
-        if (!currentPubkey) {
+        if (!auth.isAuthenticated || !currentPubkey) {
             return { success: false, error: "pubkey_not_found" };
         }
+
+        const assertSession = () => assertActiveSession(
+            this.deps.authStateStore,
+            currentPubkey,
+        );
 
         if (!canRequestPostDeletion(params.post, currentPubkey)) {
             return { success: false, error: "deletion_request_not_allowed" };
@@ -191,6 +201,7 @@ export class PostDeletionService {
         let nip46Signer: DeletionSigner | null | undefined;
         if (auth.type === "nip46") {
             try {
+                assertSession();
                 nip46Signer = await this.deps.getNip46SignerForSessionFn(
                     currentPubkey,
                 );
@@ -217,6 +228,12 @@ export class PostDeletionService {
             return { success: false, error: signerResolution.error };
         }
 
+        try {
+            assertSession();
+        } catch {
+            return { success: false, error: "post_error" };
+        }
+
         const deletionEvent = buildDeletionRequestEvent(
             params.post,
             Math.floor(this.deps.now() / 1000),
@@ -224,7 +241,16 @@ export class PostDeletionService {
 
         let signedEvent: any;
         try {
-            signedEvent = await signerResolution.signEvent!(deletionEvent);
+            assertSession();
+            const prepared = prepareSignedEventTemplate(deletionEvent);
+            signedEvent = await signerResolution.signEvent!(prepared.signerTemplate);
+            assertSession();
+            signedEvent = validateSignedEventResult(
+                prepared.expectedTemplate,
+                signedEvent,
+                currentPubkey,
+            );
+            assertSession();
         } catch {
             this.deps.console.error("post_deletion_sign_failed", {
                 stage: 'sign-event',
@@ -247,6 +273,7 @@ export class PostDeletionService {
 
         let result: PostResult;
         try {
+            assertSession();
             result = await this.createEventSender(params.rxNostr).sendEvent(
                 verifiedDeletionEvent.event,
                 {

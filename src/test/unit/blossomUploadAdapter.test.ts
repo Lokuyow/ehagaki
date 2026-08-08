@@ -7,6 +7,11 @@ vi.mock("../../lib/utils/fileUtils", () => ({
     calculateSHA256Hex: vi.fn(async () => "a".repeat(64)),
 }));
 
+vi.mock("../../lib/signedEventResultValidator", async (importOriginal) => ({
+    ...await importOriginal<typeof import("../../lib/signedEventResultValidator")>(),
+    validateSignedEventResult: (_template: unknown, signedEvent: unknown) => signedEvent,
+}));
+
 function createDestination(): UploadDestination {
     return {
         id: "blossom-band",

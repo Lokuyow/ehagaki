@@ -24,6 +24,11 @@ import {
   attestFullyVerifiedPostHistoryRawEvent,
   type PostHistoryRawEventAttestation,
 } from "./postHistoryRawEventVerification";
+import { assertActiveSession, captureActiveSessionPubkey } from "./sessionLiveness";
+import {
+  prepareSignedEventTemplate,
+  validateSignedEventResult,
+} from "./signedEventResultValidator";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -213,6 +218,7 @@ export class PostManager {
 
   private async sendPreparedEvent(params: {
     event: any;
+    sessionPubkey: string;
     hashtags: string[];
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
     signer?: any;
@@ -232,9 +238,24 @@ export class PostManager {
       return this.notifyPostFailure("nostr_sign_event_not_supported");
     }
 
-    const eventToSend = signEvent
-      ? await signEvent(params.event)
+    assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+    const prepared = prepareSignedEventTemplate(params.event);
+    const signedEvent = signEvent
+      ? await signEvent(prepared.signerTemplate)
       : params.event;
+    assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
+
+    let eventToSend: any;
+    try {
+      eventToSend = validateSignedEventResult(
+        prepared.expectedTemplate,
+        signedEvent,
+        params.sessionPubkey,
+      );
+    } catch {
+      return this.notifyPostFailure("post_error");
+    }
+    assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
 
     const verifiedEvent = attestFullyVerifiedPostHistoryRawEvent(eventToSend);
     if (!verifiedEvent) {
@@ -249,6 +270,7 @@ export class PostManager {
       this.deps.console?.debug?.('[PostManager] signed event ready');
     }
 
+    assertActiveSession(this.deps.authStateStore!, params.sessionPubkey);
     const result = await this.eventSender!.sendEvent(verifiedEvent.event, {
       targetRelays: params.additionalWriteRelays,
       includeDefaultWriteRelays: true,
@@ -339,6 +361,7 @@ export class PostManager {
     try {
       // 依存性から認証状態とストアを取得
       const authStateStore = this.deps.authStateStore!;
+      const sessionPubkey = captureActiveSessionPubkey(authStateStore);
       const hashtagStore = this.deps.hashtagStore!;
       const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
       const keyMgr = this.deps.keyManager!;
@@ -461,6 +484,7 @@ export class PostManager {
 
           return await this.sendPreparedEvent({
             event,
+            sessionPubkey,
             hashtags,
             rqNotifyOptions,
             signEvent,
@@ -506,6 +530,7 @@ export class PostManager {
 
           return await this.sendPreparedEvent({
             event,
+            sessionPubkey,
             hashtags,
             rqNotifyOptions,
             signer: nip46Signer,
@@ -544,6 +569,7 @@ export class PostManager {
 
           return await this.sendPreparedEvent({
             event,
+            sessionPubkey,
             hashtags,
             rqNotifyOptions,
             signer: parentClientSigner,
@@ -577,6 +603,7 @@ export class PostManager {
         : seckeySigner(storedKey);
       return await this.sendPreparedEvent({
         event,
+        sessionPubkey,
         hashtags,
         rqNotifyOptions,
         signer,
