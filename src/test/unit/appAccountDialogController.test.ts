@@ -25,6 +25,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         },
         setShowLastAccountLogoutConfirm: vi.fn(),
         resetUploadDisplayState: vi.fn(),
+        resetAccountScopedAsyncState: vi.fn(),
         getCurrentRxNostr: vi.fn(() => ({ dispose: vi.fn() })),
         setCurrentRxNostr: vi.fn(),
         disposeNostrSession: vi.fn(() => undefined),
@@ -85,6 +86,7 @@ describe('createAppAccountDialogController', () => {
         await controller.confirmLastAccountLogout();
 
         expect(deps.resetUploadDisplayState).toHaveBeenCalledTimes(1);
+        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledTimes(1);
         expect(deps.disposeNostrSession).toHaveBeenCalledTimes(1);
         expect(deps.logoutLastAccount).toHaveBeenCalledWith('ab'.repeat(32));
         expect(deps.reloadWindow).toHaveBeenCalledTimes(1);

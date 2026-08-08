@@ -84,6 +84,7 @@ function createController(overrides: Record<string, unknown> = {}) {
         })),
         handlePostAuth: vi.fn(async () => undefined),
         resetUploadDisplayState: vi.fn(),
+        resetAccountScopedAsyncState: vi.fn(),
         logoutAccountFromAuthService: vi.fn(async () => null),
         resolveLogoutAccountAction: vi.fn((nextPubkey: string | null | undefined) => {
             if (typeof nextPubkey === 'string') {
@@ -188,6 +189,7 @@ describe('createAppAccountSessionController', () => {
 
         expect(deps.parentClientService.disconnect).toHaveBeenCalledWith(false);
         expect(deps.nip46Service.disconnect).not.toHaveBeenCalled();
+        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledOnce();
     });
 
     it('current NIP-46 runtimeをcleanupする', async () => {
@@ -433,6 +435,7 @@ describe('createAppAccountSessionController', () => {
         await controller.logoutAccount(CURRENT_PUBKEY);
 
         expect(deps.resetUploadDisplayState).toHaveBeenCalledOnce();
+        expect(deps.resetAccountScopedAsyncState).toHaveBeenCalledOnce();
         expect(deps.clearAuthState).toHaveBeenCalledOnce();
         expect(deps.setGuestProfile).toHaveBeenCalledOnce();
         expect(deps.initializeNostr).toHaveBeenCalledOnce();

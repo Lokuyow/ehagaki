@@ -15,7 +15,32 @@ let error = $state<string | null>(null);
 let lastLoadKey = $state<LoadKey | null>(null);
 let lastFetchedLoadKey: LoadKey | null = null;
 let activeLoadKey: LoadKey | null = null;
+let loadGeneration = 0;
 const cacheReadPromises = new Map<LoadKey, Promise<CustomEmojiItem[]>>();
+
+interface LoadScope {
+    loadKey: LoadKey;
+    generation: number;
+}
+
+function beginLoad(loadKey: LoadKey): LoadScope {
+    activeLoadKey = loadKey;
+    loadGeneration += 1;
+    return { loadKey, generation: loadGeneration };
+}
+
+function isCurrentLoad(scope: LoadScope): boolean {
+    return activeLoadKey === scope.loadKey && loadGeneration === scope.generation;
+}
+
+function clearState(): void {
+    items = [];
+    loading = false;
+    error = null;
+    lastLoadKey = null;
+    lastFetchedLoadKey = null;
+    activeLoadKey = null;
+}
 
 function getCachedItems(loadKey: LoadKey): Promise<CustomEmojiItem[]> {
     const existing = cacheReadPromises.get(loadKey);
@@ -28,15 +53,15 @@ function getCachedItems(loadKey: LoadKey): Promise<CustomEmojiItem[]> {
     return promise;
 }
 
-async function applyCachedItems(loadKey: LoadKey): Promise<boolean> {
-    const cachedItems = await getCachedItems(loadKey);
-    if (activeLoadKey !== loadKey || cachedItems.length === 0) {
+async function applyCachedItems(scope: LoadScope): Promise<boolean> {
+    const cachedItems = await getCachedItems(scope.loadKey);
+    if (!isCurrentLoad(scope) || cachedItems.length === 0) {
         return false;
     }
 
     items = cachedItems;
     error = null;
-    lastLoadKey = loadKey;
+    lastLoadKey = scope.loadKey;
     return true;
 }
 
@@ -59,9 +84,9 @@ export const customEmojiStore = {
             return;
         }
 
-        activeLoadKey = loadKey;
+        const scope = beginLoad(loadKey);
         try {
-            await applyCachedItems(loadKey);
+            await applyCachedItems(scope);
         } catch {
             // Cache preloading is best-effort.
         }
@@ -69,24 +94,24 @@ export const customEmojiStore = {
 
     async load(params: { rxNostr?: RxNostr | null; pubkey?: string | null; force?: boolean }): Promise<void> {
         if (!params.rxNostr || !params.pubkey) {
-            items = [];
-            loading = false;
-            error = null;
-            lastLoadKey = null;
-            lastFetchedLoadKey = null;
-            activeLoadKey = null;
+            loadGeneration += 1;
+            clearState();
             return;
         }
 
         const loadKey = params.pubkey;
-        activeLoadKey = loadKey;
+        const scope = beginLoad(loadKey);
         if (!params.force && lastFetchedLoadKey === loadKey && items.length > 0) {
             return;
         }
 
         const hasCachedItems = params.force
             ? false
-            : (lastLoadKey === loadKey && items.length > 0) || await applyCachedItems(loadKey);
+            : (lastLoadKey === loadKey && items.length > 0) || await applyCachedItems(scope);
+
+        if (!isCurrentLoad(scope)) {
+            return;
+        }
 
         loading = !hasCachedItems;
         error = null;
@@ -97,27 +122,37 @@ export const customEmojiStore = {
                 rxNostr: params.rxNostr,
                 pubkey: params.pubkey,
             });
+            if (!isCurrentLoad(scope)) {
+                return;
+            }
+
             items = nextItems;
-            await writeCachedCustomEmojiItems(loadKey, nextItems);
+            await writeCachedCustomEmojiItems(scope.loadKey, nextItems);
+            if (!isCurrentLoad(scope)) {
+                return;
+            }
+
             cacheCustomEmojiImages(nextItems.map((item) => item.src));
-            lastFetchedLoadKey = loadKey;
+            lastFetchedLoadKey = scope.loadKey;
         } catch {
+            if (!isCurrentLoad(scope)) {
+                return;
+            }
+
             error = "customEmoji.load_failed";
             if (!hasCachedItems) {
                 items = [];
             }
         } finally {
-            loading = false;
+            if (isCurrentLoad(scope)) {
+                loading = false;
+            }
         }
     },
 
     reset(): void {
-        items = [];
-        loading = false;
-        error = null;
-        lastLoadKey = null;
-        lastFetchedLoadKey = null;
-        activeLoadKey = null;
+        loadGeneration += 1;
+        clearState();
         cacheReadPromises.clear();
     },
 };

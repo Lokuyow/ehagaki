@@ -62,6 +62,7 @@
     setRelayManager,
     relayListUpdatedStore,
     saveRelayConfigToStorage,
+    resetRelayConfigStore,
   } from "./stores/relayStore.svelte";
   import {
     sharedMediaStore,
@@ -205,6 +206,7 @@
   import { sanitizePlainText } from "./lib/utils/domSanitizer";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
+  import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -689,6 +691,11 @@
       authService.restoreAccount(pubkeyHex, type),
     handlePostAuth,
     resetUploadDisplayState,
+    resetAccountScopedAsyncState: () => {
+      customEmojiStore.reset();
+      uploadDestinationStore.reset();
+      resetRelayConfigStore();
+    },
     logoutAccountFromAuthService: (pubkeyHex, options) =>
       authService.logoutAccount(pubkeyHex, {
         notifyParentClient: options.notifyParentClient,
@@ -736,6 +743,11 @@
       showLastAccountLogoutConfirm = next;
     },
     resetUploadDisplayState,
+    resetAccountScopedAsyncState: () => {
+      customEmojiStore.reset();
+      uploadDestinationStore.reset();
+      resetRelayConfigStore();
+    },
     getCurrentRxNostr: () => rxNostr,
     setCurrentRxNostr: (next) => {
       rxNostr = next;

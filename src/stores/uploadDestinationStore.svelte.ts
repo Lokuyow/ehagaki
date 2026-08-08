@@ -30,21 +30,80 @@ let uploadDestinationState = $state<UploadDestinationState>({
     testResults: {},
 });
 
-async function load(pubkeyHex: string | null = null): Promise<void> {
+interface UploadDestinationOperationScope {
+    pubkeyHex: string | null;
+    generation: number;
+}
+
+let activeOperation: UploadDestinationOperationScope = {
+    pubkeyHex: null,
+    generation: 0,
+};
+
+function beginOperation(pubkeyHex: string | null): UploadDestinationOperationScope {
+    const ownerChanged = activeOperation.pubkeyHex !== pubkeyHex;
+    activeOperation = {
+        pubkeyHex,
+        generation: activeOperation.generation + 1,
+    };
+    uploadDestinationState.bud03Status = null;
+    uploadDestinationState.bud03Publishing = false;
+    uploadDestinationState.bud03Fetching = false;
+    if (ownerChanged) {
+        uploadDestinationState.destinations = [];
+        uploadDestinationState.defaultDestination = null;
+        uploadDestinationState.error = null;
+        uploadDestinationState.testResults = {};
+    }
+    return activeOperation;
+}
+
+function isCurrentOperation(scope: UploadDestinationOperationScope): boolean {
+    return activeOperation.pubkeyHex === scope.pubkeyHex
+        && activeOperation.generation === scope.generation;
+}
+
+function resetState(): void {
+    uploadDestinationState = {
+        destinations: [],
+        defaultDestination: null,
+        loading: false,
+        error: null,
+        bud03Status: null,
+        bud03Publishing: false,
+        bud03Fetching: false,
+        testResults: {},
+    };
+}
+
+async function load(
+    pubkeyHex: string | null = null,
+    scope: UploadDestinationOperationScope = beginOperation(pubkeyHex),
+): Promise<void> {
+    if (!isCurrentOperation(scope)) return;
+
     uploadDestinationState.loading = true;
     uploadDestinationState.error = null;
 
     try {
         const defaultDestination = await uploadDestinationsRepository.getDefault(pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
         const destinations = await uploadDestinationsRepository.getAll(pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
         uploadDestinationState.destinations = destinations;
         uploadDestinationState.defaultDestination = destinations.find(
             (destination) => destination.id === defaultDestination.id,
         ) ?? defaultDestination;
     } catch (error) {
+        if (!isCurrentOperation(scope)) return;
+
         uploadDestinationState.error = error instanceof Error ? error.message : String(error);
     } finally {
-        uploadDestinationState.loading = false;
+        if (isCurrentOperation(scope)) {
+            uploadDestinationState.loading = false;
+        }
     }
 }
 
@@ -57,49 +116,78 @@ export const uploadDestinationStore = {
         await load(pubkeyHex);
     },
 
+    reset(): void {
+        beginOperation(null);
+        resetState();
+    },
+
     async save(destination: UploadDestination): Promise<void> {
+        const scope = beginOperation(destination.pubkeyHex);
         await uploadDestinationsRepository.put(destination);
-        await load(destination.pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
+        await load(destination.pubkeyHex, scope);
     },
 
     async delete(id: string, pubkeyHex: string | null = null): Promise<void> {
+        const scope = beginOperation(pubkeyHex);
         await uploadDestinationsRepository.delete(id);
-        await load(pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
+        await load(pubkeyHex, scope);
     },
 
     async setDefault(id: string, pubkeyHex: string | null = null): Promise<void> {
+        const scope = beginOperation(pubkeyHex);
         await uploadDestinationsRepository.setDefault(id, pubkeyHex);
-        await load(pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
+        await load(pubkeyHex, scope);
     },
 
     async move(id: string, direction: "up" | "down", pubkeyHex: string | null = null): Promise<void> {
+        const scope = beginOperation(pubkeyHex);
         await uploadDestinationsRepository.move(id, direction, pubkeyHex);
-        await load(pubkeyHex);
+        if (!isCurrentOperation(scope)) return;
+
+        await load(pubkeyHex, scope);
     },
 
     async fetchBud03(rxNostr: RxNostr, pubkeyHex: string): Promise<void> {
+        const scope = beginOperation(pubkeyHex);
         uploadDestinationState.bud03Fetching = true;
         uploadDestinationState.bud03Status = null;
         uploadDestinationState.error = null;
 
         try {
             const result = await fetchBud03ServerList({ rxNostr, pubkeyHex });
+            if (!isCurrentOperation(scope)) return;
+
             if (!result.success) {
                 uploadDestinationState.bud03Status = `BUD-03 fetch failed: ${result.error ?? "unknown"}`;
                 return;
             }
 
             await uploadDestinationsRepository.replaceBlossomServers(pubkeyHex, result.servers);
-            await load(pubkeyHex);
+            if (!isCurrentOperation(scope)) return;
+
+            await load(pubkeyHex, scope);
+            if (!isCurrentOperation(scope)) return;
+
             uploadDestinationState.bud03Status = `BUD-03 fetched ${result.servers.length} server(s)`;
         } catch (error) {
+            if (!isCurrentOperation(scope)) return;
+
             uploadDestinationState.error = error instanceof Error ? error.message : String(error);
         } finally {
-            uploadDestinationState.bud03Fetching = false;
+            if (isCurrentOperation(scope)) {
+                uploadDestinationState.bud03Fetching = false;
+            }
         }
     },
 
     async publishBud03(rxNostr: RxNostr, pubkeyHex: string): Promise<void> {
+        const scope = beginOperation(pubkeyHex);
         uploadDestinationState.bud03Publishing = true;
         uploadDestinationState.bud03Status = null;
         uploadDestinationState.error = null;
@@ -108,6 +196,8 @@ export const uploadDestinationStore = {
             const assertSession = () => assertActiveSession(authState, pubkeyHex);
             assertSession();
             const destinations = await uploadDestinationsRepository.getAll(pubkeyHex);
+            if (!isCurrentOperation(scope)) return;
+
             assertSession();
             const servers = destinations
                 .filter((destination) => destination.protocol === "blossom" && destination.enabled)
@@ -118,6 +208,8 @@ export const uploadDestinationStore = {
             }
 
             const signer = await new NostrAuthService().getEventSigner(pubkeyHex);
+            if (!isCurrentOperation(scope)) return;
+
             assertSession();
             const result = await publishBud03ServerList({
                 rxNostr,
@@ -126,21 +218,30 @@ export const uploadDestinationStore = {
                 expectedPubkey: pubkeyHex,
                 assertSession,
             });
+            if (!isCurrentOperation(scope)) return;
+
             uploadDestinationState.bud03Status = result.success
                 ? "BUD-03 published"
                 : `BUD-03 publish failed: ${result.error ?? "unknown"}`;
         } catch (error) {
+            if (!isCurrentOperation(scope)) return;
+
             uploadDestinationState.error = error instanceof Error ? error.message : String(error);
         } finally {
-            uploadDestinationState.bud03Publishing = false;
+            if (isCurrentOperation(scope)) {
+                uploadDestinationState.bud03Publishing = false;
+            }
         }
     },
 
     async test(destination: UploadDestination): Promise<UploadConnectionTestResult> {
+        const scope = beginOperation(destination.pubkeyHex);
         const result = await testUploadDestinationConnection(resolveUploadDestinationForUse(destination, {
             pubkeyHex: authState.value.pubkey || null,
             npub: authState.value.npub || null,
         }));
+        if (!isCurrentOperation(scope)) return result;
+
         uploadDestinationState.testResults = {
             ...uploadDestinationState.testResults,
             [destination.id]: result,
@@ -152,7 +253,9 @@ export const uploadDestinationStore = {
                 capabilities: result.capabilities,
                 updatedAt: Date.now(),
             });
-            await load(destination.pubkeyHex);
+            if (!isCurrentOperation(scope)) return result;
+
+            await load(destination.pubkeyHex, scope);
         }
 
         return result;

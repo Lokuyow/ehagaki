@@ -78,6 +78,7 @@ export interface AppAccountSessionControllerDependencies {
     ): Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
     handlePostAuth(pubkeyHex: string): Promise<void>;
     resetUploadDisplayState(): void;
+    resetAccountScopedAsyncState?(): void;
     logoutAccountFromAuthService(
         pubkeyHex: string,
         options: { notifyParentClient?: boolean },
@@ -126,6 +127,8 @@ export function createAppAccountSessionController(
         authType: string | undefined,
         session: unknown,
     ): Promise<void> {
+        deps.resetAccountScopedAsyncState?.();
+
         if (authType === 'nip46') {
             await runCleanupStep(() => deps.nip46Service.disconnect());
         } else if (authType === 'parentClient') {
@@ -276,6 +279,9 @@ export function createAppAccountSessionController(
 
         try {
             deps.resetUploadDisplayState();
+            if (deps.getAuthStateSnapshot()?.pubkey === pubkeyHex) {
+                deps.resetAccountScopedAsyncState?.();
+            }
 
             const nextPubkey = await deps.logoutAccountFromAuthService(pubkeyHex, {
                 notifyParentClient: options.notifyParentClient,
