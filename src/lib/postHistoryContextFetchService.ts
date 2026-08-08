@@ -2,7 +2,7 @@ import {
     createRxBackwardReq,
     type RxNostr,
 } from "rx-nostr";
-import { FALLBACK_RELAYS } from "./constants";
+import { FALLBACK_RELAYS } from "./relayLists";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";

@@ -1,6 +1,6 @@
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
-import { FALLBACK_RELAYS } from "./constants";
+import { FALLBACK_RELAYS } from "./relayLists";
 import { compareChannelMetadataEventVersions } from "./channelMetadataEventOrder";
 import { normalizeChannelPictureUrl } from "./channelPictureUrlUtils";
 import {

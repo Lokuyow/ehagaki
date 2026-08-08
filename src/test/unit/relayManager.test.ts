@@ -11,7 +11,8 @@ import { MockStorage, createMockRxNostr, createMockConsole } from '../helpers';
 import type { MockConsole } from '../helpers';
 import { EHagakiDB } from '../../lib/storage/ehagakiDb';
 import { DexieRelayConfigsRepository } from '../../lib/storage/relayConfigsRepository';
-import { FALLBACK_RELAYS } from '../../lib/constants';
+import { FALLBACK_RELAYS } from '../../lib/relayLists';
+import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 
 describe('RelayConfigParser', () => {
     describe('parseKind10002Tags', () => {
@@ -182,6 +183,34 @@ describe('RelayStorage', () => {
             expect(onRelayConfigSaved).toHaveBeenCalledWith('pubkey123', config);
         });
 
+        it('サービス終了 relay を保存前と UI callback 前に除外する', async () => {
+            const onRelayConfigSaved = vi.fn();
+            const callbackStorage = new RelayStorage(
+                mockConsole,
+                mockRelayListUpdatedStore,
+                undefined,
+                repository,
+                onRelayConfigSaved,
+            );
+            const config: RelayConfig = {
+                [DECOMMISSIONED_RELAYS[0]]: { read: true, write: true },
+                'wss://relay.example.com': { read: false, write: true },
+            };
+
+            await callbackStorage.save('pubkey123', config);
+
+            const expected = { 'wss://relay.example.com': { read: false, write: true } };
+            await expect(callbackStorage.get('pubkey123')).resolves.toEqual(expected);
+            expect(onRelayConfigSaved).toHaveBeenCalledWith('pubkey123', expected);
+        });
+
+        it('終了済み relay だけの IndexedDB 設定は再読込時にキャッシュミスになる', async () => {
+            await storage.save('pubkey123', [DECOMMISSIONED_RELAYS[2]]);
+
+            await expect(storage.getCache('pubkey123')).resolves.toBeNull();
+            await expect(storage.get('pubkey123')).resolves.toBeNull();
+        });
+
         it('nullを渡すとデータを削除する', async () => {
             await storage.save('pubkey123', ['wss://relay.example.com']);
 
@@ -263,6 +292,15 @@ describe('RelayStorage', () => {
             const result = await storage.get('pubkey123');
 
             expect(result).toBeNull();
+        });
+
+        it('終了済み relay だけの旧 localStorage 設定をキャッシュミスとして扱う', async () => {
+            mockLocalStorage.setItem(
+                'nostr-relays-pubkey123',
+                JSON.stringify(['wss://nrelay.c-stellar.net']),
+            );
+
+            await expect(storage.get('pubkey123')).resolves.toBeNull();
         });
     });
 
@@ -359,6 +397,25 @@ describe('RelayNetworkFetcher', () => {
             expect(mockSubscription.unsubscribe).toHaveBeenCalled();
         });
 
+        it('終了済み relay だけの Kind 10002 を未取得として扱う', async () => {
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => {
+                    observer.next({
+                        event: {
+                            kind: 10002,
+                            pubkey: 'testpubkey',
+                            tags: [['r', DECOMMISSIONED_RELAYS[0]]],
+                        },
+                    });
+                    observer.complete();
+                });
+                return mockSubscription;
+            });
+
+            await expect(fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com']))
+                .resolves.toMatchObject({ success: false, error: 'not_found' });
+        });
+
         it('エラー発生時にfalseを返す', async () => {
             subscribeFn.mockImplementation((observer: any) => {
                 Promise.resolve().then(() => {
@@ -425,6 +482,27 @@ describe('RelayNetworkFetcher', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('not_found');
+        });
+
+        it('終了済み relay だけの Kind 3 を未取得として扱う', async () => {
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => {
+                    observer.next({
+                        event: {
+                            kind: 3,
+                            pubkey: 'testpubkey',
+                            content: JSON.stringify({
+                                [DECOMMISSIONED_RELAYS[1]]: { read: true, write: true },
+                            }),
+                        },
+                    });
+                    observer.complete();
+                });
+                return mockSubscription;
+            });
+
+            await expect(fetcher.fetchKind3('testpubkey', ['wss://bootstrap.example.com']))
+                .resolves.toMatchObject({ success: false, error: 'not_found' });
         });
     });
 });
@@ -626,6 +704,23 @@ describe('RelayManager統合テスト', () => {
             expect((mockDeps.console?.log as any).mock.calls.some(
                 (call: any[]) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
             )).toBe(true);
+        });
+
+        it('終了済み relay だけの保存済み設定をキャッシュとして復元せず既存フォールバックへ進む', async () => {
+            const pubkey = 'decommissioned-cache-pubkey';
+            mockStorage.setItem(
+                `nostr-relays-${pubkey}`,
+                JSON.stringify([DECOMMISSIONED_RELAYS[0]]),
+            );
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => observer.complete());
+                return { unsubscribe: vi.fn() };
+            });
+
+            const result = await manager.fetchUserRelays(pubkey, { timeoutMs: 1 });
+
+            expect(result).toMatchObject({ source: 'fallback', relayConfig: FALLBACK_RELAYS });
+            expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(FALLBACK_RELAYS);
         });
     });
 

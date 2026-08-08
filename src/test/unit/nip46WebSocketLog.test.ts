@@ -20,6 +20,9 @@ vi.mock('nostr-tools', () => ({
         getConversationKey: vi.fn(() => new Uint8Array([1])),
         decrypt: vi.fn(),
     },
+    utils: {
+        normalizeURL: vi.fn((url: string) => url),
+    },
 }));
 
 vi.mock('nostr-tools/nip46', () => ({

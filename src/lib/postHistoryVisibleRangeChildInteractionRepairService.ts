@@ -2,7 +2,7 @@ import {
     createRxBackwardReq,
     type RxNostr,
 } from "rx-nostr";
-import { FALLBACK_RELAYS } from "./constants";
+import { FALLBACK_RELAYS } from "./relayLists";
 import {
     postHistoryDirectReplyRepairSaveService,
     type PostHistoryDirectReplyRepairItem,

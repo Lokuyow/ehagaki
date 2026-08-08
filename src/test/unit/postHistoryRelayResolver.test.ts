@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_RELAYS } from "../../lib/constants";
+import { FALLBACK_RELAYS } from "../../lib/relayLists";
 import { resolvePostHistoryRelayUrls } from "../../lib/postHistoryRelayResolver";
 
 describe("resolvePostHistoryRelayUrls", () => {

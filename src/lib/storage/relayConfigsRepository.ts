@@ -26,11 +26,13 @@ export interface RelayConfigsRepository {
 
 function toCache(record: RelayConfigRecord): RelayConfigCache | null {
     if (!RelayConfigParser.isValidRelayConfig(record.config)) return null;
+    const config = RelayConfigUtils.filterDecommissionedRelayConfig(record.config);
+    if (!RelayConfigUtils.hasRelayEntries(config)) return null;
 
     return {
-        config: record.config,
-        writeRelays: record.writeRelays,
-        readRelays: record.readRelays,
+        config,
+        writeRelays: RelayConfigUtils.extractWriteRelays(config),
+        readRelays: RelayConfigUtils.extractReadRelays(config),
         source: record.source,
         fetchedAt: record.fetchedAt,
         updatedAtFromEvent: record.updatedAtFromEvent,
@@ -48,12 +50,13 @@ function toRecord(
     } = {},
 ): RelayConfigRecord {
     const updatedAt = now();
+    const filteredConfig = RelayConfigUtils.filterDecommissionedRelayConfig(config);
 
     return {
         pubkeyHex,
-        config,
-        writeRelays: RelayConfigUtils.extractWriteRelays(config),
-        readRelays: RelayConfigUtils.extractReadRelays(config),
+        config: filteredConfig,
+        writeRelays: RelayConfigUtils.extractWriteRelays(filteredConfig),
+        readRelays: RelayConfigUtils.extractReadRelays(filteredConfig),
         source: options.source,
         fetchedAt: options.fetchedAt || updatedAt,
         updatedAtFromEvent: options.updatedAtFromEvent,
@@ -99,6 +102,10 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
 
         const legacyConfig = readLegacyRelayConfig(pubkeyHex, this.getStorage());
         if (!legacyConfig) return null;
+        const legacyCache = toCache(toRecord(pubkeyHex, legacyConfig, this.now, {
+            source: "localStorage",
+        }));
+        if (!legacyCache) return null;
 
         try {
             await this.put(pubkeyHex, legacyConfig, { source: "localStorage" });
@@ -106,9 +113,7 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
             // Legacy data remains available as a compatibility fallback.
         }
 
-        return toCache(toRecord(pubkeyHex, legacyConfig, this.now, {
-            source: "localStorage",
-        }));
+        return legacyCache;
     }
 
     async put(

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FALLBACK_RELAYS } from "../../lib/constants";
+import { FALLBACK_RELAYS } from "../../lib/relayLists";
 import type { NostrEvent } from "../../lib/types";
 import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
 

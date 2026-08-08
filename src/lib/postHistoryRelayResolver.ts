@@ -1,4 +1,4 @@
-import { FALLBACK_RELAYS } from "./constants";
+import { FALLBACK_RELAYS } from "./relayLists";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { RelayConfig } from "./types";
 

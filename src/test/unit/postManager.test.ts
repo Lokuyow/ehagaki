@@ -16,6 +16,7 @@ import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
 import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers';
 import { nip19 } from 'nostr-tools';
+import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
 
 vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -914,6 +915,19 @@ describe('PostEventSender', () => {
 
         expect(result.success).toBe(true);
         expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok' }));
+    });
+
+    it('明示 relay が終了済みのみで default write relay を含めない場合は送信しない', async () => {
+        const result = await sender.sendEvent(
+            { kind: 1, content: 'test' },
+            {
+                targetRelays: [DECOMMISSIONED_RELAYS[0]],
+                includeDefaultWriteRelays: false,
+            },
+        );
+
+        expect(result).toEqual({ success: false, error: 'no_write_relays' });
+        expect(mockRxNostr.send).not.toHaveBeenCalled();
     });
 
     it('AUTH後に成功したリレーを拒否一覧へ残さない', async () => {

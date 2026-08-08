@@ -5,7 +5,7 @@ import { createMockConsole, createMockRxNostr, createMockObservable } from "../h
 import type { MockConsole } from "../helpers";
 import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
-import { FALLBACK_RELAYS } from "../../lib/constants";
+import { FALLBACK_RELAYS } from "../../lib/relayLists";
 
 describe("ReplyQuoteService", () => {
     let service: ReplyQuoteService;

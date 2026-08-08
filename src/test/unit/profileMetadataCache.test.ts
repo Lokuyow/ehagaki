@@ -3,7 +3,7 @@ import {
     profileMetadataCache,
     profileMetadataCacheInternals,
 } from "../../lib/profileMetadataCache.svelte";
-import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "../../lib/constants";
+import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "../../lib/relayLists";
 import { profilesRepository } from "../../lib/storage/profilesRepository";
 import type {
     ProfileEventCandidate,

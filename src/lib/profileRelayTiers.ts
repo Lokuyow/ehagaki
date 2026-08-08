@@ -1,4 +1,4 @@
-import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
+import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./relayLists";
 import { RelayConfigUtils } from "./relayConfigUtils";
 
 export interface ProfileRelayTiers {

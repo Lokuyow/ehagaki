@@ -425,6 +425,11 @@ class Nip46WebSocket extends WebSocket {
 async function createConnectedPool(
     relays: string[],
 ): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
+    const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
+    if (uniqueRelays.length === 0) {
+        throw new Error('Relay connection failed: no reachable relays');
+    }
+
     // NIP-46用WebSocket(デバッグログ + limit:0パッチ)を設定
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
@@ -433,7 +438,6 @@ async function createConnectedPool(
     const connectedRelays: string[] = [];
     const connectionErrors: string[] = [];
 
-    const uniqueRelays = [...new Set(relays)];
     for (const [index, relay] of uniqueRelays.entries()) {
         try {
             console.debug('[NIP-46] relay connection attempt', {
@@ -488,12 +492,16 @@ async function createConnectedPoolReadyOnFirstReachable(
         FIRST_REACHABLE_RELAY_CONNECTION_LOG_MESSAGES,
     collectReadyWindowMs: number = 0,
 ): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
+    const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
+    if (uniqueRelays.length === 0) {
+        throw new Error('Relay connection failed: no reachable relays');
+    }
+
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
     const pool = new SimplePool();
     useWebSocketImplementation(origWs);
 
-    const uniqueRelays = [...new Set(relays)];
     const connectedRelays: string[] = [];
     const connectionErrors: string[] = [];
 
@@ -624,12 +632,16 @@ async function createConnectedPoolForReachableRelays(
     relays: string[],
     logMessages: RelayConnectionLogMessages,
 ): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
+    const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
+    if (uniqueRelays.length === 0) {
+        throw new Error('Relay connection failed: no reachable relays');
+    }
+
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
     const pool = new SimplePool();
     useWebSocketImplementation(origWs);
 
-    const uniqueRelays = [...new Set(relays)];
     const connectedRelaySet = new Set<string>();
     const connectionErrors: string[] = [];
 
@@ -2590,7 +2602,9 @@ export class Nip46Service {
             return {
                 clientSecretKeyHex: session.clientSecretKeyHex,
                 remoteSignerPubkey: session.remoteSignerPubkey,
-                relays: session.relays.filter((relay): relay is string => typeof relay === 'string'),
+                relays: sanitizeNip46NostrConnectRelays(
+                    session.relays.filter((relay): relay is string => typeof relay === 'string'),
+                ),
                 userPubkey: session.userPubkey,
                 pingVerified: session.pingVerified === true,
                 ...(normalizeRelayResolution(session.relayResolution)

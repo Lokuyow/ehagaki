@@ -1,7 +1,9 @@
 import { utils as nostrToolsUtils } from 'nostr-tools';
+import { DECOMMISSIONED_RELAYS } from './relayLists';
 import type { RelayConfig } from "./types";
 
 const ALLOWED_EXTERNAL_RELAY_PROTOCOLS = new Set(['ws:', 'wss:']);
+const DECOMMISSIONED_RELAY_URLS = new Set<string>(DECOMMISSIONED_RELAYS);
 
 // --- 純粋関数（依存性なし） ---
 export class RelayConfigParser {
@@ -79,6 +81,34 @@ export class RelayConfigUtils {
     }
 
     static normalizeExternalRelayUrl(url: string): string | null {
+        const normalized = this.normalizeExternalRelayUrlCandidate(url);
+        return normalized && !this.isDecommissionedRelayUrl(url)
+            ? normalized
+            : null;
+    }
+
+    static filterDecommissionedRelayConfig(config: RelayConfig): RelayConfig {
+        if (Array.isArray(config)) {
+            return config.filter((url) => !this.isDecommissionedRelayUrl(url));
+        }
+
+        return Object.fromEntries(
+            Object.entries(config).filter(([url]) => !this.isDecommissionedRelayUrl(url)),
+        );
+    }
+
+    static hasRelayEntries(config: RelayConfig): boolean {
+        return Array.isArray(config) ? config.length > 0 : Object.keys(config).length > 0;
+    }
+
+    private static isDecommissionedRelayUrl(url: string): boolean {
+        const normalized = this.normalizeExternalRelayUrlCandidate(url);
+        return normalized !== null
+            && !hasExplicitRelayPort(url)
+            && DECOMMISSIONED_RELAY_URLS.has(normalized);
+    }
+
+    private static normalizeExternalRelayUrlCandidate(url: string): string | null {
         if (typeof url !== 'string') {
             return null;
         }
@@ -155,10 +185,11 @@ export class RelayConfigUtils {
         const relaySet = new Set<string>();
 
         configs.forEach(config => {
-            if (Array.isArray(config)) {
-                config.forEach(url => relaySet.add(this.normalizeRelayUrl(url)));
-            } else if (typeof config === 'object') {
-                Object.keys(config).forEach(url => {
+            const filteredConfig = this.filterDecommissionedRelayConfig(config);
+            if (Array.isArray(filteredConfig)) {
+                filteredConfig.forEach(url => relaySet.add(this.normalizeRelayUrl(url)));
+            } else if (typeof filteredConfig === 'object') {
+                Object.keys(filteredConfig).forEach(url => {
                     relaySet.add(this.normalizeRelayUrl(url));
                 });
             }
@@ -171,11 +202,12 @@ export class RelayConfigUtils {
      * リレー設定からreadリレーのみを抽出
      */
     static extractReadRelays(config: RelayConfig): string[] {
-        if (Array.isArray(config)) {
-            return config.map(url => this.normalizeRelayUrl(url));
-        } else if (typeof config === 'object') {
-            return Object.keys(config)
-                .filter(url => config[url]?.read !== false)
+        const filteredConfig = this.filterDecommissionedRelayConfig(config);
+        if (Array.isArray(filteredConfig)) {
+            return filteredConfig.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof filteredConfig === 'object') {
+            return Object.keys(filteredConfig)
+                .filter(url => filteredConfig[url]?.read !== false)
                 .map(url => this.normalizeRelayUrl(url));
         }
         return [];
@@ -185,11 +217,12 @@ export class RelayConfigUtils {
      * リレー設定からwriteリレーのみを抽出
      */
     static extractWriteRelays(config: RelayConfig): string[] {
-        if (Array.isArray(config)) {
-            return config.map(url => this.normalizeRelayUrl(url));
-        } else if (typeof config === 'object') {
-            return Object.keys(config)
-                .filter(url => config[url]?.write !== false)
+        const filteredConfig = this.filterDecommissionedRelayConfig(config);
+        if (Array.isArray(filteredConfig)) {
+            return filteredConfig.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof filteredConfig === 'object') {
+            return Object.keys(filteredConfig)
+                .filter(url => filteredConfig[url]?.write !== false)
                 .map(url => this.normalizeRelayUrl(url));
         }
         return [];
@@ -199,11 +232,23 @@ export class RelayConfigUtils {
      * リレー設定から全リレーを抽出
      */
     static extractAllRelays(config: RelayConfig): string[] {
-        if (Array.isArray(config)) {
-            return config.map(url => this.normalizeRelayUrl(url));
-        } else if (typeof config === 'object') {
-            return Object.keys(config).map(url => this.normalizeRelayUrl(url));
+        const filteredConfig = this.filterDecommissionedRelayConfig(config);
+        if (Array.isArray(filteredConfig)) {
+            return filteredConfig.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof filteredConfig === 'object') {
+            return Object.keys(filteredConfig).map(url => this.normalizeRelayUrl(url));
         }
         return [];
     }
+}
+
+function hasExplicitRelayPort(url: string): boolean {
+    const authority = url.trim().match(/^[a-z][a-z\d+.-]*:\/\/([^/?#]+)/i)?.[1];
+    if (!authority) return false;
+
+    if (authority.startsWith('[')) {
+        return /\]:\d+$/.test(authority);
+    }
+
+    return /:\d+$/.test(authority);
 }

@@ -2,6 +2,7 @@ import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { Signer } from "nostr-tools/signer";
 import type { PostResult } from "../types";
 import { PostEventSender } from "../postEventBuilder";
+import { RelayConfigUtils } from "../relayConfigUtils";
 import { normalizeServerUrl } from "./uploadDestinationPresets";
 
 export const BUD03_KIND = 10063;
@@ -87,6 +88,12 @@ export function fetchBud03ServerList(params: {
     timeoutMs?: number;
 }): Promise<Bud03FetchResult> {
     const { rxNostr, pubkeyHex, relays, timeoutMs = 4000 } = params;
+    const hasExplicitRelays = relays !== undefined;
+    const sanitizedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(relays);
+
+    if (hasExplicitRelays && sanitizedRelays.length === 0) {
+        return Promise.resolve({ success: false, servers: [], error: "not_found" });
+    }
 
     return new Promise((resolve) => {
         const rxReq = createRxBackwardReq();
@@ -125,7 +132,10 @@ export function fetchBud03ServerList(params: {
         try {
             timeoutId = setTimeout(() =>
                 safeResolve({ success: false, servers: [], error: "timeout" }), timeoutMs);
-            subscription = rxNostr.use(rxReq, relays?.length ? { on: { relays } } : undefined).subscribe({
+            subscription = rxNostr.use(
+                rxReq,
+                hasExplicitRelays ? { on: { relays: sanitizedRelays } } : undefined,
+            ).subscribe({
                 next: (packet: any) => {
                     if (packet?.event?.kind === BUD03_KIND && packet.event.pubkey === pubkeyHex) {
                         events.push(packet.event as Bud03ServerListEvent);
