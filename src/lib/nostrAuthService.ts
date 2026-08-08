@@ -13,14 +13,7 @@ import {
     prepareSignedEventTemplate,
     validateSignedEventResult,
 } from "./signedEventResultValidator";
-
-function base64Encode(value: string): string {
-    const binary = encodeURIComponent(value).replace(
-        /%([0-9A-F]{2})/g,
-        (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)),
-    );
-    return btoa(binary);
-}
+import { encodeBlossomAuthorizationHeader } from "./upload/blossomAuthorization";
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
@@ -182,7 +175,7 @@ export class NostrAuthService implements AuthService {
         });
 
         assertCurrentSession(sessionPubkey);
-        return `Nostr ${base64Encode(JSON.stringify(event))}`;
+        return encodeBlossomAuthorizationHeader(JSON.stringify(event));
     }
 }
 

@@ -353,10 +353,13 @@ describe('NostrAuthService', () => {
     describe('buildBlossomAuthorizationHeader', () => {
         function decodeNostrHeader(header: string): any {
             const token = header.replace(/^Nostr\s+/, '');
-            return JSON.parse(atob(token));
+            const padded = token.replace(/-/g, '+').replace(/_/g, '/')
+                + '='.repeat((4 - (token.length % 4)) % 4);
+            const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+            return JSON.parse(new TextDecoder().decode(bytes));
         }
 
-        it('blossom.band でも nipb7 互換の非 scoped Base64 token を返す', async () => {
+        it('blossom.band でもBase64url・paddingなしのBUD-11 tokenを返す', async () => {
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
 
@@ -376,7 +379,8 @@ describe('NostrAuthService', () => {
             expect(event.tags).toContainEqual(['t', 'upload']);
             expect(event.tags).toContainEqual(['x', 'a'.repeat(64)]);
             expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
-            expect(token).toBe(btoa(JSON.stringify(event)));
+            expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+            expect(token).not.toMatch(/[+/=]/);
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
@@ -412,7 +416,7 @@ describe('NostrAuthService', () => {
             };
         });
 
-        it('generic Blossom にも同じ非 scoped Base64 token を返す', async () => {
+        it('generic Blossom にも同じBase64url・paddingなしtokenを返す', async () => {
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
 
@@ -425,14 +429,15 @@ describe('NostrAuthService', () => {
             });
 
             const token = result.replace(/^Nostr\s+/, '');
-            const event = JSON.parse(atob(token));
+            const event = decodeNostrHeader(result);
 
             expect(event.kind).toBe(24242);
             expect(event.content).toBe('blossom stuff');
             expect(event.tags).toContainEqual(['t', 'upload']);
             expect(event.tags).toContainEqual(['x', 'b'.repeat(64)]);
             expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
-            expect(token).toBe(btoa(JSON.stringify(event)));
+            expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+            expect(token).not.toMatch(/[+/=]/);
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });

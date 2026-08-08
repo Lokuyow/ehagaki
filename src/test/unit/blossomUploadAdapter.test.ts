@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
+import { BlossomUploadAdapter, createBlossomClient } from "../../lib/upload/BlossomUploadAdapter";
 import type { UploadDestination } from "../../lib/types";
 import { createJsonResponse } from "../uploadResponseTestUtils";
 
@@ -38,6 +38,24 @@ function createDestination(): UploadDestination {
         schemaVersion: 1,
     };
 }
+
+function decodeBase64UrlHeader(header: string): string {
+    const token = header.replace(/^Nostr /, "");
+    const padded = token.replace(/-/g, "+").replace(/_/g, "/")
+        + "=".repeat((4 - (token.length % 4)) % 4);
+    return new TextDecoder().decode(Uint8Array.from(atob(padded), (character) => character.charCodeAt(0)));
+}
+
+type BlossomHttpCall = {
+    httpCall: (
+        method: string,
+        url: string,
+        contentType?: string,
+        addAuthorization?: () => Promise<string>,
+        body?: File | Blob,
+        result?: unknown,
+    ) => Promise<unknown>;
+};
 
 afterEach(() => {
     vi.useRealTimers();
@@ -115,6 +133,75 @@ describe("BlossomUploadAdapter", () => {
                 method: "PUT",
             }),
         );
+        const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const authorization = (firstCall[1].headers as Record<string, string>).Authorization;
+
+        expect(authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+        expect(authorization).not.toMatch(/[+/=]/);
+        expect(JSON.parse(decodeBase64UrlHeader(authorization))).toEqual(await signer.signEvent.mock.results[0].value);
+    });
+
+    it.each([
+        { authorization: undefined, description: "a missing Authorization" },
+        { authorization: "", description: "an empty Authorization" },
+        { authorization: "   ", description: "a whitespace Authorization" },
+        { authorization: "Bearer token", description: "a wrong Authorization scheme" },
+        { authorization: "Nostr abc$", description: "a malformed Authorization token" },
+        { authorization: "Nostr bm90IGpzb24=", description: "a non-JSON Authorization payload" },
+    ])("does not start PUT for $description", async ({ authorization }) => {
+        const fetchMock = vi.fn();
+        const client = createBlossomClient(
+            createDestination(),
+            {
+                getPublicKey: async () => "f".repeat(64),
+                signEvent: async () => ({} as any),
+            },
+            fetchMock as unknown as typeof fetch,
+        ) as unknown as BlossomHttpCall;
+
+        await expect(client.httpCall(
+            "PUT",
+            "upload",
+            "image/png",
+            async () => authorization as string,
+            new Blob(["test"], { type: "image/png" }),
+            {},
+        )).rejects.toThrow();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps an already Base64url PUT Authorization header valid", async () => {
+        const eventJson = JSON.stringify({
+            id: "a".repeat(64),
+            pubkey: "b".repeat(64),
+            sig: "c".repeat(128),
+            kind: 24242,
+            created_at: 1_700_000_000,
+            content: "blossom stuff",
+            tags: [["t", "upload"]],
+        });
+        const token = btoa(eventJson).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+        const client = createBlossomClient(
+            createDestination(),
+            {
+                getPublicKey: async () => "f".repeat(64),
+                signEvent: async () => ({} as any),
+            },
+            fetchMock as unknown as typeof fetch,
+        ) as unknown as BlossomHttpCall;
+
+        await client.httpCall(
+            "PUT",
+            "upload",
+            "image/png",
+            async () => `Nostr ${token}`,
+            new Blob(["test"], { type: "image/png" }),
+            {},
+        );
+
+        const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect((firstCall[1].headers as Record<string, string>).Authorization).toBe(`Nostr ${token}`);
     });
 
     it("waits until an uploaded image URL becomes loadable", async () => {
@@ -167,7 +254,7 @@ describe("BlossomUploadAdapter", () => {
         const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
         const authService = {
             buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
+            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ"),
         };
 
         const result = await adapter.testConnection({
@@ -193,6 +280,10 @@ describe("BlossomUploadAdapter", () => {
                 "X-Content-Type": "image/png",
             }),
         );
+        const authorization = (firstCall[1].headers as Record<string, string>).Authorization;
+        expect(authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+        expect(authorization).not.toMatch(/[+/=]/);
+        expect(JSON.parse(decodeBase64UrlHeader(authorization))).toMatchObject({ kind: 24242 });
     });
 
     it("infers supported MIME types from a bounded set of BUD-06 HEAD probes", async () => {
