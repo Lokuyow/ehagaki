@@ -18,9 +18,11 @@
 
     const HARNESS_SECRET_KEY = generateSecretKey();
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
-    const TOTAL_POSTS = 70;
+    const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
+    const TOTAL_POSTS = isSparseOldestScenario ? 120 : 70;
     const SEARCH_MATCHING_POSTS = 55;
-    const isSparseScenario = new URLSearchParams(window.location.search).has("sparse");
+    const isSparseScenario = new URLSearchParams(window.location.search).has("sparse")
+        || isSparseOldestScenario;
     const isExportScenario = new URLSearchParams(window.location.search).has("export");
     const HARNESS_YEAR = new Date().getFullYear();
     const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
@@ -58,6 +60,7 @@
         importEventJsonl: string;
         sparseVisiblePostContent: string;
         sparseStoredPostContent: string;
+        absoluteOldestPostContent: string;
     };
 
     type HarnessWindow = Window &
@@ -301,6 +304,7 @@
     const scrollTargetPost = posts[60];
     const sparseVisiblePost = posts[29];
     const sparseStoredPost = posts[31];
+    const absoluteOldestPost = posts[posts.length - 1];
     const initialMonthLabel = formatPostHistoryMonthLabel(
         posts[0].postedAt,
         "ja",
@@ -334,6 +338,7 @@
         importEventJsonl: IMPORT_EVENT_JSONL,
         sparseVisiblePostContent: sparseVisiblePost.content,
         sparseStoredPostContent: sparseStoredPost.content,
+        absoluteOldestPostContent: absoluteOldestPost.content,
     };
 
     onMount(async () => {
@@ -401,6 +406,7 @@
             importEventJsonl: IMPORT_EVENT_JSONL,
             sparseVisiblePostContent: sparseVisiblePost.content,
             sparseStoredPostContent: sparseStoredPost.content,
+            absoluteOldestPostContent: absoluteOldestPost.content,
         };
     });
 </script>

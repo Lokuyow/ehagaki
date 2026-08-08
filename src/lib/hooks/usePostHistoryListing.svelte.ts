@@ -737,12 +737,15 @@ export function usePostHistoryListing({
         !isSearchMode
         && !isRefetchingAroundCurrentView
         && state.hasOlderLocal
-        && !(
-            typeof visibleOldestCreatedAt === "number"
-            && (
-                state.visibleUntil === null
-                    ? state.hasJumpCacheAnchors
-                    : visibleOldestCreatedAt < state.visibleUntil
+        && (
+            state.listingMode === "sparse"
+            || !(
+                typeof visibleOldestCreatedAt === "number"
+                && (
+                    state.visibleUntil === null
+                        ? state.hasJumpCacheAnchors
+                        : visibleOldestCreatedAt < state.visibleUntil
+                )
             )
         ),
     );
@@ -1975,6 +1978,15 @@ export function usePostHistoryListing({
                         limit: 1,
                     })
                     : Promise.resolve([])
+                : state.sparseSource === "jump"
+                    ? oldestCursor
+                        ? postHistoryRepository.getOlderVisibleChunk({
+                            pubkeyHex,
+                            visibleUntil: null,
+                            cursor: oldestCursor,
+                            limit: 1,
+                        })
+                        : Promise.resolve([])
                 : oldestCursor
                     ? postHistoryRepository.getOlderVisibleChunk({
                         pubkeyHex,
@@ -3430,6 +3442,39 @@ export function usePostHistoryListing({
     async function jumpToOldest(): Promise<boolean> {
         if (isSearchMode || !canJumpToOldest) {
             return false;
+        }
+
+        if (state.listingMode === "sparse") {
+            clearContiguousProgress();
+            const pubkeyHex = getPubkeyHex();
+            if (!pubkeyHex) {
+                return false;
+            }
+
+            const requestId = ++loadRequestId;
+            const posts = await postHistoryRepository.getVisibleChunkFromCreatedAt({
+                pubkeyHex,
+                visibleUntil: state.visibleUntil,
+                createdAt: 0,
+                limit: pageSize,
+                query: {
+                    contiguous: false,
+                },
+            });
+
+            if (!getShow() || requestId !== loadRequestId) {
+                return false;
+            }
+
+            if (posts.length === 0) {
+                return false;
+            }
+
+            refreshTotalCountFromRepository();
+            state.loadedPosts = posts;
+            resetOlderBackfillSearchState();
+            await refreshTimelineAvailability(pubkeyHex, posts, requestId);
+            return true;
         }
 
         return jumpToCreatedAt(0);
