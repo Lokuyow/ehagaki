@@ -381,12 +381,30 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(dropZone).toContainText('JSONLファイルをここにドラッグ＆ドロップ');
     });
 
-    test('saved posts outside the visible range can be viewed without changing the range', async ({ page }) => {
+    test('saved posts outside the visible range can be viewed without changing the range', async ({ page, isMobile }) => {
         const harness = await gotoSparseHarness(page);
 
         await expectSummary(page, harness.totalPosts);
         await expect(page.getByText(harness.sparseVisiblePostContent, { exact: true })).toBeVisible();
         await expect(page.getByText('保存済みの古い投稿を表示', { exact: true })).toBeVisible();
+        await expect(page.getByText('この先には未取得の期間がある可能性があります。保存済みの古い投稿を表示できます。', { exact: true })).toHaveCount(0);
+
+        const boundaryLayout = await page.locator('.post-history-saved-boundary-actions').evaluate((element) => {
+            const actionElement = element as HTMLElement;
+            const buttons = Array.from(actionElement.querySelectorAll<HTMLElement>('button'));
+            return {
+                justifyContent: getComputedStyle(actionElement).justifyContent,
+                alignItems: getComputedStyle(actionElement).alignItems,
+                buttonRects: buttons.map((button) => {
+                    const rect = button.getBoundingClientRect();
+                    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                }),
+            };
+        });
+        expect(boundaryLayout.justifyContent).toBe('center');
+        expect(boundaryLayout.alignItems).toBe(isMobile ? 'center' : 'flex-start');
+        expect(boundaryLayout.buttonRects.length).toBeGreaterThan(0);
+        expect(new Set(boundaryLayout.buttonRects.map((rect) => rect.height)).size).toBe(1);
 
         await page.getByRole('button', { name: '保存済みの古い投稿を表示' }).click();
 

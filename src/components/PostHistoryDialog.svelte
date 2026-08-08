@@ -2773,7 +2773,6 @@
 
             {#if history.showSavedPostsBoundary}
                 <div class="post-history-saved-boundary" role="status">
-                    <p>{$_("postHistory.savedOlderPostsBoundary")}</p>
                     <div class="post-history-saved-boundary-actions">
                         {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays}
                             <Button
@@ -3902,6 +3901,13 @@
         background: color-mix(in srgb, var(--bg-input) 72%, transparent);
     }
 
+    .post-history-saved-boundary {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
     .post-history-saved-boundary p,
     .post-history-sparse-state p {
         margin: 0;
@@ -3909,8 +3915,31 @@
 
     .post-history-saved-boundary-actions {
         display: flex;
+        width: fit-content;
+        max-width: 100%;
+        box-sizing: border-box;
+        justify-self: center;
         flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
         gap: 8px;
+    }
+
+    :global(.post-history-saved-boundary-actions .post-history-nav-button) {
+        height: 52px;
+    }
+
+    @media (max-width: 600px) {
+        .post-history-saved-boundary-actions {
+            width: min(100%, 320px);
+            flex-direction: column;
+            align-items: center;
+        }
+
+        :global(.post-history-saved-boundary-actions .post-history-nav-button) {
+            width: 100%;
+            flex: 0 0 52px;
+        }
     }
 
     .import-icon {
