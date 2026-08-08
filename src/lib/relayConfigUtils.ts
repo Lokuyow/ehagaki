@@ -103,9 +103,7 @@ export class RelayConfigUtils {
 
     private static isDecommissionedRelayUrl(url: string): boolean {
         const normalized = this.normalizeExternalRelayUrlCandidate(url);
-        return normalized !== null
-            && !hasExplicitRelayPort(url)
-            && DECOMMISSIONED_RELAY_URLS.has(normalized);
+        return normalized !== null && DECOMMISSIONED_RELAY_URLS.has(normalized);
     }
 
     private static normalizeExternalRelayUrlCandidate(url: string): string | null {
@@ -240,15 +238,4 @@ export class RelayConfigUtils {
         }
         return [];
     }
-}
-
-function hasExplicitRelayPort(url: string): boolean {
-    const authority = url.trim().match(/^[a-z][a-z\d+.-]*:\/\/([^/?#]+)/i)?.[1];
-    if (!authority) return false;
-
-    if (authority.startsWith('[')) {
-        return /\]:\d+$/.test(authority);
-    }
-
-    return /:\d+$/.test(authority);
 }

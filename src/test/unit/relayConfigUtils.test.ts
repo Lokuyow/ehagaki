@@ -20,10 +20,14 @@ describe('RelayConfigUtils', () => {
             ).toBeNull();
         });
 
-        it('サービス終了 relay を正規化差を含めて除外する', () => {
-            expect(RelayConfigUtils.normalizeExternalRelayUrl('wss://relay.nostr.band')).toBeNull();
-            expect(RelayConfigUtils.normalizeExternalRelayUrl('wss://NRELAY.C-STELLAR.NET/')).toBeNull();
-            expect(RelayConfigUtils.normalizeExternalRelayUrl('wss://nrelay-jp.c-stellar.net')).toBeNull();
+        it.each(DECOMMISSIONED_RELAYS)('サービス終了 relay の canonical URL を除外する: %s', (relay) => {
+            expect(RelayConfigUtils.normalizeExternalRelayUrl(relay)).toBeNull();
+            expect(RelayConfigUtils.normalizeExternalRelayUrl(relay.slice(0, -1))).toBeNull();
+        });
+
+        it('ホスト名の大文字小文字差と default port 443 も除外する', () => {
+            expect(RelayConfigUtils.normalizeExternalRelayUrl('wss://RELAY.NOSTR.BAND')).toBeNull();
+            expect(RelayConfigUtils.normalizeExternalRelayUrl('wss://relay.nostr.band:443')).toBeNull();
         });
     });
 
@@ -48,15 +52,15 @@ describe('RelayConfigUtils', () => {
             ]);
         });
 
-        it('類似ホストや異なる port/path は除外しない', () => {
+        it('類似ホスト、path、非default port は除外しない', () => {
             expect(RelayConfigUtils.sanitizeExternalRelayUrls([
                 'wss://relay.nostr.band.example.com',
-                'wss://relay.nostr.band:443',
                 'wss://relay.nostr.band/path',
+                'wss://relay.nostr.band:444',
             ])).toEqual([
                 'wss://relay.nostr.band.example.com/',
-                'wss://relay.nostr.band/',
                 'wss://relay.nostr.band/path',
+                'wss://relay.nostr.band:444/',
             ]);
         });
     });
