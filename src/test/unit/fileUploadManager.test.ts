@@ -38,7 +38,7 @@ vi.mock("../../lib/utils/fileSizeUtils", () => ({
 }));
 
 vi.mock("../../lib/utils/fileUtils", () => ({
-    calculateSHA256Hex: vi.fn(async () => "mockhash"),
+    calculateSHA256Hex: vi.fn(async () => "a".repeat(64)),
     getImageDimensions: vi.fn(async () => ({ width: 100, height: 200 })),
     renameByMimeType: vi.fn((name, type) => name)
 }));
@@ -555,10 +555,11 @@ describe('FileUploadManager', () => {
             );
             mockFetch
                 .mockResolvedValueOnce(new Response(JSON.stringify({
-                    url: 'https://blossom.band/mockhash.jpg',
-                    sha256: 'mockhash',
+                    url: `https://blossom.band/${"a".repeat(64)}.jpg`,
+                    sha256: "a".repeat(64),
                     size: file.size,
                     type: file.type,
+                    uploaded: 1_700_000_000,
                 }), {
                     status: 200,
                     headers: { 'content-type': 'application/json' },

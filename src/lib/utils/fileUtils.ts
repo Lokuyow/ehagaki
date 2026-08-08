@@ -10,7 +10,7 @@ import { calculateImageDisplaySize } from './mediaNodeUtils';
  * 画像のSHA-256ハッシュ計算
  */
 export async function calculateSHA256Hex(
-    file: File,
+    file: Blob,
     crypto: SubtleCrypto = window.crypto.subtle,
     isUploadAborted: () => boolean = isDefaultUploadAborted,
 ): Promise<string> {
