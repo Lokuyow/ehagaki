@@ -54,6 +54,7 @@ describe("bud03ServerList", () => {
                 subscribe: vi.fn((observer) => {
                     observer.next({
                         event: {
+                            id: "a".repeat(64),
                             kind: BUD03_KIND,
                             pubkey: "pubkey",
                             created_at: 10,
@@ -62,6 +63,7 @@ describe("bud03ServerList", () => {
                     });
                     observer.next({
                         event: {
+                            id: "b".repeat(64),
                             kind: BUD03_KIND,
                             pubkey: "pubkey",
                             created_at: 20,
@@ -80,6 +82,57 @@ describe("bud03ServerList", () => {
         });
 
         expect(result.success).toBe(true);
+        expect(result.servers).toEqual(["https://new.example.com"]);
+    });
+
+    it.each([
+        ["high then low", ["b", "a"]],
+        ["low then high", ["a", "b"]],
+    ])("selects the lowest event ID for same-created_at candidates (%s)", async (_label, ids) => {
+        const events = ids.map((id) => ({
+            id: id.repeat(64),
+            kind: BUD03_KIND,
+            pubkey: "pubkey",
+            created_at: 20,
+            tags: [["server", id === "a" ? "https://low.example.com" : "https://high.example.com"]],
+        }));
+        const rxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer) => {
+                    for (const event of events) observer.next({ event });
+                    observer.complete();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        };
+
+        const result = await fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "pubkey" });
+
+        expect(result.event?.id).toBe("a".repeat(64));
+        expect(result.servers).toEqual(["https://low.example.com"]);
+    });
+
+    it("prefers a newer created_at regardless of event ID", async () => {
+        const rxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer) => {
+                    observer.next({ event: {
+                        id: "a".repeat(64), kind: BUD03_KIND, pubkey: "pubkey", created_at: 100,
+                        tags: [["server", "https://old.example.com"]],
+                    } });
+                    observer.next({ event: {
+                        id: "f".repeat(64), kind: BUD03_KIND, pubkey: "pubkey", created_at: 101,
+                        tags: [["server", "https://new.example.com"]],
+                    } });
+                    observer.complete();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        };
+
+        const result = await fetchBud03ServerList({ rxNostr: rxNostr as never, pubkeyHex: "pubkey" });
+
+        expect(result.event?.id).toBe("f".repeat(64));
         expect(result.servers).toEqual(["https://new.example.com"]);
     });
 
