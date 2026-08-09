@@ -188,6 +188,8 @@ export const mockRelayStoreModule = {
         set: vi.fn(),
     },
     setRelayManager: vi.fn(),
+    invalidatePendingRelayConfigOperations: vi.fn(),
+    resetRelayConfigStore: vi.fn(),
     loadRelayConfigFromStorage: vi.fn(),
     saveRelayConfigToStorage: vi.fn(),
 };

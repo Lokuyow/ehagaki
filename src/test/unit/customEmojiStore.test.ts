@@ -132,4 +132,132 @@ describe("customEmojiStore", () => {
         expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledWith("pubkey", []);
         expect(customEmojiMocks.cacheCustomEmojiImages).toHaveBeenCalledWith([]);
     });
+
+    it("keeps B state and caches when an older A load succeeds after an account switch", async () => {
+        const aFetch = createDeferred<CustomEmojiItem[]>();
+        const bFetch = createDeferred<CustomEmojiItem[]>();
+        const aItems = [createEmoji("a", "https://example.com/a.webp")];
+        const bItems = [createEmoji("b", "https://example.com/b.webp")];
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue([]);
+        customEmojiMocks.fetchCustomEmojiList.mockImplementation(({ pubkey }: { pubkey: string }) =>
+            pubkey === "account-a" ? aFetch.promise : bFetch.promise,
+        );
+
+        const aLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a" });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(1));
+        const bLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-b" });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(2));
+
+        bFetch.resolve(bItems);
+        await bLoad;
+        aFetch.resolve(aItems);
+        await aLoad;
+
+        expect(customEmojiStore.items).toEqual(bItems);
+        expect(customEmojiStore.error).toBeNull();
+        expect(customEmojiStore.loading).toBe(false);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledTimes(1);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledWith("account-b", bItems);
+        expect(customEmojiMocks.cacheCustomEmojiImages).toHaveBeenCalledWith(["https://example.com/b.webp"]);
+
+        await customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-b" });
+        expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not let an older failed load clear the newer account's loading state or set its error", async () => {
+        const aFetch = createDeferred<CustomEmojiItem[]>();
+        const bFetch = createDeferred<CustomEmojiItem[]>();
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue([]);
+        customEmojiMocks.fetchCustomEmojiList.mockImplementation(({ pubkey }: { pubkey: string }) =>
+            pubkey === "account-a" ? aFetch.promise : bFetch.promise,
+        );
+
+        const aLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a" });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(1));
+        const bLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-b" });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(2));
+
+        aFetch.reject(new Error("A failed"));
+        await aLoad;
+        expect(customEmojiStore.loading).toBe(true);
+        expect(customEmojiStore.error).toBeNull();
+
+        bFetch.resolve([createEmoji("b", "https://example.com/b.webp")]);
+        await bLoad;
+        expect(customEmojiStore.error).toBeNull();
+        expect(customEmojiStore.loading).toBe(false);
+    });
+
+    it("does not restore items or caches when reset invalidates a pending load", async () => {
+        const fetch = createDeferred<CustomEmojiItem[]>();
+        const items = [createEmoji("a", "https://example.com/a.webp")];
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue([]);
+        customEmojiMocks.fetchCustomEmojiList.mockReturnValue(fetch.promise);
+
+        const load = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a" });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledOnce());
+        customEmojiStore.reset();
+        fetch.resolve(items);
+        await load;
+
+        expect(customEmojiStore.items).toEqual([]);
+        expect(customEmojiStore.error).toBeNull();
+        expect(customEmojiStore.loading).toBe(false);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).not.toHaveBeenCalled();
+        expect(customEmojiMocks.cacheCustomEmojiImages).not.toHaveBeenCalled();
+    });
+
+    it("invalidates a pending load without clearing the current emoji state", async () => {
+        const currentItems = [createEmoji("current", "https://example.com/current.webp")];
+        const staleFetch = createDeferred<CustomEmojiItem[]>();
+        customEmojiMocks.fetchCustomEmojiList.mockResolvedValueOnce(currentItems);
+        await customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a", force: true });
+        customEmojiMocks.fetchCustomEmojiList.mockReturnValue(staleFetch.promise);
+
+        const staleLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a", force: true });
+        await vi.waitFor(() => expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalledTimes(2));
+        customEmojiStore.invalidatePendingLoads();
+        staleFetch.resolve([createEmoji("stale", "https://example.com/stale.webp")]);
+        await staleLoad;
+
+        expect(customEmojiStore.items).toEqual(currentItems);
+        expect(customEmojiStore.loading).toBe(false);
+    });
+
+    it("does not let an older same-account force reload overwrite the newer result or cache", async () => {
+        const firstFetch = createDeferred<CustomEmojiItem[]>();
+        const secondFetch = createDeferred<CustomEmojiItem[]>();
+        const firstItems = [createEmoji("first", "https://example.com/first.webp")];
+        const secondItems = [createEmoji("second", "https://example.com/second.webp")];
+        customEmojiMocks.fetchCustomEmojiList
+            .mockReturnValueOnce(firstFetch.promise)
+            .mockReturnValueOnce(secondFetch.promise);
+
+        const firstLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a", force: true });
+        const secondLoad = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a", force: true });
+        secondFetch.resolve(secondItems);
+        await secondLoad;
+        firstFetch.resolve(firstItems);
+        await firstLoad;
+
+        expect(customEmojiStore.items).toEqual(secondItems);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledTimes(1);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledWith("account-a", secondItems);
+    });
+
+    it("does not let prefetch invalidate a pending foreground load", async () => {
+        const fetch = createDeferred<CustomEmojiItem[]>();
+        const freshItems = [createEmoji("fresh", "https://example.com/fresh.webp")];
+        customEmojiMocks.fetchCustomEmojiList.mockReturnValue(fetch.promise);
+
+        const load = customEmojiStore.load({ rxNostr: {} as never, pubkey: "account-a", force: true });
+        await vi.waitFor(() => expect(customEmojiStore.loading).toBe(true));
+        await customEmojiStore.prefetchCache({ pubkey: "account-a" });
+        fetch.resolve(freshItems);
+        await load;
+
+        expect(customEmojiStore.items).toEqual(freshItems);
+        expect(customEmojiStore.loading).toBe(false);
+        expect(customEmojiStore.error).toBeNull();
+    });
 });

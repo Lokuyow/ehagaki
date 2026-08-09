@@ -62,6 +62,8 @@
     setRelayManager,
     relayListUpdatedStore,
     saveRelayConfigToStorage,
+    invalidatePendingRelayConfigOperations,
+    resetRelayConfigStore,
   } from "./stores/relayStore.svelte";
   import {
     sharedMediaStore,
@@ -205,6 +207,7 @@
   import { sanitizePlainText } from "./lib/utils/domSanitizer";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
+  import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -689,6 +692,16 @@
       authService.restoreAccount(pubkeyHex, type),
     handlePostAuth,
     resetUploadDisplayState,
+    invalidatePendingAccountScopedAsyncState: () => {
+      customEmojiStore.invalidatePendingLoads();
+      uploadDestinationStore.invalidatePendingOperations();
+      invalidatePendingRelayConfigOperations();
+    },
+    clearAccountScopedAsyncState: () => {
+      customEmojiStore.reset();
+      uploadDestinationStore.reset();
+      resetRelayConfigStore();
+    },
     logoutAccountFromAuthService: (pubkeyHex, options) =>
       authService.logoutAccount(pubkeyHex, {
         notifyParentClient: options.notifyParentClient,
@@ -736,6 +749,16 @@
       showLastAccountLogoutConfirm = next;
     },
     resetUploadDisplayState,
+    invalidatePendingAccountScopedAsyncState: () => {
+      customEmojiStore.invalidatePendingLoads();
+      uploadDestinationStore.invalidatePendingOperations();
+      invalidatePendingRelayConfigOperations();
+    },
+    clearAccountScopedAsyncState: () => {
+      customEmojiStore.reset();
+      uploadDestinationStore.reset();
+      resetRelayConfigStore();
+    },
     getCurrentRxNostr: () => rxNostr,
     setCurrentRxNostr: (next) => {
       rxNostr = next;
