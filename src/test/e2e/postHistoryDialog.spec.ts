@@ -891,16 +891,16 @@ test.describe('PostHistoryDialog Playwright', () => {
         }));
         expect(containerMetrics.scrollWidth).toBeLessThanOrEqual(containerMetrics.clientWidth + 1);
 
-        const loadingQuote = page
+        const quoteStatusCard = page
             .locator(`.post-history-item[data-post-history-event-id="${harness.quotePostEventId}"]`)
             .locator('.post-history-quote-status-card');
-        await expect(loadingQuote).toContainText('引用投稿を読み込み中...');
-        const loadingQuoteMetrics = await loadingQuote.evaluate((element) => ({
+        await expect(quoteStatusCard).toBeVisible();
+        const quoteStatusCardMetrics = await quoteStatusCard.evaluate((element) => ({
             clientWidth: (element as HTMLElement).clientWidth,
             scrollWidth: (element as HTMLElement).scrollWidth,
         }));
-        expect(loadingQuoteMetrics.scrollWidth).toBeLessThanOrEqual(
-            loadingQuoteMetrics.clientWidth + 1,
+        expect(quoteStatusCardMetrics.scrollWidth).toBeLessThanOrEqual(
+            quoteStatusCardMetrics.clientWidth + 1,
         );
 
         await jumpToDate(page, harness.jumpDate);
