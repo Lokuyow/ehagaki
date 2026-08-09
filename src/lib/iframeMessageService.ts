@@ -108,7 +108,7 @@ export class IframeMessageService {
 
         try {
             this.windowObj.parent.postMessage(payload, parentOrigin);
-            this.console.log(`親ウィンドウ (${parentOrigin}) にメッセージを送信しました:`, payload);
+            this.console.log(`iframe postMessage sent: ${payload.type}`);
             return true;
         } catch (error) {
             this.console.error('postMessageの送信に失敗しました:', error);
