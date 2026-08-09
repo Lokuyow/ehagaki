@@ -260,7 +260,7 @@ describe("IframeMessageService", () => {
       );
     });
 
-    it("正常にメッセージを送信する", () => {
+    it("wire payloadを維持し、成功ログにはmessage typeだけを含める", () => {
       const postMessageMock = vi.fn();
       mockWindow = {
         self: {},
@@ -280,7 +280,13 @@ describe("IframeMessageService", () => {
         namespace: EMBED_MESSAGE_NAMESPACE,
         version: EMBED_MESSAGE_VERSION,
         type: "post.success",
-        payload: { timestamp: 12345 },
+        requestId: "sensitive-request-id",
+        payload: {
+          timestamp: 12345,
+          eventId: "sensitive-event-id",
+          replyToEventId: "sensitive-reply-id",
+          quotedEventIds: ["sensitive-quote-id"],
+        },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(true);
@@ -288,10 +294,13 @@ describe("IframeMessageService", () => {
         payload,
         "https://example.com"
       );
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        expect.stringContaining("メッセージを送信しました"),
-        payload
-      );
+      expect(mockConsole.log).toHaveBeenCalledWith("iframe postMessage sent: post.success");
+      const loggedArguments = mockConsole.log.mock.calls.flat().join(" ");
+      expect(loggedArguments).not.toContain("sensitive-event-id");
+      expect(loggedArguments).not.toContain("sensitive-reply-id");
+      expect(loggedArguments).not.toContain("sensitive-quote-id");
+      expect(loggedArguments).not.toContain("sensitive-request-id");
+      expect(mockConsole.log.mock.calls.flat()).not.toContain(payload);
     });
 
     it("postMessage送信エラー時はfalseを返す", () => {
