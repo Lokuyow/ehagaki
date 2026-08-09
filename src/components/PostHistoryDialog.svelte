@@ -3546,7 +3546,12 @@
     }
 
     :global(.post-history-menu-content .menu-action-button .export-icon) {
-        mask-image: url("/icons/cloud_download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content .menu-action-button .import-icon) {
+        mask-image: url("/icons/download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
