@@ -12,6 +12,7 @@ import { normalizeServerUrl } from "./uploadDestinationPresets";
 export const BUD03_KIND = 10063;
 
 export interface Bud03ServerListEvent {
+    id?: string;
     kind: number;
     pubkey?: string;
     created_at?: number;
@@ -81,8 +82,17 @@ export function buildBud03EventTemplate(servers: string[], now = Math.floor(Date
 
 function getNewestBud03Event(events: Bud03ServerListEvent[]): Bud03ServerListEvent | null {
     return [...events]
-        .filter((event) => event.kind === BUD03_KIND && Array.isArray(event.tags))
-        .sort((left, right) => (right.created_at ?? 0) - (left.created_at ?? 0))[0] ?? null;
+        .filter((event) =>
+            event.kind === BUD03_KIND
+            && Array.isArray(event.tags)
+            && typeof event.id === "string"
+            && event.id.length > 0,
+        )
+        .sort((left, right) => {
+            const createdAtDifference = (right.created_at ?? 0) - (left.created_at ?? 0);
+            if (createdAtDifference !== 0) return createdAtDifference;
+            return left.id! < right.id! ? -1 : left.id! > right.id! ? 1 : 0;
+        })[0] ?? null;
 }
 
 export function fetchBud03ServerList(params: {
