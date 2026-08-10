@@ -448,7 +448,7 @@
                             <div class="destination-title">
                                 <span>{destination.name}</span>
                                 {#if destination.isDefault}
-                                    <span class="badge"
+                                    <span class="badge default-badge"
                                         >{$_(
                                             "settingsDialog.uploadDestinationDefault",
                                         ) || "既定"}</span
@@ -533,19 +533,6 @@
                         <Button
                             variant="default"
                             shape="rounded"
-                            onClick={() => testDestination(destination)}
-                            disabled={testingId === destination.id}
-                        >
-                            {testingId === destination.id
-                                ? $_(
-                                      "settingsDialog.uploadDestinationTesting",
-                                  ) || "確認中"
-                                : $_("settingsDialog.uploadDestinationTest") ||
-                                  "接続テスト"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
                             onClick={() =>
                                 uploadDestinationStore.setDefault(
                                     destination.id,
@@ -566,6 +553,19 @@
                                   "閉じる"
                                 : $_("settingsDialog.uploadDestinationEdit") ||
                                   "編集"}
+                        </Button>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() => testDestination(destination)}
+                            disabled={testingId === destination.id}
+                        >
+                            {testingId === destination.id
+                                ? $_(
+                                      "settingsDialog.uploadDestinationTesting",
+                                  ) || "確認中"
+                                : $_("settingsDialog.uploadDestinationTest") ||
+                                  "接続テスト"}
                         </Button>
                         <Button
                             variant="default"
@@ -622,7 +622,7 @@
                               ) || "BUD-03 から取得"}
                     </Button>
                     <Button
-                        variant="primary"
+                        variant="default"
                         shape="rounded"
                         onClick={publishBud03}
                         disabled={!canUseBud03 ||
@@ -790,6 +790,13 @@
         padding: 2px 7px;
         font-size: 0.75rem;
         font-weight: 400;
+    }
+
+    .badge.default-badge {
+        background-color: var(--theme);
+        border-color: var(--theme);
+        color: white;
+        font-weight: 500;
     }
 
     .badge.muted {
