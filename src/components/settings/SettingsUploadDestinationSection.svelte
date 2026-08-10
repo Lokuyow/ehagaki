@@ -531,7 +531,7 @@
                     </div>
                     <div class="destination-actions">
                         <Button
-                            variant="primary"
+                            variant="default"
                             shape="rounded"
                             onClick={() =>
                                 uploadDestinationStore.setDefault(
