@@ -3159,7 +3159,7 @@
         display: block;
         width: 100%;
         min-width: 0;
-        padding: 10px 12px 10px 52px;
+        padding: 10px 12px 10px 40px;
         border: 0;
         background: transparent;
         color: inherit;
