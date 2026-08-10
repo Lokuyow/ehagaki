@@ -127,7 +127,14 @@
                                               "settingsDialog.relay_read_disabled",
                                           ) || "Read disabled"}
                                 >
-                                    {relay.read ? "✓" : "–"}
+                                    {#if relay.read}
+                                        <span
+                                            class="relay-check-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                    {:else}
+                                        –
+                                    {/if}
                                 </span>
                                 <span
                                     class:enabled={relay.write}
@@ -140,7 +147,14 @@
                                               "settingsDialog.relay_write_disabled",
                                           ) || "Write disabled"}
                                 >
-                                    {relay.write ? "✓" : "–"}
+                                    {#if relay.write}
+                                        <span
+                                            class="relay-check-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                    {:else}
+                                        –
+                                    {/if}
                                 </span>
                                 <div class="relay-copy-cell">
                                     <Button
@@ -254,6 +268,14 @@
 
         .relay-capability.enabled {
             color: var(--theme);
+        }
+
+        .relay-check-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            vertical-align: middle;
+            mask-image: url("/icons/check_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
     }
     .relay-toggle-icon {
