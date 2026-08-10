@@ -531,20 +531,7 @@
                     </div>
                     <div class="destination-actions">
                         <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() => testDestination(destination)}
-                            disabled={testingId === destination.id}
-                        >
-                            {testingId === destination.id
-                                ? $_(
-                                      "settingsDialog.uploadDestinationTesting",
-                                  ) || "確認中"
-                                : $_("settingsDialog.uploadDestinationTest") ||
-                                  "接続テスト"}
-                        </Button>
-                        <Button
-                            variant="default"
+                            variant="primary"
                             shape="rounded"
                             onClick={() =>
                                 uploadDestinationStore.setDefault(
@@ -566,6 +553,19 @@
                                   "閉じる"
                                 : $_("settingsDialog.uploadDestinationEdit") ||
                                   "編集"}
+                        </Button>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() => testDestination(destination)}
+                            disabled={testingId === destination.id}
+                        >
+                            {testingId === destination.id
+                                ? $_(
+                                      "settingsDialog.uploadDestinationTesting",
+                                  ) || "確認中"
+                                : $_("settingsDialog.uploadDestinationTest") ||
+                                  "接続テスト"}
                         </Button>
                         <Button
                             variant="default"
@@ -622,7 +622,7 @@
                               ) || "BUD-03 から取得"}
                     </Button>
                     <Button
-                        variant="primary"
+                        variant="default"
                         shape="rounded"
                         onClick={publishBud03}
                         disabled={!canUseBud03 ||
