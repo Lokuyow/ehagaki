@@ -4,6 +4,7 @@ import { nip19 } from "nostr-tools";
 import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 
 export interface ReplyQuoteServiceDeps {
     console?: Console;
@@ -171,33 +172,11 @@ export class ReplyQuoteService {
         rootRelayHint: string | null;
         rootPubkey: string | null;
     } {
-        const eTags = event.tags.filter(tag => tag[0] === 'e');
-
-        // marked e-tags: "root" マーカーを探す
-        const rootTag = eTags.find(tag => tag[3] === 'root');
-        if (rootTag) {
-            return {
-                rootEventId: rootTag[1],
-                rootRelayHint: rootTag[2] || null,
-                rootPubkey: rootTag[4] || null,
-            };
-        }
-
-        // マーカーなしのe-tagsの場合はpositional: 最初のeタグがroot
-        if (eTags.length > 0) {
-            const firstETag = eTags[0];
-            return {
-                rootEventId: firstETag[1],
-                rootRelayHint: firstETag[2] || null,
-                rootPubkey: null,
-            };
-        }
-
-        // eタグなし: このイベント自体がroot（スレッドではない）
+        const references = parsePostHistoryThreadReferences(event);
         return {
-            rootEventId: null,
-            rootRelayHint: null,
-            rootPubkey: null,
+            rootEventId: references.rootId,
+            rootRelayHint: references.rootRelayHint,
+            rootPubkey: references.rootAuthorHint,
         };
     }
 

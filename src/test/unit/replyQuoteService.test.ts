@@ -10,6 +10,9 @@ import { FALLBACK_RELAYS } from "../../lib/relayLists";
 describe("ReplyQuoteService", () => {
     let service: ReplyQuoteService;
     let mockConsole: MockConsole;
+    const rootId = "1".repeat(64);
+    const parentId = "2".repeat(64);
+    const rootPubkey = "3".repeat(64);
 
     beforeEach(() => {
         mockConsole = createMockConsole();
@@ -24,16 +27,16 @@ describe("ReplyQuoteService", () => {
                 created_at: 1000,
                 kind: 1,
                 tags: [
-                    ["e", "root-id", "wss://relay.example.com", "root"],
-                    ["e", "parent-id", "wss://relay2.example.com", "reply"],
+                    ["e", rootId, "wss://relay.example.com", "root"],
+                    ["e", parentId, "wss://relay2.example.com", "reply"],
                 ],
                 content: "test",
                 sig: "sig1",
             };
 
             const result = service.extractThreadInfo(event);
-            expect(result.rootEventId).toBe("root-id");
-            expect(result.rootRelayHint).toBe("wss://relay.example.com");
+            expect(result.rootEventId).toBe(rootId);
+            expect(result.rootRelayHint).toBe("wss://relay.example.com/");
             expect(result.rootPubkey).toBeNull();
         });
 
@@ -44,15 +47,15 @@ describe("ReplyQuoteService", () => {
                 created_at: 1000,
                 kind: 1,
                 tags: [
-                    ["e", "root-id", "wss://relay.example.com", "root", "root-pubkey"],
+                    ["e", rootId, "wss://relay.example.com", "root", rootPubkey],
                 ],
                 content: "test",
                 sig: "sig1",
             };
 
             const result = service.extractThreadInfo(event);
-            expect(result.rootEventId).toBe("root-id");
-            expect(result.rootPubkey).toBe("root-pubkey");
+            expect(result.rootEventId).toBe(rootId);
+            expect(result.rootPubkey).toBe(rootPubkey);
         });
 
         it("マーカーなしのeタグの場合、最初のeタグをrootとする", () => {
@@ -62,16 +65,16 @@ describe("ReplyQuoteService", () => {
                 created_at: 1000,
                 kind: 1,
                 tags: [
-                    ["e", "first-id", "wss://relay.example.com"],
-                    ["e", "second-id", "wss://relay2.example.com"],
+                    ["e", rootId, "wss://relay.example.com"],
+                    ["e", parentId, "wss://relay2.example.com"],
                 ],
                 content: "test",
                 sig: "sig1",
             };
 
             const result = service.extractThreadInfo(event);
-            expect(result.rootEventId).toBe("first-id");
-            expect(result.rootRelayHint).toBe("wss://relay.example.com");
+            expect(result.rootEventId).toBe(rootId);
+            expect(result.rootRelayHint).toBe("wss://relay.example.com/");
         });
 
         it("eタグがない場合はすべてnullを返す", () => {
@@ -89,6 +92,61 @@ describe("ReplyQuoteService", () => {
             expect(result.rootEventId).toBeNull();
             expect(result.rootRelayHint).toBeNull();
             expect(result.rootPubkey).toBeNull();
+        });
+
+        it("不正なroot IDやhintをcomposer stateへ採用しない", () => {
+            const event: NostrEvent = {
+                id: "event1",
+                pubkey: "pubkey1",
+                created_at: 1000,
+                kind: 1,
+                tags: [["e", "not-an-event-id", "https://not-a-relay", "ROOT", "not-a-pubkey"]],
+                content: "test",
+                sig: "sig1",
+            };
+
+            expect(service.extractThreadInfo(event)).toEqual({
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+            });
+        });
+
+        it("markerを正規化し、valid rootからunsafeなhintだけを除外する", () => {
+            const event: NostrEvent = {
+                id: "event1",
+                pubkey: "pubkey1",
+                created_at: 1000,
+                kind: 1,
+                tags: [["e", rootId, "https://not-a-relay", "ROOT", "not-a-pubkey"]],
+                content: "test",
+                sig: "sig1",
+            };
+
+            expect(service.extractThreadInfo(event)).toEqual({
+                rootEventId: rootId,
+                rootRelayHint: null,
+                rootPubkey: null,
+            });
+        });
+
+        it("kind 42のchannel rootをkind 1のthread rootとして継承しない", () => {
+            const channelId = "4".repeat(64);
+            const event: NostrEvent = {
+                id: "event1",
+                pubkey: "pubkey1",
+                created_at: 1000,
+                kind: 42,
+                tags: [["e", channelId, "wss://channel.example.com", "ROOT", rootPubkey]],
+                content: "test",
+                sig: "sig1",
+            };
+
+            expect(service.extractThreadInfo(event)).toEqual({
+                rootEventId: null,
+                rootRelayHint: "wss://channel.example.com/",
+                rootPubkey,
+            });
         });
     });
 

@@ -28,7 +28,7 @@
 - event kind: 投稿先により`1`または`42`
 - 主なtag: marked `e` (`root`、`reply`)、`p`。kind 42ではchannel rootの`e`も必要になる。
 - 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/postManager.ts`、`src/lib/postHistoryNip10Utils.ts`、`src/stores/replyQuoteStore.svelte.ts`
-- 主な関数または責務: `ReplyQuoteService.extractThreadInfo`、`buildReplyTags`、`fetchReferencedEventTask`、`parseKind1ThreadReferences`、`parseKind42ThreadReferences`が取得とthread semanticsを分担する。
+- 主な関数または責務: `parsePostHistoryThreadReferences`（`parseKind1ThreadReferences`/`parseKind42ThreadReferences`）がNIP-10 thread semanticsのcanonical ownerであり、`ReplyQuoteService.extractThreadInfo`は既存composer shapeへのprojection、`buildReplyTags`はwire tag構築、`fetchReferencedEventTask`は取得を担う。
 - 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/postManager.test.ts`、`src/test/unit/postHistoryNip10Utils.test.ts`、`src/test/unit/replyQuoteStore.test.ts`
 - 注意点: root、直接parent、marker、author、relay hintを別々に検証する。kind 42のchannel rootとreply parentを混同しない。
 
@@ -147,7 +147,7 @@
 - event kind: profile metadata `0`、relay list metadata `10002`
 - 主なtag: kind 0自体の主要情報はJSON `content`。REQは`authors`、`kinds`、`until`、`limit`を使う。
 - 主な実装ファイル: `src/lib/profileManager.ts`、`src/lib/profileMetadataCache.svelte.ts`、`src/lib/relayProfileService.ts`、`src/lib/profileEventComparison.ts`、`src/lib/storage/profilesRepository.ts`
-- 主な関数または責務: `ProfileNetworkFetcher.fetchFromNetwork`、`ProfileManager`、`profileMetadataCache`、`RelayProfileService.fetchProfileRealtime`/`subscribeProfile`がnetwork、selection、cache、購読を分担する。
+- 主な関数または責務: `ProfileNetworkFetcher.fetchFromNetwork`、`ProfileManager`、`profileMetadataCache`、`RelayProfileService.fetchProfileRealtime`/`subscribeProfile`/`subscribeProfiles`がnetwork、selection、cache、購読を分担し、`useProfileProjectionSync`がcurrent/account UI projectionのlifecycleだけを所有する。
 - 関連テスト: `src/test/unit/profileManager.test.ts`、`src/test/unit/profileMetadataCache.test.ts`、`src/test/unit/relayProfileService.test.ts`、`src/test/unit/profileEventComparison.test.ts`、`src/test/unit/profilesRepository.test.ts`、`src/test/unit/ProfileComponent.test.ts`
 - 注意点: 複数relayのkind 0はevent freshnessと署名検証を考慮し、negative cache、同時要求共有、timeout、unsubscribeを保つ。
 

@@ -287,5 +287,9 @@ export async function triggerPostHistoryDirectReplyLifecycle(
         };
     } finally {
         removeInFlightPostHistoryDirectReplyLifecycleRequests(admittedRequestKeys);
+        await reconcilePendingDeletionRequestsForRequestKeys([
+            ...admittedRequestKeys,
+            ...uniqueRequestKeysFromCandidates(skippedCandidates),
+        ]).catch(() => undefined);
     }
 }
