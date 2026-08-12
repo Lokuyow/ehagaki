@@ -2257,6 +2257,47 @@ describe('PostManager統合テスト', () => {
             expect(pTags.some((t: string[]) => t[1] === authorPubkey1)).toBe(false);
         });
 
+        it('最終送信eventではunsafe relayを除外し、valid relayをqタグへ正規化して採用する', async () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ['https://unsafe.example/', 'wss://valid.example.com'],
+                author: authorPubkey1,
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any];
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            expect(qTags).toEqual([
+                ['q', eventId1, 'wss://valid.example.com/', authorPubkey1],
+            ]);
+            expect(qTags.flat()).not.toContain('https://unsafe.example/');
+        });
+
+        it('最終送信eventでは全relayがunsafeでもinline quoteを維持する', async () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ['https://unsafe.example/', 'http://also-unsafe.example/'],
+                author: authorPubkey1,
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any];
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            expect(qTags).toEqual([
+                ['q', eventId1, '', authorPubkey1],
+            ]);
+        });
+
         it('設定オン時はコンテンツ内のnostr:nevent1 URIからqタグとpタグを生成する', async () => {
             const nevent = nip19.neventEncode({
                 id: eventId1,

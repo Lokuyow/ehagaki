@@ -72,7 +72,7 @@
 - event kind: URIが指すeventに従う。
 - 主なtag: inline quoteでは解決結果から`q`、必要に応じて`p`を作る。
 - 主な実装ファイル: `src/lib/replyQuoteService.ts`、`src/lib/urlQueryHandler.ts`、`src/lib/embedComposerContextValidation.ts`、`src/lib/embedComposerContextNotification.ts`、`src/lib/composerTargetUtils.ts`、`src/lib/postHistoryQuoteUtils.ts`
-- 主な関数または責務: `generateNostrUri`、`extractInlineQuoteTags`、`decodeEventPointerValue`、`parseComposerTargetInput`が生成・decode・入力検証を分担する。
+- 主な関数または責務: `generateNostrUri`、`extractInlineQuoteTags`、`decodeEventPointerValue`、`parseComposerTargetInput`が生成・decode・入力検証を分担する。`extractInlineQuoteTags`のnote/nevent pointer projectionは`decodeEventPointerValue`へ委譲し、本文URI検出とq/p tag policyのみを保持する。
 - 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/urlQueryHandler.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/postHistoryQuoteUtils.test.ts`
 - 注意点: inline quoteの抽出対象はnote/neventである。post history表示でもnaddr URIはquote targetとして解決しないことがテストされている。
 

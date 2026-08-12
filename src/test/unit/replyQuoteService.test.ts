@@ -655,7 +655,7 @@ describe("ReplyQuoteService", () => {
             expect(tags).toHaveLength(1);
             expect(tags[0][0]).toBe("q");
             expect(tags[0][1]).toBe(eventId1);
-            expect(tags[0][2]).toBe("wss://relay.example.com");
+            expect(tags[0][2]).toBe("wss://relay.example.com/");
             expect(tags[0][3]).toBe(authorPubkey1);
         });
 
@@ -671,9 +671,39 @@ describe("ReplyQuoteService", () => {
             expect(tags).toHaveLength(2);
             expect(tags[0][0]).toBe("q");
             expect(tags[0][1]).toBe(eventId1);
-            expect(tags[0][2]).toBe("wss://relay.example.com");
+            expect(tags[0][2]).toBe("wss://relay.example.com/");
             expect(tags[0][3]).toBe(authorPubkey1);
             expect(tags[1]).toEqual(["p", authorPubkey1]);
+        });
+
+        it("unsafe relayを除外し、後続のvalid relayをqタグへ正規化して採用する", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["https://unsafe.example/", "wss://valid.example.com"],
+                author: authorPubkey1,
+            });
+
+            const tags = service.extractInlineQuoteTags(`nostr:${nevent}`, true);
+
+            expect(tags).toEqual([
+                ["q", eventId1, "wss://valid.example.com/", authorPubkey1],
+                ["p", authorPubkey1],
+            ]);
+        });
+
+        it("全relayがunsafeでもquoteを維持し、relay fieldを空にする", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["https://unsafe.example/", "http://also-unsafe.example/"],
+                author: authorPubkey1,
+            });
+
+            const tags = service.extractInlineQuoteTags(`nostr:${nevent}`, true);
+
+            expect(tags).toEqual([
+                ["q", eventId1, "", authorPubkey1],
+                ["p", authorPubkey1],
+            ]);
         });
 
         it("nostr:note1... URIからqタグを抽出する（pタグなし）", () => {
