@@ -177,6 +177,26 @@ export class NostrAuthService implements AuthService {
         assertCurrentSession(sessionPubkey);
         return encodeBlossomAuthorizationHeader(JSON.stringify(event));
     }
+
+    async createBlossomConnectionTestAuthorization(params: {
+        serverUrl: string;
+        method: string;
+        sha256?: string;
+        contentType?: string;
+        contentLength?: number;
+    }): Promise<{
+        authorization: string;
+        assertSession: () => void;
+    }> {
+        const sessionPubkey = captureActiveSessionPubkey(authState);
+        const authorization = await this.buildBlossomAuthorizationHeader(params);
+        assertCurrentSession(sessionPubkey);
+
+        return {
+            authorization,
+            assertSession: () => assertCurrentSession(sessionPubkey),
+        };
+    }
 }
 
 function assertCurrentSession(sessionPubkey: string): void {
