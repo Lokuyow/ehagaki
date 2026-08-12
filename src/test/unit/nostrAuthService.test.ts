@@ -441,6 +441,37 @@ describe('NostrAuthService', () => {
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
+
+        it('connection test contextは既存builderを1回使い、captured sessionを検証する', async () => {
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
+            const buildAuthorization = vi.spyOn(service, 'buildBlossomAuthorizationHeader');
+
+            const context = await service.createBlossomConnectionTestAuthorization({
+                serverUrl: 'https://blossom.example',
+                method: 'upload',
+                sha256: 'a'.repeat(64),
+                contentType: 'image/png',
+                contentLength: 123,
+            });
+
+            expect(buildAuthorization).toHaveBeenCalledOnce();
+            expect(context.authorization).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+            expect(() => context.assertSession()).not.toThrow();
+
+            mockAuthStoreModule.authState.value = {
+                ...mockAuthStoreModule.authState.value,
+                pubkey: 'switched-account',
+            };
+            expect(() => context.assertSession()).toThrow('Authentication required');
+
+            mockAuthStoreModule.authState.value = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+            };
+            vi.mocked(keyManager.getFromStore).mockReturnValue(null);
+        });
     });
 });
 

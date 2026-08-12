@@ -159,6 +159,14 @@ function installDeferredNip07Signer() {
     };
 }
 
+function createBlossomProbeFile(): File {
+    const file = new File(["data"], "test.png", { type: "image/png" });
+    Object.defineProperty(file, "arrayBuffer", {
+        value: async () => new TextEncoder().encode("data").buffer,
+    });
+    return file;
+}
+
 afterEach(() => {
     (window as any).nostr = originalNostr;
     (authState as any).value = {
@@ -415,6 +423,152 @@ describe("active session liveness at authorization and protocol boundaries", () 
         signer.resolveValid();
 
         await expect(probePromise).rejects.toThrow("Authentication required");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("signs once and reuses the same BUD-11 Authorization across one connection test", async () => {
+        (authState as any).value = createAuthState();
+        const signEvent = vi.fn(async (template) => finalizeEvent(template, secretKeyA));
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent,
+        };
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            new Response(null, { status: 200 }));
+
+        const result = await new BlossomUploadAdapter().testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+
+        expect(result.success).toBe(true);
+        expect(signEvent).toHaveBeenCalledOnce();
+        expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 24242 }));
+        expect(fetchMock).toHaveBeenCalledTimes(12);
+        const authorizations = fetchMock.mock.calls.map((call) =>
+            ((call[1] as RequestInit).headers as Record<string, string>).Authorization);
+        expect(new Set(authorizations).size).toBe(1);
+        expect(authorizations[0]).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+    });
+
+    it("signs once per connection test when invocations are separate", async () => {
+        (authState as any).value = createAuthState();
+        const signEvent = vi.fn(async (template) => finalizeEvent(template, secretKeyA));
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent,
+        };
+        const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+        const adapter = new BlossomUploadAdapter();
+
+        await adapter.testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+        await adapter.testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+
+        expect(signEvent).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenCalledTimes(24);
+    });
+
+    it("does not fall back to an anonymous HEAD when the external signer rejects", async () => {
+        (authState as any).value = createAuthState();
+        const signEvent = vi.fn(async () => {
+            throw new Error("Signer rejected");
+        });
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent,
+        };
+        const fetchMock = vi.fn();
+
+        const probePromise = new BlossomUploadAdapter().testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+
+        await expect(probePromise).rejects.toThrow("Signer rejected");
+        expect(signEvent).toHaveBeenCalledOnce();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        {
+            name: "account switch",
+            changeSession: () => {
+                (authState as any).value = { ...authState.value, pubkey: pubkeyB };
+            },
+        },
+        {
+            name: "logout",
+            changeSession: () => {
+                (authState as any).value = {
+                    ...authState.value,
+                    isAuthenticated: false,
+                    type: "none",
+                    pubkey: "",
+                };
+            },
+        },
+    ])("stops MIME probes after $name without re-signing or anonymous fallback", async ({ changeSession }) => {
+        (authState as any).value = createAuthState();
+        const signEvent = vi.fn(async (template) => finalizeEvent(template, secretKeyA));
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent,
+        };
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+            changeSession();
+            return new Response(null, { status: 200 });
+        });
+
+        const probePromise = new BlossomUploadAdapter().testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+
+        await expect(probePromise).rejects.toThrow("Authentication required");
+        expect(signEvent).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+        expect(headers.Authorization).toMatch(/^Nostr /);
+    });
+
+    it("does not start the initial HEAD when the session changes after signing", async () => {
+        (authState as any).value = createAuthState();
+        const signEvent = vi.fn(async (template) => {
+            const signedEvent = finalizeEvent(template, secretKeyA);
+            (authState as any).value = { ...authState.value, pubkey: pubkeyB };
+            return signedEvent;
+        });
+        (window as any).nostr = {
+            getPublicKey: vi.fn(async () => pubkeyA),
+            signEvent,
+        };
+        const fetchMock = vi.fn();
+
+        const probePromise = new BlossomUploadAdapter().testConnection({
+            destination: createBlossomDestination(),
+            authService: new NostrAuthService(),
+            fetch: fetchMock as unknown as typeof fetch,
+            sampleFile: createBlossomProbeFile(),
+        });
+
+        await expect(probePromise).rejects.toThrow("Authentication required");
+        expect(signEvent).toHaveBeenCalledOnce();
         expect(fetchMock).not.toHaveBeenCalled();
     });
 

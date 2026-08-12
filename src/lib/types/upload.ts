@@ -199,6 +199,16 @@ export interface AuthService {
         contentType?: string;
         contentLength?: number;
     }): Promise<string>;
+    createBlossomConnectionTestAuthorization?(params: {
+        serverUrl: string;
+        method: string;
+        sha256?: string;
+        contentType?: string;
+        contentLength?: number;
+    }): Promise<{
+        authorization: string;
+        assertSession: () => void;
+    }>;
 }
 
 export interface MimeTypeSupportInterface {

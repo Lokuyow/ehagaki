@@ -148,13 +148,18 @@ function isUploadRequirementAccepted(status: number): boolean {
     return status >= 200 && status < 300;
 }
 
+type BlossomConnectionTestAuthorization = {
+    authorization: string;
+    assertSession: () => void;
+};
+
 async function probeBlossomUploadRequirement(params: {
     destination: UploadDestination;
     fetch: typeof fetch;
-    authService?: UploadAdapterUploadParams["authService"];
     sha256: string;
     contentType: string;
     contentLength: number;
+    authorizationContext?: BlossomConnectionTestAuthorization;
 }): Promise<Response | null> {
     const headers: Record<string, string> = {
         "X-SHA-256": params.sha256,
@@ -162,15 +167,10 @@ async function probeBlossomUploadRequirement(params: {
         "X-Content-Length": String(params.contentLength),
     };
 
-    const authorization = await params.authService?.buildBlossomAuthorizationHeader?.({
-        serverUrl: normalizeBlossomServerUrl(params.destination),
-        method: "upload",
-        sha256: params.sha256,
-        contentType: params.contentType,
-        contentLength: params.contentLength,
-    });
+    const authorization = params.authorizationContext?.authorization;
     if (authorization) headers.Authorization = authorization;
 
+    params.authorizationContext?.assertSession();
     try {
         return await params.fetch(getUploadUrl(params.destination), {
             method: "HEAD",
@@ -184,9 +184,9 @@ async function probeBlossomUploadRequirement(params: {
 async function probeSupportedMimeTypes(params: {
     destination: UploadDestination;
     fetch: typeof fetch;
-    authService?: UploadAdapterUploadParams["authService"];
     sha256: string;
     contentLength: number;
+    authorizationContext?: BlossomConnectionTestAuthorization;
 }): Promise<string[]> {
     const supportedMimeTypes: string[] = [];
 
@@ -320,13 +320,29 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 type: "image/png",
             });
         const sha256 = await calculateSHA256Hex(sampleFile);
+        const createAuthorizationContext = params.authService
+            ?.createBlossomConnectionTestAuthorization;
+        if (
+            params.authService?.buildBlossomAuthorizationHeader
+            && !createAuthorizationContext
+        ) {
+            throw new Error("Authentication required");
+        }
+        const authorizationContext = await params.authService
+            ?.createBlossomConnectionTestAuthorization?.({
+                serverUrl: normalizeBlossomServerUrl(params.destination),
+                method: "upload",
+                sha256,
+                contentType: sampleFile.type || "image/png",
+                contentLength: sampleFile.size,
+            });
         const response = await probeBlossomUploadRequirement({
             destination: params.destination,
             fetch: params.fetch,
-            authService: params.authService,
             sha256,
             contentType: sampleFile.type || "image/png",
             contentLength: sampleFile.size,
+            authorizationContext,
         });
 
         if (!response) {
@@ -343,9 +359,9 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 supportedMimeTypes: await probeSupportedMimeTypes({
                     destination: params.destination,
                     fetch: params.fetch,
-                    authService: params.authService,
                     sha256,
                     contentLength: sampleFile.size,
+                    authorizationContext,
                 }),
             }
             : undefined;

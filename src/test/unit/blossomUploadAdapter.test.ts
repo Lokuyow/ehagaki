@@ -41,6 +41,19 @@ function createDestination(): UploadDestination {
 }
 
 const SHA256 = "a".repeat(64);
+const MIME_PROBE_TYPES = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/svg+xml",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+];
 
 function createValidDescriptor(overrides: Record<string, unknown> = {}) {
     return {
@@ -58,6 +71,17 @@ function decodeBase64UrlHeader(header: string): string {
     const padded = token.replace(/-/g, "+").replace(/_/g, "/")
         + "=".repeat((4 - (token.length % 4)) % 4);
     return new TextDecoder().decode(Uint8Array.from(atob(padded), (character) => character.charCodeAt(0)));
+}
+
+function createConnectionTestAuthService(authorization: string) {
+    return {
+        buildAuthHeader: vi.fn(),
+        buildBlossomAuthorizationHeader: vi.fn(async () => authorization),
+        createBlossomConnectionTestAuthorization: vi.fn(async () => ({
+            authorization,
+            assertSession: vi.fn(),
+        })),
+    };
 }
 
 type BlossomHttpCall = {
@@ -403,10 +427,9 @@ describe("BlossomUploadAdapter", () => {
     it("uses an image/png probe for HEAD /upload connection tests", async () => {
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ"),
-        };
+        const authService = createConnectionTestAuthService(
+            "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ",
+        );
 
         const result = await adapter.testConnection({
             destination: createDestination(),
@@ -448,10 +471,7 @@ describe("BlossomUploadAdapter", () => {
             }
             return new Response(null, { status: 200 });
         });
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
-        };
+        const authService = createConnectionTestAuthService("Nostr mock-token");
 
         const result = await adapter.testConnection({
             destination: createDestination(),
@@ -469,6 +489,132 @@ describe("BlossomUploadAdapter", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1 + 11);
     });
 
+    it("reuses one session-bound Authorization for the initial and MIME HEAD probes", async () => {
+        const sampleFile = new File(["probe-body"], "probe.png", { type: "image/png" });
+        const assertSession = vi.fn();
+        const createAuthorization = vi.fn(async () => ({
+            authorization: "Nostr connection-test-token",
+            assertSession,
+        }));
+        const buildAuthorization = vi.fn();
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            new Response(null, { status: 200 }));
+
+        const result = await new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService: {
+                buildAuthHeader: vi.fn(),
+                buildBlossomAuthorizationHeader: buildAuthorization,
+                createBlossomConnectionTestAuthorization: createAuthorization,
+            },
+            sampleFile,
+        });
+
+        expect(result.success).toBe(true);
+        expect(createAuthorization).toHaveBeenCalledOnce();
+        expect(createAuthorization).toHaveBeenCalledWith(expect.objectContaining({
+            sha256: SHA256,
+            contentType: "image/png",
+            contentLength: sampleFile.size,
+        }));
+        expect(buildAuthorization).not.toHaveBeenCalled();
+        expect(assertSession).toHaveBeenCalledTimes(1 + MIME_PROBE_TYPES.length);
+        expect(fetchMock).toHaveBeenCalledTimes(1 + MIME_PROBE_TYPES.length);
+
+        const requestHeaders = fetchMock.mock.calls.map((call) =>
+            (call[1] as RequestInit).headers as Record<string, string>);
+        expect(requestHeaders.every((headers) =>
+            headers.Authorization === "Nostr connection-test-token")).toBe(true);
+        expect(requestHeaders.map((headers) => headers["X-SHA-256"])).toEqual(
+            Array(1 + MIME_PROBE_TYPES.length).fill(SHA256),
+        );
+        expect(requestHeaders.map((headers) => headers["X-Content-Length"])).toEqual(
+            Array(1 + MIME_PROBE_TYPES.length).fill(String(sampleFile.size)),
+        );
+        expect(requestHeaders.slice(1).map((headers) => headers["X-Content-Type"])).toEqual(
+            MIME_PROBE_TYPES,
+        );
+    });
+
+    it("creates an independent Authorization context for each connection test invocation", async () => {
+        let invocation = 0;
+        const createAuthorization = vi.fn(async () => ({
+            authorization: `Nostr connection-test-token-${++invocation}`,
+            assertSession: vi.fn(),
+        }));
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            new Response(null, { status: 200 }));
+        const adapter = new BlossomUploadAdapter();
+        const params = {
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService: {
+                buildAuthHeader: vi.fn(),
+                createBlossomConnectionTestAuthorization: createAuthorization,
+            },
+        };
+
+        await adapter.testConnection(params);
+        await adapter.testConnection(params);
+
+        expect(createAuthorization).toHaveBeenCalledTimes(2);
+        const authorizations = fetchMock.mock.calls.map((call) =>
+            ((call[1] as RequestInit).headers as Record<string, string>).Authorization);
+        expect(authorizations.slice(0, 1 + MIME_PROBE_TYPES.length)).toEqual(
+            Array(1 + MIME_PROBE_TYPES.length).fill("Nostr connection-test-token-1"),
+        );
+        expect(authorizations.slice(1 + MIME_PROBE_TYPES.length)).toEqual(
+            Array(1 + MIME_PROBE_TYPES.length).fill("Nostr connection-test-token-2"),
+        );
+    });
+
+    it("does not start an anonymous HEAD when Authorization context creation fails", async () => {
+        const fetchMock = vi.fn();
+
+        await expect(new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService: {
+                buildAuthHeader: vi.fn(),
+                createBlossomConnectionTestAuthorization: vi.fn(async () => {
+                    throw new Error("Authentication required");
+                }),
+            },
+        })).rejects.toThrow("Authentication required");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when an Authorization builder has no session-bound context API", async () => {
+        const fetchMock = vi.fn();
+        const buildAuthorization = vi.fn(async () => "Nostr unsafe-token");
+
+        await expect(new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService: {
+                buildAuthHeader: vi.fn(),
+                buildBlossomAuthorizationHeader: buildAuthorization,
+            },
+        })).rejects.toThrow("Authentication required");
+        expect(buildAuthorization).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("preserves unauthenticated probes when authService is absent", async () => {
+        const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+            new Response(null, { status: 401 }));
+
+        const result = await new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        expect(result).toMatchObject({ success: false, status: 401 });
+        const headers = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+        expect(headers.Authorization).toBeUndefined();
+    });
+
     it("uses explicit upload size headers when a Blossom server exposes them", async () => {
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn(async () => new Response(null, {
@@ -477,10 +623,7 @@ describe("BlossomUploadAdapter", () => {
                 "X-Max-Upload-Size": String(10 * 1024 * 1024),
             },
         }));
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
-        };
+        const authService = createConnectionTestAuthService("Nostr mock-token");
 
         const result = await adapter.testConnection({
             destination: createDestination(),
