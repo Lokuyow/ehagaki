@@ -252,4 +252,30 @@ describe("triggerPostHistoryDirectReplyLifecycle", () => {
         expect(saveManyReplyStateMock).not.toHaveBeenCalled();
         expect(result.status).toBe("completed");
     });
+
+    it("最終状態をdirect replyのUI projectionへreconcileする", async () => {
+        await triggerPostHistoryDirectReplyLifecycle({
+            source: "listing-current-view",
+            parentEventIds: [PARENT_ID],
+            rxNostr: { use: vi.fn() } as any,
+        });
+
+        expect(reconcilePendingDeletionRequestsForRequestKeysMock).toHaveBeenLastCalledWith([
+            `${PARENT_ID}:${REPLY_ID}:1`,
+        ]);
+    });
+
+    it("reconcile失敗はlifecycle結果を壊さない", async () => {
+        reconcilePendingDeletionRequestsForRequestKeysMock.mockRejectedValueOnce(
+            new Error("reconcile failed"),
+        );
+
+        const result = await triggerPostHistoryDirectReplyLifecycle({
+            source: "listing-current-view",
+            parentEventIds: [PARENT_ID],
+            rxNostr: { use: vi.fn() } as any,
+        });
+
+        expect(result.status).toBe("completed");
+    });
 });

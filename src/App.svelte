@@ -6,6 +6,7 @@
   import type { RelayProfileService } from "./lib/relayProfileService";
   import { createReplyQuoteProfileSyncController } from "./lib/replyQuoteProfileSync";
   import { useReplyQuoteProfileSync } from "./lib/hooks/useReplyQuoteProfileSync.svelte";
+  import { useProfileProjectionSync } from "./lib/hooks/useProfileProjectionSync.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService, type PendingNip46AuthSession } from "./lib/authService";
   import { iframeMessageService } from "./lib/iframeMessageService";
@@ -1714,6 +1715,22 @@
         updateReplyNotificationRecipientProfile,
         logger: console,
       }),
+  });
+  useProfileProjectionSync({
+    getRelayProfileService: () => relayProfileService,
+    getCurrentPubkey: () => authState.value?.pubkey || null,
+    getAccountPubkeys: () => accountListStore.value.map((account) => account.pubkeyHex),
+    applyCurrentProfile: (profile) => {
+      profileDataStore.set(profile);
+      profileLoadedStore.set(true);
+    },
+    applyAccountProfile: (pubkeyHex, profile) => {
+      accountProfileCacheStore.setProfile(pubkeyHex, {
+        name: profile.name,
+        displayName: profile.displayName,
+        picture: profile.picture,
+      });
+    },
   });
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---

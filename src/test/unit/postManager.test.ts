@@ -17,6 +17,7 @@ import type { RxNostr } from 'rx-nostr';
 import { createMockConsole, createMockRxNostr, MockKeyManager } from '../helpers';
 import { nip19 } from 'nostr-tools';
 import { DECOMMISSIONED_RELAYS } from '../../lib/relayLists';
+import { ReplyQuoteService } from '../../lib/replyQuoteService';
 
 vi.mock('../../lib/postHistoryRawEventVerification', () => ({
     RAW_EVENT_VERIFICATION_RULE_VERSION: 1,
@@ -1503,6 +1504,192 @@ describe('PostManager統合テスト', () => {
             }),
             expect.any(Object),
         );
+    });
+
+    it('canonical NIP-10のkind 42 reply stateを最終eventへ正しく構築する', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'channel-reply-canonical-id',
+                        type: 'ok',
+                        message: '',
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const channelEventId = 'a'.repeat(64);
+        const replyEventId = 'b'.repeat(64);
+        const channelAuthor = 'c'.repeat(64);
+        const replyAuthor = 'd'.repeat(64);
+        const replyRelay = 'wss://reply-relay.example.com';
+        const threadEvent = {
+            id: replyEventId,
+            pubkey: replyAuthor,
+            created_at: 1000,
+            kind: 42,
+            tags: [
+                ['e', channelEventId, 'wss://channel-relay.example.com', 'ROOT', channelAuthor],
+            ],
+            content: 'existing channel message',
+            sig: 'sig',
+        } as any;
+        const replyQuoteService = new ReplyQuoteService();
+        const threadInfo = replyQuoteService.extractThreadInfo(threadEvent);
+
+        expect(threadInfo).toEqual({
+            rootEventId: null,
+            rootRelayHint: 'wss://channel-relay.example.com/',
+            rootPubkey: channelAuthor,
+        });
+
+        (mockDeps as any).replyQuoteService = replyQuoteService;
+        (mockDeps as any).channelContextState = {
+            value: {
+                eventId: channelEventId,
+                relayHints: ['wss://channel-lookup.example.com'],
+                channelRelays: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: null,
+                picture: null,
+            },
+        };
+        mockDeps.replyQuoteState = {
+            value: {
+                reply: {
+                    mode: 'reply',
+                    eventId: replyEventId,
+                    relayHints: [replyRelay],
+                    authorPubkey: replyAuthor,
+                    quoteNotificationEnabled: false,
+                    authorDisplayName: null,
+                    authorPicture: null,
+                    referencedEvent: threadEvent,
+                    rootEventId: threadInfo.rootEventId,
+                    rootRelayHint: threadInfo.rootRelayHint,
+                    rootPubkey: threadInfo.rootPubkey,
+                    loading: false,
+                    error: null,
+                },
+                quotes: [],
+            },
+        } as any;
+
+        manager = new PostManager(mockRxNostr, mockDeps);
+        const result = await manager.submitPost('Reply to channel message');
+
+        expect(result.success).toBe(true);
+        const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+        const eTags = sentEvent.tags.filter((tag: string[]) => tag[0] === 'e');
+
+        expect(sentEvent.kind).toBe(42);
+        expect(eTags).toEqual([
+            ['e', channelEventId, 'wss://channel-relay.example.com', 'root'],
+            ['e', replyEventId, replyRelay, 'reply', replyAuthor],
+        ]);
+        expect(eTags.filter((tag: string[]) => tag[3] === 'root')).toHaveLength(1);
+        expect(eTags.filter((tag: string[]) => tag[3] === 'reply')).toHaveLength(1);
+        expect(eTags.some((tag: string[]) => tag[1] === replyEventId && tag[3] === 'root')).toBe(false);
+    });
+
+    it('canonical thread情報のinvalid rootとhintをkind 42 wire eventへ再出力しない', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'channel-reply-invalid-thread-id',
+                        type: 'ok',
+                        message: '',
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const channelEventId = 'e'.repeat(64);
+        const replyEventId = 'f'.repeat(64);
+        const replyAuthor = '1'.repeat(64);
+        const invalidThreadEvent = {
+            id: replyEventId,
+            pubkey: replyAuthor,
+            created_at: 1000,
+            kind: 42,
+            tags: [['e', 'invalid-root-id', 'https://unsafe.example.com', 'rOoT', 'invalid-author']],
+            content: 'malformed channel message',
+            sig: 'sig',
+        } as any;
+        const replyQuoteService = new ReplyQuoteService();
+        const threadInfo = replyQuoteService.extractThreadInfo(invalidThreadEvent);
+
+        expect(threadInfo).toEqual({
+            rootEventId: null,
+            rootRelayHint: null,
+            rootPubkey: null,
+        });
+
+        (mockDeps as any).replyQuoteService = replyQuoteService;
+        (mockDeps as any).channelContextState = {
+            value: {
+                eventId: channelEventId,
+                relayHints: [],
+                channelRelays: ['wss://safe-channel.example.com'],
+                name: 'General',
+                about: null,
+                picture: null,
+            },
+        };
+        mockDeps.replyQuoteState = {
+            value: {
+                reply: {
+                    mode: 'reply',
+                    eventId: replyEventId,
+                    relayHints: ['wss://safe-reply.example.com'],
+                    authorPubkey: replyAuthor,
+                    quoteNotificationEnabled: false,
+                    authorDisplayName: null,
+                    authorPicture: null,
+                    referencedEvent: invalidThreadEvent,
+                    rootEventId: threadInfo.rootEventId,
+                    rootRelayHint: threadInfo.rootRelayHint,
+                    rootPubkey: threadInfo.rootPubkey,
+                    loading: false,
+                    error: null,
+                },
+                quotes: [],
+            },
+        } as any;
+
+        manager = new PostManager(mockRxNostr, mockDeps);
+        const result = await manager.submitPost('Reply without malformed thread root');
+
+        expect(result.success).toBe(true);
+        const [sentEvent] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+        expect(sentEvent.kind).toBe(42);
+        expect(sentEvent.tags).toEqual(expect.arrayContaining([
+            ['e', channelEventId, 'wss://safe-channel.example.com', 'root'],
+            ['e', replyEventId, 'wss://safe-reply.example.com', 'reply', replyAuthor],
+        ]));
+        expect(sentEvent.tags).not.toContainEqual([
+            'e',
+            'invalid-root-id',
+            'https://unsafe.example.com',
+            'root',
+            'invalid-author',
+        ]);
+        expect(sentEvent.tags.some((tag: string[]) =>
+            tag[0] === 'e'
+            && (tag[1] === 'invalid-root-id' || tag[2] === 'https://unsafe.example.com' || tag[4] === 'invalid-author'),
+        )).toBe(false);
     });
 
     it('NIP-07認証で投稿を送信する', async () => {
