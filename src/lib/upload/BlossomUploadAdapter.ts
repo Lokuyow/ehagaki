@@ -156,7 +156,6 @@ type BlossomConnectionTestAuthorization = {
 async function probeBlossomUploadRequirement(params: {
     destination: UploadDestination;
     fetch: typeof fetch;
-    authService?: UploadAdapterUploadParams["authService"];
     sha256: string;
     contentType: string;
     contentLength: number;
@@ -168,14 +167,7 @@ async function probeBlossomUploadRequirement(params: {
         "X-Content-Length": String(params.contentLength),
     };
 
-    const authorization = params.authorizationContext?.authorization
-        ?? await params.authService?.buildBlossomAuthorizationHeader?.({
-            serverUrl: normalizeBlossomServerUrl(params.destination),
-            method: "upload",
-            sha256: params.sha256,
-            contentType: params.contentType,
-            contentLength: params.contentLength,
-        });
+    const authorization = params.authorizationContext?.authorization;
     if (authorization) headers.Authorization = authorization;
 
     params.authorizationContext?.assertSession();
@@ -192,7 +184,6 @@ async function probeBlossomUploadRequirement(params: {
 async function probeSupportedMimeTypes(params: {
     destination: UploadDestination;
     fetch: typeof fetch;
-    authService?: UploadAdapterUploadParams["authService"];
     sha256: string;
     contentLength: number;
     authorizationContext?: BlossomConnectionTestAuthorization;
@@ -329,6 +320,14 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 type: "image/png",
             });
         const sha256 = await calculateSHA256Hex(sampleFile);
+        const createAuthorizationContext = params.authService
+            ?.createBlossomConnectionTestAuthorization;
+        if (
+            params.authService?.buildBlossomAuthorizationHeader
+            && !createAuthorizationContext
+        ) {
+            throw new Error("Authentication required");
+        }
         const authorizationContext = await params.authService
             ?.createBlossomConnectionTestAuthorization?.({
                 serverUrl: normalizeBlossomServerUrl(params.destination),
@@ -340,7 +339,6 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
         const response = await probeBlossomUploadRequirement({
             destination: params.destination,
             fetch: params.fetch,
-            authService: params.authService,
             sha256,
             contentType: sampleFile.type || "image/png",
             contentLength: sampleFile.size,
@@ -361,7 +359,6 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 supportedMimeTypes: await probeSupportedMimeTypes({
                     destination: params.destination,
                     fetch: params.fetch,
-                    authService: params.authService,
                     sha256,
                     contentLength: sampleFile.size,
                     authorizationContext,

@@ -73,6 +73,17 @@ function decodeBase64UrlHeader(header: string): string {
     return new TextDecoder().decode(Uint8Array.from(atob(padded), (character) => character.charCodeAt(0)));
 }
 
+function createConnectionTestAuthService(authorization: string) {
+    return {
+        buildAuthHeader: vi.fn(),
+        buildBlossomAuthorizationHeader: vi.fn(async () => authorization),
+        createBlossomConnectionTestAuthorization: vi.fn(async () => ({
+            authorization,
+            assertSession: vi.fn(),
+        })),
+    };
+}
+
 type BlossomHttpCall = {
     httpCall: (
         method: string,
@@ -416,10 +427,9 @@ describe("BlossomUploadAdapter", () => {
     it("uses an image/png probe for HEAD /upload connection tests", async () => {
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ"),
-        };
+        const authService = createConnectionTestAuthService(
+            "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ",
+        );
 
         const result = await adapter.testConnection({
             destination: createDestination(),
@@ -461,10 +471,7 @@ describe("BlossomUploadAdapter", () => {
             }
             return new Response(null, { status: 200 });
         });
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
-        };
+        const authService = createConnectionTestAuthService("Nostr mock-token");
 
         const result = await adapter.testConnection({
             destination: createDestination(),
@@ -578,6 +585,22 @@ describe("BlossomUploadAdapter", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("fails closed when an Authorization builder has no session-bound context API", async () => {
+        const fetchMock = vi.fn();
+        const buildAuthorization = vi.fn(async () => "Nostr unsafe-token");
+
+        await expect(new BlossomUploadAdapter().testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService: {
+                buildAuthHeader: vi.fn(),
+                buildBlossomAuthorizationHeader: buildAuthorization,
+            },
+        })).rejects.toThrow("Authentication required");
+        expect(buildAuthorization).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("preserves unauthenticated probes when authService is absent", async () => {
         const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
             new Response(null, { status: 401 }));
@@ -600,10 +623,7 @@ describe("BlossomUploadAdapter", () => {
                 "X-Max-Upload-Size": String(10 * 1024 * 1024),
             },
         }));
-        const authService = {
-            buildAuthHeader: vi.fn(),
-            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
-        };
+        const authService = createConnectionTestAuthService("Nostr mock-token");
 
         const result = await adapter.testConnection({
             destination: createDestination(),
