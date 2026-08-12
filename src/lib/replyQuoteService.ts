@@ -5,6 +5,7 @@ import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { FALLBACK_RELAYS } from "./relayLists";
 import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
+import { decodeEventPointerValue } from "./eventPointerUtils";
 
 export interface ReplyQuoteServiceDeps {
     console?: Console;
@@ -260,20 +261,12 @@ export class ReplyQuoteService {
 
         while ((match = regex.exec(content)) !== null) {
             try {
-                const decoded = nip19.decode(match[1]);
-                let eventId: string;
-                let relayHint = '';
-                let authorPubkey: string | undefined;
+                const pointer = decodeEventPointerValue(match[1]);
+                if (!pointer) continue;
 
-                if (decoded.type === 'nevent') {
-                    eventId = decoded.data.id;
-                    relayHint = decoded.data.relays?.[0] || '';
-                    authorPubkey = decoded.data.author;
-                } else if (decoded.type === 'note') {
-                    eventId = decoded.data as string;
-                } else {
-                    continue;
-                }
+                const eventId = pointer.eventId;
+                const relayHint = pointer.relayHints[0] || '';
+                const authorPubkey = pointer.authorPubkey ?? undefined;
 
                 // 同一イベントIDの重複qタグを防ぐ
                 if (seenEventIds.has(eventId)) continue;
