@@ -1,6 +1,7 @@
 import Dexie from "dexie";
 import { STORAGE_KEYS } from "./constants";
 import { EHAGAKI_DB_NAME, ehagakiDb } from "./storage/ehagakiDb";
+import { getAppStorage } from "./appStorage";
 
 const PROFILE_CACHE_NAMES = [
     "ehagaki-profile-images-v2",
@@ -55,7 +56,7 @@ function removeManagedLocalStorageKeys(localStorage: Storage): void {
 export async function resetManagedAccountData(
     deps: AccountDataResetDependencies = {},
 ): Promise<void> {
-    const localStorage = deps.localStorage ?? globalThis.localStorage;
+    const localStorage = deps.localStorage ?? getAppStorage();
     const cacheStorage = deps.caches ?? globalThis.caches;
 
     removeManagedLocalStorageKeys(localStorage);

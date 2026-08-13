@@ -31,6 +31,7 @@ import { isDefaultUploadAborted } from './uploadAbortUtils';
 import { getUploadAdapter } from "./upload/uploadAdapterRegistry";
 import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets";
 import { postMediaCacheService } from "./postMediaCacheService";
+import { getAppStorage } from "./appStorage";
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -41,7 +42,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
   constructor(
     private dependencies: FileUploadDependencies = {
-      localStorage: window.localStorage,
+      localStorage: getAppStorage(),
       fetch: window.fetch.bind(window),
       crypto: window.crypto.subtle,
       document: window.document,
@@ -488,4 +489,3 @@ export class FileUploadManager implements FileUploadManagerInterface {
     }
   }
 }
-

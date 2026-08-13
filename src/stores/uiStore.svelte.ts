@@ -12,6 +12,7 @@ import {
 } from "../lib/utils/viewportLayout";
 import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
 import { isPostEditorFocusActive } from "../lib/utils/keyboardFocusUtils";
+import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
 // --- 定数 ---
 /** フッターの高さ（px） */
@@ -47,7 +48,7 @@ function setRootStyleProperty(name: string, value: string): void {
         return;
     }
 
-    document.documentElement.style.setProperty(name, value);
+    getAppRuntimeEnvironment().styleTarget.style.setProperty(name, value);
 }
 
 function isVirtualKeyboardOverlayActive(): boolean {

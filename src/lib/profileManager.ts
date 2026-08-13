@@ -12,6 +12,7 @@ import {
   isSameOriginProfilePictureUrl,
   normalizeProfilePictureUrl,
 } from './profilePictureUrlUtils';
+import { getAppStorage } from './appStorage';
 
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {
@@ -261,7 +262,7 @@ export class ProfileManager {
     deps: ProfileManagerDeps = {}
   ) {
     // デフォルト依存性の設定
-    const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : undefined);
+    const localStorage = deps.localStorage || getAppStorage();
     const navigator = deps.navigator || (typeof window !== 'undefined' ? window.navigator : { onLine: true } as Navigator);
     const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
     const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));

@@ -14,6 +14,8 @@ import {
 } from '../lib/utils/settingsStorage';
 import { STORAGE_KEYS } from '../lib/constants';
 import { persistChangedEmbedSettingKeys } from '../lib/embedSettingsPersistence';
+import { getAppStorage } from '../lib/appStorage';
+import { getAppRuntimeEnvironment } from '../lib/appRuntimeEnvironment';
 
 function getSystemDarkMode(): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -35,7 +37,7 @@ function getEffectiveDarkMode(mode: ThemeMode): boolean {
  * <html> 要素にテーマクラスを適用し、color-scheme プロパティも更新
  */
 function applyTheme(isDark: boolean): void {
-    const root = document.documentElement;
+    const root = getAppRuntimeEnvironment().themeTarget;
     if (isDark) {
         root.classList.add('dark');
         root.classList.remove('light');
@@ -48,7 +50,8 @@ function applyTheme(isDark: boolean): void {
 }
 
 // --- ストア状態 ---
-const initialThemeMode = getStoredThemeModePreference(localStorage);
+const appStorage = getAppStorage();
+const initialThemeMode = getStoredThemeModePreference(appStorage);
 const initialDarkMode = getEffectiveDarkMode(initialThemeMode);
 let themeMode = $state<ThemeMode>(initialThemeMode);
 let darkMode = $state(initialDarkMode);
@@ -78,7 +81,7 @@ export const themeModeStore = {
         return darkMode;
     },
     set: (mode: ThemeMode, source: PreferenceSource = 'user') => {
-        const nextMode = setThemeModePreference(localStorage, mode, source);
+        const nextMode = setThemeModePreference(appStorage, mode, source);
         const nextDarkMode = getEffectiveDarkMode(nextMode);
         themeMode = nextMode;
         darkMode = nextDarkMode;
@@ -89,7 +92,7 @@ export const themeModeStore = {
         ]);
     },
     reload: () => {
-        const nextMode = getStoredThemeModePreference(localStorage);
+        const nextMode = getStoredThemeModePreference(appStorage);
         const nextDarkMode = getEffectiveDarkMode(nextMode);
         themeMode = nextMode;
         darkMode = nextDarkMode;

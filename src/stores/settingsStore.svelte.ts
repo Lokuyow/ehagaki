@@ -39,6 +39,10 @@ import {
     persistAllEmbedSettingKeys,
     persistChangedEmbedSettingKeys,
 } from "../lib/embedSettingsPersistence";
+import { getAppStorage } from "../lib/appStorage";
+import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+
+const appStorage = getAppStorage();
 
 interface SettingsState {
     locale: SupportedLocale;
@@ -66,22 +70,22 @@ interface DirectSettingDescriptor<K extends DirectSettingKey> {
 }
 
 function readSettingsState(): SettingsState {
-    const effectiveLocale = getEffectiveLocale(localStorage, navigator);
+    const effectiveLocale = getEffectiveLocale(appStorage, navigator);
     const externalNostrClient = getExternalNostrClientPreference(
-        localStorage,
+        appStorage,
         effectiveLocale,
     );
 
     return {
         locale: effectiveLocale,
-        clientTagEnabled: getClientTagEnabledPreference(localStorage),
-        quoteNotificationEnabled: getQuoteNotificationEnabledPreference(localStorage),
-        replyNotificationEnabled: getReplyNotificationEnabledPreference(localStorage),
-        imageQualityLevel: getImageCompressionLevelPreference(localStorage),
-        videoQualityLevel: getVideoCompressionLevelPreference(localStorage),
-        mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
-        showMascot: getShowMascotPreference(localStorage),
-        showFlavorText: getShowFlavorTextPreference(localStorage),
+        clientTagEnabled: getClientTagEnabledPreference(appStorage),
+        quoteNotificationEnabled: getQuoteNotificationEnabledPreference(appStorage),
+        replyNotificationEnabled: getReplyNotificationEnabledPreference(appStorage),
+        imageQualityLevel: getImageCompressionLevelPreference(appStorage),
+        videoQualityLevel: getVideoCompressionLevelPreference(appStorage),
+        mediaFreePlacement: getMediaFreePlacementPreference(appStorage),
+        showMascot: getShowMascotPreference(appStorage),
+        showFlavorText: getShowFlavorTextPreference(appStorage),
         externalNostrClient: externalNostrClient.client,
         externalNostrClientCustomUrl: externalNostrClient.customUrlTemplate,
     };
@@ -101,17 +105,17 @@ const directSettingDescriptors: {
     clientTagEnabled: {
         storageKeys: [STORAGE_KEYS.CLIENT_TAG_ENABLED],
         apply: (value: boolean, source: PreferenceSource) =>
-            setClientTagEnabledPreference(localStorage, value, source),
+            setClientTagEnabledPreference(appStorage, value, source),
     },
     quoteNotificationEnabled: {
         storageKeys: [STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED],
         apply: (value: boolean, source: PreferenceSource) =>
-            setQuoteNotificationEnabledPreference(localStorage, value, source),
+            setQuoteNotificationEnabledPreference(appStorage, value, source),
     },
     replyNotificationEnabled: {
         storageKeys: [STORAGE_KEYS.REPLY_NOTIFICATION_ENABLED],
         apply: (value: boolean, source: PreferenceSource) =>
-            setReplyNotificationEnabledPreference(localStorage, value, source),
+            setReplyNotificationEnabledPreference(appStorage, value, source),
     },
     imageQualityLevel: {
         storageKeys: [
@@ -119,7 +123,7 @@ const directSettingDescriptors: {
             STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL,
         ],
         apply: (value: string, source: PreferenceSource) =>
-            setImageCompressionLevelPreference(localStorage, value, source),
+            setImageCompressionLevelPreference(appStorage, value, source),
     },
     videoQualityLevel: {
         storageKeys: [
@@ -127,23 +131,23 @@ const directSettingDescriptors: {
             STORAGE_KEYS.LEGACY_VIDEO_COMPRESSION_LEVEL,
         ],
         apply: (value: string, source: PreferenceSource) =>
-            setVideoCompressionLevelPreference(localStorage, value, source),
+            setVideoCompressionLevelPreference(appStorage, value, source),
     },
     mediaFreePlacement: {
         storageKeys: [STORAGE_KEYS.MEDIA_FREE_PLACEMENT],
         apply: (value: boolean, source: PreferenceSource) =>
-            setMediaFreePlacementPreference(localStorage, value, source),
+            setMediaFreePlacementPreference(appStorage, value, source),
         afterApply: updateMediaPlacement,
     },
     showMascot: {
         storageKeys: [STORAGE_KEYS.SHOW_MASCOT],
         apply: (value: boolean, source: PreferenceSource) =>
-            setShowMascotPreference(localStorage, value, source),
+            setShowMascotPreference(appStorage, value, source),
     },
     showFlavorText: {
         storageKeys: [STORAGE_KEYS.SHOW_FLAVOR_TEXT],
         apply: (value: boolean, source: PreferenceSource) =>
-            setShowFlavorTextPreference(localStorage, value, source),
+            setShowFlavorTextPreference(appStorage, value, source),
     },
 };
 
@@ -178,11 +182,11 @@ function applyLocaleSetting(
         syncDocumentLang?: boolean;
     } = {},
 ): SupportedLocale {
-    const nextLocale = setLocalePreference(localStorage, value, source);
+    const nextLocale = setLocalePreference(appStorage, value, source);
     settingsState.locale = nextLocale;
 
     if (syncDocumentLang) {
-        document.documentElement.lang = nextLocale;
+        getAppRuntimeEnvironment().themeTarget.lang = nextLocale;
     }
 
     i18nLocale.set(nextLocale);
@@ -313,7 +317,7 @@ export const settingsStore = {
     },
 
     set externalNostrClient(value: string) {
-        const nextValue = setExternalNostrClientPreference(localStorage, value);
+        const nextValue = setExternalNostrClientPreference(appStorage, value);
         if (nextValue) {
             settingsState.externalNostrClient = nextValue;
         }
@@ -325,7 +329,7 @@ export const settingsStore = {
 
     set externalNostrClientCustomUrl(value: string) {
         const nextValue = setExternalNostrClientCustomUrlPreference(
-            localStorage,
+            appStorage,
             value,
         );
         if (nextValue) {
@@ -396,21 +400,21 @@ export const settingsStore = {
 };
 
 export function consumeFirstVisitFlag(): boolean {
-    const result = consumeFirstVisit(localStorage);
+    const result = consumeFirstVisit(appStorage);
     embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.FIRST_VISIT]);
     return result;
 }
 
 export function isSharedMediaProcessed(): boolean {
-    return readSharedMediaProcessed(localStorage);
+    return readSharedMediaProcessed(appStorage);
 }
 
 export function markSharedMediaProcessed(): void {
-    writeSharedMediaProcessed(localStorage);
+    writeSharedMediaProcessed(appStorage);
     embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.SHARED_MEDIA_PROCESSED]);
 }
 
 export function clearSharedMediaProcessed(): void {
-    removeSharedMediaProcessed(localStorage);
+    removeSharedMediaProcessed(appStorage);
     embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.SHARED_MEDIA_PROCESSED]);
 }

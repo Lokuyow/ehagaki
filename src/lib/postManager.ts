@@ -88,7 +88,11 @@ export class PostManager {
     this.deps.extractImageBlurhashMapFn = deps.extractImageBlurhashMapFn || extractImageBlurhashMap;
     this.deps.resetEditorStateFn = deps.resetEditorStateFn || resetEditorState;
     this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
-    this.deps.iframeMessageService = deps.iframeMessageService || iframeMessageService;
+    this.deps.notificationPort =
+      deps.iframeMessageService || deps.notificationPort || iframeMessageService;
+    // Keep the legacy dependency field populated for existing callers/tests;
+    // all post notifications use the transport-neutral port above.
+    this.deps.iframeMessageService = this.deps.notificationPort;
     this.deps.hashtagPinStore = deps.hashtagPinStore || hashtagPinStore;
     this.deps.saveHashtagsToHistoryFn = deps.saveHashtagsToHistoryFn || saveHashtagsToHistory;
     this.deps.clearReplyQuoteFn = deps.clearReplyQuoteFn || clearReplyQuote;
@@ -120,7 +124,7 @@ export class PostManager {
   }
 
   private notifyPostFailure(error: string): PostResult {
-    this.deps.iframeMessageService?.notifyPostError(error);
+    this.deps.notificationPort?.notifyPostError(error);
     return { success: false, error };
   }
 
@@ -173,14 +177,14 @@ export class PostManager {
         });
       });
       this.clearReplyQuoteAfterSuccess();
-      this.deps.iframeMessageService?.notifyPostSuccess({
+      this.deps.notificationPort?.notifyPostSuccess({
         ...rqNotifyOptions,
         ...(result.eventId ? { eventId: result.eventId } : {}),
       });
       return result;
     }
 
-    this.deps.iframeMessageService?.notifyPostError(result.error);
+    this.deps.notificationPort?.notifyPostError(result.error);
     return result;
   }
 

@@ -3,13 +3,14 @@ import {
   getStoredLocalePreference,
   normalizeLocale,
 } from "./lib/utils/settingsStorage";
+import { getAppStorage } from "./lib/appStorage";
 
 register("ja", () => import("./lib/i18n/ja.json"));
 register("en", () => import("./lib/i18n/en.json"));
 
 // ロケール判定ロジックを関数として抽出
 export function determineInitialLocale(): string {
-  const storedLocale = getStoredLocalePreference(localStorage);
+  const storedLocale = getStoredLocalePreference(getAppStorage());
   if (storedLocale) {
     return storedLocale;
   }

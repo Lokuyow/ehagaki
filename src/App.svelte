@@ -9,6 +9,7 @@
   import { useProfileProjectionSync } from "./lib/hooks/useProfileProjectionSync.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService, type PendingNip46AuthSession } from "./lib/authService";
+  import { getAppRuntimeEnvironment } from "./lib/appRuntimeEnvironment";
   import { iframeMessageService } from "./lib/iframeMessageService";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
@@ -193,6 +194,8 @@
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
+
+  const appRuntimeEnvironment = getAppRuntimeEnvironment();
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
@@ -591,7 +594,7 @@
     onAuthenticated: handlePostAuth,
     saveLastUsedRelayCandidates: (relayCandidates) => {
       saveLastUsedNip46ConnectionRelayCandidates(
-        typeof localStorage === "undefined" ? undefined : localStorage,
+        appRuntimeEnvironment.storage,
         relayCandidates,
       );
     },
@@ -646,7 +649,9 @@
       replyQuoteState.value.quotes.length > 0,
   );
   // AccountManager初期化
-  const accountManager = new AccountManager({ localStorage });
+  const accountManager = new AccountManager({
+    localStorage: appRuntimeEnvironment.storage,
+  });
   authService.setAccountManager(accountManager);
 
   const loginDialog = createDialogVisibilityHandlers(showLoginDialogStore);
@@ -771,7 +776,7 @@
   });
   function getInitialNip46ConnectRelayCandidates(): string[] {
     return resolveInitialNip46ConnectionRelayCandidates(
-      typeof localStorage === "undefined" ? undefined : localStorage,
+      appRuntimeEnvironment.storage,
     );
   }
 
@@ -826,7 +831,7 @@
     closeDraftLimitConfirm: () => showDraftLimitConfirmStore.set(false),
     logger: console,
     isGalleryMode: () => !mediaFreePlacementStore.value,
-    document,
+    document: appRuntimeEnvironment.document ?? document,
     clearGallery: () => mediaGalleryStore.clearAll(),
     addGalleryItem: (item) => mediaGalleryStore.addItem(item),
     loadDraftContent: (content) => {
@@ -1187,7 +1192,7 @@
         return applied;
       },
     },
-    parentFrame: {
+    notificationPort: {
       notifyComposerContextApplied: (requestId: string) =>
         iframeMessageService.notifyComposerContextApplied(requestId),
       notifyComposerContextError: (error, requestId: string) =>
@@ -1494,7 +1499,7 @@
     });
 
     const cleanupVisibilityHandler = registerNip46VisibilityHandler({
-      document,
+      document: appRuntimeEnvironment.document ?? document,
       authState,
       nip46Service,
       console,
@@ -1505,6 +1510,17 @@
       cleanupRuntimeBindings();
       composerTargetApplyController.dispose();
       channelContextApplyController.dispose();
+      if (
+        rxNostr &&
+        typeof (rxNostr as unknown as { dispose?: unknown }).dispose ===
+          "function"
+      ) {
+        rxNostr = disposeNostrSession(rxNostr);
+      } else {
+        rxNostr = undefined;
+      }
+      void cancelPendingNip46Auth(undefined, { preserveError: true });
+      void nip46Service.disconnect();
     };
   });
 
@@ -1842,6 +1858,7 @@
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
                     onCustomEmojiSelect={recordCustomEmojiUse}
+                    notificationPort={iframeMessageService}
                   />
                 {/if}
                 {#if customEmojiPickerOpen && CustomEmojiPickerComponent}

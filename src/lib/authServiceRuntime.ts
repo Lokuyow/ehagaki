@@ -4,6 +4,7 @@ import type { AuthServiceDependencies, PublicKeyData } from './types';
 import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, type Nip46Service } from './nip46Service';
 import { parentClientAuthService, type ParentClientAuthService } from './parentClientAuthService';
+import { getAppStorage } from './appStorage';
 
 type AuthSetter = (pubkey: string, npub: string, nprofile: string) => void;
 
@@ -59,7 +60,7 @@ export interface AuthServiceRuntime {
 }
 
 export function createAuthServiceRuntime(dependencies: AuthServiceDependencies = {}): AuthServiceRuntime {
-    const localStorage = dependencies.localStorage ?? (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
+    const localStorage = dependencies.localStorage ?? getAppStorage();
     const clearAuthStateFn = dependencies.clearAuthState ?? clearAuthState;
     const keyManager = isAuthServiceKeyManager(dependencies.keyManager)
         ? dependencies.keyManager

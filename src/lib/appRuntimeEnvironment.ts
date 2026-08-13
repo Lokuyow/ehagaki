@@ -1,0 +1,72 @@
+import {
+    configureAppStorage,
+    getAppStorage,
+} from "./appStorage";
+
+export interface AppRuntimeEnvironment {
+    storage: Storage;
+    window: Window | undefined;
+    document: Document | undefined;
+    domRoot: Document | ShadowRoot | undefined;
+    styleTarget: HTMLElement;
+    layoutTarget: HTMLElement;
+    overlayTarget: HTMLElement;
+    themeTarget: HTMLElement;
+    assetBase: URL | undefined;
+    serviceWorkerEnabled: boolean;
+    externalInputEnabled: boolean;
+    historyEnabled: boolean;
+}
+
+function createFallbackElement(): HTMLElement {
+    return {
+        style: {
+            setProperty: () => undefined,
+            removeProperty: () => "",
+            getPropertyValue: () => "",
+        } as unknown as CSSStyleDeclaration,
+    } as HTMLElement;
+}
+
+function createDefaultEnvironment(): AppRuntimeEnvironment {
+    const windowObj = typeof window !== "undefined" ? window : undefined;
+    const documentObj = windowObj?.document;
+    const documentElement = documentObj?.documentElement ?? createFallbackElement();
+    const body = documentObj?.body ?? documentElement;
+
+    return {
+        storage: getAppStorage(),
+        window: windowObj,
+        document: documentObj,
+        domRoot: documentObj,
+        styleTarget: documentElement,
+        layoutTarget: body,
+        overlayTarget: body,
+        themeTarget: documentElement,
+        assetBase: windowObj?.location?.href
+            ? new URL(".", windowObj.location.href)
+            : undefined,
+        serviceWorkerEnabled: false,
+        externalInputEnabled: true,
+        historyEnabled: true,
+    };
+}
+
+let runtimeEnvironment = createDefaultEnvironment();
+
+export type AppRuntimeEnvironmentOverrides = Partial<AppRuntimeEnvironment>;
+
+export function configureAppRuntimeEnvironment(
+    overrides: AppRuntimeEnvironmentOverrides,
+): AppRuntimeEnvironment {
+    runtimeEnvironment = {
+        ...runtimeEnvironment,
+        ...overrides,
+    };
+    configureAppStorage(runtimeEnvironment.storage);
+    return runtimeEnvironment;
+}
+
+export function getAppRuntimeEnvironment(): AppRuntimeEnvironment {
+    return runtimeEnvironment;
+}

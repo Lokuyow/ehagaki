@@ -85,7 +85,7 @@ export interface AppEmbedComposerContextUpdatedNotification {
     channel: EmbedChannelContextPayload | null;
 }
 
-export interface AppEmbedParentFramePort {
+export interface AppEmbedNotificationPort {
     notifyComposerContextApplied(requestId: string): void;
     notifyComposerContextError(
         error: AppEmbedComposerError,
@@ -129,6 +129,9 @@ export interface AppEmbedControllerLogger {
     error(message: string, meta?: unknown): void;
 }
 
+/** @deprecated Use AppEmbedNotificationPort; the iframe transport remains an adapter. */
+export type AppEmbedParentFramePort = AppEmbedNotificationPort;
+
 export interface AppEmbedControllerDependencies {
     composerInput: {
         get(): AppEmbedComposerInputPort | null;
@@ -139,7 +142,8 @@ export interface AppEmbedControllerDependencies {
     };
     composerContextApply: AppEmbedComposerContextApplyPort;
     settingsApply: AppEmbedSettingsApplyPort;
-    parentFrame: AppEmbedParentFramePort;
+    notificationPort?: AppEmbedNotificationPort;
+    parentFrame?: AppEmbedParentFramePort;
     runtime: AppEmbedRuntimeStateGetters;
     storage: AppEmbedStoragePort;
     logger: AppEmbedControllerLogger;
@@ -183,6 +187,12 @@ function shouldQueueAction(getters: AppEmbedRuntimeStateGetters): boolean {
 export function createAppEmbedController(
     deps: AppEmbedControllerDependencies,
 ): AppEmbedController {
+    const notificationPort: AppEmbedNotificationPort =
+        deps.notificationPort ??
+        deps.parentFrame ??
+        (() => {
+            throw new Error("AppEmbedController requires a notification port");
+        })();
     const state: AppEmbedControllerState = {
         pendingComposerAction: undefined,
         lastNotifiedComposerContextSignature: null,
@@ -271,7 +281,7 @@ export function createAppEmbedController(
         state.applyingComposerContext = true;
         try {
             const backgroundTasks = applyRemoteComposerSetContext(payload);
-            deps.parentFrame.notifyComposerContextApplied(requestId);
+            notificationPort.notifyComposerContextApplied(requestId);
             state.lastNotifiedComposerContextSignature = buildComposerContextSignature(
                 buildCurrentComposerContextPayload(),
             );
@@ -287,7 +297,7 @@ export function createAppEmbedController(
         logPrefix: string,
     ): void {
         deps.logger.error(logPrefix, error);
-        deps.parentFrame.notifyComposerContextError(
+        notificationPort.notifyComposerContextError(
             {
                 code: "composer_context_apply_failed",
                 message: error instanceof Error ? error.message : String(error),
@@ -324,10 +334,10 @@ export function createAppEmbedController(
         ): Promise<void> {
             try {
                 const applied = await deps.settingsApply.applySettings(payload);
-                deps.parentFrame.notifySettingsApplied(applied, requestId);
+                notificationPort.notifySettingsApplied(applied, requestId);
             } catch (error) {
                 deps.logger.error("settings.set の適用に失敗:", error);
-                deps.parentFrame.notifySettingsError(
+                notificationPort.notifySettingsError(
                     {
                         code: "settings_apply_failed",
                         message: error instanceof Error ? error.message : String(error),
@@ -387,7 +397,7 @@ export function createAppEmbedController(
             }
 
             state.lastNotifiedComposerContextSignature = signature;
-            deps.parentFrame.notifyComposerContextUpdated({
+            notificationPort.notifyComposerContextUpdated({
                 reply: payload.reply,
                 quotes: payload.quotes,
                 channel: payload.channel ?? null,

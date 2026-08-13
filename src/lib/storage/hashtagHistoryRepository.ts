@@ -1,6 +1,7 @@
 import { STORAGE_KEYS } from "../constants";
 import type { HashtagHistoryEntry } from "../types";
 import { ehagakiDb, type EHagakiDB, type HashtagHistoryRecord } from "./ehagakiDb";
+import { getAppStorage } from "../appStorage";
 
 export const MAX_HASHTAG_HISTORY = 100;
 export const MAX_HASHTAG_SUGGESTIONS = 5;
@@ -25,7 +26,7 @@ function isLegacyEntry(value: unknown): value is HashtagHistoryEntry {
 }
 
 function readLegacyHistory(
-    storage: Pick<Storage, "getItem"> = localStorage,
+    storage: Pick<Storage, "getItem"> = getAppStorage(),
 ): HashtagHistoryEntry[] {
     const raw = storage.getItem(STORAGE_KEYS.HASHTAG_HISTORY);
     if (!raw) return [];
@@ -94,7 +95,7 @@ export class DexieHashtagHistoryRepository implements HashtagHistoryRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
-        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => localStorage,
+        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }
 
     async getAll(): Promise<HashtagHistoryEntry[]> {

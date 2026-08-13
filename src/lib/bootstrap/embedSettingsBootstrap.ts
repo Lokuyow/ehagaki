@@ -18,6 +18,7 @@ import {
     type SupportedLocale,
     type ThemeMode,
 } from "../utils/settingsStorage";
+import { getAppStorage } from "../appStorage";
 
 export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedLocale",
@@ -332,7 +333,7 @@ function applySetting(
 }
 
 export function applyEmbedSettingsBootstrap({
-    storage = localStorage,
+    storage = getAppStorage(),
     navigatorObj = navigator,
     documentObj = document,
     windowObj = window,

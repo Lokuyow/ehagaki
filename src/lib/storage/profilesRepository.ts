@@ -8,6 +8,7 @@ import { RelayConfigUtils } from "../relayConfigUtils";
 import type { ProfileData } from "../types";
 import { areStringArraysEqual } from "../utils/arrayEqualityUtils";
 import { ehagakiDb, type EHagakiDB, type ProfileRecord } from "./ehagakiDb";
+import { getAppStorage } from "../appStorage";
 
 const PROFILE_SCHEMA_VERSION = 2;
 
@@ -176,7 +177,7 @@ export class DexieProfilesRepository implements ProfilesRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
-        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => localStorage,
+        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }
 
     async get(pubkeyHex: string): Promise<ProfileData | null> {

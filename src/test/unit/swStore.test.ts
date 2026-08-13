@@ -61,8 +61,17 @@ describe("swStore DB upgrade blocked state", () => {
         }
     });
 
+    it("state import alone does not register a Service Worker", async () => {
+        await import("../../stores/swStore.svelte");
+
+        expect(testState.registerOptions).toBeUndefined();
+        expect(testState.dbUpgradeStateListener).toBeUndefined();
+    });
+
     it("DB blocked の解除で ready のSW更新状態を維持する", async () => {
         const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
         const statuses: string[] = [];
         const blockedStates: boolean[] = [];
         const refreshStates: boolean[] = [];
@@ -88,6 +97,8 @@ describe("swStore DB upgrade blocked state", () => {
 
     it("未承認controllerchangeは一度だけstale化し、更新操作をreload promptへ振り分ける", async () => {
         const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
         const staleStore = await import(
             "../../stores/staleAssetReloadStore.svelte"
         );

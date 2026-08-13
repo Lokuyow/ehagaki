@@ -77,6 +77,7 @@
   } from "../lib/utils/composerLayoutUtils";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
+  import type { AppPostNotificationPort } from "../lib/appNotificationPort";
 
   interface Props {
     rxNostr?: RxNostr;
@@ -85,6 +86,7 @@
     availableComposerHeight?: number;
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
+    notificationPort?: AppPostNotificationPort;
   }
 
   let {
@@ -94,6 +96,7 @@
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
+    notificationPort,
   }: Props = $props();
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
@@ -201,6 +204,7 @@
               input,
               postHistoryRepositoryImpl: postHistoryRepository,
             }),
+          notificationPort,
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }
