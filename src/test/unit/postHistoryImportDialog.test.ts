@@ -114,6 +114,20 @@ describe("PostHistoryImportDialog", () => {
         return new File(["{}"], "history.jsonl", { type: "application/x-ndjson" });
     }
 
+    it("ファイル選択をファイル名やMIMEタイプで制限しない", () => {
+        render(PostHistoryImportDialog, {
+            props: {
+                open: true,
+                ownerPubkeyHex: "a".repeat(64),
+                getCurrentPubkeyHex: () => "a".repeat(64),
+            },
+        });
+        const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
+            .querySelector('input[type="file"]') as HTMLInputElement;
+
+        expect(input.hasAttribute("accept")).toBe(false);
+    });
+
     it("ファイル選択で既存のインポートサービスへ先頭のファイルを渡す", async () => {
         importFileMock.mockResolvedValue(createResult());
         render(PostHistoryImportDialog, {
@@ -125,7 +139,7 @@ describe("PostHistoryImportDialog", () => {
         });
         const input = screen.getByRole("dialog", { name: "JSONLをインポート" })
             .querySelector('input[type="file"]') as HTMLInputElement;
-        const firstFile = createFile();
+        const firstFile = new File(["{}"], "history.jsonl", { type: "application/octet-stream" });
         await fireEvent.change(input, {
             target: { files: [firstFile, createFile()] },
         });
