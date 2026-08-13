@@ -15,6 +15,7 @@ import {
     normalizeServerUrl,
 } from "../upload/uploadDestinationPresets";
 import { getEffectiveLocale } from "../utils/settingsStorage";
+import { getAppStorage } from "../appStorage";
 
 const LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY = "migrated.localStorage.uploadEndpoint.v1";
 
@@ -207,7 +208,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
-        private getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => localStorage,
+        private getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => getAppStorage(),
         private parentSync: UploadDestinationsParentSync | null = uploadDestinationsParentSync,
         private getNavigator: () => NavigatorAdapter = () =>
             (typeof navigator !== "undefined" ? navigator : { language: "en" }),

@@ -9,6 +9,7 @@ import {
     type RelayConfigCache,
     type RelayConfigsRepository,
 } from "./storage/relayConfigsRepository";
+import { getAppStorage } from './appStorage';
 
 // 後方互換性のためre-export
 export { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
@@ -301,7 +302,7 @@ export class RelayManager {
         deps: RelayManagerDeps = {}
     ) {
         // デフォルト依存性の設定
-        const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : undefined);
+        const localStorage = deps.localStorage || getAppStorage();
         const consoleImpl = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
         const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));

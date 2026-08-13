@@ -1,17 +1,19 @@
 /**
  * DOM操作ユーティリティ（テスト時にモック可能）
  */
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
+
 export const domUtils = {
     setBodyStyle(property: string, value: string): void {
-        document.body.style.setProperty(property, value);
+        getAppRuntimeEnvironment().layoutTarget.style.setProperty(property, value);
     },
 
     querySelector(selector: string): HTMLElement | null {
-        return document.querySelector(selector) as HTMLElement;
+        return getAppRuntimeEnvironment().domRoot?.querySelector(selector) as HTMLElement;
     },
 
     querySelectorAll(selector: string): NodeListOf<HTMLElement> {
-        return document.querySelectorAll(selector) as NodeListOf<HTMLElement>;
+        return getAppRuntimeEnvironment().domRoot?.querySelectorAll(selector) as NodeListOf<HTMLElement>;
     },
 
     focusElement(element: HTMLElement): void {
@@ -31,7 +33,10 @@ export function clearBodyStyles(): void {
 
 // === 追加: DOM操作の抽象化 ===
 export function getActiveElement(): HTMLElement | null {
-    return document.activeElement as HTMLElement | null;
+    const root = getAppRuntimeEnvironment().domRoot;
+    return (root && "activeElement" in root
+        ? root.activeElement
+        : getAppRuntimeEnvironment().document?.activeElement) as HTMLElement | null;
 }
 
 export function isEditorElement(element: HTMLElement): boolean {
@@ -46,7 +51,7 @@ export function blurActiveElement(): void {
     const active = getActiveElement();
     if (active && (isEditorElement(active) || isFormControl(active))) {
         active.blur?.();
-        (document.body as HTMLElement)?.focus?.();
+        getAppRuntimeEnvironment().layoutTarget.focus?.();
     }
 }
 
@@ -65,7 +70,7 @@ export function blurEditorAndBody() {
         // タッチデバイスでのキーボード非表示を強化
         if (isTouchDevice()) {
             // エディター要素を明示的にblur
-            const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+            const editorElement = getAppRuntimeEnvironment().domRoot?.querySelector('.tiptap-editor') as HTMLElement;
             if (editorElement) {
                 editorElement.blur?.();
             }

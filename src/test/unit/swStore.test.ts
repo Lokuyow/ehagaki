@@ -5,7 +5,7 @@ const testState = vi.hoisted(() => ({
     needRefreshListener: undefined as undefined | ((needRefresh: boolean) => void),
     registerOptions: undefined as undefined | {
         onNeedRefresh?: () => void;
-        onNeedReload?: () => void;
+        onNeedReload?: () => unknown;
     },
     updateServiceWorker: vi.fn(),
 }));
@@ -54,6 +54,7 @@ describe("swStore DB upgrade blocked state", () => {
     });
 
     afterEach(() => {
+        vi.unstubAllGlobals();
         if (originalServiceWorker) {
             Object.defineProperty(navigator, "serviceWorker", originalServiceWorker);
         } else {
@@ -61,8 +62,17 @@ describe("swStore DB upgrade blocked state", () => {
         }
     });
 
+    it("state import alone does not register a Service Worker", async () => {
+        await import("../../stores/swStore.svelte");
+
+        expect(testState.registerOptions).toBeUndefined();
+        expect(testState.dbUpgradeStateListener).toBeUndefined();
+    });
+
     it("DB blocked の解除で ready のSW更新状態を維持する", async () => {
         const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
         const statuses: string[] = [];
         const blockedStates: boolean[] = [];
         const refreshStates: boolean[] = [];
@@ -88,6 +98,8 @@ describe("swStore DB upgrade blocked state", () => {
 
     it("未承認controllerchangeは一度だけstale化し、更新操作をreload promptへ振り分ける", async () => {
         const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
         const staleStore = await import(
             "../../stores/staleAssetReloadStore.svelte"
         );
@@ -104,5 +116,27 @@ describe("swStore DB upgrade blocked state", () => {
 
         expect(staleStore.staleAssetReloadState.promptRevision).toBe(2);
         expect(testState.updateServiceWorker).not.toHaveBeenCalled();
+    });
+
+    it("承認済み更新のcontrollerchangeはstale化せずreloadする", async () => {
+        const reload = vi.fn();
+        vi.stubGlobal("window", { location: { reload } });
+        const store = await import("../../stores/swStore.svelte");
+        const bootstrap = await import("../../lib/bootstrap/serviceWorkerBootstrap");
+        bootstrap.startServiceWorkerRegistration();
+        const staleStore = await import(
+            "../../stores/staleAssetReloadStore.svelte"
+        );
+        testState.registerOptions?.onNeedRefresh?.();
+        await store.handleSwUpdate();
+
+        expect(testState.updateServiceWorker).toHaveBeenCalledWith(true);
+
+        const result = testState.registerOptions?.onNeedReload?.();
+
+        expect(result).toBe("reloaded");
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(staleStore.staleAssetReloadState.required).toBe(false);
+        expect(staleStore.staleAssetReloadState.promptRevision).toBe(0);
     });
 });

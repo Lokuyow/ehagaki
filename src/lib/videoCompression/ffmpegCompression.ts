@@ -4,6 +4,7 @@ import type { VideoCompressionResult } from '../types';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devLog, devWarn } from './compressionUtils';
+import { getAppRuntimeEnvironment } from '../appRuntimeEnvironment';
 
 /**
  * FFmpegを使用した動画圧縮クラス
@@ -58,8 +59,12 @@ export class FFmpegCompression extends BaseCompression {
 
             try {
                 // Viteの静的アセットimportを使用
+                const configuredAssetBase = getAppRuntimeEnvironment().assetBase;
                 const base = import.meta.env.BASE_URL || '/';
-                const baseURL = new URL(base, window.location.origin).href;
+                const baseURL = (
+                    configuredAssetBase ??
+                    new URL(base, window.location.origin)
+                ).href;
                 const coreURL = new URL('ffmpeg-core/ffmpeg-core.js', baseURL).href;
                 const wasmURL = new URL('ffmpeg-core/ffmpeg-core.wasm', baseURL).href;
 

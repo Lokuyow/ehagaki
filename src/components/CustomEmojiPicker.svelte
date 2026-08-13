@@ -29,9 +29,11 @@
         preserveKeyboardForScrollableTouch,
         preventKeyboardFocusChange,
     } from "../lib/utils/keyboardFocusUtils";
+    import { getAppStorage } from "../lib/appStorage";
 
     const VIRTUAL_OVERSCAN_ROWS = 3;
     const CUSTOM_EMOJI_GRID_TOP_PADDING = 8;
+    const appStorage = getAppStorage();
 
     interface Props {
         rxNostr?: RxNostr | null;
@@ -206,7 +208,7 @@
 
     function updatePickerHeight(nextHeight: number): void {
         pickerHeight = writeCustomEmojiPickerHeight(
-            localStorage,
+            appStorage,
             nextHeight,
             getPickerHeightClampViewport(),
             pickerStorageMaxHeight,
@@ -238,7 +240,7 @@
 
     onMount(() => {
         pickerHeight = readCustomEmojiPickerHeight(
-            localStorage,
+            appStorage,
             getPickerHeightClampViewport(),
             pickerStorageMaxHeight,
         );
@@ -357,7 +359,7 @@
     $effect(() => {
         pickerStorageMaxHeight;
         pickerHeight = readCustomEmojiPickerHeight(
-            localStorage,
+            appStorage,
             getPickerHeightClampViewport(),
             pickerStorageMaxHeight,
         );

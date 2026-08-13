@@ -2,6 +2,7 @@
 
 import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { AppPostNotificationPort } from "../appNotificationPort";
 import type { PostHistoryRawEventAttestation } from "../postHistoryRawEventVerification";
 
 // App Store types
@@ -72,6 +73,7 @@ export interface AuthServiceDependencies {
     caches?: CacheStorage;
     window?: Window;
     navigator?: Navigator;
+    serviceWorkerEnabled?: boolean;
     console?: Console;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;
@@ -211,6 +213,7 @@ export interface PostManagerDeps {
         }) => boolean;
         notifyPostError: (error?: string | { code: string; message?: string }) => boolean;
     };
+    notificationPort?: AppPostNotificationPort;
     hashtagPinStore?: { value: boolean };
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void | Promise<void>;
     channelContextState?: { value: ChannelContextState | null };

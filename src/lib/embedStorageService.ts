@@ -16,6 +16,7 @@ import {
     filterAllowedEmbedStorageKeys,
     isAllowedEmbedStorageKey,
 } from "./embedStorageKeys";
+import { getAppStorage } from "./appStorage";
 
 type PendingStorageRequest = {
     resolve: (payload: EmbedStorageResultPayload) => void;
@@ -126,7 +127,7 @@ export class EmbedStorageService {
         return this.sendRequest("storage.get", { keys: allowedKeys });
     }
 
-    persistLocalStorageKeys(keys: string[], storage: Pick<Storage, "getItem"> = localStorage): void {
+    persistLocalStorageKeys(keys: string[], storage: Pick<Storage, "getItem"> = getAppStorage()): void {
         const values: Record<string, string> = {};
         const removeKeys: string[] = [];
 
@@ -174,7 +175,7 @@ export class EmbedStorageService {
 
     applySnapshotToLocalStorage(
         values: Record<string, string | null> | undefined,
-        storage: Pick<Storage, "setItem"> = localStorage,
+        storage: Pick<Storage, "setItem"> = getAppStorage(),
     ): string[] {
         if (!values) return [];
 

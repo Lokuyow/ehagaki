@@ -2,6 +2,7 @@ import { MAX_DRAFTS, STORAGE_KEYS } from "../constants";
 import { compareDraftsByDisplayOrder } from "../draftSortUtils";
 import type { Draft, DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 import { ehagakiDb, type DraftRecord, type EHagakiDB } from "./ehagakiDb";
+import { getAppStorage } from "../appStorage";
 
 const DRAFT_SCHEMA_VERSION = 1;
 const LOCAL_DRAFT_BACKEND_VERSION = 1;
@@ -65,7 +66,7 @@ function isRecordVisible(
     return getVisibleScopeKeys(options.pubkeyHex).includes(record.scopeKey);
 }
 
-function readLegacyDraftsFromLocalStorage(storage: Pick<Storage, "getItem"> = localStorage): Draft[] {
+function readLegacyDraftsFromLocalStorage(storage: Pick<Storage, "getItem"> = getAppStorage()): Draft[] {
     const draftsJson = storage.getItem(STORAGE_KEYS.DRAFTS);
     if (!draftsJson) return [];
 
@@ -116,7 +117,7 @@ export class DexieDraftsRepository implements DraftsRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
-        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => localStorage,
+        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }
 
     async getAll(options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
@@ -272,7 +273,7 @@ export class DexieDraftsRepository implements DraftsRepository {
 
 export class LocalStorageDraftsRepository implements DraftsRepository {
     constructor(
-        private getStorage: () => DraftStorage = () => localStorage,
+        private getStorage: () => DraftStorage = () => getAppStorage(),
         private now: () => number = Date.now,
     ) { }
 

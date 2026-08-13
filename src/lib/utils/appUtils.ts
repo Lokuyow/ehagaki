@@ -7,6 +7,7 @@ import {
   getClientTagEnabledPreference,
   getImageCompressionLevelPreference,
 } from './settingsStorage';
+import { getAppStorage } from '../appStorage';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)
@@ -14,8 +15,8 @@ import {
 
 // Default implementations
 export const defaultStorageAdapter: StorageAdapter = {
-  getItem: (key: string) => localStorage.getItem(key),
-  setItem: (key: string, value: string) => localStorage.setItem(key, value)
+  getItem: (key: string) => getAppStorage().getItem(key),
+  setItem: (key: string, value: string) => getAppStorage().setItem(key, value)
 };
 
 export const defaultNavigatorAdapter: NavigatorAdapter = {
@@ -153,4 +154,3 @@ export function chunkArray<T>(array: T[], size: number): T[][] {
   }
   return chunks;
 }
-

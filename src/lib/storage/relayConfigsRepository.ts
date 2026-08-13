@@ -2,6 +2,7 @@ import { STORAGE_KEYS } from "../constants";
 import { RelayConfigParser, RelayConfigUtils } from "../relayConfigUtils";
 import type { RelayConfig } from "../types";
 import { ehagakiDb, type EHagakiDB, type RelayConfigRecord } from "./ehagakiDb";
+import { getAppStorage } from "../appStorage";
 
 const RELAY_CONFIG_SCHEMA_VERSION = 1;
 
@@ -84,7 +85,7 @@ export class DexieRelayConfigsRepository implements RelayConfigsRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
-        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => localStorage,
+        private getStorage: () => Pick<Storage, "getItem" | "removeItem"> = () => getAppStorage(),
     ) { }
 
     async get(pubkeyHex: string): Promise<RelayConfigCache | null> {

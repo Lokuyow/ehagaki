@@ -360,7 +360,11 @@ export class AuthService {
 
     private clearProfileImageCache(): void {
         try {
-            if (!('serviceWorker' in this.runtime.navigator) || !this.runtime.navigator.serviceWorker.controller) return;
+            if (
+                !this.runtime.serviceWorkerEnabled
+                || !('serviceWorker' in this.runtime.navigator)
+                || !this.runtime.navigator.serviceWorker.controller
+            ) return;
 
             const messageChannel = new MessageChannel();
             messageChannel.port1.onmessage = (event) => {

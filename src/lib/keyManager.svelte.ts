@@ -2,6 +2,7 @@ import type { PublicKeyData, KeyManagerDeps, KeyManagerError } from "./types";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
 import { getNsecStorageKey } from './authStorageKeys';
 import { secretKeyStore } from '../stores/authStore.svelte';
+import { getAppStorage } from './appStorage';
 
 // --- 純粋関数（テストしやすい） ---
 export class KeyValidator {
@@ -260,7 +261,7 @@ export class KeyManager {
 
     constructor(deps: KeyManagerDeps = {}) {
         // デフォルト依存性の設定
-        const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
+        const localStorage = deps.localStorage || getAppStorage();
         const console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const secretKeyStoreObj = deps.secretKeyStore || { value: null, set: () => { } };
         const windowObj = deps.window || (typeof window !== 'undefined' ? window : undefined);

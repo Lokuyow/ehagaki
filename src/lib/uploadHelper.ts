@@ -52,6 +52,7 @@ import {
 import { uploadDestinationsRepository } from "./storage/uploadDestinationsRepository";
 import { authState } from "../stores/authStore.svelte";
 import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
+import { getAppStorage } from "./appStorage";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -269,7 +270,7 @@ async function replaceUploadedPlaceholders(params: {
 
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
-    localStorage: window.localStorage,
+    localStorage: getAppStorage(),
     crypto: window.crypto.subtle,
     tick,
     FileUploadManager: FileUploadManager as unknown as new (
