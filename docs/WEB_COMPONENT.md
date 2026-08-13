@@ -103,8 +103,8 @@ API は提供せず、Issue #89 の relay-interceptor の証明も未完了で�
 付きで配信するか、`asset-base` からアクセスできる配信基準を指定してください。
 クロスオリジン埋め込みでは、FFmpeg は `asset-base` から同梱の class-worker モジュール
 を取得し、ホストオリジンの Blob URL をそのワーカー用に作成した後、`asset-base` から
-`ffmpeg-core.js` と `ffmpeg-core.wasm` を読み込みます。`worker-src` では delivery
-配信元オリジンと `blob:` の両方を許可してください。この経路のプロキシをホストの Service
+`ffmpeg-core.js` と `ffmpeg-core.wasm` を読み込みます。`worker-src` では配信元オリジンと
+`blob:` の両方を許可してください。この経路のプロキシをホストの Service
 Worker に依存しないでください。同一オリジンの PWA 配信では、生成されたワーカー用
 アセットを引き続き直接利用します。iOS Safari は実際の配信元オリジンで確認して
 ください。モバイルエミュレーションではワーカーや CORS の動作は検証できません。
