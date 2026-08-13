@@ -50,6 +50,10 @@
             nodeState: PostHistoryThreadGraphNodeState,
             event: Event,
         ) => void;
+        externalClientLabel?: string;
+        onOpenExternalClient?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
         onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
         onBroadcastPointerDown?: (
@@ -83,6 +87,8 @@
         onRetryChildren = undefined,
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
+        externalClientLabel = undefined,
+        onOpenExternalClient = undefined,
         isCopyFailed = undefined,
         onShowRawJson = undefined,
         onBroadcastPointerDown = undefined,
@@ -198,6 +204,8 @@
                     {onRetryChildren}
                     {onCopyPointerDown}
                     {onCopyNevent}
+                    {externalClientLabel}
+                    {onOpenExternalClient}
                     {isCopyFailed}
                     {onShowRawJson}
                     {onBroadcastPointerDown}
@@ -294,6 +302,21 @@
                     timestamp={postedAtExact}
                 >
                     {#snippet items()}
+                        {#if externalClientLabel && onOpenExternalClient}
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                onSelect={() => onOpenExternalClient?.(state)}
+                            >
+                                <div
+                                    class="open-in-new-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{externalClientLabel}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator
+                                class="post-history-menu-separator"
+                            />
+                        {/if}
                         <DropdownMenu.Item
                             class="menu-action-button"
                             disabled={state.repliesActionState.status ===
@@ -347,6 +370,8 @@
                     {onRetryChildren}
                     {onCopyPointerDown}
                     {onCopyNevent}
+                    {externalClientLabel}
+                    {onOpenExternalClient}
                     {isCopyFailed}
                     {onShowRawJson}
                     {onBroadcastPointerDown}

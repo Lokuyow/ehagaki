@@ -1197,6 +1197,12 @@
         );
     }
 
+    function handleNodeOpenExternalClient(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): void {
+        handleOpenExternalClient(buildPostRecordFromNodeState(nodeState));
+    }
+
     function getExternalClientPreference() {
         return {
             client: settingsStore.externalNostrClient,
@@ -2248,6 +2254,8 @@
                                         )}
                                     onCopyPointerDown={handleNodeCopyPointerPosition}
                                     onCopyNevent={handleNodeCopyNevent}
+                                    externalClientLabel={getExternalClientOpenLabel()}
+                                    onOpenExternalClient={handleNodeOpenExternalClient}
                                     isCopyFailed={isNodeCopyFailed}
                                     onShowRawJson={handleNodeShowRawJson}
                                     onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
@@ -2379,6 +2387,11 @@
                                                                                 void copyNeventUi.handleCopyNevent(
                                                                                     quotePreviewPost,
                                                                                     event,
+                                                                                )}
+                                                                            externalClientLabel={getExternalClientOpenLabel()}
+                                                                            onOpenExternalClient={() =>
+                                                                                handleOpenExternalClient(
+                                                                                    quotePreviewPost,
                                                                                 )}
                                                                             onShowRawJson={() =>
                                                                                 openRawJson(
@@ -2786,6 +2799,8 @@
                                             )}
                                         onCopyPointerDown={handleNodeCopyPointerPosition}
                                         onCopyNevent={handleNodeCopyNevent}
+                                        externalClientLabel={getExternalClientOpenLabel()}
+                                        onOpenExternalClient={handleNodeOpenExternalClient}
                                         isCopyFailed={isNodeCopyFailed}
                                         onShowRawJson={handleNodeShowRawJson}
                                         onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
