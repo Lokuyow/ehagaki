@@ -163,7 +163,7 @@ eHagaki のテーマ設定は初回起動時の既定値が `system` です。�
 
 - `embedTheme=system` は iframe 起動ごとに system へ戻したい場合に使えます
 - `defaultTheme=light|dark` は eHagaki 側にテーマ保存がない時だけ初期値を指定したい場合に使ってください
-- 既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) は、`embed~` / `default~` と実行中の `settings.set` を切り替えて試せます
+- 既存の [public/embed-parent-client-example.html](../public/embed-parent-client-example.html) は、`embed~` / `default~` と実行中の `settings.set` を切り替えて試せます
 
 ## 2. リプライ / 複数引用 / パブリックチャット状態で起動する
 
@@ -579,7 +579,7 @@ iframe.contentWindow.postMessage({
 }, 'https://lokuyow.github.io');
 ```
 
-既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
+既存の [public/embed-parent-client-example.html](../public/embed-parent-client-example.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
 
 ### 都度生成 iframe の設定注入
 
@@ -598,8 +598,8 @@ iframe.contentWindow.postMessage({
 
 リポジトリ内には実際に親ページとして動かせるサンプルを追加しています。
 
-- [public/embed-parent-client-example.html](public/embed-parent-client-example.html)
-- [public/embed-parent-client-example.js](public/embed-parent-client-example.js)
+- [public/embed-parent-client-example.html](../public/embed-parent-client-example.html)
+- [public/embed-parent-client-example.js](../public/embed-parent-client-example.js)
 
 オンラインで直接確認するには [https://lokuyow.github.io/ehagaki/embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html) を開いてください。
 
