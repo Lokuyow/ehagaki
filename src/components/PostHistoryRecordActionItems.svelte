@@ -14,6 +14,8 @@
         deletionSending: boolean;
         onCopyPointerDown: (event: PointerEvent) => void;
         onCopyNevent: (event: Event) => void;
+        externalClientLabel?: string;
+        onOpenExternalClient?: (event: Event) => void;
         onShowRawJson: () => void;
         onBroadcastPointerDown: (event: PointerEvent) => void;
         onBroadcastPost: (event: Event) => void;
@@ -30,6 +32,8 @@
         deletionSending,
         onCopyPointerDown,
         onCopyNevent,
+        externalClientLabel = undefined,
+        onOpenExternalClient = undefined,
         onShowRawJson,
         onBroadcastPointerDown,
         onBroadcastPost,
@@ -61,6 +65,17 @@
         <span>{$_("postHistory.rawJson")}</span>
     </DropdownMenu.Item>
 {/snippet}
+
+{#if externalClientLabel && onOpenExternalClient}
+    <DropdownMenu.Item
+        class="menu-action-button"
+        onSelect={onOpenExternalClient}
+    >
+        <div class="open-in-new-icon svg-icon" aria-hidden="true"></div>
+        <span>{externalClientLabel}</span>
+    </DropdownMenu.Item>
+    <DropdownMenu.Separator class="post-history-menu-separator" />
+{/if}
 
 {#if order === "raw-json-first"}
     {@render rawJsonItem()}
@@ -99,3 +114,9 @@
         </span>
     </DropdownMenu.Item>
 {/if}
+
+<style>
+    :global(.open-in-new-icon) {
+        mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+</style>

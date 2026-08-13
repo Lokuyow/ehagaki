@@ -18,6 +18,7 @@ import {
     resetPostHistoryDialogHarness,
     visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
+import { settingsStore } from '../../stores/settingsStore.svelte';
 function createRecord(overrides: Record<string, any> = {}) {
     return {
         id: 'event-1',
@@ -303,6 +304,43 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(actionTrigger);
         expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
         expect(screen.queryByRole('menuitem', { name: 'コピーしました' })).toBeNull();
+    });
+
+    it('通常投稿のメニューから設定した外部クライアントをneventで新しいタブに開く', async () => {
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+        settingsStore.externalNostrClient = 'primal';
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([createRecord()]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿本文')).toBeTruthy();
+        });
+
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Primalで開く' }),
+        );
+
+        expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
+            eventId: 'b'.repeat(64),
+            authorPubkey: 'a'.repeat(64),
+            kind: 1,
+        }));
+        expect(open).toHaveBeenCalledWith(
+            'https://primal.net/e/nevent1mock',
+            '_blank',
+            'noopener,noreferrer',
+        );
+        settingsStore.externalNostrClient = 'nostter';
     });
 
     it('自分の投稿にだけ削除ボタンを表示する', async () => {

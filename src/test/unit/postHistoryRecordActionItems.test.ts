@@ -8,6 +8,8 @@ vi.mock("svelte-i18n", () => ({
         const messages: Record<string, string> = {
             "postHistory.copyNevent": "neventをコピー",
             "postHistory.copyFailed": "コピーに失敗しました",
+            "postHistory.openInExternalClient": "{client}で開く",
+            "postHistory.openInExternalClientFallback": "外部クライアントで開く",
             "postHistory.rawJson": "イベントJSONを表示",
             "postHistory.broadcast": "ブロードキャスト",
             "postHistory.delete": "削除",
@@ -129,5 +131,27 @@ describe("PostHistoryRecordActionItems", () => {
         expect(broadcast.hasAttribute("data-disabled")).toBe(true);
         expect(onBroadcastPointerDown).toHaveBeenCalledTimes(1);
         expect(onBroadcastPost).not.toHaveBeenCalled();
+    });
+
+    it("shows and forwards the configured external client action", async () => {
+        const onOpenExternalClient = vi.fn();
+
+        render(PostHistoryRecordActionItemsHarness, {
+            externalClientLabel: "Nostterで開く",
+            onOpenExternalClient,
+        });
+
+        const item = screen.getByRole("menuitem", { name: "Nostterで開く" });
+        expect(menuItemNames()).toEqual([
+            "Nostterで開く",
+            "neventをコピー",
+            "イベントJSONを表示",
+            "ブロードキャスト",
+            "削除",
+        ]);
+        expect(document.querySelectorAll(".post-history-menu-separator")).toHaveLength(2);
+        await fireEvent.click(item);
+
+        expect(onOpenExternalClient).toHaveBeenCalledTimes(1);
     });
 });

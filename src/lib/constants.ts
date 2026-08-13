@@ -110,6 +110,8 @@ export const STORAGE_KEYS = {
     LEGACY_VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     SHOW_MASCOT: "showMascot",
     SHOW_FLAVOR_TEXT: "showFlavorText",
+    EXTERNAL_NOSTR_CLIENT: "externalNostrClient",
+    EXTERNAL_NOSTR_CLIENT_CUSTOM_URL: "externalNostrClientCustomUrl",
     SETTINGS_PREFERENCE_METADATA: "settingsPreferenceMetadata",
     FIRST_VISIT: "firstVisit",
     SHARED_MEDIA_PROCESSED: "sharedMediaProcessed",

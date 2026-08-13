@@ -11,6 +11,12 @@ import {
     VALID_COMPRESSION_LEVELS,
     uploadEndpoints,
 } from "../constants";
+import {
+    normalizeExternalNostrClient,
+    normalizeExternalNostrClientUrlTemplate,
+    type ExternalNostrClient,
+    type ExternalNostrClientPreference,
+} from "../postHistoryExternalClient";
 
 export type SupportedLocale = "ja" | "en";
 export type PreferenceSource =
@@ -226,6 +232,59 @@ export function getEffectiveLocale(
     navigator: NavigatorAdapter,
 ): SupportedLocale {
     return getStoredLocalePreference(storage) ?? normalizeLocale(navigator.language);
+}
+
+export function getExternalNostrClientPreference(
+    storage: ReadWriteStorage,
+    locale: string | null | undefined,
+): ExternalNostrClientPreference {
+    const storedClient = normalizeExternalNostrClient(
+        storage.getItem(STORAGE_KEYS.EXTERNAL_NOSTR_CLIENT),
+    );
+
+    if (storedClient) {
+        return {
+            client: storedClient,
+            customUrlTemplate:
+                storedClient === "custom"
+                    ? storage.getItem(STORAGE_KEYS.EXTERNAL_NOSTR_CLIENT_CUSTOM_URL) ?? ""
+                    : "",
+        };
+    }
+
+    const defaultClient: Exclude<ExternalNostrClient, "custom"> =
+        normalizeLocale(locale) === "ja" ? "nostter" : "jumble";
+    storage.setItem(STORAGE_KEYS.EXTERNAL_NOSTR_CLIENT, defaultClient);
+    return { client: defaultClient, customUrlTemplate: "" };
+}
+
+export function setExternalNostrClientPreference(
+    storage: ReadWriteStorage,
+    value: string,
+): ExternalNostrClient | null {
+    const normalizedClient = normalizeExternalNostrClient(value);
+    if (!normalizedClient) {
+        return null;
+    }
+
+    storage.setItem(STORAGE_KEYS.EXTERNAL_NOSTR_CLIENT, normalizedClient);
+    return normalizedClient;
+}
+
+export function setExternalNostrClientCustomUrlPreference(
+    storage: ReadWriteStorage,
+    value: string,
+): string | null {
+    const normalizedUrl = normalizeExternalNostrClientUrlTemplate(value);
+    if (!normalizedUrl) {
+        return null;
+    }
+
+    storage.setItem(
+        STORAGE_KEYS.EXTERNAL_NOSTR_CLIENT_CUSTOM_URL,
+        normalizedUrl,
+    );
+    return normalizedUrl;
 }
 
 export function getClientTagEnabledPreference(storage: ReadWriteStorage): boolean {

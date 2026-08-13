@@ -46,6 +46,10 @@
             nodeState: PostHistoryThreadGraphNodeState,
             event: Event,
         ) => void;
+        externalClientLabel?: string;
+        onOpenExternalClient?: (
+            nodeState: PostHistoryThreadGraphNodeState,
+        ) => void;
         isCopyFailed?: (nodeEventId: string) => boolean;
         onShowRawJson?: (nodeState: PostHistoryThreadGraphNodeState) => void;
         onBroadcastPointerDown?: (
@@ -82,6 +86,8 @@
         onRetryNodeChildren = undefined,
         onCopyPointerDown = undefined,
         onCopyNevent = undefined,
+        externalClientLabel = undefined,
+        onOpenExternalClient = undefined,
         isCopyFailed = undefined,
         onShowRawJson = undefined,
         onBroadcastPointerDown = undefined,
@@ -156,6 +162,8 @@
                 onRetryChildren={onRetryNodeChildren}
                 {onCopyPointerDown}
                 {onCopyNevent}
+                {externalClientLabel}
+                {onOpenExternalClient}
                 {isCopyFailed}
                 {onShowRawJson}
                 {onBroadcastPointerDown}
@@ -179,6 +187,8 @@
                 onRetryChildren={onRetryNodeChildren}
                 {onCopyPointerDown}
                 {onCopyNevent}
+                {externalClientLabel}
+                {onOpenExternalClient}
                 {isCopyFailed}
                 {onShowRawJson}
                 {onBroadcastPointerDown}
@@ -249,6 +259,8 @@
                     onRetryChildren={onRetryNodeChildren}
                     {onCopyPointerDown}
                     {onCopyNevent}
+                    {externalClientLabel}
+                    {onOpenExternalClient}
                     {isCopyFailed}
                     {onShowRawJson}
                     {onBroadcastPointerDown}

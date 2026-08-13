@@ -1,7 +1,7 @@
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import { calculateContextMenuPosition } from "../utils/appUtils";
 import { tryCopyToClipboard } from "../utils/clipboardUtils";
-import { toNevent } from "../utils/nostrUtils";
+import { buildPostHistoryNevent } from "../postHistoryNevent";
 import { writeRelaysStore } from "../../stores/relayStore.svelte";
 
 type CopyPointerPosition = {
@@ -21,14 +21,7 @@ export function usePostHistoryCopyNevent() {
     );
 
     function buildNevent(post: PostHistoryRecord): string {
-        return toNevent({
-            eventId: post.eventId,
-            authorPubkey: post.pubkeyHex,
-            kind: post.kind,
-            acceptedRelays: post.acceptedRelays,
-            relayHints: post.relayHints,
-            writeRelays: writeRelaysStore.value,
-        });
+        return buildPostHistoryNevent(post, writeRelaysStore.value);
     }
 
     function hideCopyFloatingMessage(): void {

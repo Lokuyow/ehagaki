@@ -3,6 +3,7 @@ import type { EmbedSettingsSetPayload } from "../lib/embedProtocol";
 import {
     getClientTagEnabledPreference,
     getEffectiveLocale,
+    getExternalNostrClientPreference,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
     getQuoteNotificationEnabledPreference,
@@ -12,6 +13,8 @@ import {
     getVideoCompressionLevelPreference,
     normalizeLegacyCompressionLevelPreference,
     setClientTagEnabledPreference,
+    setExternalNostrClientCustomUrlPreference,
+    setExternalNostrClientPreference,
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
@@ -27,6 +30,7 @@ import {
     type SupportedLocale,
     type PreferenceSource,
 } from "../lib/utils/settingsStorage";
+import type { ExternalNostrClient } from "../lib/postHistoryExternalClient";
 import { themeModeStore } from "./themeStore.svelte";
 import { mediaFreePlacementStore } from "./uploadStore.svelte";
 import { STORAGE_KEYS } from "../lib/constants";
@@ -46,9 +50,14 @@ interface SettingsState {
     mediaFreePlacement: boolean;
     showMascot: boolean;
     showFlavorText: boolean;
+    externalNostrClient: ExternalNostrClient;
+    externalNostrClientCustomUrl: string;
 }
 
-type DirectSettingKey = Exclude<keyof SettingsState, "locale">;
+type DirectSettingKey = Exclude<
+    keyof SettingsState,
+    "locale" | "externalNostrClient" | "externalNostrClientCustomUrl"
+>;
 
 interface DirectSettingDescriptor<K extends DirectSettingKey> {
     storageKeys: readonly string[];
@@ -58,6 +67,10 @@ interface DirectSettingDescriptor<K extends DirectSettingKey> {
 
 function readSettingsState(): SettingsState {
     const effectiveLocale = getEffectiveLocale(localStorage, navigator);
+    const externalNostrClient = getExternalNostrClientPreference(
+        localStorage,
+        effectiveLocale,
+    );
 
     return {
         locale: effectiveLocale,
@@ -69,6 +82,8 @@ function readSettingsState(): SettingsState {
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
         showMascot: getShowMascotPreference(localStorage),
         showFlavorText: getShowFlavorTextPreference(localStorage),
+        externalNostrClient: externalNostrClient.client,
+        externalNostrClientCustomUrl: externalNostrClient.customUrlTemplate,
     };
 }
 
@@ -291,6 +306,31 @@ export const settingsStore = {
     set showFlavorText(value: boolean) {
         applyDirectSetting("showFlavorText", value);
         persistDirectSettingKey("showFlavorText");
+    },
+
+    get externalNostrClient(): ExternalNostrClient {
+        return settingsState.externalNostrClient;
+    },
+
+    set externalNostrClient(value: string) {
+        const nextValue = setExternalNostrClientPreference(localStorage, value);
+        if (nextValue) {
+            settingsState.externalNostrClient = nextValue;
+        }
+    },
+
+    get externalNostrClientCustomUrl(): string {
+        return settingsState.externalNostrClientCustomUrl;
+    },
+
+    set externalNostrClientCustomUrl(value: string) {
+        const nextValue = setExternalNostrClientCustomUrlPreference(
+            localStorage,
+            value,
+        );
+        if (nextValue) {
+            settingsState.externalNostrClientCustomUrl = nextValue;
+        }
     },
 
     applyParentSettings(

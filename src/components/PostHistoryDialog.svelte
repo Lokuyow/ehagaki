@@ -77,7 +77,13 @@
     import type { PostHistoryJsonlExportProgress } from "../lib/postHistoryJsonlExportWorkerProtocol";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
+    import {
+        buildPostHistoryExternalClientUrl,
+        getExternalNostrClientDisplayName,
+    } from "../lib/postHistoryExternalClient";
     import { resetPendingDeletionRequests } from "../stores/postHistoryDeletionLifecycleStore.svelte";
+    import { settingsStore } from "../stores/settingsStore.svelte";
+    import { writeRelaysStore } from "../stores/relayStore.svelte";
     import type {
         FullscreenMediaItem,
         NostrEvent,
@@ -1191,6 +1197,41 @@
         );
     }
 
+    function handleNodeOpenExternalClient(
+        nodeState: PostHistoryThreadGraphNodeState,
+    ): void {
+        handleOpenExternalClient(buildPostRecordFromNodeState(nodeState));
+    }
+
+    function getExternalClientPreference() {
+        return {
+            client: settingsStore.externalNostrClient,
+            customUrlTemplate: settingsStore.externalNostrClientCustomUrl,
+        };
+    }
+
+    function getExternalClientOpenLabel(): string {
+        const clientName = getExternalNostrClientDisplayName(
+            getExternalClientPreference(),
+        );
+        return clientName
+            ? $_("postHistory.openInExternalClient", {
+                  values: { client: clientName },
+              })
+            : $_("postHistory.openInExternalClientFallback");
+    }
+
+    function handleOpenExternalClient(post: PostHistoryRecord): void {
+        const url = buildPostHistoryExternalClientUrl(
+            post,
+            getExternalClientPreference(),
+            writeRelaysStore.value,
+        );
+        if (url) {
+            window.open(url, "_blank", "noopener,noreferrer");
+        }
+    }
+
     function handleNodeBroadcastPointerPosition(
         nodeState: PostHistoryThreadGraphNodeState,
         event: PointerEvent,
@@ -2137,6 +2178,11 @@
                                                                             post,
                                                                             event,
                                                                         )}
+                                                                    externalClientLabel={getExternalClientOpenLabel()}
+                                                                    onOpenExternalClient={() =>
+                                                                        handleOpenExternalClient(
+                                                                            post,
+                                                                        )}
                                                                     onShowRawJson={() =>
                                                                         openRawJson(post.rawEvent)}
                                                                     onBroadcastPointerDown={(event) =>
@@ -2208,6 +2254,8 @@
                                         )}
                                     onCopyPointerDown={handleNodeCopyPointerPosition}
                                     onCopyNevent={handleNodeCopyNevent}
+                                    externalClientLabel={getExternalClientOpenLabel()}
+                                    onOpenExternalClient={handleNodeOpenExternalClient}
                                     isCopyFailed={isNodeCopyFailed}
                                     onShowRawJson={handleNodeShowRawJson}
                                     onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
@@ -2339,6 +2387,11 @@
                                                                                 void copyNeventUi.handleCopyNevent(
                                                                                     quotePreviewPost,
                                                                                     event,
+                                                                                )}
+                                                                            externalClientLabel={getExternalClientOpenLabel()}
+                                                                            onOpenExternalClient={() =>
+                                                                                handleOpenExternalClient(
+                                                                                    quotePreviewPost,
                                                                                 )}
                                                                             onShowRawJson={() =>
                                                                                 openRawJson(
@@ -2511,6 +2564,22 @@
                                                     )}
                                                 >
                                                     {#snippet items()}
+                                                        <DropdownMenu.Item
+                                                            class="menu-action-button"
+                                                            onSelect={() =>
+                                                                handleOpenExternalClient(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="open-in-new-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                            <span>{getExternalClientOpenLabel()}</span>
+                                                        </DropdownMenu.Item>
+                                                        <DropdownMenu.Separator
+                                                            class="post-history-menu-separator"
+                                                        />
                                                         <DropdownMenu.Item
                                                             class="menu-action-button"
                                                             disabled={graphState
@@ -2730,6 +2799,8 @@
                                             )}
                                         onCopyPointerDown={handleNodeCopyPointerPosition}
                                         onCopyNevent={handleNodeCopyNevent}
+                                        externalClientLabel={getExternalClientOpenLabel()}
+                                        onOpenExternalClient={handleNodeOpenExternalClient}
                                         isCopyFailed={isNodeCopyFailed}
                                         onShowRawJson={handleNodeShowRawJson}
                                         onBroadcastPointerDown={handleNodeBroadcastPointerPosition}
