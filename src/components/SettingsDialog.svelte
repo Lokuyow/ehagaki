@@ -422,42 +422,27 @@
                         </InfoPopoverButton>
                     </div>
                 </div>
-                <RadioGroup.Root
-                    class="setting-control external-nostr-client-group"
-                    name="externalNostrClient"
-                    orientation="horizontal"
+                <select
+                    class="setting-control external-nostr-client-select"
+                    id="external-nostr-client-select"
                     value={externalNostrClient}
                     aria-labelledby="external-nostr-client-label"
-                    onValueChange={(value) => {
-                        externalNostrClient = value as ExternalNostrClient;
+                    onchange={(event) => {
+                        externalNostrClient = (event.currentTarget as HTMLSelectElement)
+                            .value as ExternalNostrClient;
                         externalNostrClientCustomUrlError = null;
                     }}
                 >
                     {#each EXTERNAL_NOSTR_CLIENTS as client}
-                        <RadioButton
-                            value={client}
-                            variant="default"
-                            shape="rounded"
-                            ariaLabel={client === "custom"
-                                ? $_("settingsDialog.external_nostr_client_custom")
-                                : client === "nostter"
-                                  ? "Nostter"
-                                  : client === "jumble"
-                                    ? "Jumble"
-                                    : client === "primal"
-                                      ? "Primal"
-                                      : client === "njump"
-                                        ? "njump"
-                                        : "Lumilumi"}
-                        >
+                        <option value={client}>
                             {client === "custom"
                                 ? $_("settingsDialog.external_nostr_client_custom")
                                 : client === "njump"
                                   ? "njump"
                                   : client[0].toUpperCase() + client.slice(1)}
-                        </RadioButton>
+                        </option>
                     {/each}
-                </RadioGroup.Root>
+                </select>
             </div>
             {#if externalNostrClient === "custom"}
                 <div class="external-nostr-client-custom-url">
@@ -919,9 +904,15 @@
         margin-block: auto;
     }
 
-    :global(.external-nostr-client-group) {
-        flex-wrap: wrap;
-        justify-content: flex-end;
+    .external-nostr-client-select {
+        min-width: 160px;
+        min-height: 44px;
+        padding: 8px 32px 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        font: inherit;
     }
 
     .external-nostr-client-custom-url {

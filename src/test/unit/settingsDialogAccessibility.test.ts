@@ -172,7 +172,7 @@ describe('SettingsDialog accessibility', () => {
         expect(replyButton.getAttribute('aria-label')).not.toMatch(/[一-龯ぁ-んァ-ヶ]/);
     });
 
-    it('外部クライアント設定のラジオグループとカスタムURL validationを扱える', async () => {
+    it('外部クライアント設定のセレクトとカスタムURL validationを扱える', async () => {
         settingsStore.locale = 'ja';
         settingsStore.externalNostrClient = 'nostter';
         render(SettingsDialog, {
@@ -184,18 +184,19 @@ describe('SettingsDialog accessibility', () => {
 
         await tick();
 
-        expect(
-            screen.getByRole('radiogroup', {
-                name: '投稿を開くクライアント',
-            }),
-        ).toBeTruthy();
-        expect(screen.getByRole('radio', { name: 'Nostter' })).toBeTruthy();
-        expect(screen.getByRole('radio', { name: 'Jumble' })).toBeTruthy();
-        expect(screen.getByRole('radio', { name: 'Primal' })).toBeTruthy();
-        expect(screen.getByRole('radio', { name: 'njump' })).toBeTruthy();
-        expect(screen.getByRole('radio', { name: 'Lumilumi' })).toBeTruthy();
+        const clientSelect = screen.getByRole('combobox', {
+            name: '投稿を開くクライアント',
+        }) as HTMLSelectElement;
+        expect(Array.from(clientSelect.options).map((option) => option.text)).toEqual([
+            'Nostter',
+            'Jumble',
+            'Lumilumi',
+            'Primal',
+            'njump',
+            'カスタム',
+        ]);
 
-        await fireEvent.click(screen.getByRole('radio', { name: 'カスタム' }));
+        await fireEvent.change(clientSelect, { target: { value: 'custom' } });
         await tick();
 
         const customUrlInput = screen.getByLabelText('カスタムURL');

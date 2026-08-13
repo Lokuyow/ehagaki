@@ -66,14 +66,6 @@
     </DropdownMenu.Item>
 {/snippet}
 
-{#if order === "raw-json-first"}
-    {@render rawJsonItem()}
-    {@render copyItem()}
-{:else}
-    {@render copyItem()}
-    {@render rawJsonItem()}
-{/if}
-
 {#if externalClientLabel && onOpenExternalClient}
     <DropdownMenu.Item
         class="menu-action-button"
@@ -82,6 +74,15 @@
         <div class="open-in-new-icon svg-icon" aria-hidden="true"></div>
         <span>{externalClientLabel}</span>
     </DropdownMenu.Item>
+    <DropdownMenu.Separator class="post-history-menu-separator" />
+{/if}
+
+{#if order === "raw-json-first"}
+    {@render rawJsonItem()}
+    {@render copyItem()}
+{:else}
+    {@render copyItem()}
+    {@render rawJsonItem()}
 {/if}
 
 {#if showBroadcast}

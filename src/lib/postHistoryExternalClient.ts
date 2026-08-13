@@ -4,9 +4,9 @@ import { buildPostHistoryNevent } from "./postHistoryNevent";
 export const EXTERNAL_NOSTR_CLIENTS = [
     "nostter",
     "jumble",
+    "lumilumi",
     "primal",
     "njump",
-    "lumilumi",
     "custom",
 ] as const;
 

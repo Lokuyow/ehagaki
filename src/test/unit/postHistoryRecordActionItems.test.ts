@@ -142,6 +142,14 @@ describe("PostHistoryRecordActionItems", () => {
         });
 
         const item = screen.getByRole("menuitem", { name: "Nostterで開く" });
+        expect(menuItemNames()).toEqual([
+            "Nostterで開く",
+            "neventをコピー",
+            "イベントJSONを表示",
+            "ブロードキャスト",
+            "削除",
+        ]);
+        expect(document.querySelectorAll(".post-history-menu-separator")).toHaveLength(2);
         await fireEvent.click(item);
 
         expect(onOpenExternalClient).toHaveBeenCalledTimes(1);

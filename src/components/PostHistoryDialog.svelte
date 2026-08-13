@@ -2553,6 +2553,22 @@
                                                     {#snippet items()}
                                                         <DropdownMenu.Item
                                                             class="menu-action-button"
+                                                            onSelect={() =>
+                                                                handleOpenExternalClient(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <div
+                                                                class="open-in-new-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
+                                                            <span>{getExternalClientOpenLabel()}</span>
+                                                        </DropdownMenu.Item>
+                                                        <DropdownMenu.Separator
+                                                            class="post-history-menu-separator"
+                                                        />
+                                                        <DropdownMenu.Item
+                                                            class="menu-action-button"
                                                             disabled={graphState
                                                                 .repliesActionState
                                                                 .status ===
@@ -2620,11 +2636,6 @@
                                                                 void copyNeventUi.handleCopyNevent(
                                                                     post,
                                                                     event,
-                                                                )}
-                                                            externalClientLabel={getExternalClientOpenLabel()}
-                                                            onOpenExternalClient={() =>
-                                                                handleOpenExternalClient(
-                                                                    post,
                                                                 )}
                                                             onShowRawJson={() =>
                                                                 openRawJson(post.rawEvent)}
