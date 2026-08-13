@@ -1412,6 +1412,9 @@
   let localeInitialized = $state(false);
 
   onMount(() => {
+    const overlayScopeTarget = appRuntimeEnvironment.overlayTarget;
+    overlayScopeTarget.classList.add("ehagaki-app-root");
+
     if (appRuntimeEnvironment.externalInputEnabled) {
       parentClientAvailable = parentClientAuthService.initialize({
         locationSearch: window.location.search,
@@ -1544,6 +1547,7 @@
     });
 
     return () => {
+      overlayScopeTarget.classList.remove("ehagaki-app-root");
       cleanupVisibilityHandler();
       cleanupRuntimeBindings();
       composerTargetApplyController.dispose();

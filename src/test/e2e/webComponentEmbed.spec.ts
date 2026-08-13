@@ -16,6 +16,7 @@ let componentOrigin = "";
 let hostOrigin = "";
 let ffmpegCompressionModulePath = "";
 const componentRequests = new Set<string>();
+const hostRequests = new Set<string>();
 
 const sentinels = {
     locale: "host-locale",
@@ -85,6 +86,7 @@ test.beforeAll(async () => {
 
     hostServer = createServer((request, response) => {
         const pathname = new URL(request.url ?? "/", hostOrigin).pathname;
+        hostRequests.add(pathname);
         if (pathname === "/host-sw.js") {
             response.writeHead(200, { "Content-Type": "text/javascript" });
             response.end(`let fetchCount = 0; self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim())); self.addEventListener('fetch', () => { fetchCount += 1; }); self.addEventListener('message', (event) => { if (event.data?.type === 'host-state') event.ports[0]?.postMessage({ controlled: true, fetchCount }); });`);
@@ -106,6 +108,7 @@ test.beforeAll(async () => {
 
 test.beforeEach(() => {
     componentRequests.clear();
+    hostRequests.clear();
 });
 
 test.afterAll(async () => {
@@ -168,6 +171,46 @@ test("mounts across origins without touching host storage or registering an eHag
     expect(result.hostFetchObserved).toBe(true);
     expect(result.registrationCount).toBe(1);
     await expect(page.locator("#host")).toHaveText("host surface");
+});
+
+test("loads app-owned icons from the component asset base instead of the host", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.setAttribute("asset-base", `${window.__componentOrigin}/`);
+        document.body.append(composer);
+        await composer.whenReady();
+        const shadow = composer.shadowRoot!;
+        const logo = shadow.querySelector<HTMLImageElement>("img.site-icon")!;
+        await new Promise<void>((resolve, reject) => {
+            if (logo.complete && logo.naturalWidth > 0) {
+                resolve();
+                return;
+            }
+            logo.addEventListener("load", () => resolve(), { once: true });
+            logo.addEventListener("error", () => reject(new Error("logo failed to load")), { once: true });
+        });
+        const masks = [
+            shadow.querySelector<HTMLElement>(".trash-icon")!,
+            shadow.querySelector<HTMLElement>(".login-icon")!,
+            shadow.querySelector<HTMLElement>(".settings-icon")!,
+        ].map((icon) => getComputedStyle(icon).maskImage);
+        return { logoSrc: logo.src, naturalWidth: logo.naturalWidth, masks };
+    });
+
+    expect(result.logoSrc.startsWith(componentOrigin)).toBe(true);
+    expect(result.naturalWidth).toBeGreaterThan(0);
+    for (const mask of result.masks) {
+        expect(mask).not.toBe("none");
+        expect(mask).toContain(componentOrigin);
+    }
+    expect([...hostRequests].some((path) =>
+        path === "/ehagaki_icon.svg" || path.startsWith("/icons/"))).toBe(false);
+    expect(componentRequests).toContain("/ehagaki_icon.svg");
+    expect([...componentRequests].some((path) => path.startsWith("/icons/"))).toBe(true);
 });
 
 test("rejects a second connected component and releases the slot after disconnect", async ({ page }) => {
@@ -249,6 +292,98 @@ test("applies Button variants and host theme classes inside the Shadow DOM", asy
     expect(result.darkHostClass).toBe(true);
     expect(result.lightAppTextColor).not.toBe("rgba(0, 0, 0, 0)");
     expect(result.darkAppTextColor).not.toBe(result.lightAppTextColor);
+});
+
+test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ themeMode: "light" });
+        composer.shadowRoot!.querySelector<HTMLButtonElement>("button.login-btn")!.click();
+    });
+    await page.waitForFunction(() => {
+        const shadow = document.querySelector("ehagaki-composer")?.shadowRoot;
+        const overlay = shadow?.querySelector('[part~="overlay-root"]');
+        return !!overlay?.querySelector(".login-dialog");
+    });
+
+    await page.evaluate(() => {
+        const shadow = document.querySelector("ehagaki-composer")!.shadowRoot!;
+        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        overlay.querySelector<HTMLDetailsElement>(".remote-signer-details")!.open = true;
+    });
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot
+            ?.querySelector('[part~="overlay-root"] [data-testid="nostrconnect-regenerate"]'),
+    );
+    const lightResult = await page.evaluate(() => {
+        const shadow = document.querySelector("ehagaki-composer")!.shadowRoot!;
+        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const primary = overlay.querySelector<HTMLButtonElement>(
+            '[data-testid="nostrconnect-regenerate"]',
+        )!;
+        const secondary = overlay.querySelector<HTMLButtonElement>(
+            ".nostrconnect-relay-editor-actions button.secondary",
+        )!;
+        return {
+            dialogInOverlay: overlay.contains(primary) && overlay.contains(secondary),
+            primaryPadding: getComputedStyle(primary).padding,
+            primaryBackground: getComputedStyle(primary).backgroundColor,
+            secondaryPadding: getComputedStyle(secondary).padding,
+            secondaryBorderTopWidth: getComputedStyle(secondary).borderTopWidth,
+            secondaryBackground: getComputedStyle(secondary).backgroundColor,
+            dialogBackground: getComputedStyle(
+                overlay.querySelector<HTMLElement>(".login-dialog")!,
+            ).backgroundColor,
+        };
+    });
+
+    expect(lightResult.dialogInOverlay).toBe(true);
+    expect(lightResult.primaryPadding).toBe("8px 12px");
+    expect(lightResult.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
+    expect(lightResult.secondaryPadding).toBe("8px 12px");
+    expect(lightResult.secondaryBorderTopWidth).toBe("1px");
+
+    const darkDialogBackground = await page.evaluate(async () => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            setSettings(value: { themeMode: "dark" }): Promise<string[]>;
+        };
+        await composer.setSettings({ themeMode: "dark" });
+        return getComputedStyle(
+            composer.shadowRoot!.querySelector<HTMLElement>(
+                '[part~="overlay-root"] .login-dialog',
+            )!,
+        ).backgroundColor;
+    });
+    expect(darkDialogBackground).not.toBe(lightResult.dialogBackground);
+});
+
+test("keeps the normal app Portal Button scope", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForFunction(() =>
+        document.body.classList.contains("ehagaki-app-root")
+            && !!document.querySelector(".welcome-dialog button.primary"),
+    );
+
+    const result = await page.evaluate(() => {
+        const primary = document.querySelector<HTMLButtonElement>(
+            ".welcome-dialog button.primary",
+        )!;
+        return {
+            inBody: document.body.contains(primary),
+            buttonBackground: getComputedStyle(primary).getPropertyValue("--btn-bg"),
+            background: getComputedStyle(primary).backgroundColor,
+        };
+    });
+    expect(result.inBody).toBe(true);
+    expect(result.buttonBackground).toBe("hsl(152, 74%, 43%)");
+    expect(result.background).toBe("rgb(29, 191, 115)");
 });
 
 test("queues setContext before ready and applies content and reply atomically", async ({ page }) => {

@@ -1,6 +1,29 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import { getWebComponentIconVariableName } from "./src/web-component/iconAssets";
+
+const iconUrlPattern = /url\((["'])\/icons\/([^"'()]+)\1\)/g;
+
+function resolveWebComponentIconUrls() {
+    return {
+        name: "ehagaki-web-component-icon-urls",
+        enforce: "pre" as const,
+        transform(source: string, id: string) {
+            if (!id.endsWith(".svelte") || !source.includes("/icons/")) {
+                return null;
+            }
+            return {
+                code: source.replace(
+                    iconUrlPattern,
+                    (_match, _quote, iconPath: string) =>
+                        `var(${getWebComponentIconVariableName(iconPath)})`,
+                ),
+                map: null,
+            };
+        },
+    };
+}
 
 /**
  * Standalone Web Component distribution. It intentionally excludes the PWA
@@ -18,6 +41,7 @@ export default defineConfig({
     worker: { format: "es" },
     assetsInclude: ["**/*.wasm"],
     plugins: [
+        resolveWebComponentIconUrls(),
         svelte({ compilerOptions: { customElement: true } }),
         viteStaticCopy({
             targets: [

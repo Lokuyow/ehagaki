@@ -15,6 +15,7 @@ import {
     type EHagakiComposerSettings,
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
+import { applyWebComponentIconAssetUrls } from "./iconAssets";
 
 type AppInstance = {
     setEmbedContext(payload: unknown): Promise<void>;
@@ -104,6 +105,7 @@ export class EHagakiComposerElement extends HTMLElement {
     #operationQueue: Promise<void> = Promise.resolve();
     #connectionGeneration = 0;
     #publicPartsObserver: MutationObserver | null = null;
+    #assetStyleObserver: MutationObserver | null = null;
 
     get assetBase(): string | null {
         return this.getAttribute("asset-base");
@@ -145,6 +147,8 @@ export class EHagakiComposerElement extends HTMLElement {
         this.#connectionGeneration += 1;
         this.#publicPartsObserver?.disconnect();
         this.#publicPartsObserver = null;
+        this.#assetStyleObserver?.disconnect();
+        this.#assetStyleObserver = null;
         if (activeInstance === this) activeInstance = null;
         if (this.#mountedApp) {
             unmount(this.#mountedApp);
@@ -203,7 +207,7 @@ export class EHagakiComposerElement extends HTMLElement {
             const mountTarget = document.createElement("div");
             mountTarget.className = "ehagaki-web-component-app";
             const overlayTarget = document.createElement("div");
-            overlayTarget.className = "ehagaki-web-component-overlays";
+            overlayTarget.className = "ehagaki-web-component-overlays ehagaki-app-root";
             overlayTarget.part.add("overlay-root");
             shell.append(mountTarget, overlayTarget);
             shadowRoot.append(styles, shell);
@@ -212,6 +216,13 @@ export class EHagakiComposerElement extends HTMLElement {
                 this.assetBase ?? "./",
                 import.meta.url,
             );
+            this.#assetStyleObserver = new MutationObserver(() => {
+                applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            });
+            this.#assetStyleObserver.observe(shadowRoot, {
+                childList: true,
+                subtree: true,
+            });
             configureAppRuntimeEnvironment({
                 storage: createWebComponentStorage(window.localStorage),
                 window,
@@ -233,6 +244,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 target: mountTarget,
                 props: { notificationPort: createWebComponentNotificationPort(this) },
             });
+            applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
             this.#app = this.#mountedApp as AppInstance;
             await this.waitForPublicParts(shadowRoot, generation);
             if (!this.isConnected || generation !== this.#connectionGeneration) return;

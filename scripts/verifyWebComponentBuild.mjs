@@ -28,4 +28,15 @@ for (const forbidden of ["virtual:pwa-register", "serviceWorkerBootstrap", "embe
         throw new Error(`Web Component build contains forbidden runtime: ${forbidden}`);
     }
 }
+const unresolvedAppAssetReferences = [
+    /url\(\s*(["'])?\/icons\//,
+    /src=["']\.\/ehagaki_icon\.svg["']/,
+];
+for (const pattern of unresolvedAppAssetReferences) {
+    if (pattern.test(source)) {
+        throw new Error(
+            `Web Component build contains an unresolved app-owned asset reference: ${pattern}`,
+        );
+    }
+}
 console.log("[web-component-build] standalone output verified");

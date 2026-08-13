@@ -8,6 +8,7 @@
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     interface Props {
         onResetPostContent: () => void;
@@ -31,6 +32,7 @@
         showFlavorText = true,
     }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const ehagakiIconUrl = resolveAppAssetUrl("ehagaki_icon.svg");
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
@@ -53,7 +55,7 @@
                 aria-label="ehagaki"
             >
                 <img
-                    src="./ehagaki_icon.svg"
+                    src={ehagakiIconUrl}
                     alt="ehagaki icon"
                     class="site-icon"
                 />
