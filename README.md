@@ -21,6 +21,7 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
 - **Content Warning (CW)**: センシティブなコンテンツ（NIP-36）に対する警告の設定が可能
 - **iframe埋め込み**: 他アプリの投稿フォームとして組み込んで利用するためのAPIを提供
+- **Web Component埋め込み**: 同一Window realmで利用できる `ehagaki-composer` と公開method/event/style APIを提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
 ## URLクエリ
@@ -72,6 +73,14 @@ eHagaki の iframe 埋め込み方法、親クライアント連携ログイン�
 - 親クライアント連携ログイン
 - `ehagaki.embed` envelope と `post.success` / `post.error` の受信方法
 - `auth.login` / `auth.request` / `auth.result` / `auth.error` / `rpc.request` の流れ
+
+## Web Component埋め込み
+
+Web Component版の公開API、lifecycle、context/settings、CustomEvent、CSS Custom Properties / `::part()`、storageとtrust boundaryは [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md) にまとめています。
+
+実際に `Create / Mount`、`Destroy / Unmount`、再生成、設定・context更新、2個目instanceの拒否、event log、host側styleを操作するlive sampleは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html) から確認できます。
+
+Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いません。ログインは埋め込まれたeHagakiの既存UIから行い、NIP-07はhostの `window.nostr` を直接利用します。host JavaScriptから秘密情報を隔離したい場合はiframe埋め込みを使用してください。
 
 ## 技術スタック
 
