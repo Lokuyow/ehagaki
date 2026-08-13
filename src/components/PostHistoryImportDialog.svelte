@@ -297,7 +297,6 @@
         bind:this={fileInput}
         class="visually-hidden import-file-input"
         type="file"
-        accept=".jsonl,application/json,application/x-ndjson"
         aria-label={$_("postHistory.importChooseFile")}
         onchange={handleFileChange}
     />
