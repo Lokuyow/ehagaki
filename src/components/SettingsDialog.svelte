@@ -41,6 +41,11 @@
     import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
     import type { ThemeMode } from "../lib/utils/settingsStorage";
+    import {
+        EXTERNAL_NOSTR_CLIENTS,
+        normalizeExternalNostrClientUrlTemplate,
+        type ExternalNostrClient,
+    } from "../lib/postHistoryExternalClient";
 
     let {
         show = $bindable(false),
@@ -68,6 +73,13 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(settingsStore.clientTagEnabled);
+    let externalNostrClient = $state<ExternalNostrClient>(
+        settingsStore.externalNostrClient,
+    );
+    let externalNostrClientCustomUrl = $state(
+        settingsStore.externalNostrClientCustomUrl,
+    );
+    let externalNostrClientCustomUrlError = $state<string | null>(null);
     let quoteNotificationEnabled = $state(
         settingsStore.quoteNotificationEnabled,
     );
@@ -114,6 +126,8 @@
     onMount(() => {
         settingsStore.reload();
         clientTagEnabled = settingsStore.clientTagEnabled;
+        externalNostrClient = settingsStore.externalNostrClient;
+        externalNostrClientCustomUrl = settingsStore.externalNostrClientCustomUrl;
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         replyNotificationEnabled = settingsStore.replyNotificationEnabled;
         themeMode = themeModeStore.value;
@@ -127,6 +141,26 @@
 
     $effect(() => {
         clientTagEnabled = settingsStore.clientTagEnabled;
+    });
+
+    $effect(() => {
+        if (externalNostrClient !== settingsStore.externalNostrClient) {
+            settingsStore.externalNostrClient = externalNostrClient;
+        }
+    });
+
+    $effect(() => {
+        if (
+            externalNostrClientCustomUrl !==
+            settingsStore.externalNostrClientCustomUrl
+        ) {
+            const normalizedUrl = normalizeExternalNostrClientUrlTemplate(
+                externalNostrClientCustomUrl,
+            );
+            if (normalizedUrl) {
+                settingsStore.externalNostrClientCustomUrl = normalizedUrl;
+            }
+        }
     });
 
     $effect(() => {
@@ -191,6 +225,17 @@
 
     function toggleLanguage() {
         settingsStore.locale = $locale === "ja" ? "en" : "ja";
+    }
+
+    function handleExternalNostrClientCustomUrlInput(value: string): void {
+        externalNostrClientCustomUrl = value;
+        const normalizedUrl = normalizeExternalNostrClientUrlTemplate(value);
+        externalNostrClientCustomUrlError = normalizedUrl
+            ? null
+            : $_("settingsDialog.external_nostr_client_invalid_url");
+        if (normalizedUrl) {
+            settingsStore.externalNostrClientCustomUrl = normalizedUrl;
+        }
     }
 </script>
 
@@ -354,6 +399,103 @@
                     </Button>
                 </div>
             </div>
+        </div>
+
+        <!-- 投稿履歴の外部クライアント設定 -->
+        <div class="setting-section">
+            <div class="setting-row setting-row-with-note">
+                <div class="setting-label-group">
+                    <div class="setting-label-row">
+                        <span
+                            id="external-nostr-client-label"
+                            class="setting-label"
+                            >{$_("settingsDialog.external_nostr_client")}</span
+                        >
+                        <InfoPopoverButton
+                            ariaLabel={$_(
+                                "settingsDialog.external_nostr_client_description",
+                            )}
+                        >
+                            {$_(
+                                "settingsDialog.external_nostr_client_description",
+                            )}
+                        </InfoPopoverButton>
+                    </div>
+                </div>
+                <RadioGroup.Root
+                    class="setting-control external-nostr-client-group"
+                    name="externalNostrClient"
+                    orientation="horizontal"
+                    value={externalNostrClient}
+                    aria-labelledby="external-nostr-client-label"
+                    onValueChange={(value) => {
+                        externalNostrClient = value as ExternalNostrClient;
+                        externalNostrClientCustomUrlError = null;
+                    }}
+                >
+                    {#each EXTERNAL_NOSTR_CLIENTS as client}
+                        <RadioButton
+                            value={client}
+                            variant="default"
+                            shape="rounded"
+                            ariaLabel={client === "custom"
+                                ? $_("settingsDialog.external_nostr_client_custom")
+                                : client === "nostter"
+                                  ? "Nostter"
+                                  : client === "jumble"
+                                    ? "Jumble"
+                                    : client === "primal"
+                                      ? "Primal"
+                                      : client === "njump"
+                                        ? "njump"
+                                        : "Lumilumi"}
+                        >
+                            {client === "custom"
+                                ? $_("settingsDialog.external_nostr_client_custom")
+                                : client === "njump"
+                                  ? "njump"
+                                  : client[0].toUpperCase() + client.slice(1)}
+                        </RadioButton>
+                    {/each}
+                </RadioGroup.Root>
+            </div>
+            {#if externalNostrClient === "custom"}
+                <div class="external-nostr-client-custom-url">
+                    <label
+                        for="external-nostr-client-custom-url-input"
+                        class="setting-label"
+                    >
+                        {$_("settingsDialog.external_nostr_client_custom_url")}
+                    </label>
+                    <span
+                        id="external-nostr-client-custom-url-description"
+                        class="setting-description"
+                    >
+                        {$_(
+                            "settingsDialog.external_nostr_client_custom_url_description",
+                        )}
+                    </span>
+                    <input
+                        id="external-nostr-client-custom-url-input"
+                        type="url"
+                        inputmode="url"
+                        value={externalNostrClientCustomUrl}
+                        aria-describedby="external-nostr-client-custom-url-description"
+                        aria-invalid={externalNostrClientCustomUrlError
+                            ? "true"
+                            : "false"}
+                        oninput={(event) =>
+                            handleExternalNostrClientCustomUrlInput(
+                                (event.currentTarget as HTMLInputElement).value,
+                            )}
+                    />
+                    {#if externalNostrClientCustomUrlError}
+                        <span class="form-error" role="alert">
+                            {externalNostrClientCustomUrlError}
+                        </span>
+                    {/if}
+                </div>
+            {/if}
         </div>
 
         <!-- 画像・動画圧縮設定セクション -->
@@ -775,6 +917,45 @@
         gap: 4px;
         min-width: 0;
         margin-block: auto;
+    }
+
+    :global(.external-nostr-client-group) {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .external-nostr-client-custom-url {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 12px;
+    }
+
+    .external-nostr-client-custom-url input {
+        width: 100%;
+        min-height: 44px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        font: inherit;
+    }
+
+    .external-nostr-client-custom-url input[aria-invalid="true"] {
+        border-color: var(--danger);
+    }
+
+    .setting-description {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        line-height: 1.4;
+    }
+
+    .form-error {
+        color: var(--danger);
+        font-size: 0.875rem;
+        line-height: 1.4;
     }
 
     .setting-label-row {

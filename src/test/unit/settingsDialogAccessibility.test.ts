@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { locale, waitLocale } from 'svelte-i18n';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const swStoreState = vi.hoisted(() => {
     const createStore = <T>(initialValue: T) => {
@@ -61,6 +61,7 @@ import {
     swNeedRefresh,
     swUpdateStatus,
 } from '../../stores/swStore.svelte';
+import { settingsStore } from '../../stores/settingsStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
     beforeEach(async () => {
@@ -69,6 +70,11 @@ describe('SettingsDialog accessibility', () => {
         staleAssetState.requestPrompt.mockReset();
         locale.set('ja');
         await waitLocale('ja');
+    });
+
+    afterEach(() => {
+        settingsStore.externalNostrClient = 'nostter';
+        settingsStore.locale = 'en';
     });
 
     it('圧縮ラジオグループが表示ラベルをアクセシブルネームとして持つ', async () => {
@@ -164,6 +170,49 @@ describe('SettingsDialog accessibility', () => {
         expect(replyButton).toBeTruthy();
         expect(quoteButton.getAttribute('aria-label')).not.toMatch(/[一-龯ぁ-んァ-ヶ]/);
         expect(replyButton.getAttribute('aria-label')).not.toMatch(/[一-龯ぁ-んァ-ヶ]/);
+    });
+
+    it('外部クライアント設定のラジオグループとカスタムURL validationを扱える', async () => {
+        settingsStore.locale = 'ja';
+        settingsStore.externalNostrClient = 'nostter';
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+
+        await tick();
+
+        expect(
+            screen.getByRole('radiogroup', {
+                name: '投稿を開くクライアント',
+            }),
+        ).toBeTruthy();
+        expect(screen.getByRole('radio', { name: 'Nostter' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: 'Jumble' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: 'Primal' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: 'njump' })).toBeTruthy();
+        expect(screen.getByRole('radio', { name: 'Lumilumi' })).toBeTruthy();
+
+        await fireEvent.click(screen.getByRole('radio', { name: 'カスタム' }));
+        await tick();
+
+        const customUrlInput = screen.getByLabelText('カスタムURL');
+        expect(customUrlInput).toBeTruthy();
+        await fireEvent.input(customUrlInput, {
+            target: { value: 'http://example.com/{nevent}' },
+        });
+        expect(screen.getByRole('alert').textContent).toContain('HTTPS URL');
+
+        await fireEvent.input(customUrlInput, {
+            target: { value: 'https://example.com/note/{nevent}' },
+        });
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(settingsStore.externalNostrClientCustomUrl).toBe(
+            'https://example.com/note/{nevent}',
+        );
+
     });
 
     it('テーマと設定スイッチが表示ラベルをアクセシブルネームとして持つ', async () => {

@@ -65,6 +65,17 @@
 - 関連テスト: `src/test/unit/nostrUtils.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/composerTargetResolver.test.ts`
 - 注意点: composer targetでは`npub`、`nprofile`、`naddr`を明示的にunsupportedとし、`nsec`をsecret-keyとして分離する。現在のコードに汎用naddr resolverは確認できない。
 
+## 投稿履歴から外部Nostrクライアントを開く
+
+- 機能: 投稿履歴の通常投稿カードから、設定済みの外部Nostr webクライアントへNIP-19 `nevent` URLを新しいタブで開く。
+- 関連NIP: NIP-19
+- event kind: 投稿履歴対象の`1`または`42`
+- 主なtag: なし。`nevent`にはevent ID、author hint、kind hint、relay hintを必要に応じて含める。
+- 主な実装ファイル: `src/lib/postHistoryNevent.ts`、`src/lib/postHistoryExternalClient.ts`、`src/lib/utils/settingsStorage.ts`、`src/stores/settingsStore.svelte.ts`、`src/components/PostHistoryDialog.svelte`
+- 主な関数または責務: `buildPostHistoryNevent`が既存の`toNevent`へ投稿履歴recordのaccepted/relay hintsとwrite relaysを渡し、`buildPostHistoryExternalClientUrl`が設定済みプリセットまたは検証済みcustom HTTPS templateへ同期的に埋め込む。設定のlocale初期値は未設定時だけ適用し、その後のlocale変更では選択を変更しない。
+- 関連テスト: `src/test/unit/postHistoryExternalClient.test.ts`、`src/test/unit/settingsStorage.test.ts`、`src/test/unit/postHistoryRecordActionItems.test.ts`、`src/test/unit/postHistoryDialogPart4.test.ts`、`src/test/unit/settingsDialogAccessibility.test.ts`
+- 注意点: custom templateはtrim後に標準`URL`で検証し、HTTPSかつ`{nevent}`をちょうど1個含むものだけ保存・利用する。通常投稿カードだけにアクションを追加し、quote previewとreply treeには追加しない。新しいタブは`_blank`と`noopener,noreferrer`を使い、`window.open`前に非同期処理を挟まない。
+
 ## nostr: URI
 
 - 機能: NIP-21 URIをquery、embed、composer target、inline quote、post history表示で扱う。

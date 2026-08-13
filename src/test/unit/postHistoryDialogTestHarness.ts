@@ -64,6 +64,8 @@ const hoisted = vi.hoisted(() => {
             'postHistory.repairPartialFailure': '一部未確認',
             'postHistory.repairFetchFailed': '取得失敗',
             'postHistory.copyNevent': 'neventをコピー',
+            'postHistory.openInExternalClient': String(options?.values?.client ?? '') + 'で開く',
+            'postHistory.openInExternalClientFallback': '外部クライアントで開く',
             'postHistory.copied': 'コピーしました',
             'postHistory.copyFailed': 'コピーに失敗しました',
             'postHistory.expand': 'もっと見る',

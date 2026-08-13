@@ -14,6 +14,8 @@
         deletionSending?: boolean;
         onCopyPointerDown?: (event: PointerEvent) => void;
         onCopyNevent?: (event: Event) => void;
+        externalClientLabel?: string;
+        onOpenExternalClient?: (event: Event) => void;
         onShowRawJson?: () => void;
         onBroadcastPointerDown?: (event: PointerEvent) => void;
         onBroadcastPost?: (event: Event) => void;
@@ -30,6 +32,8 @@
         deletionSending = false,
         onCopyPointerDown = () => undefined,
         onCopyNevent = () => undefined,
+        externalClientLabel = undefined,
+        onOpenExternalClient = undefined,
         onShowRawJson = () => undefined,
         onBroadcastPointerDown = () => undefined,
         onBroadcastPost = () => undefined,
@@ -55,6 +59,8 @@
             {deletionSending}
             {onCopyPointerDown}
             {onCopyNevent}
+            {externalClientLabel}
+            {onOpenExternalClient}
             {onShowRawJson}
             {onBroadcastPointerDown}
             {onBroadcastPost}
