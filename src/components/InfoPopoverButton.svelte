@@ -1,5 +1,6 @@
 <script lang="ts">
     import { Popover } from "bits-ui";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         /** ポップオーバーの表示位置 */
@@ -18,13 +19,14 @@
         ariaLabel = "情報を表示",
         children,
     }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 </script>
 
 <Popover.Root>
     <Popover.Trigger class="info-trigger" aria-label={ariaLabel}>
         <div class="info-icon svg-icon"></div>
     </Popover.Trigger>
-    <Popover.Portal>
+    <Popover.Portal to={overlayTarget}>
         <Popover.Content
             {side}
             {sideOffset}

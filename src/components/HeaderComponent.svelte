@@ -7,6 +7,7 @@
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         onResetPostContent: () => void;
@@ -29,6 +30,7 @@
         showMascot = true,
         showFlavorText = true,
     }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
@@ -103,7 +105,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("postComponent.clear_editor")}
                         </Tooltip.Content>
@@ -133,7 +135,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("draft.list_title") || "下書き"}
                         </Tooltip.Content>
@@ -163,7 +165,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("composerTarget.title")}
                         </Tooltip.Content>

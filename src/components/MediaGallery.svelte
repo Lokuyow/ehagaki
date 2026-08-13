@@ -8,6 +8,7 @@
         SCROLL_MAX_SPEED,
     } from "../lib/constants";
     import { consumeMediaGalleryWheelScroll } from "../lib/utils/mediaGalleryWheelUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
@@ -218,7 +219,7 @@
                 z-index: 9999;
                 border-radius: 6px;
             `;
-            document.body.appendChild(touchPreviewEl);
+            getAppRuntimeEnvironment().overlayTarget.appendChild(touchPreviewEl);
         }
 
         // タッチイベントリスナーを追加

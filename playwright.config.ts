@@ -46,10 +46,20 @@ export default defineConfig({
         },
         {
             name: 'mobile-webkit',
-            testMatch: '**/composerTargetDialog.spec.ts',
+            testMatch: [
+                '**/composerTargetDialog.spec.ts',
+                '**/webComponentEmbed.spec.ts',
+            ],
             use: {
                 ...devices['iPhone 13'],
                 browserName: 'webkit',
+            },
+        },
+        {
+            name: 'desktop-firefox',
+            testMatch: '**/webComponentEmbed.spec.ts',
+            use: {
+                ...devices['Desktop Firefox'],
             },
         },
     ],

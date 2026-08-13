@@ -107,10 +107,12 @@ describe('Playwright config connection values', () => {
             'desktop-chromium',
             'mobile-chromium',
             'mobile-webkit',
+            'desktop-firefox',
         ]);
-        expect(config.projects?.[2]?.testMatch).toBe(
+        expect(config.projects?.[2]?.testMatch).toEqual([
             '**/composerTargetDialog.spec.ts',
-        );
+            '**/webComponentEmbed.spec.ts',
+        ]);
     });
 
     it('builds all connection values from a supplied port', () => {

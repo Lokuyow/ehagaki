@@ -19,6 +19,7 @@
     } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         reference: ReplyQuoteState;
@@ -41,6 +42,7 @@
         onToggleQuoteNotification?: (enabled: boolean) => void;
         onToggleReplyNotification?: (pubkey: string, enabled: boolean) => void;
     }
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
     const LOADING_INDICATOR_DELAY_MS = 300;
 
@@ -236,7 +238,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content
                             sideOffset={8}
                             class="tooltip-content reply-quote-tooltip-content"
@@ -316,7 +318,7 @@
                                     </Button>
                                 {/snippet}
                             </Tooltip.Trigger>
-                            <Tooltip.Portal>
+                            <Tooltip.Portal to={overlayTarget}>
                                 <Tooltip.Content
                                     sideOffset={8}
                                     class="tooltip-content reply-quote-tooltip-content"

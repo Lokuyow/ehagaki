@@ -1,4 +1,5 @@
 import { mount, unmount } from 'svelte';
+import { getAppRuntimeEnvironment } from '../appRuntimeEnvironment';
 
 type MountInstance = ReturnType<typeof mount>;
 
@@ -51,7 +52,7 @@ export function createSuggestionRenderer<T>({
             }
             el.style.position = 'fixed';
             el.style.zIndex = zIndex;
-            document.body.appendChild(el);
+            getAppRuntimeEnvironment().overlayTarget.appendChild(el);
             return el;
         }
 

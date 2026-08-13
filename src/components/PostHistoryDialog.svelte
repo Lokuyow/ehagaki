@@ -4,6 +4,7 @@
     import { onDestroy, tick, untrack } from "svelte";
     import { _, locale } from "svelte-i18n";
     import { DatePicker, Dialog, DropdownMenu } from "bits-ui";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
@@ -21,6 +22,7 @@
     import PostPreviewFooterActionButton from "./PostPreviewFooterActionButton.svelte";
     import PostPreviewToggleButton from "./PostPreviewToggleButton.svelte";
     import PostHistoryThreadGraphPanel from "./PostHistoryThreadGraphPanel.svelte";
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { usePostHistoryCopyNevent } from "../lib/hooks/usePostHistoryCopyNevent.svelte";
@@ -1437,7 +1439,7 @@
             anchor.href = objectUrl;
             anchor.download = `ehagaki-post-history-${getLocalExportDate()}.jsonl`;
             anchor.style.display = "none";
-            document.body.appendChild(anchor);
+            overlayTarget.appendChild(anchor);
             anchor.click();
             setTimeout(() => {
                 anchor.remove();
@@ -1657,7 +1659,7 @@
                 >
                     <div class="more-icon svg-icon"></div>
                 </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
+                <DropdownMenu.Portal to={overlayTarget}>
                     <DropdownMenu.Content
                         side="bottom"
                         align="end"
@@ -1856,7 +1858,7 @@
                             aria-hidden="true"
                         ></div>
                     </DatePicker.Trigger>
-                    <DatePicker.Portal>
+                    <DatePicker.Portal to={overlayTarget}>
                         <DatePicker.Content
                             sideOffset={8}
                             class="post-history-date-picker-content"
@@ -2103,7 +2105,7 @@
                                                             class="more-icon svg-icon"
                                                         ></div>
                                                     </DropdownMenu.Trigger>
-                                                    <DropdownMenu.Portal>
+                                                    <DropdownMenu.Portal to={overlayTarget}>
                                                         <DropdownMenu.Content
                                                             side="bottom"
                                                             align="start"

@@ -8,6 +8,7 @@
 
 import type { ImageDimensions, DragEvent } from '../types';
 import { domUtils, isTouchDevice, blurEditorAndBody } from "./appDomUtils";
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 // =============================================================================
 // サイズ計算
@@ -210,7 +211,7 @@ export function createDragPreview(
 
     applyPreviewStyles(previewEl, dimensions, { x, y });
     previewEl.classList.add("drag-preview");
-    document.body.appendChild(previewEl);
+    getAppRuntimeEnvironment().overlayTarget.appendChild(previewEl);
 
     requestAnimationFrame(() => {
         previewEl!.style.transform = "scale(0.8) rotate(0deg)";

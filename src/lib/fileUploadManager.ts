@@ -32,6 +32,7 @@ import { getUploadAdapter } from "./upload/uploadAdapterRegistry";
 import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets";
 import { postMediaCacheService } from "./postMediaCacheService";
 import { getAppStorage } from "./appStorage";
+import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -426,7 +427,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
   // --- 共有メディア処理の統一メソッド ---
   async getSharedMediaFromServiceWorker(): Promise<SharedMediaData | null> {
-    if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
+    if (
+      !getAppRuntimeEnvironment().serviceWorkerEnabled
+      || !this.dependencies.navigator?.serviceWorker?.controller
+    ) return null;
 
     try {
       const channel = new MessageChannel();

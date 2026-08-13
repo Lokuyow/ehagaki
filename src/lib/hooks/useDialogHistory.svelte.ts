@@ -20,6 +20,7 @@
 
 import { onMount, onDestroy } from "svelte";
 import { generateSimpleUUID } from "../utils/appUtils";
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 /**
  * ダイアログのブラウザ履歴統合を管理するフック
@@ -39,7 +40,8 @@ export function useDialogHistory(
 
     // enabledを評価するヘルパー関数
     const isEnabled = () =>
-        typeof enabled === "function" ? enabled() : enabled;
+        getAppRuntimeEnvironment().historyEnabled
+        && (typeof enabled === "function" ? enabled() : enabled);
 
     // 履歴統合が無効の場合は何もしない（初期チェック）
     if (!isEnabled()) return;

@@ -63,4 +63,33 @@ describe("app storage boundary", () => {
         expect(hostStorage.getItem("locale")).toBe("host-locale");
         expect(hostStorage.getItem("nostr-accounts")).toBe("host-accounts");
     });
+
+    it("confines cleanup and legacy-looking keys to the documented v1 namespace", () => {
+        const hostStorage = createMemoryStorage();
+        const sentinels = {
+            locale: "host-locale",
+            themeMode: "host-theme",
+            darkMode: "host-dark",
+            firstVisit: "host-first-visit",
+            "nostr-accounts": "host-accounts",
+            "nostr-active-account": "host-active",
+            "__nostrlogin_accounts": "host-legacy",
+            "__nostrlogin_nip46": "host-session",
+            "nl-dark-mode": "host-nl-theme",
+        };
+        for (const [key, value] of Object.entries(sentinels)) {
+            hostStorage.setItem(key, value);
+        }
+        const scopedStorage = createWebComponentStorage(hostStorage);
+        scopedStorage.setItem("__nostrlogin_accounts", "component-legacy");
+        scopedStorage.removeItem("__nostrlogin_accounts");
+        scopedStorage.clear();
+
+        expect(EHAGAKI_WEB_COMPONENT_STORAGE_PREFIX).toBe(
+            "ehagaki.web-component.v1:",
+        );
+        for (const [key, value] of Object.entries(sentinels)) {
+            expect(hostStorage.getItem(key)).toBe(value);
+        }
+    });
 });

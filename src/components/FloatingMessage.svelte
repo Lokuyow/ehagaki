@@ -1,6 +1,7 @@
 <script lang="ts">
     import { tick } from "svelte";
     import { Portal } from "bits-ui";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     let {
         show = false,
@@ -21,6 +22,7 @@
     let messageY = $state(0);
 
     const SCREEN_PADDING = 10;
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
     $effect(() => {
         if (variant !== "pointer") {
@@ -66,7 +68,7 @@
 </script>
 
 {#if show}
-    <Portal>
+    <Portal to={overlayTarget}>
         <div
             bind:this={container}
             class="floating-message {variant === 'top-right'

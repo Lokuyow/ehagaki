@@ -11,6 +11,7 @@
   import { authService, type PendingNip46AuthSession } from "./lib/authService";
   import { getAppRuntimeEnvironment } from "./lib/appRuntimeEnvironment";
   import { iframeMessageService } from "./lib/iframeMessageService";
+  import type { AppPostNotificationPort } from "./lib/appNotificationPort";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import {
@@ -168,6 +169,7 @@
   import {
     createAppEmbedController,
     type AppEmbedAppliedSettingKey,
+    type AppEmbedNotificationPort,
   } from "./lib/appEmbedController";
   import {
     createAppComponentLoaders,
@@ -195,7 +197,6 @@
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
 
-  const appRuntimeEnvironment = getAppRuntimeEnvironment();
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
   import { usePostHistoryInboundReplyReconciliation } from "./lib/hooks/usePostHistoryInboundReplyReconciliation.svelte";
@@ -212,6 +213,28 @@
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
+
+  const appRuntimeEnvironment = getAppRuntimeEnvironment();
+  interface Props {
+    /** The iframe transport remains the default for the PWA and iframe entry. */
+    notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
+  }
+
+  const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
+    notifyPostSuccess: (options) => iframeMessageService.notifyPostSuccess(options),
+    notifyPostError: (error) => iframeMessageService.notifyPostError(error),
+    notifyComposerContextApplied: (requestId) =>
+      iframeMessageService.notifyComposerContextApplied(requestId),
+    notifyComposerContextError: (error, requestId) =>
+      iframeMessageService.notifyComposerContextError(error, requestId),
+    notifyComposerContextUpdated: (payload) =>
+      iframeMessageService.notifyComposerContextUpdated(payload),
+    notifySettingsApplied: (applied, requestId) =>
+      iframeMessageService.notifySettingsApplied([...applied], requestId),
+    notifySettingsError: (error, requestId) =>
+      iframeMessageService.notifySettingsError(error, requestId),
+  };
+  let { notificationPort = iframeNotificationPort }: Props = $props();
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -1167,7 +1190,7 @@
       applyChannelContextQuery: (query, runtime) => {
         channelContextApplyController.applyExternal({
           query,
-          source: "iframe",
+            source: appRuntimeEnvironment.externalInputEnabled ? "iframe" : "manual",
           rxNostr: runtime.rxNostr,
           relayConfig: runtime.relayConfig,
         });
@@ -1194,9 +1217,9 @@
     },
     notificationPort: {
       notifyComposerContextApplied: (requestId: string) =>
-        iframeMessageService.notifyComposerContextApplied(requestId),
+        notificationPort.notifyComposerContextApplied(requestId),
       notifyComposerContextError: (error, requestId: string) =>
-        iframeMessageService.notifyComposerContextError(
+        notificationPort.notifyComposerContextError(
           {
             code: error.code,
             ...(error.message ? { message: error.message } : {}),
@@ -1204,11 +1227,11 @@
           requestId,
         ),
       notifyComposerContextUpdated: (payload) =>
-        iframeMessageService.notifyComposerContextUpdated(payload),
+        notificationPort.notifyComposerContextUpdated(payload),
       notifySettingsApplied: (applied, requestId: string) =>
-        iframeMessageService.notifySettingsApplied([...applied], requestId),
+        notificationPort.notifySettingsApplied([...applied], requestId),
       notifySettingsError: (error, requestId: string) =>
-        iframeMessageService.notifySettingsError(
+        notificationPort.notifySettingsError(
           {
             code: error.code,
             ...(error.message ? { message: error.message } : {}),
@@ -1283,6 +1306,18 @@
   // Parent client login/logout の保留処理と embed action の flush をまとめる coordinator.
   async function flushPendingRemoteParentClientAndEmbedActions(): Promise<void> {
     await appParentClientSyncController.flushPendingRemoteParentClientAndEmbedActions();
+  }
+
+  /** Public in-process embedding seam used by the Web Component root. */
+  export async function setEmbedContext(payload: unknown): Promise<void> {
+    await appEmbedController.applyComposerContext(payload);
+  }
+
+  /** Public in-process embedding seam used by the Web Component root. */
+  export async function setEmbedSettings(
+    payload: EmbedSettingsSetPayload,
+  ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
+    return appEmbedController.applySettings(payload);
   }
 
   async function handleRemoteParentClientLogin(
@@ -1377,23 +1412,25 @@
   let localeInitialized = $state(false);
 
   onMount(() => {
-    parentClientAvailable = parentClientAuthService.initialize({
-      locationSearch: window.location.search,
-    });
-    embedComposerContextService.initialize({
-      locationSearch: window.location.search,
-    });
-    embedSettingsService.initialize({
-      locationSearch: window.location.search,
-    });
-    if (
-      embedStorageService.initialize({ locationSearch: window.location.search })
-    ) {
-      void appEmbedController.initializeEmbedStorageSync();
+    if (appRuntimeEnvironment.externalInputEnabled) {
+      parentClientAvailable = parentClientAuthService.initialize({
+        locationSearch: window.location.search,
+      });
+      embedComposerContextService.initialize({
+        locationSearch: window.location.search,
+      });
+      embedSettingsService.initialize({
+        locationSearch: window.location.search,
+      });
+      if (
+        embedStorageService.initialize({ locationSearch: window.location.search })
+      ) {
+        void appEmbedController.initializeEmbedStorageSync();
+      }
+      embedIndexedDbService.initialize({
+        locationSearch: window.location.search,
+      });
     }
-    embedIndexedDbService.initialize({
-      locationSearch: window.location.search,
-    });
 
     const cleanupRuntimeBindings = setupAppRuntimeBindings({
       parentClientAvailable,
@@ -1431,10 +1468,10 @@
         );
       },
       notifySettingsError: (error, requestId) =>
-        iframeMessageService.notifySettingsError(
-          error as Parameters<
-            typeof iframeMessageService.notifySettingsError
-          >[0],
+        notificationPort.notifySettingsError(
+          typeof error === "string"
+            ? { code: "settings_apply_failed", message: error }
+            : error as { code: "settings_apply_failed"; message?: string },
           requestId,
         ),
       notifyComposerContextUpdatedIfChanged: () =>
@@ -1490,6 +1527,7 @@
       refreshAccountList,
       markAuthInitialized: () => authService.markAuthInitialized(),
       getExternalInputBootstrapParams,
+      externalInputEnabled: appRuntimeEnvironment.externalInputEnabled,
       console,
     }).finally(() => {
       isBootstrappingApp = false;
@@ -1858,7 +1896,7 @@
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
                     onCustomEmojiSelect={recordCustomEmojiUse}
-                    notificationPort={iframeMessageService}
+                    {notificationPort}
                   />
                 {/if}
                 {#if customEmojiPickerOpen && CustomEmojiPickerComponent}
@@ -1916,7 +1954,8 @@
         {isAuthenticated}
         {isAuthInitialized}
         {isSwitchingAccount}
-        swNeedRefresh={$swNeedRefresh || staleAssetReloadRequired}
+        swNeedRefresh={appRuntimeEnvironment.serviceWorkerEnabled &&
+          ($swNeedRefresh || staleAssetReloadRequired)}
         onShowLoginDialog={loginDialog.open}
         onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
         onOpenPostHistoryDialog={postHistoryDialog.open}

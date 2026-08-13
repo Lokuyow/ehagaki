@@ -1,6 +1,7 @@
 <script lang="ts">
     import { DropdownMenu, Tooltip } from "bits-ui";
     import type { Snippet } from "svelte";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         open?: boolean;
@@ -25,6 +26,7 @@
         tooltipContent = undefined,
         enableTooltip = false,
     }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
     function handleOpenChange(nextOpen: boolean): void {
         onOpenChange?.(nextOpen);
@@ -52,7 +54,7 @@
                         </DropdownMenu.Trigger>
                     {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal to={overlayTarget}>
                     <Tooltip.Content
                         sideOffset={8}
                         class="tooltip-content post-preview-tooltip-content"
@@ -70,7 +72,7 @@
             <div class="more-icon svg-icon"></div>
         </DropdownMenu.Trigger>
     {/if}
-    <DropdownMenu.Portal>
+    <DropdownMenu.Portal to={overlayTarget}>
         <DropdownMenu.Content
             side="bottom"
             {align}
