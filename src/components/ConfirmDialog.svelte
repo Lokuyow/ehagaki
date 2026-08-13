@@ -314,7 +314,8 @@
             color: currentColor;
         }
 
-        :global(:root.dark .btn-cancel.secondary.square) {
+        :global(:root.dark .ehagaki-app-root .btn-cancel.secondary.square),
+        :global(:host(.dark) .ehagaki-app-root .btn-cancel.secondary.square) {
             border: none;
         }
     }

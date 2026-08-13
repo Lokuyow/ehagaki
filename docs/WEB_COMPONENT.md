@@ -61,22 +61,30 @@ schema or database-name migration. The host is trusted to execute the component
 and can inspect same-origin storage; the namespace is collision protection, not
 a secret boundary.
 
-## Service Workers, relays, and CSP
+## Service Workers, relays, FFmpeg, and CSP
 
 The component neither registers nor messages an eHagaki Service Worker. A host
 Service Worker may observe ordinary HTTP fetches, images, and uploads, but its
 `fetch` event does not demonstrate interception of Nostr WebSocket relay
-traffic. Because the component shares the host Window realm, a host that wraps
-`window.WebSocket` before importing this module can observe the normal
-rx-nostr relay constructor path. No special relay-interceptor API is provided.
+traffic. The component shares the host Window realm, and the current
+`initializeNostrSession()` path creates rx-nostr without a `websocketCtor`;
+rx-nostr therefore uses `globalThis.WebSocket` when it opens a relay. A host
+wrapper installed before this module is imported is the applicable boundary.
+This release does not claim a browser-level relay-interceptor guarantee: the
+normal app relay path requires an authenticated session and no deterministic,
+credential-free local-relay route was found in the existing application. No
+special relay-interceptor API is provided, and Issue #89's relay-interceptor
+proof remains incomplete.
 
 Serve the module, chunks, workers, FFmpeg files, and WASM with CORS headers
 that permit the embedding origin, or set `asset-base` to an accessible delivery
-base. If a deployment changes worker delivery to a Blob/inline worker, its CSP
-must allow `worker-src blob:`; this build otherwise keeps workers as ES module
-assets and does not silently bypass a restrictive CSP. Test iOS Safari with the
-actual delivery origin: mobile emulation does not prove its worker or CORS
-behavior.
+base. In a cross-origin embedding, FFmpeg fetches its bundled class-worker
+module from `asset-base`, creates a host-origin Blob URL for that worker, then
+loads `ffmpeg-core.js` and `ffmpeg-core.wasm` from `asset-base`. Permit both
+the delivery origin and `blob:` in `worker-src`; do not rely on a host Service
+Worker to proxy this path. Same-origin PWA delivery continues to use the emitted
+worker asset directly. Test iOS Safari with the actual delivery origin: mobile
+emulation does not prove its worker or CORS behavior.
 
 The component uses an open ShadowRoot. Dialogs, popovers, tooltips, suggestions,
 and PhotoSwipe are targeted at its overlay root, while browser-history and URL/

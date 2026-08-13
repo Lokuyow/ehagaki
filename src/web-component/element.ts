@@ -1,4 +1,4 @@
-import { mount, tick, unmount } from "svelte";
+import { mount, unmount } from "svelte";
 import type { AppEmbedAppliedSettingKey } from "../lib/appEmbedController";
 import { configureAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 import { createWebComponentStorage } from "../lib/appStorage";
@@ -103,6 +103,7 @@ export class EHagakiComposerElement extends HTMLElement {
     #readyState: "pending" | "resolved" | "rejected" = "pending";
     #operationQueue: Promise<void> = Promise.resolve();
     #connectionGeneration = 0;
+    #publicPartsObserver: MutationObserver | null = null;
 
     get assetBase(): string | null {
         return this.getAttribute("asset-base");
@@ -142,6 +143,8 @@ export class EHagakiComposerElement extends HTMLElement {
 
     disconnectedCallback(): void {
         this.#connectionGeneration += 1;
+        this.#publicPartsObserver?.disconnect();
+        this.#publicPartsObserver = null;
         if (activeInstance === this) activeInstance = null;
         if (this.#mountedApp) {
             unmount(this.#mountedApp);
@@ -193,7 +196,7 @@ export class EHagakiComposerElement extends HTMLElement {
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
             const styles = document.createElement("style");
-            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { --bg: var(--ehagaki-background, hsl(0, 0%, 89%)); --text: var(--ehagaki-text, hsl(0, 0%, 24%)); --border: var(--ehagaki-border, hsl(0, 0%, 83%)); --link: var(--ehagaki-link, #1a0dab); --bg-input: var(--ehagaki-input-background, #fff); --bg-footer: var(--ehagaki-footer-background, hsl(0, 0%, 82%)); --dialog-bg: var(--ehagaki-dialog-background, #fff); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { min-height: 0; }`;
+            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { --bg: var(--ehagaki-background, light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%))); --text: var(--ehagaki-text, light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%))); --border: var(--ehagaki-border, light-dark(hsl(0, 0%, 83%), dimgray)); --link: var(--ehagaki-link, light-dark(#1a0dab, #99c3ff)); --bg-input: var(--ehagaki-input-background, light-dark(#fff, hsl(0, 0%, 19%))); --bg-footer: var(--ehagaki-footer-background, light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%))); --dialog-bg: var(--ehagaki-dialog-background, light-dark(#fff, hsl(0, 0%, 14%))); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { min-height: 0; }`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
             shell.part.add("shell");
@@ -231,8 +234,8 @@ export class EHagakiComposerElement extends HTMLElement {
                 props: { notificationPort: createWebComponentNotificationPort(this) },
             });
             this.#app = this.#mountedApp as AppInstance;
-            await tick();
-            this.applyPublicParts(shadowRoot);
+            await this.waitForPublicParts(shadowRoot, generation);
+            if (!this.isConnected || generation !== this.#connectionGeneration) return;
             this.#readyState = "resolved";
             this.#readyResolve?.();
             this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
@@ -241,17 +244,40 @@ export class EHagakiComposerElement extends HTMLElement {
         }
     }
 
-    private applyPublicParts(root: ShadowRoot): void {
-        root.querySelector("header")?.part.add("header");
-        root.querySelector(".composer-scroll-region")?.part.add("composer");
-        root.querySelector(".footer-bar")?.part.add("footer");
-    }
-
     private requireApp(): AppInstance {
         if (!this.#app) {
             throw createError("initialization_failed", "eHagaki Composer is not ready.");
         }
         return this.#app;
+    }
+
+    private waitForPublicParts(root: ShadowRoot, generation: number): Promise<void> {
+        const requiredParts = ["header", "composer", "footer"];
+        const hasRequiredParts = () => requiredParts.every((part) =>
+            root.querySelector(`[part~="${part}"]`),
+        );
+        if (hasRequiredParts()) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            const observer = new MutationObserver(() => {
+                if (
+                    generation !== this.#connectionGeneration
+                    || !this.isConnected
+                    || !hasRequiredParts()
+                ) {
+                    return;
+                }
+                observer.disconnect();
+                if (this.#publicPartsObserver === observer) {
+                    this.#publicPartsObserver = null;
+                }
+                resolve();
+            });
+            this.#publicPartsObserver = observer;
+            observer.observe(root, { childList: true, subtree: true });
+        });
     }
 
     private enqueue<T>(operation: () => Promise<T>): Promise<T> {

@@ -27,8 +27,8 @@
     .post-preview-toggle-row {
         display: flex;
 
-        :global(:root) & :global(button.post-preview-toggle-button),
-        :global(:root) & :global(button.post-preview-toggle-button:hover) {
+        :global(.ehagaki-app-root) & :global(button.post-preview-toggle-button),
+        :global(.ehagaki-app-root) & :global(button.post-preview-toggle-button:hover) {
             color: var(--text-muted);
             font-size: 0.875rem;
             font-weight: normal;
@@ -38,7 +38,7 @@
         }
 
         @media (hover: hover) and (pointer: fine) {
-            :global(:root) & :global(button.post-preview-toggle-button:hover) {
+            :global(.ehagaki-app-root) & :global(button.post-preview-toggle-button:hover) {
                 text-decoration: underline;
             }
         }

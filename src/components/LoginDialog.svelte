@@ -1322,7 +1322,7 @@
         min-width: 0;
     }
 
-    :global(html body button.clear-input-btn) {
+    :global(.ehagaki-app-root button.clear-input-btn) {
         position: absolute;
         inset: 50% auto 50% auto;
         right: 2px;
@@ -1344,10 +1344,10 @@
         z-index: 1;
     }
 
-    :global(html body button.clear-input-btn:hover:not(:disabled)),
-    :global(html body button.clear-input-btn:active:not(:disabled)),
-    :global(html body button.clear-input-btn:focus-visible),
-    :global(html body button.clear-input-btn:disabled) {
+    :global(.ehagaki-app-root button.clear-input-btn:hover:not(:disabled)),
+    :global(.ehagaki-app-root button.clear-input-btn:active:not(:disabled)),
+    :global(.ehagaki-app-root button.clear-input-btn:focus-visible),
+    :global(.ehagaki-app-root button.clear-input-btn:disabled) {
         --btn-bg: transparent;
         background-color: transparent;
         background-image: none;
@@ -1355,7 +1355,7 @@
         color: var(--text-muted);
     }
 
-    :global(html body button.clear-input-btn:focus-visible) {
+    :global(.ehagaki-app-root button.clear-input-btn:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
     }

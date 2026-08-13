@@ -138,11 +138,11 @@
         background-color: var(--btn-bg);
     }
     /* --- Variant Styles --- */
-    :global(html body :where(.default, .primary, .secondary)) {
+    :global(.ehagaki-app-root :where(.default, .primary, .secondary)) {
         padding: 8px 12px;
     }
 
-    :global(html body :where(.default)) {
+    :global(.ehagaki-app-root :where(.default)) {
         :global(:where(.svg-icon)) {
             width: 24px;
             height: 24px;
@@ -154,7 +154,7 @@
         }
     }
 
-    :global(html body :where(.primary)) {
+    :global(.ehagaki-app-root :where(.primary)) {
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
@@ -199,12 +199,14 @@
         }
     }
 
-    :global(:root.light) button.primary:hover:not(:disabled) :global(.svg-icon),
-    :global(:root.dark) button.primary:hover:not(:disabled) :global(.svg-icon) {
+    :global(:root.light .ehagaki-app-root) button.primary:hover:not(:disabled) :global(.svg-icon),
+    :global(:root.dark .ehagaki-app-root) button.primary:hover:not(:disabled) :global(.svg-icon),
+    :global(:host(.light) .ehagaki-app-root) button.primary:hover:not(:disabled) :global(.svg-icon),
+    :global(:host(.dark) .ehagaki-app-root) button.primary:hover:not(:disabled) :global(.svg-icon) {
         background-color: currentColor;
     }
 
-    :global(html body :where(.secondary)) {
+    :global(.ehagaki-app-root :where(.secondary)) {
         border: 1px solid var(--btn-border);
         --btn-bg: white;
         --text: var(--text-black);
@@ -227,14 +229,16 @@
     .header {
         border: 1px solid var(--hagaki);
         @media (hover: hover) and (pointer: fine) {
-            :global(:root.light) & {
+            :global(:root.light) &,
+            :global(:host(.light)) & {
                 &:hover:not(:disabled) {
                     border-color: color-mix(in srgb, var(--hagaki), black 3%);
                 }
             }
         }
 
-        :global(:root.light) & {
+        :global(:root.light) &,
+        :global(:host(.light)) & {
             --btn-bg: white;
         }
     }
@@ -353,7 +357,7 @@
     }
 
     /* --- Content Layout Styles --- */
-    :global(html body :where(.content-iconText)) {
+    :global(.ehagaki-app-root :where(.content-iconText)) {
         gap: 8px;
         padding: 12px 18px 12px 14px;
     }

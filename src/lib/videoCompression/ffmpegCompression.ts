@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import ffmpegClassWorkerAsset from '@ffmpeg/ffmpeg/worker?worker&url';
 import { fetchFile } from '@ffmpeg/util';
 import type { VideoCompressionResult } from '../types';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
@@ -72,7 +73,31 @@ export class FFmpegCompression extends BaseCompression {
                 this.log('Core URL:', coreURL);
                 this.log('WASM URL:', wasmURL);
 
-                await this.ffmpeg.load({ coreURL, wasmURL });
+                const bundledClassWorkerURL = new URL(
+                    ffmpegClassWorkerAsset,
+                    import.meta.url,
+                );
+                // Module workers must be same-origin with their creator. The
+                // PWA's emitted worker already has that origin, but a host
+                // loading this library from a separate asset origin does not.
+                // In that case, fetch the already-bundled worker with CORS and
+                // create the class worker from a host-origin Blob URL.
+                const classWorkerBlobURL = await this.createClassWorkerBlobURL(
+                    bundledClassWorkerURL,
+                );
+                try {
+                    await this.ffmpeg.load({
+                        coreURL,
+                        wasmURL,
+                        ...(classWorkerBlobURL
+                            ? { classWorkerURL: classWorkerBlobURL }
+                            : {}),
+                    });
+                } finally {
+                    if (classWorkerBlobURL) {
+                        URL.revokeObjectURL(classWorkerBlobURL);
+                    }
+                }
                 this.isLoaded = true;
                 this.log('FFmpeg loaded successfully');
             } catch (error) {
@@ -82,6 +107,23 @@ export class FFmpegCompression extends BaseCompression {
         })();
 
         return this.loadPromise;
+    }
+
+    private async createClassWorkerBlobURL(
+        bundledClassWorkerURL: URL,
+    ): Promise<string | null> {
+        if (bundledClassWorkerURL.origin === window.location.origin) {
+            return null;
+        }
+
+        const response = await fetch(bundledClassWorkerURL, { mode: 'cors' });
+        if (!response.ok) {
+            throw new Error('Unable to load the FFmpeg class worker asset.');
+        }
+        const source = await response.text();
+        return URL.createObjectURL(new Blob([source], {
+            type: 'text/javascript',
+        }));
     }
 
     /**

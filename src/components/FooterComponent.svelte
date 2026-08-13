@@ -81,7 +81,7 @@
     }
 </script>
 
-<div class="footer-bar">
+<div class="footer-bar" part="footer">
     {#if isSwitchingAccount}
         <Button
             variant="default"
@@ -195,7 +195,8 @@
 </div>
 
 <style>
-    :global(:root.light :where(.footer-bar button):not(.login-btn)) {
+    :global(:root.light .ehagaki-app-root :where(.footer-bar button):not(.login-btn)),
+    :global(:host(.light) .ehagaki-app-root :where(.footer-bar button):not(.login-btn)) {
         --btn-bg: white;
     }
     .footer-bar {

@@ -1169,7 +1169,7 @@
         outline-offset: -1px;
     }
 
-    :global(html body button.composer-target-clear-button) {
+    :global(.ehagaki-app-root button.composer-target-clear-button) {
         position: absolute;
         inset-block: 50%;
         inset-inline-end: 2px;
@@ -1188,10 +1188,10 @@
         z-index: 1;
     }
 
-    :global(html body button.composer-target-clear-button:hover:not(:disabled)),
-    :global(html body button.composer-target-clear-button:active:not(:disabled)),
-    :global(html body button.composer-target-clear-button:focus-visible),
-    :global(html body button.composer-target-clear-button:disabled) {
+    :global(.ehagaki-app-root button.composer-target-clear-button:hover:not(:disabled)),
+    :global(.ehagaki-app-root button.composer-target-clear-button:active:not(:disabled)),
+    :global(.ehagaki-app-root button.composer-target-clear-button:focus-visible),
+    :global(.ehagaki-app-root button.composer-target-clear-button:disabled) {
         --btn-bg: transparent;
         background-color: transparent;
         background-image: none;
@@ -1199,7 +1199,7 @@
         color: var(--text-muted);
     }
 
-    :global(html body button.composer-target-clear-button:focus-visible) {
+    :global(.ehagaki-app-root button.composer-target-clear-button:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
     }

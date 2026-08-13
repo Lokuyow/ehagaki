@@ -44,7 +44,7 @@
     );
 </script>
 
-<div class="header-container">
+<div class="header-container" part="header">
     <div class="header-left">
         {#if showMascot}
             <a

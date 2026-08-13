@@ -1827,7 +1827,7 @@
 
 {#if $locale && localeInitialized}
   <Tooltip.Provider>
-    <main>
+    <main class="ehagaki-app-root">
       <div class="main-content">
         <HeaderComponent
           onResetPostContent={handleResetPostContent}
@@ -1843,7 +1843,11 @@
           showMascot={settingsStore.showMascot}
           showFlavorText={showHeaderBalloonMessage}
         />
-        <div class="composer-scroll-region" bind:this={composerScrollRegionEl}>
+        <div
+          class="composer-scroll-region"
+          part="composer"
+          bind:this={composerScrollRegionEl}
+        >
           <div
             class="composer-scroll-content"
             bind:this={composerScrollContentEl}
