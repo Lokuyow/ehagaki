@@ -13,7 +13,11 @@ output can serve the live sample and component assets together. The standalone
 です。module URL / asset base、Create / Destroy / Recreate、`whenReady()`、
 initial/runtime settings、content/reply/quote/multiple quote/channel context、
 安全なevent log、2個目instanceの拒否、CSS Custom Propertiesと
-`::part()`を確認できます。
+`::part()`を確認できます。ページロード時にはcomponentも任意moduleも
+自動実行せず、`Create / Mount`が明示的なimport・接続操作になります。
+外部moduleはhostと同じJavaScript権限で実行されるため、信頼できるURL
+だけを指定してください。module load後はCustom Elements Registryのため
+module URLを変更できず、別実装を試すにはページをreloadします。
 
 ```html
 <script type="module" src="https://cdn.example/ehagaki-composer.js"></script>

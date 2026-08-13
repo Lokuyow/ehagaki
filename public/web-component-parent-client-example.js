@@ -201,9 +201,12 @@ async function ensureModuleLoaded() {
     if (loadedModuleUrl === moduleUrl && moduleLoadPromise) return moduleLoadPromise;
     loadedModuleUrl = moduleUrl;
     moduleLoadPromise = import(moduleUrl).then(() => {
-        setStatus(moduleStatus, `module loaded: ${moduleUrl}`, "ok");
+        moduleUrlInput.disabled = true;
+        moduleUrlInput.setAttribute("aria-disabled", "true");
+        setStatus(moduleStatus, "module loaded; reload to choose another implementation", "ok");
     }).catch((error) => {
         moduleLoadPromise = null;
+        loadedModuleUrl = "";
         setStatus(moduleStatus, `module failed (${safeErrorCode(error)})`, "error");
         appendLog("module load failed", { code: safeErrorCode(error) });
         throw error;
@@ -211,8 +214,7 @@ async function ensureModuleLoaded() {
     return moduleLoadPromise;
 }
 
-function configureElement(element) {
-    element.setAttribute("asset-base", normalizeDirectoryUrl(assetBaseInput.value));
+function applyCustomStyles(element) {
     for (const [property, id] of [
         ["--ehagaki-background", "style-background"],
         ["--ehagaki-text", "style-text"],
@@ -225,6 +227,11 @@ function configureElement(element) {
     ]) {
         element.style.setProperty(property, getElement(id).value);
     }
+}
+
+function configureElement(element) {
+    element.setAttribute("asset-base", normalizeDirectoryUrl(assetBaseInput.value));
+    applyCustomStyles(element);
 }
 
 async function createComposer() {
@@ -300,7 +307,7 @@ function applyStyles() {
         appendLog("styles: component_not_mounted");
         return;
     }
-    configureElement(currentComposer);
+    applyCustomStyles(currentComposer);
     document.documentElement.style.setProperty("--sample-part-outline", getElement("style-part-outline").value);
     appendLog("styles applied", { customProperties: 8, parts: ["header", "composer"] });
 }
@@ -339,8 +346,8 @@ function bindActions() {
     getElement("clear-log").addEventListener("click", () => { eventLog.value = ""; });
 }
 
-moduleUrlInput.value = new URL(new URLSearchParams(location.search).get("moduleUrl") || getDefaultModuleUrl(), document.baseURI).href;
-assetBaseInput.value = normalizeDirectoryUrl(new URLSearchParams(location.search).get("assetBase") || getDefaultAssetBase());
+moduleUrlInput.value = getDefaultModuleUrl();
+assetBaseInput.value = getDefaultAssetBase();
 bindActions();
 refreshNip07Status();
 appendLog("sample ready", {
@@ -348,6 +355,3 @@ appendLog("sample ready", {
     eventTransport: "CustomEvent bubbles+composed",
     secretLogging: false,
 });
-
-// Boot the reference page automatically, while keeping Create / Mount available for recreation.
-void createComposer().catch((error) => appendLog("sample boot failed", { code: safeErrorCode(error) }));

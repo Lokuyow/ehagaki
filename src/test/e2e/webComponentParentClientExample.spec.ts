@@ -7,6 +7,13 @@ import { nip19 } from "nostr-tools";
 let server: Server;
 let origin = "";
 const requests = new Set<string>();
+const securityFixturePath = "/ehagaki/security-fixture.js";
+
+declare global {
+    interface Window {
+        __securityFixtureLoaded?: boolean;
+    }
+}
 
 function contentType(filePath: string): string {
     switch (extname(filePath)) {
@@ -38,6 +45,22 @@ test.beforeAll(async () => {
     server = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", origin).pathname;
         requests.add(pathname);
+        if (pathname === securityFixturePath) {
+            response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+            response.end(`
+                window.__securityFixtureLoaded = true;
+                class SecurityFixtureComposer extends HTMLElement {
+                    whenReady() { return Promise.resolve(); }
+                    setSettings() { return Promise.resolve([]); }
+                    setContext() { return Promise.resolve(); }
+                    connectedCallback() {
+                        this.dispatchEvent(new CustomEvent("ehagaki-ready", { bubbles: true, composed: true, detail: { apiVersion: 999 } }));
+                    }
+                }
+                customElements.define("ehagaki-composer", SecurityFixtureComposer);
+            `);
+            return;
+        }
         if (!pathname.startsWith("/ehagaki/")) {
             response.writeHead(404).end();
             return;
@@ -69,9 +92,15 @@ test.afterAll(async () => {
 test("boots from production site output and exercises the public sample API", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
 
+    await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
+    await expect(page.locator("#asset-base")).toHaveValue(`${origin}/ehagaki/web-component/`);
+    await expect(page.locator("#module-status")).toHaveText("module 未読み込み");
+    await expect(page.locator("ehagaki-composer")).toHaveCount(0);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
     await expect(page.locator("#module-status")).toContainText("module loaded");
     await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
     await expect(page.locator("#component-status")).toHaveText("component mounted");
+    await expect(page.locator("#module-url")).toBeDisabled();
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
     expect(requests).toContain("/ehagaki/web-component/ehagaki-composer.js");
     expect([...requests].some((path) => path.startsWith("/ehagaki/web-component/assets/"))).toBe(true);
@@ -113,6 +142,7 @@ test("boots from production site output and exercises the public sample API", as
 
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
     await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
 
     await page.getByRole("button", { name: "2個目を生成" }).click();
@@ -129,4 +159,21 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
     await page.getByRole("button", { name: "Recreate" }).click();
     await expect(page.locator("#component-status")).toHaveText("component mounted");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+});
+
+test("does not import query-selected modules until an explicit Create action", async ({ page }) => {
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?moduleUrl=${encodeURIComponent(`${origin}${securityFixturePath}`)}`);
+
+    await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
+    await expect(page.locator("ehagaki-composer")).toHaveCount(0);
+    expect(requests).not.toContain(securityFixturePath);
+    expect(await page.evaluate(() => window.__securityFixtureLoaded === true)).toBe(false);
+
+    await page.locator("#module-url").fill(`${origin}${securityFixturePath}`);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
+    await expect(page.locator("#module-status")).toContainText("module loaded");
+    await expect(page.locator("#module-url")).toBeDisabled();
+    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    expect(requests).toContain(securityFixturePath);
+    expect(await page.evaluate(() => window.__securityFixtureLoaded === true)).toBe(true);
 });
