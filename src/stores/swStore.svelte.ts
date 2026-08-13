@@ -24,6 +24,10 @@ const updateReloadController = createAcceptedServiceWorkerUpdateReloadController
     },
 );
 
+export function handleServiceWorkerControlChange() {
+    return updateReloadController.handleControlChange();
+}
+
 export function setSwUpdateStatus(value: SwUpdateStatus) {
     if (swUpdateStatusValue === "ready" && value === "installing") {
         return;

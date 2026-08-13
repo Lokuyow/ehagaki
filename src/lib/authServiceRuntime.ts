@@ -5,6 +5,7 @@ import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, type Nip46Service } from './nip46Service';
 import { parentClientAuthService, type ParentClientAuthService } from './parentClientAuthService';
 import { getAppStorage } from './appStorage';
+import { getAppRuntimeEnvironment } from './appRuntimeEnvironment';
 
 type AuthSetter = (pubkey: string, npub: string, nprofile: string) => void;
 
@@ -50,6 +51,7 @@ export interface AuthServiceRuntime {
     indexedDB: IDBFactory;
     caches: CacheStorage;
     navigator: Navigator;
+    serviceWorkerEnabled: boolean;
     console: Console;
     nip46Svc: Nip46Service;
     parentClientSvc: ParentClientAuthService;
@@ -71,6 +73,9 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
         });
     const windowObj = dependencies.window ?? (typeof window !== 'undefined' ? window : {} as Window);
     const navigator = dependencies.navigator ?? (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
+    const serviceWorkerEnabled =
+        dependencies.serviceWorkerEnabled ??
+        getAppRuntimeEnvironment().serviceWorkerEnabled;
     const consoleObj = dependencies.console ?? (typeof window !== 'undefined' ? window.console : {} as Console);
     const indexedDB =
         dependencies.indexedDB ??
@@ -88,6 +93,7 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
         indexedDB,
         caches,
         navigator,
+        serviceWorkerEnabled,
         console: consoleObj,
         keyManager,
         nip46Svc: nip46Service,

@@ -170,6 +170,31 @@ describe('AuthService.logoutAccount', () => {
         expect(result).toBe('next-active');
     });
 
+    it.each([
+        { enabled: false, expectedCalls: 0 },
+        { enabled: true, expectedCalls: 1 },
+    ])(
+        'serviceWorkerEnabled=%s のときだけプロフィールキャッシュ削除messageを送る',
+        async ({ enabled, expectedCalls }) => {
+            mockDependencies.serviceWorkerEnabled = enabled;
+            authService = new AuthService(mockDependencies);
+            mockAccountManager.getAccountType.mockReturnValue('nsec');
+            const postMessage = vi.mocked(
+                (mockDependencies.navigator as any).serviceWorker.controller.postMessage,
+            );
+
+            await authService.logoutAccount('pubkey1');
+
+            expect(postMessage).toHaveBeenCalledTimes(expectedCalls);
+            if (enabled) {
+                expect(postMessage).toHaveBeenCalledWith(
+                    { action: 'clearProfileCache' },
+                    expect.any(Array),
+                );
+            }
+        },
+    );
+
     it('最後のアカウント削除でnull返却', async () => {
         mockAccountManager.removeAccount.mockReturnValue(null);
         const result = await authService.logoutAccount('pubkey1');

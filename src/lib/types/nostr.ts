@@ -73,6 +73,7 @@ export interface AuthServiceDependencies {
     caches?: CacheStorage;
     window?: Window;
     navigator?: Navigator;
+    serviceWorkerEnabled?: boolean;
     console?: Console;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;

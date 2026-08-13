@@ -3,16 +3,15 @@
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { subscribeEHagakiDbUpgradeState } from "../storage/ehagakiDb";
 import {
-    createAcceptedServiceWorkerUpdateReloadController,
     watchServiceWorkerUpdateInstallation,
 } from "../swUpdateDetectionUtils";
 import {
     configureSwUpdateServiceWorker,
     enableServiceWorkerStore,
+    handleServiceWorkerControlChange,
     setDbUpgradeBlocked,
     setSwUpdateStatus,
 } from "../../stores/swStore.svelte";
-import { requestStaleReloadPrompt, markStaleAssetReloadRequired } from "../../stores/staleAssetReloadStore.svelte";
 
 let started = false;
 
@@ -32,15 +31,6 @@ export function startServiceWorkerRegistration(): void {
             }
         });
     }
-
-    const updateReloadController = createAcceptedServiceWorkerUpdateReloadController(
-        () => window.location.reload(),
-        () => {
-            if (markStaleAssetReloadRequired()) {
-                requestStaleReloadPrompt();
-            }
-        },
-    );
 
     try {
         if (typeof useRegisterSW !== "function") return;
@@ -63,7 +53,7 @@ export function startServiceWorkerRegistration(): void {
                 setSwUpdateStatus("ready");
             },
             onNeedReload() {
-                updateReloadController.handleControlChange();
+                return handleServiceWorkerControlChange();
             },
             immediate: true,
             onOfflineReady() {
