@@ -46,7 +46,9 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         assetBase: windowObj?.location?.href
             ? new URL(".", windowObj.location.href)
             : undefined,
-        serviceWorkerEnabled: false,
+        // The implicit browser runtime retains the historic PWA behavior.
+        // The Web Component entry explicitly opts out before importing App.
+        serviceWorkerEnabled: true,
         externalInputEnabled: true,
         historyEnabled: true,
     };

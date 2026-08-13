@@ -8,8 +8,14 @@
 
 let configuredStorage: Storage | undefined;
 
-/** Reserved prefix for the future same-origin Web Component entry. */
-export const EHAGAKI_WEB_COMPONENT_STORAGE_PREFIX = "ehagaki-web-component:";
+/**
+ * The Web Component's host-origin namespace.
+ *
+ * This deliberately uses the documented, versioned public prefix. The
+ * component never receives raw host localStorage, so account cleanup and
+ * legacy migration can only remove keys inside this namespace.
+ */
+export const EHAGAKI_WEB_COMPONENT_STORAGE_PREFIX = "ehagaki.web-component.v1:";
 
 const memoryStorage = new Map<string, string>();
 

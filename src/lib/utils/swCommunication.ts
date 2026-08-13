@@ -1,6 +1,7 @@
 import type { SharedMediaData } from "../types";
 import { SHARE_HANDLER_CONFIG } from '../constants';
 import { sharedMediaRepository } from "../storage/sharedMediaRepository";
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
 
 /**
  * リクエストIDを生成
@@ -20,7 +21,10 @@ async function sendMessageToServiceWorker(
     message: any,
     timeoutMs: number = SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT
 ): Promise<any> {
-    if (!navigator.serviceWorker.controller) {
+    if (
+        !getAppRuntimeEnvironment().serviceWorkerEnabled
+        || !navigator.serviceWorker.controller
+    ) {
         throw new Error('No ServiceWorker controller available');
     }
 
@@ -77,6 +81,9 @@ export async function acknowledgeSharedMedia(shareId: string): Promise<boolean> 
  * ServiceWorkerの準備を待つ
  */
 async function waitForServiceWorkerController(): Promise<void> {
+    if (!getAppRuntimeEnvironment().serviceWorkerEnabled) {
+        return Promise.reject(new Error("eHagaki ServiceWorker runtime disabled"));
+    }
     if (navigator.serviceWorker.controller) return;
 
     return new Promise<void>((resolve, reject) => {
@@ -171,7 +178,7 @@ export async function checkServiceWorkerStatus(): Promise<{
     hasController: boolean;
     error?: string;
 }> {
-    if (!('serviceWorker' in navigator)) {
+    if (!getAppRuntimeEnvironment().serviceWorkerEnabled || !('serviceWorker' in navigator)) {
         return { isReady: false, hasController: false, error: 'Service Worker not supported' };
     }
 

@@ -2,6 +2,7 @@
     import type { Snippet } from "svelte";
     import { _ } from "svelte-i18n";
     import { AlertDialog } from "bits-ui";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -119,6 +120,8 @@
         }
     }
 
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+
     // 確認ボタンのハンドラ
     async function handleConfirm() {
         if (isConfirming) return;
@@ -144,7 +147,7 @@
 </script>
 
 <AlertDialog.Root bind:open onOpenChange={handleOpenChange}>
-    <AlertDialog.Portal>
+    <AlertDialog.Portal to={overlayTarget}>
         <AlertDialog.Overlay class="confirm-dialog-overlay" />
         <AlertDialog.Content
             class={`confirm-dialog-shell ${contentClass}`}
@@ -311,7 +314,8 @@
             color: currentColor;
         }
 
-        :global(:root.dark .btn-cancel.secondary.square) {
+        :global(:root.dark .ehagaki-app-root .btn-cancel.secondary.square),
+        :global(:host(.dark) .ehagaki-app-root .btn-cancel.secondary.square) {
             border: none;
         }
     }

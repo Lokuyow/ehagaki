@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import { Dialog } from "bits-ui";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
@@ -95,6 +96,7 @@
     }: Props = $props();
 
     let contentRef: HTMLElement | null = $state(null);
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     let shouldFocusContent = $derived(initialFocus === "content");
 
     function handleOpenChange(newOpen: boolean) {
@@ -121,7 +123,7 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={handleOpenChange}>
-    <Dialog.Portal>
+    <Dialog.Portal to={overlayTarget}>
         <Dialog.Overlay class="dialog-overlay" />
         <Dialog.Content
             bind:ref={contentRef}

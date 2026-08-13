@@ -5,6 +5,7 @@ import {
     restoreCachedEmojiItems,
 } from "./customEmojiCachePersistenceUtils";
 import { buildCustomEmojiListFromFetchedEvents } from "./customEmojiFetchUtils";
+import { getAppRuntimeEnvironment } from "./appRuntimeEnvironment";
 import {
     clampCustomEmojiPickerPersistenceHeight,
     readPersistedPickerHeight,
@@ -580,7 +581,11 @@ function scheduleBackgroundTask(task: () => void): void {
 }
 
 export function cacheCustomEmojiImages(urls: string[]): void {
-    if (typeof navigator === "undefined" || !navigator.serviceWorker?.controller) {
+    if (
+        !getAppRuntimeEnvironment().serviceWorkerEnabled
+        || typeof navigator === "undefined"
+        || !navigator.serviceWorker?.controller
+    ) {
         return;
     }
 
@@ -614,6 +619,9 @@ export async function requestCustomEmojiImagesCache(
     urls: string[],
     runtime: RequestCustomEmojiImagesCacheRuntime = {},
 ): Promise<CacheCustomEmojiImagesResult | null> {
+    if (!runtime.navigatorObj && !getAppRuntimeEnvironment().serviceWorkerEnabled) {
+        return null;
+    }
     const navigatorObj = runtime.navigatorObj ??
         (typeof navigator !== "undefined" ? navigator : undefined);
     const controller = navigatorObj?.serviceWorker?.controller;

@@ -7,6 +7,8 @@
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     interface Props {
         onResetPostContent: () => void;
@@ -29,6 +31,8 @@
         showMascot = true,
         showFlavorText = true,
     }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const ehagakiIconUrl = resolveAppAssetUrl("ehagaki_icon.svg");
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
@@ -42,7 +46,7 @@
     );
 </script>
 
-<div class="header-container">
+<div class="header-container" part="header">
     <div class="header-left">
         {#if showMascot}
             <a
@@ -51,7 +55,7 @@
                 aria-label="ehagaki"
             >
                 <img
-                    src="./ehagaki_icon.svg"
+                    src={ehagakiIconUrl}
                     alt="ehagaki icon"
                     class="site-icon"
                 />
@@ -103,7 +107,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("postComponent.clear_editor")}
                         </Tooltip.Content>
@@ -133,7 +137,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("draft.list_title") || "下書き"}
                         </Tooltip.Content>
@@ -163,7 +167,7 @@
                             </Button>
                         {/snippet}
                     </Tooltip.Trigger>
-                    <Tooltip.Portal>
+                    <Tooltip.Portal to={overlayTarget}>
                         <Tooltip.Content sideOffset={8} class="tooltip-content">
                             {$_("composerTarget.title")}
                         </Tooltip.Content>

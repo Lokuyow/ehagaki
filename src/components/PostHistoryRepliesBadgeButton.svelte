@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Tooltip } from "bits-ui";
     import Button from "./Button.svelte";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         count: number;
@@ -11,6 +12,7 @@
     }
 
     let { count, selected, ariaLabel, onClick, tooltipContent = ariaLabel }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 </script>
 
 <Tooltip.Provider>
@@ -37,7 +39,7 @@
                 </Button>
             {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Portal>
+        <Tooltip.Portal to={overlayTarget}>
             <Tooltip.Content sideOffset={8} class="tooltip-content post-preview-tooltip-content">
                 {tooltipContent}
             </Tooltip.Content>

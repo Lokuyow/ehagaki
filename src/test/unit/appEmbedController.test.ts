@@ -108,6 +108,18 @@ describe('createAppEmbedController', () => {
         vi.clearAllMocks();
     });
 
+    it('exposes the same in-process context and settings paths without iframe acknowledgements', async () => {
+        const { controller, composerInput, settingsApply, parentFrame } = createController();
+
+        await controller.applyComposerContext({ content: 'web component content' });
+        await controller.applySettings({ locale: 'en' });
+
+        expect(composerInput.insertText).toHaveBeenCalledWith('web component content');
+        expect(settingsApply.applySettings).toHaveBeenCalledWith({ locale: 'en' });
+        expect(parentFrame.notifyComposerContextApplied).not.toHaveBeenCalled();
+        expect(parentFrame.notifySettingsApplied).not.toHaveBeenCalled();
+    });
+
     it('bootstrapping 中の composer.setContext を保留し、flush で適用する', async () => {
         const { controller, composerInput, parentFrame, setBootstrappingApp } = createController();
         setBootstrappingApp(true);

@@ -162,6 +162,12 @@ interface AppEmbedControllerState {
 }
 
 export interface AppEmbedController {
+    /** Apply the shared composer context semantics without an iframe response. */
+    applyComposerContext(payload: unknown): Promise<void>;
+    /** Apply settings directly for another in-process embedding transport. */
+    applySettings(
+        payload: EmbedSettingsSetPayload,
+    ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
     handleRemoteComposerSetContext(
         payload: unknown,
         requestId: string,
@@ -308,6 +314,20 @@ export function createAppEmbedController(
     }
 
     return {
+        async applyComposerContext(payload: unknown): Promise<void> {
+            const backgroundTasks = applyRemoteComposerSetContext(payload);
+            state.lastNotifiedComposerContextSignature = buildComposerContextSignature(
+                buildCurrentComposerContextPayload(),
+            );
+            runBackgroundComposerTasks(backgroundTasks);
+        },
+
+        async applySettings(
+            payload: EmbedSettingsSetPayload,
+        ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
+            return deps.settingsApply.applySettings(payload);
+        },
+
         async handleRemoteComposerSetContext(
             payload: unknown,
             requestId: string,

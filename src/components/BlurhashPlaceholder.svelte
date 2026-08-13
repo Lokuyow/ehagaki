@@ -141,7 +141,8 @@
         );
     }
 
-    :global(:root.dark) .blurhash-placeholder::after {
+    :global(:root.dark .ehagaki-app-root) .blurhash-placeholder::after,
+    :global(:host(.dark) .ehagaki-app-root) .blurhash-placeholder::after {
         background: linear-gradient(
             180deg,
             rgba(0, 0, 0, 0.14),

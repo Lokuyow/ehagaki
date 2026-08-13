@@ -16,6 +16,7 @@
         stopVibration,
     } from "../lib/utils/appDomUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         onUploadImage?: () => void;
@@ -23,6 +24,7 @@
         customEmojiPickerOpen?: boolean;
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
     }
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
     let {
         onUploadImage,
@@ -239,7 +241,7 @@
                         </Button>
                     {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal to={overlayTarget}>
                     <Tooltip.Content sideOffset={8} class="tooltip-content">
                         {$_("keyboardButtonBar.upload_image_tooltip")}
                     </Tooltip.Content>
@@ -364,7 +366,7 @@
                         </Button>
                     {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal to={overlayTarget}>
                     <Tooltip.Content sideOffset={8} class="tooltip-content">
                         {$_("keyboardButtonBar.post_tooltip")}
                     </Tooltip.Content>
@@ -396,7 +398,7 @@
                         </Button>
                     {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal to={overlayTarget}>
                     <Tooltip.Content sideOffset={8} class="tooltip-content">
                         {$_("keyboardButtonBar.content_warning_tooltip")}
                     </Tooltip.Content>
@@ -435,7 +437,7 @@
                         </Button>
                     {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal to={overlayTarget}>
                     <Tooltip.Content sideOffset={8} class="tooltip-content">
                         {$_("keyboardButtonBar.hashtag_pin_tooltip")}
                     </Tooltip.Content>

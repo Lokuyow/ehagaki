@@ -44,6 +44,8 @@ interface RunAppInitializationBootstrapParams {
     refreshAccountList: () => void;
     markAuthInitialized: () => void;
     getExternalInputBootstrapParams: () => Omit<RunExternalInputBootstrapParams, "sharedError">;
+    /** Web Component runtime does not consume URL or share-target input. */
+    externalInputEnabled?: boolean;
     console: Nip46RecoveryConsole;
 }
 
@@ -73,6 +75,7 @@ export async function runAppInitializationBootstrap({
     refreshAccountList,
     markAuthInitialized,
     getExternalInputBootstrapParams,
+    externalInputEnabled = true,
     console,
 }: RunAppInitializationBootstrapParams): Promise<void> {
     const sharedError = getSharedErrorFromLocationSearch(locationSearch);
@@ -115,10 +118,12 @@ export async function runAppInitializationBootstrap({
         markAuthInitialized();
     }
 
-    await runExternalInputBootstrap({
-        ...getExternalInputBootstrapParams(),
-        sharedError,
-    });
+    if (externalInputEnabled) {
+        await runExternalInputBootstrap({
+            ...getExternalInputBootstrapParams(),
+            sharedError,
+        });
+    }
 }
 
 export function registerNip46VisibilityHandler({

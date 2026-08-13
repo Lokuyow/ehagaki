@@ -877,7 +877,7 @@
         outline-offset: -1px;
     }
 
-    :global(html body button.upload-destination-url-clear-button) {
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button) {
         position: absolute;
         inset-block: 50%;
         inset-inline-end: 2px;
@@ -896,10 +896,10 @@
         z-index: 1;
     }
 
-    :global(html body button.upload-destination-url-clear-button:hover:not(:disabled)),
-    :global(html body button.upload-destination-url-clear-button:active:not(:disabled)),
-    :global(html body button.upload-destination-url-clear-button:focus-visible),
-    :global(html body button.upload-destination-url-clear-button:disabled) {
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button:hover:not(:disabled)),
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button:active:not(:disabled)),
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button:focus-visible),
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button:disabled) {
         --btn-bg: transparent;
         background-color: transparent;
         background-image: none;
@@ -907,7 +907,7 @@
         color: var(--text-muted);
     }
 
-    :global(html body button.upload-destination-url-clear-button:focus-visible) {
+    :global(.ehagaki-app-root button.upload-destination-url-clear-button:focus-visible) {
         outline: 2px solid var(--theme);
         outline-offset: 2px;
     }

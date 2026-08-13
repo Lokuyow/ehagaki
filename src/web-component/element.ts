@@ -1,0 +1,313 @@
+import { mount, unmount } from "svelte";
+import type { AppEmbedAppliedSettingKey } from "../lib/appEmbedController";
+import { configureAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+import { createWebComponentStorage } from "../lib/appStorage";
+import type {
+    EmbedComposerSetContextPayload,
+    EmbedSettingsSetPayload,
+} from "../lib/embedProtocol";
+import appCss from "../app.css?inline";
+import photoSwipeCss from "photoswipe/style.css?inline";
+import {
+    EHAGAKI_COMPOSER_API_VERSION,
+    type EHagakiComposerContext,
+    type EHagakiComposerInitializationErrorDetail,
+    type EHagakiComposerSettings,
+} from "./types";
+import { createWebComponentNotificationPort } from "./notificationPort";
+import { applyWebComponentIconAssetUrls } from "./iconAssets";
+
+type AppInstance = {
+    setEmbedContext(payload: unknown): Promise<void>;
+    setEmbedSettings(
+        payload: EmbedSettingsSetPayload,
+    ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
+};
+
+let activeInstance: EHagakiComposerElement | null = null;
+
+function createError(code: EHagakiComposerInitializationErrorDetail["code"], message: string): Error {
+    const error = new Error(message);
+    error.name = code;
+    return error;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateSettings(value: EHagakiComposerSettings): EmbedSettingsSetPayload {
+    if (!isRecord(value)) {
+        throw createError("initialization_failed", "Invalid settings payload.");
+    }
+    const validStrings = {
+        locale: new Set(["ja", "en"]),
+        themeMode: new Set(["system", "light", "dark"]),
+        imageQualityLevel: new Set(["none", "low", "medium", "high"]),
+        videoQualityLevel: new Set(["none", "low", "medium", "high"]),
+        imageCompressionLevel: new Set(["none", "low", "medium", "high"]),
+        videoCompressionLevel: new Set(["none", "low", "medium", "high"]),
+    } as const;
+    const validBooleanKeys = new Set([
+        "clientTagEnabled",
+        "quoteNotificationEnabled",
+        "replyNotificationEnabled",
+        "mediaFreePlacement",
+        "showMascot",
+        "showFlavorText",
+    ]);
+    const validKeys = new Set([
+        ...Object.keys(validStrings),
+        ...validBooleanKeys,
+        "uploadEndpoint",
+    ]);
+
+    for (const [key, setting] of Object.entries(value)) {
+        if (!validKeys.has(key)) {
+            throw createError("initialization_failed", "Invalid settings payload.");
+        }
+        if (key in validStrings) {
+            const choices = validStrings[key as keyof typeof validStrings];
+            if (typeof setting !== "string" || !choices.has(setting as never)) {
+                throw createError("initialization_failed", "Invalid settings payload.");
+            }
+        } else if (validBooleanKeys.has(key) && typeof setting !== "boolean") {
+            throw createError("initialization_failed", "Invalid settings payload.");
+        } else if (key === "uploadEndpoint" && typeof setting !== "string") {
+            throw createError("initialization_failed", "Invalid settings payload.");
+        }
+    }
+    return value;
+}
+
+function transformAppCss(css: string): string {
+    // app.css is authored for the document root. In this build it is copied
+    // into the component's open shadow tree instead of touching host styles.
+    return css
+        .replaceAll(":root", ":host")
+        .replace("html,\nbody,\n#app", ":host,\n.ehagaki-web-component-shell")
+        .replace("#app {", ".ehagaki-web-component-shell {")
+        .replace("body {", ".ehagaki-web-component-shell {");
+}
+
+export class EHagakiComposerElement extends HTMLElement {
+    static get observedAttributes(): string[] {
+        return ["asset-base"];
+    }
+
+    #app: AppInstance | null = null;
+    #mountedApp: ReturnType<typeof mount> | null = null;
+    #mountPromise: Promise<void> | null = null;
+    #readyResolve: (() => void) | null = null;
+    #readyReject: ((reason?: unknown) => void) | null = null;
+    #readyPromise: Promise<void> = this.createReadyPromise();
+    #readyState: "pending" | "resolved" | "rejected" = "pending";
+    #operationQueue: Promise<void> = Promise.resolve();
+    #connectionGeneration = 0;
+    #publicPartsObserver: MutationObserver | null = null;
+    #assetStyleObserver: MutationObserver | null = null;
+
+    get assetBase(): string | null {
+        return this.getAttribute("asset-base");
+    }
+
+    set assetBase(value: string | null) {
+        if (value === null || value === "") {
+            this.removeAttribute("asset-base");
+            return;
+        }
+        this.setAttribute("asset-base", value);
+    }
+
+    attributeChangedCallback(): void {
+        // The delivery base must be configured before the stateful app graph is
+        // imported. Changing it after connection applies on the next mount.
+    }
+
+    connectedCallback(): void {
+        if (this.#mountPromise) return;
+        if (activeInstance && activeInstance !== this) {
+            const error = createError(
+                "multiple_instances_unsupported",
+                "Only one ehagaki-composer can be connected in a document.",
+            );
+            this.fail("multiple_instances_unsupported", error.message, error);
+            return;
+        }
+
+        if (this.#readyState !== "pending") {
+            this.#readyPromise = this.createReadyPromise();
+            this.#readyState = "pending";
+        }
+        activeInstance = this;
+        this.#mountPromise = this.mountApp();
+    }
+
+    disconnectedCallback(): void {
+        this.#connectionGeneration += 1;
+        this.#publicPartsObserver?.disconnect();
+        this.#publicPartsObserver = null;
+        this.#assetStyleObserver?.disconnect();
+        this.#assetStyleObserver = null;
+        if (activeInstance === this) activeInstance = null;
+        if (this.#mountedApp) {
+            unmount(this.#mountedApp);
+            this.#mountedApp = null;
+        }
+        this.#app = null;
+        this.#mountPromise = null;
+        if (this.#readyState === "pending") {
+            this.#readyState = "rejected";
+            this.#readyReject?.(createError("disconnected", "Component was disconnected before it became ready."));
+        }
+    }
+
+    whenReady(): Promise<void> {
+        return this.#readyPromise;
+    }
+
+    setContext(context: EHagakiComposerContext): Promise<void> {
+        return this.enqueue(async () => {
+            await this.requireApp().setEmbedContext(context as EmbedComposerSetContextPayload);
+        });
+    }
+
+    setSettings(
+        settings: EHagakiComposerSettings,
+    ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
+        return this.enqueue(async () =>
+            this.requireApp().setEmbedSettings(validateSettings(settings)));
+    }
+
+    dispatchSafeEvent(type: string, detail: Record<string, unknown>): boolean {
+        return this.dispatchEvent(new CustomEvent(type, {
+            bubbles: true,
+            composed: true,
+            detail,
+        }));
+    }
+
+    private createReadyPromise(): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            this.#readyResolve = resolve;
+            this.#readyReject = reject;
+        });
+    }
+
+    private async mountApp(): Promise<void> {
+        const generation = ++this.#connectionGeneration;
+        try {
+            const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
+            shadowRoot.replaceChildren();
+            const styles = document.createElement("style");
+            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { --bg: var(--ehagaki-background, light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%))); --text: var(--ehagaki-text, light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%))); --border: var(--ehagaki-border, light-dark(hsl(0, 0%, 83%), dimgray)); --link: var(--ehagaki-link, light-dark(#1a0dab, #99c3ff)); --bg-input: var(--ehagaki-input-background, light-dark(#fff, hsl(0, 0%, 19%))); --bg-footer: var(--ehagaki-footer-background, light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%))); --dialog-bg: var(--ehagaki-dialog-background, light-dark(#fff, hsl(0, 0%, 14%))); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { min-height: 0; }`;
+            const shell = document.createElement("div");
+            shell.className = "ehagaki-web-component-shell";
+            shell.part.add("shell");
+            const mountTarget = document.createElement("div");
+            mountTarget.className = "ehagaki-web-component-app";
+            const overlayTarget = document.createElement("div");
+            overlayTarget.className = "ehagaki-web-component-overlays ehagaki-app-root";
+            overlayTarget.part.add("overlay-root");
+            shell.append(mountTarget, overlayTarget);
+            shadowRoot.append(styles, shell);
+
+            const assetBase = new URL(
+                this.assetBase ?? "./",
+                import.meta.url,
+            );
+            this.#assetStyleObserver = new MutationObserver(() => {
+                applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            });
+            this.#assetStyleObserver.observe(shadowRoot, {
+                childList: true,
+                subtree: true,
+            });
+            configureAppRuntimeEnvironment({
+                storage: createWebComponentStorage(window.localStorage),
+                window,
+                document,
+                domRoot: shadowRoot,
+                styleTarget: shell,
+                layoutTarget: shell,
+                overlayTarget,
+                themeTarget: this,
+                assetBase,
+                serviceWorkerEnabled: false,
+                externalInputEnabled: false,
+                historyEnabled: false,
+            });
+
+            const { default: App } = await import("../App.svelte");
+            if (!this.isConnected || generation !== this.#connectionGeneration) return;
+            this.#mountedApp = mount(App, {
+                target: mountTarget,
+                props: { notificationPort: createWebComponentNotificationPort(this) },
+            });
+            applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
+            this.#app = this.#mountedApp as AppInstance;
+            await this.waitForPublicParts(shadowRoot, generation);
+            if (!this.isConnected || generation !== this.#connectionGeneration) return;
+            this.#readyState = "resolved";
+            this.#readyResolve?.();
+            this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
+        } catch {
+            this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
+        }
+    }
+
+    private requireApp(): AppInstance {
+        if (!this.#app) {
+            throw createError("initialization_failed", "eHagaki Composer is not ready.");
+        }
+        return this.#app;
+    }
+
+    private waitForPublicParts(root: ShadowRoot, generation: number): Promise<void> {
+        const requiredParts = ["header", "composer", "footer"];
+        const hasRequiredParts = () => requiredParts.every((part) =>
+            root.querySelector(`[part~="${part}"]`),
+        );
+        if (hasRequiredParts()) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            const observer = new MutationObserver(() => {
+                if (
+                    generation !== this.#connectionGeneration
+                    || !this.isConnected
+                    || !hasRequiredParts()
+                ) {
+                    return;
+                }
+                observer.disconnect();
+                if (this.#publicPartsObserver === observer) {
+                    this.#publicPartsObserver = null;
+                }
+                resolve();
+            });
+            this.#publicPartsObserver = observer;
+            observer.observe(root, { childList: true, subtree: true });
+        });
+    }
+
+    private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+        const queued = this.#operationQueue.then(async () => {
+            await this.whenReady();
+            return operation();
+        });
+        this.#operationQueue = queued.then(() => undefined, () => undefined);
+        return queued;
+    }
+
+    private fail(
+        code: EHagakiComposerInitializationErrorDetail["code"],
+        message: string,
+        reason: unknown = createError(code, message),
+    ): void {
+        this.#readyState = "rejected";
+        this.#readyReject?.(reason);
+        this.dispatchSafeEvent("ehagaki-initialization-error", { code, message });
+    }
+}

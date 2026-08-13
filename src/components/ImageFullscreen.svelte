@@ -8,6 +8,7 @@
         createFullscreenVideoSlideElement,
         pauseFullscreenVideoContent,
     } from "../lib/utils/fullscreenViewerUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         src?: string;
@@ -22,6 +23,7 @@
     type CloseMode = "popstate" | "internal" | null;
 
     const VIEWER_PADDING = { top: 24, bottom: 88, left: 24, right: 24 };
+    const appRuntimeEnvironment = getAppRuntimeEnvironment();
 
     let {
         src = "",
@@ -99,7 +101,7 @@
             }
         }
 
-        if (shouldPopHistory) {
+        if (shouldPopHistory && appRuntimeEnvironment.historyEnabled) {
             history.back();
         }
 
@@ -196,7 +198,7 @@
         const instance = new PhotoSwipe({
             dataSource,
             index: targetIndex,
-            appendToEl: document.body,
+            appendToEl: appRuntimeEnvironment.overlayTarget,
             mainClass: "ehagaki-pswp",
             showHideAnimationType: "none",
             loop: false,
@@ -249,6 +251,7 @@
             normalizedIndex >= 0 &&
             resolvedMediaList.length > 0 &&
             !historyPushed
+            && appRuntimeEnvironment.historyEnabled
         ) {
             history.pushState({ imageFullscreen: true }, "");
             historyPushed = true;

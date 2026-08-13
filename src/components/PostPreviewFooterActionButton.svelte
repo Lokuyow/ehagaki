@@ -2,6 +2,7 @@
     import { Tooltip } from "bits-ui";
     import type { Snippet } from "svelte";
     import Button from "./Button.svelte";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         tooltipContent: string;
@@ -34,6 +35,7 @@
         ariaLabel = "",
         ...buttonProps
     }: Props = $props();
+    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 </script>
 
 <Tooltip.Provider>
@@ -57,7 +59,7 @@
                 </Button>
             {/snippet}
         </Tooltip.Trigger>
-        <Tooltip.Portal>
+        <Tooltip.Portal to={overlayTarget}>
             <Tooltip.Content
                 sideOffset={8}
                 class="tooltip-content post-preview-tooltip-content"

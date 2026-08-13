@@ -195,18 +195,20 @@
         transform-origin: center;
     }
 
-    :global(:root.dark) .inline-spinner {
+    :global(:root.dark .ehagaki-app-root) .inline-spinner,
+    :global(:host(.dark) .ehagaki-app-root) .inline-spinner {
         --spinner-track-opacity: 0.14;
         --spinner-arc-opacity: 0.72;
     }
 
-    :global(html body :where(.primary, .danger)) .inline-spinner {
+    :global(.ehagaki-app-root :where(.primary, .danger)) .inline-spinner {
         --spinner-track-opacity: 0.18;
         --spinner-arc-opacity: 0.82;
     }
 
-    :global(html body :where(.secondary, .warning)) .inline-spinner,
-    :global(:root.light body :where(.header)) .inline-spinner {
+    :global(.ehagaki-app-root :where(.secondary, .warning)) .inline-spinner,
+    :global(:root.light .ehagaki-app-root :where(.header)) .inline-spinner,
+    :global(:host(.light) .ehagaki-app-root :where(.header)) .inline-spinner {
         --spinner-track-opacity: 0.12;
         --spinner-arc-opacity: 0.64;
     }

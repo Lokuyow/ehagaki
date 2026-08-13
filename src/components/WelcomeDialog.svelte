@@ -4,6 +4,7 @@
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
     interface Props {
         show?: boolean;
@@ -11,6 +12,7 @@
     }
 
     let { show = $bindable(false), onClose }: Props = $props();
+    const ehagakiIconUrl = resolveAppAssetUrl("ehagaki_icon.svg");
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -33,7 +35,7 @@
     <div class="welcome-content">
         <div class="title-section">
             <img
-                src="./ehagaki_icon.svg"
+                src={ehagakiIconUrl}
                 alt="ehagaki icon"
                 class="site-icon"
             />

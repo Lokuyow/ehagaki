@@ -3,6 +3,7 @@
         buildChannelPictureProxyUrl,
         normalizeChannelPictureUrl,
     } from "../lib/channelPictureUrlUtils";
+    import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 
     interface Props {
         eventId: string;
@@ -22,7 +23,8 @@
 
     // Snapshot control once. controllerchange must not switch a live image and
     // cause a second request; a later component mount can use the proxy.
-    const serviceWorkerControlledAtMount = typeof navigator !== "undefined"
+    const serviceWorkerControlledAtMount = getAppRuntimeEnvironment().serviceWorkerEnabled
+        && typeof navigator !== "undefined"
         && !!navigator.serviceWorker?.controller;
     let failedProxyUrl = $state<string | null>(null);
     let normalizedUrl = $derived(normalizeChannelPictureUrl(pictureUrl) ?? "");
