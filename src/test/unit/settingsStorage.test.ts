@@ -164,7 +164,7 @@ describe('external Nostr client preference', () => {
         storage = new MockStorage();
     });
 
-    it('未保存かつ日本語ではNostterを初期値として保存する', () => {
+    it('未保存かつ日本語ではnostterを初期値として保存する', () => {
         expect(getExternalNostrClientPreference(storage, 'ja')).toEqual({
             client: 'nostter',
             customUrlTemplate: '',
