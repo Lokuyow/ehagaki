@@ -29,7 +29,7 @@ export const EXTERNAL_NOSTR_CLIENT_PRESET_TEMPLATES: Record<
 };
 
 const EXTERNAL_NOSTR_CLIENT_LABELS: Record<ExternalNostrClient, string> = {
-    nostter: "Nostter",
+    nostter: "nostter",
     jumble: "Jumble",
     primal: "Primal",
     njump: "njump",

@@ -437,6 +437,8 @@
                         <option value={client}>
                             {client === "custom"
                                 ? $_("settingsDialog.external_nostr_client_custom")
+                                : client === "nostter"
+                                  ? "nostter"
                                 : client === "njump"
                                   ? "njump"
                                   : client[0].toUpperCase() + client.slice(1)}

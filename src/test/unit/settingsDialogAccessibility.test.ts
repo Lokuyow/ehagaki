@@ -188,7 +188,7 @@ describe('SettingsDialog accessibility', () => {
             name: '投稿を開くクライアント',
         }) as HTMLSelectElement;
         expect(Array.from(clientSelect.options).map((option) => option.text)).toEqual([
-            'Nostter',
+            'nostter',
             'Jumble',
             'Lumilumi',
             'Primal',

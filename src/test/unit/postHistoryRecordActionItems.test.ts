@@ -137,13 +137,13 @@ describe("PostHistoryRecordActionItems", () => {
         const onOpenExternalClient = vi.fn();
 
         render(PostHistoryRecordActionItemsHarness, {
-            externalClientLabel: "Nostterで開く",
+            externalClientLabel: "nostterで開く",
             onOpenExternalClient,
         });
 
-        const item = screen.getByRole("menuitem", { name: "Nostterで開く" });
+        const item = screen.getByRole("menuitem", { name: "nostterで開く" });
         expect(menuItemNames()).toEqual([
-            "Nostterで開く",
+            "nostterで開く",
             "neventをコピー",
             "イベントJSONを表示",
             "ブロードキャスト",

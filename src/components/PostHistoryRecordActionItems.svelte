@@ -117,6 +117,6 @@
 
 <style>
     :global(.open-in-new-icon) {
-        mask-image: url("/icons/arrow_top_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/open_in_new_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 </style>
