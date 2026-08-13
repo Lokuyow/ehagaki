@@ -1,4 +1,5 @@
 import type { RelayProfileService } from "../../lib/relayProfileService";
+import type { ProfileData } from "../../lib/types";
 import {
     useProfileProjectionSync,
     type ProfileProjectionSyncDependencies,
@@ -30,5 +31,20 @@ export function createProfileProjectionSyncHookHarness(
             accountPubkeys = nextPubkeys;
         },
         dispose,
+    };
+}
+
+export function createReactiveProfileProjectionState() {
+    let profiles = $state<Map<string, ProfileData>>(new Map());
+
+    return {
+        get value() {
+            return profiles;
+        },
+        setProfile(pubkeyHex: string, profile: ProfileData) {
+            const nextProfiles = new Map(profiles);
+            nextProfiles.set(pubkeyHex, profile);
+            profiles = nextProfiles;
+        },
     };
 }

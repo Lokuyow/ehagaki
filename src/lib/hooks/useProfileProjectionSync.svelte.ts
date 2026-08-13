@@ -1,3 +1,5 @@
+import { untrack } from "svelte";
+
 import type { RelayProfileService } from "../relayProfileService";
 import type { ProfileData } from "../types";
 
@@ -41,7 +43,7 @@ export function useProfileProjectionSync(
         let active = true;
         const subscriptionService = service;
         const subscriptionPubkeys = new Set(subscribedPubkeys);
-        const unsubscribe = service.subscribeProfiles(
+        const unsubscribe = untrack(() => service.subscribeProfiles(
             subscribedPubkeys,
             (pubkeyHex, profile) => {
                 if (
@@ -68,7 +70,7 @@ export function useProfileProjectionSync(
                     deps.applyCurrentProfile(profile);
                 }
             },
-        );
+        ));
 
         return () => {
             active = false;

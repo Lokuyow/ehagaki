@@ -1,7 +1,10 @@
 import { flushSync } from "svelte";
 import { describe, expect, it, vi } from "vitest";
 
-import { createProfileProjectionSyncHookHarness } from "../helpers/profileProjectionSyncHookHarness.svelte";
+import {
+    createProfileProjectionSyncHookHarness,
+    createReactiveProfileProjectionState,
+} from "../helpers/profileProjectionSyncHookHarness.svelte";
 import type { ProfileData } from "../../lib/types";
 
 const PROFILE_A: ProfileData = {
@@ -21,6 +24,42 @@ const PROFILE_B: ProfileData = {
 };
 
 describe("useProfileProjectionSync", () => {
+    it("同期的なcache通知でreactive projectionを更新しても購読を再帰実行しない", () => {
+        const applyCurrentProfile = vi.fn();
+        const accountProfiles = createReactiveProfileProjectionState();
+        let subscriptionCount = 0;
+        const unsubscribe = vi.fn();
+        const service = {
+            subscribeProfiles: vi.fn((_pubkeys, next) => {
+                subscriptionCount += 1;
+                next("alice", PROFILE_A);
+                return unsubscribe;
+            }),
+        } as never;
+        const harness = createProfileProjectionSyncHookHarness({
+            applyCurrentProfile,
+            applyAccountProfile: (pubkeyHex, profile) => {
+                // Mirror accountProfileCacheStore.setProfile's reactive read/write.
+                accountProfiles.value;
+                accountProfiles.setProfile(pubkeyHex, profile);
+            },
+        });
+
+        expect(() => {
+            flushSync(() => {
+                harness.setCurrentPubkey("alice");
+                harness.setAccountPubkeys(["alice"]);
+                harness.setService(service);
+            });
+        }).not.toThrow();
+
+        expect(subscriptionCount).toBe(1);
+        expect(accountProfiles.value.get("alice")).toBe(PROFILE_A);
+        expect(applyCurrentProfile).toHaveBeenCalledWith(PROFILE_A);
+
+        harness.dispose();
+    });
+
     it("current profile and account projectionをcache通知から更新する", () => {
         const applyCurrentProfile = vi.fn();
         const applyAccountProfile = vi.fn();
