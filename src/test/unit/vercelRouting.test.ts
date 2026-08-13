@@ -15,13 +15,25 @@ const config = JSON.parse(
 ) as VercelConfig;
 
 describe("Vercel routing", () => {
-    it("assetsをSPA fallbackから除外する", () => {
+    it("static asset namespacesをSPA fallbackから除外する", () => {
         expect(config.rewrites).toEqual([
             {
-                source: "/((?!assets/).*)",
+                source: "/((?!assets/|web-component(?:/|$)|web-component-parent-client-example\\.(?:html|js)$).*)",
                 destination: "/index.html",
             },
         ]);
+
+        const fallback = new RegExp(`^${config.rewrites[0].source}`);
+        expect([
+            "/assets/app.js",
+            "/web-component-parent-client-example.html",
+            "/web-component-parent-client-example.js",
+            "/web-component/ehagaki-composer.js",
+            "/web-component/assets/entry.js",
+            "/web-component/icons/settings.svg",
+            "/web-component/ffmpeg-core/ffmpeg-core.wasm",
+        ].every((path) => !fallback.test(path))).toBe(true);
+        expect(fallback.test("/settings")).toBe(true);
     });
 
     it("Service Workerとnosniff headersを維持する", () => {
