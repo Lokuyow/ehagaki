@@ -62,7 +62,7 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 
 eHagaki の iframe 埋め込み方法、親クライアント連携ログイン、`postMessage` 仕様は公開ガイドに分離しました。
 
-[IFRAME_EMBEDDING.md](IFRAME_EMBEDDING.md) を参照してください。
+[docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md) を参照してください。
 
 親ページ連携の動作確認用サンプルは [https://lokuyow.github.io/ehagaki/embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html) からも直接アクセスできます。
 
