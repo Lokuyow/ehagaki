@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "dev:web-component": "node scripts/devWebComponentSample.mjs",
+    "dev:web-component:lan": "node scripts/devWebComponentSample.mjs --lan",
     "prebuild": "npx rimraf dist",
     "build": "vite build && node scripts/verifyLegacyBridgeBuild.mjs && npm run build:web-component && npm run assemble:web-component-site",
     "build:web-component": "node scripts/runWebComponentBuild.mjs",

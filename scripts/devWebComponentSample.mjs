@@ -11,10 +11,16 @@ import {
     startNodeCommand,
     startWebComponentBuild,
 } from "./webComponentBuildRunner.mjs";
+import {
+    createLanSampleUrls,
+    getLanIPv4Addresses,
+    resolveWebComponentDevHosts,
+} from "./webComponentDevServerConfig.mjs";
 
 const physicalRepositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const webComponentDirectory = resolve(physicalRepositoryRoot, "dist-web-component");
-const host = "127.0.0.1";
+const lanMode = parseArguments(process.argv.slice(2));
+const { appHost, webComponentHost } = resolveWebComponentDevHosts(lanMode);
 const appPort = parsePort(process.env.EHAGAKI_WEB_COMPONENT_DEV_APP_PORT, 5173, "EHAGAKI_WEB_COMPONENT_DEV_APP_PORT");
 const webComponentPort = parsePort(process.env.EHAGAKI_WEB_COMPONENT_DEV_PORT, 5174, "EHAGAKI_WEB_COMPONENT_DEV_PORT");
 
@@ -37,6 +43,14 @@ function parsePort(value, fallback, variableName) {
     return port;
 }
 
+function parseArguments(args) {
+    const unknownArgument = args.find((argument) => argument !== "--lan");
+    if (unknownArgument) {
+        throw new Error(`Unknown argument: ${unknownArgument}`);
+    }
+    return args.includes("--lan");
+}
+
 function contentType(filePath) {
     switch (extname(filePath)) {
         case ".js": return "text/javascript; charset=utf-8";
@@ -54,7 +68,7 @@ function contentType(filePath) {
 }
 
 function resolveAssetPath(requestUrl) {
-    const pathname = decodeURIComponent(new URL(requestUrl ?? "/", `http://${host}`).pathname);
+    const pathname = decodeURIComponent(new URL(requestUrl ?? "/", `http://${webComponentHost}`).pathname);
     const filePath = resolve(webComponentDirectory, `.${pathname}`);
     const pathFromRoot = relative(webComponentDirectory, filePath);
     if (pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) {
@@ -104,7 +118,7 @@ function startWebComponentServer() {
             }
         });
         server.once("error", reject);
-        server.listen(webComponentPort, host, () => {
+        server.listen(webComponentPort, webComponentHost, () => {
             server.off("error", reject);
             resolveServer(server);
         });
@@ -185,7 +199,7 @@ async function main() {
     watcher = startWebComponentBuild(webComponentBuildWorkingDirectory.workingDirectory, { watch: true });
     console.log(`Vite dev server uses physical repository path ${physicalRepositoryRoot}`);
     const viteDevServerCommand = createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
-        host,
+        host: appHost,
         appPort,
         webComponentPort,
     });
@@ -193,7 +207,17 @@ async function main() {
     watchChild("Web Component watcher", watcher);
     watchChild("Vite dev server", viteServer);
 
-    console.log(`Web Component sample: http://localhost:${appPort}/ehagaki/web-component-parent-client-example.html`);
+    if (lanMode) {
+        console.log("LAN mode enabled: the Vite development server is exposed to the trusted local network.");
+        const lanUrls = createLanSampleUrls(appPort, getLanIPv4Addresses());
+        if (lanUrls.length > 0) {
+            for (const url of lanUrls) console.log(`Web Component sample (LAN): ${url}`);
+        } else {
+            console.log("No non-internal LAN IPv4 address was found; use Vite's Network URL or the PC's LAN IP.");
+        }
+    } else {
+        console.log(`Web Component sample: http://localhost:${appPort}/ehagaki/web-component-parent-client-example.html`);
+    }
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

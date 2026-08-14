@@ -73,4 +73,18 @@ describe("Web Component build working directory", () => {
             EHAGAKI_WEB_COMPONENT_DEV_PORT: "5174",
         });
     });
+
+    it("can expose only the Vite app server while preserving the loopback proxy target", () => {
+        const command = createPhysicalViteDevServerCommand("D:\\ドキュメント\\GitHub\\ehagaki", {
+            host: "0.0.0.0",
+            appPort: 5173,
+            webComponentPort: 5174,
+        });
+
+        expect(command.args).toContain("0.0.0.0");
+        expect(command.environment).toMatchObject({
+            EHAGAKI_WEB_COMPONENT_DEV_PROXY: "true",
+            EHAGAKI_WEB_COMPONENT_DEV_PORT: "5174",
+        });
+    });
 });
