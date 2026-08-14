@@ -124,8 +124,8 @@ try {
 
 初期化に失敗した場合、`whenReady()` は拒否されます。2 個目の接続されたインスタンスも
 初期化されず、`multiple_instances_unsupported` の `ehagaki-initialization-error` を発火して
-`whenReady()` を拒否します。接続前に削除した要素の `whenReady()` は `disconnected` の
-エラーで拒否されます。
+`whenReady()` を拒否します。準備完了前に DOM から切断された要素の `whenReady()` は
+`disconnected` のエラーで拒否されます。
 
 `setSettings()` と `setContext()` は接続前にも呼び出せます。実装は呼び出しをキューに入れ、
 準備完了後に順番に適用します。一般的には、要素を生成して初期値を設定し、DOM へ追加してから
@@ -516,15 +516,16 @@ Web Component 専用の signer callback/provider API はありません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。
 - ホスト側から nsec をコンポーネントへ渡す API はありません。
 
-NIP-07 の有無をホストから確認するだけなら、次のようにできます。これは signer を
-Web Component へ渡すコードではありません。実際の署名処理は eHagaki の既存ログイン経路が
-`window.nostr` を利用します。
+NIP-07 の有無をホストから確認するだけなら、`window.nostr` と必要な method の存在を
+確認します。これは signer を Web Component へ渡すコードではありません。実際の署名処理は
+eHagaki の既存ログイン経路が `window.nostr` を利用します。
 
 ```js
-if (window.nostr && typeof window.nostr.getPublicKey === 'function') {
-  const pubkey = await window.nostr.getPublicKey();
-  console.log('NIP-07 is available:', pubkey);
-}
+const nip07Available =
+  !!window.nostr &&
+  typeof window.nostr.getPublicKey === 'function';
+
+console.log('NIP-07 available:', nip07Available);
 ```
 
 ホスト JavaScript から秘密情報を隔離したい用途では、Web Component ではなく iframe 版を
