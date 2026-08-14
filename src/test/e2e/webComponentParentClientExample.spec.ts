@@ -304,30 +304,49 @@ test("boots from production site output and exercises the public sample API", as
 });
 
 test("compares container and viewport layout modes from the public sample", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
     await expect(page.locator("#layout-mode")).toHaveValue("container");
     await page.getByRole("button", { name: "Create / Mount" }).click();
     await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        !!element.shadowRoot?.querySelector(".tiptap-editor"),
+    )).toBe(true);
 
     const container = await page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
         const component = element.getBoundingClientRect();
         const footerRect = footer.getBoundingClientRect();
+        const editorContainer = shadow.querySelector<HTMLElement>(".editor-container")!;
+        const editorSurface = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
         return {
             mode: (element as HTMLElement & { layoutMode: string }).layoutMode,
             position: getComputedStyle(footer).position,
             inside: footerRect.left >= component.left && footerRect.right <= component.right && footerRect.bottom <= component.bottom,
+            editorContainerHeight: editorContainer.getBoundingClientRect().height,
+            editorSurfaceHeight: editorSurface.getBoundingClientRect().height,
         };
     });
-    expect(container).toEqual({ mode: "container", position: "absolute", inside: true });
+    expect(container.mode).toBe("container");
+    expect(container.position).toBe("absolute");
+    expect(container.inside).toBe(true);
+    expect(container.editorContainerHeight).toBeGreaterThan(0);
+    expect(container.editorSurfaceHeight).toBeGreaterThan(0);
 
     await page.locator("#layout-mode").selectOption("viewport");
     await page.getByRole("button", { name: "Recreate" }).click();
     await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        !!element.shadowRoot?.querySelector(".tiptap-editor"),
+    )).toBe(true);
 
     const viewport = await page.locator("ehagaki-composer").evaluate((element) => {
-        const footer = element.shadowRoot!.querySelector<HTMLElement>(".footer-bar")!;
+        const shadow = element.shadowRoot!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const editorContainer = shadow.querySelector<HTMLElement>(".editor-container")!;
+        const editorSurface = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
         const before = footer.getBoundingClientRect().top;
         window.scrollTo(0, 300);
         const after = footer.getBoundingClientRect().top;
@@ -335,11 +354,29 @@ test("compares container and viewport layout modes from the public sample", asyn
             mode: (element as HTMLElement & { layoutMode: string }).layoutMode,
             position: getComputedStyle(footer).position,
             scrollDelta: after - before,
+            editorContainerHeight: editorContainer.getBoundingClientRect().height,
+            editorSurfaceHeight: editorSurface.getBoundingClientRect().height,
         };
     });
     expect(viewport.mode).toBe("viewport");
     expect(viewport.position).toBe("fixed");
     expect(Math.abs(viewport.scrollDelta)).toBeLessThan(2);
+    expect(viewport.editorContainerHeight).toBeGreaterThan(0);
+    expect(viewport.editorSurfaceHeight).toBeGreaterThan(0);
+
+    await page.locator("#layout-mode").selectOption("container");
+    await page.getByRole("button", { name: "Recreate" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot;
+        const editorContainer = shadow?.querySelector<HTMLElement>(".editor-container");
+        const editorSurface = shadow?.querySelector<HTMLElement>(".tiptap-editor");
+        return !!editorContainer
+            && !!editorSurface
+            && editorContainer.getBoundingClientRect().height > 0
+            && editorSurface.getBoundingClientRect().height > 0;
+    })).toBe(true);
+    expect(pageErrors).toEqual([]);
 });
 
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
