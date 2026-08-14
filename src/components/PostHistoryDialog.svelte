@@ -3080,6 +3080,11 @@
         --btn-post-preview-action-hover: var(--svg);
     }
 
+    :global(.post-history-dialog.dialog.dialog-container-layout) {
+        height: 100%;
+        max-height: 100%;
+    }
+
     :global(.post-history-dialog .dialog-content) {
         position: relative;
         flex: 1 1 auto;

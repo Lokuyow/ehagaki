@@ -508,16 +508,20 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
+        width: 100%;
+        min-width: 0;
 
         .profile-info-container {
             display: flex;
             flex-direction: column;
             gap: 6px;
             width: 100%;
+            min-width: 0;
 
             .profile-info-row {
                 min-height: 50px;
                 width: 100%;
+                min-width: 0;
                 display: flex;
                 flex-direction: column;
 
@@ -527,14 +531,18 @@
                     background-color: var(--btn-bg);
                     border-radius: 8px;
                     overflow: hidden;
+                    width: 100%;
+                    min-width: 0;
 
                     .profile-info-text {
-                        flex: 1;
+                        flex: 1 1 auto;
+                        min-width: 0;
                         font-family: monospace;
                         font-size: 1rem;
                         line-height: 1.2;
                         color: var(--text);
                         margin: 6px 0 6px 8px;
+                        overflow-wrap: anywhere;
                     }
                 }
             }
@@ -544,6 +552,7 @@
     :global(.copy-button) {
         height: auto;
         width: 44px;
+        flex: 0 0 44px;
         background-color: var(--btn-bg);
 
         .copy-icon {

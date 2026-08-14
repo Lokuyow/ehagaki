@@ -96,7 +96,9 @@
     }: Props = $props();
 
     let contentRef: HTMLElement | null = $state(null);
-    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    const overlayTarget = runtimeEnvironment.overlayTarget;
+    const isContainerLayout = runtimeEnvironment.layoutMode === "container";
     let shouldFocusContent = $derived(initialFocus === "content");
 
     function handleOpenChange(newOpen: boolean) {
@@ -124,10 +126,12 @@
 
 <Dialog.Root bind:open onOpenChange={handleOpenChange}>
     <Dialog.Portal to={overlayTarget}>
-        <Dialog.Overlay class="dialog-overlay" />
+        <Dialog.Overlay
+            class={`dialog-overlay ${isContainerLayout ? "dialog-container-layout" : ""}`}
+        />
         <Dialog.Content
             bind:ref={contentRef}
-            class="dialog {contentClass}"
+            class={`dialog ${contentClass} ${isContainerLayout ? "dialog-container-layout" : ""}`}
             tabindex={shouldFocusContent ? -1 : undefined}
             {trapFocus}
             preventScroll={false}
@@ -270,6 +274,15 @@
         z-index: calc(101 + var(--bits-dialog-depth, 0) * 2);
     }
 
+    :global(.dialog-overlay.dialog-container-layout) {
+        position: absolute;
+    }
+
+    :global(.dialog.dialog-container-layout) {
+        position: absolute;
+        max-height: 100%;
+    }
+
     :global(.dialog:focus) {
         outline: none;
     }
@@ -282,6 +295,10 @@
         max-height: 85svh;
         padding: 16px;
         overflow-y: auto;
+    }
+
+    :global(.dialog.dialog-container-layout) .dialog-content {
+        max-height: calc(100% - 50px);
     }
 
     .dialog-footer {

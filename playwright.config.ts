@@ -49,6 +49,7 @@ export default defineConfig({
             testMatch: [
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
+                '**/webComponentParentClientExample.spec.ts',
             ],
             use: {
                 ...devices['iPhone 13'],

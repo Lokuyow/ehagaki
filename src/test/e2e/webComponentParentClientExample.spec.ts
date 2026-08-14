@@ -89,6 +89,52 @@ test.afterAll(async () => {
     await close(server);
 });
 
+test("keeps the comparison table within the page viewport at mobile widths", async ({ page }) => {
+    for (const width of [360, 390]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        const result = await page.evaluate(() => ({
+            viewportWidth: window.innerWidth,
+            documentScrollWidth: document.documentElement.scrollWidth,
+            bodyScrollWidth: document.body.scrollWidth,
+            table: document.querySelector<HTMLTableElement>(".comparison")?.getBoundingClientRect().toJSON(),
+        }));
+        expect(result.documentScrollWidth, `document overflow at ${width}px`).toBeLessThanOrEqual(result.viewportWidth);
+        expect(result.bodyScrollWidth, `body overflow at ${width}px`).toBeLessThanOrEqual(result.viewportWidth);
+        expect(result.table?.right, `table overflow at ${width}px`).toBeLessThanOrEqual(width);
+    }
+});
+
+test("uses the internal theme surface even when the host forces a white background", async ({ page }) => {
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    const result = await page.locator("ehagaki-composer").evaluate(async (element) => {
+        const composer = element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> };
+        const shadow = composer.shadowRoot!;
+        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
+        const header = shadow.querySelector<HTMLElement>('[part~="header"]')!;
+        const read = () => ({
+            hostBackground: getComputedStyle(composer).backgroundColor,
+            shellBackground: getComputedStyle(shell).backgroundColor,
+            headerBackground: getComputedStyle(header).backgroundColor,
+            shellColor: getComputedStyle(shell).color,
+        });
+        await composer.setSettings({ themeMode: "light" });
+        const light = read();
+        await composer.setSettings({ themeMode: "dark" });
+        const dark = read();
+        return { light, dark };
+    });
+    expect(result.light.hostBackground).toBe("rgb(255, 255, 255)");
+    expect(result.light.shellBackground).not.toBe("rgba(0, 0, 0, 0)");
+    expect(result.dark.shellBackground).not.toBe(result.light.shellBackground);
+    expect(result.dark.shellBackground).not.toBe("rgba(0, 0, 0, 0)");
+    expect(result.light.headerBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(result.dark.headerBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(result.light.shellColor).not.toBe(result.dark.shellColor);
+});
+
 test("boots from production site output and exercises the public sample API", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
 
@@ -312,6 +358,26 @@ test("keeps the public sample container layout stable across destroy and recreat
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
         !!element.shadowRoot?.querySelector(".tiptap-editor"),
     )).toBe(true);
+    const waitForStableEditorSurface = async () => {
+        await page.waitForFunction(() => new Promise<boolean>((resolve) => {
+            let previous = -1;
+            let stableFrames = 0;
+            const check = () => {
+                const surface = document.querySelector("ehagaki-composer")
+                    ?.shadowRoot?.querySelector<HTMLElement>(".tiptap-editor");
+                const height = surface?.getBoundingClientRect().height ?? 0;
+                stableFrames = Math.abs(height - previous) < 0.5 ? stableFrames + 1 : 0;
+                previous = height;
+                if (height > 0 && stableFrames >= 3) {
+                    resolve(true);
+                    return;
+                }
+                requestAnimationFrame(check);
+            };
+            check();
+        }));
+    };
+    await waitForStableEditorSurface();
     const measure = () => page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
@@ -336,6 +402,7 @@ test("keeps the public sample container layout stable across destroy and recreat
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
         !!element.shadowRoot?.querySelector(".tiptap-editor"),
     )).toBe(true);
+    await waitForStableEditorSurface();
     const second = await measure();
 
     await page.getByRole("button", { name: "Recreate" }).click();
@@ -349,6 +416,7 @@ test("keeps the public sample container layout stable across destroy and recreat
             && editorContainer.getBoundingClientRect().height > 0
             && editorSurface.getBoundingClientRect().height > 0;
     })).toBe(true);
+    await waitForStableEditorSurface();
     const third = await measure();
 
     for (const snapshot of [first, second, third]) {
