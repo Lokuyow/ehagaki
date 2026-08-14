@@ -209,6 +209,7 @@ async function main() {
 
     if (lanMode) {
         console.log("LAN mode enabled: the Vite development server is exposed to the trusted local network.");
+        console.log("LAN mode uses HTTP. Secure-context-only browser APIs may be unavailable; use HTTPS for final production-path verification.");
         const lanUrls = createLanSampleUrls(appPort, getLanIPv4Addresses());
         if (lanUrls.length > 0) {
             for (const url of lanUrls) console.log(`Web Component sample (LAN): ${url}`);

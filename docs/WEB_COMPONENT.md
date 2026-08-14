@@ -121,6 +121,11 @@ npm run dev:web-component:lan
 を実機で開いてください。PCと実機を同じWi-Fi/LANへ接続し、Windowsでは必要に応じてWindows Firewallで
 Node/ViteのPrivate networkアクセスを許可します。LANモードではViteのsample serverだけを公開し、
 Web Component assetの内部server（5174）は `127.0.0.1` のままです。実機から5174を直接開く必要はありません。
+このLAN URLはHTTP originです。LAN内実機での一般的なlayout、Destroy/Create、host scroll、fallback keyboard behavior
+などの確認には利用できますが、secure context限定APIは本番HTTPSと同じ経路にならない場合があります。
+特にAndroid ChromeのVirtualKeyboard API経路（`navigator.virtualKeyboard`、`overlaysContent`、`boundingRect`、
+`geometrychange`）の最終確認は、PR previewなど利用可能なHTTPS deployment、または端末から信頼されるHTTPS originで行ってください。
+iPhone Safariを含む一般的な実機確認には、LAN mode自体を引き続き利用できます。
 
 ## `asset-base` / `assetBase`
 
