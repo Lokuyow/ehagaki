@@ -96,11 +96,19 @@ export function useComposerLayoutMetrics({
             return;
         }
 
-        syncComposerAvailableHeight();
+        let resizeSyncRaf: number | null = null;
+        const scheduleComposerAvailableHeightSync = () => {
+            if (resizeSyncRaf !== null) {
+                return;
+            }
+            resizeSyncRaf = window.requestAnimationFrame(() => {
+                resizeSyncRaf = null;
+                syncComposerAvailableHeight();
+            });
+        };
 
-        const resizeObserver = new ResizeObserver(() => {
-            syncComposerAvailableHeight();
-        });
+        const resizeObserver = new ResizeObserver(scheduleComposerAvailableHeightSync);
+        scheduleComposerAvailableHeightSync();
 
         resizeObserver.observe(composerScrollRegionEl);
         resizeObserver.observe(composerScrollContentEl);
@@ -111,6 +119,9 @@ export function useComposerLayoutMetrics({
 
         return () => {
             resizeObserver.disconnect();
+            if (resizeSyncRaf !== null) {
+                window.cancelAnimationFrame(resizeSyncRaf);
+            }
         };
     });
 

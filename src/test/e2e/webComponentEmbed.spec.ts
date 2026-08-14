@@ -174,7 +174,7 @@ test("mounts across origins without touching host storage or registering an eHag
     await expect(page.locator("#host")).toHaveText("host surface");
 });
 
-test("supports bounded container and legacy viewport layout modes", async ({ page }) => {
+test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async () => {
         await import(`${window.__componentOrigin}/ehagaki-composer.js`);
@@ -194,7 +194,6 @@ test("supports bounded container and legacy viewport layout modes", async ({ pag
             };
             const componentRect = composer.getBoundingClientRect();
             return {
-                mode: (composer as HTMLElement & { layoutMode: string }).layoutMode,
                 position: getComputedStyle(shadow.querySelector<HTMLElement>(".footer-bar")!).position,
                 component: { top: componentRect.top, bottom: componentRect.bottom, left: componentRect.left, right: componentRect.right },
                 footer: rect(".footer-bar"),
@@ -204,77 +203,53 @@ test("supports bounded container and legacy viewport layout modes", async ({ pag
         };
 
         const mount = document.querySelector<HTMLDivElement>("#mount")!;
-        const create = async (mode?: "container" | "viewport") => {
+        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const create = async () => {
             mount.replaceChildren();
             window.scrollTo(0, 0);
             const composer = document.createElement("ehagaki-composer") as HTMLElement & {
                 whenReady(): Promise<void>;
-                layoutMode: "container" | "viewport";
             };
             composer.style.display = "block";
             composer.style.height = "100%";
-            if (mode) composer.setAttribute("layout-mode", mode);
             mount.append(composer);
             await composer.whenReady();
-            const invalid = document.createElement("ehagaki-composer") as HTMLElement & { layoutMode: string };
-            invalid.setAttribute("layout-mode", "unknown");
-            const invalidMode = invalid.layoutMode;
-            let mountedChangePosition: string | null = null;
-            if (!mode) {
-                composer.layoutMode = "viewport";
-                mountedChangePosition = getComputedStyle(
-                    composer.shadowRoot!.querySelector<HTMLElement>(".footer-bar")!,
-                ).position;
-                composer.layoutMode = "container";
-            }
+            const initial = measure(composer);
             const contentWarningToggle = composer.shadowRoot!.querySelector<HTMLElement>(".content-warning-icon")?.closest("button");
             if (contentWarningToggle && !contentWarningToggle.classList.contains("selected")) {
                 contentWarningToggle.click();
             }
-            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+            await nextFrame();
+            await nextFrame();
             const before = measure(composer);
+            contentWarningToggle?.click();
+            await nextFrame();
+            await nextFrame();
+            const off = measure(composer);
             window.scrollTo(0, 300);
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await nextFrame();
             const after = measure(composer);
-            return {
-                before,
-                after,
-                invalidMode,
-                mountedChangePosition,
-                propertyMode: composer.layoutMode,
-            };
+            return { initial, before, off, after };
         };
 
-        const container = await create();
-        const viewport = await create("viewport");
-        return { container, viewport };
+        return create();
     });
 
-    for (const mode of [result.container, result.viewport]) {
-        expect(mode.before.reason).not.toBeNull();
-        expect(mode.before.footer).not.toBeNull();
-        expect(mode.before.buttonBar).not.toBeNull();
-        expect(mode.invalidMode).toBe("container");
+    expect(result.initial.reason).toBeNull();
+    expect(result.before.reason).not.toBeNull();
+    expect(result.off.reason).toBeNull();
+    expect(result.before.footer).not.toBeNull();
+    expect(result.before.buttonBar).not.toBeNull();
+    expect(result.before.position).toBe("absolute");
+    for (const item of [result.before.footer, result.before.buttonBar, result.before.reason]) {
+        expect(item!.left).toBeGreaterThanOrEqual(result.before.component.left - 1);
+        expect(item!.right).toBeLessThanOrEqual(result.before.component.right + 1);
+        expect(item!.bottom).toBeLessThanOrEqual(result.before.component.bottom + 1);
     }
-
-    expect(result.container.before.mode).toBe("container");
-    expect(result.container.before.position).toBe("absolute");
-    expect(result.container.mountedChangePosition).toBe("absolute");
-    expect(result.container.propertyMode).toBe("container");
-    for (const item of [result.container.before.footer, result.container.before.buttonBar, result.container.before.reason]) {
-        expect(item!.left).toBeGreaterThanOrEqual(result.container.before.component.left - 1);
-        expect(item!.right).toBeLessThanOrEqual(result.container.before.component.right + 1);
-        expect(item!.bottom).toBeLessThanOrEqual(result.container.before.component.bottom + 1);
-    }
-    expect(result.container.after.footer!.top - result.container.before.footer!.top).toBeLessThan(-200);
-
-    expect(result.viewport.before.mode).toBe("viewport");
-    expect(result.viewport.before.position).toBe("fixed");
-    expect(result.viewport.propertyMode).toBe("viewport");
-    expect(Math.abs(result.viewport.after.footer!.top - result.viewport.before.footer!.top)).toBeLessThan(2);
+    expect(result.after.footer!.top - result.before.footer!.top).toBeLessThan(-200);
 });
 
-test("preserves composer geometry after destroy, recreate, and layout-mode changes", async ({ page }) => {
+test("preserves composer geometry after repeated destroy and recreate", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.goto(hostOrigin);
@@ -312,14 +287,13 @@ test("preserves composer geometry after destroy, recreate, and layout-mode chang
                 buttonBar: rect(shadow.querySelector(".footer-button-bar")),
             };
         };
-        const create = async (mode: "container" | "viewport") => {
+        const create = async () => {
             mount.replaceChildren();
             const composer = document.createElement("ehagaki-composer") as HTMLElement & {
                 whenReady(): Promise<void>;
             };
             composer.style.display = "block";
             composer.style.height = "100%";
-            composer.setAttribute("layout-mode", mode);
             mount.append(composer);
             await composer.whenReady();
             for (let frame = 0; frame < 10; frame += 1) {
@@ -328,17 +302,13 @@ test("preserves composer geometry after destroy, recreate, and layout-mode chang
             return measure(composer);
         };
 
-        const containerInitial = await create("container");
-        const containerRecreated = await create("container");
-        const viewportAfterContainer = await create("viewport");
-        const viewportRecreated = await create("viewport");
-        const containerAfterViewport = await create("container");
+        const containerInitial = await create();
+        const containerRecreated = await create();
+        const containerRecreatedAgain = await create();
         return {
             containerInitial,
             containerRecreated,
-            viewportAfterContainer,
-            viewportRecreated,
-            containerAfterViewport,
+            containerRecreatedAgain,
         };
     });
 
@@ -374,8 +344,7 @@ test("preserves composer geometry after destroy, recreate, and layout-mode chang
         assertGeometry(label, snapshot);
     }
     expectSameGeometry(result.containerInitial, result.containerRecreated);
-    expectSameGeometry(result.viewportAfterContainer, result.viewportRecreated);
-    expectSameGeometry(result.containerInitial, result.containerAfterViewport);
+    expectSameGeometry(result.containerInitial, result.containerRecreatedAgain);
 });
 
 test("loads app-owned icons from the component asset base instead of the host", async ({ page }) => {

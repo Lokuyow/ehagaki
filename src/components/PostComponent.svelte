@@ -259,11 +259,17 @@
       return;
     }
 
-    syncEditorTargetHeight();
+    let resizeSyncRaf: number | null = null;
+    const scheduleEditorTargetHeightSync = () => {
+      if (resizeSyncRaf !== null) return;
+      resizeSyncRaf = window.requestAnimationFrame(() => {
+        resizeSyncRaf = null;
+        syncEditorTargetHeight();
+      });
+    };
 
-    const resizeObserver = new ResizeObserver(() => {
-      syncEditorTargetHeight();
-    });
+    const resizeObserver = new ResizeObserver(scheduleEditorTargetHeightSync);
+    scheduleEditorTargetHeightSync();
 
     resizeObserver.observe(postContainerEl);
 
@@ -275,6 +281,9 @@
 
     return () => {
       resizeObserver.disconnect();
+      if (resizeSyncRaf !== null) {
+        window.cancelAnimationFrame(resizeSyncRaf);
+      }
     };
   });
 

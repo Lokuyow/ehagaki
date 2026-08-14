@@ -2,12 +2,9 @@ import type {
     EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
 } from "../lib/embedProtocol";
-import type { AppLayoutMode } from "../lib/appRuntimeEnvironment";
 
 export const EHAGAKI_COMPOSER_TAG_NAME = "ehagaki-composer";
 export const EHAGAKI_COMPOSER_API_VERSION = 1;
-
-export type EHagakiComposerLayoutMode = AppLayoutMode;
 
 export type EHagakiComposerContext = EmbedComposerSetContextPayload;
 export type EHagakiComposerSettings = EmbedSettingsSetPayload;
