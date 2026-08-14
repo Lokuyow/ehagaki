@@ -621,11 +621,137 @@ test("keeps authenticated profile and post history dialogs inside the component"
         expect(surface!.left).toBeGreaterThanOrEqual(component.left - 1);
         expect(surface!.right).toBeLessThanOrEqual(component.right + 1);
     }
+    for (const surface of [result.profile.dialog, result.profile.overlay]) {
+        expect(surface!.top).toBeGreaterThanOrEqual(component.top - 1);
+        expect(surface!.bottom).toBeLessThanOrEqual(component.bottom + 1);
+    }
     expect(result.history.dialog!.top).toBeCloseTo(component.top, 0);
     expect(result.history.dialog!.bottom).toBeCloseTo(component.bottom, 0);
     expect(result.history.footer!.bottom).toBeCloseTo(component.bottom, 0);
     expect(result.history.list!.bottom).toBeCloseTo(result.history.footer!.top, 0);
     expect(result.history.listScrollHeight).toBeLessThanOrEqual(result.history.listClientHeight + 1);
+});
+
+test("keeps a large Web Component post history list scrolling above its footer", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentStoragePrefix, testPubkeyHex }) => {
+        window.nostr = {
+            getPublicKey: async () => testPubkeyHex,
+            signEvent: async (event: any) => ({ ...event, id: "44".repeat(32), sig: "55".repeat(64) }),
+        };
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([{ pubkeyHex: testPubkeyHex, type: "nip07", addedAt: 1 }]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, testPubkeyHex);
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.width = "360px";
+        composer.style.height = "520px";
+        document.body.append(composer);
+        await composer.whenReady();
+        const shadow = composer.shadowRoot!;
+        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
+
+        const now = Date.now();
+        const records = Array.from({ length: 70 }, (_, index) => {
+            const postedAt = now - index * 24 * 60 * 60 * 1000;
+            return {
+                id: `web-component-post-${index}`,
+                eventId: `${index.toString(16).padStart(62, "0")}aa`,
+                pubkeyHex: testPubkeyHex,
+                kind: 1,
+                content: `web component post ${index + 1}`,
+                tags: [],
+                createdAt: Math.floor(postedAt / 1000),
+                postedAt,
+                relayHints: [],
+                acceptedRelays: [],
+                media: [],
+                rawEvent: null,
+                fetchedAt: postedAt,
+                lastSeenAt: postedAt,
+                updatedAt: postedAt,
+                schemaVersion: 2,
+            };
+        });
+        await new Promise<void>((resolve, reject) => {
+            const request = indexedDB.open("eHagakiDB");
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                const database = request.result;
+                const transaction = database.transaction("postHistory", "readwrite");
+                transaction.onerror = () => reject(transaction.error);
+                transaction.oncomplete = () => {
+                    database.close();
+                    resolve();
+                };
+                const store = transaction.objectStore("postHistory");
+                store.clear();
+                for (const record of records) store.put(record);
+            };
+        });
+
+        shadow.querySelector<HTMLButtonElement>(".post-history-btn")?.click();
+        for (let frame = 0; frame < 120; frame += 1) {
+            await nextFrame();
+            const list = shadow.querySelector<HTMLElement>(".post-history-container");
+            if ((list?.scrollHeight ?? 0) > (list?.clientHeight ?? 0)) break;
+        }
+        const overlayRoot = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const list = overlayRoot.querySelector<HTMLElement>(".post-history-container")!;
+        const footer = overlayRoot.querySelector<HTMLElement>(".dialog-footer")!;
+        const dialog = overlayRoot.querySelector<HTMLElement>(".post-history-dialog")!;
+        const overlay = overlayRoot.querySelector<HTMLElement>(".dialog-overlay")!;
+        const componentRect = composer.getBoundingClientRect();
+        const rect = (element: Element) => {
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+        };
+        const beforeScroll = {
+            component: rect(composer),
+            dialog: rect(dialog),
+            overlay: rect(overlay),
+            list: rect(list),
+            footer: rect(footer),
+            scrollHeight: list.scrollHeight,
+            clientHeight: list.clientHeight,
+            footerTop: footer.getBoundingClientRect().top,
+        };
+        list.scrollTop = list.scrollHeight;
+        list.dispatchEvent(new Event("scroll", { bubbles: true }));
+        for (let frame = 0; frame < 8; frame += 1) await nextFrame();
+        return {
+            beforeScroll,
+            afterScroll: {
+                list: rect(list),
+                footer: rect(footer),
+                scrollTop: list.scrollTop,
+                footerTop: footer.getBoundingClientRect().top,
+            },
+            componentRect,
+        };
+    }, { componentStoragePrefix, testPubkeyHex });
+
+    const component = result.beforeScroll.component;
+    expect(result.beforeScroll.scrollHeight).toBeGreaterThan(result.beforeScroll.clientHeight);
+    for (const surface of [result.beforeScroll.dialog, result.beforeScroll.overlay]) {
+        expect(surface.left).toBeGreaterThanOrEqual(component.left - 1);
+        expect(surface.right).toBeLessThanOrEqual(component.right + 1);
+        expect(surface.top).toBeGreaterThanOrEqual(component.top - 1);
+        expect(surface.bottom).toBeLessThanOrEqual(component.bottom + 1);
+    }
+    expect(result.beforeScroll.dialog.top).toBeCloseTo(component.top, 0);
+    expect(result.beforeScroll.dialog.bottom).toBeCloseTo(component.bottom, 0);
+    expect(result.beforeScroll.list.bottom).toBeLessThanOrEqual(result.beforeScroll.footer.top + 1);
+    expect(result.beforeScroll.footer.bottom).toBeCloseTo(component.bottom, 0);
+    expect(result.afterScroll.scrollTop).toBeGreaterThan(0);
+    expect(result.afterScroll.list.bottom).toBeCloseTo(result.beforeScroll.list.bottom, 0);
+    expect(result.afterScroll.footer.bottom).toBeCloseTo(component.bottom, 0);
+    expect(result.afterScroll.footerTop).toBeCloseTo(result.beforeScroll.footerTop, 0);
 });
 
 test("keeps the normal app Portal Button scope", async ({ page }) => {
