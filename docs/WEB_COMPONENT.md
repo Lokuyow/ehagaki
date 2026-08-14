@@ -24,9 +24,17 @@ CSS Custom Properties、`::part()` を確認できます。
 ```html
 <script type="module" src="https://lokuyow.github.io/ehagaki/web-component/ehagaki-composer.js"></script>
 
-<ehagaki-composer
-  asset-base="https://lokuyow.github.io/ehagaki/web-component/"
-></ehagaki-composer>
+<div class="composer-host">
+  <ehagaki-composer
+    layout-mode="container"
+    asset-base="https://lokuyow.github.io/ehagaki/web-component/"
+  ></ehagaki-composer>
+</div>
+
+<style>
+  .composer-host { height: 580px; }
+  ehagaki-composer { display: block; height: 100%; }
+</style>
 
 <script type="module">
   const composer = document.querySelector('ehagaki-composer');
@@ -34,6 +42,44 @@ CSS Custom Properties、`::part()` を確認できます。
   console.log('eHagaki Composer is ready');
 </script>
 ```
+
+## 下部 UI のレイアウト mode と高さ契約
+
+Web Component では `FooterComponent`、`KeyboardButtonBar`、`ReasonInput` を、次の二方式から
+選べます。通常版/PWA と iframe は常に既存の viewport 基準です。
+
+| mode | 下部 UI の基準 | host の definite height |
+| --- | --- | --- |
+| `container` | component の shell 内（`absolute`）。host page の scroll と一緒に移動 | 必須 |
+| `viewport` | ブラウザ viewport 下端（従来の `fixed`） | 不要 |
+
+`layout-mode` を省略した場合は `container` です。これは、通常の埋め込みで下部 UI が
+component の外へ出ないことを優先した意図的な既定変更です。viewport 固定を前提にしていた
+既存の埋め込みは、次のように明示してください。
+
+```html
+<ehagaki-composer
+  layout-mode="viewport"
+  asset-base="https://cdn.example/ehagaki/web-component/"
+></ehagaki-composer>
+```
+
+`container` では、上の最小例の `.composer-host { height: 580px }` のように、ホストが
+解決済みの CSS height を与えてください。height 未指定や `auto` のままではサポート対象外で、
+viewport 高へ暗黙 fallback は行いません。`viewport` では height 指定は不要で、下部 UI の
+基準は host の高さでは変わりません。
+
+属性値は `container` と `viewport` のみです。空文字・未知値・属性省略は安全側の
+`container` として扱い、初期化エラーにはしません。JavaScript では同じ意味の
+`layoutMode` property（`"container" | "viewport"`）を使えます。setter は attribute を更新し、
+getter は有効な実効値を返します。
+
+mode は接続時に snapshot されます。接続後の attribute/property 変更は、現在表示中のレイアウトを
+切り替えません。変更後に一度 `remove()` して属性を設定し、再接続（またはサンプルの
+`Recreate`）してください。`asset-base` と同じ lifecycle 契約です。
+
+`container` の本文スクロールは既存の internal scroll のまま、host page が外側 scroll を所有します。
+dialog、tooltip、popover、PhotoSwipe などの overlay root と positioning 責務は mode によって変更されません。
 
 `asset-base` は、コンポーネントが実行時に参照する配信元のディレクトリです。エントリ
 モジュールを読み込む URL と、配布物内の `assets/`、`icons/`、`ffmpeg-core/` などを置いた

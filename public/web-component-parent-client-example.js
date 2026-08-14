@@ -8,6 +8,7 @@ const EVENT_TYPES = [
 
 const moduleUrlInput = document.querySelector("#module-url");
 const assetBaseInput = document.querySelector("#asset-base");
+const layoutModeInput = document.querySelector("#layout-mode");
 const moduleStatus = document.querySelector("#module-status");
 const componentStatus = document.querySelector("#component-status");
 const readyStatus = document.querySelector("#ready-status");
@@ -309,6 +310,7 @@ function removeCustomStyles(element) {
 
 function configureElement(element) {
     element.setAttribute("asset-base", normalizeDirectoryUrl(assetBaseInput.value));
+    element.setAttribute("layout-mode", layoutModeInput.value);
 }
 
 async function createComposer() {

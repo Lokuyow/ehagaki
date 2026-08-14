@@ -106,9 +106,9 @@
             font-size: .78rem;
             line-height: 1.5;
         }
-        .component-frame { min-height: 640px; padding: 18px; background: #dce8df; border-radius: 18px; }
-        #component-mount { min-height: 580px; }
-        ehagaki-composer { display: block; min-height: 580px; background: white; border-radius: 14px; overflow: hidden; }
+        .component-frame { height: 640px; padding: 18px; background: #dce8df; border-radius: 18px; }
+        #component-mount { height: 580px; }
+        ehagaki-composer { display: block; height: 100%; min-height: 0; background: white; border-radius: 14px; overflow: hidden; }
 
         /* Public parts demo: this selector is host CSS and crosses only the declared part boundary. */
         ehagaki-composer::part(header) { outline: 3px solid var(--sample-part-outline, transparent); outline-offset: -3px; }
@@ -123,8 +123,8 @@
 
         @media (max-width: 980px) {
             main { grid-template-columns: 1fr; }
-            .component-frame { min-height: 520px; }
-            #component-mount, ehagaki-composer { min-height: 480px; }
+            .component-frame { height: 520px; }
+            #component-mount, ehagaki-composer { height: 480px; }
         }
 
         @media (max-width: 540px) {
@@ -172,6 +172,18 @@
                     </div>
                     <p class="small">公開sampleの既定値は <code>./web-component/</code> です。GitHub Pagesの <code>/ehagaki/</code> baseを壊さないためroot-relative URLは使いません。module importは明示的なCreate操作でのみ発生します。</p>
                     <p class="small">外部moduleはhostページと同じJavaScript権限で実行されます。asset baseもworker/FFmpeg等の実行可能resourceに使われるため、信頼できるURLだけを指定してください。asset baseはCreate / Recreate時にelementへ設定されます。module load後はCustom Elements Registryのため実装を切り替えられず、別moduleを試すにはページをreloadしてください。</p>
+                </div>
+
+                <div class="card stack">
+                    <h2>下部UI layout mode</h2>
+                    <div class="field">
+                        <label for="layout-mode">Web Component layout</label>
+                        <select id="layout-mode">
+                            <option value="container" selected>Container（component内）</option>
+                            <option value="viewport">Viewport fixed（画面下部固定）</option>
+                        </select>
+                    </div>
+                    <p class="small">Container はページ途中の component と下部UIが一緒に移動します。このsampleは bounded height を指定しています。Viewport fixed は従来互換のブラウザviewport下端固定です。選択変更は Create / Recreate 時に反映されます。</p>
                 </div>
 
                 <div class="card stack">

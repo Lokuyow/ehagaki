@@ -1,6 +1,9 @@
 import { mount, unmount } from "svelte";
 import type { AppEmbedAppliedSettingKey } from "../lib/appEmbedController";
-import { configureAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+import {
+    configureAppRuntimeEnvironment,
+    type AppLayoutMode,
+} from "../lib/appRuntimeEnvironment";
 import { createWebComponentStorage } from "../lib/appStorage";
 import type {
     EmbedComposerSetContextPayload,
@@ -12,6 +15,7 @@ import {
     EHAGAKI_COMPOSER_API_VERSION,
     type EHagakiComposerContext,
     type EHagakiComposerInitializationErrorDetail,
+    type EHagakiComposerLayoutMode,
     type EHagakiComposerSettings,
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
@@ -90,9 +94,13 @@ function transformAppCss(css: string): string {
         .replace("body {", ".ehagaki-web-component-shell {");
 }
 
+function resolveLayoutMode(value: string | null): AppLayoutMode {
+    return value === "viewport" ? "viewport" : "container";
+}
+
 export class EHagakiComposerElement extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ["asset-base"];
+        return ["asset-base", "layout-mode"];
     }
 
     #app: AppInstance | null = null;
@@ -119,9 +127,23 @@ export class EHagakiComposerElement extends HTMLElement {
         this.setAttribute("asset-base", value);
     }
 
+    get layoutMode(): EHagakiComposerLayoutMode {
+        return resolveLayoutMode(this.getAttribute("layout-mode"));
+    }
+
+    set layoutMode(value: EHagakiComposerLayoutMode) {
+        if (value === "viewport" || value === "container") {
+            this.setAttribute("layout-mode", value);
+            return;
+        }
+
+        this.removeAttribute("layout-mode");
+    }
+
     attributeChangedCallback(): void {
-        // The delivery base must be configured before the stateful app graph is
-        // imported. Changing it after connection applies on the next mount.
+        // The delivery base and layout mode must be configured before the
+        // stateful app graph is imported. Changing either after connection
+        // applies on the next mount.
     }
 
     connectedCallback(): void {
@@ -197,10 +219,14 @@ export class EHagakiComposerElement extends HTMLElement {
     private async mountApp(): Promise<void> {
         const generation = ++this.#connectionGeneration;
         try {
+            const layoutMode = this.layoutMode;
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
             const styles = document.createElement("style");
-            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { --bg: var(--ehagaki-background, light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%))); --text: var(--ehagaki-text, light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%))); --border: var(--ehagaki-border, light-dark(hsl(0, 0%, 83%), dimgray)); --link: var(--ehagaki-link, light-dark(#1a0dab, #99c3ff)); --bg-input: var(--ehagaki-input-background, light-dark(#fff, hsl(0, 0%, 19%))); --bg-footer: var(--ehagaki-footer-background, light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%))); --dialog-bg: var(--ehagaki-dialog-background, light-dark(#fff, hsl(0, 0%, 14%))); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { min-height: 0; }`;
+            const containerLayoutCss = layoutMode === "container"
+                ? ":host { display: block; } .ehagaki-web-component-shell, .ehagaki-web-component-app { width: 100%; height: 100%; min-height: 0; }"
+                : "";
+            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { --bg: var(--ehagaki-background, light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%))); --text: var(--ehagaki-text, light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%))); --border: var(--ehagaki-border, light-dark(hsl(0, 0%, 83%), dimgray)); --link: var(--ehagaki-link, light-dark(#1a0dab, #99c3ff)); --bg-input: var(--ehagaki-input-background, light-dark(#fff, hsl(0, 0%, 19%))); --bg-footer: var(--ehagaki-footer-background, light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%))); --dialog-bg: var(--ehagaki-dialog-background, light-dark(#fff, hsl(0, 0%, 14%))); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { min-height: 0; } ${containerLayoutCss}`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
             shell.part.add("shell");
@@ -232,6 +258,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 layoutTarget: shell,
                 overlayTarget,
                 themeTarget: this,
+                layoutMode,
                 assetBase,
                 serviceWorkerEnabled: false,
                 externalInputEnabled: false,

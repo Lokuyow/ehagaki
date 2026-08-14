@@ -16,6 +16,7 @@ configureAppRuntimeEnvironment({
   layoutTarget: document.body,
   overlayTarget: document.body,
   themeTarget: document.documentElement,
+  layoutMode: 'viewport',
   assetBase: new URL(import.meta.env.BASE_URL, window.location.href),
   serviceWorkerEnabled: true,
   externalInputEnabled: true,

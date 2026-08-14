@@ -94,6 +94,7 @@ test.beforeAll(async () => {
         }
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(`<!doctype html><head><style>
+          ehagaki-composer { display: block; height: 600px; }
           ehagaki-composer::part(header) { outline: 3px solid rgb(1, 2, 3); }
         </style></head><body><script>
           window.__componentOrigin = ${JSON.stringify(componentOrigin)};
@@ -171,6 +172,106 @@ test("mounts across origins without touching host storage or registering an eHag
     expect(result.hostFetchObserved).toBe(true);
     expect(result.registrationCount).toBe(1);
     await expect(page.locator("#host")).toHaveText("host surface");
+});
+
+test("supports bounded container and legacy viewport layout modes", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        document.body.innerHTML = `
+            <div id="before" style="height: 800px">before</div>
+            <div id="mount" style="height: 420px; width: 360px"></div>
+            <div id="after" style="height: 800px">after</div>
+        `;
+
+        const measure = (composer: HTMLElement) => {
+            const shadow = composer.shadowRoot!;
+            const rect = (selector: string) => {
+                const element = shadow.querySelector<HTMLElement>(selector);
+                if (!element) return null;
+                const value = element.getBoundingClientRect();
+                return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+            };
+            const componentRect = composer.getBoundingClientRect();
+            return {
+                mode: (composer as HTMLElement & { layoutMode: string }).layoutMode,
+                position: getComputedStyle(shadow.querySelector<HTMLElement>(".footer-bar")!).position,
+                component: { top: componentRect.top, bottom: componentRect.bottom, left: componentRect.left, right: componentRect.right },
+                footer: rect(".footer-bar"),
+                buttonBar: rect(".footer-button-bar"),
+                reason: rect(".reason-input-container"),
+            };
+        };
+
+        const mount = document.querySelector<HTMLDivElement>("#mount")!;
+        const create = async (mode?: "container" | "viewport") => {
+            mount.replaceChildren();
+            window.scrollTo(0, 0);
+            const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+                whenReady(): Promise<void>;
+                layoutMode: "container" | "viewport";
+            };
+            composer.style.display = "block";
+            composer.style.height = "100%";
+            if (mode) composer.setAttribute("layout-mode", mode);
+            mount.append(composer);
+            await composer.whenReady();
+            const invalid = document.createElement("ehagaki-composer") as HTMLElement & { layoutMode: string };
+            invalid.setAttribute("layout-mode", "unknown");
+            const invalidMode = invalid.layoutMode;
+            let mountedChangePosition: string | null = null;
+            if (!mode) {
+                composer.layoutMode = "viewport";
+                mountedChangePosition = getComputedStyle(
+                    composer.shadowRoot!.querySelector<HTMLElement>(".footer-bar")!,
+                ).position;
+                composer.layoutMode = "container";
+            }
+            const contentWarningToggle = composer.shadowRoot!.querySelector<HTMLElement>(".content-warning-icon")?.closest("button");
+            if (contentWarningToggle && !contentWarningToggle.classList.contains("selected")) {
+                contentWarningToggle.click();
+            }
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+            const before = measure(composer);
+            window.scrollTo(0, 300);
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            const after = measure(composer);
+            return {
+                before,
+                after,
+                invalidMode,
+                mountedChangePosition,
+                propertyMode: composer.layoutMode,
+            };
+        };
+
+        const container = await create();
+        const viewport = await create("viewport");
+        return { container, viewport };
+    });
+
+    for (const mode of [result.container, result.viewport]) {
+        expect(mode.before.reason).not.toBeNull();
+        expect(mode.before.footer).not.toBeNull();
+        expect(mode.before.buttonBar).not.toBeNull();
+        expect(mode.invalidMode).toBe("container");
+    }
+
+    expect(result.container.before.mode).toBe("container");
+    expect(result.container.before.position).toBe("absolute");
+    expect(result.container.mountedChangePosition).toBe("absolute");
+    expect(result.container.propertyMode).toBe("container");
+    for (const item of [result.container.before.footer, result.container.before.buttonBar, result.container.before.reason]) {
+        expect(item!.left).toBeGreaterThanOrEqual(result.container.before.component.left - 1);
+        expect(item!.right).toBeLessThanOrEqual(result.container.before.component.right + 1);
+        expect(item!.bottom).toBeLessThanOrEqual(result.container.before.component.bottom + 1);
+    }
+    expect(result.container.after.footer!.top - result.container.before.footer!.top).toBeLessThan(-200);
+
+    expect(result.viewport.before.mode).toBe("viewport");
+    expect(result.viewport.before.position).toBe("fixed");
+    expect(result.viewport.propertyMode).toBe("viewport");
+    expect(Math.abs(result.viewport.after.footer!.top - result.viewport.before.footer!.top)).toBeLessThan(2);
 });
 
 test("loads app-owned icons from the component asset base instead of the host", async ({ page }) => {

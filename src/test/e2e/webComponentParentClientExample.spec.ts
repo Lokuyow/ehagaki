@@ -303,6 +303,45 @@ test("boots from production site output and exercises the public sample API", as
 
 });
 
+test("compares container and viewport layout modes from the public sample", async ({ page }) => {
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await expect(page.locator("#layout-mode")).toHaveValue("container");
+    await page.getByRole("button", { name: "Create / Mount" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+
+    const container = await page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const component = element.getBoundingClientRect();
+        const footerRect = footer.getBoundingClientRect();
+        return {
+            mode: (element as HTMLElement & { layoutMode: string }).layoutMode,
+            position: getComputedStyle(footer).position,
+            inside: footerRect.left >= component.left && footerRect.right <= component.right && footerRect.bottom <= component.bottom,
+        };
+    });
+    expect(container).toEqual({ mode: "container", position: "absolute", inside: true });
+
+    await page.locator("#layout-mode").selectOption("viewport");
+    await page.getByRole("button", { name: "Recreate" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+
+    const viewport = await page.locator("ehagaki-composer").evaluate((element) => {
+        const footer = element.shadowRoot!.querySelector<HTMLElement>(".footer-bar")!;
+        const before = footer.getBoundingClientRect().top;
+        window.scrollTo(0, 300);
+        const after = footer.getBoundingClientRect().top;
+        return {
+            mode: (element as HTMLElement & { layoutMode: string }).layoutMode,
+            position: getComputedStyle(footer).position,
+            scrollDelta: after - before,
+        };
+    });
+    expect(viewport.mode).toBe("viewport");
+    expect(viewport.position).toBe("fixed");
+    expect(Math.abs(viewport.scrollDelta)).toBeLessThan(2);
+});
+
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
     await page.getByRole("button", { name: "Create / Mount" }).click();
