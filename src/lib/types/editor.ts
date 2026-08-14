@@ -130,9 +130,11 @@ export interface InitializeEditorResult {
 
 export interface CleanupEditorParams {
     unsubscribe: () => void;
+    componentUnsubscribe: () => void;
     handlers: EditorEventHandlers;
     currentEditor: TipTapEditor | null;
     editorContainerEl: HTMLElement | null;
+    submitPost: () => Promise<void>;
 }
 
 // Draft types
@@ -205,4 +207,3 @@ export interface Draft {
     channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
 }
-

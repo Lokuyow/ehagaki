@@ -4,6 +4,7 @@
  */
 
 import {
+    getComponentLocalKeyboardInset,
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
@@ -32,6 +33,7 @@ const KEYBOARD_THRESHOLD = 100;
 
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
+let lastVisibleViewportBottom = 0;
 let lastPhysicalKeyboardVisible = false;
 let lastPhysicalKeyboardHeight = 0;
 const keyboardTouchScrollLock =
@@ -65,6 +67,29 @@ function getFooterReservedHeight(isKeyboardOpen: boolean): number {
     return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
 }
 
+function getContainerKeyboardInset(
+    isComposerKeyboardActive: boolean,
+    visibleViewportBottom = lastVisibleViewportBottom,
+): number {
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    if (
+        !isComposerKeyboardActive ||
+        runtimeEnvironment.layoutMode !== "container"
+    ) {
+        return 0;
+    }
+
+    const target = runtimeEnvironment.layoutTarget;
+    if (typeof target.getBoundingClientRect !== "function") {
+        return 0;
+    }
+
+    return getComponentLocalKeyboardInset(
+        target.getBoundingClientRect(),
+        visibleViewportBottom,
+    );
+}
+
 function syncLayoutCssVariables(
     isComposerKeyboardActive: boolean,
     viewportMetrics: {
@@ -92,6 +117,8 @@ function syncLayoutCssVariables(
         lastPhysicalKeyboardHeight = viewportMetrics.physicalKeyboardHeight;
     }
 
+    const isContainerLayout =
+        getAppRuntimeEnvironment().layoutMode === "container";
     const footerReservedHeight = getFooterReservedHeight(
         isComposerKeyboardActive,
     );
@@ -102,20 +129,32 @@ function syncLayoutCssVariables(
         lastViewportHeight !== undefined;
     const shouldUseKeyboardOverlay =
         isComposerKeyboardActive && usesKeyboardOverlay;
+    const containerKeyboardInset = getContainerKeyboardInset(
+        isComposerKeyboardActive,
+    );
+    const effectiveKeyboardInset = isContainerLayout
+        ? containerKeyboardInset
+        : bottomPosition;
 
     syncKeyboardTouchScrollLock(
-        shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
+        isContainerLayout
+            ? isComposerKeyboardActive
+            : shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
     );
 
-    const keyboardButtonBarBottom = `${bottomPosition}px`;
-    const reasonInputBottom = `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
+    const keyboardButtonBarBottom = `${isComposerKeyboardActive ? effectiveKeyboardInset : FOOTER_HEIGHT}px`;
+    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : FOOTER_HEIGHT) + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
     const footerBottom = isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
 
     setRootStyleProperty(
         "--app-root-height",
-        shouldUseKeyboardViewportHeight ? `${lastViewportHeight}px` : "100%",
+        isContainerLayout
+            ? "100%"
+            : shouldUseKeyboardViewportHeight
+                ? `${lastViewportHeight}px`
+                : "100%",
     );
     setRootStyleProperty(
         "--app-root-top",
@@ -127,7 +166,11 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--app-main-height",
-        shouldUseKeyboardViewportHeight ? `${lastViewportHeight}px` : "100svh",
+        isContainerLayout
+            ? "100%"
+            : shouldUseKeyboardViewportHeight
+                ? `${lastViewportHeight}px`
+                : "100svh",
     );
     setRootStyleProperty(
         "--app-body-position",
@@ -143,7 +186,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--app-overlay-position",
-        "fixed",
+        isContainerLayout ? "absolute" : "fixed",
     );
     setRootStyleProperty(
         "--app-overscroll-behavior",
@@ -168,7 +211,11 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--main-content-keyboard-adjustment",
-        shouldUseKeyboardViewportHeight ? "0px" : `${keyboardHeight}px`,
+        isContainerLayout
+            ? `${containerKeyboardInset}px`
+            : shouldUseKeyboardViewportHeight
+                ? "0px"
+                : `${keyboardHeight}px`,
     );
     setRootStyleProperty("--footer-bottom", footerBottom);
     setRootStyleProperty(
@@ -286,6 +333,8 @@ export function setupViewportListener(): (() => void) | undefined {
     }
 
     const isSafariViewportMode = isIPhoneSafari();
+    const isContainerLayout =
+        getAppRuntimeEnvironment().layoutMode === "container";
     const virtualKeyboard = (
         navigator as Navigator & { virtualKeyboard?: VirtualKeyboardInfo }
     ).virtualKeyboard;
@@ -301,6 +350,56 @@ export function setupViewportListener(): (() => void) | undefined {
     }
 
     let _rafId: number | null = null;
+    let removeContainerGeometryListeners: (() => void) | null = null;
+
+    function stopContainerGeometryMonitoring(): void {
+        removeContainerGeometryListeners?.();
+        removeContainerGeometryListeners = null;
+    }
+
+    function syncContainerGeometryMonitoring(
+        isComposerKeyboardActive: boolean,
+    ): void {
+        if (!isContainerLayout) {
+            return;
+        }
+
+        if (!isComposerKeyboardActive) {
+            stopContainerGeometryMonitoring();
+            return;
+        }
+
+        if (removeContainerGeometryListeners) {
+            return;
+        }
+
+        const handleContainerGeometryChange = () => scheduleViewportSync();
+        if (!isSafariViewportMode) {
+            window.addEventListener("scroll", handleContainerGeometryChange, {
+                passive: true,
+            });
+        }
+
+        let resizeObserver: ResizeObserver | undefined;
+        const layoutTarget = getAppRuntimeEnvironment().layoutTarget;
+        if (
+            typeof ResizeObserver !== "undefined" &&
+            typeof layoutTarget.getBoundingClientRect === "function"
+        ) {
+            resizeObserver = new ResizeObserver(handleContainerGeometryChange);
+            resizeObserver.observe(layoutTarget);
+        }
+
+        removeContainerGeometryListeners = () => {
+            if (!isSafariViewportMode) {
+                window.removeEventListener(
+                    "scroll",
+                    handleContainerGeometryChange,
+                );
+            }
+            resizeObserver?.disconnect();
+        };
+    }
 
     function scheduleViewportSync() {
         // throttle via requestAnimationFrame to avoid jank on iOS/Android
@@ -343,6 +442,9 @@ export function setupViewportListener(): (() => void) | undefined {
                         layoutViewportHeight,
                     )
                     : 0;
+            const visibleViewportBottom = usesKeyboardOverlay
+                ? layoutViewportHeight - virtualKeyboardLayoutInset
+                : visibleBottom;
             const isKeyboardOpen = usesKeyboardOverlay
                 ? virtualKeyboardLayoutInset > KEYBOARD_THRESHOLD
                 : isSafariViewportMode
@@ -356,10 +458,16 @@ export function setupViewportListener(): (() => void) | undefined {
             const isComposerKeyboardActive =
                 isKeyboardOpen && isPostEditorFocusActive();
 
+            lastVisibleViewportBottom = visibleViewportBottom;
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
             // 閾値を設けて、PWAモードでの小さな差分を無視する
             bottomPosition = isComposerKeyboardActive
-                ? usesKeyboardOverlay
+                ? isContainerLayout
+                    ? getContainerKeyboardInset(
+                        true,
+                        visibleViewportBottom,
+                    )
+                    : usesKeyboardOverlay
                     ? virtualKeyboardLayoutInset
                     : calculatedKeyboardHeight
                 : FOOTER_HEIGHT;
@@ -378,6 +486,7 @@ export function setupViewportListener(): (() => void) | undefined {
                     ? keyboardStoreHeight
                     : 0,
             });
+            syncContainerGeometryMonitoring(isComposerKeyboardActive);
         });
     }
 
@@ -437,6 +546,8 @@ export function setupViewportListener(): (() => void) | undefined {
             window.removeEventListener("resize", handleWindowResize);
             window.removeEventListener("scroll", handleWindowScroll);
         }
+
+        stopContainerGeometryMonitoring();
 
         if (_rafId) cancelAnimationFrame(_rafId);
         _rafId = null;

@@ -303,6 +303,70 @@ test("boots from production site output and exercises the public sample API", as
 
 });
 
+test("keeps the public sample container layout stable across destroy and recreate", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        !!element.shadowRoot?.querySelector(".tiptap-editor"),
+    )).toBe(true);
+    const measure = () => page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const buttonBar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
+        const component = element.getBoundingClientRect();
+        const editorContainer = shadow.querySelector<HTMLElement>(".editor-container")!;
+        const editorSurface = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+        return {
+            position: getComputedStyle(footer).position,
+            component: { top: component.top, bottom: component.bottom, left: component.left, right: component.right },
+            footer: footer.getBoundingClientRect().toJSON(),
+            buttonBar: buttonBar.getBoundingClientRect().toJSON(),
+            editorContainer: editorContainer.getBoundingClientRect().toJSON(),
+            editorSurface: editorSurface.getBoundingClientRect().toJSON(),
+        };
+    });
+    const first = await measure();
+    await page.getByRole("button", { name: "Destroy / Unmount" }).click();
+    await expect(page.locator("ehagaki-composer")).toHaveCount(0);
+    await page.getByRole("button", { name: "Create / Mount" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        !!element.shadowRoot?.querySelector(".tiptap-editor"),
+    )).toBe(true);
+    const second = await measure();
+
+    await page.getByRole("button", { name: "Recreate" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot;
+        const editorContainer = shadow?.querySelector<HTMLElement>(".editor-container");
+        const editorSurface = shadow?.querySelector<HTMLElement>(".tiptap-editor");
+        return !!editorContainer
+            && !!editorSurface
+            && editorContainer.getBoundingClientRect().height > 0
+            && editorSurface.getBoundingClientRect().height > 0;
+    })).toBe(true);
+    const third = await measure();
+
+    for (const snapshot of [first, second, third]) {
+        expect(snapshot.position).toBe("absolute");
+        for (const name of ["footer", "buttonBar"] as const) {
+            expect(snapshot[name].left).toBeGreaterThanOrEqual(snapshot.component.left - 1);
+            expect(snapshot[name].right).toBeLessThanOrEqual(snapshot.component.right + 1);
+            expect(snapshot[name].bottom).toBeLessThanOrEqual(snapshot.component.bottom + 1);
+            expect(snapshot[name].height).toBeGreaterThan(0);
+        }
+        expect(snapshot.editorContainer.height).toBeGreaterThan(0);
+        expect(snapshot.editorSurface.height).toBeGreaterThan(0);
+    }
+    expect(second.editorSurface.height).toBeCloseTo(first.editorSurface.height, 0);
+    expect(third.editorSurface.height).toBeCloseTo(first.editorSurface.height, 0);
+    expect(pageErrors).toEqual([]);
+});
+
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
     await page.getByRole("button", { name: "Create / Mount" }).click();

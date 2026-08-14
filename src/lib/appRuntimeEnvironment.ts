@@ -3,6 +3,8 @@ import {
     getAppStorage,
 } from "./appStorage";
 
+export type AppLayoutMode = "viewport" | "container";
+
 export interface AppRuntimeEnvironment {
     storage: Storage;
     window: Window | undefined;
@@ -12,6 +14,7 @@ export interface AppRuntimeEnvironment {
     layoutTarget: HTMLElement;
     overlayTarget: HTMLElement;
     themeTarget: HTMLElement;
+    layoutMode: AppLayoutMode;
     assetBase: URL | undefined;
     serviceWorkerEnabled: boolean;
     externalInputEnabled: boolean;
@@ -43,6 +46,7 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         layoutTarget: body,
         overlayTarget: body,
         themeTarget: documentElement,
+        layoutMode: "viewport",
         assetBase: windowObj?.location?.href
             ? new URL(".", windowObj.location.href)
             : undefined,

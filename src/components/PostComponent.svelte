@@ -111,6 +111,7 @@
   let postContainerEl: HTMLDivElement | null = null;
   let editorContainerEl: HTMLElement | null = null;
   let editorResources: InitializeEditorResult | null = null;
+  let editorSubscriptionUnsubscribe: (() => void) | null = null;
   let editorTargetHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let postContainerStyle = $derived(
     `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
@@ -258,11 +259,17 @@
       return;
     }
 
-    syncEditorTargetHeight();
+    let resizeSyncRaf: number | null = null;
+    const scheduleEditorTargetHeightSync = () => {
+      if (resizeSyncRaf !== null) return;
+      resizeSyncRaf = window.requestAnimationFrame(() => {
+        resizeSyncRaf = null;
+        syncEditorTargetHeight();
+      });
+    };
 
-    const resizeObserver = new ResizeObserver(() => {
-      syncEditorTargetHeight();
-    });
+    const resizeObserver = new ResizeObserver(scheduleEditorTargetHeightSync);
+    scheduleEditorTargetHeightSync();
 
     resizeObserver.observe(postContainerEl);
 
@@ -274,6 +281,9 @@
 
     return () => {
       resizeObserver.disconnect();
+      if (resizeSyncRaf !== null) {
+        window.cancelAnimationFrame(resizeSyncRaf);
+      }
     };
   });
 
@@ -307,7 +317,7 @@
     editor = editorResources.editor;
 
     // エディターの購読
-    const unsubscribe = editor.subscribe(
+    editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
         currentEditor = editorInstance;
         // ストアにも設定
@@ -338,10 +348,13 @@
       if (editorResources) {
         cleanupEditor({
           unsubscribe: editorResources.unsubscribe,
+          componentUnsubscribe: editorSubscriptionUnsubscribe ?? (() => {}),
           handlers: editorResources.handlers,
           currentEditor,
           editorContainerEl,
+          submitPost,
         });
+        editorSubscriptionUnsubscribe = null;
       }
     };
   });

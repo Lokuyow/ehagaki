@@ -78,3 +78,21 @@ export function getVirtualKeyboardLayoutInset(
 
     return height - legacyOriginCompensation;
 }
+
+/**
+ * Returns the part of a bounded layout target that is covered below the
+ * visible viewport. The result is expressed in the target's local
+ * coordinate system so it can be used as an `absolute` bottom inset.
+ */
+export function getComponentLocalKeyboardInset(
+    targetRect: Pick<DOMRectReadOnly, "bottom" | "height">,
+    visibleViewportBottom: number,
+): number {
+    const targetHeight = Math.max(0, targetRect.height);
+    const coveredHeight = Math.max(
+        0,
+        targetRect.bottom - visibleViewportBottom,
+    );
+
+    return Math.min(targetHeight, coveredHeight);
+}

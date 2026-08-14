@@ -94,6 +94,7 @@ test.beforeAll(async () => {
         }
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(`<!doctype html><head><style>
+          ehagaki-composer { display: block; height: 600px; }
           ehagaki-composer::part(header) { outline: 3px solid rgb(1, 2, 3); }
         </style></head><body><script>
           window.__componentOrigin = ${JSON.stringify(componentOrigin)};
@@ -171,6 +172,179 @@ test("mounts across origins without touching host storage or registering an eHag
     expect(result.hostFetchObserved).toBe(true);
     expect(result.registrationCount).toBe(1);
     await expect(page.locator("#host")).toHaveText("host surface");
+});
+
+test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        document.body.innerHTML = `
+            <div id="before" style="height: 800px">before</div>
+            <div id="mount" style="height: 420px; width: 360px"></div>
+            <div id="after" style="height: 800px">after</div>
+        `;
+
+        const measure = (composer: HTMLElement) => {
+            const shadow = composer.shadowRoot!;
+            const rect = (selector: string) => {
+                const element = shadow.querySelector<HTMLElement>(selector);
+                if (!element) return null;
+                const value = element.getBoundingClientRect();
+                return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+            };
+            const componentRect = composer.getBoundingClientRect();
+            return {
+                position: getComputedStyle(shadow.querySelector<HTMLElement>(".footer-bar")!).position,
+                component: { top: componentRect.top, bottom: componentRect.bottom, left: componentRect.left, right: componentRect.right },
+                footer: rect(".footer-bar"),
+                buttonBar: rect(".footer-button-bar"),
+                reason: rect(".reason-input-container"),
+            };
+        };
+
+        const mount = document.querySelector<HTMLDivElement>("#mount")!;
+        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const create = async () => {
+            mount.replaceChildren();
+            window.scrollTo(0, 0);
+            const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+                whenReady(): Promise<void>;
+            };
+            composer.style.display = "block";
+            composer.style.height = "100%";
+            mount.append(composer);
+            await composer.whenReady();
+            const initial = measure(composer);
+            const contentWarningToggle = composer.shadowRoot!.querySelector<HTMLElement>(".content-warning-icon")?.closest("button");
+            if (contentWarningToggle && !contentWarningToggle.classList.contains("selected")) {
+                contentWarningToggle.click();
+            }
+            await nextFrame();
+            await nextFrame();
+            const before = measure(composer);
+            contentWarningToggle?.click();
+            await nextFrame();
+            await nextFrame();
+            const off = measure(composer);
+            window.scrollTo(0, 300);
+            await nextFrame();
+            const after = measure(composer);
+            return { initial, before, off, after };
+        };
+
+        return create();
+    });
+
+    expect(result.initial.reason).toBeNull();
+    expect(result.before.reason).not.toBeNull();
+    expect(result.off.reason).toBeNull();
+    expect(result.before.footer).not.toBeNull();
+    expect(result.before.buttonBar).not.toBeNull();
+    expect(result.before.position).toBe("absolute");
+    for (const item of [result.before.footer, result.before.buttonBar, result.before.reason]) {
+        expect(item!.left).toBeGreaterThanOrEqual(result.before.component.left - 1);
+        expect(item!.right).toBeLessThanOrEqual(result.before.component.right + 1);
+        expect(item!.bottom).toBeLessThanOrEqual(result.before.component.bottom + 1);
+    }
+    expect(result.after.footer!.top - result.before.footer!.top).toBeLessThan(-200);
+});
+
+test("preserves composer geometry after repeated destroy and recreate", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        document.body.innerHTML = `
+            <div style="height: 800px">before</div>
+            <div id="mount" style="height: 420px; width: 360px"></div>
+            <div style="height: 800px">after</div>
+        `;
+
+        const mount = document.querySelector<HTMLDivElement>("#mount")!;
+        const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const rect = (element: Element | null) => {
+            if (!(element instanceof HTMLElement)) return null;
+            const value = element.getBoundingClientRect();
+            return {
+                top: value.top,
+                bottom: value.bottom,
+                width: value.width,
+                height: value.height,
+            };
+        };
+        const measure = (composer: HTMLElement) => {
+            const shadow = composer.shadowRoot!;
+            return {
+                component: rect(composer),
+                main: rect(shadow.querySelector("main")),
+                composerScrollRegion: rect(shadow.querySelector(".composer-scroll-region")),
+                composerScrollContent: rect(shadow.querySelector(".composer-scroll-content")),
+                postEditor: rect(shadow.querySelector("[data-post-editor-root]")),
+                editorContainer: rect(shadow.querySelector(".editor-container")),
+                editorSurface: rect(shadow.querySelector(".tiptap-editor")),
+                footer: rect(shadow.querySelector(".footer-bar")),
+                buttonBar: rect(shadow.querySelector(".footer-button-bar")),
+            };
+        };
+        const create = async () => {
+            mount.replaceChildren();
+            const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+                whenReady(): Promise<void>;
+            };
+            composer.style.display = "block";
+            composer.style.height = "100%";
+            mount.append(composer);
+            await composer.whenReady();
+            for (let frame = 0; frame < 10; frame += 1) {
+                await nextFrame();
+            }
+            return measure(composer);
+        };
+
+        const containerInitial = await create();
+        const containerRecreated = await create();
+        const containerRecreatedAgain = await create();
+        return {
+            containerInitial,
+            containerRecreated,
+            containerRecreatedAgain,
+        };
+    });
+
+    const requiredGeometry = [
+        "component",
+        "main",
+        "composerScrollRegion",
+        "composerScrollContent",
+        "postEditor",
+        "editorContainer",
+        "editorSurface",
+        "footer",
+        "buttonBar",
+    ] as const;
+    expect(pageErrors).toEqual([]);
+    const assertGeometry = (label: string, snapshot: typeof result.containerInitial) => {
+        for (const key of requiredGeometry) {
+            expect(snapshot[key], `${label}: ${key} should be present`).not.toBeNull();
+            expect(snapshot[key]!.height, `${label}: ${key} should retain a visible height`).toBeGreaterThan(0);
+        }
+    };
+    const expectSameGeometry = (
+        initial: typeof result.containerInitial,
+        recreated: typeof result.containerInitial,
+    ) => {
+        for (const key of requiredGeometry) {
+            expect(recreated[key]!.height, `${key} height should survive recreate`)
+                .toBeCloseTo(initial[key]!.height, 0);
+        }
+    };
+
+    for (const [label, snapshot] of Object.entries(result)) {
+        assertGeometry(label, snapshot);
+    }
+    expectSameGeometry(result.containerInitial, result.containerRecreated);
+    expectSameGeometry(result.containerInitial, result.containerRecreatedAgain);
 });
 
 test("loads app-owned icons from the component asset base instead of the host", async ({ page }) => {

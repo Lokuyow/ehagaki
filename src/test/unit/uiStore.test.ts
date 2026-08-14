@@ -917,6 +917,64 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it('container mode は component-local inset を使い、height連鎖と absolute positioning を適用する', async () => {
+        const runtime = await import('../../lib/appRuntimeEnvironment');
+        const layoutTarget = document.createElement('div');
+        Object.defineProperty(layoutTarget, 'getBoundingClientRect', {
+            configurable: true,
+            value: vi.fn(() => ({
+                bottom: 700,
+                height: 600,
+            })),
+        });
+        runtime.configureAppRuntimeEnvironment({
+            layoutMode: 'container',
+            styleTarget: layoutTarget,
+            layoutTarget,
+            overlayTarget: layoutTarget,
+            themeTarget: layoutTarget,
+        });
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+        const viewport = createVisualViewportMock(500);
+        const {
+            bottomPositionStore,
+            keyboardHeightStore,
+            setupViewportListener,
+        } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(layoutTarget.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(layoutTarget.style.getPropertyValue('--app-main-height')).toBe('100%');
+        expect(layoutTarget.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
+        expect(layoutTarget.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('200px');
+        expect(layoutTarget.style.getPropertyValue('--reason-input-bottom')).toBe('250px');
+        expect(layoutTarget.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('200px');
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(200);
+
+        viewport.visualViewport.height = 800;
+        viewport.emit('resize');
+
+        expect(layoutTarget.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
+        expect(layoutTarget.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
+        expect(layoutTarget.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(keyboardHeightStore.value).toBe(0);
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
     it('reason input の表示状態を CSS 変数へ同期する', async () => {
         const {
             REASON_INPUT_HEIGHT,

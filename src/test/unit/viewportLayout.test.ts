@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+    getComponentLocalKeyboardInset,
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
     getVirtualKeyboardLayoutInset,
@@ -127,5 +128,26 @@ describe('viewportLayout', () => {
             411,
             732,
         )).toBe(211);
+    });
+
+    it('component-local keyboard inset は重なりだけを返し、component 高さへ clamp する', () => {
+        expect(
+            getComponentLocalKeyboardInset(
+                { bottom: 700, height: 600 },
+                500,
+            ),
+        ).toBe(200);
+        expect(
+            getComponentLocalKeyboardInset(
+                { bottom: 480, height: 600 },
+                500,
+            ),
+        ).toBe(0);
+        expect(
+            getComponentLocalKeyboardInset(
+                { bottom: 1400, height: 600 },
+                500,
+            ),
+        ).toBe(600);
     });
 });

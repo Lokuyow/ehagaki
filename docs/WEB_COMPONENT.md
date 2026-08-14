@@ -24,9 +24,16 @@ CSS Custom Properties、`::part()` を確認できます。
 ```html
 <script type="module" src="https://lokuyow.github.io/ehagaki/web-component/ehagaki-composer.js"></script>
 
-<ehagaki-composer
-  asset-base="https://lokuyow.github.io/ehagaki/web-component/"
-></ehagaki-composer>
+<div class="composer-host">
+  <ehagaki-composer
+    asset-base="https://lokuyow.github.io/ehagaki/web-component/"
+  ></ehagaki-composer>
+</div>
+
+<style>
+  .composer-host { height: 580px; }
+  ehagaki-composer { display: block; height: 100%; }
+</style>
 
 <script type="module">
   const composer = document.querySelector('ehagaki-composer');
@@ -34,6 +41,25 @@ CSS Custom Properties、`::part()` を確認できます。
   console.log('eHagaki Composer is ready');
 </script>
 ```
+
+## 下部 UI と高さ契約
+
+Web Component の下部 UI は常に component-bound layout です。`FooterComponent`、
+`KeyboardButtonBar`、`ReasonInput` は component の境界内に配置され、host page を scroll すると
+component と一緒に移動します。ブラウザ viewport 下端へ固定する Web Component 公開機能はありません。
+
+host は `.composer-host { height: 580px; }` のように解決済みの definite CSS height を指定し、
+`ehagaki-composer` がその高さを継承するようにしてください。height 未指定または `auto` は
+サポート対象外で、viewport 高への暗黙 fallback は行いません。
+
+host page が外側 scroll を所有し、composer 本文は既存の `.composer-scroll-region` が internal
+scroll を所有します。keyboard 表示時は component-local inset を使って下部 UI と composer
+reservation を調整します。dialog、tooltip、popover、PhotoSwipe などの overlay root と
+positioning 責務は変更されません。
+
+通常版/PWA と iframe は、Web Component とは異なり、従来の viewport 基準レイアウトを維持します。
+以前の Web Component 実装では下部 UI が browser viewport 基準でしたが、通常の埋め込みで component
+外へ出ないよう、現在は component-bound layout に統一しています。
 
 `asset-base` は、コンポーネントが実行時に参照する配信元のディレクトリです。エントリ
 モジュールを読み込む URL と、配布物内の `assets/`、`icons/`、`ffmpeg-core/` などを置いた

@@ -2,7 +2,13 @@ import type { InitializeEditorParams, InitializeEditorResult, CleanupEditorParam
 import { setupEventListeners, cleanupEventListeners } from './editorDomActions.svelte';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { createEditorStore as createTiptapEditorStore } from './editorConfig';
-import { placeholderTextStore, currentEditorStore, editorState, setPostSubmitter } from '../../stores/editorStore.svelte';
+import {
+    placeholderTextStore,
+    currentEditorStore,
+    editorState,
+    setPostSubmitter,
+    clearPostSubmitter,
+} from '../../stores/editorStore.svelte';
 
 /**
  * エディターの初期化を行い、必要なリソースを返す
@@ -65,16 +71,34 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
  * エディターのクリーンアップを行う
  */
 export function cleanupEditor(params: CleanupEditorParams): void {
-    const { unsubscribe, handlers, currentEditor, editorContainerEl } = params;
+    const {
+        unsubscribe,
+        componentUnsubscribe,
+        handlers,
+        currentEditor,
+        editorContainerEl,
+        submitPost,
+    } = params;
 
     // イベントリスナーのクリーンアップ
     cleanupEventListeners(handlers, editorContainerEl);
 
+    // The editor store is module-scoped across Web Component mounts. Release
+    // this instance before destroying it so a new PostComponent never tries
+    // to update a destroyed TipTap view.
+    if (currentEditorStore.value === currentEditor) {
+        currentEditorStore.set(null);
+    }
+    clearPostSubmitter(submitPost);
+
     // エディターの購読解除
+    componentUnsubscribe();
     unsubscribe();
 
     // エディターの破棄
-    currentEditor?.destroy?.();
+    if (currentEditor && !currentEditor.isDestroyed) {
+        currentEditor.destroy();
+    }
 
     // エディターコンテナのプロパティをクリア
     if (editorContainerEl) {

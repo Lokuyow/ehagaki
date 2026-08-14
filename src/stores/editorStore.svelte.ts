@@ -114,10 +114,15 @@ export function setPostSubmitter(submitter: () => Promise<void>) {
     postComponentSubmit = submitter;
 }
 
+export function clearPostSubmitter(submitter?: () => Promise<void>): void {
+    if (!submitter || postComponentSubmit === submitter) {
+        postComponentSubmit = undefined;
+    }
+}
+
 export async function submitPost() {
     if (postComponentSubmit) {
         await postComponentSubmit();
     }
 }
-
 
