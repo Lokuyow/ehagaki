@@ -105,6 +105,65 @@ test("boots from production site output and exercises the public sample API", as
     expect(requests).toContain("/ehagaki/web-component/ehagaki-composer.js");
     expect([...requests].some((path) => path.startsWith("/ehagaki/web-component/assets/"))).toBe(true);
 
+    const initialStyleResult = await page.locator("ehagaki-composer").evaluate((element) => {
+        const properties = [
+            "--ehagaki-background",
+            "--ehagaki-text",
+            "--ehagaki-border",
+            "--ehagaki-link",
+            "--ehagaki-input-background",
+            "--ehagaki-footer-background",
+            "--ehagaki-dialog-background",
+            "--ehagaki-font-family",
+            "--sample-part-outline",
+        ];
+        return Object.fromEntries(properties.map((property) => [property, element.style.getPropertyValue(property)]));
+    });
+    expect(Object.values(initialStyleResult).every((value) => value === "")).toBe(true);
+
+    await page.locator("#theme-mode").selectOption("light");
+    await page.getByRole("button", { name: "実行中に適用" }).click();
+    await expect(page.locator("#component-status")).toContainText("themeMode");
+    const lightThemeResult = await page.locator("ehagaki-composer").evaluate((element) => {
+        const appRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-app-root")!;
+        const appStyle = getComputedStyle(appRoot);
+        return {
+            lightHostClass: element.classList.contains("light"),
+            appColor: appStyle.color,
+            appBackground: appStyle.backgroundColor,
+        };
+    });
+    expect(lightThemeResult.lightHostClass).toBe(true);
+    expect(lightThemeResult.appColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(lightThemeResult.appColor).not.toBe(lightThemeResult.appBackground);
+
+    await page.locator("#theme-mode").selectOption("dark");
+    await page.getByRole("button", { name: "実行中に適用" }).click();
+    await expect(page.locator("#component-status")).toContainText("themeMode");
+    const darkThemeResult = await page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const footerButton = footer.querySelector<HTMLElement>("button")!;
+        const appStyle = getComputedStyle(appRoot);
+        const footerStyle = getComputedStyle(footer);
+        const buttonStyle = getComputedStyle(footerButton);
+        return {
+            darkHostClass: element.classList.contains("dark"),
+            appColor: appStyle.color,
+            appBackground: appStyle.backgroundColor,
+            footerColor: footerStyle.color,
+            footerBackground: footerStyle.backgroundColor,
+            buttonColor: buttonStyle.color,
+            buttonBackground: buttonStyle.backgroundColor,
+        };
+    });
+    expect(darkThemeResult.darkHostClass).toBe(true);
+    expect(darkThemeResult.appColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(darkThemeResult.appColor).not.toBe(darkThemeResult.appBackground);
+    expect(darkThemeResult.footerColor).not.toBe(darkThemeResult.footerBackground);
+    expect(darkThemeResult.buttonColor).not.toBe(darkThemeResult.buttonBackground);
+
     await page.getByRole("button", { name: "実行中に適用" }).click();
     await expect(page.locator("#component-status")).toContainText("locale");
 
@@ -126,18 +185,46 @@ test("boots from production site output and exercises the public sample API", as
     await expect(page.locator("#event-log")).toHaveValue(/ehagaki-composer-context-updated/);
 
     await page.locator("#style-background").fill("#fefefe");
+    await page.locator("#style-text").fill("#102030");
     await page.locator("#style-part-outline").fill("rgb(1, 2, 3)");
-    await page.getByRole("button", { name: "styleを適用" }).click();
+    await page.getByRole("button", { name: "入力したカスタムCSSを適用" }).click();
     const styleResult = await page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
         const header = shadow.querySelector<HTMLElement>('[part~="header"]')!;
         return {
             background: getComputedStyle(element).getPropertyValue("--ehagaki-background").trim(),
+            text: element.style.getPropertyValue("--ehagaki-text"),
             outline: getComputedStyle(header).outlineColor,
         };
     });
     expect(styleResult.background).toBe("#fefefe");
+    expect(styleResult.text).toBe("#102030");
     expect(styleResult.outline).toBe("rgb(1, 2, 3)");
+
+    await page.getByRole("button", { name: "デフォルトに戻す" }).click();
+    const resetStyleResult = await page.locator("ehagaki-composer").evaluate((element) => {
+        const properties = [
+            "--ehagaki-background",
+            "--ehagaki-text",
+            "--ehagaki-border",
+            "--ehagaki-link",
+            "--ehagaki-input-background",
+            "--ehagaki-footer-background",
+            "--ehagaki-dialog-background",
+            "--ehagaki-font-family",
+            "--sample-part-outline",
+        ];
+        const shadow = element.shadowRoot!;
+        const header = shadow.querySelector<HTMLElement>('[part~="header"]')!;
+        return {
+            inlineProperties: Object.fromEntries(properties.map((property) => [property, element.style.getPropertyValue(property)])),
+            outline: getComputedStyle(header).outlineColor,
+            rootOutline: document.documentElement.style.getPropertyValue("--sample-part-outline"),
+        };
+    });
+    expect(Object.values(resetStyleResult.inlineProperties).every((value) => value === "")).toBe(true);
+    expect(resetStyleResult.outline).not.toBe("rgb(1, 2, 3)");
+    expect(resetStyleResult.rootOutline).toBe("");
 });
 
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
@@ -149,6 +236,14 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
     await expect(page.locator("#component-status")).toHaveText("2個目は inert: multiple_instances_unsupported");
     await expect(page.locator("#event-log")).toHaveValue(/multiple_instances_unsupported/);
     await expect(page.locator("ehagaki-composer")).toHaveCount(2);
+    const secondInstanceStyles = await page.locator("ehagaki-composer").evaluateAll((elements) => elements.map((element) => ({
+        background: element.style.getPropertyValue("--ehagaki-background"),
+        partOutline: element.style.getPropertyValue("--sample-part-outline"),
+    })));
+    expect(secondInstanceStyles).toEqual([
+        { background: "", partOutline: "" },
+        { background: "", partOutline: "" },
+    ]);
 
     await page.getByRole("button", { name: "Destroy / Unmount" }).click();
     await expect(page.locator("#component-status")).toContainText("persistent settings remain");
@@ -159,6 +254,16 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
     await page.getByRole("button", { name: "Recreate" }).click();
     await expect(page.locator("#component-status")).toHaveText("component mounted");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+
+    await page.locator("#style-background").fill("#fefefe");
+    await page.getByRole("button", { name: "入力したカスタムCSSを適用" }).click();
+    await page.getByRole("button", { name: "Recreate" }).click();
+    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    const recreatedStyle = await page.locator("ehagaki-composer").evaluate((element) => ({
+        background: element.style.getPropertyValue("--ehagaki-background"),
+        partOutline: element.style.getPropertyValue("--sample-part-outline"),
+    }));
+    expect(recreatedStyle).toEqual({ background: "", partOutline: "" });
 });
 
 test("does not import query-selected modules until an explicit Create action", async ({ page }) => {

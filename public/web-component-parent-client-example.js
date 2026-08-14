@@ -20,6 +20,17 @@ let secondaryComposer = null;
 let loadedModuleUrl = "";
 let moduleLoadPromise = null;
 
+const CUSTOM_STYLE_FIELDS = [
+    ["--ehagaki-background", "style-background"],
+    ["--ehagaki-text", "style-text"],
+    ["--ehagaki-border", "style-border"],
+    ["--ehagaki-link", "style-link"],
+    ["--ehagaki-input-background", "style-input"],
+    ["--ehagaki-footer-background", "style-footer"],
+    ["--ehagaki-dialog-background", "style-dialog"],
+    ["--ehagaki-font-family", "style-font"],
+];
+
 function getElement(id) {
     const element = document.getElementById(id);
     if (!element) throw new Error(`Missing sample element: ${id}`);
@@ -215,23 +226,21 @@ async function ensureModuleLoaded() {
 }
 
 function applyCustomStyles(element) {
-    for (const [property, id] of [
-        ["--ehagaki-background", "style-background"],
-        ["--ehagaki-text", "style-text"],
-        ["--ehagaki-border", "style-border"],
-        ["--ehagaki-link", "style-link"],
-        ["--ehagaki-input-background", "style-input"],
-        ["--ehagaki-footer-background", "style-footer"],
-        ["--ehagaki-dialog-background", "style-dialog"],
-        ["--ehagaki-font-family", "style-font"],
-    ]) {
+    for (const [property, id] of CUSTOM_STYLE_FIELDS) {
         element.style.setProperty(property, getElement(id).value);
     }
 }
 
+function removeCustomStyles(element) {
+    for (const [property] of CUSTOM_STYLE_FIELDS) {
+        element.style.removeProperty(property);
+    }
+    element.style.removeProperty("--sample-part-outline");
+    document.documentElement.style.removeProperty("--sample-part-outline");
+}
+
 function configureElement(element) {
     element.setAttribute("asset-base", normalizeDirectoryUrl(assetBaseInput.value));
-    applyCustomStyles(element);
 }
 
 async function createComposer() {
@@ -303,13 +312,24 @@ async function createSecondComposer() {
 }
 
 function applyStyles() {
-    if (!currentComposer) {
+    if (!currentComposer?.isConnected) {
+        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
         appendLog("styles: component_not_mounted");
         return;
     }
     applyCustomStyles(currentComposer);
-    document.documentElement.style.setProperty("--sample-part-outline", getElement("style-part-outline").value);
+    currentComposer.style.setProperty("--sample-part-outline", getElement("style-part-outline").value);
     appendLog("styles applied", { customProperties: 8, parts: ["header", "composer"] });
+}
+
+function resetStyles() {
+    if (!currentComposer?.isConnected) {
+        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
+        appendLog("styles: component_not_mounted");
+        return;
+    }
+    removeCustomStyles(currentComposer);
+    appendLog("styles reset", { customProperties: 8, parts: ["header", "composer"] });
 }
 
 function refreshNip07Status() {
@@ -343,6 +363,7 @@ function bindActions() {
     getElement("clear-context").addEventListener("click", () => applyContextToComposer({ content: null, reply: null, quotes: null, channel: null }, "clear context"));
     getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context"));
     getElement("apply-styles").addEventListener("click", applyStyles);
+    getElement("reset-styles").addEventListener("click", resetStyles);
     getElement("clear-log").addEventListener("click", () => { eventLog.value = ""; });
 }
 

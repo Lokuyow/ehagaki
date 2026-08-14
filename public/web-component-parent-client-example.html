@@ -237,7 +237,7 @@
 
                 <div class="card stack">
                     <h2>CSS Custom Properties / parts</h2>
-                    <p class="small">次のhost側style APIを変更できます。Shadow DOM内部へ直接入らず、custom propertyと公開partだけを使います。</p>
+                    <p class="small">Create / Mount時はeHagaki本体のデフォルトCSSを使い、入力欄の値は自動適用されません。「入力したカスタムCSSを適用」を押したときだけ反映し、「デフォルトに戻す」でsample側のoverrideを除去できます。</p>
                     <div class="grid-2">
                         <div class="field"><label for="style-background">background</label><input id="style-background" value="#f4f4f4"></div>
                         <div class="field"><label for="style-text">text</label><input id="style-text" value="#183028"></div>
@@ -249,8 +249,11 @@
                         <div class="field"><label for="style-font">font family</label><input id="style-font" value="system-ui, sans-serif"></div>
                     </div>
                     <div class="field"><label for="style-part-outline">::part(header/composer) outline</label><input id="style-part-outline" value="#28764f"></div>
-                    <button id="apply-styles" type="button" class="secondary">styleを適用</button>
-                    <p class="small"><code>ehagaki-composer::part(header)</code> と <code>::part(composer)</code> にoutlineを適用するhost stylesheetがこのページにあります。iframeではこのCSS境界を直接使えません。</p>
+                    <div class="buttons">
+                        <button id="apply-styles" type="button" class="secondary">入力したカスタムCSSを適用</button>
+                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
+                    </div>
+                    <p class="small"><code>ehagaki-composer::part(header)</code> と <code>::part(composer)</code> にoutlineを適用する、このページのスタイルがあります。iframeではこのCSS境界を直接使えません。</p>
                 </div>
             </div>
         </section>
