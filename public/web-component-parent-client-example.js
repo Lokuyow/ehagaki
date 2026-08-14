@@ -31,6 +31,53 @@ const CUSTOM_STYLE_FIELDS = [
     ["--ehagaki-font-family", "style-font"],
 ];
 
+const STYLE_PRESETS = {
+    mint: {
+        background: "#f4f8f5",
+        text: "#183028",
+        border: "#b8c7be",
+        link: "#28764f",
+        input: "#ffffff",
+        footer: "#e2ebe5",
+        dialog: "#ffffff",
+        font: "system-ui, sans-serif",
+        partOutline: "#28764f",
+    },
+    blue: {
+        background: "#f3f7fb",
+        text: "#1d2a36",
+        border: "#b7c6d3",
+        link: "#1769aa",
+        input: "#ffffff",
+        footer: "#dfeaf3",
+        dialog: "#ffffff",
+        font: "system-ui, sans-serif",
+        partOutline: "#1769aa",
+    },
+    dark: {
+        background: "#181a1b",
+        text: "#e8e8e8",
+        border: "#4a4f52",
+        link: "#8ab4f8",
+        input: "#242728",
+        footer: "#202324",
+        dialog: "#242728",
+        font: "system-ui, sans-serif",
+        partOutline: "#8ab4f8",
+    },
+};
+
+const STYLE_PRESET_FIELDS = [
+    ["style-background", "background"],
+    ["style-text", "text"],
+    ["style-border", "border"],
+    ["style-link", "link"],
+    ["style-input", "input"],
+    ["style-footer", "footer"],
+    ["style-dialog", "dialog"],
+    ["style-font", "font"],
+];
+
 function getElement(id) {
     const element = document.getElementById(id);
     if (!element) throw new Error(`Missing sample element: ${id}`);
@@ -227,8 +274,29 @@ async function ensureModuleLoaded() {
 
 function applyCustomStyles(element) {
     for (const [property, id] of CUSTOM_STYLE_FIELDS) {
-        element.style.setProperty(property, getElement(id).value);
+        const value = getElement(id).value.trim();
+        if (value) {
+            element.style.setProperty(property, value);
+        } else {
+            element.style.removeProperty(property);
+        }
     }
+}
+
+function clearStyleInputs() {
+    for (const [, id] of CUSTOM_STYLE_FIELDS) {
+        getElement(id).value = "";
+    }
+    getElement("style-part-outline").value = "";
+}
+
+function selectStylePreset(name) {
+    const preset = STYLE_PRESETS[name];
+    for (const [id, key] of STYLE_PRESET_FIELDS) {
+        getElement(id).value = preset[key];
+    }
+    getElement("style-part-outline").value = preset.partOutline;
+    appendLog(`styles preset selected: ${name}`);
 }
 
 function removeCustomStyles(element) {
@@ -318,17 +386,24 @@ function applyStyles() {
         return;
     }
     applyCustomStyles(currentComposer);
-    currentComposer.style.setProperty("--sample-part-outline", getElement("style-part-outline").value);
+    const partOutline = getElement("style-part-outline").value.trim();
+    if (partOutline) {
+        currentComposer.style.setProperty("--sample-part-outline", partOutline);
+    } else {
+        currentComposer.style.removeProperty("--sample-part-outline");
+    }
     appendLog("styles applied", { customProperties: 8, parts: ["header", "composer"] });
 }
 
 function resetStyles() {
     if (!currentComposer?.isConnected) {
+        clearStyleInputs();
         setStatus(componentStatus, "componentを先にCreateしてください", "warn");
-        appendLog("styles: component_not_mounted");
+        appendLog("styles reset: component_not_mounted");
         return;
     }
     removeCustomStyles(currentComposer);
+    clearStyleInputs();
     appendLog("styles reset", { customProperties: 8, parts: ["header", "composer"] });
 }
 
@@ -364,6 +439,9 @@ function bindActions() {
     getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context"));
     getElement("apply-styles").addEventListener("click", applyStyles);
     getElement("reset-styles").addEventListener("click", resetStyles);
+    getElement("preset-mint").addEventListener("click", () => selectStylePreset("mint"));
+    getElement("preset-blue").addEventListener("click", () => selectStylePreset("blue"));
+    getElement("preset-dark").addEventListener("click", () => selectStylePreset("dark"));
     getElement("clear-log").addEventListener("click", () => { eventLog.value = ""; });
 }
 
