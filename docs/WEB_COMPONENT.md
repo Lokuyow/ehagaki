@@ -111,6 +111,22 @@ iframe 連携は含まれません。
 watchによる再buildの完了を待ってからページを再読み込みします。`vite.web-component.config.ts` などの
 build設定を変更した場合は、コマンドを再起動してください。
 
+Android ChromeやiPhone Safariなど、同じLAN上の実機から確認する場合は、明示的なLANモードを使います。
+
+```text
+npm run dev:web-component:lan
+```
+
+コンソールに表示された `http://<PCのLAN IP>:5173/ehagaki/web-component-parent-client-example.html`
+を実機で開いてください。PCと実機を同じWi-Fi/LANへ接続し、Windowsでは必要に応じてWindows Firewallで
+Node/ViteのPrivate networkアクセスを許可します。LANモードではViteのsample serverだけを公開し、
+Web Component assetの内部server（5174）は `127.0.0.1` のままです。実機から5174を直接開く必要はありません。
+このLAN URLはHTTP originです。LAN内実機での一般的なlayout、Destroy/Create、host scroll、fallback keyboard behavior
+などの確認には利用できますが、secure context限定APIは本番HTTPSと同じ経路にならない場合があります。
+特にAndroid ChromeのVirtualKeyboard API経路（`navigator.virtualKeyboard`、`overlaysContent`、`boundingRect`、
+`geometrychange`）の最終確認は、PR previewなど利用可能なHTTPS deployment、または端末から信頼されるHTTPS originで行ってください。
+iPhone Safariを含む一般的な実機確認には、LAN mode自体を引き続き利用できます。
+
 ## `asset-base` / `assetBase`
 
 `asset-base` は、コンポーネントが配布物内のアセットを解決するための配信元です。実装では、
