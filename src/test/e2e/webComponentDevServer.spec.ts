@@ -102,6 +102,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             () => requestStatus(`${origin}/ehagaki/web-component/ehagaki-composer.js`),
             { timeout: 30_000 },
         ).toBe(200);
+        await expect.poll(() => output.join(""), { timeout: 30_000 }).toContain(
+            `Vite dev server uses physical repository path ${process.cwd()}`,
+        );
 
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
         await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);

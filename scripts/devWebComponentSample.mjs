@@ -4,15 +4,23 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createWebComponentBuildWorkingDirectory } from "./webComponentBuildWorkingDirectory.mjs";
+import {
+    createPhysicalViteDevServerCommand,
+    runWebComponentInitialBuild,
+    startNodeCommand,
+    startWebComponentBuild,
+} from "./webComponentBuildRunner.mjs";
 
-const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-const webComponentDirectory = resolve(repositoryRoot, "dist-web-component");
-const viteCli = resolve(repositoryRoot, "node_modules", "vite", "bin", "vite.js");
+const physicalRepositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const webComponentDirectory = resolve(physicalRepositoryRoot, "dist-web-component");
 const host = "127.0.0.1";
 const appPort = parsePort(process.env.EHAGAKI_WEB_COMPONENT_DEV_APP_PORT, 5173, "EHAGAKI_WEB_COMPONENT_DEV_APP_PORT");
 const webComponentPort = parsePort(process.env.EHAGAKI_WEB_COMPONENT_DEV_PORT, 5174, "EHAGAKI_WEB_COMPONENT_DEV_PORT");
 
 let webComponentServer;
+let webComponentBuildWorkingDirectory;
+let initialBuild;
 let watcher;
 let viteServer;
 let shuttingDown = false;
@@ -103,35 +111,6 @@ function startWebComponentServer() {
     });
 }
 
-function runNode(args, environment = process.env) {
-    return spawn(process.execPath, args, {
-        cwd: repositoryRoot,
-        env: environment,
-        stdio: "inherit",
-        windowsHide: true,
-    });
-}
-
-function waitForExit(child) {
-    return new Promise((resolveExit, reject) => {
-        child.once("error", reject);
-        child.once("exit", (code, signal) => resolveExit({ code, signal }));
-    });
-}
-
-async function runInitialBuild() {
-    for (const [label, args] of [
-        ["Web Component build", [viteCli, "build", "--config", "vite.web-component.config.ts"]],
-        ["Web Component build verification", ["scripts/verifyWebComponentBuild.mjs"]],
-    ]) {
-        const build = runNode(args);
-        const { code, signal } = await waitForExit(build);
-        if (code !== 0) {
-            throw new Error(`${label} failed (${signal ?? code ?? "unknown"}).`);
-        }
-    }
-}
-
 function watchChild(label, child) {
     child.once("exit", (code, signal) => {
         if (!shuttingDown) {
@@ -175,10 +154,17 @@ async function shutdown(exitCode) {
     if (shuttingDown) return;
     shuttingDown = true;
     await Promise.all([
+        terminateChild(initialBuild),
         terminateChild(watcher),
         terminateChild(viteServer),
         closeServer(webComponentServer),
     ]);
+    try {
+        await webComponentBuildWorkingDirectory?.cleanup();
+    } catch (error) {
+        console.error(error instanceof Error ? error.message : error);
+        exitCode = 1;
+    }
     process.exitCode = exitCode;
 }
 
@@ -188,15 +174,22 @@ async function main() {
     }
 
     console.log("Building the Web Component for local development...");
-    await runInitialBuild();
+    webComponentBuildWorkingDirectory = await createWebComponentBuildWorkingDirectory({ physicalRepositoryRoot });
+    await runWebComponentInitialBuild(webComponentBuildWorkingDirectory.workingDirectory, {
+        onChildStarted: (child) => {
+            initialBuild = child;
+        },
+    });
 
     webComponentServer = await startWebComponentServer();
-    watcher = runNode([viteCli, "build", "--config", "vite.web-component.config.ts", "--watch"]);
-    viteServer = runNode([viteCli, "--host", host, "--port", String(appPort), "--strictPort"], {
-        ...process.env,
-        EHAGAKI_WEB_COMPONENT_DEV_PROXY: "true",
-        EHAGAKI_WEB_COMPONENT_DEV_PORT: String(webComponentPort),
+    watcher = startWebComponentBuild(webComponentBuildWorkingDirectory.workingDirectory, { watch: true });
+    console.log(`Vite dev server uses physical repository path ${physicalRepositoryRoot}`);
+    const viteDevServerCommand = createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
+        host,
+        appPort,
+        webComponentPort,
     });
+    viteServer = startNodeCommand(viteDevServerCommand, { environment: viteDevServerCommand.environment });
     watchChild("Web Component watcher", watcher);
     watchChild("Vite dev server", viteServer);
 
