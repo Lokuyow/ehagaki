@@ -8,7 +8,7 @@
     "dev:web-component": "node scripts/devWebComponentSample.mjs",
     "prebuild": "npx rimraf dist",
     "build": "vite build && node scripts/verifyLegacyBridgeBuild.mjs && npm run build:web-component && npm run assemble:web-component-site",
-    "build:web-component": "vite build --config vite.web-component.config.ts && node scripts/verifyWebComponentBuild.mjs",
+    "build:web-component": "node scripts/runWebComponentBuild.mjs",
     "assemble:web-component-site": "node scripts/assembleWebComponentSite.mjs",
     "verify:legacy-bridge-remote": "node scripts/verifyLegacyBridgeRemote.mjs",
     "preview": "vite preview --host",
