@@ -15,6 +15,18 @@ const isPreview = process.argv.some(arg => arg.includes('preview')) ||
 
 // Vercel環境ではルートパス、それ以外では /ehagaki/ を使用
 const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
+const webComponentDevProxyEnabled = process.env.EHAGAKI_WEB_COMPONENT_DEV_PROXY === 'true';
+const webComponentDevServerPort = process.env.EHAGAKI_WEB_COMPONENT_DEV_PORT;
+const webComponentDevProxyPath = `${baseUrl}web-component/`;
+const webComponentDevProxy = webComponentDevProxyEnabled && webComponentDevServerPort
+  ? {
+      [webComponentDevProxyPath]: {
+        target: `http://127.0.0.1:${webComponentDevServerPort}`,
+        changeOrigin: true,
+        rewrite: (requestPath: string) => requestPath.slice(webComponentDevProxyPath.length - 1),
+      },
+    }
+  : undefined;
 const fixedLegacyBridgeManifest = loadFixedLegacyBridgeManifest();
 const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => asset.path);
 
@@ -195,6 +207,7 @@ export default defineConfig({
   server: {
     allowedHosts: [
       '.ngrok-free.app'
-    ]
+    ],
+    proxy: webComponentDevProxy,
   }
 });

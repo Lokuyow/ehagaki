@@ -76,6 +76,15 @@ iframe 連携は含まれません。
 との分離を保つため、Web Component 用ディレクトリへ PWA の Service Worker や manifest を
 追加しないでください。
 
+## ローカル開発
+
+通常のアプリ開発には `npm run dev` を使います。Web Component の公開サンプルをローカルで
+確認する場合は `npm run dev:web-component` を使い、
+`http://localhost:5173/ehagaki/web-component-parent-client-example.html` を開いてください。
+このコマンドは Web Component の初回buildとwatchを起動します。Web Component のソースを変更した後は、
+watchによる再buildの完了を待ってからページを再読み込みします。`vite.web-component.config.ts` などの
+build設定を変更した場合は、コマンドを再起動してください。
+
 ## `asset-base` / `assetBase`
 
 `asset-base` は、コンポーネントが配布物内のアセットを解決するための配信元です。実装では、
