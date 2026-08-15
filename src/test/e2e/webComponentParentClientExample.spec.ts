@@ -281,6 +281,7 @@ test("boots from production site output and exercises the public sample API", as
     await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
     await expect(page.locator("#component-status")).toHaveText("component mounted");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+    await expect(page.locator("#style-part-outline")).toHaveCount(0);
     for (const id of [
         "style-accent",
         "style-base",
@@ -292,7 +293,6 @@ test("boots from production site output and exercises the public sample API", as
         "style-footer",
         "style-dialog",
         "style-font",
-        "style-part-outline",
     ]) {
         await expect(page.locator(`#${id}`)).toHaveValue("");
     }
@@ -325,7 +325,6 @@ test("boots from production site output and exercises the public sample API", as
             "--ehagaki-footer-background",
             "--ehagaki-dialog-background",
             "--ehagaki-font-family",
-            "--sample-part-outline",
         ];
         return Object.fromEntries(properties.map((property) => [property, element.style.getPropertyValue(property)]));
     });
@@ -394,7 +393,6 @@ test("boots from production site output and exercises the public sample API", as
     ]) {
         await expect(page.locator(`#${id}`)).toHaveValue("");
     }
-    await expect(page.locator("#style-part-outline")).toHaveValue("#28764f");
     await page.getByRole("button", { name: "入力したカスタムCSSを適用" }).click();
     const afterPresetOnly = await page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
@@ -422,7 +420,6 @@ test("boots from production site output and exercises the public sample API", as
         "--ehagaki-footer-background",
         "--ehagaki-dialog-background",
         "--ehagaki-font-family",
-        "--sample-part-outline",
     ].map((property) => [property, element.style.getPropertyValue(property)])));
     expect(afterPresetInlineStyles["--ehagaki-accent-color"]).toBe("#28764f");
     expect(afterPresetInlineStyles["--ehagaki-base-color"]).toBe("#dcefe4");
@@ -430,10 +427,8 @@ test("boots from production site output and exercises the public sample API", as
 
     await page.locator("#style-text").fill("#102030");
     await page.locator("#style-border").fill("");
-    await page.locator("#style-part-outline").fill("rgb(1, 2, 3)");
     await page.getByRole("button", { name: "入力したカスタムCSSを適用" }).click();
     const partialStyleResult = await page.locator("ehagaki-composer").evaluate((element) => ({
-        outline: getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>('[part~="header"]')!).outlineColor,
         accent: element.style.getPropertyValue("--ehagaki-accent-color"),
         base: element.style.getPropertyValue("--ehagaki-base-color"),
         background: element.style.getPropertyValue("--ehagaki-background"),
@@ -441,7 +436,6 @@ test("boots from production site output and exercises the public sample API", as
         border: element.style.getPropertyValue("--ehagaki-border"),
         appBackground: getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>('[part~="shell"]')!).backgroundColor,
     }));
-    expect(partialStyleResult.outline).toBe("rgb(1, 2, 3)");
     expect(partialStyleResult.accent).toBe("#28764f");
     expect(partialStyleResult.base).toBe("#dcefe4");
     expect(partialStyleResult.background).toBe("");
@@ -462,15 +456,12 @@ test("boots from production site output and exercises the public sample API", as
             "--ehagaki-footer-background",
             "--ehagaki-dialog-background",
             "--ehagaki-font-family",
-            "--sample-part-outline",
         ];
         return {
             inlineProperties: Object.fromEntries(properties.map((property) => [property, element.style.getPropertyValue(property)])),
-            rootOutline: document.documentElement.style.getPropertyValue("--sample-part-outline"),
         };
     });
     expect(Object.values(resetStyleResult.inlineProperties).every((value) => value === "")).toBe(true);
-    expect(resetStyleResult.rootOutline).toBe("");
     for (const id of [
         "style-accent",
         "style-base",
@@ -482,7 +473,6 @@ test("boots from production site output and exercises the public sample API", as
         "style-footer",
         "style-dialog",
         "style-font",
-        "style-part-outline",
     ]) {
         await expect(page.locator(`#${id}`)).toHaveValue("");
     }
@@ -706,11 +696,10 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
     await expect(page.locator("ehagaki-composer")).toHaveCount(2);
     const secondInstanceStyles = await page.locator("ehagaki-composer").evaluateAll((elements) => elements.map((element) => ({
         background: element.style.getPropertyValue("--ehagaki-background"),
-        partOutline: element.style.getPropertyValue("--sample-part-outline"),
     })));
     expect(secondInstanceStyles).toEqual([
-        { background: "", partOutline: "" },
-        { background: "", partOutline: "" },
+        { background: "" },
+        { background: "" },
     ]);
 
     await page.getByRole("button", { name: "Destroy / Unmount" }).click();
@@ -729,9 +718,8 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
     await expect(page.locator("#component-status")).toHaveText("component mounted");
     const recreatedStyle = await page.locator("ehagaki-composer").evaluate((element) => ({
         background: element.style.getPropertyValue("--ehagaki-background"),
-        partOutline: element.style.getPropertyValue("--sample-part-outline"),
     }));
-    expect(recreatedStyle).toEqual({ background: "", partOutline: "" });
+    expect(recreatedStyle).toEqual({ background: "" });
 });
 
 test("does not auto-import query-selected modules outside manual mode", async ({ page }) => {

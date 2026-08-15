@@ -43,17 +43,14 @@ const STYLE_PRESETS = {
     mint: {
         accent: "#28764f",
         base: "#dcefe4",
-        partOutline: "#28764f",
     },
     blue: {
         accent: "#1769aa",
         base: "#dfeaf3",
-        partOutline: "#1769aa",
     },
     dark: {
         accent: "#8ab4f8",
         base: "#242728",
-        partOutline: "#8ab4f8",
     },
 };
 
@@ -271,7 +268,6 @@ function clearStyleInputs() {
     for (const [, id] of CUSTOM_STYLE_FIELDS) {
         getElement(id).value = "";
     }
-    getElement("style-part-outline").value = "";
 }
 
 function selectStylePreset(name) {
@@ -282,7 +278,6 @@ function selectStylePreset(name) {
     for (const [, id] of DETAIL_STYLE_FIELDS) {
         getElement(id).value = "";
     }
-    getElement("style-part-outline").value = preset.partOutline;
     appendLog(`styles preset selected: ${name}`);
 }
 
@@ -290,8 +285,6 @@ function removeCustomStyles(element) {
     for (const [property] of CUSTOM_STYLE_FIELDS) {
         element.style.removeProperty(property);
     }
-    element.style.removeProperty("--sample-part-outline");
-    document.documentElement.style.removeProperty("--sample-part-outline");
 }
 
 function configureElement(element) {
@@ -377,13 +370,7 @@ function applyStyles() {
         return;
     }
     applyCustomStyles(currentComposer);
-    const partOutline = getElement("style-part-outline").value.trim();
-    if (partOutline) {
-        currentComposer.style.setProperty("--sample-part-outline", partOutline);
-    } else {
-        currentComposer.style.removeProperty("--sample-part-outline");
-    }
-    appendLog("styles applied", { customProperties: 8, parts: ["header", "composer"] });
+    appendLog("styles applied", { customProperties: CUSTOM_STYLE_FIELDS.length });
 }
 
 function resetStyles() {
@@ -395,7 +382,7 @@ function resetStyles() {
     }
     removeCustomStyles(currentComposer);
     clearStyleInputs();
-    appendLog("styles reset", { customProperties: 8, parts: ["header", "composer"] });
+    appendLog("styles reset", { customProperties: CUSTOM_STYLE_FIELDS.length });
 }
 
 function refreshNip07Status() {
