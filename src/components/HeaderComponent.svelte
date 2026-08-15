@@ -32,6 +32,7 @@
         showFlavorText = true,
     }: Props = $props();
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const isContainerLayout = getAppRuntimeEnvironment().layoutMode === "container";
     const ehagakiIconUrl = resolveAppAssetUrl("ehagaki_icon.svg");
 
     let postStatus = $derived(editorState.postStatus);
@@ -46,7 +47,11 @@
     );
 </script>
 
-<div class="header-container" part="header">
+<div
+    class="header-container"
+    class:container-layout={isContainerLayout}
+    part="header"
+>
     <div class="header-left">
         {#if showMascot}
             <a
@@ -190,6 +195,12 @@
 
         @media (width >= 801px) {
             padding: 0;
+        }
+
+        @container (width < 801px) {
+            &.container-layout {
+                padding: 0 8px;
+            }
         }
     }
 

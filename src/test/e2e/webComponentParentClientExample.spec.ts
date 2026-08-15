@@ -135,6 +135,97 @@ test("uses the internal theme surface even when the host forces a white backgrou
     expect(result.light.shellColor).not.toBe(result.dark.shellColor);
 });
 
+test("keeps Web Component header controls responsive to component width", async ({ page }) => {
+    for (const { label, viewport, mountWidth, expectedPadding, expandSample } of [
+        {
+            label: "wide viewport",
+            viewport: { width: 1280, height: 900 },
+            mountWidth: "600px",
+            expectedPadding: 8,
+        },
+        {
+            label: "narrow viewport",
+            viewport: { width: 390, height: 844 },
+            mountWidth: "100%",
+            expectedPadding: 8,
+        },
+        {
+            label: "wide component",
+            viewport: { width: 1280, height: 900 },
+            mountWidth: "900px",
+            expectedPadding: 0,
+            expandSample: true,
+        },
+    ]) {
+        await page.setViewportSize(viewport);
+        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+        if (expandSample) {
+            await page.locator("main").evaluate((main) => {
+                (main as HTMLElement).style.gridTemplateColumns = "1fr";
+            });
+        }
+        await page.locator("#component-mount").evaluate((mount, width) => {
+            (mount as HTMLElement).style.width = width;
+        }, mountWidth);
+        await page.getByRole("button", { name: "Create / Mount" }).click();
+        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+
+        const geometry = await page.locator("ehagaki-composer").evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const header = shadow.querySelector<HTMLElement>(".header-container")!;
+            const mascot = shadow.querySelector<HTMLElement>(".site-icon")!;
+            const rightButton = shadow.querySelector<HTMLElement>(".choose-target-button")!;
+            const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+            const component = element.getBoundingClientRect();
+            const toRect = (target: Element) => target.getBoundingClientRect().toJSON();
+            return {
+                viewportWidth: window.innerWidth,
+                component: component.toJSON(),
+                header: toRect(header),
+                headerPaddingLeft: getComputedStyle(header).paddingLeft,
+                headerPaddingRight: getComputedStyle(header).paddingRight,
+                mascot: toRect(mascot),
+                rightButton: toRect(rightButton),
+                footer: toRect(footer),
+                footerPaddingLeft: getComputedStyle(footer).paddingLeft,
+                footerPaddingRight: getComputedStyle(footer).paddingRight,
+                headerChildren: Array.from(header.querySelectorAll<HTMLElement>("*"))
+                    .map((child) => toRect(child))
+                    .filter((rect) => rect.width > 0 && rect.height > 0),
+            };
+        });
+
+        expect(geometry.component.width < 801, `${label}: component width breakpoint`)
+            .toBe(expectedPadding !== 0);
+        expect(geometry.headerPaddingLeft, `${label}: header left padding`).toBe(`${expectedPadding}px`);
+        expect(geometry.headerPaddingRight, `${label}: header right padding`).toBe(`${expectedPadding}px`);
+        const mascotInset = geometry.mascot.left - geometry.component.left;
+        const rightButtonInset = geometry.component.right - geometry.rightButton.right;
+        expect(mascotInset, `${label}: mascot inset`).toBeGreaterThanOrEqual(expectedPadding);
+        expect(rightButtonInset, `${label}: right button inset`).toBeGreaterThanOrEqual(expectedPadding);
+        expect(mascotInset, `${label}: symmetric header edges`).toBeCloseTo(rightButtonInset, 0);
+        if (expectedPadding !== 0) {
+            expect(mascotInset, `${label}: mascot inset`).toBeCloseTo(expectedPadding, 0);
+            expect(rightButtonInset, `${label}: right button inset`).toBeCloseTo(expectedPadding, 0);
+        }
+        expect(geometry.footerPaddingLeft, `${label}: footer left padding`).toBe("8px");
+        expect(geometry.footerPaddingRight, `${label}: footer right padding`).toBe("8px");
+        for (const rect of geometry.headerChildren) {
+            expect(rect.left, `${label}: header child left edge`).toBeGreaterThanOrEqual(geometry.component.left - 0.5);
+            expect(rect.right, `${label}: header child right edge`).toBeLessThanOrEqual(geometry.component.right + 0.5);
+        }
+    }
+});
+
+test("keeps the normal app desktop header layout viewport-based", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await page.waitForFunction(() => !!document.querySelector(".header-container"));
+    await expect(page.locator(".header-container")).toHaveCSS("padding-left", "0px");
+    await expect(page.locator(".header-container")).toHaveCSS("padding-right", "0px");
+    await expect(page.locator(".header-container")).not.toHaveClass(/container-layout/);
+});
+
 test("boots from production site output and exercises the public sample API", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
 
