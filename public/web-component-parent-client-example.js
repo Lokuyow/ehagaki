@@ -318,6 +318,10 @@ async function createComposer() {
         return;
     }
     await ensureModuleLoaded();
+    if (currentComposer?.isConnected) {
+        setStatus(componentStatus, "componentは既にmount済みです", "warn");
+        return;
+    }
     const element = document.createElement("ehagaki-composer");
     configureElement(element);
     installEventListeners(element, "primary");

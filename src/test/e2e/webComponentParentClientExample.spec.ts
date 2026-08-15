@@ -450,6 +450,45 @@ test("boots from production site output and exercises the public sample API", as
 
 });
 
+test("does not create a second primary while auto-mount waits for the module", async ({ page }) => {
+    const moduleUrl = `${origin}/ehagaki/web-component/ehagaki-composer.js`;
+    let releaseModule: () => void = () => undefined;
+    let resolveModuleRequestStarted: () => void = () => undefined;
+    const moduleRequestStarted = new Promise<void>((resolve) => {
+        resolveModuleRequestStarted = resolve;
+    });
+    const moduleGate = new Promise<void>((resolve) => {
+        releaseModule = resolve;
+    });
+
+    await page.route(moduleUrl, async (route) => {
+        resolveModuleRequestStarted();
+        await moduleGate;
+        await route.continue();
+    });
+
+    try {
+        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`, { waitUntil: "commit" });
+        await moduleRequestStarted;
+        await page.getByRole("button", { name: "Create / Mount" }).click();
+        releaseModule();
+
+        await expect(page.locator("#module-status")).toContainText("module loaded");
+        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+        await expect(page.locator("#component-status")).toHaveText("component mounted");
+        await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+        await expect(page.locator("#event-log")).not.toHaveValue(/multiple_instances_unsupported/);
+
+        await page.locator("#theme-mode").selectOption("light");
+        await page.getByRole("button", { name: "実行中に適用" }).click();
+        await expect(page.locator("#component-status")).toContainText("themeMode");
+        await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+    } finally {
+        releaseModule();
+        await page.unroute(moduleUrl);
+    }
+});
+
 test("keeps the public sample container layout stable across destroy and recreate", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
