@@ -84,6 +84,7 @@ function transformAppCss(css: string): string {
     // app.css is authored for the document root. In this build it is copied
     // into the component's open shadow tree instead of touching host styles.
     return css
+        .replaceAll(/:root:is\(\s*\.light\s*,\s*\.dark\s*\)/g, ":host(:is(.light, .dark))")
         .replaceAll(":root", ":host")
         .replace("html,\nbody,\n#app", ":host,\n.ehagaki-web-component-shell")
         .replace("#app {", ".ehagaki-web-component-shell {")

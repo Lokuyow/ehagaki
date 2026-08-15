@@ -470,6 +470,46 @@ test("applies Button variants and host theme classes inside the Shadow DOM", asy
     expect(result.darkAppTextColor).not.toBe(result.lightAppTextColor);
 });
 
+test("applies the common desktop hover colors inside the Shadow DOM", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Common hover styles are intentionally disabled on touch projects.");
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: { themeMode: "light" }): Promise<string[]>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ themeMode: "light" });
+    });
+
+    const settingsButton = page.locator("ehagaki-composer").locator("button.settings-btn");
+    await expect(settingsButton).toBeVisible();
+    const before = await settingsButton.evaluate((button) => {
+        const icon = button.querySelector<HTMLElement>(".svg-icon")!;
+        const buttonStyle = getComputedStyle(button);
+        return {
+            background: buttonStyle.backgroundColor,
+            color: buttonStyle.color,
+            iconBackground: getComputedStyle(icon).backgroundColor,
+        };
+    });
+    await settingsButton.hover();
+    const after = await settingsButton.evaluate((button) => {
+        const icon = button.querySelector<HTMLElement>(".svg-icon")!;
+        const buttonStyle = getComputedStyle(button);
+        return {
+            background: buttonStyle.backgroundColor,
+            color: buttonStyle.color,
+            iconBackground: getComputedStyle(icon).backgroundColor,
+        };
+    });
+    expect(after.background).not.toBe(before.background);
+    expect(after.color).not.toBe(before.color);
+    expect(after.iconBackground).not.toBe(before.iconBackground);
+});
+
 test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async () => {
