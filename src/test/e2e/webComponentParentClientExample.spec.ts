@@ -164,6 +164,21 @@ test("boots from production site output and exercises the public sample API", as
     expect(requests).toContain("/ehagaki/web-component/ehagaki-composer.js");
     expect([...requests].some((path) => path.startsWith("/ehagaki/web-component/assets/"))).toBe(true);
 
+    const edgeClippingStyles = await page.locator("ehagaki-composer").evaluate((element) => {
+        const hostStyle = getComputedStyle(element);
+        const frameStyle = getComputedStyle(element.parentElement!);
+        return {
+            hostOverflowX: hostStyle.overflowX,
+            hostOverflowY: hostStyle.overflowY,
+            hostBorderRadius: hostStyle.borderRadius,
+            frameBorderRadius: frameStyle.borderRadius,
+        };
+    });
+    expect(edgeClippingStyles.hostOverflowX).toBe("visible");
+    expect(edgeClippingStyles.hostOverflowY).toBe("visible");
+    expect(edgeClippingStyles.hostBorderRadius).toBe("0px");
+    expect(edgeClippingStyles.frameBorderRadius).toBe("18px");
+
     const initialStyleResult = await page.locator("ehagaki-composer").evaluate((element) => {
         const properties = [
             "--ehagaki-background",
