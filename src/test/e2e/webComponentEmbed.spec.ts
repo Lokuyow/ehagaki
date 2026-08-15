@@ -176,6 +176,101 @@ test("mounts across origins without touching host storage or registering an eHag
     await expect(page.locator("#host")).toHaveText("host surface");
 });
 
+test("applies Accent/Base themes while preserving default and meaning colors", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ themeMode: "light" });
+    });
+
+    const readTheme = () => page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
+        const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
+        const primary = shadow.querySelector<HTMLElement>("button.primary")!;
+        const colorToPixel = (color: string) => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+        };
+        const style = getComputedStyle(element);
+        return {
+            accent: style.getPropertyValue("--accent-color").trim(),
+            base: style.getPropertyValue("--base-color").trim(),
+            shellBackground: getComputedStyle(shell).backgroundColor,
+            shellPixel: colorToPixel(getComputedStyle(shell).backgroundColor),
+            primaryBackground: getComputedStyle(primary).backgroundColor,
+            textColor: getComputedStyle(appRoot).color,
+            text: style.getPropertyValue("--text").trim(),
+            link: style.getPropertyValue("--link").trim(),
+            danger: style.getPropertyValue("--danger").trim(),
+        };
+    });
+
+    const defaultLight = await readTheme();
+    expect(defaultLight.shellPixel).toEqual([227, 227, 227, 255]);
+    expect(defaultLight.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
+
+    await page.locator("ehagaki-composer").evaluate(async (element) => {
+        await (element as HTMLElement & { setSettings(value: { themeMode: "dark" }): Promise<string[]> })
+            .setSettings({ themeMode: "dark" });
+    });
+    const defaultDark = await readTheme();
+    expect(defaultDark.shellPixel).toEqual([31, 31, 31, 255]);
+    await page.locator("ehagaki-composer").evaluate(async (element) => {
+        await (element as HTMLElement & { setSettings(value: { themeMode: "light" }): Promise<string[]> })
+            .setSettings({ themeMode: "light" });
+    });
+
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        element.style.setProperty("--ehagaki-accent-color", "#c04444");
+        element.style.setProperty("--ehagaki-base-color", "#d9e8f2");
+    });
+    const themedLight = await readTheme();
+    expect(themedLight.accent.toLowerCase()).toContain("#c04444");
+    expect(themedLight.base.toLowerCase()).toContain("#d9e8f2");
+    expect(themedLight.shellPixel).not.toEqual(defaultLight.shellPixel);
+    expect(themedLight.primaryBackground).not.toBe(defaultLight.primaryBackground);
+    expect(themedLight.text).toBe(defaultLight.text);
+    expect(themedLight.link).toBe(defaultLight.link);
+    expect(themedLight.danger).toBe(defaultLight.danger);
+
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        element.style.setProperty("--ehagaki-background", "rgb(1, 2, 3)");
+    });
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>('[part~="shell"]')!).backgroundColor,
+    )).toBe("rgb(1, 2, 3)");
+
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        element.style.removeProperty("--ehagaki-background");
+    });
+    await expect.poll(readTheme).toMatchObject({
+        accent: "#c04444",
+        base: "#d9e8f2",
+    });
+
+    const composer = page.locator("ehagaki-composer");
+    await composer.evaluate(async (element) => {
+        await (element as HTMLElement & { setSettings(value: { themeMode: "dark" }): Promise<string[]> })
+            .setSettings({ themeMode: "dark" });
+    });
+    const themedDark = await readTheme();
+    expect(themedDark.shellPixel).not.toEqual(themedLight.shellPixel);
+    expect(themedDark.textColor).not.toBe(themedLight.textColor);
+    expect(themedDark.danger).toBe(themedLight.danger);
+});
+
 test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async () => {

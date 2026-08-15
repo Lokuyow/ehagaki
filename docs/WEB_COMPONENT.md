@@ -515,6 +515,22 @@ await replacement.whenReady();
 Shadow DOM の内部へ通常のホスト側 selector で直接 style を適用する代わりに、公開されている
 CSS Custom Properties を使用できます。
 
+まず、少数の指定で埋め込み先に合わせる簡易テーマとして、次の2色を指定できます。
+
+| CSS Custom Property | 用途 |
+| --- | --- |
+| `--ehagaki-accent-color` | 投稿ボタン、focus、選択状態などの主要アクセント |
+| `--ehagaki-base-color` | neutralな背景・入力欄・footer・button surface・borderなどへ混ぜる基準色 |
+
+Base Colorは指定色でsurfaceを直接塗りつぶさず、light/darkそれぞれの既定neutral色へ
+少量mixします。文字、アイコン、link、visited link、hashtag、danger、success、warningなどの
+意味色はBase Colorから生成されません。指定値は有効なCSS `<color>` としてください。任意の色の
+組み合わせについてコントラストを自動補正するAPIではないため、極端なAccent/Baseを指定する場合の
+可読性はhost側で確認してください。
+
+個別のtokenを調整したい場合は、従来の詳細overrideを使用できます。テーマ生成後に、指定された
+個別overrideのtokenだけが上書きされます。
+
 | CSS Custom Property | 用途 |
 | --- | --- |
 | `--ehagaki-background` | メイン背景 |
@@ -528,16 +544,18 @@ CSS Custom Properties を使用できます。
 
 ```css
 ehagaki-composer {
-  --ehagaki-background: #f4f4f4;
+  /* 簡易テーマ */
+  --ehagaki-accent-color: #28764f;
+  --ehagaki-base-color: #dcefe4;
+
+  /* 詳細override（必要なtokenだけ） */
   --ehagaki-text: #183028;
-  --ehagaki-border: #b8c7be;
-  --ehagaki-link: #28764f;
-  --ehagaki-input-background: #ffffff;
-  --ehagaki-footer-background: #e2ebe5;
-  --ehagaki-dialog-background: #ffffff;
   --ehagaki-font-family: system-ui, sans-serif;
 }
 ```
+
+Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定色が使われます。`themeMode` の
+`system` / `light` / `dark` とhostへ適用される `color-scheme` に応じてsurfaceが切り替わります。
 
 ## `::part()` によるスタイル調整
 

@@ -91,6 +91,35 @@ function transformAppCss(css: string): string {
         .replace("body {", ".ehagaki-web-component-shell {");
 }
 
+function getWebComponentThemeCss(): string {
+    return `:host {
+        display: block;
+        --accent-color: var(--ehagaki-accent-color, var(--accent-color-default));
+        --base-color: var(--ehagaki-base-color);
+        --bg: var(--ehagaki-background, var(--surface-bg));
+        --text: var(--ehagaki-text, var(--semantic-text));
+        --border: var(--ehagaki-border, var(--surface-border));
+        --link: var(--ehagaki-link, var(--semantic-link));
+        --bg-input: var(--ehagaki-input-background, var(--surface-input));
+        --bg-footer: var(--ehagaki-footer-background, var(--surface-footer));
+        --dialog-bg: var(--ehagaki-dialog-background, var(--surface-dialog));
+        font-family: var(--ehagaki-font-family, system-ui, sans-serif);
+    }
+
+    .ehagaki-web-component-shell {
+        position: relative;
+        container-type: inline-size;
+        background: var(--bg);
+    }
+
+    .ehagaki-web-component-shell,
+    .ehagaki-web-component-app {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+    }`;
+}
+
 export class EHagakiComposerElement extends HTMLElement {
     static get observedAttributes(): string[] {
         return ["asset-base"];
@@ -201,7 +230,7 @@ export class EHagakiComposerElement extends HTMLElement {
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
             const styles = document.createElement("style");
-            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n:host { display: block; --bg: var(--ehagaki-background, light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%))); --text: var(--ehagaki-text, light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%))); --border: var(--ehagaki-border, light-dark(hsl(0, 0%, 83%), dimgray)); --link: var(--ehagaki-link, light-dark(#1a0dab, #99c3ff)); --bg-input: var(--ehagaki-input-background, light-dark(#fff, hsl(0, 0%, 19%))); --bg-footer: var(--ehagaki-footer-background, light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%))); --dialog-bg: var(--ehagaki-dialog-background, light-dark(#fff, hsl(0, 0%, 14%))); font-family: var(--ehagaki-font-family, system-ui, sans-serif); } .ehagaki-web-component-shell { position: relative; container-type: inline-size; background: var(--bg); } .ehagaki-web-component-shell, .ehagaki-web-component-app { width: 100%; height: 100%; min-height: 0; }`;
+            styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
             shell.part.add("shell");
