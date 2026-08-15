@@ -25,7 +25,11 @@
   --main-content-top-spacing: 6px;
   --composer-bottom-reserved-height: 116px;
 
-  --theme: hsl(152, 74%, 43%);
+  /* Theme inputs. --theme remains the compatibility name used by existing
+     components; --base-color is intentionally unset unless a host supplies it. */
+  --accent-color-default: hsl(152, 74%, 43%);
+  --accent-color: var(--accent-color-default);
+  --theme: var(--accent-color);
   --text-black: hsl(0, 0%, 24%);
   --nostr-bg: hsl(270, 100%, 98%);
   --yellow: hsl(50, 100%, 50%);
@@ -34,39 +38,93 @@
   --dark-gray: hsl(0, 0%, 66%);
   --light-gray: hsl(0, 0%, 83%);
 
-  /* ライトモード・ダークモード用カラー変数（デフォルト） */
-  --bg: light-dark(hsl(0, 0%, 89%), hsl(0, 0%, 12%));
-  --bg-input: light-dark(hsl(0, 0%, 100%), hsl(0, 0%, 19%));
-  --bg-footer: light-dark(hsl(0, 0%, 82%), hsl(0, 0%, 10%));
-  --bg-translucent: light-dark(#EDEDEDcc, #212121cc);
-  --bg-buttonbar: light-dark(hsl(0, 0%, 91%), hsl(0, 0%, 28%));
+  /* ライトモード・ダークモード用のneutral surface生成 */
+  --surface-bg: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 89%)) 8%, hsl(0, 0%, 89%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 8%, hsl(0, 0%, 12%))
+  );
+  --surface-input: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 5%, hsl(0, 0%, 100%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 5%, hsl(0, 0%, 19%))
+  );
+  --surface-footer: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 82%)) 12%, hsl(0, 0%, 82%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 12%, hsl(0, 0%, 10%))
+  );
+  --surface-buttonbar: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 91%)) 10%, hsl(0, 0%, 91%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 28%)) 10%, hsl(0, 0%, 28%))
+  );
 
-  --btn-bg: light-dark(hsl(0, 0%, 92%), hsl(0, 0%, 25%));
+  --surface-button: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 8%, hsl(0, 0%, 92%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 25%)) 8%, hsl(0, 0%, 25%))
+  );
+  --surface-button-border: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 75%)) 14%, hsl(0, 0%, 75%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 14%, hsl(0, 0%, 30%))
+  );
+  --surface-button-preview-action: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 74%)) 12%, hsl(0, 0%, 74%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 36%)) 12%, hsl(0, 0%, 36%))
+  );
+
+  --surface-border: light-dark(
+    color-mix(in srgb, var(--base-color, var(--light-gray)) 14%, var(--light-gray)),
+    color-mix(in srgb, var(--base-color, dimgray) 14%, dimgray)
+  );
+  --surface-border-hr: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 84%)) 10%, hsl(0, 0%, 84%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 10%, hsl(0, 0%, 30%))
+  );
+  --surface-border-hr-light: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 7%, hsl(0, 0%, 92%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 20%)) 7%, hsl(0, 0%, 20%))
+  );
+
+  --surface-dialog: light-dark(
+    color-mix(in srgb, var(--base-color, white) 5%, white),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 5%, hsl(0, 0%, 14%))
+  );
+  --surface-window: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 95%)) 5%, hsl(0, 0%, 95%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 5%, hsl(0, 0%, 14%))
+  );
+
+  --bg: var(--surface-bg);
+  --bg-input: var(--surface-input);
+  --bg-footer: var(--surface-footer);
+  --bg-translucent: light-dark(#EDEDEDcc, #212121cc);
+  --bg-buttonbar: var(--surface-buttonbar);
+
+  --btn-bg: var(--surface-button);
   --btn-bg2: light-dark(color-mix(in srgb, var(--btn-bg), black 6%), color-mix(in srgb, var(--btn-bg), white 10%));
   --btn-bg3: light-dark(color-mix(in srgb, var(--btn-bg), black 11%), color-mix(in srgb, var(--btn-bg), white 20%));
-  --btn-border: light-dark(hsl(0, 0%, 75%), hsl(0, 0%, 30%));
+  --btn-border: var(--surface-button-border);
   --btn-hover-bg: light-dark(rgba(50, 50, 50, 0.12), rgba(255, 255, 255, 0.12));
-  --btn-post-preview-action: light-dark(hsl(0, 0%, 74%), hsl(0, 0%, 36%));
+  --btn-post-preview-action: var(--surface-button-preview-action);
 
-  --border: light-dark(var(--light-gray), dimgray);
-  --border-hr: light-dark(hsl(0, 0%, 84%), hsl(0, 0%, 30%));
-  --border-hr-light: light-dark(hsl(0, 0%, 92%), hsl(0, 0%, 20%));
+  --border: var(--surface-border);
+  --border-hr: var(--surface-border-hr);
+  --border-hr-light: var(--surface-border-hr-light);
 
-  --text: light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%));
+  --semantic-text: light-dark(hsl(0, 0%, 24%), hsl(0, 0%, 90%));
+  --text: var(--semantic-text);
   --text-light: light-dark(hsl(0, 0%, 46%), hsl(0, 0%, 75%));
   --text-muted: light-dark(hsl(0, 0%, 60%), hsl(0, 0%, 55%));
   --text-red: light-dark(hsl(0, 99%, 45%), hsl(0, 99%, 69%));
   --text-r: light-dark(#e6e6e6, #3D3D3D);
 
-  --link: light-dark(#1a0dab, #99c3ff);
+  --semantic-link: light-dark(#1a0dab, #99c3ff);
+  --link: var(--semantic-link);
   --link-visited: light-dark(#681da8, #c58af9);
 
-  --dialog-bg: light-dark(white, hsl(0, 0%, 14%));
+  --dialog-bg: var(--surface-dialog);
   --dialog-bg2: light-dark(color-mix(in srgb, var(--dialog-bg), black 6%), color-mix(in srgb, var(--dialog-bg), white 10%));
   --dialog-bg3: light-dark(color-mix(in srgb, var(--dialog-bg), black 11%), color-mix(in srgb, var(--dialog-bg), white 16%));
   --dialog-bg-overlay: light-dark(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.8));
 
-  --window: light-dark(hsl(0, 0%, 95%), hsl(0, 0%, 14%));
+  --window: var(--surface-window);
 
   --svg: light-dark(hsl(0, 0%, 36%), hsl(0, 0%, 90%));
   --svg-light: var(--text-light);

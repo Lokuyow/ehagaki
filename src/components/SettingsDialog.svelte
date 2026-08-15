@@ -1027,7 +1027,7 @@
 
     .sw-update-section {
         border-radius: 8px;
-        background: rgba(var(--theme-rgb), 0.05);
+        background: color-mix(in srgb, var(--theme) 5%, transparent);
     }
 
     .sw-update-label {

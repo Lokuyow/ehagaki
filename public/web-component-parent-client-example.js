@@ -20,7 +20,12 @@ let secondaryComposer = null;
 let loadedModuleUrl = "";
 let moduleLoadPromise = null;
 
-const CUSTOM_STYLE_FIELDS = [
+const THEME_STYLE_FIELDS = [
+    ["--ehagaki-accent-color", "style-accent"],
+    ["--ehagaki-base-color", "style-base"],
+];
+
+const DETAIL_STYLE_FIELDS = [
     ["--ehagaki-background", "style-background"],
     ["--ehagaki-text", "style-text"],
     ["--ehagaki-border", "style-border"],
@@ -31,51 +36,29 @@ const CUSTOM_STYLE_FIELDS = [
     ["--ehagaki-font-family", "style-font"],
 ];
 
+const CUSTOM_STYLE_FIELDS = [...THEME_STYLE_FIELDS, ...DETAIL_STYLE_FIELDS];
+
 const STYLE_PRESETS = {
     mint: {
-        background: "#f4f8f5",
-        text: "#183028",
-        border: "#b8c7be",
-        link: "#28764f",
-        input: "#ffffff",
-        footer: "#e2ebe5",
-        dialog: "#ffffff",
-        font: "system-ui, sans-serif",
+        accent: "#28764f",
+        base: "#dcefe4",
         partOutline: "#28764f",
     },
     blue: {
-        background: "#f3f7fb",
-        text: "#1d2a36",
-        border: "#b7c6d3",
-        link: "#1769aa",
-        input: "#ffffff",
-        footer: "#dfeaf3",
-        dialog: "#ffffff",
-        font: "system-ui, sans-serif",
+        accent: "#1769aa",
+        base: "#dfeaf3",
         partOutline: "#1769aa",
     },
     dark: {
-        background: "#181a1b",
-        text: "#e8e8e8",
-        border: "#4a4f52",
-        link: "#8ab4f8",
-        input: "#242728",
-        footer: "#202324",
-        dialog: "#242728",
-        font: "system-ui, sans-serif",
+        accent: "#8ab4f8",
+        base: "#242728",
         partOutline: "#8ab4f8",
     },
 };
 
 const STYLE_PRESET_FIELDS = [
-    ["style-background", "background"],
-    ["style-text", "text"],
-    ["style-border", "border"],
-    ["style-link", "link"],
-    ["style-input", "input"],
-    ["style-footer", "footer"],
-    ["style-dialog", "dialog"],
-    ["style-font", "font"],
+    ["style-accent", "accent"],
+    ["style-base", "base"],
 ];
 
 function getElement(id) {
@@ -294,6 +277,9 @@ function selectStylePreset(name) {
     const preset = STYLE_PRESETS[name];
     for (const [id, key] of STYLE_PRESET_FIELDS) {
         getElement(id).value = preset[key];
+    }
+    for (const [, id] of DETAIL_STYLE_FIELDS) {
+        getElement(id).value = "";
     }
     getElement("style-part-outline").value = preset.partOutline;
     appendLog(`styles preset selected: ${name}`);

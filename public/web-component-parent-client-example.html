@@ -241,13 +241,15 @@
 
                 <div class="card stack">
                     <h2>CSS Custom Properties / parts</h2>
-                    <p class="small">Create / Mount時はeHagaki本体のデフォルトCSSを使います。空欄は本体デフォルトを意味し、プリセットは入力欄へ値を入れるだけで表示は変えません。値は自由に編集でき、「入力したカスタムCSSを適用」を押したときだけ反映されます。「デフォルトに戻す」ではoverrideと入力欄をクリアします。</p>
+                    <p class="small">Create / Mount時はeHagaki本体のデフォルトCSSを使います。Accent / Baseは少数の指定でsurface群へ色味を付ける簡易テーマ、下段は個別tokenを指定する詳細overrideです。空欄は本体デフォルトを意味し、「入力したカスタムCSSを適用」を押したときだけ反映されます。</p>
                     <div class="buttons">
                         <button id="preset-mint" type="button" class="ghost">ミント</button>
                         <button id="preset-blue" type="button" class="ghost">ブルー</button>
                         <button id="preset-dark" type="button" class="ghost">ダーク</button>
                     </div>
                     <div class="grid-2">
+                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="例: #28764f"></div>
+                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="例: #dcefe4"></div>
                         <div class="field"><label for="style-background">background</label><input id="style-background" placeholder="未指定 = eHagakiデフォルト"></div>
                         <div class="field"><label for="style-text">text</label><input id="style-text" placeholder="未指定 = eHagakiデフォルト"></div>
                         <div class="field"><label for="style-border">border</label><input id="style-border" placeholder="未指定 = eHagakiデフォルト"></div>
@@ -262,7 +264,7 @@
                         <button id="apply-styles" type="button" class="secondary">入力したカスタムCSSを適用</button>
                         <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
                     </div>
-                    <p class="small"><code>ehagaki-composer::part(header)</code> と <code>::part(composer)</code> にoutlineを適用する、このページのスタイルがあります。iframeではこのCSS境界を直接使えません。</p>
+                    <p class="small">Accent / Baseはsurface生成に使われ、backgroundやtextなどの個別overrideが指定されたtokenだけを上書きします。<code>ehagaki-composer::part(header)</code> と <code>::part(composer)</code> はレイアウトや局所調整用で、iframeではこのCSS境界を直接使えません。</p>
                 </div>
             </div>
         </section>
