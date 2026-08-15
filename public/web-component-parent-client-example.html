@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eHagaki Web Component Reference</title>
+    <link rel="icon" href="./favicon.ico">
     <style>
         :root {
             color-scheme: light;
@@ -170,7 +171,7 @@
                         <label for="asset-base">asset base</label>
                         <input id="asset-base" type="url" spellcheck="false">
                     </div>
-                    <p class="small">公開sampleの既定値は <code>./web-component/</code> です。GitHub Pagesの <code>/ehagaki/</code> baseを壊さないためroot-relative URLは使いません。module importは明示的なCreate操作でのみ発生します。</p>
+                    <p class="small">通常モードでは既定の同梱moduleをページ初期化時に自動読み込みしてeHagakiを表示します。任意moduleを試す場合はURL末尾に <code>?manual=1</code> を付けてmanual modeに入り、module URLを編集してから <code>Create / Mount</code> を押してください。manual modeでは明示的なCreate操作までmoduleを読み込みません。<code>moduleUrl</code> などのqueryだけで任意moduleを自動実行することはありません。</p>
                     <p class="small">外部moduleはhostページと同じJavaScript権限で実行されます。asset baseもworker/FFmpeg等の実行可能resourceに使われるため、信頼できるURLだけを指定してください。asset baseはCreate / Recreate時にelementへ設定されます。module load後はCustom Elements Registryのため実装を切り替えられず、別moduleを試すにはページをreloadしてください。</p>
                 </div>
 

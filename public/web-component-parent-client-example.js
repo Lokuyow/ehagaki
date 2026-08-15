@@ -14,6 +14,7 @@ const readyStatus = document.querySelector("#ready-status");
 const nip07Status = document.querySelector("#nip07-status");
 const componentMount = document.querySelector("#component-mount");
 const eventLog = document.querySelector("#event-log");
+const isManualMode = new URLSearchParams(window.location.search).get("manual") === "1";
 
 let currentComposer = null;
 let secondaryComposer = null;
@@ -453,4 +454,11 @@ appendLog("sample ready", {
     sameWindowRealm: true,
     eventTransport: "CustomEvent bubbles+composed",
     secretLogging: false,
+    mode: isManualMode ? "manual" : "auto",
 });
+
+if (!isManualMode) {
+    void createComposer().catch((error) => appendLog("initial create failed", { code: safeErrorCode(error) }));
+} else {
+    appendLog("manual mode: waiting for explicit Create / Mount");
+}

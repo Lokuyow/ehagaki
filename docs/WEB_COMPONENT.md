@@ -10,8 +10,9 @@ Window realm で動作し、ホストの JavaScript からは通常の要素・�
 DOM へ直接組み込みたい場合に適しています。
 
 実際に操作できる公開リファレンスは、[Web Component 親ページサンプル](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-です。ページを開いただけではコンポーネントを自動的に接続しません。ページを開いた後、
-`Create / Mount` を押すと Web Component が生成されます。サンプルでは、モジュールの読み込み、
+です。通常モードではページを開くと、既定の同梱モジュールとコンポーネントが自動的に接続されます。
+任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
+`Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。サンプルでは、モジュールの読み込み、
 作成・破棄・再作成、設定、投稿コンテキスト、各種イベント、2 個目のインスタンスの拒否、
 CSS Custom Properties、`::part()` を確認できます。
 
@@ -662,8 +663,9 @@ CSP の `worker-src` では配信元オリジンと `blob:` の両方を許可�
 ## 実動サンプル
 
 公開サンプルは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
-です。ページを開いた後、`Create / Mount` を押すと Web Component が生成されます。ページロード時に
-モジュールやコンポーネントを自動的に接続することはありません。
+です。通常モードではページを開くと、既定の同梱モジュールとコンポーネントが自動的に接続されます。
+任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
+`Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。
 
 サンプルでは次の操作を確認できます。
 
