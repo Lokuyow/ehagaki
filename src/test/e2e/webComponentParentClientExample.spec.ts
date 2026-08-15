@@ -89,6 +89,54 @@ test.afterAll(async () => {
     await close(server);
 });
 
+test("keeps the sample columns and panels content-sized", async ({ page }) => {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
+
+        const result = await page.evaluate(() => {
+            const main = document.querySelector("main")!;
+            const columns = [...document.querySelectorAll<HTMLElement>("main > .column")];
+            const rightPanels = [...columns[1].querySelectorAll<HTMLElement>(":scope > .panel")];
+            const comparisonPanel = rightPanels[2];
+            const comparisonIntro = comparisonPanel.querySelector<HTMLElement>(":scope > div")!;
+            const comparisonTable = comparisonPanel.querySelector<HTMLTableElement>(".comparison")!;
+            const protocolPanel = rightPanels[3];
+            const protocolHeading = protocolPanel.querySelector<HTMLElement>("h2")!;
+            const protocolList = protocolPanel.querySelector<HTMLElement>(".api-list")!;
+            const clearLog = document.querySelector<HTMLButtonElement>("#clear-log")!;
+            const eventHeader = clearLog.parentElement!;
+            const rect = (element: Element) => element.getBoundingClientRect().toJSON();
+            return {
+                viewportWidth: window.innerWidth,
+                mainColumns: getComputedStyle(main).gridTemplateColumns,
+                mainAlignItems: getComputedStyle(main).alignItems,
+                columnHeights: columns.map((column) => column.getBoundingClientRect().height),
+                panelGaps: rightPanels.slice(1).map((panel, index) => panel.getBoundingClientRect().top - rightPanels[index].getBoundingClientRect().bottom),
+                comparisonGap: comparisonTable.getBoundingClientRect().top - comparisonIntro.getBoundingClientRect().bottom,
+                protocolGap: protocolList.getBoundingClientRect().top - protocolHeading.getBoundingClientRect().bottom,
+                clearLog: rect(clearLog),
+                eventHeader: rect(eventHeader),
+                eventPanel: rect(rightPanels[1]),
+            };
+        });
+
+        expect(result.mainAlignItems).toBe("start");
+        expect(result.columnHeights[1]).toBeLessThan(result.columnHeights[0]);
+        expect(result.panelGaps.every((gap) => gap <= 20.5)).toBe(true);
+        expect(result.comparisonGap).toBeLessThanOrEqual(20.5);
+        expect(result.protocolGap).toBeLessThanOrEqual(20.5);
+        expect(result.clearLog.width).toBeLessThan(result.eventPanel.width / 2);
+        expect(result.clearLog.height).toBeLessThanOrEqual(60);
+        expect(result.clearLog.top).toBeGreaterThanOrEqual(result.eventHeader.top - 1);
+        if (result.viewportWidth > 980) {
+            expect(result.mainColumns.split(" ")).toHaveLength(2);
+        } else {
+            expect(result.mainColumns.split(" ")).toHaveLength(1);
+        }
+    }
+});
+
 test("keeps the comparison table within the page viewport at mobile widths", async ({ page }) => {
     for (const width of [360, 390]) {
         await page.setViewportSize({ width, height: 844 });
