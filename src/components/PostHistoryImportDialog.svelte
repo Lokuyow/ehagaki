@@ -466,8 +466,8 @@
     }
 
     .import-drop-zone-active {
-        border-color: var(--accent-color, var(--primary-color));
-        background: color-mix(in srgb, var(--accent-color, var(--primary-color)), transparent 90%);
+        border-color: var(--accent-color);
+        background: color-mix(in srgb, var(--accent-color), transparent 90%);
     }
 
     .import-drop-hint {
