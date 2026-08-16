@@ -40,7 +40,7 @@
 
   /* ライトモード・ダークモード用のneutral surface生成 */
   --surface-bg: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 8%, hsl(0, 0%, 92%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 94%)) 8%, hsl(0, 0%, 94%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 8%, hsl(0, 0%, 12%))
   );
   --surface-input: light-dark(
