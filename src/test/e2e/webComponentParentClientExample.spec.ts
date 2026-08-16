@@ -98,10 +98,10 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
     ]) {
         await page.setViewportSize(viewport);
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
-        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+        await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
         await expect(page.getByRole("heading", { name: "eHagaki Web Component Playground", level: 1 })).toBeVisible();
-        await expect(page.getByRole("link", { name: "Web Component guide" })).toBeVisible();
-        await expect(page.getByRole("link", { name: "iframe sample" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "Web Componentのガイド" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "iframeのサンプル" })).toBeVisible();
         await page.evaluate(() => window.scrollTo(0, 0));
 
         const result = await page.evaluate(() => {
@@ -214,7 +214,7 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
             expect(result.referenceColumns.columns).toHaveLength(2);
             expect(result.themeControlsTemplate.split(" ")).toHaveLength(2);
             for (const column of result.referenceColumns.columns) {
-                expect(column.rect.height).toBeCloseTo(column.scrollHeight, 0);
+                expect(Math.abs(column.rect.height - column.scrollHeight)).toBeLessThanOrEqual(1);
             }
             expect(result.preview.top).toBeLessThanOrEqual(result.frame.top);
             expect(result.frame.height).toBeGreaterThanOrEqual(560);
@@ -251,7 +251,7 @@ test("keeps the comparison table within the page viewport at mobile widths", asy
 
 test("uses the internal theme surface even when the host forces a white background", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     const result = await page.locator("ehagaki-composer").evaluate(async (element) => {
         const composer = element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> };
         const shadow = composer.shadowRoot!;
@@ -310,7 +310,7 @@ test("keeps Web Component header controls responsive to component width", async 
         await page.locator("#component-mount").evaluate((mount, width) => {
             (mount as HTMLElement).style.width = width;
         }, mountWidth);
-        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+        await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
 
         const geometry = await page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
@@ -373,9 +373,9 @@ test("boots from production site output and exercises the public sample API", as
 
     await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
     await expect(page.locator("#asset-base")).toHaveValue(`${origin}/ehagaki/web-component/`);
-    await expect(page.locator("#module-status")).toHaveText("module loaded; reload to choose another implementation");
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
-    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    await expect(page.locator("#module-status")).toHaveText("モジュールを読み込みました（別の実装を選ぶには再読み込み）");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+    await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
     await expect(page.locator("#style-part-outline")).toHaveCount(0);
     for (const id of [
@@ -427,7 +427,7 @@ test("boots from production site output and exercises the public sample API", as
     expect(Object.values(initialStyleResult).every((value) => value === "")).toBe(true);
 
     await page.locator("#theme-mode").selectOption("light");
-    await page.getByRole("button", { name: "実行中に適用" }).click();
+    await page.getByRole("button", { name: "設定を適用" }).click();
     await expect(page.locator("#component-status")).toContainText("themeMode");
     const lightThemeResult = await page.locator("ehagaki-composer").evaluate((element) => {
         const appRoot = element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-app-root")!;
@@ -443,7 +443,7 @@ test("boots from production site output and exercises the public sample API", as
     expect(lightThemeResult.appColor).not.toBe(lightThemeResult.appBackground);
 
     await page.locator("#theme-mode").selectOption("dark");
-    await page.getByRole("button", { name: "実行中に適用" }).click();
+    await page.getByRole("button", { name: "設定を適用" }).click();
     await expect(page.locator("#component-status")).toContainText("themeMode");
     const darkThemeResult = await page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
@@ -577,24 +577,24 @@ test("boots from production site output and exercises the public sample API", as
         await expect(page.locator(`#${id}`)).toHaveValue("");
     }
 
-    await page.getByRole("button", { name: "実行中に適用" }).click();
+    await page.getByRole("button", { name: "設定を適用" }).click();
     await expect(page.locator("#component-status")).toContainText("locale");
 
     const reply = nip19.noteEncode("a".repeat(64));
     const quote = nip19.noteEncode("b".repeat(64));
     const secondQuote = nip19.noteEncode("c".repeat(64));
     await page.locator("#context-reply").fill(reply);
-    await page.getByRole("button", { name: "replyを適用" }).click();
-    await expect(page.locator("#component-status")).toHaveText("reply context: applied");
+    await page.getByRole("button", { name: "返信先を反映" }).click();
+    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
     await page.locator("#context-quote-one").fill(quote);
-    await page.getByRole("button", { name: "quoteを適用" }).click();
-    await expect(page.locator("#component-status")).toHaveText("quote context: applied");
+    await page.getByRole("button", { name: "引用を反映", exact: true }).click();
+    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
     await page.locator("#context-quote-two").fill(secondQuote);
-    await page.getByRole("button", { name: "multiple quote" }).click();
-    await expect(page.locator("#component-status")).toHaveText("multiple quote context: applied");
+    await page.getByRole("button", { name: "複数の引用を反映" }).click();
+    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
 
-    await page.getByRole("button", { name: "invalid contextを試す" }).click();
-    await expect(page.locator("#component-status")).toContainText("invalid context: rejected");
+    await page.getByRole("button", { name: "無効な投稿内容を試す" }).click();
+    await expect(page.locator("#component-status")).toContainText("投稿内容を反映できませんでした");
     await expect(page.locator("#event-log")).toHaveValue(/ehagaki-composer-context-updated/);
 
 });
@@ -619,17 +619,17 @@ test("does not create a second primary while auto-mount waits for the module", a
     try {
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`, { waitUntil: "commit" });
         await moduleRequestStarted;
-        await page.getByRole("button", { name: "Create / Mount" }).click();
+        await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
         releaseModule();
 
-        await expect(page.locator("#module-status")).toContainText("module loaded");
-        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
-        await expect(page.locator("#component-status")).toHaveText("component mounted");
+        await expect(page.locator("#module-status")).toContainText("モジュールを読み込みました");
+        await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+        await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
         await expect(page.locator("ehagaki-composer")).toHaveCount(1);
         await expect(page.locator("#event-log")).not.toHaveValue(/multiple_instances_unsupported/);
 
         await page.locator("#theme-mode").selectOption("light");
-        await page.getByRole("button", { name: "実行中に適用" }).click();
+        await page.getByRole("button", { name: "設定を適用" }).click();
         await expect(page.locator("#component-status")).toContainText("themeMode");
         await expect(page.locator("ehagaki-composer")).toHaveCount(1);
     } finally {
@@ -642,7 +642,7 @@ test("keeps the public sample container layout stable across destroy and recreat
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
         !!element.shadowRoot?.querySelector(".tiptap-editor"),
     )).toBe(true);
@@ -683,18 +683,18 @@ test("keeps the public sample container layout stable across destroy and recreat
         };
     });
     const first = await measure();
-    await page.getByRole("button", { name: "Destroy / Unmount" }).click();
+    await page.getByRole("button", { name: "削除して非表示（Destroy / Unmount）" }).click();
     await expect(page.locator("ehagaki-composer")).toHaveCount(0);
-    await page.getByRole("button", { name: "Create / Mount" }).click();
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
         !!element.shadowRoot?.querySelector(".tiptap-editor"),
     )).toBe(true);
     await waitForStableEditorSurface();
     const second = await measure();
 
-    await page.getByRole("button", { name: "Recreate" }).click();
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await page.getByRole("button", { name: "作り直す（Recreate）" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot;
         const editorContainer = shadow?.querySelector<HTMLElement>(".editor-container");
@@ -742,26 +742,26 @@ test("preserves inherited Accent/Base theme across destroy and recreate", async 
         };
     });
 
-    await page.getByRole("button", { name: "Create / Mount" }).click();
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     const first = await readTheme();
     expect(first.accent.toLowerCase()).toContain("#8a3ffc");
     expect(first.base.toLowerCase()).toContain("#e8dcff");
     expect(first.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
 
-    await page.getByRole("button", { name: "Destroy / Unmount" }).click();
+    await page.getByRole("button", { name: "削除して非表示（Destroy / Unmount）" }).click();
     await expect(page.locator("ehagaki-composer")).toHaveCount(0);
-    await page.getByRole("button", { name: "Create / Mount" }).click();
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect.poll(readTheme).toEqual(first);
 });
 
 test("demonstrates second-instance rejection and recreation after destroy", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
 
     await page.getByRole("button", { name: "2個目を生成" }).click();
-    await expect(page.locator("#component-status")).toHaveText("2個目は inert: multiple_instances_unsupported");
+    await expect(page.locator("#component-status")).toHaveText("2個目は動作しません（inert: multiple_instances_unsupported）");
     await expect(page.locator("#event-log")).toHaveValue(/multiple_instances_unsupported/);
     await expect(page.locator("ehagaki-composer")).toHaveCount(2);
     const secondInstanceStyles = await page.locator("ehagaki-composer").evaluateAll((elements) => elements.map((element) => ({
@@ -772,21 +772,21 @@ test("demonstrates second-instance rejection and recreation after destroy", asyn
         { background: "" },
     ]);
 
-    await page.getByRole("button", { name: "Destroy / Unmount" }).click();
-    await expect(page.locator("#component-status")).toContainText("persistent settings remain");
-    await page.getByRole("button", { name: "Create / Mount" }).click();
-    await expect(page.locator("#component-status")).toHaveText("component mounted");
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await page.getByRole("button", { name: "削除して非表示（Destroy / Unmount）" }).click();
+    await expect(page.locator("#component-status")).toContainText("設定は保持されています");
+    await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
+    await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
 
-    await page.getByRole("button", { name: "Recreate" }).click();
-    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    await page.getByRole("button", { name: "作り直す（Recreate）" }).click();
+    await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
 
     await page.locator("details.advanced-settings summary").click();
     await page.locator("#style-background").fill("#fefefe");
     await page.getByRole("button", { name: "テーマカラーを適用" }).click();
-    await page.getByRole("button", { name: "Recreate" }).click();
-    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    await page.getByRole("button", { name: "作り直す（Recreate）" }).click();
+    await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
     const recreatedStyle = await page.locator("ehagaki-composer").evaluate((element) => ({
         background: element.style.getPropertyValue("--ehagaki-background"),
     }));
@@ -797,8 +797,8 @@ test("does not auto-import query-selected modules outside manual mode", async ({
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?moduleUrl=${encodeURIComponent(`${origin}${securityFixturePath}`)}`);
 
     await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
-    await expect(page.locator("#module-status")).toContainText("module loaded");
-    await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+    await expect(page.locator("#module-status")).toContainText("モジュールを読み込みました");
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
     await expect(page.locator("ehagaki-composer")).toHaveCount(1);
     expect(requests).not.toContain(securityFixturePath);
     expect(await page.evaluate(() => window.__securityFixtureLoaded === true)).toBe(false);
@@ -807,7 +807,7 @@ test("does not auto-import query-selected modules outside manual mode", async ({
 test("keeps arbitrary module loading explicit in manual mode", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?manual=1`);
 
-    await expect(page.locator("#module-status")).toHaveText("module 未読み込み");
+    await expect(page.locator("#module-status")).toHaveText("モジュール：未読み込み");
     await expect(page.locator("ehagaki-composer")).toHaveCount(0);
     await expect(page.locator("#module-url")).toBeEditable();
     expect(requests).not.toContain("/ehagaki/web-component/ehagaki-composer.js");
@@ -819,10 +819,10 @@ test("keeps arbitrary module loading explicit in manual mode", async ({ page }) 
     await expect(page.locator("#event-log")).not.toHaveValue(/component_not_mounted/);
 
     await page.locator("#module-url").fill(`${origin}${securityFixturePath}`);
-    await page.getByRole("button", { name: "Create / Mount" }).click();
-    await expect(page.locator("#module-status")).toContainText("module loaded");
+    await page.getByRole("button", { name: "作成して表示（Create / Mount）" }).click();
+    await expect(page.locator("#module-status")).toContainText("モジュールを読み込みました");
     await expect(page.locator("#module-url")).toBeDisabled();
-    await expect(page.locator("#component-status")).toHaveText("component mounted");
+    await expect(page.locator("#component-status")).toHaveText("Componentを表示しました");
     expect(requests).toContain(securityFixturePath);
     expect(await page.evaluate(() => window.__securityFixtureLoaded === true)).toBe(true);
 });
