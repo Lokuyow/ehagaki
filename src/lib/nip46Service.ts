@@ -57,7 +57,7 @@ const NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE =
 const NIP46_CLIENT_METADATA = {
     name: EHAGAKI_APP_NAME,
     url: 'https://lokuyow.github.io/ehagaki/',
-    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon_x192.png',
+    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon.webp',
 } as const;
 
 type Nip46LogFailureReason =
