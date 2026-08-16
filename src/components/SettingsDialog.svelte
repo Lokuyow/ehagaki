@@ -277,9 +277,14 @@
 
     function handleColorBlur(kind: "accent" | "base"): void {
         const value = kind === "accent" ? accentColorInput : baseColorInput;
-        const error = value && !normalizeHexColor(value)
-            ? $_("settingsDialog.invalid_hex_color")
-            : null;
+        const appliedColor =
+            kind === "accent"
+                ? themeColorStore.accentColor
+                : themeColorStore.baseColor;
+        const isUnsetBase = kind === "base" && !value && !appliedColor;
+        const error = isUnsetBase || normalizeHexColor(value)
+            ? null
+            : $_("settingsDialog.invalid_hex_color");
         if (kind === "accent") {
             accentColorError = error;
         } else {
@@ -633,7 +638,7 @@
                         <input
                             aria-label={$_("settingsDialog.accent_color_picker")}
                             type="color"
-                            value={normalizeHexColor(accentColorInput) ?? defaultAccentColor}
+                            value={normalizeHexColor(themeColorStore.accentColor) ?? defaultAccentColor}
                             oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
                         />
                         <input
@@ -666,7 +671,7 @@
                         <input
                             aria-label={$_("settingsDialog.base_color_picker")}
                             type="color"
-                            value={normalizeHexColor(baseColorInput) ?? defaultBaseColorPickerValue}
+                            value={normalizeHexColor(themeColorStore.baseColor) ?? defaultBaseColorPickerValue}
                             oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
                         />
                         <input
