@@ -218,7 +218,7 @@ function applySettingsToComposer(settings, label) {
     });
 }
 
-function applyContextToComposer(context, label) {
+function applyContextToComposer(context, label, statusLabel) {
     if (!currentComposer) {
         setStatus(componentStatus, "先にComponentを作成してください", "warn");
         appendLog(`${label}: component_not_mounted`);
@@ -231,11 +231,11 @@ function applyContextToComposer(context, label) {
             quoteCount: Array.isArray(context.quotes) ? context.quotes.length : 0,
             hasChannel: !!context.channel,
         });
-        setStatus(componentStatus, "投稿内容・返信・引用を反映しました", "ok");
+        setStatus(componentStatus, `${statusLabel}しました`, "ok");
     }).catch((error) => {
         const code = safeErrorCode(error);
         appendLog(`${label}: context rejected`, { code });
-        setStatus(componentStatus, `投稿内容を反映できませんでした（${code}）`, "error");
+        setStatus(componentStatus, `${statusLabel}できませんでした（${code}）`, "error");
     });
 }
 
@@ -419,16 +419,16 @@ function bindActions() {
     getElement("create-second").addEventListener("click", () => void createSecondComposer().catch((error) => appendLog("secondary create failed", { code: safeErrorCode(error) })));
     getElement("apply-runtime-settings").addEventListener("click", () => applySettingsToComposer(getSettings(), "runtime setSettings"));
     getElement("apply-invalid-settings").addEventListener("click", () => applySettingsToComposer({ unsupportedKey: true }, "invalid setSettings"));
-    getElement("apply-content").addEventListener("click", () => applyContextToComposer({ content: getElement("context-content").value }, "content context"));
-    getElement("apply-reply").addEventListener("click", () => applyContextToComposer({ reply: getElement("context-reply").value.trim() }, "reply context"));
-    getElement("apply-quote").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim()] }, "quote context"));
-    getElement("apply-multiple-quotes").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim(), getElement("context-quote-two").value.trim()] }, "multiple quote context"));
+    getElement("apply-content").addEventListener("click", () => applyContextToComposer({ content: getElement("context-content").value }, "content context", "投稿内容を反映"));
+    getElement("apply-reply").addEventListener("click", () => applyContextToComposer({ reply: getElement("context-reply").value.trim() }, "reply context", "返信先を反映"));
+    getElement("apply-quote").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim()] }, "quote context", "引用を反映"));
+    getElement("apply-multiple-quotes").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim(), getElement("context-quote-two").value.trim()] }, "multiple quote context", "複数の引用を反映"));
     getElement("apply-channel").addEventListener("click", () => {
         const context = getContext();
-        applyContextToComposer({ channel: context.channel }, "channel context");
+        applyContextToComposer({ channel: context.channel }, "channel context", "チャンネル情報を反映");
     });
-    getElement("clear-context").addEventListener("click", () => applyContextToComposer({ content: null, reply: null, quotes: null, channel: null }, "clear context"));
-    getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context"));
+    getElement("clear-context").addEventListener("click", () => applyContextToComposer({ content: null, reply: null, quotes: null, channel: null }, "clear context", "指定内容をクリア"));
+    getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context", "投稿内容を反映"));
     getElement("apply-styles").addEventListener("click", applyStyles);
     getElement("reset-styles").addEventListener("click", resetStyles);
     getElement("preset-azure").addEventListener("click", () => selectStylePreset("azure"));

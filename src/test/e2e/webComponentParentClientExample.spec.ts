@@ -580,18 +580,28 @@ test("boots from production site output and exercises the public sample API", as
     await page.getByRole("button", { name: "設定を適用" }).click();
     await expect(page.locator("#component-status")).toContainText("locale");
 
+    await page.getByRole("button", { name: "投稿内容を反映" }).click();
+    await expect(page.locator("#component-status")).toHaveText("投稿内容を反映しました");
+
     const reply = nip19.noteEncode("a".repeat(64));
     const quote = nip19.noteEncode("b".repeat(64));
     const secondQuote = nip19.noteEncode("c".repeat(64));
     await page.locator("#context-reply").fill(reply);
     await page.getByRole("button", { name: "返信先を反映" }).click();
-    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
+    await expect(page.locator("#component-status")).toHaveText("返信先を反映しました");
     await page.locator("#context-quote-one").fill(quote);
     await page.getByRole("button", { name: "引用を反映", exact: true }).click();
-    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
+    await expect(page.locator("#component-status")).toHaveText("引用を反映しました");
     await page.locator("#context-quote-two").fill(secondQuote);
     await page.getByRole("button", { name: "複数の引用を反映" }).click();
-    await expect(page.locator("#component-status")).toHaveText("投稿内容・返信・引用を反映しました");
+    await expect(page.locator("#component-status")).toHaveText("複数の引用を反映しました");
+
+    await page.locator("#context-channel-reference").fill(nip19.noteEncode("d".repeat(64)));
+    await page.getByRole("button", { name: "チャンネル情報を反映" }).click();
+    await expect(page.locator("#component-status")).toHaveText("チャンネル情報を反映しました");
+
+    await page.getByRole("button", { name: "指定内容をクリア" }).click();
+    await expect(page.locator("#component-status")).toHaveText("指定内容をクリアしました");
 
     await page.getByRole("button", { name: "無効な投稿内容を試す" }).click();
     await expect(page.locator("#component-status")).toContainText("投稿内容を反映できませんでした");
