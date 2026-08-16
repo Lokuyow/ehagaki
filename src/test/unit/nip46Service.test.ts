@@ -22,7 +22,7 @@ const TEST_NEW_USER_PUBKEY = 'e'.repeat(64);
 const EXPECTED_NIP46_CLIENT_METADATA = {
     name: 'eHagaki',
     url: 'https://lokuyow.github.io/ehagaki/',
-    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon_x192.png',
+    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon.webp',
 };
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
