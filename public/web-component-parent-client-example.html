@@ -39,12 +39,14 @@
         }
 
         .column, .stack { display: grid; gap: 18px; min-width: 0; }
-        .theme-playground, .reference-grid {
+        .theme-section, .reference-grid {
             display: grid;
             grid-template-columns: minmax(320px, 450px) minmax(0, 1fr);
             gap: 20px;
             align-items: start;
         }
+        .page-intro, .live-preview { display: grid; gap: 18px; }
+        .page-intro { gap: 10px; }
         .theme-controls { display: grid; gap: 16px; min-width: 0; }
         .theme-controls > header { display: grid; gap: 10px; }
         .theme-panel { display: grid; gap: 18px; }
@@ -158,7 +160,7 @@
         .check input { width: auto; }
 
         @media (max-width: 980px) {
-            .theme-playground, .reference-grid { grid-template-columns: 1fr; }
+            .theme-section, .reference-grid { grid-template-columns: 1fr; }
             .preview-panel { position: static; }
             .component-frame { height: 520px; }
             #component-mount, ehagaki-composer { height: 484px; }
@@ -179,74 +181,19 @@
 
 <body>
     <main>
-        <section class="theme-playground" aria-labelledby="theme-playground-heading">
-            <div class="theme-controls">
-                <header>
-                    <h1 id="theme-playground-heading">Theme Playground</h1>
-                    <p class="lead">プリセットやテーマカラーを試しながら、右側のeHagaki Web Componentの見た目を確認できます。</p>
-                    <p class="small"><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> / <a href="./embed-parent-client-example.html">iframe sample</a></p>
-                </header>
+        <header class="panel page-intro" aria-labelledby="page-heading">
+            <h1 id="page-heading">eHagaki Web Component Playground</h1>
+            <p class="lead">eHagaki Web Componentを実際にmountして、公開API・event・lifecycle・context・テーマカスタマイズを確認できるreference / playgroundです。</p>
+            <p class="small"><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> / <a href="./embed-parent-client-example.html">iframe sample</a></p>
+        </header>
 
-                <div class="panel theme-panel">
-                    <header>
-                        <h2>簡単設定</h2>
-                        <p class="small">プリセット、accent、baseだけでsurface全体の色味を試せます。Base Colorはneutral surfaceへmixされる色味のseedです。</p>
-                    </header>
-                    <div class="preset-grid" aria-label="Theme presets">
-                        <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
-                            <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
-                        </button>
-                        <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
-                            <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
-                        </button>
-                        <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
-                            <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
-                        </button>
-                        <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
-                            <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
-                        </button>
-                    </div>
-                    <hr class="theme-divider">
-                    <div class="grid-2">
-                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="#005FCC"></div>
-                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="#0077FF"></div>
-                    </div>
-                    <p class="small">空欄はeHagakiデフォルトです。プリセットはmount済みなら選択直後に反映され、手入力値は「テーマカラーを適用」で反映されます。</p>
-                    <div class="buttons">
-                        <button id="apply-styles" type="button" class="secondary">テーマカラーを適用</button>
-                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
-                    </div>
-
-                    <details class="advanced-settings">
-                        <summary>詳細設定</summary>
-                        <div class="advanced-content">
-                            <p class="small">個別tokenを指定すると、指定した項目だけを上書きします。空欄はeHagakiデフォルトです。</p>
-                            <div class="grid-2">
-                                <div class="field"><label for="style-background">background</label><input id="style-background"></div>
-                                <div class="field"><label for="style-text">text</label><input id="style-text"></div>
-                                <div class="field"><label for="style-border">border</label><input id="style-border"></div>
-                                <div class="field"><label for="style-link">link</label><input id="style-link"></div>
-                                <div class="field"><label for="style-input">input background</label><input id="style-input"></div>
-                                <div class="field"><label for="style-footer">footer background</label><input id="style-footer"></div>
-                                <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog"></div>
-                                <div class="field"><label for="style-font">font family</label><input id="style-font"></div>
-                            </div>
-                            <p class="small">Accent / Baseはsurface生成に使われます。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
-                        </div>
-                    </details>
-                </div>
-            </div>
-
+        <section class="live-preview" aria-labelledby="live-preview-heading">
             <div class="panel stack preview-panel">
                 <div>
-                    <h2>Component surface</h2>
-                    <p class="small">プリセットを押すと、mount済みのcomponentへCSS Custom Propertiesがその場で反映されます。</p>
+                    <h2 id="live-preview-heading">Live preview</h2>
+                    <p class="small">実際にmountされたeHagaki Web Componentを操作できます。公開APIの設定やcontext、テーマ変更の結果はこのpreviewへ反映されます。</p>
                 </div>
-                <div id="component-mount" class="component-frame" aria-label="eHagaki Web Component mount point"></div>
+                <div id="component-mount" class="component-frame" aria-label="eHagaki Web Component live preview mount point"></div>
             </div>
         </section>
 
@@ -347,14 +294,6 @@
 
             <div class="column">
                 <div class="panel stack">
-                    <div class="event-monitor-header">
-                        <div><h2>Event monitor</h2><p class="small">秘密情報・署名要求payload・raw Errorは表示せず、安全なsummaryだけを記録します。</p></div>
-                        <button id="clear-log" type="button" class="ghost">ログをクリア</button>
-                    </div>
-                    <textarea id="event-log" class="log" readonly aria-label="Web Component event log"></textarea>
-                </div>
-
-                <div class="panel stack">
                     <div>
                         <h2>iframeとの違い</h2>
                         <p class="small">Web Componentが常に安全という意味ではありません。host JavaScriptから秘密情報を隔離したい場合はiframeを使ってください。</p>
@@ -380,6 +319,86 @@
                     </ul>
                 </div>
             </div>
+        </section>
+
+        <section class="theme-section" aria-labelledby="theme-heading">
+            <div class="theme-controls">
+                <header>
+                    <h2 id="theme-heading">Theme customization</h2>
+                    <p class="lead">Web Componentの公開カスタマイズ機能として、プリセットやCSS Custom Propertiesの反映を確認できます。</p>
+                </header>
+
+                <div class="panel theme-panel">
+                    <header>
+                        <h3>Theme controls</h3>
+                        <p class="small">プリセット、accent、baseだけでsurface全体の色味を試せます。Base Colorはneutral surfaceへmixされる色味のseedです。</p>
+                    </header>
+                    <div class="preset-grid" aria-label="Theme presets">
+                        <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
+                            <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
+                        </button>
+                        <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
+                            <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
+                        </button>
+                        <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
+                            <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
+                        </button>
+                        <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
+                            <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
+                        </button>
+                    </div>
+                    <hr class="theme-divider">
+                    <div class="grid-2">
+                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="#005FCC"></div>
+                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="#0077FF"></div>
+                    </div>
+                    <p class="small">空欄はeHagakiデフォルトです。プリセットはmount済みなら選択直後に反映され、手入力値は「テーマカラーを適用」で反映されます。</p>
+                    <div class="buttons">
+                        <button id="apply-styles" type="button" class="secondary">テーマカラーを適用</button>
+                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
+                    </div>
+
+                    <details class="advanced-settings">
+                        <summary>詳細設定</summary>
+                        <div class="advanced-content">
+                            <p class="small">個別tokenを指定すると、指定した項目だけを上書きします。空欄はeHagakiデフォルトです。</p>
+                            <div class="grid-2">
+                                <div class="field"><label for="style-background">background</label><input id="style-background"></div>
+                                <div class="field"><label for="style-text">text</label><input id="style-text"></div>
+                                <div class="field"><label for="style-border">border</label><input id="style-border"></div>
+                                <div class="field"><label for="style-link">link</label><input id="style-link"></div>
+                                <div class="field"><label for="style-input">input background</label><input id="style-input"></div>
+                                <div class="field"><label for="style-footer">footer background</label><input id="style-footer"></div>
+                                <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog"></div>
+                                <div class="field"><label for="style-font">font family</label><input id="style-font"></div>
+                            </div>
+                            <p class="small">Accent / Baseはsurface生成に使われます。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <div class="panel stack">
+                <h2>Styling / Theme customization</h2>
+                <p class="small">テーマ変更はWeb Component全体の主題ではなく、埋め込み先での見た目を調整するための公開機能です。</p>
+                <ul class="api-list small">
+                    <li>プリセットとaccent / base colorをmount済みcomponentへ反映</li>
+                    <li>個別のCSS Custom Propertiesとfont familyを上書き</li>
+                    <li>公開 <code>::part()</code> の利用方法はWeb Component guideで確認</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="panel stack" aria-labelledby="event-monitor-heading">
+            <div class="event-monitor-header">
+                <div><h2 id="event-monitor-heading">Event monitor</h2><p class="small">公開APIやlifecycleから発生したeventを確認できます。秘密情報・署名要求payload・raw Errorは表示せず、安全なsummaryだけを記録します。</p></div>
+                <button id="clear-log" type="button" class="ghost">ログをクリア</button>
+            </div>
+            <textarea id="event-log" class="log" readonly aria-label="Web Component event log"></textarea>
         </section>
     </main>
     <script type="module" src="./web-component-parent-client-example.js"></script>

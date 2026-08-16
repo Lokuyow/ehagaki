@@ -89,7 +89,7 @@ test.afterAll(async () => {
     await close(server);
 });
 
-test("keeps Theme Playground controls and preview together without mobile overflow", async ({ page }) => {
+test("prioritizes the live preview and reference before theme controls without mobile overflow", async ({ page }) => {
     for (const viewport of [
         { width: 1280, height: 900 },
         { width: 1280, height: 720 },
@@ -98,28 +98,34 @@ test("keeps Theme Playground controls and preview together without mobile overfl
         await page.setViewportSize(viewport);
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
         await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+        await expect(page.getByRole("heading", { name: "eHagaki Web Component Playground", level: 1 })).toBeVisible();
         await page.evaluate(() => window.scrollTo(0, 0));
 
         const result = await page.evaluate(() => {
-            const playground = document.querySelector<HTMLElement>(".theme-playground")!;
+            const livePreview = document.querySelector<HTMLElement>(".live-preview")!;
             const controls = document.querySelector<HTMLElement>(".theme-controls")!;
+            const theme = document.querySelector<HTMLElement>(".theme-section")!;
             const preview = document.querySelector<HTMLElement>(".preview-panel")!;
             const frame = document.querySelector<HTMLElement>(".component-frame")!;
             const reference = document.querySelector<HTMLElement>(".reference-grid")!;
+            const eventMonitor = document.querySelector<HTMLElement>("[aria-labelledby=event-monitor-heading]")!;
             const clearLog = document.querySelector<HTMLButtonElement>("#clear-log")!;
             const eventHeader = clearLog.parentElement!;
             const rect = (element: Element) => element.getBoundingClientRect().toJSON();
             return {
                 viewportWidth: window.innerWidth,
                 viewportHeight: window.innerHeight,
-                playgroundColumns: getComputedStyle(playground).gridTemplateColumns,
-                playgroundTop: playground.getBoundingClientRect().top,
+                livePreviewTop: livePreview.getBoundingClientRect().top,
+                themeColumns: getComputedStyle(theme).gridTemplateColumns,
                 controls: rect(controls),
+                theme: rect(theme),
                 preview: rect(preview),
                 frame: rect(frame),
                 mount: rect(document.querySelector<HTMLElement>("#component-mount")!),
                 composer: rect(document.querySelector<HTMLElement>("ehagaki-composer")!),
                 referenceTop: reference.getBoundingClientRect().top,
+                referenceBottom: reference.getBoundingClientRect().bottom,
+                eventMonitorTop: eventMonitor.getBoundingClientRect().top,
                 documentScrollWidth: document.documentElement.scrollWidth,
                 sticky: getComputedStyle(preview).position,
                 clearLog: rect(clearLog),
@@ -127,14 +133,16 @@ test("keeps Theme Playground controls and preview together without mobile overfl
             };
         });
 
-        expect(result.playgroundTop).toBeGreaterThanOrEqual(0);
+        expect(result.livePreviewTop).toBeGreaterThanOrEqual(0);
         expect(result.referenceTop).toBeGreaterThan(result.preview.bottom);
+        expect(result.theme.top).toBeGreaterThan(result.referenceBottom);
+        expect(result.eventMonitorTop).toBeGreaterThan(result.theme.bottom);
         expect(result.clearLog.width).toBeLessThan(result.preview.width / 2);
         expect(result.clearLog.height).toBeLessThanOrEqual(60);
         expect(result.clearLog.top).toBeGreaterThanOrEqual(result.eventHeader.top - 1);
         if (result.viewportWidth > 980) {
-            expect(result.playgroundColumns.split(" ")).toHaveLength(2);
-            expect(result.controls.right).toBeLessThanOrEqual(result.preview.left);
+            expect(result.themeColumns.split(" ")).toHaveLength(2);
+            expect(result.controls.right).toBeLessThanOrEqual(result.theme.right);
             expect(result.preview.top).toBeLessThanOrEqual(result.frame.top);
             expect(result.frame.height).toBeGreaterThanOrEqual(560);
             expect(result.mount.height).toBeGreaterThanOrEqual(560);
@@ -143,8 +151,7 @@ test("keeps Theme Playground controls and preview together without mobile overfl
             expect(result.sticky).toBe(result.viewportHeight >= 760 ? "sticky" : "static");
             await page.screenshot();
         } else {
-            expect(result.playgroundColumns.split(" ")).toHaveLength(1);
-            expect(result.preview.top).toBeGreaterThanOrEqual(result.controls.bottom - 1);
+            expect(result.themeColumns.split(" ")).toHaveLength(1);
             expect(result.frame.right).toBeLessThanOrEqual(result.viewportWidth);
             expect(result.frame.height).toBeCloseTo(484, 0);
             expect(result.mount.height).toBeCloseTo(484, 0);
