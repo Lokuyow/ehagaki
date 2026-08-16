@@ -158,8 +158,23 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
                 })),
                 preview: rect(preview),
                 frame: rect(frame),
-                mount: rect(document.querySelector<HTMLElement>("#component-mount")!),
-                composer: rect(document.querySelector<HTMLElement>("ehagaki-composer")!),
+                mount: (() => {
+                    const element = document.querySelector<HTMLElement>("#component-mount")!;
+                    const style = getComputedStyle(element);
+                    return {
+                        rect: rect(element),
+                        paddingTop: Number.parseFloat(style.paddingTop),
+                        paddingBottom: Number.parseFloat(style.paddingBottom),
+                        borderTop: Number.parseFloat(style.borderTopWidth),
+                        borderBottom: Number.parseFloat(style.borderBottomWidth),
+                        boxSizing: style.boxSizing,
+                    };
+                })(),
+                composer: (() => {
+                    const element = document.querySelector<HTMLElement>("ehagaki-composer")!;
+                    const style = getComputedStyle(element);
+                    return { rect: rect(element), height: style.height };
+                })(),
                 eventMonitor: rect(eventMonitor),
                 documentScrollWidth: document.documentElement.scrollWidth,
                 bodyScrollWidth: document.body.scrollWidth,
@@ -218,15 +233,24 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
             }
             expect(result.preview.top).toBeLessThanOrEqual(result.frame.top);
             expect(result.frame.height).toBeGreaterThanOrEqual(560);
-            expect(result.mount.height).toBeGreaterThanOrEqual(560);
-            expect(result.composer.height).toBeGreaterThanOrEqual(520);
+            expect(result.mount.rect.height).toBeGreaterThanOrEqual(560);
+            expect(result.composer.rect.height).toBeGreaterThanOrEqual(520);
             await page.screenshot();
         } else {
             expect(result.referenceColumns.template.split(" ")).toHaveLength(1);
             expect(result.themeControlsTemplate.split(" ")).toHaveLength(1);
             expect(result.frame.right).toBeLessThanOrEqual(result.viewportWidth);
-            expect(result.frame.height).toBeCloseTo(484, 0);
-            expect(result.mount.height).toBeCloseTo(484, 0);
+            expect(result.frame.height).toBeCloseTo(520, 0);
+            expect(result.mount.rect.height).toBeCloseTo(520, 0);
+            expect(result.mount.boxSizing).toBe("border-box");
+            expect(result.mount.paddingTop).toBeGreaterThan(0);
+            expect(result.mount.paddingBottom).toBeGreaterThan(0);
+            const mountContentTop = result.mount.rect.top + result.mount.borderTop + result.mount.paddingTop;
+            const mountContentBottom = result.mount.rect.bottom - result.mount.borderBottom - result.mount.paddingBottom;
+            expect(result.composer.rect.top).toBeGreaterThanOrEqual(mountContentTop - 1);
+            expect(result.composer.rect.bottom).toBeLessThanOrEqual(mountContentBottom + 1);
+            expect(result.composer.rect.bottom).toBeLessThanOrEqual(result.mount.rect.bottom + 1);
+            expect(Number.parseFloat(result.composer.height)).toBeCloseTo(mountContentBottom - mountContentTop, 0);
             expect(result.presetGrid.width).toBeGreaterThan(0);
             expect(result.customFields.width).toBeGreaterThan(0);
         }
