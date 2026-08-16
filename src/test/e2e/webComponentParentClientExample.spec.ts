@@ -89,11 +89,12 @@ test.afterAll(async () => {
     await close(server);
 });
 
-test("prioritizes the live preview and reference before theme controls without mobile overflow", async ({ page }) => {
+test("keeps the playground hierarchy and card stacks balanced across desktop and mobile", async ({ page }) => {
     for (const viewport of [
         { width: 1280, height: 900 },
-        { width: 1280, height: 720 },
+        { width: 1440, height: 900 },
         { width: 390, height: 844 },
+        { width: 360, height: 844 },
     ]) {
         await page.setViewportSize(viewport);
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
@@ -102,61 +103,101 @@ test("prioritizes the live preview and reference before theme controls without m
         await page.evaluate(() => window.scrollTo(0, 0));
 
         const result = await page.evaluate(() => {
+            const main = document.querySelector<HTMLElement>("main")!;
+            const intro = document.querySelector<HTMLElement>(".page-intro")!;
             const livePreview = document.querySelector<HTMLElement>(".live-preview")!;
-            const controls = document.querySelector<HTMLElement>(".theme-controls")!;
+            const reference = document.querySelector<HTMLElement>(".reference-section")!;
+            const referenceColumns = document.querySelector<HTMLElement>(".reference-columns")!;
+            const referenceColumnElements = Array.from(document.querySelectorAll<HTMLElement>(".reference-columns > .column"));
             const theme = document.querySelector<HTMLElement>(".theme-section")!;
+            const themePanel = document.querySelector<HTMLElement>(".theme-panel")!;
+            const controls = document.querySelector<HTMLElement>(".theme-controls")!;
+            const presetGrid = document.querySelector<HTMLElement>(".preset-grid")!;
+            const customFields = document.querySelector<HTMLElement>(".theme-custom-fields")!;
+            const details = document.querySelector<HTMLElement>("details.advanced-settings")!;
             const preview = document.querySelector<HTMLElement>(".preview-panel")!;
             const frame = document.querySelector<HTMLElement>(".component-frame")!;
-            const reference = document.querySelector<HTMLElement>(".reference-grid")!;
             const eventMonitor = document.querySelector<HTMLElement>("[aria-labelledby=event-monitor-heading]")!;
             const clearLog = document.querySelector<HTMLButtonElement>("#clear-log")!;
             const eventHeader = clearLog.parentElement!;
             const rect = (element: Element) => element.getBoundingClientRect().toJSON();
             return {
                 viewportWidth: window.innerWidth,
-                viewportHeight: window.innerHeight,
-                livePreviewTop: livePreview.getBoundingClientRect().top,
-                themeColumns: getComputedStyle(theme).gridTemplateColumns,
-                controls: rect(controls),
-                theme: rect(theme),
+                main: rect(main),
+                intro: rect(intro),
+                livePreview: rect(livePreview),
+                reference: rect(reference),
+                referenceColumns: {
+                    template: getComputedStyle(referenceColumns).gridTemplateColumns,
+                    columns: referenceColumnElements.map((element) => ({
+                        rect: rect(element),
+                        scrollHeight: element.scrollHeight,
+                    })),
+                },
+                themeSection: rect(theme),
+                themePanel: rect(themePanel),
+                themeControls: rect(controls),
+                themeControlsTemplate: getComputedStyle(controls).gridTemplateColumns,
+                presetGrid: rect(presetGrid),
+                customFields: rect(customFields),
+                details: rect(details),
                 preview: rect(preview),
                 frame: rect(frame),
                 mount: rect(document.querySelector<HTMLElement>("#component-mount")!),
                 composer: rect(document.querySelector<HTMLElement>("ehagaki-composer")!),
-                referenceTop: reference.getBoundingClientRect().top,
-                referenceBottom: reference.getBoundingClientRect().bottom,
-                eventMonitorTop: eventMonitor.getBoundingClientRect().top,
+                eventMonitor: rect(eventMonitor),
                 documentScrollWidth: document.documentElement.scrollWidth,
-                sticky: getComputedStyle(preview).position,
+                bodyScrollWidth: document.body.scrollWidth,
+                themePanelCount: document.querySelectorAll(".theme-panel").length,
+                duplicateThemeHeadingCount: Array.from(document.querySelectorAll("h1, h2, h3")).filter((element) => element.textContent?.trim() === "Styling / Theme customization").length,
+                buttonWhiteSpace: Array.from(document.querySelectorAll("button")).map((button) => getComputedStyle(button).whiteSpace),
+                formBounds: Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea")).map((element) => rect(element)),
                 clearLog: rect(clearLog),
                 eventHeader: rect(eventHeader),
             };
         });
 
-        expect(result.livePreviewTop).toBeGreaterThanOrEqual(0);
-        expect(result.referenceTop).toBeGreaterThan(result.preview.bottom);
-        expect(result.theme.top).toBeGreaterThan(result.referenceBottom);
-        expect(result.eventMonitorTop).toBeGreaterThan(result.theme.bottom);
-        expect(result.clearLog.width).toBeLessThan(result.preview.width / 2);
+        expect(result.intro.top).toBeGreaterThanOrEqual(0);
+        expect(result.livePreview.top).toBeGreaterThan(result.intro.bottom);
+        expect(result.reference.top).toBeGreaterThan(result.livePreview.bottom);
+        expect(result.themeSection.top).toBeGreaterThan(result.reference.bottom);
+        expect(result.eventMonitor.top).toBeGreaterThan(result.themeSection.bottom);
+        expect(result.livePreview.width).toBeCloseTo(result.main.width, 0);
+        expect(result.themeSection.width).toBeCloseTo(result.main.width, 0);
+        expect(result.eventMonitor.width).toBeCloseTo(result.main.width, 0);
+        expect(result.themePanelCount).toBe(1);
+        expect(result.duplicateThemeHeadingCount).toBe(0);
+        expect(result.buttonWhiteSpace.every((value) => value === "nowrap")).toBe(true);
+        expect(result.clearLog.width).toBeLessThan(result.eventMonitor.width / 2);
         expect(result.clearLog.height).toBeLessThanOrEqual(60);
         expect(result.clearLog.top).toBeGreaterThanOrEqual(result.eventHeader.top - 1);
+        expect(result.documentScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
+        expect(result.bodyScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
+        expect(result.details.left).toBeGreaterThan(result.themePanel.left);
+        expect(result.details.right).toBeLessThan(result.themePanel.right);
+        for (const formBounds of result.formBounds) {
+            expect(formBounds.right).toBeLessThanOrEqual(result.viewportWidth + 1);
+        }
         if (result.viewportWidth > 980) {
-            expect(result.themeColumns.split(" ")).toHaveLength(2);
-            expect(result.controls.right).toBeLessThanOrEqual(result.theme.right);
+            expect(result.referenceColumns.template.split(" ")).toHaveLength(2);
+            expect(result.referenceColumns.columns).toHaveLength(2);
+            expect(result.themeControlsTemplate.split(" ")).toHaveLength(2);
+            for (const column of result.referenceColumns.columns) {
+                expect(column.rect.height).toBeCloseTo(column.scrollHeight, 0);
+            }
             expect(result.preview.top).toBeLessThanOrEqual(result.frame.top);
             expect(result.frame.height).toBeGreaterThanOrEqual(560);
             expect(result.mount.height).toBeGreaterThanOrEqual(560);
             expect(result.composer.height).toBeGreaterThanOrEqual(520);
-            expect(result.documentScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
-            expect(result.sticky).toBe(result.viewportHeight >= 760 ? "sticky" : "static");
             await page.screenshot();
         } else {
-            expect(result.themeColumns.split(" ")).toHaveLength(1);
+            expect(result.referenceColumns.template.split(" ")).toHaveLength(1);
+            expect(result.themeControlsTemplate.split(" ")).toHaveLength(1);
             expect(result.frame.right).toBeLessThanOrEqual(result.viewportWidth);
             expect(result.frame.height).toBeCloseTo(484, 0);
             expect(result.mount.height).toBeCloseTo(484, 0);
-            expect(result.sticky).toBe("static");
-            expect(result.documentScrollWidth).toBeLessThanOrEqual(result.viewportWidth);
+            expect(result.presetGrid.width).toBeGreaterThan(0);
+            expect(result.customFields.width).toBeGreaterThan(0);
         }
     }
 });

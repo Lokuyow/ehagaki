@@ -32,26 +32,27 @@
         }
 
         main {
-            width: min(1440px, calc(100vw - 32px));
+            width: min(1240px, calc(100vw - 32px));
             margin: 24px auto 48px;
             display: grid;
             gap: 24px;
         }
 
         .column, .stack { display: grid; gap: 18px; min-width: 0; }
-        .theme-section, .reference-grid {
+        .reference-section, .theme-section { display: grid; gap: 18px; min-width: 0; }
+        .reference-columns, .theme-controls {
             display: grid;
-            grid-template-columns: minmax(320px, 450px) minmax(0, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 20px;
             align-items: start;
+            min-width: 0;
         }
         .page-intro, .live-preview { display: grid; gap: 18px; }
         .page-intro { gap: 10px; }
-        .theme-controls { display: grid; gap: 16px; min-width: 0; }
-        .theme-controls > header { display: grid; gap: 10px; }
         .theme-panel { display: grid; gap: 18px; }
-        .theme-panel > header { display: grid; gap: 6px; }
-        .reference-grid { padding-top: 2px; }
+        .theme-panel-header, .theme-presets, .theme-custom-fields { display: grid; gap: 8px; }
+        .theme-panel > details { grid-column: 1 / -1; }
+        .reference-section { padding-top: 2px; }
         .reference-heading { display: grid; gap: 6px; }
         .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
         .panel { padding: 22px; }
@@ -87,6 +88,7 @@
             background: var(--accent);
             color: white;
             cursor: pointer;
+            white-space: nowrap;
         }
         button.secondary { background: #5d7067; }
         button.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
@@ -112,7 +114,6 @@
         .preset-swatch { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(24, 48, 40, .22); }
         .preset-name { font-weight: 700; }
         .preset-values { color: var(--muted); font-size: .73rem; line-height: 1.35; }
-        .theme-divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
         details.advanced-settings { border: 1px solid var(--line); border-radius: 12px; background: #f8fbf9; }
         details.advanced-settings summary { padding: 12px 14px; cursor: pointer; font-weight: 700; }
         details.advanced-settings[open] { padding-bottom: 14px; }
@@ -147,7 +148,7 @@
             font-size: .78rem;
             line-height: 1.5;
         }
-        .preview-panel { position: sticky; top: 18px; }
+        .preview-panel { position: static; }
         .component-frame { height: 640px; padding: 18px; background: #dce8df; border-radius: 18px; }
         #component-mount { height: 580px; }
         ehagaki-composer { display: block; height: 100%; min-height: 0; background: white; }
@@ -160,14 +161,9 @@
         .check input { width: auto; }
 
         @media (max-width: 980px) {
-            .theme-section, .reference-grid { grid-template-columns: 1fr; }
-            .preview-panel { position: static; }
+            .reference-columns, .theme-controls { grid-template-columns: 1fr; }
             .component-frame { height: 520px; }
             #component-mount, ehagaki-composer { height: 484px; }
-        }
-
-        @media (min-width: 981px) and (max-height: 760px) {
-            .preview-panel { position: static; }
         }
 
         @media (max-width: 540px) {
@@ -197,199 +193,194 @@
             </div>
         </section>
 
-        <section class="reference-grid" aria-labelledby="reference-heading">
-            <div class="column">
-                <div class="panel stack reference-heading">
-                    <h2 id="reference-heading">Web Component reference</h2>
-                    <p class="small">公開API・lifecycle・event・security modelを実際に操作するリファレンスです。</p>
-                </div>
-
-                <div class="notice">
-                    <strong>認証とtrust boundary</strong>
-                    <p class="small">Web Componentはhostと同じWindow realmで動作します。ログイン操作は埋め込まれたeHagaki内の既存UIから行い、NIP-07はhostの <code>window.nostr</code> を直接利用します。NIP-46・nsec/managed accountもeHagaki自身の既存経路です。このsampleはsigner callbackを追加せず、nsecを保存しません。</p>
-                </div>
-
-                <div class="status-list">
-                    <div id="module-status" class="status" role="status" aria-live="polite">module 未読み込み</div>
-                    <div id="component-status" class="status" role="status" aria-live="polite">component 未作成</div>
-                    <div id="ready-status" class="status" role="status" aria-live="polite">whenReady(): pending</div>
-                    <div id="nip07-status" class="status warn" role="status" aria-live="polite">NIP-07 capabilityを確認中</div>
-                </div>
-
-                <div class="card stack">
-                    <h2>Module / asset base</h2>
-                    <div class="field">
-                        <label for="module-url">Web Component module URL</label>
-                        <input id="module-url" type="url" spellcheck="false">
-                    </div>
-                    <div class="field">
-                        <label for="asset-base">asset base</label>
-                        <input id="asset-base" type="url" spellcheck="false">
-                    </div>
-                    <p class="small">通常モードでは既定の同梱moduleをページ初期化時に自動読み込みしてeHagakiを表示します。任意moduleを試す場合はURL末尾に <code>?manual=1</code> を付けてmanual modeに入り、module URLを編集してから <code>Create / Mount</code> を押してください。manual modeでは明示的なCreate操作までmoduleを読み込みません。<code>moduleUrl</code> などのqueryだけで任意moduleを自動実行することはありません。</p>
-                    <p class="small">外部moduleはhostページと同じJavaScript権限で実行されます。asset baseもworker/FFmpeg等の実行可能resourceに使われるため、信頼できるURLだけを指定してください。asset baseはCreate / Recreate時にelementへ設定されます。module load後はCustom Elements Registryのため実装を切り替えられず、別moduleを試すにはページをreloadしてください。</p>
-                </div>
-
-                <div class="card stack">
-                    <h2>Create / destroy / recreate</h2>
-                    <div class="buttons">
-                        <button id="create-component" type="button">Create / Mount</button>
-                        <button id="destroy-component" type="button" class="secondary">Destroy / Unmount</button>
-                        <button id="recreate-component" type="button">Recreate</button>
-                        <button id="create-second" type="button" class="ghost">2個目を生成</button>
-                    </div>
-                    <p class="small">1 document 1 connected instance制約を確認できます。2個目は inert、<code>multiple_instances_unsupported</code> のerror eventと <code>whenReady()</code> rejectionをlogします。1個目をdestroy後は新しいinstanceを生成できます。</p>
-                </div>
-
-                <div class="card stack">
-                    <h2>Initial / runtime settings</h2>
-                    <p class="small">Create前に入力した設定は、element接続前に <code>setSettings()</code> をqueueしてready後に適用します。下のボタンは同じ公開APIを実行中に呼び出します。</p>
-                    <div class="grid-2">
-                        <div class="field"><label for="locale">locale</label><select id="locale"><option value="ja">ja</option><option value="en">en</option></select></div>
-                        <div class="field"><label for="theme-mode">themeMode</label><select id="theme-mode"><option value="system">system</option><option value="light">light</option><option value="dark">dark</option></select></div>
-                        <div class="field"><label for="image-quality">imageQualityLevel</label><select id="image-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
-                        <div class="field"><label for="video-quality">videoQualityLevel</label><select id="video-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
-                    </div>
-                    <div class="grid-2">
-                        <label class="check"><input id="client-tag" type="checkbox" checked> clientTagEnabled</label>
-                        <label class="check"><input id="quote-notification" type="checkbox"> quoteNotificationEnabled</label>
-                        <label class="check"><input id="reply-notification" type="checkbox"> replyNotificationEnabled</label>
-                        <label class="check"><input id="media-free-placement" type="checkbox"> mediaFreePlacement</label>
-                        <label class="check"><input id="show-mascot" type="checkbox" checked> showMascot</label>
-                        <label class="check"><input id="show-flavor-text" type="checkbox" checked> showFlavorText</label>
-                    </div>
-                    <div class="buttons">
-                        <button id="apply-runtime-settings" type="button" class="secondary">実行中に適用</button>
-                        <button id="apply-invalid-settings" type="button" class="ghost">invalid settings</button>
-                    </div>
-                </div>
-
-                <div class="card stack">
-                    <h2>Composer context</h2>
-                    <p class="small">入力したNIP-19 <code>note1...</code> / <code>nevent1...</code> を、iframe protocolではなく直接 <code>element.setContext(...)</code> に渡します。channelのpayloadは <code>reference</code>、任意の <code>relays/name/about/picture</code> です。</p>
-                    <div class="field"><label for="context-content">content</label><textarea id="context-content">Web Componentからの初期コンテンツ</textarea></div>
-                    <div class="field"><label for="context-reply">reply</label><input id="context-reply" type="text" placeholder="note1... / nevent1..."></div>
-                    <div class="grid-2">
-                        <div class="field"><label for="context-quote-one">quote</label><input id="context-quote-one" type="text" placeholder="note1... / nevent1..."></div>
-                        <div class="field"><label for="context-quote-two">quote 2</label><input id="context-quote-two" type="text" placeholder="複数quote用"></div>
-                    </div>
-                    <div class="buttons">
-                        <button id="apply-content" type="button">contentを適用</button>
-                        <button id="apply-reply" type="button">replyを適用</button>
-                        <button id="apply-quote" type="button">quoteを適用</button>
-                        <button id="apply-multiple-quotes" type="button">multiple quote</button>
-                    </div>
-                    <div class="field"><label for="context-channel-reference">channel.reference</label><input id="context-channel-reference" type="text" placeholder="note1... / nevent1..."></div>
-                    <div class="grid-2">
-                        <div class="field"><label for="context-channel-relays">channel.relays (CSV)</label><input id="context-channel-relays" type="text" placeholder="wss://relay.example"></div>
-                        <div class="field"><label for="context-channel-name">channel.name</label><input id="context-channel-name" type="text"></div>
-                    </div>
-                    <div class="buttons">
-                        <button id="apply-channel" type="button">channelを適用</button>
-                        <button id="clear-context" type="button" class="secondary">contextをclear</button>
-                        <button id="apply-invalid-context" type="button" class="ghost full">invalid contextを試す</button>
-                    </div>
-                </div>
+        <section class="reference-section" aria-labelledby="reference-heading">
+            <div class="panel stack reference-heading">
+                <h2 id="reference-heading">Web Component reference</h2>
+                <p class="small">公開API・lifecycle・event・security modelを実際に操作するリファレンスです。</p>
             </div>
 
-            <div class="column">
-                <div class="panel stack">
-                    <div>
-                        <h2>iframeとの違い</h2>
-                        <p class="small">Web Componentが常に安全という意味ではありません。host JavaScriptから秘密情報を隔離したい場合はiframeを使ってください。</p>
+            <div class="reference-columns">
+                <div class="column">
+                    <div class="status-list">
+                        <div id="module-status" class="status" role="status" aria-live="polite">module 未読み込み</div>
+                        <div id="component-status" class="status" role="status" aria-live="polite">component 未作成</div>
+                        <div id="ready-status" class="status" role="status" aria-live="polite">whenReady(): pending</div>
+                        <div id="nip07-status" class="status warn" role="status" aria-live="polite">NIP-07 capabilityを確認中</div>
                     </div>
-                    <table class="comparison">
-                        <thead><tr><th>項目</th><th>iframe</th><th>Web Component</th></tr></thead>
-                        <tbody>
-                            <tr><th>境界 / API</th><td>origin isolation、postMessage protocol、handshake</td><td>同じWindow realm、method/property/CustomEvent、element create/destroy/recreate</td></tr>
-                            <tr><th>認証</th><td>parent-client auth/RPCを利用可能</td><td>parent-client auth/RPCは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46/nsecはeHagaki UI</td></tr>
-                            <tr><th>保存</th><td>storage/IndexedDBの親委譲が可能</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはhost originの <code>eHagakiDB</code></td></tr>
-                            <tr><th>更新 / style</th><td>iframe reloadまたはpostMessage</td><td>setSettings()/setContext()、CSS Custom Properties / <code>::part()</code></td></tr>
-                            <tr><th>trust</th><td>iframe originとの境界を設計可能</td><td>trusted hostのみ正式サポート。hostは同一realmのコード・storageを観測可能</td></tr>
-                        </tbody>
-                    </table>
+
+                    <div class="card stack">
+                        <h2>Module / asset base</h2>
+                        <div class="field">
+                            <label for="module-url">Web Component module URL</label>
+                            <input id="module-url" type="url" spellcheck="false">
+                        </div>
+                        <div class="field">
+                            <label for="asset-base">asset base</label>
+                            <input id="asset-base" type="url" spellcheck="false">
+                        </div>
+                        <p class="small">通常モードでは既定の同梱moduleをページ初期化時に自動読み込みしてeHagakiを表示します。任意moduleを試す場合はURL末尾に <code>?manual=1</code> を付けてmanual modeに入り、module URLを編集してから <code>Create / Mount</code> を押してください。manual modeでは明示的なCreate操作までmoduleを読み込みません。<code>moduleUrl</code> などのqueryだけで任意moduleを自動実行することはありません。</p>
+                        <p class="small">外部moduleはhostページと同じJavaScript権限で実行されます。asset baseもworker/FFmpeg等の実行可能resourceに使われるため、信頼できるURLだけを指定してください。asset baseはCreate / Recreate時にelementへ設定されます。module load後はCustom Elements Registryのため実装を切り替えられず、別moduleを試すにはページをreloadしてください。</p>
+                    </div>
+
+                    <div class="card stack">
+                        <h2>Create / destroy / recreate</h2>
+                        <div class="buttons">
+                            <button id="create-component" type="button">Create / Mount</button>
+                            <button id="destroy-component" type="button" class="secondary">Destroy / Unmount</button>
+                            <button id="recreate-component" type="button">Recreate</button>
+                            <button id="create-second" type="button" class="ghost">2個目を生成</button>
+                        </div>
+                        <p class="small">1 document 1 connected instance制約を確認できます。2個目は inert、<code>multiple_instances_unsupported</code> のerror eventと <code>whenReady()</code> rejectionをlogします。1個目をdestroy後は新しいinstanceを生成できます。</p>
+                    </div>
+
+                    <div class="card stack">
+                        <h2>Initial / runtime settings</h2>
+                        <p class="small">Create前に入力した設定は、element接続前に <code>setSettings()</code> をqueueしてready後に適用します。下のボタンは同じ公開APIを実行中に呼び出します。</p>
+                        <div class="grid-2">
+                            <div class="field"><label for="locale">locale</label><select id="locale"><option value="ja">ja</option><option value="en">en</option></select></div>
+                            <div class="field"><label for="theme-mode">themeMode</label><select id="theme-mode"><option value="system">system</option><option value="light">light</option><option value="dark">dark</option></select></div>
+                            <div class="field"><label for="image-quality">imageQualityLevel</label><select id="image-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
+                            <div class="field"><label for="video-quality">videoQualityLevel</label><select id="video-quality"><option value="medium">medium</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select></div>
+                        </div>
+                        <div class="grid-2">
+                            <label class="check"><input id="client-tag" type="checkbox" checked> clientTagEnabled</label>
+                            <label class="check"><input id="quote-notification" type="checkbox"> quoteNotificationEnabled</label>
+                            <label class="check"><input id="reply-notification" type="checkbox"> replyNotificationEnabled</label>
+                            <label class="check"><input id="media-free-placement" type="checkbox"> mediaFreePlacement</label>
+                            <label class="check"><input id="show-mascot" type="checkbox" checked> showMascot</label>
+                            <label class="check"><input id="show-flavor-text" type="checkbox" checked> showFlavorText</label>
+                        </div>
+                        <div class="buttons">
+                            <button id="apply-runtime-settings" type="button" class="secondary">実行中に適用</button>
+                            <button id="apply-invalid-settings" type="button" class="ghost">invalid settings</button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="panel stack">
-                    <h2>HTTP / WebSocket / Service Worker</h2>
-                    <ul class="api-list small">
-                        <li>HTTP requestはhost Service Workerが観測可能です。</li>
-                        <li>Nostr relayはWebSocketです。Service Workerのfetch interceptionはrelay interceptionの証拠ではありません。</li>
-                        <li>host <code>window.WebSocket</code> wrapperについてbrowser-level proofは現在未完了です。今回relay interceptor fixture/APIは追加していません。</li>
-                    </ul>
+                <div class="column">
+                    <div class="notice">
+                        <strong>認証とtrust boundary</strong>
+                        <p class="small">Web Componentはhostと同じWindow realmで動作します。ログイン操作は埋め込まれたeHagaki内の既存UIから行い、NIP-07はhostの <code>window.nostr</code> を直接利用します。NIP-46・nsec/managed accountもeHagaki自身の既存経路です。このsampleはsigner callbackを追加せず、nsecを保存しません。</p>
+                    </div>
+
+                    <div class="card stack">
+                        <h2>Composer context</h2>
+                        <p class="small">入力したNIP-19 <code>note1...</code> / <code>nevent1...</code> を、iframe protocolではなく直接 <code>element.setContext(...)</code> に渡します。channelのpayloadは <code>reference</code>、任意の <code>relays/name/about/picture</code> です。</p>
+                        <div class="field"><label for="context-content">content</label><textarea id="context-content">Web Componentからの初期コンテンツ</textarea></div>
+                        <div class="field"><label for="context-reply">reply</label><input id="context-reply" type="text" placeholder="note1... / nevent1..."></div>
+                        <div class="grid-2">
+                            <div class="field"><label for="context-quote-one">quote</label><input id="context-quote-one" type="text" placeholder="note1... / nevent1..."></div>
+                            <div class="field"><label for="context-quote-two">quote 2</label><input id="context-quote-two" type="text" placeholder="複数quote用"></div>
+                        </div>
+                        <div class="buttons">
+                            <button id="apply-content" type="button">contentを適用</button>
+                            <button id="apply-reply" type="button">replyを適用</button>
+                            <button id="apply-quote" type="button">quoteを適用</button>
+                            <button id="apply-multiple-quotes" type="button">multiple quote</button>
+                        </div>
+                        <div class="field"><label for="context-channel-reference">channel.reference</label><input id="context-channel-reference" type="text" placeholder="note1... / nevent1..."></div>
+                        <div class="grid-2">
+                            <div class="field"><label for="context-channel-relays">channel.relays (CSV)</label><input id="context-channel-relays" type="text" placeholder="wss://relay.example"></div>
+                            <div class="field"><label for="context-channel-name">channel.name</label><input id="context-channel-name" type="text"></div>
+                        </div>
+                        <div class="buttons">
+                            <button id="apply-channel" type="button">channelを適用</button>
+                            <button id="clear-context" type="button" class="secondary">contextをclear</button>
+                            <button id="apply-invalid-context" type="button" class="ghost full">invalid contextを試す</button>
+                        </div>
+                    </div>
+
+                    <div class="panel stack">
+                        <div>
+                            <h2>iframeとの違い</h2>
+                            <p class="small">Web Componentが常に安全という意味ではありません。host JavaScriptから秘密情報を隔離したい場合はiframeを使ってください。</p>
+                        </div>
+                        <table class="comparison">
+                            <thead><tr><th>項目</th><th>iframe</th><th>Web Component</th></tr></thead>
+                            <tbody>
+                                <tr><th>境界 / API</th><td>origin isolation、postMessage protocol、handshake</td><td>同じWindow realm、method/property/CustomEvent、element create/destroy/recreate</td></tr>
+                                <tr><th>認証</th><td>parent-client auth/RPCを利用可能</td><td>parent-client auth/RPCは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46/nsecはeHagaki UI</td></tr>
+                                <tr><th>保存</th><td>storage/IndexedDBの親委譲が可能</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはhost originの <code>eHagakiDB</code></td></tr>
+                                <tr><th>更新 / style</th><td>iframe reloadまたはpostMessage</td><td>setSettings()/setContext()、CSS Custom Properties / <code>::part()</code></td></tr>
+                                <tr><th>trust</th><td>iframe originとの境界を設計可能</td><td>trusted hostのみ正式サポート。hostは同一realmのコード・storageを観測可能</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="panel stack">
+                        <h2>HTTP / WebSocket / Service Worker</h2>
+                        <ul class="api-list small">
+                            <li>HTTP requestはhost Service Workerが観測可能です。</li>
+                            <li>Nostr relayはWebSocketです。Service Workerのfetch interceptionはrelay interceptionの証拠ではありません。</li>
+                            <li>host <code>window.WebSocket</code> wrapperについてbrowser-level proofは現在未完了です。今回relay interceptor fixture/APIは追加していません。</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </section>
 
         <section class="theme-section" aria-labelledby="theme-heading">
-            <div class="theme-controls">
-                <header>
+            <div class="panel theme-panel">
+                <header class="theme-panel-header">
                     <h2 id="theme-heading">Theme customization</h2>
-                    <p class="lead">Web Componentの公開カスタマイズ機能として、プリセットやCSS Custom Propertiesの反映を確認できます。</p>
+                    <p class="small">プリセット、accent / base color、個別CSS Custom Propertiesを変更し、mount済みcomponentへの反映を確認できます。</p>
                 </header>
 
-                <div class="panel theme-panel">
-                    <header>
-                        <h3>Theme controls</h3>
-                        <p class="small">プリセット、accent、baseだけでsurface全体の色味を試せます。Base Colorはneutral surfaceへmixされる色味のseedです。</p>
-                    </header>
-                    <div class="preset-grid" aria-label="Theme presets">
-                        <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
-                            <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
-                        </button>
-                        <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
-                            <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
-                        </button>
-                        <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
-                            <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
-                        </button>
-                        <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
-                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
-                            <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
-                        </button>
-                    </div>
-                    <hr class="theme-divider">
-                    <div class="grid-2">
-                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="#005FCC"></div>
-                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="#0077FF"></div>
-                    </div>
-                    <p class="small">空欄はeHagakiデフォルトです。プリセットはmount済みなら選択直後に反映され、手入力値は「テーマカラーを適用」で反映されます。</p>
-                    <div class="buttons">
-                        <button id="apply-styles" type="button" class="secondary">テーマカラーを適用</button>
-                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
-                    </div>
-
-                    <details class="advanced-settings">
-                        <summary>詳細設定</summary>
-                        <div class="advanced-content">
-                            <p class="small">個別tokenを指定すると、指定した項目だけを上書きします。空欄はeHagakiデフォルトです。</p>
-                            <div class="grid-2">
-                                <div class="field"><label for="style-background">background</label><input id="style-background"></div>
-                                <div class="field"><label for="style-text">text</label><input id="style-text"></div>
-                                <div class="field"><label for="style-border">border</label><input id="style-border"></div>
-                                <div class="field"><label for="style-link">link</label><input id="style-link"></div>
-                                <div class="field"><label for="style-input">input background</label><input id="style-input"></div>
-                                <div class="field"><label for="style-footer">footer background</label><input id="style-footer"></div>
-                                <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog"></div>
-                                <div class="field"><label for="style-font">font family</label><input id="style-font"></div>
-                            </div>
-                            <p class="small">Accent / Baseはsurface生成に使われます。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
+                <div class="theme-controls">
+                    <div class="theme-presets">
+                        <h3>Presets</h3>
+                        <p class="small">プリセットはmount済みなら選択直後に反映されます。</p>
+                        <div class="preset-grid" aria-label="Theme presets">
+                            <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
+                                <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
+                                <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
+                            </button>
+                            <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
+                                <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
+                                <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
+                            </button>
+                            <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
+                                <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
+                                <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
+                            </button>
+                            <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
+                                <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
+                                <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
+                            </button>
                         </div>
-                    </details>
-                </div>
-            </div>
+                    </div>
 
-            <div class="panel stack">
-                <h2>Styling / Theme customization</h2>
-                <p class="small">テーマ変更はWeb Component全体の主題ではなく、埋め込み先での見た目を調整するための公開機能です。</p>
-                <ul class="api-list small">
-                    <li>プリセットとaccent / base colorをmount済みcomponentへ反映</li>
-                    <li>個別のCSS Custom Propertiesとfont familyを上書き</li>
-                    <li>公開 <code>::part()</code> の利用方法はWeb Component guideで確認</li>
-                </ul>
+                    <div class="theme-custom-fields">
+                        <h3>Custom colors</h3>
+                        <div class="grid-2">
+                            <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="#005FCC"></div>
+                            <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="#0077FF"></div>
+                        </div>
+                        <p class="small">空欄はeHagakiデフォルトです。手入力値は「テーマカラーを適用」で反映されます。</p>
+                        <div class="buttons">
+                            <button id="apply-styles" type="button" class="secondary">テーマカラーを適用</button>
+                            <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
+                        </div>
+                    </div>
+                </div>
+
+                <details class="advanced-settings">
+                    <summary>詳細設定</summary>
+                    <div class="advanced-content">
+                        <p class="small">個別tokenを指定すると、指定した項目だけを上書きします。空欄はeHagakiデフォルトです。</p>
+                        <div class="grid-2">
+                            <div class="field"><label for="style-background">background</label><input id="style-background"></div>
+                            <div class="field"><label for="style-text">text</label><input id="style-text"></div>
+                            <div class="field"><label for="style-border">border</label><input id="style-border"></div>
+                            <div class="field"><label for="style-link">link</label><input id="style-link"></div>
+                            <div class="field"><label for="style-input">input background</label><input id="style-input"></div>
+                            <div class="field"><label for="style-footer">footer background</label><input id="style-footer"></div>
+                            <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog"></div>
+                            <div class="field"><label for="style-font">font family</label><input id="style-font"></div>
+                        </div>
+                        <p class="small">Accent / Baseはsurface生成に使われます。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
+                    </div>
+                </details>
             </div>
         </section>
 
