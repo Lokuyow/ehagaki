@@ -62,6 +62,7 @@ import {
     swUpdateStatus,
 } from '../../stores/swStore.svelte';
 import { settingsStore } from '../../stores/settingsStore.svelte';
+import { themeColorStore } from '../../stores/themeColorStore.svelte';
 
 describe('SettingsDialog accessibility', () => {
     beforeEach(async () => {
@@ -73,6 +74,7 @@ describe('SettingsDialog accessibility', () => {
     });
 
     afterEach(() => {
+        themeColorStore.reset();
         settingsStore.externalNostrClient = 'nostter';
         settingsStore.locale = 'en';
     });
@@ -325,6 +327,71 @@ describe('SettingsDialog accessibility', () => {
                 name: 'Mode',
             }),
         ).toBeTruthy();
+    });
+
+    it('カラー入力は有効なHEXだけを即時反映し、標準へ戻せる', async () => {
+        render(SettingsDialog, {
+            props: {
+                show: true,
+                onClose: () => {},
+            },
+        });
+        await tick();
+
+        const accentHex = document.querySelector('#accent-color-input') as HTMLInputElement;
+        const accentPicker = accentHex.parentElement?.querySelector(
+            'input[type="color"]',
+        ) as HTMLInputElement;
+        const basePicker = document.querySelector('#base-color-input')
+            ?.parentElement?.querySelector('input[type="color"]') as HTMLInputElement;
+        const baseHex = document.querySelector('#base-color-input') as HTMLInputElement;
+
+        expect(accentHex).toBeTruthy();
+        expect(accentPicker).toBeTruthy();
+        expect(basePicker).toBeTruthy();
+
+        await fireEvent.input(accentHex, { target: { value: 'ff0000' } });
+        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
+        expect(accentPicker.value).toBe('#ff0000');
+
+        await fireEvent.input(accentHex, { target: { value: '#ff000' } });
+        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
+        expect(accentPicker.value).toBe('#ff0000');
+        expect(screen.queryByRole('alert')).toBeNull();
+
+        await fireEvent.blur(accentHex);
+        expect(screen.getByRole('alert').textContent).toMatch(/6桁のHEXカラー|6-digit HEX/);
+
+        await fireEvent.input(basePicker, { target: { value: '#0000ff' } });
+        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('#0000ff');
+        expect(window.localStorage.getItem('baseColor')).toBe('#0000ff');
+        expect(baseHex.value).toBe('#0000ff');
+
+        await fireEvent.input(baseHex, { target: { value: '#0000f' } });
+        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('#0000ff');
+        expect(window.localStorage.getItem('baseColor')).toBe('#0000ff');
+        expect(basePicker.value).toBe('#0000ff');
+        await fireEvent.blur(baseHex);
+        expect(screen.getAllByRole('alert')).toHaveLength(2);
+        expect(screen.getAllByRole('alert')[1].textContent).toMatch(/6桁のHEXカラー|6-digit HEX/);
+
+        await fireEvent.input(accentHex, { target: { value: '' } });
+        await fireEvent.blur(accentHex);
+        expect(screen.getAllByRole('alert')).toHaveLength(2);
+        expect(screen.getAllByRole('alert')[0].textContent).toMatch(/6桁のHEXカラー|6-digit HEX/);
+        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
+        expect(accentPicker.value).toBe('#ff0000');
+
+        await fireEvent.click(screen.getByRole('button', { name: /標準に戻す|Reset to default/ }));
+        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('');
+        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('');
+        expect(window.localStorage.getItem('accentColor')).toBeNull();
+        expect(window.localStorage.getItem('baseColor')).toBeNull();
+        expect(baseHex.value).toBe('');
+        expect(basePicker.value).toBe('#808080');
     });
 
     it('作者リンクとGitHubボタンの外部リンク属性が適切に設定される', async () => {

@@ -18,6 +18,10 @@ import {
     setReplyNotificationEnabledPreference,
     setExternalNostrClientCustomUrlPreference,
     setExternalNostrClientPreference,
+    clearThemeColorPreferences,
+    getThemeColorPreferences,
+    normalizeHexColor,
+    setThemeColorPreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
 
@@ -155,6 +159,49 @@ describe('settingsStorage preference metadata', () => {
         expect(storage.getItem(STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL)).toBeNull();
     });
 
+});
+
+describe('theme color preferences', () => {
+    let storage: MockStorage;
+
+    beforeEach(() => {
+        storage = new MockStorage();
+    });
+
+    it('accepts six-digit HEX values and normalizes their form before saving', () => {
+        expect(normalizeHexColor('1DBF73')).toBe('#1dbf73');
+        expect(setThemeColorPreference(storage, STORAGE_KEYS.ACCENT_COLOR, ' #FF0000 '))
+            .toBe('#ff0000');
+        expect(setThemeColorPreference(storage, STORAGE_KEYS.BASE_COLOR, '#0000ff'))
+            .toBe('#0000ff');
+        expect(getThemeColorPreferences(storage)).toEqual({
+            accentColor: '#ff0000',
+            baseColor: '#0000ff',
+        });
+    });
+
+    it('rejects invalid values and removes invalid persisted color data on read', () => {
+        storage.setItem(STORAGE_KEYS.ACCENT_COLOR, '#123');
+
+        expect(setThemeColorPreference(storage, STORAGE_KEYS.BASE_COLOR, '#not-a-color'))
+            .toBeNull();
+        expect(getThemeColorPreferences(storage)).toEqual({
+            accentColor: null,
+            baseColor: null,
+        });
+        expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBeNull();
+    });
+
+    it('clears both custom color preferences instead of saving default values', () => {
+        storage.setItem(STORAGE_KEYS.ACCENT_COLOR, '#ff0000');
+        storage.setItem(STORAGE_KEYS.BASE_COLOR, '#0000ff');
+
+        clearThemeColorPreferences(storage);
+
+        expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBeNull();
+    });
 });
 
 describe('external Nostr client preference', () => {

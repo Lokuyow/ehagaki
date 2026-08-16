@@ -35,6 +35,8 @@
     (function () {
       var THEME_MODE_KEY = 'themeMode';
       var DARK_MODE_KEY = 'darkMode';
+      var ACCENT_COLOR_KEY = 'accentColor';
+      var BASE_COLOR_KEY = 'baseColor';
       var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
       var THEME_QUERY_KEY = 'embedTheme';
       var DEFAULT_THEME_QUERY_KEY = 'defaultTheme';
@@ -82,6 +84,20 @@
         return null;
       }
 
+      function readCustomColor(key) {
+        try {
+          var value = localStorage.getItem(key);
+          var normalized = value && value.trim().replace(/^#/, '');
+          if (!normalized || !/^[0-9a-f]{6}$/i.test(normalized)) {
+            if (value !== null) localStorage.removeItem(key);
+            return null;
+          }
+          return '#' + normalized.toLowerCase();
+        } catch {
+          return null;
+        }
+      }
+
       var themeMode = localStorage.getItem(THEME_MODE_KEY);
       var hasStoredThemeMode = themeMode === 'system' || themeMode === 'light' || themeMode === 'dark';
       var hasLegacyDarkMode = localStorage.getItem(DARK_MODE_KEY) !== null;
@@ -121,6 +137,12 @@
           ? false
           : window.matchMedia('(prefers-color-scheme: dark)').matches;
       var root = document.documentElement;
+      if (window.top === window) {
+        var accentColor = readCustomColor(ACCENT_COLOR_KEY);
+        var baseColor = readCustomColor(BASE_COLOR_KEY);
+        if (accentColor) root.style.setProperty('--accent-color', accentColor);
+        if (baseColor) root.style.setProperty('--base-color', baseColor);
+      }
       if (isDark) {
         root.classList.add('dark');
         root.style.colorScheme = 'dark';

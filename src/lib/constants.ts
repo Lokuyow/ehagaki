@@ -122,6 +122,8 @@ export const STORAGE_KEYS = {
     MEDIA_FREE_PLACEMENT: "mediaFreePlacement",
     THEME_MODE: "themeMode",
     DARK_MODE: "darkMode",
+    ACCENT_COLOR: "accentColor",
+    BASE_COLOR: "baseColor",
     NOSTR_ACCOUNTS: "nostr-accounts",
     NOSTR_ACTIVE_ACCOUNT: "nostr-active-account",
     NOSTR_SECRET_KEY_PREFIX: "nostr-secret-key-",
