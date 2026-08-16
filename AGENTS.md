@@ -143,6 +143,19 @@ Supported browser families:
 
 Chrome and Firefox on iOS use WebKit. Treat iOS compatibility as Safari-family behavior. Check new web-platform features against these targets before adopting them.
 
+### Responsive layout baseline
+
+- For the standalone application, treat 360 CSS px as the minimum supported mobile viewport width.
+- At 360 CSS px, the standalone UI must remain usable without unintended horizontal scrolling, clipped controls, overlapping content, or inaccessible essential actions.
+- Standalone viewports narrower than 360 CSS px are not a required compatibility target unless explicitly requested.
+- iframe and Web Component embeds are not subject to the 360 CSS px minimum.
+- Do not treat an embedded layout as unsupported solely because its host width is below 360 CSS px.
+- Embedded layouts must continue to reflow at narrower host widths without unintended horizontal scrolling, clipped essential content, overlapping controls, or inaccessible essential actions.
+- Do not introduce fixed widths or minimum widths that unnecessarily prevent iframe or Web Component layouts from shrinking below 360 CSS px.
+- When space is constrained in an embed, prefer reflow, wrapping, compact presentation, or intentional reduction of nonessential presentation over clipping essential content or controls.
+- For changes that can affect embedded layout, verify representative host widths below 360 CSS px that are relevant to the affected UI.
+- Do not assume a fixed viewport height, device pixel ratio, or full-screen mobile viewport.
+
 ## Architecture and responsibility boundaries
 
 Keep `src/App.svelte` focused on orchestration and top-level wiring. Do not add reusable business logic, persistence logic, protocol construction, or complex state transitions directly to it.
