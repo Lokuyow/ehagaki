@@ -35,12 +35,22 @@
             width: min(1440px, calc(100vw - 32px));
             margin: 24px auto 48px;
             display: grid;
+            gap: 24px;
+        }
+
+        .column, .stack { display: grid; gap: 18px; min-width: 0; }
+        .theme-playground, .reference-grid {
+            display: grid;
             grid-template-columns: minmax(320px, 450px) minmax(0, 1fr);
             gap: 20px;
             align-items: start;
         }
-
-        .column, .stack { display: grid; gap: 18px; min-width: 0; }
+        .theme-controls { display: grid; gap: 16px; min-width: 0; }
+        .theme-controls > header { display: grid; gap: 10px; }
+        .theme-panel { display: grid; gap: 18px; }
+        .theme-panel > header { display: grid; gap: 6px; }
+        .reference-grid { padding-top: 2px; }
+        .reference-heading { display: grid; gap: 6px; }
         .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
         .panel { padding: 22px; }
         .card { padding: 16px; box-shadow: none; }
@@ -82,6 +92,30 @@
         button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #92caaa; outline-offset: 2px; }
         .buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
         .buttons + .buttons { margin-top: 9px; }
+        .preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .preset-button {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 10px;
+            min-height: 58px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: #fbfdfb;
+            color: var(--text);
+            text-align: left;
+        }
+        .preset-button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+        .preset-swatches { display: grid; grid-template-columns: repeat(2, 18px); gap: 3px; }
+        .preset-swatch { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(24, 48, 40, .22); }
+        .preset-name { font-weight: 700; }
+        .preset-values { color: var(--muted); font-size: .73rem; line-height: 1.35; }
+        .theme-divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
+        details.advanced-settings { border: 1px solid var(--line); border-radius: 12px; background: #f8fbf9; }
+        details.advanced-settings summary { padding: 12px 14px; cursor: pointer; font-weight: 700; }
+        details.advanced-settings[open] { padding-bottom: 14px; }
+        details.advanced-settings[open] summary { margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+        .advanced-content { display: grid; gap: 14px; padding: 0 14px; }
         .event-monitor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
         .event-monitor-header > div { min-width: 0; }
         .event-monitor-header button { flex: 0 0 auto; }
@@ -111,8 +145,9 @@
             font-size: .78rem;
             line-height: 1.5;
         }
-        .component-frame { height: 640px; padding: 18px; background: #dce8df; border-radius: 18px; }
-        #component-mount { height: 580px; }
+        .preview-panel { position: sticky; top: 18px; }
+        .component-frame { height: clamp(500px, 68vh, 620px); padding: 18px; background: #dce8df; border-radius: 18px; }
+        #component-mount { height: calc(100% - 36px); }
         ehagaki-composer { display: block; height: 100%; min-height: 0; background: white; }
 
         .comparison { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .84rem; }
@@ -123,9 +158,10 @@
         .check input { width: auto; }
 
         @media (max-width: 980px) {
-            main { grid-template-columns: 1fr; }
+            .theme-playground, .reference-grid { grid-template-columns: 1fr; }
+            .preview-panel { position: static; }
             .component-frame { height: 520px; }
-            #component-mount, ehagaki-composer { height: 480px; }
+            #component-mount, ehagaki-composer { height: 484px; }
         }
 
         @media (max-width: 540px) {
@@ -139,15 +175,83 @@
 
 <body>
     <main>
-        <section class="column">
-            <div class="panel stack">
-                <header class="stack">
-                    <div>
-                        <h1>eHagaki Web Component</h1>
-                        <p class="lead">外部サイトのhostから、公開API・lifecycle・event・security modelを実際に操作するリファレンスです。</p>
-                    </div>
+        <section class="theme-playground" aria-labelledby="theme-playground-heading">
+            <div class="theme-controls">
+                <header>
+                    <h1 id="theme-playground-heading">Theme Playground</h1>
+                    <p class="lead">プリセットやテーマカラーを試しながら、右側のeHagaki Web Componentの見た目を確認できます。</p>
                     <p class="small"><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> / <a href="./embed-parent-client-example.html">iframe sample</a></p>
                 </header>
+
+                <div class="panel theme-panel">
+                    <header>
+                        <h2>簡単設定</h2>
+                        <p class="small">プリセット、accent、baseだけでsurface全体の色味を試せます。Base Colorはneutral surfaceへmixされる色味のseedです。</p>
+                    </header>
+                    <div class="preset-grid" aria-label="Theme presets">
+                        <button id="preset-azure" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #005FCC"></span><span class="preset-swatch" style="background: #0077FF"></span></span>
+                            <span><span class="preset-name">Azure</span><br><span class="preset-values">#005FCC / #0077FF</span></span>
+                        </button>
+                        <button id="preset-rose" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #B4233C"></span><span class="preset-swatch" style="background: #FF3B5C"></span></span>
+                            <span><span class="preset-name">Rose</span><br><span class="preset-values">#B4233C / #FF3B5C</span></span>
+                        </button>
+                        <button id="preset-forest" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #1F7A4D"></span><span class="preset-swatch" style="background: #00A86B"></span></span>
+                            <span><span class="preset-name">Forest</span><br><span class="preset-values">#1F7A4D / #00A86B</span></span>
+                        </button>
+                        <button id="preset-amber" type="button" class="preset-button" aria-pressed="false">
+                            <span class="preset-swatches" aria-hidden="true"><span class="preset-swatch" style="background: #8A5700"></span><span class="preset-swatch" style="background: #F2B000"></span></span>
+                            <span><span class="preset-name">Amber</span><br><span class="preset-values">#8A5700 / #F2B000</span></span>
+                        </button>
+                    </div>
+                    <hr class="theme-divider">
+                    <div class="grid-2">
+                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="#005FCC"></div>
+                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="#0077FF"></div>
+                    </div>
+                    <p class="small">空欄はeHagakiデフォルトです。プリセットはmount済みなら選択直後に反映され、手入力値は「テーマカラーを適用」で反映されます。</p>
+                    <div class="buttons">
+                        <button id="apply-styles" type="button" class="secondary">テーマカラーを適用</button>
+                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
+                    </div>
+
+                    <details class="advanced-settings">
+                        <summary>詳細設定</summary>
+                        <div class="advanced-content">
+                            <p class="small">個別tokenを指定すると、指定した項目だけを上書きします。空欄はeHagakiデフォルトです。</p>
+                            <div class="grid-2">
+                                <div class="field"><label for="style-background">background</label><input id="style-background"></div>
+                                <div class="field"><label for="style-text">text</label><input id="style-text"></div>
+                                <div class="field"><label for="style-border">border</label><input id="style-border"></div>
+                                <div class="field"><label for="style-link">link</label><input id="style-link"></div>
+                                <div class="field"><label for="style-input">input background</label><input id="style-input"></div>
+                                <div class="field"><label for="style-footer">footer background</label><input id="style-footer"></div>
+                                <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog"></div>
+                                <div class="field"><label for="style-font">font family</label><input id="style-font"></div>
+                            </div>
+                            <p class="small">Accent / Baseはsurface生成に使われます。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <div class="panel stack preview-panel">
+                <div>
+                    <h2>Component surface</h2>
+                    <p class="small">プリセットを押すと、mount済みのcomponentへCSS Custom Propertiesがその場で反映されます。</p>
+                </div>
+                <div id="component-mount" class="component-frame" aria-label="eHagaki Web Component mount point"></div>
+            </div>
+        </section>
+
+        <section class="reference-grid" aria-labelledby="reference-heading">
+            <div class="column">
+                <div class="panel stack reference-heading">
+                    <h2 id="reference-heading">Web Component reference</h2>
+                    <p class="small">公開API・lifecycle・event・security modelを実際に操作するリファレンスです。</p>
+                </div>
 
                 <div class="notice">
                     <strong>認証とtrust boundary</strong>
@@ -235,77 +339,42 @@
                         <button id="apply-invalid-context" type="button" class="ghost full">invalid contextを試す</button>
                     </div>
                 </div>
+            </div>
 
-                <div class="card stack">
-                    <h2>CSS Custom Properties</h2>
-                    <p class="small">Create / Mount時はeHagaki本体のデフォルトCSSを使います。Accent / Baseは少数の指定でsurface群へ色味を付ける簡易テーマ、下段は個別tokenを指定する詳細overrideです。空欄は本体デフォルトを意味し、「入力したカスタムCSSを適用」を押したときだけ反映されます。</p>
-                    <div class="buttons">
-                        <button id="preset-mint" type="button" class="ghost">ミント</button>
-                        <button id="preset-blue" type="button" class="ghost">ブルー</button>
-                        <button id="preset-dark" type="button" class="ghost">ダーク</button>
+            <div class="column">
+                <div class="panel stack">
+                    <div class="event-monitor-header">
+                        <div><h2>Event monitor</h2><p class="small">秘密情報・署名要求payload・raw Errorは表示せず、安全なsummaryだけを記録します。</p></div>
+                        <button id="clear-log" type="button" class="ghost">ログをクリア</button>
                     </div>
-                    <div class="grid-2">
-                        <div class="field"><label for="style-accent">accent color</label><input id="style-accent" placeholder="例: #28764f"></div>
-                        <div class="field"><label for="style-base">base color</label><input id="style-base" placeholder="例: #dcefe4"></div>
-                        <div class="field"><label for="style-background">background</label><input id="style-background" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-text">text</label><input id="style-text" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-border">border</label><input id="style-border" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-link">link</label><input id="style-link" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-input">input background</label><input id="style-input" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-footer">footer background</label><input id="style-footer" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-dialog">dialog background</label><input id="style-dialog" placeholder="未指定 = eHagakiデフォルト"></div>
-                        <div class="field"><label for="style-font">font family</label><input id="style-font" placeholder="未指定 = eHagakiデフォルト"></div>
+                    <textarea id="event-log" class="log" readonly aria-label="Web Component event log"></textarea>
+                </div>
+
+                <div class="panel stack">
+                    <div>
+                        <h2>iframeとの違い</h2>
+                        <p class="small">Web Componentが常に安全という意味ではありません。host JavaScriptから秘密情報を隔離したい場合はiframeを使ってください。</p>
                     </div>
-                    <div class="buttons">
-                        <button id="apply-styles" type="button" class="secondary">入力したカスタムCSSを適用</button>
-                        <button id="reset-styles" type="button" class="ghost">デフォルトに戻す</button>
-                    </div>
-                    <p class="small">Accent / Baseはsurface生成に使われ、backgroundやtextなどの個別overrideが指定されたtokenだけを上書きします。公開partの利用方法は <a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> を参照してください。</p>
+                    <table class="comparison">
+                        <thead><tr><th>項目</th><th>iframe</th><th>Web Component</th></tr></thead>
+                        <tbody>
+                            <tr><th>境界 / API</th><td>origin isolation、postMessage protocol、handshake</td><td>同じWindow realm、method/property/CustomEvent、element create/destroy/recreate</td></tr>
+                            <tr><th>認証</th><td>parent-client auth/RPCを利用可能</td><td>parent-client auth/RPCは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46/nsecはeHagaki UI</td></tr>
+                            <tr><th>保存</th><td>storage/IndexedDBの親委譲が可能</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはhost originの <code>eHagakiDB</code></td></tr>
+                            <tr><th>更新 / style</th><td>iframe reloadまたはpostMessage</td><td>setSettings()/setContext()、CSS Custom Properties / <code>::part()</code></td></tr>
+                            <tr><th>trust</th><td>iframe originとの境界を設計可能</td><td>trusted hostのみ正式サポート。hostは同一realmのコード・storageを観測可能</td></tr>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-        </section>
 
-        <section class="column">
-            <div class="panel stack">
-                <div>
-                    <h2>Component surface</h2>
-                    <p class="small">listenerはelement生成前に登録され、ready eventの取りこぼしを避けます。イベントはbubbles/composedのCustomEventとしてhostへ届きます。</p>
+                <div class="panel stack">
+                    <h2>HTTP / WebSocket / Service Worker</h2>
+                    <ul class="api-list small">
+                        <li>HTTP requestはhost Service Workerが観測可能です。</li>
+                        <li>Nostr relayはWebSocketです。Service Workerのfetch interceptionはrelay interceptionの証拠ではありません。</li>
+                        <li>host <code>window.WebSocket</code> wrapperについてbrowser-level proofは現在未完了です。今回relay interceptor fixture/APIは追加していません。</li>
+                    </ul>
                 </div>
-                <div id="component-mount" class="component-frame" aria-label="eHagaki Web Component mount point"></div>
-            </div>
-
-            <div class="panel stack">
-                <div class="event-monitor-header">
-                    <div><h2>Event monitor</h2><p class="small">秘密情報・署名要求payload・raw Errorは表示せず、安全なsummaryだけを記録します。</p></div>
-                    <button id="clear-log" type="button" class="ghost">ログをクリア</button>
-                </div>
-                <textarea id="event-log" class="log" readonly aria-label="Web Component event log"></textarea>
-            </div>
-
-            <div class="panel stack">
-                <div>
-                    <h2>iframeとの違い</h2>
-                    <p class="small">Web Componentが常に安全という意味ではありません。host JavaScriptから秘密情報を隔離したい場合はiframeを使ってください。</p>
-                </div>
-                <table class="comparison">
-                    <thead><tr><th>項目</th><th>iframe</th><th>Web Component</th></tr></thead>
-                    <tbody>
-                        <tr><th>境界 / API</th><td>origin isolation、postMessage protocol、handshake</td><td>同じWindow realm、method/property/CustomEvent、element create/destroy/recreate</td></tr>
-                        <tr><th>認証</th><td>parent-client auth/RPCを利用可能</td><td>parent-client auth/RPCは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46/nsecはeHagaki UI</td></tr>
-                        <tr><th>保存</th><td>storage/IndexedDBの親委譲が可能</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはhost originの <code>eHagakiDB</code></td></tr>
-                        <tr><th>更新 / style</th><td>iframe reloadまたはpostMessage</td><td>setSettings()/setContext()、CSS Custom Properties / <code>::part()</code></td></tr>
-                        <tr><th>trust</th><td>iframe originとの境界を設計可能</td><td>trusted hostのみ正式サポート。hostは同一realmのコード・storageを観測可能</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="panel stack">
-                <h2>HTTP / WebSocket / Service Worker</h2>
-                <ul class="api-list small">
-                    <li>HTTP requestはhost Service Workerが観測可能です。</li>
-                    <li>Nostr relayはWebSocketです。Service Workerのfetch interceptionはrelay interceptionの証拠ではありません。</li>
-                    <li>host <code>window.WebSocket</code> wrapperについてbrowser-level proofは現在未完了です。今回relay interceptor fixture/APIは追加していません。</li>
-                </ul>
             </div>
         </section>
     </main>

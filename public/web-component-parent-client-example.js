@@ -40,17 +40,21 @@ const DETAIL_STYLE_FIELDS = [
 const CUSTOM_STYLE_FIELDS = [...THEME_STYLE_FIELDS, ...DETAIL_STYLE_FIELDS];
 
 const STYLE_PRESETS = {
-    mint: {
-        accent: "#28764f",
-        base: "#dcefe4",
+    azure: {
+        accent: "#005FCC",
+        base: "#0077FF",
     },
-    blue: {
-        accent: "#1769aa",
-        base: "#dfeaf3",
+    rose: {
+        accent: "#B4233C",
+        base: "#FF3B5C",
     },
-    dark: {
-        accent: "#8ab4f8",
-        base: "#242728",
+    forest: {
+        accent: "#1F7A4D",
+        base: "#00A86B",
+    },
+    amber: {
+        accent: "#8A5700",
+        base: "#F2B000",
     },
 };
 
@@ -278,7 +282,13 @@ function selectStylePreset(name) {
     for (const [, id] of DETAIL_STYLE_FIELDS) {
         getElement(id).value = "";
     }
-    appendLog(`styles preset selected: ${name}`);
+    for (const presetName of Object.keys(STYLE_PRESETS)) {
+        const button = document.querySelector(`#preset-${presetName}`);
+        if (button) button.setAttribute("aria-pressed", String(presetName === name));
+    }
+    const isMounted = !!currentComposer?.isConnected;
+    if (isMounted) applyCustomStyles(currentComposer);
+    appendLog(`styles preset selected: ${name}`, { applied: isMounted });
 }
 
 function removeCustomStyles(element) {
@@ -374,6 +384,10 @@ function applyStyles() {
 }
 
 function resetStyles() {
+    for (const presetName of Object.keys(STYLE_PRESETS)) {
+        const button = document.querySelector(`#preset-${presetName}`);
+        if (button) button.setAttribute("aria-pressed", "false");
+    }
     if (!currentComposer?.isConnected) {
         clearStyleInputs();
         setStatus(componentStatus, "componentを先にCreateしてください", "warn");
@@ -417,9 +431,10 @@ function bindActions() {
     getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context"));
     getElement("apply-styles").addEventListener("click", applyStyles);
     getElement("reset-styles").addEventListener("click", resetStyles);
-    getElement("preset-mint").addEventListener("click", () => selectStylePreset("mint"));
-    getElement("preset-blue").addEventListener("click", () => selectStylePreset("blue"));
-    getElement("preset-dark").addEventListener("click", () => selectStylePreset("dark"));
+    getElement("preset-azure").addEventListener("click", () => selectStylePreset("azure"));
+    getElement("preset-rose").addEventListener("click", () => selectStylePreset("rose"));
+    getElement("preset-forest").addEventListener("click", () => selectStylePreset("forest"));
+    getElement("preset-amber").addEventListener("click", () => selectStylePreset("amber"));
     getElement("clear-log").addEventListener("click", () => { eventLog.value = ""; });
 }
 
