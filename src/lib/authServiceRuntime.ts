@@ -52,6 +52,7 @@ export interface AuthServiceRuntime {
     caches: CacheStorage;
     navigator: Navigator;
     serviceWorkerEnabled: boolean;
+    localNsecAuthEnabled: boolean;
     console: Console;
     nip46Svc: Nip46Service;
     parentClientSvc: ParentClientAuthService;
@@ -76,6 +77,9 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
     const serviceWorkerEnabled =
         dependencies.serviceWorkerEnabled ??
         getAppRuntimeEnvironment().serviceWorkerEnabled;
+    const localNsecAuthEnabled =
+        dependencies.localNsecAuthEnabled ??
+        getAppRuntimeEnvironment().localNsecAuthEnabled;
     const consoleObj = dependencies.console ?? (typeof window !== 'undefined' ? window.console : {} as Console);
     const indexedDB =
         dependencies.indexedDB ??
@@ -94,6 +98,7 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
         caches,
         navigator,
         serviceWorkerEnabled,
+        localNsecAuthEnabled,
         console: consoleObj,
         keyManager,
         nip46Svc: nip46Service,

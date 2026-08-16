@@ -2021,6 +2021,7 @@
           nip46NostrConnectUri={pendingNip46ConnectionUri}
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
+          localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
         />
       {/if}
       {#if showTransitionOverlay}
@@ -2052,6 +2053,7 @@
           {nip46NostrConnectErrorMessage}
           initialNostrConnectRelayCandidates={getInitialNip46ConnectRelayCandidates()}
           isAddAccountMode={true}
+          localNsecAuthEnabled={appRuntimeEnvironment.localNsecAuthEnabled}
         />
       {/if}
       {#if showLogoutDialogStore.value && ProfileComponent}

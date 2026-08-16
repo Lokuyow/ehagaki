@@ -44,6 +44,7 @@
         nip46NostrConnectErrorMessage?: string;
         initialNostrConnectRelayCandidates?: string[];
         isAddAccountMode?: boolean;
+        localNsecAuthEnabled?: boolean;
     }
 
     let {
@@ -68,6 +69,7 @@
         nip46NostrConnectErrorMessage = "",
         initialNostrConnectRelayCandidates = [],
         isAddAccountMode = false,
+        localNsecAuthEnabled = true,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -634,10 +636,14 @@
     onOpenChange={(open) => !open && handleClose()}
     title={isAddAccountMode
         ? $_("loginDialog.add_account_title")
-        : $_("loginDialog.input_secret")}
+        : localNsecAuthEnabled
+          ? $_("loginDialog.input_secret")
+          : $_("common.login")}
     description={isAddAccountMode
         ? $_("loginDialog.add_account_hint")
-        : $_("loginDialog.hint_input_secret")}
+        : localNsecAuthEnabled
+          ? $_("loginDialog.hint_input_secret")
+          : $_("loginDialog.login_methods_hint")}
     contentClass="login-dialog"
     footerVariant="close-button"
 >
@@ -1072,63 +1078,65 @@
         </details>
     </div>
 
-    <div class="divider">
-        <span>{$_("common.or")}</span>
-    </div>
-
-    <div class="secret-key-section">
-        <div class="secret-heading-row">
-            <div class="secret-icon svg-icon"></div>
-            <h3>{$_("loginDialog.input_secret")}</h3>
+    {#if localNsecAuthEnabled}
+        <div class="divider">
+            <span>{$_("common.or")}</span>
         </div>
 
-        <form novalidate onsubmit={handleFormSubmit}>
-            <div class="secret-input-row">
-                <div class="input-shell">
-                    <input
-                        bind:value={secretKey}
-                        type="password"
-                        placeholder="nsec1..."
-                        class="secret-input u-control"
-                        id="secretKey"
-                        name="secretKey"
-                        autocomplete="current-password"
-                        required
-                        minlength="63"
-                        maxlength="63"
-                        bind:this={inputEl}
-                        title={$_("loginDialog.hint_input_secret")}
-                        oninput={() => inputEl?.setCustomValidity("")}
-                    />
-                    {#if secretKey.length > 0}
-                        <Button
-                            variant="secondary"
-                            type="button"
-                            className="clear-input-btn"
-                            ariaLabel={clearInputLabel}
-                            onClick={handleClearSecretKey}
-                            onmousedown={preventKeyboardFocusChange}
-                            ontouchstart={preventKeyboardFocusChange}
-                        >
-                            <div
-                                class="clear-input-icon svg-icon"
-                                aria-hidden="true"
-                            ></div>
-                        </Button>
-                    {/if}
-                </div>
- 
-                <Button
-                    variant="primary"
-                    shape="square"
-                    type="submit"
-                    className="save-btn u-control"
-                >
-                    {$_("loginDialog.save")}
-                </Button>
+        <div class="secret-key-section">
+            <div class="secret-heading-row">
+                <div class="secret-icon svg-icon"></div>
+                <h3>{$_("loginDialog.input_secret")}</h3>
             </div>
-        </form>
-    </div>
+
+            <form novalidate onsubmit={handleFormSubmit}>
+                <div class="secret-input-row">
+                    <div class="input-shell">
+                        <input
+                            bind:value={secretKey}
+                            type="password"
+                            placeholder="nsec1..."
+                            class="secret-input u-control"
+                            id="secretKey"
+                            name="secretKey"
+                            autocomplete="current-password"
+                            required
+                            minlength="63"
+                            maxlength="63"
+                            bind:this={inputEl}
+                            title={$_("loginDialog.hint_input_secret")}
+                            oninput={() => inputEl?.setCustomValidity("")}
+                        />
+                        {#if secretKey.length > 0}
+                            <Button
+                                variant="secondary"
+                                type="button"
+                                className="clear-input-btn"
+                                ariaLabel={clearInputLabel}
+                                onClick={handleClearSecretKey}
+                                onmousedown={preventKeyboardFocusChange}
+                                ontouchstart={preventKeyboardFocusChange}
+                            >
+                                <div
+                                    class="clear-input-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                            </Button>
+                        {/if}
+                    </div>
+
+                    <Button
+                        variant="primary"
+                        shape="square"
+                        type="submit"
+                        className="save-btn u-control"
+                    >
+                        {$_("loginDialog.save")}
+                    </Button>
+                </div>
+            </form>
+        </div>
+    {/if}
 
     {#snippet footer()}
         <Dialog.Close>

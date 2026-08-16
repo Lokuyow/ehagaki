@@ -59,6 +59,112 @@ export class AccountManager {
         this.clearActiveAccountPubkey();
     }
 
+    /**
+     * Removes only local nsec credentials and nsec account records.
+     * The configured Storage boundary decides the namespace; the Direct Web
+     * Component passes its scoped facade, so host keys remain unreachable.
+     */
+    cleanupLocalNsecAuthData(): void {
+        let remainingAccounts: unknown[] | null = null;
+        const removedPubkeys = new Set<string>();
+
+        try {
+            const rawAccounts = this.localStorage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS);
+            if (rawAccounts !== null) {
+                const parsed = JSON.parse(rawAccounts) as unknown;
+                if (Array.isArray(parsed)) {
+                    remainingAccounts = parsed.filter((account) => {
+                        if (
+                            typeof account === 'object'
+                            && account !== null
+                            && (account as Partial<StoredAccount>).type === 'nsec'
+                        ) {
+                            const pubkeyHex = (account as Partial<StoredAccount>).pubkeyHex;
+                            if (typeof pubkeyHex === 'string') {
+                                removedPubkeys.add(pubkeyHex);
+                            }
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    if (remainingAccounts.length !== parsed.length) {
+                        this.localStorage.setItem(
+                            STORAGE_KEYS.NOSTR_ACCOUNTS,
+                            JSON.stringify(remainingAccounts),
+                        );
+                    }
+                }
+            }
+        } catch {
+            this.console.error('ローカルnsecアカウントデータ削除に失敗しました', {
+                stage: 'account-records',
+                reason: 'unexpected',
+            });
+            remainingAccounts = null;
+            removedPubkeys.clear();
+        }
+
+        if (remainingAccounts && removedPubkeys.size > 0) {
+            try {
+                const activePubkey = this.getActiveAccountPubkey();
+                const activeStillExists = remainingAccounts.some(
+                    (account) => typeof account === 'object'
+                        && account !== null
+                        && (account as Partial<StoredAccount>).pubkeyHex === activePubkey,
+                );
+                if (activePubkey && removedPubkeys.has(activePubkey) && !activeStillExists) {
+                    const nextActiveAccount = remainingAccounts.find((account) =>
+                        typeof account === 'object'
+                        && account !== null
+                        && typeof (account as Partial<StoredAccount>).pubkeyHex === 'string'
+                        && (account as Partial<StoredAccount>).pubkeyHex,
+                    ) as Partial<StoredAccount> | undefined;
+                    const nextActivePubkey = nextActiveAccount?.pubkeyHex;
+                    if (nextActivePubkey) {
+                        this.saveActiveAccountPubkey(nextActivePubkey);
+                    } else {
+                        this.clearActiveAccountPubkey();
+                    }
+                }
+            } catch {
+                this.console.error('ローカルnsecアカウントデータ削除に失敗しました', {
+                    stage: 'active-account',
+                    reason: 'unexpected',
+                });
+            }
+        }
+
+        const credentialKeys = new Set<string>([
+            STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY,
+            ...[...removedPubkeys].map((pubkeyHex) => getNsecStorageKey(pubkeyHex)),
+        ]);
+        try {
+            for (let index = 0; index < this.localStorage.length; index += 1) {
+                const key = this.localStorage.key(index);
+                if (key?.startsWith(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX)) {
+                    credentialKeys.add(key);
+                }
+            }
+        } catch {
+            this.console.error('ローカルnsecアカウントデータ削除に失敗しました', {
+                stage: 'credential-list',
+                reason: 'unexpected',
+            });
+        }
+
+        for (const key of credentialKeys) {
+            try {
+                this.localStorage.removeItem(key);
+            } catch {
+                this.console.error('ローカルnsecアカウントデータ削除に失敗しました', {
+                    stage: 'credential-remove',
+                    reason: 'unexpected',
+                });
+            }
+        }
+    }
+
     addAccount(pubkeyHex: string, type: StoredAccount['type']): void {
         const accounts = this.getAccounts();
         const existing = accounts.find(a => a.pubkeyHex === pubkeyHex);

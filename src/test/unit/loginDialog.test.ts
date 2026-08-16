@@ -6,6 +6,7 @@ import { locale, waitLocale } from 'svelte-i18n';
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
         'clearInput': '入力内容を消去',
+        'loginDialog.login_methods_hint': 'ログイン方法を選択',
         'loginDialog.input_secret': '秘密鍵',
         'loginDialog.hint_input_secret': 'nsec1から始まる秘密鍵を入力',
         'loginDialog.add_account_title': 'アカウントを追加',
@@ -124,6 +125,7 @@ describe('LoginDialog', () => {
         nip46NostrConnectErrorMessage: '',
         initialNostrConnectRelayCandidates: [...DEFAULT_NIP46_CONNECTION_RELAY_CANDIDATES],
         isAddAccountMode: false,
+        localNsecAuthEnabled: true,
     };
 
     beforeEach(async () => {
@@ -170,6 +172,21 @@ describe('LoginDialog', () => {
         });
 
         expect(screen.getAllByText('or').length).toBeGreaterThan(0);
+    });
+
+    it('ローカルnsec認証が無効な場合はnsec UIを生成せずNIP-07とNIP-46を維持する', () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                localNsecAuthEnabled: false,
+            },
+        });
+
+        expect(screen.queryByPlaceholderText('nsec1...')).toBeNull();
+        expect(screen.queryByText('秘密鍵')).toBeNull();
+        expect(screen.getByText('ブラウザ拡張機能')).toBeTruthy();
+        expect(screen.getByText('リモートサイナー')).toBeTruthy();
+        expect(screen.queryByText(/Web Component.*秘密鍵/)).toBeNull();
     });
 
     it('Enter で送信した場合は保存処理を1回だけ実行する', async () => {

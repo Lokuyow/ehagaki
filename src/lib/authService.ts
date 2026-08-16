@@ -47,6 +47,10 @@ export class AuthService {
     // --- nsec認証 ---
 
     async authenticateWithNsec(secretKey: string): Promise<AuthResult> {
+        if (!this.runtime.localNsecAuthEnabled) {
+            return { success: false, error: 'local-nsec-auth-disabled' };
+        }
+
         if (!this.runtime.keyManager.isValidNsec(secretKey)) {
             return { success: false, error: 'invalid_secret' };
         }
@@ -253,6 +257,9 @@ export class AuthService {
     async initializeAuth(): Promise<RestoreResult> {
         try {
             if (this.accountManager) {
+                if (!this.runtime.localNsecAuthEnabled) {
+                    this.accountManager.cleanupLocalNsecAuthData();
+                }
                 const snapshotResult = captureLegacyNsecMigrationSnapshot(this.runtime.localStorage);
                 if (snapshotResult.status === 'failed') {
                     return { hasAuth: false };
@@ -323,6 +330,10 @@ export class AuthService {
         pubkeyHex: string,
         type: 'nsec' | 'nip07' | 'nip46' | 'parentClient',
     ): Promise<ManagedRestoreResult> {
+        if (type === 'nsec' && !this.runtime.localNsecAuthEnabled) {
+            return { hasAuth: false, reason: 'local-nsec-auth-disabled' };
+        }
+
         if (!/^[0-9a-fA-F]{64}$/.test(pubkeyHex)) {
             return { hasAuth: false, reason: 'invalid-requested-pubkey' };
         }

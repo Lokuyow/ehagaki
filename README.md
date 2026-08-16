@@ -80,7 +80,7 @@ Web Component版の公開API、lifecycle、context/settings、CustomEvent、CSS 
 
 実際に `Create / Mount`、`Destroy / Unmount`、再生成、設定・context更新、2個目instanceの拒否、event log、host側styleを操作するlive sampleは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html) から確認できます。
 
-Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いません。ログインは埋め込まれたeHagakiの既存UIから行い、NIP-07はhostの `window.nostr` を直接利用します。host JavaScriptから秘密情報を隔離したい場合はiframe埋め込みを使用してください。
+Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いません。ホストと同じWindow realm / originで動作するためローカルnsec認証には対応せず、NIP-07はhostの `window.nostr` を直接利用し、NIP-46は埋め込まれたeHagakiのUIから利用します。通常版/PWAとiframe版では従来どおりnsec認証を利用できます。
 
 ## 技術スタック
 

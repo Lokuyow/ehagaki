@@ -79,6 +79,21 @@ describe('AuthService.restoreAccount', () => {
         );
     });
 
+    it('ローカルnsec認証が無効なruntimeではmanaged nsec restoreを開始しない', async () => {
+        const service = createManagedService(
+            { ...mockDependencies, localNsecAuthEnabled: false },
+            NSEC_PUBKEY,
+            'nsec',
+        );
+
+        await expect(service.restoreAccount(NSEC_PUBKEY, 'nsec')).resolves.toEqual({
+            hasAuth: false,
+            reason: 'local-nsec-auth-disabled',
+        });
+        expect(mockKeyManager.readStoredKey).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
     it('nsec: mismatchではsecret stateとauth stateを変更しない', async () => {
         mockKeyManager.readStoredKey.mockReturnValue({ status: 'found', secretKey: 'stored-nsec' });
         mockKeyManager.isValidNsec.mockReturnValue(true);

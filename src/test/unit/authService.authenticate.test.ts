@@ -36,6 +36,21 @@ describe('AuthService.authenticateWithNsec', () => {
         expect(mockDependencies.setNsecAuth).toHaveBeenCalledWith('test-pubkey', 'npub123', 'nprofile123');
     });
 
+    it('ローカルnsec認証が無効なruntimeでは検証・保存前に拒否する', async () => {
+        const service = new AuthService({
+            ...mockDependencies,
+            localNsecAuthEnabled: false,
+        });
+
+        await expect(service.authenticateWithNsec('nsec1disabled')).resolves.toEqual({
+            success: false,
+            error: 'local-nsec-auth-disabled',
+        });
+        expect(mockKeyManager.isValidNsec).not.toHaveBeenCalled();
+        expect(mockKeyManager.saveToStorage).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
     it('無効な秘密鍵で認証に失敗する', async () => {
         mockKeyManager.isValidNsec.mockReturnValue(false);
 

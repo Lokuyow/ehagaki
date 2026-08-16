@@ -267,6 +267,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 serviceWorkerEnabled: false,
                 externalInputEnabled: false,
                 historyEnabled: false,
+                localNsecAuthEnabled: false,
             });
 
             const { default: App } = await import("../App.svelte");

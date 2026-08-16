@@ -9,6 +9,10 @@ import { AccountManager } from '../../lib/accountManager';
 import { getNsecStorageKey } from '../../lib/authStorageKeys';
 import { STORAGE_KEYS } from '../../lib/constants';
 import {
+    createWebComponentStorage,
+    EHAGAKI_WEB_COMPONENT_STORAGE_PREFIX,
+} from '../../lib/appStorage';
+import {
     createMockAccountManager,
     createMockDependencies,
     createMockNip07Dependencies,
@@ -263,6 +267,76 @@ describe('AuthService.initializeAuth', () => {
 
         expect(result.hasAuth).toBe(true);
         expect(result.pubkeyHex).toBe('legacy-pubkey');
+    });
+
+    it('ローカルnsec認証が無効なruntimeではaccount managerなしでもlegacy nsec restoreを開始しない', async () => {
+        mockKeyManager.loadFromStorage.mockReturnValue('legacy-nsec');
+        const service = new AuthService({
+            ...mockDependencies,
+            localNsecAuthEnabled: false,
+        });
+
+        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        expect(mockKeyManager.loadFromStorage).not.toHaveBeenCalled();
+        expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
+    it('Web Component storage内のnsecだけをcleanupし、NIP-07復元とNIP-46・hostデータを維持する', async () => {
+        const hostStorage = new MockStorage();
+        const componentStorage = createWebComponentStorage(hostStorage);
+        const nsecPubkey = '12'.repeat(32);
+        const nip07Pubkey = '34'.repeat(32);
+        const nip46Pubkey = '56'.repeat(32);
+        const hostSentinels = {
+            'host-sentinel': 'unchanged',
+            [STORAGE_KEYS.NOSTR_ACCOUNTS]: 'host-accounts',
+            [STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY]: 'host-credential-sentinel',
+        };
+        for (const [key, value] of Object.entries(hostSentinels)) {
+            hostStorage.setItem(key, value);
+        }
+        componentStorage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, JSON.stringify([
+            { pubkeyHex: nsecPubkey, type: 'nsec', addedAt: 1 },
+            { pubkeyHex: nip07Pubkey, type: 'nip07', addedAt: 2 },
+            { pubkeyHex: nip46Pubkey, type: 'nip46', addedAt: 3 },
+        ]));
+        componentStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, nsecPubkey);
+        componentStorage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY, 'legacy-component-credential');
+        componentStorage.setItem(getNsecStorageKey(nsecPubkey), 'managed-component-credential');
+        componentStorage.setItem(
+            `${STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX}${nip46Pubkey}`,
+            'nip46-session-sentinel',
+        );
+        componentStorage.setItem('component-sentinel', 'keep');
+
+        const service = new AuthService({
+            ...createMockNip07Dependencies(nip07Pubkey),
+            localStorage: componentStorage,
+            localNsecAuthEnabled: false,
+        });
+        const accountManager = new AccountManager({ localStorage: componentStorage });
+        service.setAccountManager(accountManager);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: true,
+            pubkeyHex: nip07Pubkey,
+        });
+        expect(accountManager.getAccounts()).toEqual([
+            { pubkeyHex: nip07Pubkey, type: 'nip07', addedAt: 2 },
+            { pubkeyHex: nip46Pubkey, type: 'nip46', addedAt: 3 },
+        ]);
+        expect(accountManager.getActiveAccountPubkey()).toBe(nip07Pubkey);
+        expect(componentStorage.getItem(STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY)).toBeNull();
+        expect(componentStorage.getItem(getNsecStorageKey(nsecPubkey))).toBeNull();
+        expect(componentStorage.getItem(
+            `${STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX}${nip46Pubkey}`,
+        )).toBe('nip46-session-sentinel');
+        expect(componentStorage.getItem('component-sentinel')).toBe('keep');
+        for (const [key, value] of Object.entries(hostSentinels)) {
+            expect(hostStorage.getItem(key)).toBe(value);
+        }
+        expect(Array.from({ length: hostStorage.length }, (_, index) => hostStorage.key(index)))
+            .toContain(`${EHAGAKI_WEB_COMPONENT_STORAGE_PREFIX}component-sentinel`);
     });
 
     it('アカウントなし→レガシーNIP-07検出', async () => {

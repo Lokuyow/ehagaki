@@ -26,6 +26,7 @@
     "get_started": "Get Started"
   },
   "loginDialog": {
+    "login_methods_hint": "Choose a login method",
     "input_secret": "Secret Key",
     "hint_input_secret": "Enter a secret key starting with nsec1",
     "save": "Save",

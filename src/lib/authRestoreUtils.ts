@@ -14,6 +14,7 @@ const LEGACY_NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 export type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
 export type ManagedRestoreFailureReason =
     | 'invalid-requested-pubkey'
+    | 'local-nsec-auth-disabled'
     | 'account-record-mismatch'
     | 'credential-missing'
     | 'credential-read-failed'
@@ -102,7 +103,9 @@ interface ManagedAccountRestoreDependencies {
     restoreAccount(pubkeyHex: string, type: AccountAuthType): Promise<RestoreResult>;
 }
 
-export interface LegacyAuthCheckDependencies extends LegacyNsecDependencies, LegacyNip07Dependencies, LegacyNip46Dependencies { }
+export interface LegacyAuthCheckDependencies extends LegacyNsecDependencies, LegacyNip07Dependencies, LegacyNip46Dependencies {
+    localNsecAuthEnabled: boolean;
+}
 
 function createProfileRefs(pubkeyHex: string): { npub: string; nprofile: string } {
     return {
@@ -399,10 +402,10 @@ export async function runLegacyAuthChecks(
     dependencies: LegacyAuthCheckDependencies,
 ): Promise<RestoreResult> {
     const checks = [
-        checkLegacyNsecAuth,
+        ...(dependencies.localNsecAuthEnabled ? [checkLegacyNsecAuth] : []),
         checkLegacyNip07Auth,
         checkLegacyNip46Auth,
-    ] as const;
+    ];
 
     for (const check of checks) {
         const result = await check(dependencies as never);
