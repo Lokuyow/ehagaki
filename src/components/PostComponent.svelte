@@ -233,6 +233,9 @@
     mediaFreePlacement;
     uploadErrorMessage;
     currentEditor;
+    if (!mediaFreePlacement) {
+      mediaGalleryStore.items.length;
+    }
 
     if (typeof window === "undefined") {
       editorTargetHeight = POST_EDITOR_MIN_HEIGHT;
