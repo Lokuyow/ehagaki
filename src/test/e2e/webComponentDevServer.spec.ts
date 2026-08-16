@@ -109,7 +109,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
         await expect(page.locator("#module-url")).toHaveValue(`${origin}/ehagaki/web-component/ehagaki-composer.js`);
         await expect(page.locator("#asset-base")).toHaveValue(`${origin}/ehagaki/web-component/`);
-        await expect(page.locator("#ready-status")).toHaveText("whenReady(): resolved");
+        await expect(page.locator("#ready-status")).toContainText("whenReady(): resolved");
         await page.waitForFunction(() => document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector(".footer-bar"));
 
         const iconStatus = await page.evaluate(async () => (

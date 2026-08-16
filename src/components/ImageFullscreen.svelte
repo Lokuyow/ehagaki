@@ -9,6 +9,7 @@
         pauseFullscreenVideoContent,
     } from "../lib/utils/fullscreenViewerUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { getActiveElement } from "../lib/utils/appDomUtils";
 
     interface Props {
         src?: string;
@@ -18,6 +19,7 @@
         mediaList?: FullscreenMediaItem[];
         currentIndex?: number;
         onNavigate?: (index: number) => void;
+        openingFocusOrigin?: HTMLElement | null;
     }
 
     type CloseMode = "popstate" | "internal" | null;
@@ -33,6 +35,7 @@
         mediaList = [],
         currentIndex = -1,
         onNavigate = undefined,
+        openingFocusOrigin = null,
     }: Props = $props();
 
     let activePhotoSwipe: any = null;
@@ -213,7 +216,7 @@
             padding: VIEWER_PADDING,
             escKey: true,
             arrowKeys: true,
-            returnFocus: true,
+            returnFocus: false,
         });
 
         bindCustomContentEvents(instance);
@@ -247,20 +250,30 @@
 
     $effect(() => {
         if (
+            !show ||
+            normalizedIndex < 0 ||
+            resolvedMediaList.length === 0 ||
+            focusOrigin
+        ) {
+            return;
+        }
+
+        focusOrigin = openingFocusOrigin ?? getActiveElement();
+        focusOriginDialog = focusOrigin?.closest<HTMLElement>(
+            '[role="dialog"]',
+        ) ?? null;
+    });
+
+    $effect(() => {
+        if (
             show &&
             normalizedIndex >= 0 &&
             resolvedMediaList.length > 0 &&
-            !historyPushed
-            && appRuntimeEnvironment.historyEnabled
+            !historyPushed &&
+            appRuntimeEnvironment.historyEnabled
         ) {
             history.pushState({ imageFullscreen: true }, "");
             historyPushed = true;
-            const activeElement = document.activeElement;
-            focusOrigin =
-                activeElement instanceof HTMLElement ? activeElement : null;
-            focusOriginDialog = focusOrigin?.closest<HTMLElement>(
-                '[role="dialog"]',
-            ) ?? null;
         }
     });
 

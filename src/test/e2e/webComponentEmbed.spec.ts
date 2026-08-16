@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { nip19 } from "nostr-tools";
+import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
 declare global {
     interface Window {
@@ -55,6 +56,8 @@ function contentTypeFor(filePath: string): string {
 }
 
 test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    await ensureWebComponentE2EOutput();
     componentServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", componentOrigin).pathname;
         componentRequests.add(pathname);
@@ -114,7 +117,10 @@ test.beforeEach(() => {
 });
 
 test.afterAll(async () => {
-    await Promise.all([close(componentServer), close(hostServer)]);
+    await Promise.all([
+        componentServer && close(componentServer),
+        hostServer && close(hostServer),
+    ]);
 });
 
 test("mounts across origins without touching host storage or registering an eHagaki Service Worker", async ({ page }) => {
@@ -890,6 +896,75 @@ test("keeps authenticated profile and post history dialogs inside the component"
     expect(result.history.footer!.bottom).toBeCloseTo(component.bottom, 0);
     expect(result.history.list!.bottom).toBeCloseTo(result.history.footer!.top, 0);
     expect(result.history.listScrollHeight).toBeLessThanOrEqual(result.history.listClientHeight + 1);
+});
+
+test("restores Web Component image focus without using browser history", async ({ page }) => {
+    const imageBody = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+    );
+    await page.route("**/web-component-focus-image.jpg", (route) =>
+        route.fulfill({
+            status: 200,
+            contentType: "image/png",
+            body: imageBody,
+        }),
+    );
+    await page.goto(hostOrigin);
+
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.width = "360px";
+        composer.style.height = "520px";
+        document.body.append(composer);
+        await composer.whenReady();
+        const shadow = composer.shadowRoot!;
+        // The public embed API has no media-insertion method; exercise the
+        // component's real image-fullscreen ingress from a Shadow DOM image button.
+        const imageButton = document.createElement("button");
+        imageButton.type = "button";
+        imageButton.className = "web-component-focus-image";
+        imageButton.setAttribute("aria-label", "Focus image");
+        const image = document.createElement("img");
+        image.src = `${location.origin}/web-component-focus-image.jpg`;
+        image.alt = "Focus image";
+        imageButton.append(image);
+        imageButton.addEventListener("click", () => {
+            window.dispatchEvent(new CustomEvent("image-fullscreen-request", {
+                detail: { src: image.src, alt: image.alt },
+            }));
+        });
+        shadow.append(imageButton);
+    });
+
+    const composer = page.locator("ehagaki-composer");
+    const image = composer.locator(".web-component-focus-image");
+    await expect(composer.locator(".tiptap-editor")).toBeVisible();
+    const beforeOpen = await page.evaluate(() => ({
+        length: history.length,
+        state: history.state,
+    }));
+    await image.focus();
+    await expect(image).toBeFocused();
+    await image.press("Enter");
+    await expect(composer.locator(".ehagaki-pswp")).toBeVisible();
+    const duringViewer = await page.evaluate(() => ({
+        length: history.length,
+        state: history.state,
+    }));
+    expect(duringViewer).toEqual(beforeOpen);
+
+    await page.keyboard.press("Escape");
+    await expect(composer.locator(".ehagaki-pswp")).toBeHidden();
+    await expect(image).toBeFocused();
+    const afterClose = await page.evaluate(() => ({
+        length: history.length,
+        state: history.state,
+    }));
+    expect(afterClose).toEqual(beforeOpen);
 });
 
 test("keeps a large Web Component post history list scrolling above its footer", async ({ page }) => {

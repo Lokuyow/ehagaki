@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { access, readFile } from "node:fs/promises";
 import { nip19 } from "nostr-tools";
+import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
 let server: Server;
 let origin = "";
@@ -41,6 +42,8 @@ function close(value: Server): Promise<void> {
 }
 
 test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    await ensureWebComponentE2EOutput();
     await access(join(process.cwd(), "dist", "web-component", "ehagaki-composer.js"));
     server = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", origin).pathname;
@@ -86,7 +89,9 @@ test.beforeAll(async () => {
 test.beforeEach(() => requests.clear());
 
 test.afterAll(async () => {
-    await close(server);
+    if (server) {
+        await close(server);
+    }
 });
 
 test("keeps the playground hierarchy and card stacks balanced across desktop and mobile", async ({ page }) => {

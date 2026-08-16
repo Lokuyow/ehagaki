@@ -124,6 +124,7 @@
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
+    let fullscreenFocusOrigin = $state<HTMLElement | null>(null);
     const postActionUi =
         usePostHistoryPostActionUiController<PostHistoryRecord>();
     let rawJsonDialogOpen = $state(false);
@@ -342,6 +343,7 @@
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
         showImageFullscreen = false;
+        fullscreenFocusOrigin = null;
     }
 
     function resolveStatusText(): string {
@@ -621,9 +623,11 @@
     function handleImageOpen(params: {
         index: number;
         mediaList: FullscreenMediaItem[];
+        focusOrigin: HTMLElement | null;
     }): void {
         fullscreenMediaItems = params.mediaList;
         fullscreenIndex = params.index;
+        fullscreenFocusOrigin = params.focusOrigin;
         showImageFullscreen = true;
     }
 
@@ -631,6 +635,7 @@
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
+        fullscreenFocusOrigin = null;
     }
 
     function handleFullscreenNavigate(index: number): void {
@@ -1081,6 +1086,7 @@
     mediaList={fullscreenMediaItems}
     currentIndex={fullscreenIndex}
     onNavigate={handleFullscreenNavigate}
+    openingFocusOrigin={fullscreenFocusOrigin}
 />
 
 <FloatingMessage

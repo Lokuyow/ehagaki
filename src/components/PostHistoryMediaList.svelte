@@ -26,6 +26,7 @@
         onImageOpen?: (params: {
             index: number;
             mediaList: FullscreenMediaItem[];
+            focusOrigin: HTMLElement | null;
         }) => void;
         mediaLayout?: PostHistoryMediaLayout;
     }
@@ -370,7 +371,10 @@
         void mediaCache.fetchAndCacheMedia(item.url);
     }
 
-    function handleImageOpen(item: DisplayMediaItem): void {
+    function handleImageOpen(
+        item: DisplayMediaItem,
+        focusOrigin: HTMLElement | null,
+    ): void {
         if (!item.cached) {
             return;
         }
@@ -385,6 +389,7 @@
         onImageOpen?.({
             index,
             mediaList: resolvedMediaLayout.fullscreenMediaItems,
+            focusOrigin,
         });
     }
 
@@ -601,8 +606,13 @@
                                                 item,
                                             )}
                                             title={getLinkLabel(item)}
-                                            onclick={() =>
-                                                handleImageOpen(item)}
+                                            onclick={(event) =>
+                                                handleImageOpen(
+                                                    item,
+                                                    event.currentTarget instanceof HTMLElement
+                                                        ? event.currentTarget
+                                                        : null,
+                                                )}
                                         >
                                             {#if isSingleImage}
                                                 <div
