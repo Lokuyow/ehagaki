@@ -871,7 +871,7 @@
 
   .editor-container.sending :global(.tiptap-editor) {
     cursor: not-allowed;
-    opacity: 0.82;
+    opacity: 0.72;
   }
 
   .editor-container.sending :global(.editor-image-button),
