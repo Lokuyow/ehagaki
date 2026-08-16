@@ -266,7 +266,7 @@
     }
 
     .gallery-item.is-disabled {
-        opacity: 0.82;
+        opacity: 0.72;
     }
 
     .gallery-item {
