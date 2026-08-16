@@ -16,6 +16,7 @@
         onDragEnd: () => void;
         onDrop: (toIndex: number) => void;
         onTouchDragStart?: (index: number, x: number, y: number) => void;
+        disabled?: boolean;
     }
 
     let {
@@ -27,6 +28,7 @@
         onDragEnd,
         onDrop,
         onTouchDragStart,
+        disabled = false,
     }: Props = $props();
 
     let cardEl: HTMLDivElement | undefined = $state();
@@ -37,6 +39,7 @@
     // タッチ長押しドラッグ（親コンポーネントに委譲）
     useLongPress(() => cardEl, {
         onLongPress: (x, y) => {
+            if (disabled) return;
             onTouchDragStart?.(index, x, y);
         },
     });
@@ -83,6 +86,10 @@
 
     // PC ドラッグ＆ドロップ
     function handleDragStartEvent(event: DragEvent) {
+        if (disabled) {
+            event.preventDefault();
+            return;
+        }
         // オーバーレイからのドラッグ時はカード全体をゴースト画像に使用
         if (cardEl && event.dataTransfer) {
             const rect = cardEl.getBoundingClientRect();
@@ -106,11 +113,13 @@
 
     function handleDragOverEvent(event: DragEvent) {
         event.preventDefault();
+        if (disabled) return;
         onDragOver(index, event);
     }
 
     function handleDropEvent(event: DragEvent) {
         event.preventDefault();
+        if (disabled) return;
         onDrop(index);
     }
 
@@ -129,7 +138,8 @@
     bind:this={cardEl}
     class="gallery-item"
     class:is-placeholder={item.isPlaceholder}
-    draggable={item.type !== "video" || item.isPlaceholder}
+    class:is-disabled={disabled}
+    draggable={!disabled && (item.type !== "video" || item.isPlaceholder)}
     ondragstart={handleDragStartEvent}
     ondragover={handleDragOverEvent}
     ondrop={handleDropEvent}
@@ -195,7 +205,7 @@
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                     class="video-drag-overlay"
-                    draggable="true"
+                    draggable={!disabled}
                     ondragstart={handleDragStartEvent}
                     onclick={handleOverlayClick}
                     aria-hidden="true"
@@ -213,6 +223,7 @@
             copyAriaLabel={$_("imageContextMenu.copyUrl")}
             copySuccessMessage={$_("imageContextMenu.copySuccess")}
             layout="gallery"
+            deleteDisabled={disabled}
         />
     {/if}
 </div>
@@ -246,6 +257,16 @@
     .gallery-item:active,
     .video-drag-overlay:active {
         cursor: grabbing;
+    }
+
+    .gallery-item.is-disabled,
+    .gallery-item.is-disabled .gallery-item-media,
+    .gallery-item.is-disabled .video-drag-overlay {
+        cursor: not-allowed;
+    }
+
+    .gallery-item.is-disabled {
+        opacity: 0.82;
     }
 
     .gallery-item {

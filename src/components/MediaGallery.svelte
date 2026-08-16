@@ -9,6 +9,7 @@
     } from "../lib/constants";
     import { consumeMediaGalleryWheelScroll } from "../lib/utils/mediaGalleryWheelUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { editorState } from "../stores/editorStore.svelte";
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
@@ -27,6 +28,7 @@
     let autoScrollFrame: number | null = null;
 
     let items = $derived(mediaGalleryStore.items);
+    let isSending = $derived(editorState.postStatus.sending);
 
     // 現在有効な挿入位置（移動なしの場合は -1）
     let effectiveInsertIndex = $derived.by(() => {
@@ -40,6 +42,10 @@
 
     // --- PC DnD ハンドラ ---
     function handleDragStart(index: number, event: DragEvent) {
+        if (isSending) {
+            event.preventDefault();
+            return;
+        }
         dragFromIndex = index;
         event.dataTransfer?.setData("text/plain", String(index));
         if (event.dataTransfer) {
@@ -49,6 +55,7 @@
 
     function handleDragOver(index: number, event: DragEvent) {
         event.preventDefault();
+        if (isSending) return;
         // アイテムの左半分ならそのインデックス、右半分なら次の位置
         const wrappers = galleryEl?.querySelectorAll(".gallery-item-wrapper");
         const wrapperEl = wrappers?.[index] as HTMLElement | undefined;
@@ -77,6 +84,11 @@
     function handleGalleryDragOver(event: DragEvent) {
         if (dragFromIndex === -1) return;
         event.preventDefault();
+        if (isSending) {
+            stopGalleryAutoScroll();
+            pcInsertIndex = -1;
+            return;
+        }
 
         // アイテム外の空白エリアにカーソルがある場合、端の挿入位置を検出
         const wrappers = galleryEl?.querySelectorAll(".gallery-item-wrapper");
@@ -110,6 +122,11 @@
     function handleGalleryDrop(event: DragEvent) {
         event.preventDefault();
         stopGalleryAutoScroll();
+        if (isSending) {
+            dragFromIndex = -1;
+            pcInsertIndex = -1;
+            return;
+        }
         const insertIdx = pcInsertIndex;
         if (
             dragFromIndex !== -1 &&
@@ -127,6 +144,7 @@
     }
 
     function handleDelete(id: string) {
+        if (isSending) return;
         mediaGalleryStore.removeItem(id);
     }
 
@@ -188,6 +206,7 @@
 
     // --- タッチ DnD ハンドラ ---
     function handleTouchDragStart(index: number, x: number, y: number) {
+        if (isSending) return;
         touchDragIndex = index;
 
         // ドラッグプレビューの作成
@@ -234,6 +253,11 @@
     function handleGlobalTouchMove(event: TouchEvent) {
         if (touchDragIndex === -1 || event.touches.length !== 1) return;
         event.preventDefault();
+        if (isSending) {
+            stopGalleryAutoScroll();
+            touchInsertIndex = -1;
+            return;
+        }
 
         const touch = event.touches[0];
 
@@ -298,6 +322,13 @@
         document.removeEventListener("touchend", handleGlobalTouchEnd);
         stopGalleryAutoScroll();
 
+        if (isSending) {
+            removeTouchPreview();
+            touchDragIndex = -1;
+            touchInsertIndex = -1;
+            return;
+        }
+
         const insertIdx = touchInsertIndex;
         if (
             touchDragIndex !== -1 &&
@@ -356,6 +387,7 @@
 {#if items.length > 0}
     <div
         class="media-gallery"
+        class:sending={isSending}
         bind:this={galleryEl}
         ondragover={handleGalleryDragOver}
         ondrop={handleGalleryDrop}
@@ -378,6 +410,7 @@
                     onDragEnd={handleDragEnd}
                     onDrop={handleDrop}
                     onTouchDragStart={handleTouchDragStart}
+                    disabled={isSending}
                 />
             </div>
         {/each}
@@ -395,6 +428,19 @@
         scrollbar-width: thin;
         gap: 4px;
         background-color: var(--window);
+    }
+
+    .media-gallery.sending {
+        background-color: color-mix(
+            in srgb,
+            var(--window) 82%,
+            var(--surface-button) 18%
+        );
+        cursor: not-allowed;
+    }
+
+    .media-gallery.sending :global(.gallery-item) {
+        cursor: not-allowed;
     }
 
     .gallery-item-wrapper {

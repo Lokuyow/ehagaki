@@ -8,6 +8,7 @@
         deleteAriaLabel: string;
         copyAriaLabel: string;
         copySuccessMessage: string;
+        deleteDisabled?: boolean;
         /**
          * レイアウト種別: 各コンテナに応じたボタン配置・サイズを制御する
          * - editor-image: 画像エディタノード (40x40px, copy=bottom-right, delete=top-right)
@@ -23,6 +24,7 @@
         deleteAriaLabel,
         copyAriaLabel,
         copySuccessMessage,
+        deleteDisabled = false,
         layout = "editor-image",
     }: Props = $props();
 
@@ -33,6 +35,7 @@
 
     function handleDelete(event: MouseEvent) {
         event.stopPropagation();
+        if (deleteDisabled) return;
         onDelete();
     }
 </script>
@@ -52,6 +55,7 @@
     shape="circle"
     className="media-delete-btn media-delete-btn--{layout}"
     ariaLabel={deleteAriaLabel}
+    disabled={deleteDisabled}
     onClick={handleDelete}
 >
     <div class="close-icon svg-icon"></div>

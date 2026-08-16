@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
+import { clearAuthState, updateAuthState } from '../../stores/authStore.svelte';
+import { editorState, resetPostStatus } from '../../stores/editorStore.svelte';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
@@ -28,6 +30,8 @@ describe('KeyboardButtonBar', () => {
     afterEach(() => {
         vi.useRealTimers();
         document.documentElement.style.removeProperty('--keyboard-height');
+        clearAuthState();
+        resetPostStatus();
     });
 
     it('button 押下前の pointerdown で focus 移動を抑止する', () => {
@@ -116,5 +120,15 @@ describe('KeyboardButtonBar', () => {
         expect(editor.getAttribute('inputmode')).toBe('text');
         expect(editor.getAttribute('virtualkeyboardpolicy')).toBe('auto');
         expect(document.activeElement).toBe(editor);
+    });
+
+    it('送信中はカスタム絵文字Pickerを開くボタンを無効化する', () => {
+        updateAuthState({ type: 'nip46', isValid: true });
+        editorState.postStatus.sending = true;
+
+        render(KeyboardButtonBarWithProvider);
+
+        const button = screen.getByRole('button', { name: 'カスタム絵文字' });
+        expect(button.hasAttribute('disabled')).toBe(true);
     });
 });

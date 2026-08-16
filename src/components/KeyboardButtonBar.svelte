@@ -252,7 +252,7 @@
                 contentLayout="icon"
                 className="custom-emoji-button"
                 selected={customEmojiPickerOpen}
-                disabled={!hasStoredKey}
+                disabled={!hasStoredKey || postStatus.sending}
                 onClick={() => {
                     setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                 }}

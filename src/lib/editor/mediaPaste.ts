@@ -122,6 +122,11 @@ export const MediaPasteExtension = Extension.create({
                 key: new PluginKey('image-paste'),
                 props: {
                     handlePaste: (view, event) => {
+                        if (view.editable === false) {
+                            event.preventDefault();
+                            return true;
+                        }
+
                         const text = event.clipboardData?.getData('text/plain') || '';
                         const mediaUrls = extractMediaUrls(text);
 
@@ -186,6 +191,10 @@ export const MediaPasteExtension = Extension.create({
 
                     // スマートフォン対応: inputイベントも処理
                     handleTextInput: (view, from, to, text) => {
+                        if (view.editable === false) {
+                            return true;
+                        }
+
                         // 改行を含む長いテキストが入力された場合のみ処理
                         if (text.includes('\n') || text.length > 20) {
                             const mediaUrls = extractMediaUrls(text);

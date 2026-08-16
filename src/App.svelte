@@ -1037,6 +1037,12 @@
     }
   });
 
+  $effect(() => {
+    if (editorState.postStatus.sending && customEmojiPickerOpen) {
+      customEmojiPickerOpen = false;
+    }
+  });
+
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     await runInitializeNostrSession({
       pubkeyHex,
@@ -1819,6 +1825,11 @@
   }
 
   function handleCustomEmojiSelect(emoji: CustomEmojiSelection): void {
+    if (editorState.postStatus.sending) {
+      customEmojiPickerOpen = false;
+      return;
+    }
+
     postComponentRef?.insertCustomEmoji?.({
       identityKey: emoji.identityKey,
       shortcode: emoji.shortcode,
