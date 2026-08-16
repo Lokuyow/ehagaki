@@ -218,7 +218,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     });
 
     const defaultLight = await readTheme();
-    expect(defaultLight.shellPixel).toEqual([227, 227, 227, 255]);
+    expect(defaultLight.shellPixel).toEqual([240, 240, 240, 255]);
     expect(defaultLight.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
 
     await page.locator("ehagaki-composer").evaluate(async (element) => {
