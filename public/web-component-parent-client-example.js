@@ -17,7 +17,6 @@ const eventLog = document.querySelector("#event-log");
 const isManualMode = new URLSearchParams(window.location.search).get("manual") === "1";
 
 let currentComposer = null;
-let secondaryComposer = null;
 let loadedModuleUrl = "";
 let moduleLoadPromise = null;
 
@@ -349,28 +348,7 @@ function destroyComposer() {
 
 async function recreateComposer() {
     destroyComposer();
-    if (secondaryComposer?.isConnected) secondaryComposer.remove();
-    secondaryComposer = null;
     await createComposer();
-}
-
-async function createSecondComposer() {
-    if (secondaryComposer?.isConnected) {
-        appendLog("secondary: already connected");
-        return;
-    }
-    await ensureModuleLoaded();
-    const element = document.createElement("ehagaki-composer");
-    configureElement(element);
-    installEventListeners(element, "secondary");
-    secondaryComposer = element;
-    componentMount.append(element);
-    void element.whenReady().then(() => {
-        appendLog("secondary: unexpected ready");
-    }).catch((error) => {
-        appendLog("secondary: whenReady rejected", { code: safeErrorCode(error) });
-        setStatus(componentStatus, "2個目は動作しません（inert: multiple_instances_unsupported）", "error");
-    });
 }
 
 function applyStyles() {
@@ -416,7 +394,6 @@ function bindActions() {
     getElement("create-component").addEventListener("click", () => void createComposer().catch((error) => appendLog("create failed", { code: safeErrorCode(error) })));
     getElement("destroy-component").addEventListener("click", destroyComposer);
     getElement("recreate-component").addEventListener("click", () => void recreateComposer().catch((error) => appendLog("recreate failed", { code: safeErrorCode(error) })));
-    getElement("create-second").addEventListener("click", () => void createSecondComposer().catch((error) => appendLog("secondary create failed", { code: safeErrorCode(error) })));
     getElement("apply-runtime-settings").addEventListener("click", () => applySettingsToComposer(getSettings(), "runtime setSettings"));
     getElement("apply-invalid-settings").addEventListener("click", () => applySettingsToComposer({ unsupportedKey: true }, "invalid setSettings"));
     getElement("apply-content").addEventListener("click", () => applyContextToComposer({ content: getElement("context-content").value }, "content context", "投稿内容を反映"));

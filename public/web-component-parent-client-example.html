@@ -261,9 +261,8 @@
                             <button id="create-component" type="button">作成して表示</button>
                             <button id="destroy-component" type="button" class="secondary">削除して非表示</button>
                             <button id="recreate-component" type="button">作り直す</button>
-                            <button id="create-second" type="button" class="ghost">2個目を生成</button>
                         </div>
-                        <p class="small">1つのページには接続できるComponentが1つだけという制約を確認できます。2個目は動作せず、<code>multiple_instances_unsupported</code> のerror eventと <code>whenReady()</code> のrejectionをログに記録します。1個目を削除すると、新しいComponentを作成できます。</p>
+                        <p class="small">Componentの作成、削除、再作成という基本的なライフサイクル操作を確認できます。削除後は、新しいComponentを作成できます。</p>
                     </div>
 
                     <div class="card stack">

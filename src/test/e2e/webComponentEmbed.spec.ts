@@ -495,15 +495,19 @@ test("rejects a second connected component and releases the slot after disconnec
         const errors: string[] = [];
         second.addEventListener("ehagaki-initialization-error", (event) => errors.push((event as CustomEvent).detail.code));
         document.body.append(second);
-        await second.whenReady().then(() => "resolved", (error) => error.name);
+        const secondReady = await second.whenReady().then(
+            () => ({ resolved: true, errorName: null }),
+            (error) => ({ resolved: false, errorName: error.name }),
+        );
         first.remove();
         const replacement = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
         document.body.append(replacement);
         await replacement.whenReady();
-        return { errors, replacementReady: !!replacement.shadowRoot };
+        return { errors, secondReady, replacementReady: !!replacement.shadowRoot };
     });
 
     expect(result.errors).toEqual(["multiple_instances_unsupported"]);
+    expect(result.secondReady).toEqual({ resolved: false, errorName: "multiple_instances_unsupported" });
     expect(result.replacementReady).toBe(true);
 });
 
