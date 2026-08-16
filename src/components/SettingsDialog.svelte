@@ -477,90 +477,6 @@
             </div>
         </div>
 
-        <!-- 投稿履歴の外部クライアント設定 -->
-        <div class="setting-section">
-            <div class="setting-row setting-row-with-note">
-                <div class="setting-label-group">
-                    <div class="setting-label-row">
-                        <span
-                            id="external-nostr-client-label"
-                            class="setting-label"
-                            >{$_("settingsDialog.external_nostr_client")}</span
-                        >
-                        <InfoPopoverButton
-                            ariaLabel={$_(
-                                "settingsDialog.external_nostr_client_description",
-                            )}
-                        >
-                            {$_(
-                                "settingsDialog.external_nostr_client_description",
-                            )}
-                        </InfoPopoverButton>
-                    </div>
-                </div>
-                <select
-                    class="setting-control external-nostr-client-select"
-                    id="external-nostr-client-select"
-                    value={externalNostrClient}
-                    aria-labelledby="external-nostr-client-label"
-                    onchange={(event) => {
-                        externalNostrClient = (event.currentTarget as HTMLSelectElement)
-                            .value as ExternalNostrClient;
-                        externalNostrClientCustomUrlError = null;
-                    }}
-                >
-                    {#each EXTERNAL_NOSTR_CLIENTS as client}
-                        <option value={client}>
-                            {client === "custom"
-                                ? $_("settingsDialog.external_nostr_client_custom")
-                                : client === "nostter"
-                                  ? "nostter"
-                                : client === "njump"
-                                  ? "njump"
-                                  : client[0].toUpperCase() + client.slice(1)}
-                        </option>
-                    {/each}
-                </select>
-            </div>
-            {#if externalNostrClient === "custom"}
-                <div class="external-nostr-client-custom-url">
-                    <label
-                        for="external-nostr-client-custom-url-input"
-                        class="setting-label"
-                    >
-                        {$_("settingsDialog.external_nostr_client_custom_url")}
-                    </label>
-                    <span
-                        id="external-nostr-client-custom-url-description"
-                        class="setting-description"
-                    >
-                        {$_(
-                            "settingsDialog.external_nostr_client_custom_url_description",
-                        )}
-                    </span>
-                    <input
-                        id="external-nostr-client-custom-url-input"
-                        type="url"
-                        inputmode="url"
-                        value={externalNostrClientCustomUrl}
-                        aria-describedby="external-nostr-client-custom-url-description"
-                        aria-invalid={externalNostrClientCustomUrlError
-                            ? "true"
-                            : "false"}
-                        oninput={(event) =>
-                            handleExternalNostrClientCustomUrlInput(
-                                (event.currentTarget as HTMLInputElement).value,
-                            )}
-                    />
-                    {#if externalNostrClientCustomUrlError}
-                        <span class="form-error" role="alert">
-                            {externalNostrClientCustomUrlError}
-                        </span>
-                    {/if}
-                </div>
-            {/if}
-        </div>
-
         <!-- 画像・動画圧縮設定セクション -->
         <SettingsCompressionSection
             {compressionPairs}
@@ -892,6 +808,90 @@
                     </Switch.Root>
                 </div>
             </div>
+        </div>
+
+        <!-- 投稿履歴の外部クライアント設定 -->
+        <div class="setting-section">
+            <div class="setting-row setting-row-with-note">
+                <div class="setting-label-group">
+                    <div class="setting-label-row">
+                        <span
+                            id="external-nostr-client-label"
+                            class="setting-label"
+                            >{$_("settingsDialog.external_nostr_client")}</span
+                        >
+                        <InfoPopoverButton
+                            ariaLabel={$_(
+                                "settingsDialog.external_nostr_client_description",
+                            )}
+                        >
+                            {$_(
+                                "settingsDialog.external_nostr_client_description",
+                            )}
+                        </InfoPopoverButton>
+                    </div>
+                </div>
+                <select
+                    class="setting-control external-nostr-client-select"
+                    id="external-nostr-client-select"
+                    value={externalNostrClient}
+                    aria-labelledby="external-nostr-client-label"
+                    onchange={(event) => {
+                        externalNostrClient = (event.currentTarget as HTMLSelectElement)
+                            .value as ExternalNostrClient;
+                        externalNostrClientCustomUrlError = null;
+                    }}
+                >
+                    {#each EXTERNAL_NOSTR_CLIENTS as client}
+                        <option value={client}>
+                            {client === "custom"
+                                ? $_("settingsDialog.external_nostr_client_custom")
+                                : client === "nostter"
+                                  ? "nostter"
+                                : client === "njump"
+                                  ? "njump"
+                                  : client[0].toUpperCase() + client.slice(1)}
+                        </option>
+                    {/each}
+                </select>
+            </div>
+            {#if externalNostrClient === "custom"}
+                <div class="external-nostr-client-custom-url">
+                    <label
+                        for="external-nostr-client-custom-url-input"
+                        class="setting-label"
+                    >
+                        {$_("settingsDialog.external_nostr_client_custom_url")}
+                    </label>
+                    <span
+                        id="external-nostr-client-custom-url-description"
+                        class="setting-description"
+                    >
+                        {$_(
+                            "settingsDialog.external_nostr_client_custom_url_description",
+                        )}
+                    </span>
+                    <input
+                        id="external-nostr-client-custom-url-input"
+                        type="url"
+                        inputmode="url"
+                        value={externalNostrClientCustomUrl}
+                        aria-describedby="external-nostr-client-custom-url-description"
+                        aria-invalid={externalNostrClientCustomUrlError
+                            ? "true"
+                            : "false"}
+                        oninput={(event) =>
+                            handleExternalNostrClientCustomUrlInput(
+                                (event.currentTarget as HTMLInputElement).value,
+                            )}
+                    />
+                    {#if externalNostrClientCustomUrlError}
+                        <span class="form-error" role="alert">
+                            {externalNostrClientCustomUrlError}
+                        </span>
+                    {/if}
+                </div>
+            {/if}
         </div>
 
         <!-- リレー・プロフィール再取得セクション -->
