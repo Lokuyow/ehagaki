@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import '../../i18n';
 import { locale, waitLocale } from 'svelte-i18n';
@@ -68,6 +68,7 @@ import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import SvelteVideoNode from '../../components/SvelteVideoNode.svelte';
 import ProfileComponent from '../../components/ProfileComponent.svelte';
 import { authState } from '../../stores/authStore.svelte';
+import { currentEditorStore, editorState, resetPostStatus, updatePostStatus } from '../../stores/editorStore.svelte';
 import { profileDataStore } from '../../stores/profileStore.svelte';
 import { handleImageInteraction, requestNodeSelection } from '../../lib/utils/mediaNodeUtils';
 
@@ -137,6 +138,65 @@ describe('accessibility component tests', () => {
         await waitLocale();
 
         expect(screen.getByRole('textbox', { name: 'Post editor' })).toBeTruthy();
+    });
+
+    it('makes the editor read-only only while a post is sending', async () => {
+        resetPostStatus();
+        const { component, unmount } = render(PostComponent, {
+            hasStoredKey: true,
+        });
+        const editorContainer = screen.getByRole('textbox', { name: '投稿エディター' });
+        const tiptapEditor = await waitFor(() => {
+            const element = editorContainer.querySelector<HTMLElement>('.tiptap-editor');
+            if (!element || !currentEditorStore.value) {
+                throw new Error('Editor was not initialized');
+            }
+            return element;
+        });
+        const editor = currentEditorStore.value!;
+        editor.commands.setContent('<p>送信中も確認できる本文</p>', { emitUpdate: false });
+        const updateListener = vi.fn();
+        editor.on('update', updateListener);
+
+        expect(editor.isEditable).toBe(true);
+        expect(tiptapEditor.getAttribute('contenteditable')).toBe('true');
+        expect(editorContainer.classList.contains('sending')).toBe(false);
+
+        updatePostStatus({ ...editorState.postStatus, sending: true });
+        await tick();
+
+        expect(editor.isEditable).toBe(false);
+        expect(tiptapEditor.getAttribute('contenteditable')).toBe('false');
+        expect(editorContainer.classList.contains('sending')).toBe(true);
+        expect(editorContainer.getAttribute('aria-disabled')).toBe('true');
+        expect(editorContainer.textContent).toContain('送信中も確認できる本文');
+        expect(updateListener).not.toHaveBeenCalled();
+
+        const contentBeforeInput = editor.getJSON();
+        await fireEvent.input(tiptapEditor, {
+            inputType: 'insertText',
+            data: '変更不可',
+        });
+        expect(editor.getJSON()).toEqual(contentBeforeInput);
+
+        (component as any).insertCustomEmoji({
+            identityKey: 'test\u0000https://example.com/test.webp',
+            shortcode: 'test',
+            src: 'https://example.com/test.webp',
+            setAddress: null,
+        });
+        expect(editor.getJSON()).toEqual(contentBeforeInput);
+
+        updatePostStatus({ ...editorState.postStatus, sending: false });
+        await tick();
+
+        expect(editor.isEditable).toBe(true);
+        expect(tiptapEditor.getAttribute('contenteditable')).toBe('true');
+        expect(editorContainer.classList.contains('sending')).toBe(false);
+        expect(editorContainer.getAttribute('aria-disabled')).toBeNull();
+
+        unmount();
+        resetPostStatus();
     });
 
     it('SvelteImageNode uses the provided alt and localized fallbacks', async () => {

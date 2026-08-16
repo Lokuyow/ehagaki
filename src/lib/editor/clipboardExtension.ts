@@ -118,6 +118,11 @@ export const ClipboardExtension = Extension.create({
                      * 6. Sliceを作成してエディタに挿入
                      */
                     handlePaste(view, event, slice) {
+                        if (view.editable === false) {
+                            event.preventDefault();
+                            return true;
+                        }
+
                         const { state, dispatch } = view;
                         const { clipboardData } = event;
 

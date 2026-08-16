@@ -97,7 +97,7 @@ function createDragEvent(type: string, dataTransfer?: DragEventDataTransferLike)
 }
 
 function createClipboardEvent(type: string, clipboardData: ClipboardDataLike): ClipboardEvent {
-    const event = new ClipboardEvent(type, { bubbles: true });
+    const event = new ClipboardEvent(type, { bubbles: true, cancelable: true });
     Object.defineProperty(event, "clipboardData", {
         value: clipboardData,
     });
@@ -157,6 +157,20 @@ describe("fileDropAction", () => {
         node.dispatchEvent(event);
         expect(node.__uploadFiles).not.toHaveBeenCalled();
     });
+
+    it("rejects file drops while a post is sending", () => {
+        node.__postStatus = { sending: true };
+        const file = new File(["foo"], "foo.png", { type: "image/png" });
+        const event = createDragEvent("drop", {
+            files: [file],
+            types: ["Files"],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(node.__uploadFiles).not.toHaveBeenCalled();
+    });
 });
 
 describe("pasteAction", () => {
@@ -199,6 +213,23 @@ describe("pasteAction", () => {
         };
         const event = createClipboardEvent("paste", clipboardData);
         node.dispatchEvent(event);
+        expect(node.__uploadFiles).not.toHaveBeenCalled();
+    });
+
+    it("rejects image paste while a post is sending", () => {
+        node.__postStatus = { sending: true };
+        const file = new File(["foo"], "foo.png", { type: "image/png" });
+        const event = createClipboardEvent("paste", {
+            items: [{
+                kind: "file",
+                type: "image/png",
+                getAsFile: () => file,
+            }],
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
         expect(node.__uploadFiles).not.toHaveBeenCalled();
     });
 });

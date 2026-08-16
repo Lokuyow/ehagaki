@@ -34,10 +34,25 @@ function hasExternalFiles(dt: DataTransfer | null | undefined): boolean {
     }
 }
 
+function isPostSending(node: HTMLElement): boolean {
+    const rawPostStatus = (node as any).__postStatus;
+    const postStatus = typeof rawPostStatus === "function"
+        ? rawPostStatus()
+        : rawPostStatus as { sending: boolean } | undefined;
+    return postStatus?.sending === true;
+}
+
 // fileDropAction
 export function fileDropAction(node: HTMLElement) {
     let dragOver = $state(false);
     function handleDragOver(event: DragEvent) {
+        if (isPostSending(node)) {
+            event.preventDefault();
+            dragOver = false;
+            node.classList.remove("drag-over");
+            return;
+        }
+
         const dt = event.dataTransfer;
         const internal = isInternalTiptapDrag(dt);
         const externalFiles = hasExternalFiles(dt);
@@ -69,6 +84,11 @@ export function fileDropAction(node: HTMLElement) {
         // 常に drag-over をリセット
         dragOver = false;
         node.classList.remove("drag-over");
+
+        if (isPostSending(node)) {
+            event.preventDefault();
+            return;
+        }
 
         const dt = event.dataTransfer;
         // 内部ドラッグ（エディタ内ノード）なら何もしない — ProseMirror が処理する
@@ -106,6 +126,12 @@ export function fileDropActionWithDragState(
 ) {
     const action = fileDropAction(node);
     function handleDragOver(event: DragEvent) {
+        if (isPostSending(node)) {
+            event.preventDefault();
+            params.dragOver(false);
+            return;
+        }
+
         const dt = event.dataTransfer;
         const internal = isInternalTiptapDrag(dt);
         const externalFiles = hasExternalFiles(dt);
@@ -122,6 +148,9 @@ export function fileDropActionWithDragState(
     }
     function handleDrop(event: DragEvent) {
         params.dragOver(false);
+        if (isPostSending(node)) {
+            event.preventDefault();
+        }
     }
     node.addEventListener("dragover", handleDragOver);
     node.addEventListener("dragleave", handleDragLeave);
@@ -140,6 +169,11 @@ export function fileDropActionWithDragState(
 // 画像ファイルのペーストのみを処理（テキストペーストはClipboardExtensionで処理）
 export function pasteAction(node: HTMLElement) {
     function handlePaste(event: ClipboardEvent) {
+        if (isPostSending(node)) {
+            event.preventDefault();
+            return;
+        }
+
         if (!event.clipboardData) return;
         const files: File[] = [];
         for (const item of event.clipboardData.items) {

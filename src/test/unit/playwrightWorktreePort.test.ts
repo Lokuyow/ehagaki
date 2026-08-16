@@ -113,6 +113,7 @@ describe('Playwright config connection values', () => {
             '**/composerTargetDialog.spec.ts',
             '**/webComponentEmbed.spec.ts',
             '**/webComponentParentClientExample.spec.ts',
+            '**/postEditorSending.spec.ts',
         ]);
     });
 

@@ -125,6 +125,16 @@
     updatePlaceholderText(editorPlaceholderText);
   });
 
+  $effect(() => {
+    const editorInstance = currentEditor;
+    const editable = !postStatus.sending;
+
+    if (editorInstance && editorInstance.isEditable !== editable) {
+      // Tiptap v3 supports suppressing the update event for this option-only change.
+      editorInstance.setEditable(editable, false);
+    }
+  });
+
   function syncEditorTargetHeight() {
     const minHeight = minEditorHeight;
 
@@ -152,6 +162,11 @@
   }
 
   function handleEditorContainerClick(event: MouseEvent) {
+    if (postStatus.sending) {
+      event.preventDefault();
+      return;
+    }
+
     if (!(event.target instanceof HTMLElement) || !currentEditor) {
       return;
     }
@@ -164,6 +179,11 @@
   }
 
   function handleEditorContainerKeydown(event: KeyboardEvent) {
+    if (postStatus.sending) {
+      event.preventDefault();
+      return;
+    }
+
     if (
       !currentEditor ||
       event.currentTarget !== event.target ||
@@ -465,7 +485,7 @@
   }
 
   export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
-    if (!currentEditor) return;
+    if (!currentEditor || postStatus.sending) return;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
   }
 
@@ -717,6 +737,7 @@
     class="editor-container"
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
+    class:sending={postStatus.sending}
     onclick={handleEditorContainerClick}
     onkeydown={handleEditorContainerKeydown}
     use:fileDropActionWithDragState={{
@@ -726,6 +747,7 @@
     use:touchAction
     use:keydownAction
     aria-label={$_("postComponent.editor_label")}
+    aria-disabled={postStatus.sending ? "true" : undefined}
     role="textbox"
     tabindex="-1"
     bind:this={editorContainerEl}
@@ -837,6 +859,22 @@
     background: var(--bg-input);
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
+  }
+
+  .editor-container.sending {
+    background: color-mix(in srgb, var(--bg-input) 82%, var(--surface-button) 18%);
+    cursor: not-allowed;
+  }
+
+  .editor-container.sending :global(.tiptap-editor) {
+    cursor: not-allowed;
+    opacity: 0.82;
+  }
+
+  .editor-container.sending :global(.editor-image-button),
+  .editor-container.sending :global(.custom-emoji-drag-target),
+  .editor-container.sending :global(.media-delete-btn) {
+    pointer-events: none;
   }
 
   .editor-container.drag-over {

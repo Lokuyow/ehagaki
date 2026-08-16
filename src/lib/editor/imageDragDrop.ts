@@ -38,6 +38,11 @@ export const ImageDragDropExtension = Extension.create({
                 },
                 props: {
                     handleDrop: (view, event, _slice, moved) => {
+                        if (view.editable === false) {
+                            event.preventDefault();
+                            return true;
+                        }
+
                         const dragData = event.dataTransfer?.getData('application/x-tiptap-node');
                         if (!moved && dragData) {
                             try {
@@ -68,21 +73,36 @@ export const ImageDragDropExtension = Extension.create({
                         return false;
                     },
                     handleDOMEvents: {
-                        dragstart: (_view, event) => {
+                        dragstart: (view, event) => {
+                            if (view.editable === false) {
+                                event.preventDefault();
+                                return true;
+                            }
+
                             if (isTouchDevice()) {
                                 event.preventDefault();
                                 return true;
                             }
                             return false;
                         },
-                        dragover: (_view, event) => {
+                        dragover: (view, event) => {
+                            if (view.editable === false) {
+                                event.preventDefault();
+                                return true;
+                            }
+
                             if (isTouchDevice()) {
                                 event.preventDefault();
                                 return true;
                             }
                             return false;
                         },
-                        drop: (_view, event) => {
+                        drop: (view, event) => {
+                            if (view.editable === false) {
+                                event.preventDefault();
+                                return true;
+                            }
+
                             if (isTouchDevice()) {
                                 event.preventDefault();
                                 return true;
@@ -152,6 +172,11 @@ export const ImageDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDrop = (event: CustomEvent) => {
+                        if (editorView.editable === false) {
+                            stopAutoScroll();
+                            return;
+                        }
+
                         const { nodeData, dropPosition, dropX, dropY } = event.detail;
                         stopAutoScroll();
 
@@ -181,6 +206,8 @@ export const ImageDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDragStart = (event: CustomEvent) => {
+                        if (editorView.editable === false) return;
+
                         const { nodePos } = event.detail;
                         editorView.dispatch(
                             editorView.state.tr.setMeta('imageDrag', {
@@ -191,6 +218,11 @@ export const ImageDragDropExtension = Extension.create({
                     };
 
                     const handleTouchMove = (event: CustomEvent) => {
+                        if (editorView.editable === false) {
+                            stopAutoScroll();
+                            return;
+                        }
+
                         const { touchY } = event.detail;
                         if (typeof touchY !== 'number') return;
 

@@ -120,6 +120,11 @@ export const CustomEmojiDragDropExtension = Extension.create({
                 },
                 props: {
                     handleDrop: (view, event) => {
+                        if (view.editable === false) {
+                            event.preventDefault();
+                            return true;
+                        }
+
                         const nodeData = parseCustomEmojiDragData(event);
                         if (!nodeData) return false;
 
@@ -147,6 +152,11 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     },
                     handleDOMEvents: {
                         dragstart: (view, event) => {
+                            if (view.editable === false) {
+                                event.preventDefault();
+                                return true;
+                            }
+
                             const dragEvent = event as DragEvent;
                             const nodeData = getCustomEmojiDragData(view, dragEvent);
                             if (!nodeData) return false;
@@ -170,7 +180,12 @@ export const CustomEmojiDragDropExtension = Extension.create({
                             );
                             return false;
                         },
-                        dragover: (_view, event) => {
+                        dragover: (view, event) => {
+                            if (view.editable === false) {
+                                event.preventDefault();
+                                return true;
+                            }
+
                             const dragEvent = event as DragEvent;
                             if (!dragEvent.dataTransfer?.types?.includes(INTERNAL_NODE_MIME)) {
                                 return false;
@@ -181,6 +196,8 @@ export const CustomEmojiDragDropExtension = Extension.create({
                             return false;
                         },
                         dragend: (view) => {
+                            if (view.editable === false) return false;
+
                             setDraggingFalse(view);
                             return false;
                         },
@@ -233,6 +250,11 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDrop = (event: CustomEvent) => {
+                        if (editorView.editable === false) {
+                            stopAutoScroll();
+                            return;
+                        }
+
                         stopAutoScroll();
                         const { nodeData, dropPosition, dropX, dropY } = event.detail;
                         editorView.dispatch(
@@ -267,6 +289,8 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDragStart = (event: CustomEvent) => {
+                        if (editorView.editable === false) return;
+
                         const { nodePos } = event.detail;
                         editorView.dispatch(
                             editorView.state.tr.setMeta(CUSTOM_EMOJI_DRAG_META, {
@@ -277,6 +301,11 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     };
 
                     const handleTouchMove = (event: CustomEvent) => {
+                        if (editorView.editable === false) {
+                            stopAutoScroll();
+                            return;
+                        }
+
                         const { touchY } = event.detail;
                         if (typeof touchY !== 'number') return;
 
@@ -294,6 +323,8 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     };
 
                     const handleNativeDragStart = (event: CustomEvent) => {
+                        if (editorView.editable === false) return;
+
                         const { nodePos } = event.detail;
                         editorView.dispatch(
                             editorView.state.tr.setMeta(CUSTOM_EMOJI_DRAG_META, {
@@ -304,6 +335,8 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     };
 
                     const handleNativeDragEnd = () => {
+                        if (editorView.editable === false) return;
+
                         setDraggingFalse(editorView);
                     };
 
