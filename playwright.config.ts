@@ -19,7 +19,7 @@ export default defineConfig({
         timeout: 5_000,
     },
     fullyParallel: false,
-    workers: 1,
+    workers: 2,
     use: {
         baseURL: endpoints.appBaseURL,
         locale: 'ja-JP',
@@ -34,12 +34,14 @@ export default defineConfig({
     projects: [
         {
             name: 'desktop-chromium',
+            testIgnore: '**/webComponentDevServer.spec.ts',
             use: {
                 ...devices['Desktop Chrome'],
             },
         },
         {
             name: 'mobile-chromium',
+            testIgnore: '**/webComponentDevServer.spec.ts',
             use: {
                 ...devices['iPhone 13'],
             },

@@ -18,7 +18,9 @@
     "test": "npm run complexity:thread-graph && vitest run",
     "test:unit": "npm run complexity:thread-graph && vitest run src/test/unit",
     "test:ui": "vitest --ui",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run test:e2e:dev-server && npm run test:e2e:parallel",
+    "test:e2e:dev-server": "playwright test --config=playwright.web-component-dev.config.ts",
+    "test:e2e:parallel": "playwright test --workers=2",
     "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
