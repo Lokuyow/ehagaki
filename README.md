@@ -76,7 +76,7 @@ eHagaki の iframe 埋め込み方法、親クライアント連携ログイン�
 
 ## Web Component埋め込み
 
-Web Component版の公開API、lifecycle、context/settings、CustomEvent、CSS Custom Properties / `::part()`、storageとtrust boundaryは [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md) にまとめています。
+Web Component版の公開API、lifecycle、context/settings、CustomEvent、CSS Custom Properties、storageとtrust boundaryは [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md) にまとめています。
 
 実際に `Create / Mount`、`Destroy / Unmount`、再生成、設定・context更新、2個目instanceの拒否、event log、host側styleを操作するlive sampleは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html) から確認できます。
 

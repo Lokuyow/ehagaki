@@ -218,6 +218,7 @@
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
+    onInitialized?: () => void;
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -234,7 +235,10 @@
     notifySettingsError: (error, requestId) =>
       iframeMessageService.notifySettingsError(error, requestId),
   };
-  let { notificationPort = iframeNotificationPort }: Props = $props();
+  let {
+    notificationPort = iframeNotificationPort,
+    onInitialized = () => undefined,
+  }: Props = $props();
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -946,6 +950,13 @@
     if ($locale && localeInitialized) {
       void loadPostComponent();
     }
+  });
+
+  let initializationNotified = false;
+  $effect(() => {
+    if (!$locale || !localeInitialized || initializationNotified) return;
+    initializationNotified = true;
+    onInitialized();
   });
 
   $effect(() => {
@@ -1860,7 +1871,6 @@
         />
         <div
           class="composer-scroll-region"
-          part="composer"
           bind:this={composerScrollRegionEl}
         >
           <div

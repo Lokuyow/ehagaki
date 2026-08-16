@@ -81,7 +81,7 @@
     }
 </script>
 
-<div class="footer-bar" part="footer">
+<div class="footer-bar">
     {#if isSwitchingAccount}
         <Button
             variant="default"
