@@ -127,12 +127,14 @@
             background: #fbfdfb;
             color: var(--text);
             text-align: left;
+            white-space: normal;
         }
         .preset-button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
         .preset-swatches { display: grid; grid-template-columns: repeat(2, 18px); gap: 3px; }
         .preset-swatch { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(24, 48, 40, .22); }
         .preset-name { font-weight: 700; }
-        .preset-values { color: var(--muted); font-size: .73rem; line-height: 1.35; }
+        .preset-button > span:last-child { min-width: 0; }
+        .preset-values { color: var(--muted); font-size: .73rem; line-height: 1.35; overflow-wrap: anywhere; }
         details.advanced-settings { border: 1px solid var(--line); border-radius: 12px; background: #f8fbf9; }
         details.advanced-settings summary { padding: 12px 14px; cursor: pointer; font-weight: 700; }
         details.advanced-settings[open] { padding-bottom: 14px; }

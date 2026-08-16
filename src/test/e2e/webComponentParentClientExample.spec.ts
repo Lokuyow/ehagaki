@@ -118,6 +118,7 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
             const customFields = document.querySelector<HTMLElement>(".theme-custom-fields")!;
             const details = document.querySelector<HTMLElement>("details.advanced-settings")!;
             const introLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>(".intro-links a"));
+            const presetButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".preset-button"));
             const preview = document.querySelector<HTMLElement>(".preview-panel")!;
             const frame = document.querySelector<HTMLElement>(".component-frame")!;
             const eventMonitor = document.querySelector<HTMLElement>("[aria-labelledby=event-monitor-heading]")!;
@@ -150,6 +151,11 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
                     background: getComputedStyle(element).backgroundColor,
                     fontWeight: getComputedStyle(element).fontWeight,
                 })),
+                presetButtons: presetButtons.map((element) => ({
+                    rect: rect(element),
+                    clientWidth: element.clientWidth,
+                    scrollWidth: element.scrollWidth,
+                })),
                 preview: rect(preview),
                 frame: rect(frame),
                 mount: rect(document.querySelector<HTMLElement>("#component-mount")!),
@@ -159,7 +165,7 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
                 bodyScrollWidth: document.body.scrollWidth,
                 themePanelCount: document.querySelectorAll(".theme-panel").length,
                 duplicateThemeHeadingCount: Array.from(document.querySelectorAll("h1, h2, h3")).filter((element) => element.textContent?.trim() === "Styling / Theme customization").length,
-                buttonWhiteSpace: Array.from(document.querySelectorAll("button")).map((button) => getComputedStyle(button).whiteSpace),
+                buttonWhiteSpace: Array.from(document.querySelectorAll("button:not(.preset-button)")).map((button) => getComputedStyle(button).whiteSpace),
                 formBounds: Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea")).map((element) => rect(element)),
                 clearLog: rect(clearLog),
                 eventHeader: rect(eventHeader),
@@ -194,6 +200,11 @@ test("keeps the playground hierarchy and card stacks balanced across desktop and
             expect(link.rect.right).toBeLessThanOrEqual(result.viewportWidth + 1);
             expect(Number(link.fontWeight)).toBeGreaterThanOrEqual(700);
             expect(link.background).not.toBe("rgba(0, 0, 0, 0)");
+        }
+        expect(result.presetButtons).toHaveLength(4);
+        for (const button of result.presetButtons) {
+            expect(button.rect.right).toBeLessThanOrEqual(result.viewportWidth + 1);
+            expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
         }
         for (const formBounds of result.formBounds) {
             expect(formBounds.right).toBeLessThanOrEqual(result.viewportWidth + 1);
