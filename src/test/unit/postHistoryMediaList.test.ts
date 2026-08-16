@@ -967,6 +967,7 @@ describe('PostHistoryMediaList', () => {
 
         expect(onImageOpen).toHaveBeenCalledWith({
             index: 0,
+            focusOrigin: expect.any(HTMLButtonElement),
             mediaList: [
                 {
                     id: 'https://example.com/image.jpg',

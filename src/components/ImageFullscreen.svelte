@@ -18,6 +18,7 @@
         mediaList?: FullscreenMediaItem[];
         currentIndex?: number;
         onNavigate?: (index: number) => void;
+        openingFocusOrigin?: HTMLElement | null;
     }
 
     type CloseMode = "popstate" | "internal" | null;
@@ -33,6 +34,7 @@
         mediaList = [],
         currentIndex = -1,
         onNavigate = undefined,
+        openingFocusOrigin = null,
     }: Props = $props();
 
     let activePhotoSwipe: any = null;
@@ -213,7 +215,7 @@
             padding: VIEWER_PADDING,
             escKey: true,
             arrowKeys: true,
-            returnFocus: true,
+            returnFocus: false,
         });
 
         bindCustomContentEvents(instance);
@@ -256,8 +258,8 @@
             history.pushState({ imageFullscreen: true }, "");
             historyPushed = true;
             const activeElement = document.activeElement;
-            focusOrigin =
-                activeElement instanceof HTMLElement ? activeElement : null;
+            focusOrigin = openingFocusOrigin ??
+                (activeElement instanceof HTMLElement ? activeElement : null);
             focusOriginDialog = focusOrigin?.closest<HTMLElement>(
                 '[role="dialog"]',
             ) ?? null;

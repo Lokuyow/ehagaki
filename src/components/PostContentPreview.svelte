@@ -37,6 +37,7 @@
         onImageOpen?: (params: {
             index: number;
             mediaList: FullscreenMediaItem[];
+            focusOrigin: HTMLElement | null;
         }) => void;
         betweenContentAndMedia?: Snippet;
     }

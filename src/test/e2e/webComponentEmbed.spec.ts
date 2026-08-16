@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { nip19 } from "nostr-tools";
+import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
 declare global {
     interface Window {
@@ -55,6 +56,8 @@ function contentTypeFor(filePath: string): string {
 }
 
 test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    await ensureWebComponentE2EOutput();
     componentServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", componentOrigin).pathname;
         componentRequests.add(pathname);
@@ -114,7 +117,10 @@ test.beforeEach(() => {
 });
 
 test.afterAll(async () => {
-    await Promise.all([close(componentServer), close(hostServer)]);
+    await Promise.all([
+        componentServer && close(componentServer),
+        hostServer && close(hostServer),
+    ]);
 });
 
 test("mounts across origins without touching host storage or registering an eHagaki Service Worker", async ({ page }) => {

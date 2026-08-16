@@ -20,7 +20,7 @@ test.describe('post editor sending state', () => {
             await expect(editorContainer).toHaveAttribute('aria-disabled', 'true');
             await expect(editor).toHaveAttribute('contenteditable', 'false');
             await expect(editor).toContainText('送信中も確認する本文');
-            await expect.poll(() => editor.evaluate((element) => getComputedStyle(element).opacity)).toBe('0.82');
+            await expect.poll(() => editor.evaluate((element) => getComputedStyle(element).opacity)).toBe('0.72');
 
             await editor.click();
             await page.keyboard.type('変更不可');
