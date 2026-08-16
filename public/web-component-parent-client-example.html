@@ -49,6 +49,25 @@
         }
         .page-intro, .live-preview { display: grid; gap: 18px; }
         .page-intro { gap: 10px; }
+        .intro-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+        .intro-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 42px;
+            padding: 9px 15px;
+            border: 1px solid var(--accent);
+            border-radius: 999px;
+            font-size: .88rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: background-color .15s ease, color .15s ease, transform .15s ease;
+        }
+        .intro-link.primary { background: var(--accent); color: #fff; }
+        .intro-link.secondary { background: var(--accent-soft); color: var(--text); }
+        .intro-link:hover { transform: translateY(-1px); }
+        .intro-link.primary:hover { background: #1d5d3d; }
+        .intro-link.secondary:hover { background: #c5e4d2; }
+        .intro-link:focus-visible { outline: 3px solid #92caaa; outline-offset: 2px; }
         .theme-panel { display: grid; gap: 18px; }
         .theme-panel-header, .theme-presets, .theme-custom-fields { display: grid; gap: 8px; }
         .theme-panel > details { grid-column: 1 / -1; }
@@ -180,7 +199,10 @@
         <header class="panel page-intro" aria-labelledby="page-heading">
             <h1 id="page-heading">eHagaki Web Component Playground</h1>
             <p class="lead">eHagaki Web Componentを実際にmountして、公開API・event・lifecycle・context・テーマカスタマイズを確認できるreference / playgroundです。</p>
-            <p class="small"><a href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a> / <a href="./embed-parent-client-example.html">iframe sample</a></p>
+            <nav class="intro-links" aria-label="Web Component resources">
+                <a class="intro-link primary" href="https://github.com/Lokuyow/ehagaki/blob/main/docs/WEB_COMPONENT.md" target="_blank" rel="noreferrer noopener">Web Component guide</a>
+                <a class="intro-link secondary" href="./embed-parent-client-example.html">iframe sample</a>
+            </nav>
         </header>
 
         <section class="live-preview" aria-labelledby="live-preview-heading">
