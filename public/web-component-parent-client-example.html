@@ -292,7 +292,7 @@
                 <div class="column">
                     <div class="notice">
                         <strong>認証と安全な利用範囲</strong>
-                        <p class="small">Web Componentは、このページと同じWindow realmで動作します。ログインは埋め込まれたeHagakiの画面から行い、NIP-07はページの <code>window.nostr</code> を直接利用します。NIP-46・nsec/managed accountもeHagakiの既存経路を使います。このサンプルはsigner callbackを追加せず、nsecを保存しません。</p>
+                        <p class="small">Web Componentは、このページと同じWindow realm / originで動作します。ローカル秘密鍵（nsec）の入力・保存・復元には対応しません。ログインには、秘密鍵自体を入力しないNIP-07（ページの <code>window.nostr</code>）またはNIP-46を利用してください。</p>
                     </div>
 
                     <div class="card stack">
@@ -331,7 +331,7 @@
                             <thead><tr><th>項目</th><th>iframe</th><th>Web Component</th></tr></thead>
                             <tbody>
                                 <tr><th>分離方法 / API</th><td>originを分け、postMessage protocolとhandshakeで通信</td><td>同じWindow realmでmethod/property/CustomEventを使い、elementを作成・削除・再作成</td></tr>
-                                <tr><th>認証</th><td>parent-client auth/RPCを利用可能</td><td>parent-client auth/RPCは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46/nsecはeHagaki UIを利用</td></tr>
+                                <tr><th>認証</th><td>parent-client auth/RPCやローカルnsecを利用可能</td><td>parent-client auth/RPCとローカルnsecは使用しない。NIP-07はhostのwindow.nostrを直接利用し、NIP-46はeHagaki UIを利用</td></tr>
                                 <tr><th>データの保存</th><td>storage/IndexedDBを親ページに委ねられる</td><td>localStorageは <code>ehagaki.web-component.v1:</code> namespace、IndexedDBはhost originの <code>eHagakiDB</code></td></tr>
                                 <tr><th>更新 / 見た目</th><td>iframeのreloadまたはpostMessage</td><td>setSettings()/setContext()、CSS Custom Properties / <code>::part()</code></td></tr>
                                 <tr><th>安全な範囲</th><td>iframeとは別のoriginとして分離可能</td><td>trusted hostのみ正式サポート。hostは同じrealmのコードやstorageを確認可能</td></tr>

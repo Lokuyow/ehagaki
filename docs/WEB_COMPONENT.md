@@ -582,9 +582,14 @@ Web Component 専用の signer callback/provider API はありません。
 
 - NIP-07 では、コンポーネントと同じ Window realm にあるホストの `window.nostr` を直接利用します。
 - NIP-46 は、コンポーネント内の既存 eHagaki UI からログインします。
-- nsec / managed account も、コンポーネント内の既存 eHagaki UI から利用します。
+- ローカル秘密鍵（nsec）の入力、保存、保存済みアカウントの復元には対応しません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。
 - ホスト側から nsec をコンポーネントへ渡す API はありません。
+
+Web Component はホストページと同じ Window realm / origin で動作します。信頼できない埋め込み元の
+JavaScript から入力・保存された秘密鍵を取得されることを防ぐため、認証には NIP-07 や NIP-46 など、
+秘密鍵そのものを Web Component へ入力しない方式を使用してください。この制限は Direct Web Component
+固有であり、通常版/PWA と iframe 版では従来どおりローカル nsec 認証を利用できます。
 
 NIP-07 の有無をホストから確認するだけなら、`window.nostr` と必要な method の存在を
 確認します。これは signer を Web Component へ渡すコードではありません。実際の署名処理は
@@ -610,6 +615,7 @@ console.log('NIP-07 available:', nip07Available);
 | スタイル | iframe 内 document の CSS 境界 | ShadowRoot。CSS Custom Properties / `::part()` を公開 |
 | Window realm | ホストとは分離 | ホストと共有 |
 | NIP-07 | iframe の認証経路または parent-client 連携 | ホストの `window.nostr` を直接利用 |
+| ローカル nsec | 利用可能 | 利用不可 |
 | parent-client auth/RPC | 利用可能 | 使用しない |
 | `postMessage` | 使用する | 使用しない |
 | 保存 | 親側の storage / IndexedDB 委譲を構成可能 | ホストオリジンに保存。専用 localStorage namespace を使用 |
@@ -624,7 +630,9 @@ iframe の通信、parent storage、parent-client auth/RPC が必要な場合は
 Web Component はホストの Window realm で動作し、ホストオリジンへ直接保存します。
 
 - localStorage の key は `ehagaki.web-component.v1:` namespace に限定されます。
-- アカウント、nsec、NIP-46、リレー、設定、legacy-cleanup などの eHagaki 管理値も、この namespace の対象です。
+- アカウント、NIP-46、リレー、設定、legacy-cleanup などの eHagaki 管理値も、この namespace の対象です。
+- 旧 Web Component 版がこの namespace 内へ保存した nsec credential、nsec 型 account record、対応する
+  active-account 状態は起動時に整理され、再利用されません。NIP-07/NIP-46 の account/session は保持されます。
 - ホストの namespace なしの生の key を読み取り、上書き、削除することはありません。
 - この namespace は衝突防止のためのものであり、秘密情報の隔離境界ではありません。
 - iframe の parent-storage プロトコルを通じて以前に委譲されていたデータは、Web Component へ

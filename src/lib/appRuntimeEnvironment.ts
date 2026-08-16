@@ -19,6 +19,7 @@ export interface AppRuntimeEnvironment {
     serviceWorkerEnabled: boolean;
     externalInputEnabled: boolean;
     historyEnabled: boolean;
+    localNsecAuthEnabled: boolean;
 }
 
 function createFallbackElement(): HTMLElement {
@@ -55,6 +56,7 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         serviceWorkerEnabled: true,
         externalInputEnabled: true,
         historyEnabled: true,
+        localNsecAuthEnabled: true,
     };
 }
 

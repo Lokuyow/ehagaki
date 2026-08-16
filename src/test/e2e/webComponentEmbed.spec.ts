@@ -218,7 +218,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     });
 
     const defaultLight = await readTheme();
-    expect(defaultLight.shellPixel).toEqual([227, 227, 227, 255]);
+    expect(defaultLight.shellPixel).toEqual([240, 240, 240, 255]);
     expect(defaultLight.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
 
     await page.locator("ehagaki-composer").evaluate(async (element) => {
@@ -677,6 +677,130 @@ test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ 
         ).backgroundColor;
     });
     expect(darkDialogBackground).not.toBe(lightResult.dialogBackground);
+});
+
+test("offers NIP-07 and NIP-46 without rendering local nsec login UI", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async (pubkeyHex) => {
+        window.nostr = {
+            getPublicKey: async () => pubkeyHex,
+            signEvent: async (event: any) => ({ ...event, id: "66".repeat(32), sig: "77".repeat(64) }),
+        };
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.width = "360px";
+        composer.style.height = "600px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, testPubkeyHex);
+
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector("button.login-btn"),
+    );
+    await page.evaluate(() => {
+        document.querySelector("ehagaki-composer")!.shadowRoot!
+            .querySelector<HTMLButtonElement>("button.login-btn")!.click();
+    });
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot
+            ?.querySelector('[part~="overlay-root"] .login-dialog'),
+    );
+    const result = await page.evaluate(() => {
+        const composer = document.querySelector("ehagaki-composer")!;
+        const shadow = composer.shadowRoot!;
+        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const dialog = overlay.querySelector<HTMLElement>(".login-dialog")!;
+        const componentRect = composer.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+        return {
+            secretInputCount: dialog.querySelectorAll('#secretKey, input[placeholder="nsec1..."]').length,
+            secretSectionCount: dialog.querySelectorAll(".secret-key-section").length,
+            nip07Visible: !!dialog.querySelector(".nip07-login-button"),
+            nip07Enabled: !dialog.querySelector<HTMLButtonElement>(".nip07-login-button")?.disabled,
+            nip46Visible: !!dialog.querySelector(".nostrconnect-open-btn"),
+            hasAddedWarning: /Web Component.*秘密鍵|秘密鍵.*入力しない/.test(dialog.textContent ?? ""),
+            fitsComponent:
+                dialogRect.left >= componentRect.left - 1
+                && dialogRect.right <= componentRect.right + 1
+                && dialogRect.top >= componentRect.top - 1
+                && dialogRect.bottom <= componentRect.bottom + 1,
+        };
+    });
+
+    expect(result).toEqual({
+        secretInputCount: 0,
+        secretSectionCount: 0,
+        nip07Visible: true,
+        nip07Enabled: true,
+        nip46Visible: true,
+        hasAddedWarning: false,
+        fitsComponent: true,
+    });
+});
+
+test("cleans only legacy Web Component nsec state and restores the remaining NIP-07 account", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const nsecPubkey = "aa".repeat(32);
+    const nip46Pubkey = "bb".repeat(32);
+    await page.evaluate(async ({ componentStoragePrefix, nsecPubkey, nip07Pubkey, nip46Pubkey }) => {
+        window.nostr = {
+            getPublicKey: async () => nip07Pubkey,
+            signEvent: async (event: any) => ({ ...event, id: "88".repeat(32), sig: "99".repeat(64) }),
+        };
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([
+                { pubkeyHex: nsecPubkey, type: "nsec", addedAt: 1 },
+                { pubkeyHex: nip07Pubkey, type: "nip07", addedAt: 2 },
+                { pubkeyHex: nip46Pubkey, type: "nip46", addedAt: 3 },
+            ]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, nsecPubkey);
+        localStorage.setItem(`${componentStoragePrefix}nostr-secret-key`, "legacy-component-credential");
+        localStorage.setItem(`${componentStoragePrefix}nostr-secret-key-${nsecPubkey}`, "managed-component-credential");
+        localStorage.setItem(`${componentStoragePrefix}nostr-nip46-session-${nip46Pubkey}`, "nip46-session-sentinel");
+        localStorage.setItem(`${componentStoragePrefix}component-sentinel`, "keep");
+
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+    }, {
+        componentStoragePrefix,
+        nsecPubkey,
+        nip07Pubkey: testPubkeyHex,
+        nip46Pubkey,
+    });
+
+    await page.waitForFunction(() =>
+        !!document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector(".profile-display"),
+    );
+    const result = await page.evaluate(({ componentStoragePrefix, nsecPubkey, nip46Pubkey, sentinels }) => ({
+        accounts: JSON.parse(localStorage.getItem(`${componentStoragePrefix}nostr-accounts`) ?? "[]"),
+        activeAccount: localStorage.getItem(`${componentStoragePrefix}nostr-active-account`),
+        legacyCredential: localStorage.getItem(`${componentStoragePrefix}nostr-secret-key`),
+        managedCredential: localStorage.getItem(`${componentStoragePrefix}nostr-secret-key-${nsecPubkey}`),
+        nip46Session: localStorage.getItem(`${componentStoragePrefix}nostr-nip46-session-${nip46Pubkey}`),
+        componentSentinel: localStorage.getItem(`${componentStoragePrefix}component-sentinel`),
+        rawHostValues: Object.fromEntries(
+            Object.keys(sentinels).map((key) => [key, localStorage.getItem(key)]),
+        ),
+    }), { componentStoragePrefix, nsecPubkey, nip46Pubkey, sentinels });
+
+    expect(result.accounts).toEqual([
+        { pubkeyHex: testPubkeyHex, type: "nip07", addedAt: 2 },
+        { pubkeyHex: nip46Pubkey, type: "nip46", addedAt: 3 },
+    ]);
+    expect(result.activeAccount).toBe(testPubkeyHex);
+    expect(result.legacyCredential).toBeNull();
+    expect(result.managedCredential).toBeNull();
+    expect(result.nip46Session).toBe("nip46-session-sentinel");
+    expect(result.componentSentinel).toBe("keep");
+    expect(result.rawHostValues).toEqual(sentinels);
 });
 
 test("keeps authenticated profile and post history dialogs inside the component", async ({ page }) => {

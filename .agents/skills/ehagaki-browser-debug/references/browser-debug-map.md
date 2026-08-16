@@ -76,7 +76,7 @@
 - **Event source:** open state、`onOpenAutoFocus/onCloseAutoFocus`、pointer outside、Escape、`popstate`、trigger click/tap。
 - **StateまたはCSS変数:** `contentRef`、`trapFocus`、`initialFocus`、`--bits-dialog-depth`、`.dialog-overlay`、`.dialog`、`.popover-content`、application dialog stateは`src/stores/dialogStore.svelte.ts`。
 - **Cleanup所有者:** bits-ui Root/Portalがprimitiveのlistenerを所有する。`useDialogHistory()`はcomponent lifecycleで`popstate`を解除する。caller固有のfocus callbackはcallerが所有する。
-- **関連テスト:** `src/test/unit/confirmDialog.test.ts`、`src/test/unit/useDialogHistory.test.ts`、`src/test/unit/composerTargetDialog.test.ts`、`src/test/unit/postHistoryDialog*.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`。
+- **関連テスト:** `src/test/unit/confirmDialog.test.ts`、`src/test/unit/useDialogHistory.test.ts`、`src/test/unit/loginDialog.test.ts`、`src/test/unit/composerTargetDialog.test.ts`、`src/test/unit/postHistoryDialog*.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`、`src/test/e2e/webComponentEmbed.spec.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** focus trap、portal z-order、overlay click、Escape、nested dialog、戻る操作、mobile viewport内配置はPlaywright。
 - **注意点:** `DialogWrapper`はclose時の自動focus復元を抑止している。focus defectを隠すためにtrapやopen autofocusを無条件停止しない。
 
@@ -186,7 +186,7 @@
 - **Cleanup所有者:** Playwright runnerがpage/contextを破棄し、route/popupはtestがcloseする。temporary artifactは調査完了時に削除する。
 - **関連テスト:** `src/test/e2e/composerTargetDialog.spec.ts`と`src/test/e2e/postHistoryDialog.spec.ts`。unit/component mock基盤は`src/test/setup.ts`と`src/test/mocks/`。
 - **Playwrightまたは実端末確認が必要になる条件:** config上の全projectは実browser engineでDOMを描画するが、IME/browser chrome/PWA standalone/WebViewは実端末確認を別途行う。
-- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示し、`composerTargetDialog.spec.ts`だけに限定される。base URL、Vite command、post-history harness ready URLは同じresolved portを使用し、Vite commandは`--strictPort`で自動移動を禁止する。worktree rootごとにportが異なるため、通常の複数worktreeが固定`4173`を共有しない。`reuseExistingServer: false`で古いserverを再利用せず、常に現在checkoutのViteを起動する。
+- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示し、`composerTargetDialog.spec.ts`、`webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`に限定される。`desktop-firefox`は`webComponentEmbed.spec.ts`に限定される。base URL、Vite command、post-history harness ready URLは同じresolved portを使用し、Vite commandは`--strictPort`で自動移動を禁止する。worktree rootごとにportが異なるため、通常の複数worktreeが固定`4173`を共有しない。`reuseExistingServer: false`で古いserverを再利用せず、常に現在checkoutのViteを起動する。
 
 ## 関連テストの選択
 

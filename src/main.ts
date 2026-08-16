@@ -21,6 +21,7 @@ configureAppRuntimeEnvironment({
   serviceWorkerEnabled: true,
   externalInputEnabled: true,
   historyEnabled: true,
+  localNsecAuthEnabled: true,
 })
 startServiceWorkerRegistration()
 

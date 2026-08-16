@@ -26,6 +26,7 @@
     "get_started": "はじめる"
   },
   "loginDialog": {
+    "login_methods_hint": "ログイン方法を選択",
     "input_secret": "秘密鍵",
     "hint_input_secret": "nsec1から始まる秘密鍵を入力",
     "save": "保存",
