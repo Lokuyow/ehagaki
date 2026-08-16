@@ -14,7 +14,7 @@ DOM へ直接組み込みたい場合に適しています。
 任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
 `Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。サンプルでは、モジュールの読み込み、
 作成・破棄・再作成、設定、投稿コンテキスト、各種イベント、2 個目のインスタンスの拒否、
-CSS Custom Properties、`::part()` を確認できます。
+CSS Custom Properties を確認できます。
 
 ## 最小構成で埋め込む
 
@@ -154,7 +154,7 @@ GitHub Pages のようにサイトがサブパス配下にある場合は、root
 
 ## 準備完了を待つ `whenReady()`
 
-`whenReady(): Promise<void>` は、アプリのマウントと公開 part の準備が完了した後に解決します。
+`whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
 `ehagaki-ready` も同じ準備完了時に発火します。
 
 ```js
@@ -403,7 +403,7 @@ composer.addEventListener('ehagaki-post-error', (event) => {
 
 ### `ehagaki-ready`
 
-mount と公開 part の準備が完了したときに発火します。detail は `{ apiVersion: 1 }` です。
+アプリの mount と初期化が完了したときに発火します。detail は `{ apiVersion: 1 }` です。
 
 ```js
 composer.addEventListener('ehagaki-ready', (event) => {
@@ -557,25 +557,6 @@ ehagaki-composer {
 Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定色が使われます。`themeMode` の
 `system` / `light` / `dark` とhostへ適用される `color-scheme` に応じてsurfaceが切り替わります。
 
-## `::part()` によるスタイル調整
-
-公開されている part は `shell`、`header`、`composer`、`footer`、`overlay-root` です。
-ホスト側のスタイルシートから、次のように指定できます。
-
-```css
-ehagaki-composer::part(header) {
-  border-bottom: 1px solid #b8c7be;
-}
-
-ehagaki-composer::part(composer) {
-  min-height: 240px;
-}
-```
-
-ShadowRoot は open ですが、公開 API として案内していない内部 DOM を
-`shadowRoot.querySelector()` などで操作することは推奨しません。レイアウトや表示の調整には、
-CSS Custom Properties と公開された `::part()` を使用してください。
-
 ## ログイン・認証
 
 Web Component 専用の signer callback/provider API はありません。
@@ -612,7 +593,7 @@ console.log('NIP-07 available:', nip07Available);
 | 項目 | iframe | Web Component |
 | --- | --- | --- |
 | DOM 統合 | 別 document。`postMessage` で連携 | 同じ document の要素として配置 |
-| スタイル | iframe 内 document の CSS 境界 | ShadowRoot。CSS Custom Properties / `::part()` を公開 |
+| スタイル | iframe 内 document の CSS 境界 | ShadowRoot。CSS Custom Properties を公開 |
 | Window realm | ホストとは分離 | ホストと共有 |
 | NIP-07 | iframe の認証経路または parent-client 連携 | ホストの `window.nostr` を直接利用 |
 | ローカル nsec | 利用可能 | 利用不可 |
@@ -701,7 +682,7 @@ CSP の `worker-src` では配信元オリジンと `blob:` の両方を許可�
 - `ehagaki-ready`、`ehagaki-post-success`、`ehagaki-post-error`、
   `ehagaki-composer-context-updated`、`ehagaki-initialization-error`
 - 2 個目のインスタンスの `multiple_instances_unsupported` 拒否
-- CSS Custom Properties と `::part()`
+- CSS Custom Properties
 
 サンプルのイベントログは、秘密情報、署名要求 payload、生の Error を表示せず、安全な要約
 だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、

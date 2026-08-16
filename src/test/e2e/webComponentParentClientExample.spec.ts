@@ -320,8 +320,8 @@ test("uses the internal theme surface even when the host forces a white backgrou
     const result = await page.locator("ehagaki-composer").evaluate(async (element) => {
         const composer = element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> };
         const shadow = composer.shadowRoot!;
-        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
-        const header = shadow.querySelector<HTMLElement>('[part~="header"]')!;
+        const shell = shadow.querySelector<HTMLElement>('.ehagaki-web-component-shell')!;
+        const header = shadow.querySelector<HTMLElement>('.header-container')!;
         const read = () => ({
             hostBackground: getComputedStyle(composer).backgroundColor,
             shellBackground: getComputedStyle(shell).backgroundColor,
@@ -556,7 +556,7 @@ test("boots from production site output and exercises the public sample API", as
 
     const readTheme = () => page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
-        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
+        const shell = shadow.querySelector<HTMLElement>('.ehagaki-web-component-shell')!;
         const primary = shadow.querySelector<HTMLElement>("button.primary")!;
         return {
             accent: element.style.getPropertyValue("--ehagaki-accent-color"),
@@ -807,7 +807,7 @@ test("preserves inherited Accent/Base theme across destroy and recreate", async 
 
     const readTheme = () => page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
-        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
+        const shell = shadow.querySelector<HTMLElement>('.ehagaki-web-component-shell')!;
         const primary = shadow.querySelector<HTMLElement>("button.primary")!;
         return {
             accent: getComputedStyle(element).getPropertyValue("--accent-color").trim(),

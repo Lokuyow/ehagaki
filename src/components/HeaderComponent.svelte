@@ -50,7 +50,6 @@
 <div
     class="header-container"
     class:container-layout={isContainerLayout}
-    part="header"
 >
     <div class="header-left">
         {#if showMascot}

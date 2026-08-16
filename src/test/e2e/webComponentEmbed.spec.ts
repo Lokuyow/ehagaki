@@ -97,7 +97,6 @@ test.beforeAll(async () => {
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(`<!doctype html><head><style>
           ehagaki-composer { display: block; height: 600px; }
-          ehagaki-composer::part(header) { outline: 3px solid rgb(1, 2, 3); }
         </style></head><body><script>
           window.__componentOrigin = ${JSON.stringify(componentOrigin)};
           navigator.serviceWorker.register('/host-sw.js');
@@ -154,9 +153,8 @@ test("mounts across origins without touching host storage or registering an eHag
             componentKeys,
             applied,
             shadow: !!composer.shadowRoot,
-            parts: ["shell", "header", "composer", "footer", "overlay-root"].every((part) => !!composer.shadowRoot?.querySelector(`[part~="${part}"]`)),
-            headerOutline: getComputedStyle(composer.shadowRoot!.querySelector('[part~="header"]')!).outlineColor,
-            footerBackground: getComputedStyle(composer.shadowRoot!.querySelector('[part~="footer"]')!).backgroundColor,
+            publicPartCount: composer.shadowRoot?.querySelectorAll("[part]").length ?? 0,
+            footerBackground: getComputedStyle(composer.shadowRoot!.querySelector('.footer-bar')!).backgroundColor,
             serviceWorkerControlled: !!navigator.serviceWorker.controller,
             hostFetchObserved: afterFetch.fetchCount > beforeFetch.fetchCount,
             registrationCount: registrations.length,
@@ -167,8 +165,7 @@ test("mounts across origins without touching host storage or registering an eHag
     expect(result.componentKeys).toContain("ehagaki.web-component.v1:locale");
     expect(result.applied).toContain("locale");
     expect(result.shadow).toBe(true);
-    expect(result.parts).toBe(true);
-    expect(result.headerOutline).toBe("rgb(1, 2, 3)");
+    expect(result.publicPartCount).toBe(0);
     expect(result.footerBackground).toBe("rgb(4, 5, 6)");
     expect(result.serviceWorkerControlled).toBe(true);
     expect(result.hostFetchObserved).toBe(true);
@@ -191,7 +188,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
 
     const readTheme = () => page.locator("ehagaki-composer").evaluate((element) => {
         const shadow = element.shadowRoot!;
-        const shell = shadow.querySelector<HTMLElement>('[part~="shell"]')!;
+        const shell = shadow.querySelector<HTMLElement>('.ehagaki-web-component-shell')!;
         const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
         const primary = shadow.querySelector<HTMLElement>("button.primary")!;
         const colorToPixel = (color: string) => {
@@ -249,7 +246,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
         element.style.setProperty("--ehagaki-background", "rgb(1, 2, 3)");
     });
     await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
-        getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>('[part~="shell"]')!).backgroundColor,
+        getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>('.ehagaki-web-component-shell')!).backgroundColor,
     )).toBe("rgb(1, 2, 3)");
 
     await page.locator("ehagaki-composer").evaluate((element) => {
@@ -624,22 +621,22 @@ test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ 
     });
     await page.waitForFunction(() => {
         const shadow = document.querySelector("ehagaki-composer")?.shadowRoot;
-        const overlay = shadow?.querySelector('[part~="overlay-root"]');
+        const overlay = shadow?.querySelector('.ehagaki-web-component-overlays');
         return !!overlay?.querySelector(".login-dialog");
     });
 
     await page.evaluate(() => {
         const shadow = document.querySelector("ehagaki-composer")!.shadowRoot!;
-        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const overlay = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
         overlay.querySelector<HTMLDetailsElement>(".remote-signer-details")!.open = true;
     });
     await page.waitForFunction(() =>
         !!document.querySelector("ehagaki-composer")?.shadowRoot
-            ?.querySelector('[part~="overlay-root"] [data-testid="nostrconnect-regenerate"]'),
+            ?.querySelector('.ehagaki-web-component-overlays [data-testid="nostrconnect-regenerate"]'),
     );
     const lightResult = await page.evaluate(() => {
         const shadow = document.querySelector("ehagaki-composer")!.shadowRoot!;
-        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const overlay = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
         const primary = overlay.querySelector<HTMLButtonElement>(
             '[data-testid="nostrconnect-regenerate"]',
         )!;
@@ -672,7 +669,7 @@ test("applies Button styles inside a Portal dialog in the Shadow DOM", async ({ 
         await composer.setSettings({ themeMode: "dark" });
         return getComputedStyle(
             composer.shadowRoot!.querySelector<HTMLElement>(
-                '[part~="overlay-root"] .login-dialog',
+                '.ehagaki-web-component-overlays .login-dialog',
             )!,
         ).backgroundColor;
     });
@@ -705,12 +702,12 @@ test("offers NIP-07 and NIP-46 without rendering local nsec login UI", async ({ 
     });
     await page.waitForFunction(() =>
         !!document.querySelector("ehagaki-composer")?.shadowRoot
-            ?.querySelector('[part~="overlay-root"] .login-dialog'),
+            ?.querySelector('.ehagaki-web-component-overlays .login-dialog'),
     );
     const result = await page.evaluate(() => {
         const composer = document.querySelector("ehagaki-composer")!;
         const shadow = composer.shadowRoot!;
-        const overlay = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const overlay = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
         const dialog = overlay.querySelector<HTMLElement>(".login-dialog")!;
         const componentRect = composer.getBoundingClientRect();
         const dialogRect = dialog.getBoundingClientRect();
@@ -830,7 +827,7 @@ test("keeps authenticated profile and post history dialogs inside the component"
         if (!profileButton) throw new Error("authenticated profile button did not render");
         profileButton.click();
         for (let frame = 0; frame < 8; frame += 1) await nextFrame();
-        const overlayRoot = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const overlayRoot = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
         const rect = (element: Element | null) => {
             if (!(element instanceof HTMLElement)) return null;
             const value = element.getBoundingClientRect();
@@ -964,7 +961,7 @@ test("keeps a large Web Component post history list scrolling above its footer",
             const list = shadow.querySelector<HTMLElement>(".post-history-container");
             if ((list?.scrollHeight ?? 0) > (list?.clientHeight ?? 0)) break;
         }
-        const overlayRoot = shadow.querySelector<HTMLElement>('[part~="overlay-root"]')!;
+        const overlayRoot = shadow.querySelector<HTMLElement>('.ehagaki-web-component-overlays')!;
         const list = overlayRoot.querySelector<HTMLElement>(".post-history-container")!;
         const footer = overlayRoot.querySelector<HTMLElement>(".dialog-footer")!;
         const dialog = overlayRoot.querySelector<HTMLElement>(".post-history-dialog")!;

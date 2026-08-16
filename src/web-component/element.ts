@@ -134,7 +134,6 @@ export class EHagakiComposerElement extends HTMLElement {
     #readyState: "pending" | "resolved" | "rejected" = "pending";
     #operationQueue: Promise<void> = Promise.resolve();
     #connectionGeneration = 0;
-    #publicPartsObserver: MutationObserver | null = null;
     #assetStyleObserver: MutationObserver | null = null;
 
     get assetBase(): string | null {
@@ -175,8 +174,6 @@ export class EHagakiComposerElement extends HTMLElement {
 
     disconnectedCallback(): void {
         this.#connectionGeneration += 1;
-        this.#publicPartsObserver?.disconnect();
-        this.#publicPartsObserver = null;
         this.#assetStyleObserver?.disconnect();
         this.#assetStyleObserver = null;
         if (activeInstance === this) activeInstance = null;
@@ -233,12 +230,10 @@ export class EHagakiComposerElement extends HTMLElement {
             styles.textContent = `${transformAppCss(appCss)}\n${photoSwipeCss}\n${getWebComponentThemeCss()}`;
             const shell = document.createElement("div");
             shell.className = "ehagaki-web-component-shell";
-            shell.part.add("shell");
             const mountTarget = document.createElement("div");
             mountTarget.className = "ehagaki-web-component-app";
             const overlayTarget = document.createElement("div");
             overlayTarget.className = "ehagaki-web-component-overlays ehagaki-app-root";
-            overlayTarget.part.add("overlay-root");
             shell.append(mountTarget, overlayTarget);
             shadowRoot.append(styles, shell);
 
@@ -274,15 +269,19 @@ export class EHagakiComposerElement extends HTMLElement {
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
             this.#mountedApp = mount(App, {
                 target: mountTarget,
-                props: { notificationPort: createWebComponentNotificationPort(this) },
+                props: {
+                    notificationPort: createWebComponentNotificationPort(this),
+                    onInitialized: () => {
+                        if (!this.isConnected || generation !== this.#connectionGeneration) return;
+                        this.#readyState = "resolved";
+                        this.#readyResolve?.();
+                        this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
+                    },
+                },
             });
             applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
             this.#app = this.#mountedApp as AppInstance;
-            await this.waitForPublicParts(shadowRoot, generation);
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
-            this.#readyState = "resolved";
-            this.#readyResolve?.();
-            this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
         } catch {
             this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
         }
@@ -293,35 +292,6 @@ export class EHagakiComposerElement extends HTMLElement {
             throw createError("initialization_failed", "eHagaki Composer is not ready.");
         }
         return this.#app;
-    }
-
-    private waitForPublicParts(root: ShadowRoot, generation: number): Promise<void> {
-        const requiredParts = ["header", "composer", "footer"];
-        const hasRequiredParts = () => requiredParts.every((part) =>
-            root.querySelector(`[part~="${part}"]`),
-        );
-        if (hasRequiredParts()) {
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve) => {
-            const observer = new MutationObserver(() => {
-                if (
-                    generation !== this.#connectionGeneration
-                    || !this.isConnected
-                    || !hasRequiredParts()
-                ) {
-                    return;
-                }
-                observer.disconnect();
-                if (this.#publicPartsObserver === observer) {
-                    this.#publicPartsObserver = null;
-                }
-                resolve();
-            });
-            this.#publicPartsObserver = observer;
-            observer.observe(root, { childList: true, subtree: true });
-        });
     }
 
     private enqueue<T>(operation: () => Promise<T>): Promise<T> {
