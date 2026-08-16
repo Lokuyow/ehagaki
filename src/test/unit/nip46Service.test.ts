@@ -19,6 +19,11 @@ import { expectConsoleCallsNotToContain } from '../logAssertions';
 const TEST_USER_PUBKEY = 'b'.repeat(64);
 const TEST_RECONNECT_PUBKEY = 'c'.repeat(64);
 const TEST_NEW_USER_PUBKEY = 'e'.repeat(64);
+const EXPECTED_NIP46_CLIENT_METADATA = {
+    name: 'eHagaki',
+    url: 'https://lokuyow.github.io/ehagaki/',
+    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon_x192.png',
+};
 
 describe('NIP46_REQUESTED_PERMISSIONS', () => {
     it('NIP-42 AUTHイベントの署名許可を要求する', () => {
@@ -60,6 +65,8 @@ vi.mock('nostr-tools/nip46', () => ({
         relays: string[];
         secret: string;
         name?: string;
+        url?: string;
+        image?: string;
     }) => {
         const query = new URLSearchParams();
         for (const relay of params.relays) {
@@ -68,6 +75,12 @@ vi.mock('nostr-tools/nip46', () => ({
         query.set('secret', params.secret);
         if (params.name) {
             query.set('name', params.name);
+        }
+        if (params.url) {
+            query.set('url', params.url);
+        }
+        if (params.image) {
+            query.set('image', params.image);
         }
         return `nostrconnect://${params.clientPubkey}?${query.toString()}`;
     }),
@@ -245,6 +258,15 @@ describe('Nip46Service', () => {
 
     function getNostrConnectUriName(uri: string): string | null {
         return new URL(uri).searchParams.get('name');
+    }
+
+    function getNostrConnectUriMetadata(uri: string) {
+        const searchParams = new URL(uri).searchParams;
+        return {
+            name: searchParams.get('name'),
+            url: searchParams.get('url'),
+            image: searchParams.get('image'),
+        };
     }
 
     afterEach(() => {
@@ -579,7 +601,12 @@ describe('Nip46Service', () => {
             expect(service.getSigner()).not.toBeNull();
             expect(mockSigner.sendRequest).toHaveBeenCalledWith(
                 'connect',
-                [mockBp.pubkey, 'test-secret', NIP46_REQUESTED_PERMS]
+                [
+                    mockBp.pubkey,
+                    'test-secret',
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(EXPECTED_NIP46_CLIENT_METADATA),
+                ],
             );
         });
 
@@ -1178,11 +1205,18 @@ describe('Nip46Service', () => {
 
             expect(pending.connectionUri).toContain('nostrconnect://');
             expect(getNostrConnectUriName(pending.connectionUri)).toBe('eHagaki');
+            expect(getNostrConnectUriMetadata(pending.connectionUri)).toEqual(
+                EXPECTED_NIP46_CLIENT_METADATA,
+            );
+            expect(createNostrConnectURI).toHaveBeenCalledTimes(2);
+            for (const [params] of (createNostrConnectURI as any).mock.calls) {
+                expect(params).toEqual(expect.objectContaining(EXPECTED_NIP46_CLIENT_METADATA));
+            }
             expect(createNostrConnectURI).toHaveBeenCalledWith(
                 expect.objectContaining({
                     relays: initialRelays,
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
-                    name: 'eHagaki',
+                    ...EXPECTED_NIP46_CLIENT_METADATA,
                 }),
             );
 
@@ -2375,13 +2409,46 @@ describe('Nip46Service', () => {
 
             expect(mockSigner.sendRequest).toHaveBeenCalledWith(
                 'connect',
-                [mockBp.pubkey, 'test-secret', NIP46_REQUESTED_PERMS],
+                [
+                    mockBp.pubkey,
+                    'test-secret',
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(EXPECTED_NIP46_CLIENT_METADATA),
+                ],
             );
             expect(createNostrConnectURI).toHaveBeenCalledWith(
                 expect.objectContaining({
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
-                    name: 'eHagaki',
+                    ...EXPECTED_NIP46_CLIENT_METADATA,
                 }),
+            );
+        });
+
+        it('metadata付き bunker connect が失敗した場合は既存の metadataなし fallback を試す', async () => {
+            const sendRequest = vi.fn()
+                .mockRejectedValueOnce(new Error('unsupported client metadata'))
+                .mockResolvedValueOnce('ack')
+                .mockResolvedValueOnce(TEST_USER_PUBKEY);
+
+            const { mockBp, mockSigner } = await connectService({
+                secret: 'test-secret',
+                signerOverrides: { sendRequest },
+            });
+
+            expect(mockSigner.sendRequest).toHaveBeenNthCalledWith(
+                1,
+                'connect',
+                [
+                    mockBp.pubkey,
+                    'test-secret',
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(EXPECTED_NIP46_CLIENT_METADATA),
+                ],
+            );
+            expect(mockSigner.sendRequest).toHaveBeenNthCalledWith(
+                2,
+                'connect',
+                [mockBp.pubkey, 'test-secret', NIP46_REQUESTED_PERMS],
             );
         });
     });
@@ -2576,6 +2643,7 @@ describe('Nip46Service', () => {
                 sessionData.remoteSignerPubkey,
                 '',
                 NIP46_REQUESTED_PERMS,
+                JSON.stringify(EXPECTED_NIP46_CLIENT_METADATA),
             ]);
             expect(mockSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
             expect(mockSigner.getPublicKey).not.toHaveBeenCalled();
@@ -2583,6 +2651,33 @@ describe('Nip46Service', () => {
             expect(mockSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
             service.saveSession(mockStorage, sessionData.userPubkey);
             expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual(sessionData);
+        });
+
+        it('metadata付き session reconnect が失敗した場合は既存の metadataなし fallback を試す', async () => {
+            const sendRequest = vi.fn()
+                .mockRejectedValueOnce(new Error('unsupported client metadata'))
+                .mockResolvedValueOnce('ack')
+                .mockResolvedValueOnce(TEST_RECONNECT_PUBKEY);
+
+            const { sessionData, mockSigner } = await reconnectService({
+                signerOverrides: { sendRequest },
+            });
+
+            expect(mockSigner.sendRequest).toHaveBeenNthCalledWith(
+                1,
+                'connect',
+                [
+                    sessionData.remoteSignerPubkey,
+                    '',
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(EXPECTED_NIP46_CLIENT_METADATA),
+                ],
+            );
+            expect(mockSigner.sendRequest).toHaveBeenNthCalledWith(
+                2,
+                'connect',
+                [sessionData.remoteSignerPubkey, '', NIP46_REQUESTED_PERMS],
+            );
         });
 
         it('relayResolution が無い既存 session でも安全に再接続できる', async () => {
