@@ -133,11 +133,11 @@ function installEventListeners(element, label) {
             const detail = safeEventDetail(type, event.detail);
             appendLog(`${label}: ${type}`, detail);
             if (type === "ehagaki-ready" && element === currentComposer) {
-                setStatus(readyStatus, "whenReady(): resolved", "ok");
+                setStatus(readyStatus, "準備完了（whenReady(): resolved）", "ok");
             }
             if (type === "ehagaki-initialization-error") {
                 const code = detail.code ?? "initialization_failed";
-                setStatus(readyStatus, `whenReady(): rejected (${code})`, "error");
+                setStatus(readyStatus, `準備に失敗しました（whenReady(): rejected: ${code}）`, "error");
             }
         });
     }
@@ -204,23 +204,23 @@ function getContext() {
 
 function applySettingsToComposer(settings, label) {
     if (!currentComposer) {
-        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
+        setStatus(componentStatus, "先にComponentを作成してください", "warn");
         appendLog(`${label}: component_not_mounted`);
         return;
     }
     void currentComposer.setSettings(settings).then((applied) => {
         appendLog(`${label}: settings applied`, { keys: [...applied] });
-        setStatus(componentStatus, `${label}: ${[...applied].join(", ") || "no keys"}`, "ok");
+        setStatus(componentStatus, `設定を反映しました（${[...applied].join(", ") || "変更なし"}）`, "ok");
     }).catch((error) => {
         const code = safeErrorCode(error);
         appendLog(`${label}: settings rejected`, { code });
-        setStatus(componentStatus, `${label}: rejected (${code})`, "error");
+        setStatus(componentStatus, `設定を反映できませんでした（${code}）`, "error");
     });
 }
 
-function applyContextToComposer(context, label) {
+function applyContextToComposer(context, label, statusLabel) {
     if (!currentComposer) {
-        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
+        setStatus(componentStatus, "先にComponentを作成してください", "warn");
         appendLog(`${label}: component_not_mounted`);
         return;
     }
@@ -231,11 +231,11 @@ function applyContextToComposer(context, label) {
             quoteCount: Array.isArray(context.quotes) ? context.quotes.length : 0,
             hasChannel: !!context.channel,
         });
-        setStatus(componentStatus, `${label}: applied`, "ok");
+        setStatus(componentStatus, `${statusLabel}しました`, "ok");
     }).catch((error) => {
         const code = safeErrorCode(error);
         appendLog(`${label}: context rejected`, { code });
-        setStatus(componentStatus, `${label}: rejected (${code})`, "error");
+        setStatus(componentStatus, `${statusLabel}できませんでした（${code}）`, "error");
     });
 }
 
@@ -246,11 +246,11 @@ async function ensureModuleLoaded() {
     moduleLoadPromise = import(moduleUrl).then(() => {
         moduleUrlInput.disabled = true;
         moduleUrlInput.setAttribute("aria-disabled", "true");
-        setStatus(moduleStatus, "module loaded; reload to choose another implementation", "ok");
+        setStatus(moduleStatus, "モジュールを読み込みました（別の実装を選ぶには再読み込み）", "ok");
     }).catch((error) => {
         moduleLoadPromise = null;
         loadedModuleUrl = "";
-        setStatus(moduleStatus, `module failed (${safeErrorCode(error)})`, "error");
+        setStatus(moduleStatus, `モジュールを読み込めませんでした（${safeErrorCode(error)}）`, "error");
         appendLog("module load failed", { code: safeErrorCode(error) });
         throw error;
     });
@@ -303,20 +303,20 @@ function configureElement(element) {
 
 async function createComposer() {
     if (currentComposer?.isConnected) {
-        setStatus(componentStatus, "componentは既にmount済みです", "warn");
+        setStatus(componentStatus, "Componentはすでに表示されています", "warn");
         return;
     }
     await ensureModuleLoaded();
     if (currentComposer?.isConnected) {
-        setStatus(componentStatus, "componentは既にmount済みです", "warn");
+        setStatus(componentStatus, "Componentはすでに表示されています", "warn");
         return;
     }
     const element = document.createElement("ehagaki-composer");
     configureElement(element);
     installEventListeners(element, "primary");
     currentComposer = element;
-    setStatus(componentStatus, "component created / connecting", "warn");
-    setStatus(readyStatus, "whenReady(): pending (queued settings/context)", "warn");
+    setStatus(componentStatus, "Componentを作成中です", "warn");
+    setStatus(readyStatus, "準備中（whenReady(): pending、設定と投稿内容を予約済み）", "warn");
 
     // These calls intentionally happen before connection. The element queues them until ready.
     const initialSettings = element.setSettings(getSettings());
@@ -324,8 +324,8 @@ async function createComposer() {
     componentMount.append(element);
 
     void element.whenReady().then(() => {
-        setStatus(readyStatus, "whenReady(): resolved", "ok");
-        setStatus(componentStatus, "component mounted", "ok");
+        setStatus(readyStatus, "準備完了（whenReady(): resolved）", "ok");
+        setStatus(componentStatus, "Componentを表示しました", "ok");
     }).catch((error) => {
         setStatus(readyStatus, `whenReady(): rejected (${safeErrorCode(error)})`, "error");
     });
@@ -337,13 +337,13 @@ async function createComposer() {
 
 function destroyComposer() {
     if (!currentComposer?.isConnected) {
-        setStatus(componentStatus, "primary componentはmountされていません", "warn");
+        setStatus(componentStatus, "表示中のComponentはありません", "warn");
         return;
     }
     currentComposer.remove();
     currentComposer = null;
-    setStatus(componentStatus, "primary component destroyed; persistent settings remain", "ok");
-    setStatus(readyStatus, "whenReady(): not connected", "warn");
+    setStatus(componentStatus, "Componentを削除しました（設定は保持されています）", "ok");
+    setStatus(readyStatus, "未接続（whenReady(): not connected）", "warn");
     appendLog("primary: disconnected", { persistentSettingsRemain: true });
 }
 
@@ -369,13 +369,13 @@ async function createSecondComposer() {
         appendLog("secondary: unexpected ready");
     }).catch((error) => {
         appendLog("secondary: whenReady rejected", { code: safeErrorCode(error) });
-        setStatus(componentStatus, "2個目は inert: multiple_instances_unsupported", "error");
+        setStatus(componentStatus, "2個目は動作しません（inert: multiple_instances_unsupported）", "error");
     });
 }
 
 function applyStyles() {
     if (!currentComposer?.isConnected) {
-        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
+        setStatus(componentStatus, "先にComponentを作成してください", "warn");
         appendLog("styles: component_not_mounted");
         return;
     }
@@ -390,7 +390,7 @@ function resetStyles() {
     }
     if (!currentComposer?.isConnected) {
         clearStyleInputs();
-        setStatus(componentStatus, "componentを先にCreateしてください", "warn");
+        setStatus(componentStatus, "先にComponentを作成してください", "warn");
         appendLog("styles reset: component_not_mounted");
         return;
     }
@@ -402,14 +402,14 @@ function resetStyles() {
 function refreshNip07Status() {
     const signer = window.nostr;
     if (!signer) {
-        setStatus(nip07Status, "NIP-07: window.nostr not available", "warn");
+        setStatus(nip07Status, "NIP-07：利用できるwindow.nostrがありません", "warn");
         return;
     }
     const capabilities = ["getPublicKey", "signEvent", "nip04", "nip44"].filter((key) => {
         if (key === "nip04" || key === "nip44") return signer[key] && typeof signer[key] === "object";
         return typeof signer[key] === "function";
     });
-    setStatus(nip07Status, `NIP-07: available (${capabilities.join(", ") || "no known capability"})`, "ok");
+    setStatus(nip07Status, `NIP-07：利用できます（${capabilities.join(", ") || "利用可能な機能を確認できません"}）`, "ok");
 }
 
 function bindActions() {
@@ -419,16 +419,16 @@ function bindActions() {
     getElement("create-second").addEventListener("click", () => void createSecondComposer().catch((error) => appendLog("secondary create failed", { code: safeErrorCode(error) })));
     getElement("apply-runtime-settings").addEventListener("click", () => applySettingsToComposer(getSettings(), "runtime setSettings"));
     getElement("apply-invalid-settings").addEventListener("click", () => applySettingsToComposer({ unsupportedKey: true }, "invalid setSettings"));
-    getElement("apply-content").addEventListener("click", () => applyContextToComposer({ content: getElement("context-content").value }, "content context"));
-    getElement("apply-reply").addEventListener("click", () => applyContextToComposer({ reply: getElement("context-reply").value.trim() }, "reply context"));
-    getElement("apply-quote").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim()] }, "quote context"));
-    getElement("apply-multiple-quotes").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim(), getElement("context-quote-two").value.trim()] }, "multiple quote context"));
+    getElement("apply-content").addEventListener("click", () => applyContextToComposer({ content: getElement("context-content").value }, "content context", "投稿内容を反映"));
+    getElement("apply-reply").addEventListener("click", () => applyContextToComposer({ reply: getElement("context-reply").value.trim() }, "reply context", "返信先を反映"));
+    getElement("apply-quote").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim()] }, "quote context", "引用を反映"));
+    getElement("apply-multiple-quotes").addEventListener("click", () => applyContextToComposer({ quotes: [getElement("context-quote-one").value.trim(), getElement("context-quote-two").value.trim()] }, "multiple quote context", "複数の引用を反映"));
     getElement("apply-channel").addEventListener("click", () => {
         const context = getContext();
-        applyContextToComposer({ channel: context.channel }, "channel context");
+        applyContextToComposer({ channel: context.channel }, "channel context", "チャンネル情報を反映");
     });
-    getElement("clear-context").addEventListener("click", () => applyContextToComposer({ content: null, reply: null, quotes: null, channel: null }, "clear context"));
-    getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context"));
+    getElement("clear-context").addEventListener("click", () => applyContextToComposer({ content: null, reply: null, quotes: null, channel: null }, "clear context", "指定内容をクリア"));
+    getElement("apply-invalid-context").addEventListener("click", () => applyContextToComposer({ content: "must not apply", reply: "invalid reference" }, "invalid context", "投稿内容を反映"));
     getElement("apply-styles").addEventListener("click", applyStyles);
     getElement("reset-styles").addEventListener("click", resetStyles);
     getElement("preset-azure").addEventListener("click", () => selectStylePreset("azure"));
