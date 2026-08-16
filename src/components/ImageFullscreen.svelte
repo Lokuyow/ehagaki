@@ -9,6 +9,7 @@
         pauseFullscreenVideoContent,
     } from "../lib/utils/fullscreenViewerUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
+    import { getActiveElement } from "../lib/utils/appDomUtils";
 
     interface Props {
         src?: string;
@@ -249,20 +250,30 @@
 
     $effect(() => {
         if (
+            !show ||
+            normalizedIndex < 0 ||
+            resolvedMediaList.length === 0 ||
+            focusOrigin
+        ) {
+            return;
+        }
+
+        focusOrigin = openingFocusOrigin ?? getActiveElement();
+        focusOriginDialog = focusOrigin?.closest<HTMLElement>(
+            '[role="dialog"]',
+        ) ?? null;
+    });
+
+    $effect(() => {
+        if (
             show &&
             normalizedIndex >= 0 &&
             resolvedMediaList.length > 0 &&
-            !historyPushed
-            && appRuntimeEnvironment.historyEnabled
+            !historyPushed &&
+            appRuntimeEnvironment.historyEnabled
         ) {
             history.pushState({ imageFullscreen: true }, "");
             historyPushed = true;
-            const activeElement = document.activeElement;
-            focusOrigin = openingFocusOrigin ??
-                (activeElement instanceof HTMLElement ? activeElement : null);
-            focusOriginDialog = focusOrigin?.closest<HTMLElement>(
-                '[role="dialog"]',
-            ) ?? null;
         }
     });
 
