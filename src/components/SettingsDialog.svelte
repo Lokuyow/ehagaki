@@ -25,6 +25,7 @@
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
     import { themeModeStore } from "../stores/themeStore.svelte";
+    import { themeColorStore } from "../stores/themeColorStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import { getCompressionLevels } from "../lib/constants";
     import {
@@ -40,7 +41,10 @@
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
     import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
-    import type { ThemeMode } from "../lib/utils/settingsStorage";
+    import {
+        normalizeHexColor,
+        type ThemeMode,
+    } from "../lib/utils/settingsStorage";
     import {
         EXTERNAL_NOSTR_CLIENTS,
         normalizeExternalNostrClientUrlTemplate,
@@ -87,6 +91,12 @@
         settingsStore.replyNotificationEnabled,
     );
     let themeMode = $state<ThemeMode>(themeModeStore.value);
+    const defaultAccentColor = "#1dbf73";
+    const defaultBaseColorPickerValue = "#808080";
+    let accentColorInput = $state(themeColorStore.accentColor ?? defaultAccentColor);
+    let baseColorInput = $state(themeColorStore.baseColor ?? "");
+    let accentColorError = $state<string | null>(null);
+    let baseColorError = $state<string | null>(null);
     let hideMascot = $state(!settingsStore.showMascot);
     let hideFlavorText = $state(!settingsStore.showFlavorText);
     let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
@@ -131,6 +141,9 @@
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         replyNotificationEnabled = settingsStore.replyNotificationEnabled;
         themeMode = themeModeStore.value;
+        themeColorStore.reload();
+        accentColorInput = themeColorStore.accentColor ?? defaultAccentColor;
+        baseColorInput = themeColorStore.baseColor ?? "";
         hideMascot = !settingsStore.showMascot;
         hideFlavorText = !settingsStore.showFlavorText;
         fetchSwVersion();
@@ -236,6 +249,64 @@
         if (normalizedUrl) {
             settingsStore.externalNostrClientCustomUrl = normalizedUrl;
         }
+    }
+
+    function handleColorInput(
+        kind: "accent" | "base",
+        value: string,
+    ): void {
+        if (kind === "accent") {
+            accentColorInput = value;
+        } else {
+            baseColorInput = value;
+        }
+
+        const normalized = normalizeHexColor(value);
+        if (!normalized) {
+            return;
+        }
+
+        if (kind === "accent") {
+            accentColorInput = themeColorStore.setAccentColor(normalized) ?? value;
+            accentColorError = null;
+        } else {
+            baseColorInput = themeColorStore.setBaseColor(normalized) ?? value;
+            baseColorError = null;
+        }
+    }
+
+    function handleColorBlur(kind: "accent" | "base"): void {
+        const value = kind === "accent" ? accentColorInput : baseColorInput;
+        const error = value && !normalizeHexColor(value)
+            ? $_("settingsDialog.invalid_hex_color")
+            : null;
+        if (kind === "accent") {
+            accentColorError = error;
+        } else {
+            baseColorError = error;
+        }
+    }
+
+    function handleColorPickerInput(kind: "accent" | "base", value: string): void {
+        const normalized = normalizeHexColor(value);
+        if (!normalized) {
+            return;
+        }
+        if (kind === "accent") {
+            accentColorInput = themeColorStore.setAccentColor(normalized) ?? normalized;
+            accentColorError = null;
+        } else {
+            baseColorInput = themeColorStore.setBaseColor(normalized) ?? normalized;
+            baseColorError = null;
+        }
+    }
+
+    function resetThemeColors(): void {
+        themeColorStore.reset();
+        accentColorInput = defaultAccentColor;
+        baseColorInput = "";
+        accentColorError = null;
+        baseColorError = null;
     }
 </script>
 
@@ -543,6 +614,89 @@
                 </RadioGroup.Root>
             </div>
         </div>
+
+        {#if themeColorStore.isAvailable}
+            <div class="setting-section color-settings-section">
+                <span class="setting-label color-settings-heading">
+                    {$_("settingsDialog.color")}
+                </span>
+                <div class="color-setting-row">
+                    <div class="setting-label-group">
+                        <label class="setting-label" for="accent-color-input">
+                            {$_("settingsDialog.accent_color")}
+                        </label>
+                        <span class="setting-description">
+                            {$_("settingsDialog.accent_color_description")}
+                        </span>
+                    </div>
+                    <div class="color-setting-controls">
+                        <input
+                            aria-label={$_("settingsDialog.accent_color_picker")}
+                            type="color"
+                            value={normalizeHexColor(accentColorInput) ?? defaultAccentColor}
+                            oninput={(event) => handleColorPickerInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                        />
+                        <input
+                            id="accent-color-input"
+                            aria-label={$_("settingsDialog.accent_color_hex")}
+                            class="color-hex-input"
+                            type="text"
+                            inputmode="text"
+                            autocomplete="off"
+                            value={accentColorInput}
+                            aria-invalid={accentColorError ? "true" : "false"}
+                            oninput={(event) => handleColorInput("accent", (event.currentTarget as HTMLInputElement).value)}
+                            onblur={() => handleColorBlur("accent")}
+                        />
+                    </div>
+                </div>
+                {#if accentColorError}
+                    <span class="form-error" role="alert">{accentColorError}</span>
+                {/if}
+                <div class="color-setting-row">
+                    <div class="setting-label-group">
+                        <label class="setting-label" for="base-color-input">
+                            {$_("settingsDialog.base_color")}
+                        </label>
+                        <span class="setting-description">
+                            {$_("settingsDialog.base_color_description")}
+                        </span>
+                    </div>
+                    <div class="color-setting-controls">
+                        <input
+                            aria-label={$_("settingsDialog.base_color_picker")}
+                            type="color"
+                            value={normalizeHexColor(baseColorInput) ?? defaultBaseColorPickerValue}
+                            oninput={(event) => handleColorPickerInput("base", (event.currentTarget as HTMLInputElement).value)}
+                        />
+                        <input
+                            id="base-color-input"
+                            aria-label={$_("settingsDialog.base_color_hex")}
+                            class="color-hex-input"
+                            type="text"
+                            inputmode="text"
+                            autocomplete="off"
+                            placeholder="#RRGGBB"
+                            value={baseColorInput}
+                            aria-invalid={baseColorError ? "true" : "false"}
+                            oninput={(event) => handleColorInput("base", (event.currentTarget as HTMLInputElement).value)}
+                            onblur={() => handleColorBlur("base")}
+                        />
+                    </div>
+                </div>
+                {#if baseColorError}
+                    <span class="form-error" role="alert">{baseColorError}</span>
+                {/if}
+                <Button
+                    variant="default"
+                    shape="rounded"
+                    className="reset-theme-colors-btn"
+                    onClick={resetThemeColors}
+                >
+                    {$_("settingsDialog.reset_colors")}
+                </Button>
+            </div>
+        {/if}
 
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
@@ -1057,6 +1211,71 @@
             padding: 8px 10px;
             font-size: 0.875rem;
             font-weight: normal;
+        }
+    }
+
+    .color-settings-section {
+        gap: 10px;
+    }
+
+    .color-settings-heading {
+        margin-bottom: 2px;
+    }
+
+    .color-setting-row,
+    .color-setting-controls {
+        display: flex;
+        gap: 10px;
+    }
+
+    .color-setting-row {
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .color-setting-controls {
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .color-setting-controls input[type="color"] {
+        width: 44px;
+        height: 44px;
+        padding: 2px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        cursor: pointer;
+    }
+
+    .color-hex-input {
+        width: 104px;
+        min-height: 44px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--dialog-bg);
+        color: var(--text);
+        font: inherit;
+    }
+
+    .color-hex-input[aria-invalid="true"] {
+        border-color: var(--danger);
+    }
+
+    :global(.reset-theme-colors-btn.rounded) {
+        align-self: flex-end;
+        min-height: 44px;
+    }
+
+    @media (max-width: 430px) {
+        .color-setting-row {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .color-setting-controls {
+            align-self: flex-end;
         }
     }
 </style>

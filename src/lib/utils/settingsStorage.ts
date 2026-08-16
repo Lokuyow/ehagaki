@@ -26,6 +26,10 @@ export type PreferenceSource =
     | "parentDefault"
     | "user";
 export type ThemeMode = "system" | "light" | "dark";
+export type ThemeColors = {
+    accentColor: string | null;
+    baseColor: string | null;
+};
 export type ManagedPreferenceKey =
     | "locale"
     | "clientTagEnabled"
@@ -387,6 +391,57 @@ export function normalizeThemeModePreference(
     return value === "system" || value === "light" || value === "dark"
         ? value
         : null;
+}
+
+/** Normalizes the only custom-color format supported by the settings UI. */
+export function normalizeHexColor(value: string | null | undefined): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim().replace(/^#/, "");
+    return /^[0-9a-f]{6}$/i.test(normalized)
+        ? `#${normalized.toLowerCase()}`
+        : null;
+}
+
+function getStoredHexColorPreference(
+    storage: MutableStorage,
+    key: typeof STORAGE_KEYS.ACCENT_COLOR | typeof STORAGE_KEYS.BASE_COLOR,
+): string | null {
+    const storedValue = storage.getItem(key);
+    const normalized = normalizeHexColor(storedValue);
+    if (storedValue !== null && !normalized) {
+        storage.removeItem(key);
+    }
+    return normalized;
+}
+
+export function getThemeColorPreferences(storage: MutableStorage): ThemeColors {
+    return {
+        accentColor: getStoredHexColorPreference(storage, STORAGE_KEYS.ACCENT_COLOR),
+        baseColor: getStoredHexColorPreference(storage, STORAGE_KEYS.BASE_COLOR),
+    };
+}
+
+export function setThemeColorPreference(
+    storage: Pick<Storage, "setItem">,
+    key: typeof STORAGE_KEYS.ACCENT_COLOR | typeof STORAGE_KEYS.BASE_COLOR,
+    value: string,
+): string | null {
+    const normalized = normalizeHexColor(value);
+    if (!normalized) {
+        return null;
+    }
+    storage.setItem(key, normalized);
+    return normalized;
+}
+
+export function clearThemeColorPreferences(
+    storage: Pick<Storage, "removeItem">,
+): void {
+    storage.removeItem(STORAGE_KEYS.ACCENT_COLOR);
+    storage.removeItem(STORAGE_KEYS.BASE_COLOR);
 }
 
 export function getStoredThemeModePreference(storage: MutableStorage): ThemeMode {
