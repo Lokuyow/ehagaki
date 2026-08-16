@@ -54,6 +54,11 @@ const NIP46_FINAL_LOCAL_RELAY_UNREACHABLE_MESSAGE =
     'Could not connect to the local relay specified by the remote signer';
 const NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE =
     'Communication could not be verified on the relay selected by the remote signer';
+const NIP46_CLIENT_METADATA = {
+    name: EHAGAKI_APP_NAME,
+    url: 'https://lokuyow.github.io/ehagaki/',
+    image: 'https://lokuyow.github.io/ehagaki/ehagaki_icon_x192.png',
+} as const;
 
 type Nip46LogFailureReason =
     | 'unexpected'
@@ -1576,6 +1581,12 @@ export class Nip46Service {
                 ? [originalSecret]
                 : [originalSecret, normalizedSecret];
             const connectParamCandidates = secretCandidates.flatMap((secret) => [
+                [
+                    bunkerPointer.pubkey,
+                    secret,
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(NIP46_CLIENT_METADATA),
+                ],
                 [bunkerPointer.pubkey, secret, NIP46_REQUESTED_PERMS],
                 [bunkerPointer.pubkey, secret],
             ]);
@@ -1685,7 +1696,7 @@ export class Nip46Service {
             relays: sanitizedRelays,
             secret: sharedSecret,
             perms: [...NIP46_REQUESTED_PERMISSIONS],
-            name: EHAGAKI_APP_NAME,
+            ...NIP46_CLIENT_METADATA,
         });
 
         let handshakeClosed = false;
@@ -2018,7 +2029,7 @@ export class Nip46Service {
                     relays: connectedRelays,
                     secret: sharedSecret,
                     perms: [...NIP46_REQUESTED_PERMISSIONS],
-                    name: EHAGAKI_APP_NAME,
+                    ...NIP46_CLIENT_METADATA,
                 });
 
                 if (settled) {
@@ -2323,6 +2334,12 @@ export class Nip46Service {
             });
 
             const reconnectConnectParamCandidates = [
+                [
+                    bunkerPointer.pubkey,
+                    '',
+                    NIP46_REQUESTED_PERMS,
+                    JSON.stringify(NIP46_CLIENT_METADATA),
+                ],
                 [bunkerPointer.pubkey, '', NIP46_REQUESTED_PERMS],
                 [bunkerPointer.pubkey, ''],
             ];
