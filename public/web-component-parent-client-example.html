@@ -146,8 +146,8 @@
             line-height: 1.5;
         }
         .preview-panel { position: sticky; top: 18px; }
-        .component-frame { height: clamp(500px, 68vh, 620px); padding: 18px; background: #dce8df; border-radius: 18px; }
-        #component-mount { height: calc(100% - 36px); }
+        .component-frame { height: 640px; padding: 18px; background: #dce8df; border-radius: 18px; }
+        #component-mount { height: 580px; }
         ehagaki-composer { display: block; height: 100%; min-height: 0; background: white; }
 
         .comparison { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .84rem; }
@@ -162,6 +162,10 @@
             .preview-panel { position: static; }
             .component-frame { height: 520px; }
             #component-mount, ehagaki-composer { height: 484px; }
+        }
+
+        @media (min-width: 981px) and (max-height: 760px) {
+            .preview-panel { position: static; }
         }
 
         @media (max-width: 540px) {
