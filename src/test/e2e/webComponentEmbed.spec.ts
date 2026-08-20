@@ -710,6 +710,7 @@ test("loads app-owned icons from the component asset base instead of the host", 
         await composer.whenReady();
         const shadow = composer.shadowRoot!;
         const logo = shadow.querySelector<HTMLImageElement>("img.site-icon")!;
+        const siteIconLink = shadow.querySelector<HTMLAnchorElement>("a.site-icon-link")!;
         await new Promise<void>((resolve, reject) => {
             if (logo.complete && logo.naturalWidth > 0) {
                 resolve();
@@ -723,10 +724,23 @@ test("loads app-owned icons from the component asset base instead of the host", 
             shadow.querySelector<HTMLElement>(".login-icon")!,
             shadow.querySelector<HTMLElement>(".settings-icon")!,
         ].map((icon) => getComputedStyle(icon).maskImage);
-        return { logoSrc: logo.src, naturalWidth: logo.naturalWidth, masks };
+        return {
+            logoSrc: logo.src,
+            naturalWidth: logo.naturalWidth,
+            masks,
+            siteIconHrefAttribute: siteIconLink.getAttribute("href"),
+            siteIconHref: siteIconLink.href,
+            siteIconTarget: siteIconLink.getAttribute("target"),
+            siteIconRel: siteIconLink.getAttribute("rel"),
+        };
     });
 
     expect(result.logoSrc.startsWith(componentOrigin)).toBe(true);
+    expect(result.siteIconHrefAttribute).toBe("https://lokuyow.github.io/ehagaki/");
+    expect(result.siteIconHref).toBe("https://lokuyow.github.io/ehagaki/");
+    expect(result.siteIconTarget).toBe("_blank");
+    expect(result.siteIconRel).toBe("noopener noreferrer");
+    expect(result.siteIconHref).not.toContain(hostOrigin);
     expect(result.naturalWidth).toBeGreaterThan(0);
     for (const mask of result.masks) {
         expect(mask).not.toBe("none");

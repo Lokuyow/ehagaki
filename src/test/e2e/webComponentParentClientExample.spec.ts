@@ -438,6 +438,19 @@ test("keeps the normal app desktop header layout viewport-based", async ({ page 
     await expect(page.locator(".header-container")).not.toHaveClass(/container-layout/);
 });
 
+test("uses the normal app delivery base for the site icon home link", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => !!document.querySelector("a.site-icon-link"));
+
+    const link = page.locator("a.site-icon-link");
+    const href = await link.getAttribute("href");
+    expect(href).not.toBe("https://lokuyow.github.io/ehagaki/");
+    expect(href).toMatch(/^\//);
+    expect(new URL(href!, await page.url()).origin).toBe(new URL(await page.url()).origin);
+    await expect(link).not.toHaveAttribute("target");
+    await expect(link).not.toHaveAttribute("rel");
+});
+
 test("boots from production site output and exercises the public sample API", async ({ page }) => {
     await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html`);
 

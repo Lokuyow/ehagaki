@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
@@ -20,8 +20,67 @@ vi.mock('svelte-i18n', () => ({
 }));
 
 import HeaderComponent from '../../components/HeaderComponent.svelte';
+import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
 
 describe('HeaderComponent', () => {
+    afterEach(() => {
+        configureAppRuntimeEnvironment({
+            runtimeKind: 'standalone',
+            appHomeHref: './',
+        });
+    });
+
+    it('通常版では runtime の配信元ホームへ同じタブで戻る', () => {
+        configureAppRuntimeEnvironment({
+            runtimeKind: 'standalone',
+            appHomeHref: '/custom-app/',
+        });
+
+        const { container } = render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onShowDraftList: vi.fn(),
+                showFlavorText: false,
+            },
+        });
+
+        const link = container.querySelector<HTMLAnchorElement>('.site-icon-link')!;
+        expect(link.getAttribute('href')).toBe('/custom-app/');
+        expect(link.getAttribute('target')).toBeNull();
+        expect(link.getAttribute('rel')).toBeNull();
+        expect(link.getAttribute('href')).not.toBe('https://lokuyow.github.io/ehagaki/');
+    });
+
+    it('Web Component では公式サイトを新しいタブで開く', () => {
+        configureAppRuntimeEnvironment({ runtimeKind: 'web-component' });
+
+        const { container } = render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onShowDraftList: vi.fn(),
+                showFlavorText: false,
+            },
+        });
+
+        const link = container.querySelector<HTMLAnchorElement>('.site-icon-link')!;
+        expect(link.getAttribute('href')).toBe('https://lokuyow.github.io/ehagaki/');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('showMascot=false ではサイトアイコンリンクを表示しない', () => {
+        const { container } = render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onShowDraftList: vi.fn(),
+                showMascot: false,
+                showFlavorText: false,
+            },
+        });
+
+        expect(container.querySelector('.site-icon-link')).toBeNull();
+    });
+
     it('ヘッダーに下書き保存ボタンがなく、宛先指定ボタンが最右に表示される', async () => {
         const onChooseTarget = vi.fn();
         const onShowDraftList = vi.fn();

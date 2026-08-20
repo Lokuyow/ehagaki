@@ -10,6 +10,8 @@
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
     import { resolveAppAssetUrl } from "../lib/appAssetUrl";
 
+    const OFFICIAL_EHAGAKI_URL = "https://lokuyow.github.io/ehagaki/";
+
     interface Props {
         onResetPostContent: () => void;
         onShowDraftList: () => void;
@@ -31,8 +33,14 @@
         showMascot = true,
         showFlavorText = true,
     }: Props = $props();
-    const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
-    const isContainerLayout = getAppRuntimeEnvironment().layoutMode === "container";
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    const overlayTarget = runtimeEnvironment.overlayTarget;
+    const isContainerLayout = runtimeEnvironment.layoutMode === "container";
+    const isWebComponent = runtimeEnvironment.runtimeKind === "web-component";
+    const isIframe = runtimeEnvironment.runtimeKind === "iframe";
+    const siteIconHref = isWebComponent || isIframe
+        ? OFFICIAL_EHAGAKI_URL
+        : runtimeEnvironment.appHomeHref;
     const ehagakiIconUrl = resolveAppAssetUrl("ehagaki_icon.svg");
 
     let postStatus = $derived(editorState.postStatus);
@@ -54,9 +62,11 @@
     <div class="header-left">
         {#if showMascot}
             <a
-                href="https://lokuyow.github.io/ehagaki/"
+                href={siteIconHref}
                 class="site-icon-link"
                 aria-label="ehagaki"
+                target={isWebComponent ? "_blank" : undefined}
+                rel={isWebComponent ? "noopener noreferrer" : undefined}
             >
                 <img
                     src={ehagakiIconUrl}
