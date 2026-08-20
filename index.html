@@ -28,13 +28,13 @@
   <link rel="icon" href="/ehagaki/favicon.ico" sizes="48x48">
   <link rel="icon" href="/ehagaki/ehagaki_icon.svg" sizes="any" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/ehagaki/apple-touch-icon.png">
-  <script type="module" crossorigin src="/ehagaki/assets/index-bridge-DIA1YYIj.js"></script>
+  <script type="module" crossorigin src="/ehagaki/assets/index-bridge-Bd7sZ9bV.js"></script>
   <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-nostr-bridge-UHbmLZ_c.js">
-  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-i18n-bridge-BJVPAdP-.js">
-  <link rel="modulepreload" crossorigin href="/ehagaki/assets/staleAssetReloadStore.svelte-bridge-K6c5eVs0.js">
-  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-ui-bridge-CovV5mlx.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-i18n-bridge-Csq-mpPZ.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/swStore.svelte-bridge-dHl9zBa-.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-ui-bridge-DebTfXqH.js">
   <link rel="stylesheet" crossorigin href="/ehagaki/assets/vendor-ui-bridge-BpcL6yKj.css">
-  <link rel="stylesheet" crossorigin href="/ehagaki/assets/index-bridge-BCk_PrFt.css">
+  <link rel="stylesheet" crossorigin href="/ehagaki/assets/index-bridge-DWhbcJes.css">
 <link rel="manifest" href="/ehagaki/manifest.webmanifest"></head>
 
 <body ontouchstart="">
@@ -42,6 +42,8 @@
     (function () {
       var THEME_MODE_KEY = 'themeMode';
       var DARK_MODE_KEY = 'darkMode';
+      var ACCENT_COLOR_KEY = 'accentColor';
+      var BASE_COLOR_KEY = 'baseColor';
       var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
       var THEME_QUERY_KEY = 'embedTheme';
       var DEFAULT_THEME_QUERY_KEY = 'defaultTheme';
@@ -89,6 +91,20 @@
         return null;
       }
 
+      function readCustomColor(key) {
+        try {
+          var value = localStorage.getItem(key);
+          var normalized = value && value.trim().replace(/^#/, '');
+          if (!normalized || !/^[0-9a-f]{6}$/i.test(normalized)) {
+            if (value !== null) localStorage.removeItem(key);
+            return null;
+          }
+          return '#' + normalized.toLowerCase();
+        } catch {
+          return null;
+        }
+      }
+
       var themeMode = localStorage.getItem(THEME_MODE_KEY);
       var hasStoredThemeMode = themeMode === 'system' || themeMode === 'light' || themeMode === 'dark';
       var hasLegacyDarkMode = localStorage.getItem(DARK_MODE_KEY) !== null;
@@ -128,6 +144,12 @@
           ? false
           : window.matchMedia('(prefers-color-scheme: dark)').matches;
       var root = document.documentElement;
+      if (window.top === window) {
+        var accentColor = readCustomColor(ACCENT_COLOR_KEY);
+        var baseColor = readCustomColor(BASE_COLOR_KEY);
+        if (accentColor) root.style.setProperty('--accent-color', accentColor);
+        if (baseColor) root.style.setProperty('--base-color', baseColor);
+      }
       if (isDark) {
         root.classList.add('dark');
         root.style.colorScheme = 'dark';
@@ -137,7 +159,7 @@
       }
     })();
   </script>
-  <div id="app"></div>
+  <div id="app"></div>
 </body>
 
 </html>
