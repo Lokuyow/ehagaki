@@ -500,6 +500,106 @@ test("keeps bounded container layout inside the component while host page scroll
     expect(result.after.footer!.top - result.before.footer!.top).toBeLessThan(-200);
 });
 
+test("preserves the connected component after hiding and redisplaying its parent", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        document.body.innerHTML = `
+            <div id="mount-wrapper">
+                <div id="mount" style="height: 420px; width: 360px"></div>
+            </div>
+        `;
+
+        const mount = document.querySelector<HTMLDivElement>("#mount")!;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.display = "block";
+        composer.style.height = "100%";
+        mount.append(composer);
+        await composer.whenReady();
+        (window as Window & { __hiddenRedisplayComposer?: HTMLElement }).__hiddenRedisplayComposer = composer;
+    });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await expect(editor).toBeVisible();
+    await editor.click();
+    await editor.pressSequentially("hidden parent keeps this draft");
+    await expect(editor).toHaveText("hidden parent keeps this draft");
+
+    const before = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const rect = (selector: string) => shadow.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON();
+        const component = element.getBoundingClientRect().toJSON();
+        return {
+            component,
+            editor: rect(".tiptap-editor"),
+            footer: rect(".footer-bar"),
+            buttonBar: rect(".footer-button-bar"),
+        };
+    });
+
+    await page.locator("#mount-wrapper").evaluate((wrapper) => {
+        (wrapper as HTMLElement).style.display = "none";
+    });
+    await expect(page.locator("#mount-wrapper")).toBeHidden();
+    expect(await composer.evaluate((element) => ({
+        isConnected: element.isConnected,
+        sameInstance: element === (window as Window & { __hiddenRedisplayComposer?: HTMLElement }).__hiddenRedisplayComposer,
+        width: element.getBoundingClientRect().width,
+        height: element.getBoundingClientRect().height,
+    }))).toEqual({ isConnected: true, sameInstance: true, width: 0, height: 0 });
+
+    await page.locator("#mount-wrapper").evaluate((wrapper) => {
+        (wrapper as HTMLElement).style.display = "";
+    });
+    await expect(page.locator("#mount-wrapper")).toBeVisible();
+    await expect(composer).toBeVisible();
+    await expect(editor).toBeVisible();
+    await expect(composer.locator(".ehagaki-web-component-shell")).toBeVisible();
+    await expect(composer.locator(".footer-bar")).toBeVisible();
+    await expect(composer.locator(".footer-button-bar")).toBeVisible();
+    await expect.poll(() => composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const component = element.getBoundingClientRect();
+        const editorSurface = shadow.querySelector<HTMLElement>(".tiptap-editor")!.getBoundingClientRect();
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!.getBoundingClientRect();
+        const buttonBar = shadow.querySelector<HTMLElement>(".footer-button-bar")!.getBoundingClientRect();
+        return [component, editorSurface, footer, buttonBar].every((rect) =>
+            rect.width > 0 && rect.height > 0
+            && rect.left >= component.left - 1
+            && rect.right <= component.right + 1
+            && rect.top >= component.top - 1
+            && rect.bottom <= component.bottom + 1,
+        );
+    })).toBe(true);
+
+    expect(await composer.evaluate((element) => element === (window as Window & {
+        __hiddenRedisplayComposer?: HTMLElement;
+    }).__hiddenRedisplayComposer)).toBe(true);
+    await expect(editor).toHaveText("hidden parent keeps this draft");
+    await editor.press("End");
+    await editor.pressSequentially(" and accepts more input");
+    await expect(editor).toHaveText("hidden parent keeps this draft and accepts more input");
+
+    const after = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const rect = (selector: string) => shadow.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON();
+        return {
+            component: element.getBoundingClientRect().toJSON(),
+            editor: rect(".tiptap-editor"),
+            footer: rect(".footer-bar"),
+            buttonBar: rect(".footer-button-bar"),
+        };
+    });
+    expect(after.component.width).toBeCloseTo(before.component.width, 0);
+    expect(after.component.height).toBeCloseTo(before.component.height, 0);
+    expect(after.editor.height).toBeGreaterThan(0);
+    expect(after.footer.height).toBeGreaterThan(0);
+    expect(after.buttonBar.height).toBeGreaterThan(0);
+});
+
 test("preserves composer geometry after repeated destroy and recreate", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
