@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, win32 } from "node:path";
@@ -8,8 +8,6 @@ import { dirname, join, win32 } from "node:path";
 const candidateDriveLetters = "ZYXWVUTSRQPONMLKJIHGFED";
 const stateFormatVersion = 1;
 const stateDirectoryName = "ehagaki-web-component-build";
-/** @type {Promise<string|null>|undefined} */
-let substOutputEncodingPromise;
 
 /** @param {string} repositoryRoot @param {NodeJS.Platform} [platform] */
 export function needsWindowsAsciiWorkingDirectory(repositoryRoot, platform = process.platform) {
@@ -42,62 +40,14 @@ export function findAvailableSubstDriveLetter(pathExists = existsSync) {
     throw new Error("Could not find an unused Windows drive letter for the temporary Web Component build path.");
 }
 
-/** @returns {Promise<string|null>} */
-function getWindowsAnsiEncoding() {
-    if (substOutputEncodingPromise) return substOutputEncodingPromise;
-    substOutputEncodingPromise = new Promise((resolve, reject) => {
-        const child = spawn("reg.exe", [
-            "query",
-            "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage",
-            "/v",
-            "ACP",
-        ], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
-        /** @type {Buffer[]} */
-        const chunks = [];
-        child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-        child.once("error", reject);
-        child.once("exit", (code) => {
-            if (code !== 0) {
-                resolve(null);
-                return;
-            }
-            const codePage = Buffer.concat(chunks).toString("ascii").match(/ACP\s+REG_SZ\s+(\d+)/i)?.[1];
-            /** @type {Record<string, string>} */
-            const encodings = {
-                "65001": "utf-8",
-                "932": "shift_jis",
-                "936": "gbk",
-                "949": "euc-kr",
-                "950": "big5",
-                "1250": "windows-1250",
-                "1251": "windows-1251",
-                "1252": "windows-1252",
-                "1253": "windows-1253",
-                "1254": "windows-1254",
-                "1255": "windows-1255",
-                "1256": "windows-1256",
-                "1257": "windows-1257",
-                "1258": "windows-1258",
-            };
-            resolve(codePage ? encodings[codePage] ?? null : null);
-        });
-    });
-    return substOutputEncodingPromise;
-}
-
-/** @param {Buffer} output @returns {Promise<string>} */
-async function decodeSubstOutput(output) {
-    const encoding = process.platform === "win32" ? await getWindowsAnsiEncoding() : "utf-8";
-    if (!encoding) throw new Error("Could not determine the Windows ANSI code page for subst output.");
-    return new TextDecoder(encoding).decode(output);
-}
-
-/** @param {string[]} args @returns {Promise<string>} */
-function runSubst(args) {
+/**
+ * @param {string[]} args
+ * @param {typeof spawn} [spawnProcess]
+ * @returns {Promise<Buffer|void>}
+ */
+export function runSubst(args, spawnProcess = spawn) {
     return new Promise((resolve, reject) => {
-        const command = args.length === 0 ? "cmd.exe" : "subst";
-        const commandArgs = args.length === 0 ? ["/d", "/s", "/c", "chcp 65001>nul & subst"] : args;
-        const child = spawn(command, commandArgs, {
+        const child = spawnProcess("subst", args, {
             stdio: ["ignore", "pipe", "pipe"],
             windowsHide: true,
         });
@@ -108,22 +58,38 @@ function runSubst(args) {
         child.once("error", reject);
         child.once("exit", (code) => {
             if (code === 0) {
-                void decodeSubstOutput(Buffer.concat(chunks)).then(resolve, reject);
+                resolve(args.length === 0 ? Buffer.concat(chunks) : undefined);
                 return;
             }
-            const output = Buffer.concat(chunks).toString("utf8");
-            reject(new Error(`subst ${args.join(" ")} failed (${code ?? "unknown"})${output ? `: ${output.trim()}` : ""}`));
+            reject(new Error(`subst ${args.join(" ")} failed (${code ?? "unknown"}).`));
         });
     });
 }
 
-/** @param {string} drive @param {() => Promise<string>} [listSubst] */
-export async function readSubstMapping(drive, listSubst = () => runSubst([])) {
-    const output = await listSubst();
-    const driveLetter = drive.slice(0, 1).toUpperCase();
-    const mappingPattern = new RegExp(`^${driveLetter}:\\\\:\\s*=>\\s*(.+)$`, "im");
-    const match = output.match(mappingPattern);
-    return match ? match[1].trim() : null;
+/** @param {Buffer|string} output */
+export function parseSubstDriveLetters(output) {
+    const listing = Buffer.isBuffer(output) ? output.toString("latin1") : output;
+    return [...listing.matchAll(/^([A-Z]):\\:\s*=>/gim)].map((match) => `${match[1].toUpperCase()}:`);
+}
+
+/**
+ * @param {string} drive
+ * @param {() => Promise<Buffer|string>} [listSubst]
+ * @param {(path: string) => Promise<string>} [resolveMappingTarget]
+ */
+export async function readSubstMapping(
+    drive,
+    listSubst = async () => {
+        const output = await runSubst([]);
+        if (!Buffer.isBuffer(output)) throw new Error("subst listing did not return output.");
+        return output;
+    },
+    resolveMappingTarget = realpath,
+) {
+    const listedDrives = parseSubstDriveLetters(await listSubst());
+    const normalizedDrive = `${drive.slice(0, 1).toUpperCase()}:`;
+    if (!listedDrives.includes(normalizedDrive)) return null;
+    return resolveMappingTarget(`${normalizedDrive}\\`);
 }
 
 /**
@@ -131,7 +97,7 @@ export async function readSubstMapping(drive, listSubst = () => runSubst([])) {
  * @property {string} physicalRepositoryRoot
  * @property {NodeJS.Platform} [platform]
  * @property {(path: string) => boolean} [pathExists]
- * @property {(args: string[]) => Promise<string|void>} [executeSubst]
+ * @property {(args: string[]) => Promise<void>} [executeSubst]
  * @property {(drive: string) => Promise<string|null>} [readSubstMapping]
  * @property {(pid: number) => "alive"|"dead"|"unknown"} [getProcessStatus]
  * @property {string} [stateDirectory]
@@ -226,7 +192,7 @@ function isMatchingMapping(mappingTarget, normalizedRoot) {
  * @param {Record<string, unknown>} lease
  * @param {string} normalizedRoot
  * @param {(drive: string) => Promise<string|null>} readMapping
- * @param {(args: string[]) => Promise<string|void>} executeSubst
+ * @param {(args: string[]) => Promise<void>} executeSubst
  */
 async function recoverStaleLease(paths, lease, normalizedRoot, readMapping, executeSubst) {
     validateState(lease, normalizedRoot, "lease");
@@ -298,7 +264,7 @@ async function recoverStaleLease(paths, lease, normalizedRoot, readMapping, exec
  * @param {string} leaseId
  * @param {(pid: number) => "alive"|"dead"|"unknown"} getStatus
  * @param {(drive: string) => Promise<string|null>} readMapping
- * @param {(args: string[]) => Promise<string|void>} executeSubst
+ * @param {(args: string[]) => Promise<void>} executeSubst
  */
 async function acquireLease(paths, normalizedRoot, ownerPid, leaseId, getStatus, readMapping, executeSubst) {
     await mkdir(paths.directory, { recursive: true });
@@ -370,7 +336,7 @@ export async function createWebComponentBuildWorkingDirectory({
     physicalRepositoryRoot,
     platform = process.platform,
     pathExists = existsSync,
-    executeSubst = runSubst,
+    executeSubst = async (args) => { await runSubst(args); },
     readSubstMapping: readMapping = (drive) => readSubstMapping(drive),
     getProcessStatus: getStatus = getProcessStatus,
     stateDirectory = tmpdir(),

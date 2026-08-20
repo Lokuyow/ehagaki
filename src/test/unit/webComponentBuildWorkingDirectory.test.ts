@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import {
     createWebComponentBuildWorkingDirectory,
     findAvailableSubstDriveLetter,
     getWebComponentBuildStatePaths,
     needsWindowsAsciiWorkingDirectory,
     normalizeWindowsRepositoryRoot,
+    parseSubstDriveLetters,
     readSubstMapping,
+    runSubst,
 } from "../../../scripts/webComponentBuildWorkingDirectory.mjs";
 import {
     createPhysicalViteDevServerCommand,
@@ -98,6 +102,21 @@ async function createWorkingDirectory(harness: Awaited<ReturnType<typeof createH
         createLeaseId: () => "current-lease",
         log: vi.fn(),
         ...options,
+    });
+}
+
+function createSuccessfulSubstSpawn(output = Buffer.from([0x80])) {
+    return vi.fn(() => {
+        const child = Object.assign(new EventEmitter(), {
+            stdout: new PassThrough(),
+            stderr: new PassThrough(),
+        });
+        queueMicrotask(() => {
+            child.stdout.end(output);
+            child.stderr.end();
+            child.emit("exit", 0);
+        });
+        return child;
     });
 }
 
@@ -270,6 +289,49 @@ describe("Web Component build working directory", () => {
         }
     });
 
+    it("keeps ownership state when mapping confirmation cannot read the subst listing", async () => {
+        const harness = await createHarness();
+        try {
+            const readMapping = vi.fn(async () => { throw new Error("subst listing unavailable"); });
+            await expect(createWorkingDirectory(harness, { readSubstMapping: readMapping })).rejects.toThrow(
+                /subst listing unavailable/,
+            );
+            const paths = getWebComponentBuildStatePaths(normalizedRoot, harness.stateDirectory);
+            expect(harness.substCalls).toEqual([["Z:", physicalRoot]]);
+            expect(harness.mappings.get("Z:")).toBe(physicalRoot);
+            await expect(readFile(paths.leasePath, "utf8")).resolves.toContain("current-lease");
+            await expect(readFile(paths.mappingStatePath, "utf8")).resolves.toContain("prepared");
+        } finally {
+            await harness.dispose();
+        }
+    });
+
+    it("does not delete a foreign mapping when listing it fails during stale recovery", async () => {
+        const harness = await createHarness({ Z: "D:\\foreign" });
+        try {
+            const paths = await writeLeaseAndState(harness.stateDirectory, { drive: "Z:", phase: "mapped" });
+            const readMapping = vi.fn(async () => { throw new Error("subst listing unavailable"); });
+            await expect(createWorkingDirectory(harness, { readSubstMapping: readMapping })).rejects.toThrow(
+                /subst listing unavailable/,
+            );
+            expect(harness.substCalls).toEqual([]);
+            expect(harness.mappings.get("Z:")).toBe("D:\\foreign");
+            await expect(readFile(paths.leasePath, "utf8")).resolves.toContain("stale-lease");
+            await expect(readFile(paths.mappingStatePath, "utf8")).resolves.toContain("stale-lease");
+        } finally {
+            await harness.dispose();
+        }
+    });
+
+    it("does not decode successful subst mutations", async () => {
+        const spawnProcess = createSuccessfulSubstSpawn();
+        const fakeSpawn = spawnProcess as unknown as typeof import("node:child_process").spawn;
+        await expect(runSubst(["Z:", physicalRoot], fakeSpawn)).resolves.toBeUndefined();
+        await expect(runSubst(["Z:", "/D"], fakeSpawn)).resolves.toBeUndefined();
+        expect(spawnProcess).toHaveBeenNthCalledWith(1, "subst", ["Z:", physicalRoot], expect.anything());
+        expect(spawnProcess).toHaveBeenNthCalledWith(2, "subst", ["Z:", "/D"], expect.anything());
+    });
+
     it("keeps the Web Component build command on the selected safe path", () => {
         expect(createWebComponentBuildCommand("Y:\\", { watch: true })).toEqual({
             command: process.execPath,
@@ -300,10 +362,26 @@ describe("Web Component build working directory", () => {
         });
     });
 
+    it("can expose only the Vite app server while preserving the loopback proxy target", () => {
+        const command = createPhysicalViteDevServerCommand(physicalRoot, {
+            host: "0.0.0.0",
+            appPort: 5173,
+            webComponentPort: 5174,
+        });
+
+        expect(command.args).toContain("0.0.0.0");
+        expect(command.environment).toMatchObject({
+            EHAGAKI_WEB_COMPONENT_DEV_PROXY: "true",
+            EHAGAKI_WEB_COMPONENT_DEV_PORT: "5174",
+        });
+    });
+
     it("parses a subst listing for one drive", async () => {
-        await expect(readSubstMapping("Y:", async () => "Y:\\: => D:\\ドキュメント\\GitHub\\ehagaki\r\n")).resolves.toBe(
+        const rawListing = Buffer.concat([Buffer.from("Y:\\: => "), Buffer.from([0x80]), Buffer.from("\r\n")]);
+        expect(parseSubstDriveLetters(rawListing)).toEqual(["Y:"]);
+        await expect(readSubstMapping("Y:", async () => rawListing, async () => physicalRoot)).resolves.toBe(
             "D:\\ドキュメント\\GitHub\\ehagaki",
         );
-        await expect(readSubstMapping("Z:", async () => "Y:\\: => D:\\other\r\n")).resolves.toBeNull();
+        await expect(readSubstMapping("Z:", async () => rawListing, async () => physicalRoot)).resolves.toBeNull();
     });
 });
