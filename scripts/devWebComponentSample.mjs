@@ -126,11 +126,25 @@ function startWebComponentServer() {
 }
 
 function watchChild(label, child) {
+    let handled = false;
+    const handleFailure = (detail) => {
+        if (handled || shuttingDown) return;
+        handled = true;
+        console.error(`${label} stopped unexpectedly (${detail}).`);
+        requestShutdown(1);
+    };
+    child.once("error", (error) => {
+        handleFailure(error instanceof Error ? error.message : String(error));
+    });
     child.once("exit", (code, signal) => {
-        if (!shuttingDown) {
-            console.error(`${label} stopped unexpectedly (${signal ?? code ?? "unknown"}).`);
-            void shutdown(code ?? 1);
-        }
+        handleFailure(signal ?? code ?? "unknown");
+    });
+}
+
+function requestShutdown(exitCode) {
+    void shutdown(exitCode).catch((error) => {
+        console.error(error instanceof Error ? error.message : error);
+        process.exitCode = 1;
     });
 }
 
@@ -167,12 +181,18 @@ function terminateChild(child) {
 async function shutdown(exitCode) {
     if (shuttingDown) return;
     shuttingDown = true;
-    await Promise.all([
+    const terminationResults = await Promise.allSettled([
         terminateChild(initialBuild),
         terminateChild(watcher),
         terminateChild(viteServer),
         closeServer(webComponentServer),
     ]);
+    for (const result of terminationResults) {
+        if (result.status === "rejected") {
+            console.error(result.reason instanceof Error ? result.reason.message : result.reason);
+            exitCode = 1;
+        }
+    }
     try {
         await webComponentBuildWorkingDirectory?.cleanup();
     } catch (error) {
@@ -221,9 +241,12 @@ async function main() {
     }
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
+if (process.platform === "win32") shutdownSignals.push("SIGBREAK");
+
+for (const signal of shutdownSignals) {
     process.once(signal, () => {
-        void shutdown(0);
+        requestShutdown(0);
     });
 }
 
