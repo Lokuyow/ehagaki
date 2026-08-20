@@ -15,10 +15,15 @@ function waitForExit(child) {
 async function shutdown(exitCode) {
     if (shuttingDown) return;
     shuttingDown = true;
-    if (activeChild?.exitCode === null) {
-        const exited = waitForExit(activeChild);
-        activeChild.kill("SIGTERM");
-        await exited;
+    try {
+        if (activeChild?.exitCode === null) {
+            const exited = waitForExit(activeChild);
+            activeChild.kill("SIGTERM");
+            await exited;
+        }
+    } catch (error) {
+        console.error(error instanceof Error ? error.message : error);
+        exitCode = 1;
     }
     try {
         await workingDirectoryHandle?.cleanup();
@@ -29,9 +34,15 @@ async function shutdown(exitCode) {
     process.exitCode = exitCode;
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
+if (process.platform === "win32") shutdownSignals.push("SIGBREAK");
+
+for (const signal of shutdownSignals) {
     process.once(signal, () => {
-        void shutdown(0);
+        void shutdown(0).catch((error) => {
+            console.error(error instanceof Error ? error.message : error);
+            process.exitCode = 1;
+        });
     });
 }
 
