@@ -3,11 +3,18 @@ import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { nip19 } from "nostr-tools";
+import { WebSocketServer, type WebSocket } from "ws";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
 declare global {
     interface Window {
         __componentOrigin: string;
+        __webComponentRelayInterception?: {
+            installedBeforeImport: boolean;
+            importStartedAfterInstall: boolean;
+            originalUrls: string[];
+            mappedUrls: string[];
+        };
     }
 }
 
@@ -16,6 +23,9 @@ let hostServer: Server;
 let componentOrigin = "";
 let hostOrigin = "";
 let ffmpegCompressionModulePath = "";
+let relayServer: WebSocketServer;
+let relayOrigin = "";
+let relayConnectionCount = 0;
 const componentRequests = new Set<string>();
 const hostRequests = new Set<string>();
 const componentStoragePrefix = "ehagaki.web-component.v1:";
@@ -46,6 +56,31 @@ function close(server: Server): Promise<void> {
     return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
+function listenWebSocketServer(server: WebSocketServer): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const onError = (error: Error) => {
+            server.off("listening", onListening);
+            reject(error);
+        };
+        const onListening = () => {
+            server.off("error", onError);
+            const address = server.address();
+            resolve(typeof address === "object" && address ? address.port : 0);
+        };
+        server.once("error", onError);
+        server.once("listening", onListening);
+    });
+}
+
+function closeWebSocketServer(server: WebSocketServer): Promise<void> {
+    for (const client of server.clients) {
+        client.terminate();
+    }
+    return new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+    });
+}
+
 function contentTypeFor(filePath: string): string {
     switch (extname(filePath)) {
         case ".js": return "text/javascript";
@@ -58,6 +93,22 @@ function contentTypeFor(filePath: string): string {
 test.beforeAll(async () => {
     test.setTimeout(180_000);
     await ensureWebComponentE2EOutput();
+    relayServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    relayServer.on("connection", (socket: WebSocket) => {
+        relayConnectionCount += 1;
+        socket.on("message", (rawMessage) => {
+            try {
+                const message = JSON.parse(rawMessage.toString()) as unknown[];
+                if (message[0] === "REQ" && typeof message[1] === "string") {
+                    socket.send(JSON.stringify(["EOSE", message[1]]));
+                }
+            } catch {
+                // The relay only needs to accept the browser connection for this proof.
+            }
+        });
+    });
+    const relayPort = await listenWebSocketServer(relayServer);
+    relayOrigin = `ws://127.0.0.1:${relayPort}`;
     componentServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", componentOrigin).pathname;
         componentRequests.add(pathname);
@@ -114,13 +165,113 @@ test.beforeAll(async () => {
 test.beforeEach(() => {
     componentRequests.clear();
     hostRequests.clear();
+    relayConnectionCount = 0;
 });
 
 test.afterAll(async () => {
     await Promise.all([
         componentServer && close(componentServer),
         hostServer && close(hostServer),
+        relayServer && closeWebSocketServer(relayServer),
     ]);
+});
+
+test("routes the real authenticated relay connection through the host WebSocket interceptor", async ({ page }) => {
+    const originalRelayUrl = "wss://issue-89-test-relay.example";
+
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, componentStoragePrefix, originalRelayUrl, relayOrigin, pubkeyHex }) => {
+        const interceptionState = {
+            installedBeforeImport: false,
+            importStartedAfterInstall: false,
+            originalUrls: [] as string[],
+            mappedUrls: [] as string[],
+        };
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [url, protocols] = args as [string | URL, string | string[] | undefined];
+                const originalUrl = String(url);
+                if (/^wss?:\/\//.test(originalUrl)) {
+                    interceptionState.originalUrls.push(originalUrl);
+                    interceptionState.mappedUrls.push(relayOrigin);
+                    return Reflect.construct(
+                        target,
+                        [relayOrigin, protocols].filter((value) => value !== undefined),
+                        newTarget,
+                    );
+                }
+                return Reflect.construct(target, args, newTarget);
+            },
+        });
+        interceptionState.installedBeforeImport = window.WebSocket !== nativeWebSocket;
+        window.__webComponentRelayInterception = interceptionState;
+        window.nostr = {
+            getPublicKey: async () => pubkeyHex,
+            signEvent: async (event: any) => ({ ...event, id: "66".repeat(32), sig: "77".repeat(64) }),
+        };
+
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([{ pubkeyHex, type: "nip07", addedAt: 1 }]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, pubkeyHex);
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-relays-${pubkeyHex}`,
+            JSON.stringify({ [originalRelayUrl]: { read: true, write: true } }),
+        );
+
+        interceptionState.importStartedAfterInstall = interceptionState.installedBeforeImport;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.style.width = "360px";
+        composer.style.height = "600px";
+        document.body.append(composer);
+        await composer.whenReady();
+    }, {
+        componentOrigin,
+        componentStoragePrefix,
+        originalRelayUrl,
+        relayOrigin,
+        pubkeyHex: testPubkeyHex,
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+        const state = window.__webComponentRelayInterception;
+        return state?.originalUrls ?? [];
+    })).toContain(originalRelayUrl);
+    await expect.poll(() => relayConnectionCount).toBeGreaterThan(0);
+
+    const result = await page.evaluate(({ originalRelayUrl, relayOrigin }) => {
+        const state = window.__webComponentRelayInterception!;
+        const composer = document.querySelector("ehagaki-composer")!;
+        return {
+            installedBeforeImport: state.installedBeforeImport,
+            importStartedAfterInstall: state.importStartedAfterInstall,
+            interceptionCount: state.originalUrls.length,
+            capturedRelayUrls: state.originalUrls,
+            originalRelayCaptured: state.originalUrls.includes(originalRelayUrl),
+            mappedRelayUrls: state.mappedUrls,
+            expectedMappingCaptured: state.originalUrls.includes(originalRelayUrl)
+                && state.mappedUrls[state.originalUrls.indexOf(originalRelayUrl)] === relayOrigin,
+            sameWindowRealm: window.top === window
+                && composer.ownerDocument.defaultView === window,
+            iframeCount: document.querySelectorAll("iframe").length,
+        };
+    }, { originalRelayUrl, relayOrigin });
+
+    expect(result.installedBeforeImport).toBe(true);
+    expect(result.importStartedAfterInstall).toBe(true);
+    expect(result.interceptionCount).toBeGreaterThan(0);
+    expect(result.originalRelayCaptured).toBe(true);
+    expect(result.expectedMappingCaptured).toBe(true);
+    expect(result.capturedRelayUrls.every((url) => /^wss?:\/\//.test(url))).toBe(true);
+    expect(result.mappedRelayUrls.every((url) => url === relayOrigin)).toBe(true);
+    expect(relayConnectionCount).toBeGreaterThan(0);
+    expect(result.sameWindowRealm).toBe(true);
+    expect(result.iframeCount).toBe(0);
 });
 
 test("mounts across origins without touching host storage or registering an eHagaki Service Worker", async ({ page }) => {
