@@ -258,6 +258,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 overlayTarget,
                 themeTarget: this,
                 layoutMode: "container",
+                runtimeKind: "web-component",
                 assetBase,
                 serviceWorkerEnabled: false,
                 externalInputEnabled: false,

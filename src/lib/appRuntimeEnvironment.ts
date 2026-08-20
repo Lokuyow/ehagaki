@@ -4,6 +4,7 @@ import {
 } from "./appStorage";
 
 export type AppLayoutMode = "viewport" | "container";
+export type AppRuntimeKind = "standalone" | "iframe" | "web-component";
 
 export interface AppRuntimeEnvironment {
     storage: Storage;
@@ -15,6 +16,8 @@ export interface AppRuntimeEnvironment {
     overlayTarget: HTMLElement;
     themeTarget: HTMLElement;
     layoutMode: AppLayoutMode;
+    runtimeKind: AppRuntimeKind;
+    appHomeHref: string;
     assetBase: URL | undefined;
     serviceWorkerEnabled: boolean;
     externalInputEnabled: boolean;
@@ -48,6 +51,8 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         overlayTarget: body,
         themeTarget: documentElement,
         layoutMode: "viewport",
+        runtimeKind: "standalone",
+        appHomeHref: "./",
         assetBase: windowObj?.location?.href
             ? new URL(".", windowObj.location.href)
             : undefined,
