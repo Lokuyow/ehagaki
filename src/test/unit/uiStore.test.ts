@@ -975,6 +975,45 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it('header/footerなしのcontainer layoutは下端と上端の余白を予約しない', async () => {
+        const runtime = await import('../../lib/appRuntimeEnvironment');
+        const layoutTarget = document.createElement('div');
+        Object.defineProperty(layoutTarget, 'getBoundingClientRect', {
+            configurable: true,
+            value: vi.fn(() => ({ bottom: 800, height: 800 })),
+        });
+        runtime.configureAppRuntimeEnvironment({
+            layoutMode: 'container',
+            styleTarget: layoutTarget,
+            layoutTarget,
+            overlayTarget: layoutTarget,
+            themeTarget: layoutTarget,
+        });
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+        createVisualViewportMock(800);
+
+        const { setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const cleanup = setupViewportListener({ hasHeader: false, hasFooter: false });
+
+        expect(layoutTarget.style.getPropertyValue('--main-content-top-spacing')).toBe('0px');
+        expect(layoutTarget.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(layoutTarget.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+        expect(layoutTarget.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
     it('reason input の表示状態を CSS 変数へ同期する', async () => {
         const {
             REASON_INPUT_HEIGHT,

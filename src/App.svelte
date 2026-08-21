@@ -559,7 +559,11 @@
   }
 
   const composerLayoutMetrics = useComposerLayoutMetrics({
-    setupViewportListener,
+    setupViewportListener: () =>
+      setupViewportListener({
+        hasHeader: !isHostOwnedComposer,
+        hasFooter: !isHostOwnedComposer,
+      }),
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
@@ -1087,12 +1091,6 @@
         })
       ) return;
       void loadCustomEmojiPicker();
-    }
-  });
-
-  $effect(() => {
-    if (editorState.postStatus.sending && customEmojiPickerOpen) {
-      customEmojiPickerOpen = false;
     }
   });
 
@@ -1915,7 +1913,6 @@
 
   function handleCustomEmojiSelect(emoji: CustomEmojiSelection): void {
     if (editorState.postStatus.sending) {
-      customEmojiPickerOpen = false;
       return;
     }
 
