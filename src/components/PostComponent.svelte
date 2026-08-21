@@ -782,6 +782,8 @@
           alt=""
           fallbackAriaLabel=""
           rootClassName="editor-account-placeholder-avatar"
+          imageClassName="editor-account-placeholder-image"
+          fallbackClassName="editor-account-placeholder-fallback"
         />
       </div>
     {/if}
@@ -909,6 +911,20 @@
     display: block;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    border-radius: 50%;
+  }
+
+  :global(.editor-account-placeholder-image),
+  :global(.editor-account-placeholder-fallback) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+  }
+
+  :global(.editor-account-placeholder-image) {
+    object-fit: cover;
   }
 
   .editor-container.account-avatar-placeholder

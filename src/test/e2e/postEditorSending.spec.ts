@@ -37,4 +37,75 @@ test.describe('post editor sending state', () => {
             await expect(editor).toContainText('編集再開');
         }
     });
+
+    test('contains a large active-account avatar inside the empty-editor placeholder', async ({ page }) => {
+        await page.goto('post-editor-sending-playwright.html?withProfileAvatar=1');
+
+        const editorContainer = page.getByRole('textbox', { name: '投稿エディター' });
+        const editor = editorContainer.locator('.tiptap-editor');
+        const wrapper = page.locator('.editor-account-placeholder');
+        const image = wrapper.locator('img');
+
+        await expect(image).toHaveJSProperty('naturalWidth', 512);
+        await expect(image).toHaveJSProperty('naturalHeight', 512);
+
+        const geometry = await page.evaluate(() => {
+            const wrapper = document.querySelector('.editor-account-placeholder');
+            const root = wrapper?.querySelector('.editor-account-placeholder-avatar');
+            const image = wrapper?.querySelector('img');
+            const paragraph = document.querySelector('.tiptap-editor p');
+            if (!wrapper || !root || !image || !paragraph) {
+                throw new Error('Editor placeholder geometry nodes were not found.');
+            }
+
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const rootRect = root.getBoundingClientRect();
+            const imageRect = image.getBoundingClientRect();
+            const paragraphRect = paragraph.getBoundingClientRect();
+            const paddingLeft = Number.parseFloat(getComputedStyle(paragraph, '::before').paddingLeft) || 0;
+
+            return {
+                wrapper: { x: wrapperRect.x, y: wrapperRect.y, width: wrapperRect.width, height: wrapperRect.height },
+                root: { x: rootRect.x, y: rootRect.y, width: rootRect.width, height: rootRect.height },
+                image: { x: imageRect.x, y: imageRect.y, width: imageRect.width, height: imageRect.height },
+                paragraph: { x: paragraphRect.x, y: paragraphRect.y, width: paragraphRect.width, height: paragraphRect.height },
+                placeholderTextStart: paragraphRect.x + paddingLeft,
+                documentWidth: document.documentElement.scrollWidth,
+                viewportWidth: document.documentElement.clientWidth,
+            };
+        });
+
+        expect(geometry.root.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
+        expect(geometry.root.height).toBeLessThanOrEqual(geometry.wrapper.height + 0.5);
+        expect(geometry.image.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
+        expect(geometry.image.height).toBeLessThanOrEqual(geometry.wrapper.height + 0.5);
+        expect(geometry.image.x).toBeGreaterThanOrEqual(geometry.wrapper.x - 0.5);
+        expect(geometry.image.y).toBeGreaterThanOrEqual(geometry.wrapper.y - 0.5);
+        expect(geometry.image.x + geometry.image.width).toBeLessThanOrEqual(geometry.wrapper.x + geometry.wrapper.width + 0.5);
+        expect(geometry.image.y + geometry.image.height).toBeLessThanOrEqual(geometry.wrapper.y + geometry.wrapper.height + 0.5);
+        expect(geometry.image.x + geometry.image.width).toBeLessThanOrEqual(geometry.placeholderTextStart + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+
+        const clickPoint = await wrapper.boundingBox();
+        if (!clickPoint) throw new Error('Editor placeholder wrapper has no box.');
+        await page.mouse.click(clickPoint.x + clickPoint.width / 2, clickPoint.y + clickPoint.height / 2);
+        await expect.poll(() => page.locator('.tiptap-editor').evaluate((element) => document.activeElement === element)).toBe(true);
+
+        await editor.pressSequentially('geometry');
+        await expect(wrapper).toHaveCount(0);
+
+        for (let index = 0; index < 'geometry'.length; index += 1) {
+            await page.keyboard.press('Backspace');
+        }
+        await expect(wrapper).toBeVisible();
+
+        await page.goto('post-editor-sending-playwright.html?withFallbackAvatar=1');
+        const fallbackWrapper = page.locator('.editor-account-placeholder');
+        await expect(fallbackWrapper.locator('.editor-account-placeholder-fallback')).toBeVisible();
+        const fallbackGeometry = await fallbackWrapper.locator('.editor-account-placeholder-fallback').boundingBox();
+        const wrapperGeometry = await fallbackWrapper.boundingBox();
+        if (!fallbackGeometry || !wrapperGeometry) throw new Error('Fallback geometry was not found.');
+        expect(fallbackGeometry.width).toBeLessThanOrEqual(wrapperGeometry.width + 0.5);
+        expect(fallbackGeometry.height).toBeLessThanOrEqual(wrapperGeometry.height + 0.5);
+    });
 });
