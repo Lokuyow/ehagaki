@@ -428,7 +428,7 @@ describe("BlossomUploadAdapter", () => {
         const adapter = new BlossomUploadAdapter();
         const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
         const authService = createConnectionTestAuthService(
-            "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiYmxvc3NvbSBzdHVmZiIsInRhZ3MiOltdfQ",
+            "Nostr eyJpZCI6ImEiLCJwdWJrZXkiOiJiIiwic2lnIjoiYyIsImtpbmQiOjI0MjQyLCJjcmVhdGVkX2F0IjoxLCJjb250ZW50IjoiQ2hlY2sgQmxvc3NvbSB1cGxvYWQgYXZhaWxhYmlsaXR5IiwidGFncyI6W119",
         );
 
         const result = await adapter.testConnection({
@@ -449,6 +449,8 @@ describe("BlossomUploadAdapter", () => {
         );
         const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
 
+        expect(firstCall[1].method).toBe("HEAD");
+        expect(firstCall[1].body).toBeUndefined();
         expect(firstCall[1].headers).toEqual(
             expect.objectContaining({
                 "X-Content-Type": "image/png",
@@ -487,6 +489,10 @@ describe("BlossomUploadAdapter", () => {
         expect(result.capabilities?.supportedMimeTypes).not.toContain("video/mp4");
         expect(result.capabilities?.maxUploadSize).toBeNull();
         expect(fetchMock).toHaveBeenCalledTimes(1 + 11);
+        expect(fetchMock.mock.calls.every((call) => {
+            const init = call[1] as RequestInit;
+            return init.method === "HEAD" && init.body === undefined;
+        })).toBe(true);
     });
 
     it("reuses one session-bound Authorization for the initial and MIME HEAD probes", async () => {

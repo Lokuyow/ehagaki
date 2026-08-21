@@ -576,16 +576,45 @@
                             {$_("settingsDialog.uploadDestinationDelete") ||
                                 "削除"}
                         </Button>
+                        {#if destination.protocol === "blossom"}
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={4}
+                                ariaLabel={$_(
+                                    "settingsDialog.uploadDestinationBlossomTestInfoLabel",
+                                ) || "Blossom 接続テストの説明"}
+                            >
+                                <div class="blossom-test-popover">
+                                    <p>
+                                        {$_(
+                                            "settingsDialog.uploadDestinationBlossomTestInfoNoUpload",
+                                        ) ||
+                                            "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。"}
+                                    </p>
+                                    <p>
+                                        {$_(
+                                            "settingsDialog.uploadDestinationBlossomTestInfoAuthorization",
+                                        ) ||
+                                            "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。"}
+                                    </p>
+                                </div>
+                            </InfoPopoverButton>
+                        {/if}
                     </div>
-                    {#if destinationState.testResults[destination.id]?.message}
+                    {#if destinationState.testResults[destination.id]?.message ||
+                        destinationState.testResults[destination.id]?.success}
                         <div
                             class:error={!destinationState.testResults[
                                 destination.id
                             ].success}
                             class="test-result"
                         >
-                            {destinationState.testResults[destination.id]
-                                .message}
+                            {destinationState.testResults[destination.id].message ||
+                                (destinationState.testResults[destination.id].success
+                                    ? $_(
+                                          "settingsDialog.uploadDestinationTestSuccess",
+                                      ) || "接続テストに成功しました"
+                                    : "")}
                         </div>
                     {/if}
                 </div>
@@ -835,6 +864,18 @@
     }
 
     .bud03-popover p {
+        margin: 0;
+    }
+
+    .blossom-test-popover {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .blossom-test-popover p {
         margin: 0;
     }
 

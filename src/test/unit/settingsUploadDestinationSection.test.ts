@@ -20,6 +20,10 @@ const translations = {
             uploadDestinationEdit: "編集",
             uploadDestinationDelete: "削除",
             uploadDestinationTest: "接続テスト",
+            uploadDestinationTestSuccess: "接続テストに成功しました",
+            uploadDestinationBlossomTestInfoLabel: "Blossom 接続テストの説明",
+            uploadDestinationBlossomTestInfoNoUpload: "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+            uploadDestinationBlossomTestInfoAuthorization: "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
             uploadDestinationTesting: "確認中",
             uploadDestinationSetDefault: "既定",
             uploadDestinationMoveUp: "Up",
@@ -58,6 +62,10 @@ const translations = {
             uploadDestinationEdit: "Edit",
             uploadDestinationDelete: "Delete",
             uploadDestinationTest: "Test",
+            uploadDestinationTestSuccess: "Connection test succeeded",
+            uploadDestinationBlossomTestInfoLabel: "About the Blossom connection test",
+            uploadDestinationBlossomTestInfoNoUpload: "This test does not upload a file. It checks upload availability with HEAD /upload.",
+            uploadDestinationBlossomTestInfoAuthorization: "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
             uploadDestinationTesting: "Testing",
             uploadDestinationSetDefault: "Default",
             uploadDestinationMoveUp: "Up",
@@ -188,6 +196,19 @@ function setExistingNip96Destination(): void {
     (mockUploadDestinationStore.value as unknown as { destinations: UploadDestination[] }).destinations = [
         destination,
     ];
+}
+
+function setExistingBlossomDestination(): void {
+    setExistingNip96Destination();
+    const destination = (mockUploadDestinationStore.value as unknown as {
+        destinations: UploadDestination[];
+    }).destinations[0]!;
+    destination.name = "Blossom";
+    destination.protocol = "blossom";
+    destination.serverUrl = "https://blossom.example";
+    destination.resolvedUploadUrl = undefined;
+    destination.presetId = "custom";
+    destination.auth = { type: "blossom-bud11" };
 }
 
 function getSavedDestination(): UploadDestination {
@@ -419,5 +440,70 @@ describe("SettingsUploadDestinationSection", () => {
             serverUrl: "https://share.yabu.me/api/v2/media",
             resolvedUploadUrl: "https://yabu.me/api/v2/media",
         }));
+    });
+
+    it("shows a successful Blossom connection test even when the result has no message", async () => {
+        setExistingBlossomDestination();
+        (mockUploadDestinationStore.value as unknown as {
+            testResults: Record<string, { success: boolean; message?: string }>;
+        }).testResults = {
+            "existing-nip96": { success: true },
+        };
+
+        render(SettingsUploadDestinationSection);
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "管理" }));
+        await tick();
+
+        expect(screen.getByText("接続テストに成功しました")).toBeTruthy();
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Blossom 接続テストの説明" }),
+        );
+        expect(
+            screen.getByText(
+                "このテストでは実際のファイルをアップロードせず、HEAD /upload でアップロード可否を確認します。",
+            ),
+        ).toBeTruthy();
+        expect(
+            screen.getByText(
+                "Blossom の仕様上、確認に必要な署名で upload 権限が要求される場合があります。",
+            ),
+        ).toBeTruthy();
+    });
+
+    it("keeps the existing failed connection test message and localizes the Blossom feedback in English", async () => {
+        currentLocale = "en";
+        setExistingBlossomDestination();
+        (mockUploadDestinationStore.value as unknown as {
+            testResults: Record<string, { success: boolean; message?: string }>;
+        }).testResults = {
+            "existing-nip96": {
+                success: false,
+                message: "Authentication is required or was rejected",
+            },
+        };
+
+        render(SettingsUploadDestinationSection);
+        await tick();
+        await fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+        await tick();
+
+        expect(screen.getByText("Authentication is required or was rejected")).toBeTruthy();
+        expect(screen.queryByText("Connection test succeeded")).toBeNull();
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "About the Blossom connection test" }),
+        );
+        expect(
+            screen.getByText(
+                "This test does not upload a file. It checks upload availability with HEAD /upload.",
+            ),
+        ).toBeTruthy();
+        expect(
+            screen.getByText(
+                "Under the Blossom protocol, the authorization request may ask you to sign the upload permission needed for this check.",
+            ),
+        ).toBeTruthy();
     });
 });
