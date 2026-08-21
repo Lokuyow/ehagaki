@@ -176,4 +176,52 @@ test.describe('post editor sending state', () => {
         await page.getByTestId('fail-post').click();
         await expect(page.getByTestId('custom-emoji-picker-host')).toBeVisible();
     });
+
+    test('preserves the App picker when the App post status enters and leaves sending', async ({ page }) => {
+        await page.goto('app-composer-picker-playwright.html');
+
+        const pickerButton = page.getByRole('button', { name: 'カスタム絵文字' });
+        const pickerRegion = page.locator('.custom-emoji-picker-region');
+
+        await expect(pickerButton).toBeVisible();
+        const welcomeDialog = page.locator('.welcome-dialog');
+        if (await welcomeDialog.isVisible().catch(() => false)) {
+            await welcomeDialog.getByRole('button', { name: 'はじめる' }).click();
+        }
+        await page.evaluate(() => {
+            const harness = (window as Window & typeof globalThis & {
+                __APP_COMPOSER_PICKER_HARNESS__?: { setAuthenticated(): void };
+            }).__APP_COMPOSER_PICKER_HARNESS__;
+            if (!harness) throw new Error('App composer picker harness is not ready.');
+            harness.setAuthenticated();
+        });
+        await expect(pickerButton).toBeEnabled();
+
+        await pickerButton.click();
+        await expect(pickerRegion).toBeVisible();
+
+        const pickerIdentity = await pickerRegion.locator('.custom-emoji-picker').elementHandle();
+        if (!pickerIdentity) throw new Error('App custom emoji picker was not mounted.');
+
+        await page.evaluate(() => {
+            const harness = (window as Window & typeof globalThis & {
+                __APP_COMPOSER_PICKER_HARNESS__?: { setSending(): void };
+            }).__APP_COMPOSER_PICKER_HARNESS__;
+            if (!harness) throw new Error('App composer picker harness is not ready.');
+            harness.setSending();
+        });
+        await expect(pickerRegion).toBeVisible();
+        await expect(pickerButton).toBeDisabled();
+
+        await page.evaluate(() => {
+            const harness = (window as Window & typeof globalThis & {
+                __APP_COMPOSER_PICKER_HARNESS__?: { setIdle(): void };
+            }).__APP_COMPOSER_PICKER_HARNESS__;
+            if (!harness) throw new Error('App composer picker harness is not ready.');
+            harness.setIdle();
+        });
+        await expect(pickerRegion).toBeVisible();
+        await expect(pickerButton).toBeEnabled();
+        expect(await pickerRegion.evaluate((element, picker) => element.querySelector('.custom-emoji-picker') === picker, pickerIdentity)).toBe(true);
+    });
 });
