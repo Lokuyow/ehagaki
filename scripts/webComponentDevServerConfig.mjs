@@ -2,6 +2,10 @@ import { networkInterfaces } from "node:os";
 
 export const LOCALHOST = "127.0.0.1";
 export const LAN_HOST = "0.0.0.0";
+const SAMPLE_PATHS = [
+    "web-component-parent-client-example.html",
+    "host-owned-composer-example.html",
+];
 
 /** @param {boolean} lanMode */
 export function resolveWebComponentDevHosts(lanMode) {
@@ -22,7 +26,10 @@ export function getLanIPv4Addresses(interfaces = networkInterfaces()) {
 
 /** @param {number} appPort @param {string[]} addresses */
 export function createLanSampleUrls(appPort, addresses) {
-    return addresses.map((address) =>
-        `http://${address}:${appPort}/ehagaki/web-component-parent-client-example.html`,
-    );
+    return addresses.flatMap((address) => createSampleUrls(appPort, address));
+}
+
+/** @param {number} appPort @param {string} host */
+export function createSampleUrls(appPort, host) {
+    return SAMPLE_PATHS.map((path) => `http://${host}:${appPort}/ehagaki/${path}`);
 }

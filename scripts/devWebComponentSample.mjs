@@ -13,6 +13,7 @@ import {
 } from "./webComponentBuildRunner.mjs";
 import {
     createLanSampleUrls,
+    createSampleUrls,
     getLanIPv4Addresses,
     resolveWebComponentDevHosts,
 } from "./webComponentDevServerConfig.mjs";
@@ -237,7 +238,9 @@ async function main() {
             console.log("No non-internal LAN IPv4 address was found; use Vite's Network URL or the PC's LAN IP.");
         }
     } else {
-        console.log(`Web Component sample: http://localhost:${appPort}/ehagaki/web-component-parent-client-example.html`);
+        for (const url of createSampleUrls(appPort, "localhost")) {
+            console.log(`Web Component sample: ${url}`);
+        }
     }
 }
 
