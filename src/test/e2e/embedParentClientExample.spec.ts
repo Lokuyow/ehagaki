@@ -60,6 +60,10 @@ test("uses an edited URL as the source of truth after an iframe context update",
 });
 
 test("applies a signed preloaded event through the iframe composer context protocol", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("firstVisit", "1");
+    });
+
     const event = finalizeEvent({
         kind: 1,
         content: "iframe preloaded reply",
@@ -71,10 +75,6 @@ test("applies a signed preloaded event through the iframe composer context proto
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const frame = page.frameLocator("#ehagaki-iframe");
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
-    const welcomeButton = frame.getByRole("button", { name: "はじめる" });
-    if (await welcomeButton.isVisible()) {
-        await welcomeButton.click();
-    }
 
     const applied = await page.evaluate(async ({ reply, event }) => {
         const iframe = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe");
