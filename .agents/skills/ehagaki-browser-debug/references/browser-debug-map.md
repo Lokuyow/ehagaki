@@ -1,6 +1,6 @@
 # eHagaki browser debug map
 
-この索引は2026-07-26時点のローカルcheckoutを調査した結果である。実装が移動または変更されている場合は現在のコードを優先する。
+この索引は現在のcheckoutを調査するための入口を整理したものである。記載と現在のコードが異なる場合は、現在のコードを優先する。
 
 ## 目次
 
@@ -12,6 +12,7 @@
 - [Tiptap、ProseMirror、selection、composition](#tiptapprosemirrorselectioncomposition)
 - [Paste、clipboard、drag-and-drop](#pasteclipboarddrag-and-drop)
 - [Iframe、postMessage、親client](#iframepostmessage親client)
+- [Direct Web Component、Shadow DOM、host geometry](#direct-web-componentshadow-domhost-geometry)
 - [URL queryと外部入力](#url-queryと外部入力)
 - [PWA、share target、service worker](#pwashare-targetservice-worker)
 - [IndexedDB、Dexie、複数context](#indexeddbdexie複数context)
@@ -116,6 +117,17 @@
 - **Playwrightまたは実端末確認が必要になる条件:** real iframe source/origin、sandbox/Permissions Policy、storage partitioning、parent navigation、focus境界はbrowser harnessが必要。
 - **注意点:** composer context、settings、storage、IndexedDBは共通の受信 trust gate で envelope・exact parent source・exact trusted origin だけを判定し、routing、requestId、payload、pending map、lifecycleは各serviceが所有する。Parent clientはこのhelper対象外であり、queryで確立したparent origin契約も維持する。`event.source`と`event.origin`の検証を弱めない。親sample、protocol、parser/bootstrap、testsを同じcontract surfaceとして確認する。
 
+## Direct Web Component、Shadow DOM、host geometry
+
+- **主な症状または責務:** host pageに直接配置した`<ehagaki-composer>`のShadow DOM、container-bound layout、host/component geometry、overlay、asset origin、mount/disconnect/reconnectを調査する。iframeの別document/postMessage経路とは分ける。
+- **主な実装ファイル:** `src/web-component/element.ts`、`src/web-component/entry.ts`、`src/web-component/types.ts`、`src/web-component/iconAssets.ts`、`src/lib/appRuntimeEnvironment.ts`、`src/lib/appAssetUrl.ts`、`src/components/DialogWrapper.svelte`、`src/stores/uiStore.svelte.ts`。
+- **主な関数、store、hook、controller:** `EHagakiComposerElement.connectedCallback()`、`disconnectedCallback()`、`whenReady()`、`mountApp()`、`configureAppRuntimeEnvironment()`、`getAppRuntimeEnvironment()`、`applyWebComponentIconAssetUrls()`。現在のruntimeは`layoutMode: "container"`、`runtimeKind: "web-component"`で、`domRoot`はopen ShadowRoot、mount/layout/style/overlay targetはcomponent shell内に設定される。
+- **Lifecycleと認証境界:** module-levelのactive instanceにより同じdocumentの接続済みinstanceを1つに制限する。connection generation、Svelte unmount、MutationObserver、pending `whenReady()` rejectionをdisconnect/reconnectごとに確認する。Web Component runtimeではService Worker、external input、history、local nsec authを無効化し、NIP-07/NIP-46などのprotocol semanticsはNostr mapを参照する。
+- **Geometryの計測:** host documentのviewport、`ehagaki-composer` host element、Shadow DOMのshell/app/overlay/dialog/footerを別々に`getBoundingClientRect()`とcomputed styleで確認する。`container-type: inline-size`、component width/height、`--app-overlay-position`、DialogWrapperのcontainer-layout absolute positioningを確認し、Shadow DOMだけでfixed要素がhost-relativeになると仮定しない。
+- **Assetの調査入口:** 接続前に設定する`asset-base`属性または`assetBase` property、component origin、`assets/`、`icons/`、FFmpeg class-worker/core/WASMのrequestとCORSを確認する。`webComponentDevServer.spec.ts`はlocal proxy/watchとasset配信、`ensureWebComponentE2EOutput.mjs`はfingerprint付きproduction output準備を担う。
+- **関連テスト:** `src/test/e2e/webComponentEmbed.spec.ts`はcross-origin host/component、host WebSocket interception、Shadow DOM、storage/SW、container geometry、portal dialog、asset、lifecycle、NIP-07/NIP-46 availabilityを確認する。`src/test/e2e/webComponentParentClientExample.spec.ts`はassembled production sample、public API、host側responsive layout、360/390px代表幅、destroy/recreateとmanual modeを確認する。`src/test/e2e/webComponentDevServer.spec.ts`、`src/test/unit/webComponentDevServerConfig.test.ts`、`src/test/unit/webComponentBuildWorkingDirectory.test.ts`、`src/test/unit/webComponentIconAssets.test.ts`も入口にする。
+- **注意点:** 現在のpublic sample E2Eは360/390pxを代表幅として確認するが、360px未満のiframe/Web Componentを既存E2Eで直接検証しているわけではない。embedの360px未満対応方針に対する追加検証ではhost widthとcomponent内部geometryを明示する。公開`::part()`契約はなく、local nsec入力・復元もWeb Componentの契約ではない。
+
 ## URL queryと外部入力
 
 - **主な症状または責務:** `content`、reply/quote/channel、embed settings、`shared=true`を起動時に読み、既存composer stateへ適用して消費済みqueryだけを削除する。
@@ -179,14 +191,15 @@
 ## Playwright config、projects、fixture、harness
 
 - **主な症状または責務:** dialog、focus、history、overflow、geometry、media表示を決定論的な実ブラウザで検証する。
-- **主な実装ファイル:** `playwright.config.ts`、`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/ComposerTargetDialogHarness.svelte`、`src/test/e2e/composerTargetDialogHarnessEntry.ts`、`src/test/e2e/postHistoryDialog.spec.ts`、`src/test/e2e/PostHistoryDialogHarness.svelte`、`src/test/e2e/postHistoryDialogHarnessEntry.ts`、`composer-target-dialog-playwright.html`、`post-history-dialog-playwright.html`。
+- **主な実装ファイル:** `playwright.config.ts`、`playwright.web-component-dev.config.ts`、`scripts/playwrightWorktreePort.ts`、`scripts/ensureWebComponentE2EOutput.mjs`、`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`、`src/test/e2e/webComponentDevServer.spec.ts`、`src/test/e2e/webComponentEmbed.spec.ts`、`src/test/e2e/webComponentParentClientExample.spec.ts`。
 - **主な関数、store、hook、controller:** Playwright標準`test` fixtureの`page`と`isMobile`、各`gotoHarness()`、window上の`__COMPOSER_TARGET_HARNESS__`/`__POST_HISTORY_HARNESS__` ready state。独立したcustom fixture moduleは現checkoutにない。
 - **Event source:** page navigation、role/label locator操作、keyboard/tap/click、route mock、viewport resize、popup/history、DOM evaluation。
-- **StateまたはCSS変数:** config `locale=ja-JP`、trace `on-first-retry`、workers `1`、harness-injected deterministic data。`EHAGAKI_E2E_PORT`を指定した場合はそのportを使用し、未指定時はworktree rootを正規化して決定的に算出する。
+- **StateまたはCSS変数:** 通常configは`fullyParallel: false`、`workers: 2`、`locale=ja-JP`、trace `on-first-retry`。`desktop-chromium`と`mobile-chromium`は`webComponentDevServer.spec.ts`を`testIgnore`する。`mobile-webkit`の`testMatch`は`composerTargetDialog.spec.ts`、`webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`、`postEditorSending.spec.ts`、`desktop-firefox`の`testMatch`は`webComponentEmbed.spec.ts`だけである。Web Component dev-server configは`webServer: undefined`、`workers: 1`、専用projectで`webComponentDevServer.spec.ts`だけを実行する。
+- **Portとserver:** `EHAGAKI_E2E_PORT`が指定された場合は検証済みの明示portを使う。未指定時はconfig load時に自動portを生成し、同一Playwright process内では内部の自動port環境値を通じて再利用する。baseURL、ready URL、Vite commandは同じresolved portを使い、Vite commandは`127.0.0.1`と`--strictPort`を指定し、`reuseExistingServer: false`で既存serverを再利用しない。worktree rootから決定的にportを算出する方式ではない。
 - **Cleanup所有者:** Playwright runnerがpage/contextを破棄し、route/popupはtestがcloseする。temporary artifactは調査完了時に削除する。
-- **関連テスト:** `src/test/e2e/composerTargetDialog.spec.ts`と`src/test/e2e/postHistoryDialog.spec.ts`。unit/component mock基盤は`src/test/setup.ts`と`src/test/mocks/`。
+- **関連テスト:** `src/test/unit/playwrightWorktreePort.test.ts`がport override、自動port共有、config project、strict port、server再利用設定を確認する。`src/test/e2e/composerTargetDialog.spec.ts`と`src/test/e2e/postHistoryDialog.spec.ts`は通常harness、Web Component系3 specはembed/sample/dev-serverの各境界を確認する。unit/component mock基盤は`src/test/setup.ts`と`src/test/mocks/`。
 - **Playwrightまたは実端末確認が必要になる条件:** config上の全projectは実browser engineでDOMを描画するが、IME/browser chrome/PWA standalone/WebViewは実端末確認を別途行う。
-- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示し、`composerTargetDialog.spec.ts`、`webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`に限定される。`desktop-firefox`は`webComponentEmbed.spec.ts`に限定される。base URL、Vite command、post-history harness ready URLは同じresolved portを使用し、Vite commandは`--strictPort`で自動移動を禁止する。worktree rootごとにportが異なるため、通常の複数worktreeが固定`4173`を共有しない。`reuseExistingServer: false`で古いserverを再利用せず、常に現在checkoutのViteを起動する。
+- **注意点:** `desktop-chromium`は`Desktop Chrome` descriptor。`mobile-chromium`は`iPhone 13` descriptorをChromiumのdefault engineで実行する。`mobile-webkit`だけが`browserName: 'webkit'`を明示する。device descriptorはbrowser engine/viewport/touch等のemulationであり、実端末のIME、browser chrome、PWA standalone、WebViewを証明しない。
 
 ## 関連テストの選択
 

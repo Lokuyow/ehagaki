@@ -1,6 +1,6 @@
 # eHagaki Nostr implementation map
 
-この文書は2026-07-30時点のcheckoutをコードとテストから対応付けた調査用索引である。現在のコードと差がある場合は現在のコードを優先する。
+この文書は現在のcheckoutをコードとテストから対応付けた調査用索引である。記載と現在のコードが異なる場合は、現在のコードを優先する。
 
 ## 使用中のNostr関連ライブラリ
 
@@ -147,7 +147,7 @@
 - event kind: NIP-46 transport eventは`24133`。eHagakiが要求する署名範囲は`1`、`5`、`42`、`10063`、`22242`、`27235`、`24242`。
 - 主なtag: NIP-46接続で利用する`p`、Nostr Connect URIのrelay/secret/metadata、各署名対象eventのtag
 - 主な実装ファイル: `src/lib/nip46Service.ts`、`src/lib/nip46AuthFlowCoordinator.ts`、`src/lib/nip46PendingOperationUtils.ts`、`src/lib/nip46ConnectUiUtils.ts`、`src/lib/authService.ts`
-- 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`getSignerForSession`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続、同一sessionのruntime signer復旧、Signer adapterを分担する。fresh `BunkerSigner`はglobal commit前にdirect `get_public_key`でlive user identityを確認し、`reconnect`と`rebuildConnection`はcandidate-firstで進める。rebuildはsession/runtime/persistence bindingのsnapshot所有権を確認し、snapshot bindingへのsession保存成功後にcandidateをcommitする。remote signer pubkeyをuser identityへfallbackしない。`NIP46_REQUESTED_PERMISSIONS`が要求権限のsource of truthである。
+- 主な関数または責務: `Nip46Service.connect`、`startNostrConnect`、`reconnect`、`ensureConnection`、`getSignerForSession`、`disconnect`と`Nip46SignerAdapter.signEvent`が接続、同一sessionのruntime signer復旧、Signer adapterを分担する。`NIP46_CLIENT_METADATA`はname `eHagaki`、GitHub Pages URL、webp icon URLをconnect requestとNostr Connect URIへ渡し、`NIP46_REQUESTED_PERMISSIONS`/`NIP46_REQUESTED_PERMS`が要求権限のsource of truthである。fresh `BunkerSigner`はglobal commit前にdirect `get_public_key`でlive user identityを確認し、`reconnect`と`rebuildConnection`はcandidate-firstで進める。rebuildはsession/runtime/persistence bindingのsnapshot所有権を確認し、snapshot bindingへのsession保存成功後にcandidateをcommitする。remote signer pubkeyをuser identityへfallbackしない。
 - 関連テスト: `src/test/unit/nip46Service.test.ts`、`src/test/unit/nip46AuthFlowCoordinator.test.ts`、`src/test/unit/nip46PendingOperationUtils.test.ts`、`src/test/unit/nip46ConnectUiUtils.test.ts`、`src/test/unit/loginDialog.test.ts`
 - 注意点: 接続確認と`get_public_key`検証を混同しない。payload、secret、署名要求本文をログやfixtureへ残さない。`Nip46WebSocket`にはrelay互換目的の`limit:0`補正があるため、根拠なく一般化しない。
 
