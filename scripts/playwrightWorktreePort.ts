@@ -1,15 +1,16 @@
-import path from 'node:path';
+import { randomInt } from 'node:crypto';
 
 export const PLAYWRIGHT_HOST = '127.0.0.1';
 export const PLAYWRIGHT_APP_BASE_PATH = '/ehagaki/';
 export const PLAYWRIGHT_READY_PATH =
     '/ehagaki/post-history-dialog-playwright.html';
 export const PLAYWRIGHT_PORT_ENV = 'EHAGAKI_E2E_PORT';
+const PLAYWRIGHT_AUTO_PORT_ENV = 'EHAGAKI_E2E_AUTO_PORT';
 export const MIN_PLAYWRIGHT_PORT = 1_024;
 export const MAX_PLAYWRIGHT_PORT = 65_535;
 
-const AUTO_PORT_MIN = 45_000;
-const AUTO_PORT_SPAN = 10_000;
+export const AUTO_PORT_MIN = 45_000;
+export const AUTO_PORT_MAX_EXCLUSIVE = 55_000;
 
 export function parsePlaywrightPort(value: string): number {
     const trimmed = value.trim();
@@ -34,58 +35,45 @@ export function parsePlaywrightPort(value: string): number {
     return port;
 }
 
-export function normalizeWorktreeRoot(
-    rootPath: string,
-    platform: NodeJS.Platform = process.platform,
-): string {
-    if (!rootPath.trim()) {
-        throw new Error('Playwright worktree root path must not be empty.');
+export function generatePlaywrightPort(
+    portSource: () => number = () =>
+        randomInt(AUTO_PORT_MIN, AUTO_PORT_MAX_EXCLUSIVE),
+): number {
+    const port = portSource();
+    if (
+        !Number.isSafeInteger(port) ||
+        port < AUTO_PORT_MIN ||
+        port >= AUTO_PORT_MAX_EXCLUSIVE
+    ) {
+        throw new Error(
+            `Generated Playwright port must be an integer from ${AUTO_PORT_MIN} to ${AUTO_PORT_MAX_EXCLUSIVE - 1}.`,
+        );
     }
 
-    const pathApi = platform === 'win32' ? path.win32 : path.posix;
-    const normalized = pathApi.normalize(pathApi.resolve(rootPath));
-    const root = pathApi.parse(normalized).root;
-    const withoutTrailingSeparator =
-        normalized.length > root.length
-            ? normalized.replace(/[\\/]+$/, '')
-            : normalized;
-
-    return platform === 'win32'
-        ? withoutTrailingSeparator.toLowerCase()
-        : withoutTrailingSeparator;
-}
-
-export function hashWorktreeRoot(normalizedRoot: string): number {
-    let hash = 2_166_136_261;
-
-    for (let index = 0; index < normalizedRoot.length; index += 1) {
-        hash ^= normalizedRoot.charCodeAt(index);
-        hash = Math.imul(hash, 16_777_619);
-    }
-
-    return hash >>> 0;
-}
-
-export function derivePlaywrightPort(normalizedRoot: string): number {
-    return AUTO_PORT_MIN + (hashWorktreeRoot(normalizedRoot) % AUTO_PORT_SPAN);
+    return port;
 }
 
 export interface ResolvePlaywrightPortOptions {
-    rootPath: string;
     envPort?: string;
-    platform?: NodeJS.Platform;
+    portSource?: () => number;
 }
 
 export function resolvePlaywrightPort({
-    rootPath,
     envPort = process.env[PLAYWRIGHT_PORT_ENV],
-    platform = process.platform,
+    portSource,
 }: ResolvePlaywrightPortOptions): number {
     if (envPort !== undefined) {
         return parsePlaywrightPort(envPort);
     }
 
-    return derivePlaywrightPort(normalizeWorktreeRoot(rootPath, platform));
+    const existingAutoPort = process.env[PLAYWRIGHT_AUTO_PORT_ENV];
+    if (existingAutoPort !== undefined) {
+        return parsePlaywrightPort(existingAutoPort);
+    }
+
+    const generatedPort = generatePlaywrightPort(portSource);
+    process.env[PLAYWRIGHT_AUTO_PORT_ENV] = String(generatedPort);
+    return generatedPort;
 }
 
 export interface PlaywrightEndpoints {
