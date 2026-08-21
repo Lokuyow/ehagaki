@@ -196,6 +196,58 @@ await settingsPromise;
 await contextPromise;
 ```
 
+## Host-owned Composer mode
+
+通常の Direct Web Component は従来どおり eHagaki が署名・Relay publish を行う self-publish
+mode です。Host-owned mode は明示的 opt-in です。`configureHostOwned()` を要素生成後、**最初の
+`connectedCallback` より前に一度だけ**呼び出します。接続・切断・再接続後に mode や handler を
+交換することはできません。変更が必要な場合は新しい element instance を生成してください。
+
+```js
+const composer = document.createElement('ehagaki-composer');
+composer.configureHostOwned({
+  async submit(output, { signal }) {
+    // The host owns kind, tags that express references, pubkey, timestamp,
+    // signing and publication. `output` is not an unsigned Nostr event.
+    const result = await publishFromHost(output, { signal });
+    return { eventId: result.id };
+  },
+  // Optional. Omitting it makes this a text-only composer.
+  async uploadMedia(file, metadata, { signal }) {
+    const result = await uploadFromHost(file, metadata, { signal });
+    return { url: result.url, imeta: { alt: metadata.originalName } };
+  },
+});
+const customEmojisReady = composer.setCustomEmojis([
+  { shortcode: 'wave', url: 'https://cdn.example/emoji/wave.webp' },
+]);
+document.querySelector('#composer-mount').append(composer);
+await composer.whenReady();
+await customEmojisReady;
+```
+
+`submit` は必須です。`uploadMedia` は optional capability で、未指定時は file picker、paste、
+drag & drop、gallery への新規メディア入力を受け付けず、eHagaki の upload destination や Nostr
+認証への fallback は行いません。指定時は、eHagaki が圧縮・プレビュー・ギャラリー処理を行った
+同じ Window realm の `File` を handler へ渡します。Base64 化はしません。handler は HTTP(S) URL と
+allowlist 済みの imeta field だけを返せます。
+
+Host handler に渡る `output` は `{ content, tags, context }` です。`tags` には hashtag、content
+warning、custom emoji、imeta など composer-owned tag のみが入り、`kind`、`pubkey`、`created_at`、
+`id`、`sig`、`e`/`p`/`q`/`a`/`k`、`client` は入りません。`context` は reply/quote/channel を
+immutable snapshot として保持します。Host-owned mode では eHagaki は認証、guest Relay、target
+fetch、profile/history/custom-emoji relay load を開始しません。reply/quote は reference-only の
+non-loading state で表示され、host は snapshot を使って最終 event の構造 tag を決定します。
+
+upload 中は submit を開始できず、submit 中は media input を開始できません。この判定はボタンだけで
+なく keyboard shortcut、long press、PostComponent の公開 submit/upload path にも適用されます。
+`setContext()` は既存どおり利用できますが、Host-owned submit 中は `submission_in_progress` で
+reject されます。`ehagaki-composer-context-updated`、clear、`whenReady()`、`setSettings()` は維持されます。
+
+`setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
+検証してから atomic に反映し、空配列は clear です。catalog は reconnect では保持し、別 element や
+self-publish mode の account-scoped catalog へは漏れません。
+
 ## 設定を変更する `setSettings()`
 
 `setSettings(settings)` は、対応している設定だけを受け付け、適用された key の配列を
@@ -687,3 +739,7 @@ CSP の `worker-src` では配信元オリジンと `blob:` の両方を許可�
 サンプルのイベントログは、秘密情報、署名要求 payload、生の Error を表示せず、安全な要約
 だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、
 module URL と `asset-base` には信頼できる URL だけを指定してください。
+
+Host-owned の別サンプルは [host-owned-composer-example.html](../public/host-owned-composer-example.html)
+です。text-only / media-enabled の切替、catalog、context、host submit/upload の成功・失敗を、既存の
+Parent Client sample とは独立して確認できます。

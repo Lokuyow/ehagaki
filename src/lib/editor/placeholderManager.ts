@@ -82,6 +82,8 @@ function removeGalleryPlaceholder(
 /** NIP-94メタデータから各フィールドを抽出する */
 function extractNip94Metadata(nip94: Record<string, any>) {
     return {
+        mFromServer: nip94['m'] ?? undefined as string | undefined,
+        altFromServer: nip94['alt'] ?? undefined as string | undefined,
         serverBlurhash: nip94['blurhash'] ?? nip94['b'] ?? undefined as string | undefined,
         oxFromServer: nip94['ox'] ?? nip94['o'] ?? undefined as string | undefined,
         xFromServer: nip94['x'] ?? undefined as string | undefined,
@@ -134,12 +136,17 @@ function resolveImageReplacementMetadata(
     dim?: string;
     dimensions?: ImageDimensions;
     size?: number;
+    mimeType?: string;
+    alt?: string;
     uploadProtocol?: FileUploadResponse['uploadProtocol'];
 } {
-    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer, sizeFromServer } = extractNip94Metadata(result.nip94 || {});
+    const { mFromServer, altFromServer, serverBlurhash, oxFromServer, xFromServer, dimFromServer, sizeFromServer } = extractNip94Metadata(result.nip94 || {});
     const dimensions = resolveImageDimensions(result, dimFromServer, matched);
+    const isHostOwned = result.hostOwnedMedia === true;
 
     return {
+        mimeType: isHostOwned ? (mFromServer ?? matched.file.type) : undefined,
+        alt: isHostOwned ? altFromServer : undefined,
         serverBlurhash,
         oxFromServer,
         xFromServer,
@@ -273,7 +280,11 @@ interface MediaReplacementSuccessStrategy {
         matched: PlaceholderEntry;
         isVideo: boolean;
     }) => void;
-    onVideoSuccess: (url: string, matched: PlaceholderEntry) => Promise<void> | void;
+    onVideoSuccess: (context: {
+        url: string;
+        matched: PlaceholderEntry;
+        result: FileUploadResponse;
+    }) => Promise<void> | void;
     onImageSuccess: (context: {
         url: string;
         matched: PlaceholderEntry;
@@ -300,7 +311,7 @@ function createMediaReplacementSuccessHandler(
         });
 
         if (isVideo) {
-            await strategy.onVideoSuccess(url, matched);
+            await strategy.onVideoSuccess({ url, matched, result });
             return;
         }
 
@@ -533,15 +544,26 @@ export async function replacePlaceholdersWithResults(
                         });
                     }
                 },
-                onVideoSuccess: (url, matched) => {
+                onVideoSuccess: ({ url, matched, result }) => {
                     findAndExecuteOnNode(
                         currentEditor,
                         (node: any) => node.type?.name === 'video' && node.attrs?.src === matched.placeholderId,
                         (node: any, pos: number) => {
+                            const hostMetadata = result.hostOwnedMedia === true
+                                ? extractNip94Metadata(result.nip94 || {})
+                                : null;
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
                                 ...node.attrs,
                                 src: url,
                                 isPlaceholder: false,
+                                ...(hostMetadata?.mFromServer ? { m: hostMetadata.mFromServer } : {}),
+                                ...(hostMetadata?.altFromServer ? { alt: hostMetadata.altFromServer } : {}),
+                                ...(hostMetadata?.serverBlurhash ? { blurhash: hostMetadata.serverBlurhash } : {}),
+                                ...(hostMetadata?.dimFromServer ? { dim: hostMetadata.dimFromServer } : {}),
+                                ...(hostMetadata?.sizeFromServer ? { size: hostMetadata.sizeFromServer } : {}),
+                                ...(hostMetadata?.oxFromServer ? { ox: hostMetadata.oxFromServer } : {}),
+                                ...(hostMetadata?.xFromServer ? { x: hostMetadata.xFromServer } : {}),
+                                ...(result.hostOwnedMedia === true ? { uploadProtocol: result.uploadProtocol } : {}),
                             });
                             currentEditor!.view.dispatch(tr);
                         },
@@ -560,6 +582,18 @@ export async function replacePlaceholdersWithResults(
                             };
                             if (imageMetadata.dim) {
                                 newAttrs.dim = imageMetadata.dim;
+                            }
+                            if (imageMetadata.mimeType) {
+                                newAttrs.m = imageMetadata.mimeType;
+                            }
+                            if (imageMetadata.alt !== undefined) {
+                                newAttrs.alt = imageMetadata.alt;
+                            }
+                            if (imageMetadata.oxFromServer) {
+                                newAttrs.ox = imageMetadata.oxFromServer;
+                            }
+                            if (imageMetadata.xFromServer) {
+                                newAttrs.x = imageMetadata.xFromServer;
                             }
                             newAttrs.size = imageMetadata.size ?? null;
                             newAttrs.uploadProtocol = imageMetadata.uploadProtocol ?? null;
@@ -660,21 +694,32 @@ export async function replacePlaceholdersInGallery(
                 removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
             },
             createMediaReplacementSuccessHandler({
-                onVideoSuccess: (url, matched) => {
+                onVideoSuccess: ({ url, matched, result }) => {
+                    const hostMetadata = result.hostOwnedMedia === true
+                        ? extractNip94Metadata(result.nip94 || {})
+                        : null;
                     mediaGalleryStore.updateItem(matched.placeholderId, {
                         src: url,
                         isPlaceholder: false,
-                        mimeType: getMimeTypeFromUrl(url),
+                        mimeType: hostMetadata?.mFromServer ?? getMimeTypeFromUrl(url),
+                        ...(hostMetadata?.altFromServer ? { alt: hostMetadata.altFromServer } : {}),
+                        ...(hostMetadata?.serverBlurhash ? { blurhash: hostMetadata.serverBlurhash } : {}),
+                        ...(hostMetadata?.dimFromServer ? { dim: hostMetadata.dimFromServer } : {}),
+                        ...(hostMetadata?.sizeFromServer ? { size: parseImageSize(hostMetadata.sizeFromServer) } : {}),
+                        ...(hostMetadata?.oxFromServer ? { ox: hostMetadata.oxFromServer } : {}),
+                        ...(hostMetadata?.xFromServer ? { x: hostMetadata.xFromServer } : {}),
+                        ...(result.hostOwnedMedia === true ? { uploadProtocol: result.uploadProtocol } : {}),
                     });
                 },
                 onImageSuccess: async ({ url, matched, imageMetadata }) => {
-                    const mimeType = getMimeTypeFromUrl(url);
+                    const mimeType = imageMetadata.mimeType ?? getMimeTypeFromUrl(url);
 
                     mediaGalleryStore.updateItem(matched.placeholderId, {
                         src: url,
                         isPlaceholder: false,
                         blurhash: imageMetadata.blurhash,
                         mimeType,
+                        ...(imageMetadata.alt !== undefined ? { alt: imageMetadata.alt } : {}),
                         ox: imageMetadata.ox,
                         dim: imageMetadata.dim,
                         dimensions: imageMetadata.dimensions,

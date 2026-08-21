@@ -419,6 +419,7 @@ describe("fileDropActionWithDragState", () => {
 
     beforeEach(() => {
         node = document.createElement("div");
+        (node as any).__uploadFiles = vi.fn();
         dragOverState = null;
         destroy = fileDropActionWithDragState(node, {
             dragOver: (v) => { dragOverState = v; },

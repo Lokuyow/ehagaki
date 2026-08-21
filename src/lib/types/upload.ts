@@ -42,6 +42,8 @@ export interface FileValidationResult {
 
 export interface FileUploadResponse {
     success: boolean;
+    /** Internal provenance marker for results produced by Host-owned uploadMedia. */
+    hostOwnedMedia?: boolean;
     url?: string;
     error?: string;
     errorCode?: UploadErrorCode;
@@ -260,6 +262,13 @@ export interface UploadHelperDependencies {
     resolveUploadDestination?: () => Promise<UploadDestination>;
 }
 
+export interface PreparedUploadFile {
+    file: File;
+    index: number;
+    ox?: string;
+    dimensions?: ImageDimensions;
+}
+
 export interface UploadHelperParams {
     files: File[] | FileList;
     currentEditor: TipTapEditor | null;
@@ -267,6 +276,23 @@ export interface UploadHelperParams {
     uploadCallbacks?: UploadInfoCallbacks | undefined;
     showUploadError: (msg: string, duration?: number) => void;
     updateUploadState: (isUploading: boolean, message?: string) => void;
+    /** Updates only the visible error message, without changing upload ownership. */
+    setUploadErrorMessage?: (message: string) => void;
     devMode: boolean;
     dependencies?: UploadHelperDependencies;
+    /** Optional operation-local abort/ownership predicate. */
+    isUploadAborted?: () => boolean;
+    /** Local Host-owned seam: preprocessing remains in eHagaki while transport is supplied by the host. */
+    prepareFiles?: (
+        files: File[],
+        dependencies: UploadHelperDependencies,
+    ) => Promise<PreparedUploadFile[]>;
+    uploadPreparedFiles?: (
+        files: File[],
+        placeholders: PlaceholderEntry[],
+    ) => Promise<FileUploadResponse[]>;
+    /** A local media-only manager for a transport that does not use Nostr auth. */
+    fileUploadManager?: UploadHelperDependencies["FileUploadManager"];
+    /** The UI wrapper keeps `isUploading` through its post-upload cleanup. */
+    deferUploadStateClear?: boolean;
 }

@@ -18,8 +18,10 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         placeholderText,
         editorContainerEl,
         hasStoredKey,
+        hasPostingCapability,
         submitPost,
         onCustomEmojiSelect,
+        getCustomEmojiItems,
         uploadFiles,
         eventCallbacks
     } = params;
@@ -32,6 +34,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         placeholderText,
         onSubmitPost: submitPost,
         onCustomEmojiSelect,
+        getCustomEmojiItems,
         onCreate: (editorInstance: TipTapEditor | null) => {
             currentEditorStore.set(editorInstance);
         }
@@ -59,6 +62,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
             __uploadFiles: uploadFiles,
             __currentEditor: () => latestEditor,
             __hasStoredKey: () => hasStoredKey,
+            __hasPostingCapability: () => hasPostingCapability ?? hasStoredKey,
             __postStatus: () => editorState.postStatus,
             __submitPost: submitPost,
         });
@@ -105,6 +109,7 @@ export function cleanupEditor(params: CleanupEditorParams): void {
         delete (editorContainerEl as any).__uploadFiles;
         delete (editorContainerEl as any).__currentEditor;
         delete (editorContainerEl as any).__hasStoredKey;
+        delete (editorContainerEl as any).__hasPostingCapability;
         delete (editorContainerEl as any).__postStatus;
         delete (editorContainerEl as any).__submitPost;
     }

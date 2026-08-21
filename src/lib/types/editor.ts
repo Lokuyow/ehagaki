@@ -4,6 +4,7 @@ import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { MediaGalleryItem } from "./media";
 import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
+import type { CustomEmojiItem } from "../customEmoji";
 
 // Post and Editor types
 export interface PostStatus {
@@ -116,9 +117,11 @@ export interface InitializeEditorParams {
     editorContainerEl: HTMLElement | null;
     currentEditor: TipTapEditor | null;
     hasStoredKey: boolean;
+    hasPostingCapability?: boolean;
     submitPost: () => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
-    uploadFiles: (files: File[] | FileList) => void;
+    getCustomEmojiItems?: () => CustomEmojiItem[];
+    uploadFiles?: (files: File[] | FileList) => void;
     eventCallbacks: EditorEventCallbacks;
 }
 

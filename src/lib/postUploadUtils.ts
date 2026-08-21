@@ -22,6 +22,7 @@ interface CreatePostUploadHandlersParams {
     getImageXMap: () => Record<string, string>;
     getUploadFailedText: (key: string) => string;
     updateUploadState: (isUploading: boolean, message?: string) => void;
+    setUploadErrorMessage: (message: string) => void;
     uploadFiles?: UploadFilesExecutor;
 }
 
@@ -50,6 +51,7 @@ export function createPostUploadHandlers({
     getImageXMap,
     getUploadFailedText,
     updateUploadState,
+    setUploadErrorMessage,
     uploadFiles = uploadFilesHelper,
 }: CreatePostUploadHandlersParams) {
     const performUpload = async (files: UploadableFiles): Promise<UploadHelperResult | null> => {
@@ -62,6 +64,7 @@ export function createPostUploadHandlers({
             currentEditor: getCurrentEditor(),
             fileInput: getFileInput(),
             updateUploadState,
+            setUploadErrorMessage,
             imageOxMap: getImageOxMap(),
             imageXMap: getImageXMap(),
             getUploadFailedText,

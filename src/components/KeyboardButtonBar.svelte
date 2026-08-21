@@ -8,7 +8,6 @@
         contentWarningReasonStore,
         hashtagPinStore,
     } from "../stores/tagsStore.svelte";
-    import { authState } from "../stores/authStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
     import {
         triggerVibration,
@@ -23,6 +22,9 @@
         onPostButtonTap?: () => void;
         customEmojiPickerOpen?: boolean;
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
+        hasPostingCapability?: boolean;
+        mediaEnabled?: boolean;
+        customEmojiEnabled?: boolean;
     }
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
@@ -31,10 +33,10 @@
         onPostButtonTap,
         customEmojiPickerOpen = false,
         onCustomEmojiPickerOpenChange,
+        hasPostingCapability = false,
+        mediaEnabled = true,
+        customEmojiEnabled = true,
     }: Props = $props();
-
-    // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
-    let hasStoredKey = $derived(authState.value?.isAuthenticated ?? false);
 
     // エディタ状態を取得
     let postStatus = $derived(editorState.postStatus);
@@ -97,7 +99,7 @@
             !canPost ||
             postStatus.sending ||
             isUploading ||
-            !hasStoredKey ||
+            !hasPostingCapability ||
             !!postStatus.completed
         );
     }
@@ -216,43 +218,45 @@
         ontouchstartcapture={preventKeyboardFocusChange}
     >
         <div class="button-group-left">
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="footer"
-                            contentLayout="icon"
-                            className="image-button"
-                            disabled={!hasStoredKey ||
-                                postStatus.sending ||
-                                isUploading}
-                            onClick={(e) => {
-                                onUploadImage?.();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_("postComponent.upload_image")}
-                            {...restProps}
-                        >
-                            <div class="image-icon svg-icon"></div>
-                        </Button>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal to={overlayTarget}>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("keyboardButtonBar.upload_image_tooltip")}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
+            {#if mediaEnabled}
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                variant="footer"
+                                contentLayout="icon"
+                                className="image-button"
+                                disabled={!hasPostingCapability ||
+                                    postStatus.sending ||
+                                    isUploading}
+                                onClick={(e) => {
+                                    onUploadImage?.();
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                ariaLabel={$_("postComponent.upload_image")}
+                                {...restProps}
+                            >
+                                <div class="image-icon svg-icon"></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal to={overlayTarget}>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("keyboardButtonBar.upload_image_tooltip")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            {/if}
             <Button
                 variant="footer"
                 contentLayout="icon"
                 className="custom-emoji-button"
                 selected={customEmojiPickerOpen}
-                disabled={!hasStoredKey || postStatus.sending}
+                disabled={!customEmojiEnabled || postStatus.sending}
                 onClick={() => {
                     setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                 }}
@@ -318,7 +322,7 @@
                             disabled={!canPost ||
                                 postStatus.sending ||
                                 isUploading ||
-                                !hasStoredKey ||
+                                !hasPostingCapability ||
                                 postStatus.completed}
                             onClick={(e) => {
                                 if (typeof tooltipOnclick === "function") {

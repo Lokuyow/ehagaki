@@ -405,6 +405,7 @@
     "clear_editor": "エディターをクリア",
     "upload_image": "メディアアップロード",
     "upload_failed": "アップロードに失敗しました",
+    "media_not_supported": "このコンポーザーではメディアアップロードを利用できません。",
     "nip96InvalidDestinationUrl": "NIP-96 のアップロード先 URL が無効です",
     "nip96UploadRequestBlocked": "アップロード先の応答を安全に処理できなかったため中止しました。アップロード完了は確認できません。カスタムサーバーでは直接アップロードできる URL を確認してください。",
     "nip96InvalidProcessingUrl": "アップロードサーバーが返した処理 URL が無効です",

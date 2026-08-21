@@ -405,6 +405,7 @@
     "clear_editor": "Clear editor",
     "upload_image": "Upload media",
     "upload_failed": "Upload failed",
+    "media_not_supported": "Media upload is not available in this composer.",
     "nip96InvalidDestinationUrl": "The NIP-96 upload destination URL is invalid",
     "nip96UploadRequestBlocked": "The upload was stopped because the destination response could not be handled safely. Completion could not be confirmed. For a custom server, check its direct upload URL.",
     "nip96InvalidProcessingUrl": "The processing URL returned by the upload server is invalid",

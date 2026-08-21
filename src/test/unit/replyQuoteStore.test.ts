@@ -13,6 +13,7 @@ import {
     updateReplyNotificationRecipientProfile,
     setReplyNotificationRecipientEnabled,
     setReplyQuoteError,
+    settleReplyQuoteReferencesWithoutHydration,
     updateReferencedEvent,
     setReplyQuote,
 } from '../../stores/replyQuoteStore.svelte';
@@ -37,6 +38,44 @@ describe('replyQuoteStore', () => {
 
         expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
         expect(replyQuoteState.value.reply?.authorPicture).toBeNull();
+        cleanup();
+    });
+
+    it('relay hydrationなしでもreplyとquoteをreference-onlyで確定する', () => {
+        const listener = vi.fn();
+        const cleanup = onReplyQuoteChanged(listener);
+        const targets = setReplyQuote({
+            reply: {
+                eventId: '11'.repeat(32),
+                relayHints: ['wss://relay.example.com'],
+                authorPubkey: '22'.repeat(32),
+            },
+            quotes: [{
+                eventId: '33'.repeat(32),
+                relayHints: [],
+                authorPubkey: null,
+            }],
+        });
+        listener.mockClear();
+
+        settleReplyQuoteReferencesWithoutHydration(targets);
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            eventId: '11'.repeat(32),
+            loading: false,
+            referencedEvent: null,
+            error: null,
+        });
+        expect(replyQuoteState.value.quotes[0]).toMatchObject({
+            eventId: '33'.repeat(32),
+            loading: false,
+            referencedEvent: null,
+            error: null,
+        });
+        expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
+
+        clearReplyQuote();
+        expect(replyQuoteState.value).toEqual({ reply: null, quotes: [] });
         cleanup();
     });
 

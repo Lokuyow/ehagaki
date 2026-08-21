@@ -60,6 +60,44 @@ export const mediaGalleryStore = {
         return result;
     },
 
+    /** 投稿用の imeta メタデータを画像・動画の双方から返す（Host-owned用） */
+    getMediaImetaMap: (): Record<string, {
+        m: string;
+        blurhash?: string;
+        ox?: string;
+        x?: string;
+        dim?: string;
+        alt?: string;
+        size?: number;
+        uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
+    }> => {
+        const result: Record<string, {
+            m: string;
+            blurhash?: string;
+            ox?: string;
+            x?: string;
+            dim?: string;
+            alt?: string;
+            size?: number;
+            uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
+        }> = {};
+        for (const item of mediaGalleryItems) {
+            if (!item.isPlaceholder && item.src && item.mimeType) {
+                result[item.src] = {
+                    m: item.mimeType,
+                    blurhash: item.blurhash,
+                    ox: item.ox,
+                    x: item.x,
+                    dim: item.dim,
+                    alt: item.alt,
+                    size: item.size,
+                    uploadProtocol: item.uploadProtocol,
+                };
+            }
+        }
+        return result;
+    },
+
     hasItems: () => mediaGalleryItems.length > 0,
 
     hasNonPlaceholderItems: () => mediaGalleryItems.some(item => !item.isPlaceholder),

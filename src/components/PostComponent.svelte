@@ -84,28 +84,55 @@
   import ProfileAvatar from "./ProfileAvatar.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
+  import type {
+    EHagakiHostOwnedComposerOptions,
+  } from "../web-component/types";
+  import type { CustomEmojiItem } from "../lib/customEmoji";
+  import { buildHostOwnedComposerOutput, getHostSubmissionEventId } from "../lib/hostOwnedComposer";
+  import { createHostOwnedUploadExecutor } from "../lib/hostOwnedUpload";
+  import {
+    uploadHelper,
+    uploadFiles as defaultUploadFiles,
+    showUploadErrorMessage,
+  } from "../lib/uploadHelper";
+  import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
+  import {
+    contentWarningStore,
+    contentWarningReasonStore,
+    getHashtagDataSnapshot,
+    hashtagPinStore,
+  } from "../stores/tagsStore.svelte";
 
   interface Props {
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
+    hasPostingCapability?: boolean;
     isSwitchingAccount?: boolean;
     onPostSuccess?: (result?: PostResult) => void;
     availableComposerHeight?: number;
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     notificationPort?: AppPostNotificationPort;
+    hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
+    hostCustomEmojiItems?: CustomEmojiItem[];
   }
 
   let {
     rxNostr,
     hasStoredKey,
+    hasPostingCapability = hasStoredKey,
     isSwitchingAccount = false,
     onPostSuccess,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
     notificationPort,
+    hostOwnedConfig,
+    hostCustomEmojiItems = [],
   }: Props = $props();
+  let isHostOwned = $derived(!!hostOwnedConfig);
+  let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
+  let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
@@ -257,7 +284,58 @@
     getImageXMap: () => imageXMap,
     getUploadFailedText: (key: string) => $_(key),
     updateUploadState: (isUploading: boolean, message?: string) => {
+      if (isHostOwned && !hostMountActive) return;
       updateEditorUploadState(editorState, isUploading, message);
+    },
+    setUploadErrorMessage: (message: string) => {
+      if (isHostOwned && !hostMountActive) return;
+      editorState.uploadErrorMessage = message;
+    },
+    uploadFiles: async (params) => {
+      if (postStatus.sending || editorState.isUploading || (isHostOwned && !hostMountActive)) {
+        return null;
+      }
+      if (!isHostOwned) {
+        return await defaultUploadFiles(params);
+      }
+      if (!hostOwnedConfig?.uploadMedia) {
+        updateEditorUploadState(editorState, false, $_("postComponent.media_not_supported"));
+        return null;
+      }
+      updateEditorUploadState(editorState, true, "");
+      const executor = createHostOwnedUploadExecutor({
+        uploadMedia: hostOwnedConfig.uploadMedia,
+        signal: hostOwnedConfig.signal,
+      });
+      try {
+        return await uploadHelper({
+          ...params,
+          showUploadError: (message, duration) => showUploadErrorMessage(message, duration, {
+            updateUploadState: (nextIsUploading, nextMessage) => {
+              if (hostMountActive) {
+                updateEditorUploadState(editorState, nextIsUploading, nextMessage);
+              }
+            },
+            setUploadErrorMessage: (nextMessage) => {
+              if (hostMountActive) editorState.uploadErrorMessage = nextMessage;
+            },
+            keepUploading: true,
+          }),
+          setUploadErrorMessage: (message) => {
+            if (hostMountActive) editorState.uploadErrorMessage = message;
+          },
+          devMode: false,
+          prepareFiles: executor.prepareFiles,
+          uploadPreparedFiles: executor.uploadPreparedFiles,
+          fileUploadManager: executor.fileUploadManager,
+          deferUploadStateClear: true,
+          isUploadAborted: () => (
+            !hostMountActive || !!hostOwnedConfig.signal.aborted
+          ),
+        });
+      } finally {
+        if (hostMountActive) updateEditorUploadState(editorState, false);
+      }
     },
   });
   const postStatusHandlers = createPostStatusHandlers({
@@ -336,11 +414,17 @@
       editorContainerEl,
       currentEditor,
       hasStoredKey,
+      hasPostingCapability,
       submitPost,
       onCustomEmojiSelect,
-      uploadFiles: (files: File[] | FileList) => {
-        void uploadHandlers.performUpload(files);
-      },
+      getCustomEmojiItems: isHostOwned
+        ? () => hostCustomEmojiItems
+        : undefined,
+      uploadFiles: mediaEnabled
+        ? (files: File[] | FileList) => {
+          void uploadHandlers.performUpload(files);
+        }
+        : undefined,
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
         onImageFullscreenRequest: (
@@ -412,6 +496,17 @@
           submitPost,
         });
         editorSubscriptionUnsubscribe = null;
+      }
+      if (isHostOwned) {
+        hostMountActive = false;
+        updateEditorUploadState(editorState, false, "");
+        updatePostStatus({
+          sending: false,
+          success: false,
+          error: false,
+          message: "",
+          completed: false,
+        });
       }
     };
   });
@@ -609,8 +704,92 @@
     currentEditor.commands.keyboardShortcut("Enter");
   }
 
+  function canStartSubmit(): boolean {
+    return !!currentEditor &&
+      editorState.canPost &&
+      !postStatus.sending &&
+      !editorState.isUploading &&
+      !postStatus.completed &&
+      (hasPostingCapability || !!postManager);
+  }
+
+  function createHostOwnedMediaImetaMap(editorInstance: TipTapEditor): Record<string, any> {
+    if (!mediaFreePlacement) {
+      return mediaGalleryStore.getMediaImetaMap();
+    }
+    const mediaMetadata: Record<string, any> = {};
+    editorInstance.state.doc.descendants((node: any) => {
+      if ((node.type?.name !== "image" && node.type?.name !== "video") || !node.attrs?.src || node.attrs?.isPlaceholder) return;
+      const m = node.attrs.m ?? node.attrs.mimeType;
+      if (typeof m !== "string" || !m) return;
+      const size = Number(node.attrs.size);
+      mediaMetadata[node.attrs.src] = {
+        m,
+        blurhash: node.attrs.blurhash ?? undefined,
+        dim: node.attrs.dim ?? undefined,
+        alt: node.attrs.alt ?? undefined,
+        ...(Number.isFinite(size) && size > 0 ? { size } : {}),
+        ox: node.attrs.ox ?? imageOxMap[node.attrs.src],
+        x: node.attrs.x ?? imageXMap[node.attrs.src],
+        uploadProtocol: node.attrs.uploadProtocol ?? undefined,
+      };
+    });
+    return mediaMetadata;
+  }
+
+  async function submitHostOwned(editorInstance: TipTapEditor): Promise<void> {
+    const config = hostOwnedConfig;
+    if (!config || !canStartSubmit()) return;
+
+    // Capture every mutable input before entering the host handler. The handler
+    // is then free to await without observing later editor/context mutations.
+    const extraction = extractPostContentWithEmojiTags(editorInstance);
+    const content = !mediaFreePlacement && mediaGalleryStore.getContentUrls().length > 0
+      ? [extraction.content.trim(), ...mediaGalleryStore.getContentUrls()]
+        .filter(Boolean)
+        .join("\n")
+      : extraction.content;
+    const hashtagSnapshot = getHashtagDataSnapshot();
+    const snapshot = {
+      content,
+      hashtagTags: hashtagSnapshot.tags.map((tag) => [...tag]),
+      hashtags: [...hashtagSnapshot.hashtags],
+      contentWarningEnabled: contentWarningStore.value,
+      contentWarningReason: contentWarningReasonStore.value,
+      emojiTags: extraction.emojiTags.map((tag) => [...tag]),
+      mediaImetaMap: createHostOwnedMediaImetaMap(editorInstance),
+      replyQuote: $state.snapshot(replyQuoteState.value),
+      channel: $state.snapshot(effectiveChannelContextState.value),
+    };
+
+    postStatusHandlers.markSending();
+    try {
+      const output = await buildHostOwnedComposerOutput(snapshot);
+      const result = await config.submit(output, { signal: config.signal });
+      if (config.signal.aborted) return;
+      const eventId = getHostSubmissionEventId(result);
+      notificationPort?.notifyPostSuccess({
+        ...(eventId ? { eventId } : {}),
+        ...(output.context.reply ? { replyToEventId: output.context.reply.eventId } : {}),
+        ...(output.context.quotes.length
+          ? { quotedEventIds: output.context.quotes.map((quote) => quote.eventId) }
+          : {}),
+      });
+      postStatusHandlers.markSuccess({ success: true, ...(eventId ? { eventId } : {}) });
+    } catch {
+      if (config.signal.aborted) return;
+      notificationPort?.notifyPostError("post_error");
+      postStatusHandlers.markFailure("postComponent.post_error");
+    }
+  }
+
   export async function submitPost() {
-    if (!postManager || !currentEditor) return;
+    if (!currentEditor || !canStartSubmit()) return;
+    if (isHostOwned) {
+      await submitHostOwned(currentEditor);
+      return;
+    }
+    if (!postManager) return;
     const postPayload = postManager.preparePostPayload(currentEditor);
     if (containsSecretKey(postPayload.content)) {
       postComponentUIStore.showSecretKeyDialog(
@@ -635,12 +814,33 @@
   }
 
   export function clearContentAfterSuccess() {
-    if (postManager && currentEditor)
+    if (postManager && currentEditor) {
       postManager.clearContentAfterSuccess(currentEditor);
+      return;
+    }
+    if (currentEditor) {
+      const pinnedHashtags = hashtagPinStore.value
+        ? [...getHashtagDataSnapshot().hashtags]
+        : [];
+      currentEditor.chain().clearContent().run();
+      contentWarningStore.reset();
+      contentWarningReasonStore.reset();
+      mediaGalleryStore.clearAll();
+      imageOxMap = {};
+      imageXMap = {};
+      clearReplyQuote();
+      if (pinnedHashtags.length > 0) {
+        currentEditor.commands.insertContent(
+          ` ${pinnedHashtags.map((hashtag) => `#${hashtag}`).join(" ")}`,
+        );
+        currentEditor.commands.focus("start");
+      }
+    }
   }
 
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
+    if (!canStartSubmit()) return;
     const pendingPost = postComponentUIStore.getPendingPost();
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     postComponentUIStore.hideSecretKeyDialog();
@@ -701,6 +901,7 @@
   });
 
   export function openFileDialog() {
+    if (!mediaEnabled || postStatus.sending || editorState.isUploading) return;
     fileInput?.click();
   }
 
@@ -812,14 +1013,16 @@
     <MediaGallery />
   {/if}
 
-  <input
-    type="file"
-    accept="image/*,video/*"
-    multiple
-    onchange={handleFileSelect}
-    bind:this={fileInput}
-    style="display: none;"
-  />
+  {#if mediaEnabled}
+    <input
+      type="file"
+      accept="image/*,video/*"
+      multiple
+      onchange={handleFileSelect}
+      bind:this={fileInput}
+      style="display: none;"
+    />
+  {/if}
 
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>

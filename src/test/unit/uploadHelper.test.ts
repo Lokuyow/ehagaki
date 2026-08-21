@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
     performFileUpload,
     resolveCurrentUploadDestination,
+    showUploadErrorMessage,
     uploadHelper,
 } from "../../lib/uploadHelper";
 import { generateBlurhashes, insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
@@ -505,7 +506,80 @@ describe("uploadHelper", () => {
         });
     });
 
-    describe("uploadHelper integration", () => {
+describe("uploadHelper integration", () => {
+        it("clears an upload error without changing a later operation's pending state", () => {
+            vi.useFakeTimers();
+            let isUploading = true;
+            let errorMessage = "";
+            const updateUploadState = vi.fn((nextIsUploading: boolean, nextMessage?: string) => {
+                isUploading = nextIsUploading;
+                errorMessage = nextMessage ?? "";
+            });
+            const setUploadErrorMessage = vi.fn((nextMessage: string) => {
+                errorMessage = nextMessage;
+            });
+
+            showUploadErrorMessage("upload failed", 1000, {
+                updateUploadState,
+                setUploadErrorMessage,
+                keepUploading: true,
+            });
+            expect(isUploading).toBe(true);
+            expect(errorMessage).toBe("upload failed");
+
+            // The operation finishes before the error timer expires.
+            isUploading = false;
+            vi.advanceTimersByTime(1000);
+
+            expect(isUploading).toBe(false);
+            expect(errorMessage).toBe("");
+            expect(setUploadErrorMessage).toHaveBeenCalledWith("");
+            vi.useRealTimers();
+        });
+
+        it("leaves self-publish upload pending false after an error timer expires", async () => {
+            vi.useFakeTimers();
+            const file = createTestFile({ name: "error.png", type: "image/png", content: "content" });
+            const state = { isUploading: false, errorMessage: "" };
+            const updateUploadState = vi.fn((isUploading: boolean, message?: string) => {
+                state.isUploading = isUploading;
+                state.errorMessage = message ?? "";
+            });
+            const setUploadErrorMessage = vi.fn((message: string) => {
+                state.errorMessage = message;
+            });
+            const failingManager: FileUploadManagerInterface = {
+                validateImageFile: vi.fn(() => ({ isValid: true })),
+                validateMediaFile: vi.fn(() => ({ isValid: true })),
+                generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                uploadFileWithCallbacks: vi.fn(async () => {
+                    throw new Error("upload failed");
+                }),
+                uploadMultipleFilesWithCallbacks: vi.fn(),
+            };
+
+            await performFileUpload({
+                files: [file],
+                currentEditor,
+                updateUploadState,
+                setUploadErrorMessage,
+                devMode: false,
+                imageOxMap: {},
+                imageXMap: {},
+                dependencies: {
+                    ...mockDependencies,
+                    FileUploadManager: vi.fn(function () { return failingManager; }) as new () => FileUploadManagerInterface,
+                },
+                getUploadFailedText: (key: string) => key,
+            });
+
+            expect(state.isUploading).toBe(false);
+            vi.advanceTimersByTime(5000);
+            expect(state.isUploading).toBe(false);
+            expect(state.errorMessage).toBe("");
+            vi.useRealTimers();
+        });
+
         it("merges store updates with external progress callbacks", async () => {
             const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const updateUploadState = vi.fn();
@@ -558,6 +632,7 @@ describe("uploadHelper", () => {
                     onImageCompressionProgress: externalOnImageCompressionProgress,
                 },
                 updateUploadState,
+                setUploadErrorMessage: vi.fn(),
                 devMode: false,
                 imageOxMap: {},
                 imageXMap: {},
@@ -603,6 +678,40 @@ describe("uploadHelper", () => {
             expect(result.errorMessage).toBe("");
             expect(updateUploadState).toHaveBeenCalledWith(true, "");
             expect(updateUploadState).toHaveBeenCalledWith(false);
+        });
+
+        it("uses a Host-provided prepared transport without resolving an eHagaki upload destination", async () => {
+            const file = createTestFile({ name: "host.png", type: "image/png", content: "content" });
+            const resolveUploadDestination = vi.fn(async () => {
+                throw new Error("must not resolve a Host-owned destination");
+            });
+            const prepareFiles = vi.fn(async (files: File[]) =>
+                files.map((preparedFile, index) => ({ file: preparedFile, index })),
+            );
+            const uploadPreparedFiles = vi.fn(async (files: File[]) =>
+                files.map((preparedFile) => ({
+                    success: true,
+                    url: `https://host.example/${preparedFile.name}`,
+                })),
+            );
+
+            const result = await uploadHelper({
+                files: [file],
+                currentEditor,
+                showUploadError: vi.fn(),
+                updateUploadState: vi.fn(),
+                devMode: false,
+                dependencies: { ...mockDependencies, resolveUploadDestination },
+                prepareFiles,
+                uploadPreparedFiles,
+            });
+
+            expect(result.results).toEqual([
+                expect.objectContaining({ success: true, url: "https://host.example/host.png" }),
+            ]);
+            expect(prepareFiles).toHaveBeenCalledWith([file], expect.any(Object));
+            expect(uploadPreparedFiles).toHaveBeenCalledWith([file], expect.any(Array));
+            expect(resolveUploadDestination).not.toHaveBeenCalled();
         });
 
         it("forwards a resolved blossom destination instead of falling back to the legacy upload endpoint", async () => {
@@ -1177,6 +1286,3 @@ describe("uploadHelper", () => {
         });
     });
 });
-
-
-

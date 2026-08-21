@@ -106,6 +106,7 @@
     updateReferencedEvent,
     updateAuthorProfile,
     setReplyQuoteError,
+    settleReplyQuoteReferencesWithoutHydration,
     onReplyQuoteChanged,
     replyQuoteState,
     restoreReplyQuote,
@@ -196,6 +197,14 @@
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
+  import {
+    createCustomEmojiItem,
+    type CustomEmojiItem,
+  } from "./lib/customEmoji";
+  import type {
+    EHagakiCustomEmojiCatalogItem,
+    EHagakiHostOwnedComposerOptions,
+  } from "./web-component/types";
 
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
@@ -219,6 +228,10 @@
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
     onInitialized?: () => void;
+    hostOwnedConfig?: EHagakiHostOwnedComposerOptions & {
+      customEmojis: EHagakiCustomEmojiCatalogItem[];
+      signal: AbortSignal;
+    };
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -238,7 +251,32 @@
   let {
     notificationPort = iframeNotificationPort,
     onInitialized = () => undefined,
+    hostOwnedConfig,
   }: Props = $props();
+  let isHostOwnedComposer = $derived(!!hostOwnedConfig);
+  let hostCustomEmojiItems = $state<CustomEmojiItem[]>([]);
+  let hostEmojiCatalogInitialized = false;
+
+  function replaceHostCustomEmojis(
+    catalog: readonly EHagakiCustomEmojiCatalogItem[],
+  ): void {
+    hostCustomEmojiItems = catalog.flatMap((item, sortIndex) => {
+      const normalized = createCustomEmojiItem({
+        shortcode: item.shortcode,
+        src: item.url,
+        setAddress: item.setAddress,
+        sortIndex,
+      });
+      return normalized ? [normalized] : [];
+    });
+  }
+
+  $effect(() => {
+    if (!hostEmojiCatalogInitialized && hostOwnedConfig) {
+      hostEmojiCatalogInitialized = true;
+      replaceHostCustomEmojis(hostOwnedConfig.customEmojis);
+    }
+  });
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -408,7 +446,11 @@
     publicKeyState.setNsec(secretKey);
   });
 
-  let isAuthenticated = $derived(authState.value?.isAuthenticated ?? false);
+  // Host publication capability is independent from eHagaki account auth.
+  let isAuthenticated = $derived(
+    !isHostOwnedComposer && authState.value?.isAuthenticated === true,
+  );
+  let hasPostingCapability = $derived(isHostOwnedComposer || isAuthenticated);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
@@ -1189,20 +1231,27 @@
       updateUrlQueryContentStore,
     },
     composerContextApply: {
-      applyReplyQuoteSelection: (query) =>
-        applyReplyQuoteSelection({
+      applyReplyQuoteSelection: (query) => {
+        const references = applyReplyQuoteSelection({
           replyQuoteQuery: query,
           setReplyQuote,
-        }),
+        });
+        if (isHostOwnedComposer && !rxNostr) {
+          settleReplyQuoteReferencesWithoutHydration(references);
+        }
+        return references;
+      },
       hydrateReplyQuoteReferences: (references, runtime) =>
-        hydrateReplyQuoteReferences({
-          references,
-          rxNostr: runtime.rxNostr,
-          relayConfig: runtime.relayConfig,
-          updateReferencedEvent,
-          initializeReplyNotificationRecipients,
-          setReplyQuoteError,
-        }),
+        isHostOwnedComposer && !runtime.rxNostr
+          ? Promise.resolve()
+          : hydrateReplyQuoteReferences({
+            references,
+            rxNostr: runtime.rxNostr,
+            relayConfig: runtime.relayConfig,
+            updateReferencedEvent,
+            initializeReplyNotificationRecipients,
+            setReplyQuoteError,
+          }),
       clearReplyQuote,
       applyChannelContextQuery: (query, runtime) => {
         channelContextApplyController.applyExternal({
@@ -1267,6 +1316,8 @@
         rxNostr,
         relayConfig: relayConfigStore.value,
       }),
+      isSubmissionInProgress: () =>
+        isHostOwnedComposer && editorState.postStatus.sending,
     },
     storage: {
       getEmbedStorageSnapshot: async () => {
@@ -1335,6 +1386,16 @@
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
     return appEmbedController.applySettings(payload);
+  }
+
+  /** Per-element Host-owned catalog; never writes to the account-scoped store. */
+  export async function setHostCustomEmojis(
+    catalog: EHagakiCustomEmojiCatalogItem[],
+  ): Promise<void> {
+    if (!isHostOwnedComposer) {
+      throw new DOMException("Host-owned Composer is not configured.", "InvalidStateError");
+    }
+    replaceHostCustomEmojis(catalog);
   }
 
   async function handleRemoteParentClientLogin(
@@ -1414,9 +1475,11 @@
   }
 
   $effect(() => {
-    appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
-      authState.value,
-    );
+    if (!isHostOwnedComposer) {
+      appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
+        authState.value,
+      );
+    }
   });
 
   $effect(() => {
@@ -1498,8 +1561,9 @@
         appEmbedController.notifyComposerContextUpdatedIfChanged(),
     });
 
-    // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
-    if (!nip07ExtensionAvailable) {
+    // Host-owned Composer deliberately has no eHagaki authentication surface.
+    // Other runtimes retain delayed NIP-07 discovery.
+    if (!isHostOwnedComposer && !nip07ExtensionAvailable) {
       waitNostr(3000).then((nostr) => {
         if (nostr) nip07ExtensionAvailable = true;
       });
@@ -1532,36 +1596,48 @@
       allowSharedMediaRecovery: true,
     });
 
-    void runAppInitializationBootstrap({
-      reloadSettings: () => settingsStore.reload(),
-      locationSearch: window.location.search,
-      clearSharedMediaError,
-      waitForLocale: waitLocale,
-      markLocaleInitialized: () => {
+    if (isHostOwnedComposer) {
+      // Do not restore accounts, start a guest relay session, resolve upload
+      // destinations, or run URL/share input. The host supplies publication.
+      void waitLocale().finally(() => {
         localeInitialized = true;
-      },
-      initializeAuth: () => authService.initializeAuth(),
-      handleAuthenticated: handlePostAuth,
-      initializeGuestSession: () => initializeNostr(),
-      stopProfileLoading: () => isLoadingProfileStore.set(false),
-      refreshAccountList,
-      markAuthInitialized: () => authService.markAuthInitialized(),
-      getExternalInputBootstrapParams,
-      externalInputEnabled: appRuntimeEnvironment.externalInputEnabled,
-      console,
-    }).finally(() => {
-      isBootstrappingApp = false;
-      void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
+        isBootstrappingApp = false;
         appEmbedController.notifyComposerContextUpdatedIfChanged();
       });
-    });
+    } else {
+      void runAppInitializationBootstrap({
+        reloadSettings: () => settingsStore.reload(),
+        locationSearch: window.location.search,
+        clearSharedMediaError,
+        waitForLocale: waitLocale,
+        markLocaleInitialized: () => {
+          localeInitialized = true;
+        },
+        initializeAuth: () => authService.initializeAuth(),
+        handleAuthenticated: handlePostAuth,
+        initializeGuestSession: () => initializeNostr(),
+        stopProfileLoading: () => isLoadingProfileStore.set(false),
+        refreshAccountList,
+        markAuthInitialized: () => authService.markAuthInitialized(),
+        getExternalInputBootstrapParams,
+        externalInputEnabled: appRuntimeEnvironment.externalInputEnabled,
+        console,
+      }).finally(() => {
+        isBootstrappingApp = false;
+        void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
+          appEmbedController.notifyComposerContextUpdatedIfChanged();
+        });
+      });
+    }
 
-    const cleanupVisibilityHandler = registerNip46VisibilityHandler({
-      document: appRuntimeEnvironment.document ?? document,
-      authState,
-      nip46Service,
-      console,
-    });
+    const cleanupVisibilityHandler = isHostOwnedComposer
+      ? () => undefined
+      : registerNip46VisibilityHandler({
+        document: appRuntimeEnvironment.document ?? document,
+        authState,
+        nip46Service,
+        console,
+      });
 
     return () => {
       overlayScopeTarget.classList.remove("ehagaki-app-root");
@@ -1578,8 +1654,10 @@
       } else {
         rxNostr = undefined;
       }
-      void cancelPendingNip46Auth(undefined, { preserveError: true });
-      void nip46Service.disconnect();
+      if (!isHostOwnedComposer) {
+        void cancelPendingNip46Auth(undefined, { preserveError: true });
+        void nip46Service.disconnect();
+      }
     };
   });
 
@@ -1829,6 +1907,7 @@
   }
 
   function recordCustomEmojiUse(emoji: CustomEmojiSelection): void {
+    if (isHostOwnedComposer) return;
     const pubkey = authState.value?.pubkey;
     if (!pubkey) return;
 
@@ -1855,20 +1934,22 @@
   <Tooltip.Provider>
     <main class="ehagaki-app-root">
       <div class="main-content">
-        <HeaderComponent
-          onResetPostContent={handleResetPostContent}
-          onShowDraftList={draftListDialog.open}
-          onChooseTarget={composerTargetDialog.open}
-          canResetPostContent={hasDraftComposerContext || undefined}
-          balloonMessage={showHeaderBalloonMessage
-            ? balloon.finalMessage
-            : null}
-          compactMessage={showHeaderBalloonMessage
-            ? null
-            : balloon.compactMessage}
-          showMascot={settingsStore.showMascot}
-          showFlavorText={showHeaderBalloonMessage}
-        />
+        {#if !isHostOwnedComposer}
+          <HeaderComponent
+            onResetPostContent={handleResetPostContent}
+            onShowDraftList={draftListDialog.open}
+            onChooseTarget={composerTargetDialog.open}
+            canResetPostContent={hasDraftComposerContext || undefined}
+            balloonMessage={showHeaderBalloonMessage
+              ? balloon.finalMessage
+              : null}
+            compactMessage={showHeaderBalloonMessage
+              ? null
+              : balloon.compactMessage}
+            showMascot={settingsStore.showMascot}
+            showFlavorText={showHeaderBalloonMessage}
+          />
+        {/if}
         <div
           class="composer-scroll-region"
           bind:this={composerScrollRegionEl}
@@ -1921,12 +2002,17 @@
                     bind:this={postComponentRef}
                     {rxNostr}
                     hasStoredKey={isAuthenticated}
+                    hasPostingCapability={hasPostingCapability}
                     {isSwitchingAccount}
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {notificationPort}
+                    {hostOwnedConfig}
+                    hostCustomEmojiItems={isHostOwnedComposer
+                      ? hostCustomEmojiItems
+                      : undefined}
                   />
                 {/if}
                 {#if customEmojiPickerOpen && CustomEmojiPickerComponent}
@@ -1936,11 +2022,16 @@
                   >
                     <CustomEmojiPickerComponent
                       {rxNostr}
-                      pubkey={authState.value.pubkey}
+                      pubkey={isHostOwnedComposer ? null : authState.value.pubkey}
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
-                      customEmojiUsageItems={customEmojiUsageStore.items}
+                      customEmojiUsageItems={isHostOwnedComposer
+                        ? []
+                        : customEmojiUsageStore.items}
+                      hostCustomEmojiItems={isHostOwnedComposer
+                        ? hostCustomEmojiItems
+                        : undefined}
                       onMoveCaretLeft={() =>
                         postComponentRef?.moveCaretLeft?.()}
                       onMoveCaretRight={() =>
@@ -1978,20 +2069,25 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
+        hasPostingCapability={hasPostingCapability}
+        mediaEnabled={!isHostOwnedComposer || !!hostOwnedConfig?.uploadMedia}
+        customEmojiEnabled={isHostOwnedComposer || isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
-      <FooterComponent
-        {isAuthenticated}
-        {isAuthInitialized}
-        {isSwitchingAccount}
-        swNeedRefresh={appRuntimeEnvironment.serviceWorkerEnabled &&
-          ($swNeedRefresh || staleAssetReloadRequired)}
-        onShowLoginDialog={loginDialog.open}
-        onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
-        onOpenPostHistoryDialog={postHistoryDialog.open}
-        onOpenSettingsDialog={handleOpenSettingsFromFooter}
-        onOpenLogoutDialog={logoutDialog.open}
-      />
+      {#if !isHostOwnedComposer}
+        <FooterComponent
+          {isAuthenticated}
+          {isAuthInitialized}
+          {isSwitchingAccount}
+          swNeedRefresh={appRuntimeEnvironment.serviceWorkerEnabled &&
+            ($swNeedRefresh || staleAssetReloadRequired)}
+          onShowLoginDialog={loginDialog.open}
+          onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
+          onOpenPostHistoryDialog={postHistoryDialog.open}
+          onOpenSettingsDialog={handleOpenSettingsFromFooter}
+          onOpenLogoutDialog={logoutDialog.open}
+        />
+      {/if}
       <ConfirmDialog
         open={showStaleAssetReloadPrompt}
         onOpenChange={(open) => (showStaleAssetReloadPrompt = open)}

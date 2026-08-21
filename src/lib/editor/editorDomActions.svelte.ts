@@ -42,11 +42,15 @@ function isPostSending(node: HTMLElement): boolean {
     return postStatus?.sending === true;
 }
 
+function canUploadFiles(node: HTMLElement): boolean {
+    return typeof (node as any).__uploadFiles === "function";
+}
+
 // fileDropAction
 export function fileDropAction(node: HTMLElement) {
     let dragOver = $state(false);
     function handleDragOver(event: DragEvent) {
-        if (isPostSending(node)) {
+        if (isPostSending(node) || !canUploadFiles(node)) {
             event.preventDefault();
             dragOver = false;
             node.classList.remove("drag-over");
@@ -85,7 +89,7 @@ export function fileDropAction(node: HTMLElement) {
         dragOver = false;
         node.classList.remove("drag-over");
 
-        if (isPostSending(node)) {
+        if (isPostSending(node) || !canUploadFiles(node)) {
             event.preventDefault();
             return;
         }
@@ -126,7 +130,7 @@ export function fileDropActionWithDragState(
 ) {
     const action = fileDropAction(node);
     function handleDragOver(event: DragEvent) {
-        if (isPostSending(node)) {
+        if (isPostSending(node) || !canUploadFiles(node)) {
             event.preventDefault();
             params.dragOver(false);
             return;
@@ -148,7 +152,7 @@ export function fileDropActionWithDragState(
     }
     function handleDrop(event: DragEvent) {
         params.dragOver(false);
-        if (isPostSending(node)) {
+        if (isPostSending(node) || !canUploadFiles(node)) {
             event.preventDefault();
         }
     }
@@ -175,6 +179,13 @@ export function pasteAction(node: HTMLElement) {
         }
 
         if (!event.clipboardData) return;
+        if (!canUploadFiles(node)) {
+            const hasMediaFile = Array.from(event.clipboardData.items).some(
+                (item) => item.kind === "file" && item.type.startsWith("image/"),
+            );
+            if (hasMediaFile) event.preventDefault();
+            return;
+        }
         const files: File[] = [];
         for (const item of event.clipboardData.items) {
             if (item.kind === "file" && item.type.startsWith("image/")) {
@@ -263,14 +274,20 @@ export function keydownAction(node: HTMLElement) {
             const rawCurrentEditor = (node as any).__currentEditor;
             const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor as TipTapEditor | undefined;
 
+            const rawHasPostingCapability = (node as any).__hasPostingCapability;
+            const hasPostingCapability = typeof rawHasPostingCapability === 'function'
+                ? rawHasPostingCapability()
+                : rawHasPostingCapability as boolean | undefined;
             const rawHasStoredKey = (node as any).__hasStoredKey;
-            const hasStoredKey = typeof rawHasStoredKey === 'function' ? rawHasStoredKey() : rawHasStoredKey as boolean | undefined;
+            const hasStoredKey = typeof rawHasStoredKey === 'function'
+                ? rawHasStoredKey()
+                : rawHasStoredKey as boolean | undefined;
 
             const rawPostStatus = (node as any).__postStatus;
             const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus as { sending: boolean } | undefined;
 
             const content = currentEditor ? extractContentWithImages(currentEditor) : "";
-            if (!postStatus?.sending && content.trim() && hasStoredKey) {
+            if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
                 (node as any).__submitPost?.();
             }
         }

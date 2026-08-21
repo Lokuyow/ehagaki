@@ -22,6 +22,7 @@ export interface UploadAbortContext {
     devMode: boolean;
     galleryCleanup?: GalleryCleanupContext;
     notifyAbortProgress?: (fileCount: number) => void;
+    deferUploadStateClear?: boolean;
 }
 
 export interface AbortCheckpointParams {
@@ -50,13 +51,14 @@ export function handleAbortedUpload(
     context: UploadAbortContext,
     { placeholderMap, cleanupPlaceholders }: AbortCheckpointParams,
 ): UploadHelperResult {
-    context.updateUploadState(false);
-
     if (cleanupPlaceholders) {
         cleanupUploadPlaceholders(context, placeholderMap);
     }
 
     context.notifyAbortProgress?.(context.fileArray.length);
+    if (!context.deferUploadStateClear) {
+        context.updateUploadState(false);
+    }
 
     return {
         placeholderMap: cleanupPlaceholders ? [] : placeholderMap,
