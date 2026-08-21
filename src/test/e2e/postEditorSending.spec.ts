@@ -75,6 +75,8 @@ test.describe('post editor sending state', () => {
             };
         });
 
+        expect(geometry.wrapper.width).toBeCloseTo(28, 0);
+        expect(geometry.wrapper.height).toBeCloseTo(28, 0);
         expect(geometry.root.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
         expect(geometry.root.height).toBeLessThanOrEqual(geometry.wrapper.height + 0.5);
         expect(geometry.image.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
@@ -92,12 +94,22 @@ test.describe('post editor sending state', () => {
         await expect.poll(() => page.locator('.tiptap-editor').evaluate((element) => document.activeElement === element)).toBe(true);
 
         await editor.pressSequentially('geometry');
-        await expect(wrapper).toHaveCount(0);
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        const afterInput = await page.evaluate(() => ({
+            placeholderVisible: document.querySelector('.tiptap-editor p')?.classList.contains('is-editor-empty') ?? false,
+            avatarVisible: Boolean(document.querySelector('.editor-account-placeholder')),
+        }));
+        expect(afterInput).toEqual({ placeholderVisible: false, avatarVisible: false });
 
         for (let index = 0; index < 'geometry'.length; index += 1) {
             await page.keyboard.press('Backspace');
         }
-        await expect(wrapper).toBeVisible();
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        const afterDelete = await page.evaluate(() => ({
+            placeholderVisible: document.querySelector('.tiptap-editor p')?.classList.contains('is-editor-empty') ?? false,
+            avatarVisible: Boolean(document.querySelector('.editor-account-placeholder')),
+        }));
+        expect(afterDelete).toEqual({ placeholderVisible: true, avatarVisible: true });
 
         await page.goto('post-editor-sending-playwright.html?withFallbackAvatar=1');
         const fallbackWrapper = page.locator('.editor-account-placeholder');
@@ -105,6 +117,8 @@ test.describe('post editor sending state', () => {
         const fallbackGeometry = await fallbackWrapper.locator('.editor-account-placeholder-fallback').boundingBox();
         const wrapperGeometry = await fallbackWrapper.boundingBox();
         if (!fallbackGeometry || !wrapperGeometry) throw new Error('Fallback geometry was not found.');
+        expect(wrapperGeometry.width).toBeCloseTo(28, 0);
+        expect(wrapperGeometry.height).toBeCloseTo(28, 0);
         expect(fallbackGeometry.width).toBeLessThanOrEqual(wrapperGeometry.width + 0.5);
         expect(fallbackGeometry.height).toBeLessThanOrEqual(wrapperGeometry.height + 0.5);
     });

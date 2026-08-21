@@ -119,13 +119,13 @@
   let profileData = $derived(profileDataStore.value);
   let profileLoaded = $derived(profileLoadedStore.value);
   let isLoadingProfile = $derived(isLoadingProfileStore.value);
+  let editorIsEmpty = $state(true);
   let showAccountPlaceholder = $derived(
     hasStoredKey &&
       !isSwitchingAccount &&
       profileLoaded &&
       !isLoadingProfile &&
-      !editorState.content.trim() &&
-      !editorState.hasImage,
+      editorIsEmpty,
   );
   let postContainerEl: HTMLDivElement | null = null;
   let editorContainerEl: HTMLElement | null = null;
@@ -359,9 +359,21 @@
     editor = editorResources.editor;
 
     // エディターの購読
+    let subscribedEditor: TipTapEditor | null = null;
+    const handleEditorTransaction = ({ editor: editorInstance }: { editor: TipTapEditor }) => {
+      editorIsEmpty = editorInstance.isEmpty;
+    };
+
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
+        if (subscribedEditor) {
+          subscribedEditor.off("transaction", handleEditorTransaction);
+        }
+
+        subscribedEditor = editorInstance;
         currentEditor = editorInstance;
+        editorIsEmpty = editorInstance?.isEmpty ?? true;
+        editorInstance?.on("transaction", handleEditorTransaction);
         // ストアにも設定
         currentEditorStore.set(editorInstance);
       },
@@ -388,6 +400,9 @@
         handleImageFullscreenRequest,
       );
       if (editorResources) {
+        if (subscribedEditor) {
+          subscribedEditor.off("transaction", handleEditorTransaction);
+        }
         cleanupEditor({
           unsubscribe: editorResources.unsubscribe,
           componentUnsubscribe: editorSubscriptionUnsubscribe ?? (() => {}),
@@ -901,8 +916,8 @@
     top: 11px;
     left: 10px;
     z-index: 3;
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     opacity: 0.5;
     pointer-events: none;
   }
@@ -929,7 +944,7 @@
 
   .editor-container.account-avatar-placeholder
     :global(p.is-editor-empty:first-child::before) {
-    padding-left: 30px;
+    padding-left: 36px;
   }
 
   .editor-container.sending {
