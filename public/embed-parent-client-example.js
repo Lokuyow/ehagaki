@@ -126,6 +126,7 @@ const urlContextOverrides = {
     replyQuote: false,
     channel: false,
     content: false,
+    settings: false,
 };
 let timelineSubscription = null;
 let composerRequestSequence = 0;
@@ -767,13 +768,6 @@ function updateTimelineSelection() {
 }
 
 function applyComposerContextUpdate(payload) {
-    if (Object.hasOwn(payload, "reply") || Object.hasOwn(payload, "quotes")) {
-        urlContextOverrides.replyQuote = true;
-    }
-    if (Object.hasOwn(payload, "channel")) {
-        urlContextOverrides.channel = true;
-    }
-
     selectedReplyReference = typeof payload.reply === "string"
         ? createReferenceFromQueryValue(payload.reply)
         : null;
@@ -1252,7 +1246,6 @@ function normalizeInitialReplyNotification(value) {
 function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
-        initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
         const hasDefaultSettings = [
             "defaultLocale",
             "defaultTheme",
@@ -1261,22 +1254,25 @@ function syncInitialSettingsControlsFromAppUrl() {
             "defaultReplyNotification",
         ].some((key) => url.searchParams.has(key));
         initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
-        if (hasDefaultSettings) {
-            initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("defaultLocale"));
-        }
-        const initialTheme = url.searchParams.get(hasDefaultSettings ? "defaultTheme" : "embedTheme");
-        if (initialTheme !== null) {
-            initialThemeSelect.value = normalizeInitialTheme(initialTheme);
-        }
+        const queryPrefix = hasDefaultSettings ? "default" : "embed";
+        initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get(`${queryPrefix}Locale`));
+        initialThemeSelect.value = normalizeInitialTheme(url.searchParams.get(`${queryPrefix}Theme`));
         initialHideMascotInput.checked = url.searchParams.get(
-            hasDefaultSettings ? "defaultShowMascot" : "embedShowMascot",
+            `${queryPrefix}ShowMascot`,
         ) === "false";
         initialReplyNotificationSelect.value = normalizeInitialReplyNotification(
-            url.searchParams.get(hasDefaultSettings ? "defaultReplyNotification" : "embedReplyNotification"),
+            url.searchParams.get(`${queryPrefix}ReplyNotification`),
         );
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
     }
+}
+
+function resetUrlContextOverrides() {
+    urlContextOverrides.replyQuote = false;
+    urlContextOverrides.channel = false;
+    urlContextOverrides.content = false;
+    urlContextOverrides.settings = false;
 }
 
 function getTargetOrigin() {
@@ -1307,58 +1303,64 @@ function buildEmbedUrl() {
         url.searchParams.delete("channelAbout");
         url.searchParams.delete("channelPicture");
     }
-    url.searchParams.delete("embedLocale");
-    url.searchParams.delete("embedTheme");
-    url.searchParams.delete("embedShowMascot");
-    url.searchParams.delete("embedShowFlavorText");
-    url.searchParams.delete("embedReplyNotification");
-    url.searchParams.delete("defaultLocale");
-    url.searchParams.delete("defaultTheme");
-    url.searchParams.delete("defaultShowMascot");
-    url.searchParams.delete("defaultShowFlavorText");
-    url.searchParams.delete("defaultReplyNotification");
+    if (urlContextOverrides.settings) {
+        [
+            "embedLocale",
+            "embedTheme",
+            "embedShowMascot",
+            "embedReplyNotification",
+            "defaultLocale",
+            "defaultTheme",
+            "defaultShowMascot",
+            "defaultReplyNotification",
+        ].forEach((key) => url.searchParams.delete(key));
 
-    const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
-    const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
-    const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
-    const initialLocale =
-        normalizeInitialLocale(initialLocaleSelect.value)
-        || (queryPrefix === "default" ? storedLocale : "");
-    const initialTheme =
-        resolveInitialTheme(initialThemeSelect.value)
-        || (queryPrefix === "default" ? storedTheme : "");
+        const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
+        const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
+        const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
+        const initialLocale =
+            normalizeInitialLocale(initialLocaleSelect.value)
+            || (queryPrefix === "default" ? storedLocale : "");
+        const initialTheme =
+            resolveInitialTheme(initialThemeSelect.value)
+            || (queryPrefix === "default" ? storedTheme : "");
 
-    if (initialLocale) {
-        url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
+        if (initialLocale) {
+            url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
+        }
+
+        if (initialTheme) {
+            url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
+        }
+
+        if (initialHideMascotInput.checked) {
+            url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
+        }
+
+        const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
+        if (replyNotification) {
+            url.searchParams.set(`${queryPrefix}ReplyNotification`, replyNotification);
+        }
     }
 
-    if (initialTheme) {
-        url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
+    if (urlContextOverrides.content) {
+        const content = getComposerContentValue();
+        if (content !== null) {
+            url.searchParams.set("content", content);
+        }
     }
 
-    if (initialHideMascotInput.checked) {
-        url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
+    if (urlContextOverrides.replyQuote) {
+        if (selectedReplyReference) {
+            url.searchParams.set("reply", selectedReplyReference.queryValue);
+        }
+
+        selectedQuoteReferences.forEach((reference) => {
+            url.searchParams.append("quote", reference.queryValue);
+        });
     }
 
-    const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
-    if (replyNotification) {
-        url.searchParams.set(`${queryPrefix}ReplyNotification`, replyNotification);
-    }
-
-    const content = getComposerContentValue();
-    if (content !== null) {
-        url.searchParams.set("content", content);
-    }
-
-    if (selectedReplyReference) {
-        url.searchParams.set("reply", selectedReplyReference.queryValue);
-    }
-
-    selectedQuoteReferences.forEach((reference) => {
-        url.searchParams.append("quote", reference.queryValue);
-    });
-
-    if (selectedChannelContext) {
+    if (urlContextOverrides.channel && selectedChannelContext) {
         url.searchParams.set("channel", selectedChannelContext.reference);
         if (Array.isArray(selectedChannelContext.relays) && selectedChannelContext.relays.length > 0) {
             url.searchParams.set("channelRelays", selectedChannelContext.relays.join(","));
@@ -2338,17 +2340,24 @@ syncChannelInputsFromSelection();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
 appUrlInput.addEventListener("input", () => {
+    resetUrlContextOverrides();
     syncInitialSettingsControlsFromAppUrl();
     updateDisplayedEmbedUrl();
 });
 appUrlInput.addEventListener("change", () => {
+    resetUrlContextOverrides();
     syncInitialSettingsControlsFromAppUrl();
     updateDisplayedEmbedUrl();
 });
-initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
+function updateDisplayedEmbedUrlForSettingsChange() {
+    urlContextOverrides.settings = true;
+    updateDisplayedEmbedUrl();
+}
+initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialReplyNotificationSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
 syncRuntimeSettingsButton.addEventListener("click", () => {
     syncRuntimeSettings("手動 settings 同期");
 });
