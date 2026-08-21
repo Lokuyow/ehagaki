@@ -274,14 +274,20 @@ export function keydownAction(node: HTMLElement) {
             const rawCurrentEditor = (node as any).__currentEditor;
             const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor as TipTapEditor | undefined;
 
+            const rawHasPostingCapability = (node as any).__hasPostingCapability;
+            const hasPostingCapability = typeof rawHasPostingCapability === 'function'
+                ? rawHasPostingCapability()
+                : rawHasPostingCapability as boolean | undefined;
             const rawHasStoredKey = (node as any).__hasStoredKey;
-            const hasStoredKey = typeof rawHasStoredKey === 'function' ? rawHasStoredKey() : rawHasStoredKey as boolean | undefined;
+            const hasStoredKey = typeof rawHasStoredKey === 'function'
+                ? rawHasStoredKey()
+                : rawHasStoredKey as boolean | undefined;
 
             const rawPostStatus = (node as any).__postStatus;
             const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus as { sending: boolean } | undefined;
 
             const content = currentEditor ? extractContentWithImages(currentEditor) : "";
-            if (!postStatus?.sending && content.trim() && hasStoredKey) {
+            if (!postStatus?.sending && content.trim() && (hasPostingCapability ?? hasStoredKey)) {
                 (node as any).__submitPost?.();
             }
         }

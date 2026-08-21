@@ -274,8 +274,12 @@ export interface UploadHelperParams {
     uploadCallbacks?: UploadInfoCallbacks | undefined;
     showUploadError: (msg: string, duration?: number) => void;
     updateUploadState: (isUploading: boolean, message?: string) => void;
+    /** Updates only the visible error message, without changing upload ownership. */
+    setUploadErrorMessage?: (message: string) => void;
     devMode: boolean;
     dependencies?: UploadHelperDependencies;
+    /** Optional operation-local abort/ownership predicate. */
+    isUploadAborted?: () => boolean;
     /** Local Host-owned seam: preprocessing remains in eHagaki while transport is supplied by the host. */
     prepareFiles?: (
         files: File[],

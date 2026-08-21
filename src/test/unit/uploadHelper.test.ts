@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
     performFileUpload,
     resolveCurrentUploadDestination,
+    showUploadErrorMessage,
     uploadHelper,
 } from "../../lib/uploadHelper";
 import { generateBlurhashes, insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
@@ -505,7 +506,80 @@ describe("uploadHelper", () => {
         });
     });
 
-    describe("uploadHelper integration", () => {
+describe("uploadHelper integration", () => {
+        it("clears an upload error without changing a later operation's pending state", () => {
+            vi.useFakeTimers();
+            let isUploading = true;
+            let errorMessage = "";
+            const updateUploadState = vi.fn((nextIsUploading: boolean, nextMessage?: string) => {
+                isUploading = nextIsUploading;
+                errorMessage = nextMessage ?? "";
+            });
+            const setUploadErrorMessage = vi.fn((nextMessage: string) => {
+                errorMessage = nextMessage;
+            });
+
+            showUploadErrorMessage("upload failed", 1000, {
+                updateUploadState,
+                setUploadErrorMessage,
+                keepUploading: true,
+            });
+            expect(isUploading).toBe(true);
+            expect(errorMessage).toBe("upload failed");
+
+            // The operation finishes before the error timer expires.
+            isUploading = false;
+            vi.advanceTimersByTime(1000);
+
+            expect(isUploading).toBe(false);
+            expect(errorMessage).toBe("");
+            expect(setUploadErrorMessage).toHaveBeenCalledWith("");
+            vi.useRealTimers();
+        });
+
+        it("leaves self-publish upload pending false after an error timer expires", async () => {
+            vi.useFakeTimers();
+            const file = createTestFile({ name: "error.png", type: "image/png", content: "content" });
+            const state = { isUploading: false, errorMessage: "" };
+            const updateUploadState = vi.fn((isUploading: boolean, message?: string) => {
+                state.isUploading = isUploading;
+                state.errorMessage = message ?? "";
+            });
+            const setUploadErrorMessage = vi.fn((message: string) => {
+                state.errorMessage = message;
+            });
+            const failingManager: FileUploadManagerInterface = {
+                validateImageFile: vi.fn(() => ({ isValid: true })),
+                validateMediaFile: vi.fn(() => ({ isValid: true })),
+                generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                uploadFileWithCallbacks: vi.fn(async () => {
+                    throw new Error("upload failed");
+                }),
+                uploadMultipleFilesWithCallbacks: vi.fn(),
+            };
+
+            await performFileUpload({
+                files: [file],
+                currentEditor,
+                updateUploadState,
+                setUploadErrorMessage,
+                devMode: false,
+                imageOxMap: {},
+                imageXMap: {},
+                dependencies: {
+                    ...mockDependencies,
+                    FileUploadManager: vi.fn(function () { return failingManager; }) as new () => FileUploadManagerInterface,
+                },
+                getUploadFailedText: (key: string) => key,
+            });
+
+            expect(state.isUploading).toBe(false);
+            vi.advanceTimersByTime(5000);
+            expect(state.isUploading).toBe(false);
+            expect(state.errorMessage).toBe("");
+            vi.useRealTimers();
+        });
+
         it("merges store updates with external progress callbacks", async () => {
             const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const updateUploadState = vi.fn();
@@ -558,6 +632,7 @@ describe("uploadHelper", () => {
                     onImageCompressionProgress: externalOnImageCompressionProgress,
                 },
                 updateUploadState,
+                setUploadErrorMessage: vi.fn(),
                 devMode: false,
                 imageOxMap: {},
                 imageXMap: {},
@@ -1211,5 +1286,3 @@ describe("uploadHelper", () => {
         });
     });
 });
-
-

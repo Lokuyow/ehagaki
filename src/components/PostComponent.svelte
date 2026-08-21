@@ -90,7 +90,11 @@
   import type { CustomEmojiItem } from "../lib/customEmoji";
   import { buildHostOwnedComposerOutput, getHostSubmissionEventId } from "../lib/hostOwnedComposer";
   import { createHostOwnedUploadExecutor } from "../lib/hostOwnedUpload";
-  import { uploadHelper, uploadFiles as defaultUploadFiles } from "../lib/uploadHelper";
+  import {
+    uploadHelper,
+    uploadFiles as defaultUploadFiles,
+    showUploadErrorMessage,
+  } from "../lib/uploadHelper";
   import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
   import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
   import {
@@ -103,6 +107,7 @@
   interface Props {
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
+    hasPostingCapability?: boolean;
     isSwitchingAccount?: boolean;
     onPostSuccess?: (result?: PostResult) => void;
     availableComposerHeight?: number;
@@ -116,6 +121,7 @@
   let {
     rxNostr,
     hasStoredKey,
+    hasPostingCapability = hasStoredKey,
     isSwitchingAccount = false,
     onPostSuccess,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
@@ -127,6 +133,7 @@
   }: Props = $props();
   let isHostOwned = $derived(!!hostOwnedConfig);
   let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
+  let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
@@ -278,10 +285,17 @@
     getImageXMap: () => imageXMap,
     getUploadFailedText: (key: string) => $_(key),
     updateUploadState: (isUploading: boolean, message?: string) => {
+      if (isHostOwned && !hostMountActive) return;
       updateEditorUploadState(editorState, isUploading, message);
     },
+    setUploadErrorMessage: (message: string) => {
+      if (isHostOwned && !hostMountActive) return;
+      editorState.uploadErrorMessage = message;
+    },
     uploadFiles: async (params) => {
-      if (postStatus.sending || editorState.isUploading) return null;
+      if (postStatus.sending || editorState.isUploading || (isHostOwned && !hostMountActive)) {
+        return null;
+      }
       if (!isHostOwned) {
         return await defaultUploadFiles(params);
       }
@@ -297,16 +311,31 @@
       try {
         return await uploadHelper({
           ...params,
-          showUploadError: (message) =>
-            updateEditorUploadState(editorState, true, message),
+          showUploadError: (message, duration) => showUploadErrorMessage(message, duration, {
+            updateUploadState: (nextIsUploading, nextMessage) => {
+              if (hostMountActive) {
+                updateEditorUploadState(editorState, nextIsUploading, nextMessage);
+              }
+            },
+            setUploadErrorMessage: (nextMessage) => {
+              if (hostMountActive) editorState.uploadErrorMessage = nextMessage;
+            },
+            keepUploading: true,
+          }),
+          setUploadErrorMessage: (message) => {
+            if (hostMountActive) editorState.uploadErrorMessage = message;
+          },
           devMode: false,
           prepareFiles: executor.prepareFiles,
           uploadPreparedFiles: executor.uploadPreparedFiles,
           fileUploadManager: executor.fileUploadManager,
           deferUploadStateClear: true,
+          isUploadAborted: () => (
+            !hostMountActive || !!hostOwnedConfig.signal.aborted
+          ),
         });
       } finally {
-        updateEditorUploadState(editorState, false);
+        if (hostMountActive) updateEditorUploadState(editorState, false);
       }
     },
   });
@@ -385,7 +414,8 @@
       placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
-      hasStoredKey: hasStoredKey || isHostOwned,
+      hasStoredKey,
+      hasPostingCapability,
       submitPost,
       onCustomEmojiSelect,
       getCustomEmojiItems: isHostOwned
@@ -469,6 +499,8 @@
         editorSubscriptionUnsubscribe = null;
       }
       if (isHostOwned) {
+        hostMountActive = false;
+        updateEditorUploadState(editorState, false, "");
         updatePostStatus({
           sending: false,
           success: false,
@@ -679,7 +711,7 @@
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
-      (isHostOwned || !!postManager);
+      (hasPostingCapability || !!postManager);
   }
 
   function createHostOwnedImageImetaMap(editorInstance: TipTapEditor): Record<string, any> {

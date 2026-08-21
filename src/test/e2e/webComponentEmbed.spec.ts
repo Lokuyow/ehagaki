@@ -1527,7 +1527,7 @@ test("hands Host-owned output to the host without relay startup and retains its 
             previewCount: shadow.querySelectorAll(".reply-quote-preview").length,
             loadingCount: shadow.querySelectorAll(".loading-status").length,
             hasFileInput: !!shadow.querySelector('input[type="file"]'),
-            imageButtonDisabled: shadow.querySelector<HTMLButtonElement>("button.image-button")?.disabled,
+            hasImageButton: !!shadow.querySelector("button.image-button"),
             hasLoginButton: !!shadow.querySelector("button.login-btn"),
             webSocketCalls: state.webSocketCalls,
         };
@@ -1537,7 +1537,7 @@ test("hands Host-owned output to the host without relay startup and retains its 
     expect(initial.previewCount).toBe(2);
     expect(initial.loadingCount).toBe(0);
     expect(initial.hasFileInput).toBe(false);
-    expect(initial.imageButtonDisabled).toBe(true);
+    expect(initial.hasImageButton).toBe(false);
     expect(initial.hasLoginButton).toBe(false);
     expect(initial.webSocketCalls).toBe(0);
 
@@ -1610,10 +1610,247 @@ test("hands Host-owned output to the host without relay startup and retains its 
         reply,
         quotes: [quote],
     });
-    expect(result.successEvent?.detail).toMatchObject({ eventId: "b".repeat(64) });
+    expect(result.successEvent?.detail).toMatchObject({
+        eventId: "b".repeat(64),
+        replyToEventId: replyEventId,
+        quotedEventIds: [quoteEventId],
+    });
     expect(result.webSocketCalls).toBe(0);
     expect(result.reconnectedHasFileInput).toBe(false);
     expect(result.reconnectedHasLoginButton).toBe(false);
+});
+
+test("runs Host-owned media preprocessing and transport without self-upload fallback", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const state = {
+            uploads: [] as Array<{ name: string; metadata: any }> ,
+            outputs: [] as any[],
+        };
+        (window as any).__hostOwnedMediaState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+            configureHostOwned(options: unknown): void;
+        };
+        composer.configureHostOwned({
+            uploadMedia: async (file: File, metadata: unknown) => {
+                state.uploads.push({ name: file.name, metadata });
+                return { url: "https://host.example/media/processed.png" };
+            },
+            submit: async (output: unknown) => {
+                state.outputs.push(output);
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({
+            imageCompressionLevel: "none",
+            videoCompressionLevel: "none",
+            mediaFreePlacement: true,
+        });
+    });
+
+    const fileInput = page.locator("ehagaki-composer").locator('input[type="file"]');
+    await expect(fileInput).toHaveCount(1);
+    await fileInput.setInputFiles({
+        name: "host-input.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            "base64",
+        ),
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__hostOwnedMediaState.uploads.length)).toBe(1);
+    await expect(page.locator("ehagaki-composer .tiptap-editor img[src='https://host.example/media/processed.png']")).toHaveCount(1);
+
+    const editor = page.locator("ehagaki-composer .tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("host media body");
+    await page.locator("ehagaki-composer button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__hostOwnedMediaState.outputs.length)).toBe(1);
+
+    const result = await page.evaluate(() => (window as any).__hostOwnedMediaState);
+    expect(result.uploads[0].name).toBe("host-input.png");
+    expect(result.uploads[0].metadata).toMatchObject({
+        originalName: "host-input.png",
+        originalType: "image/png",
+        processedType: "image/png",
+    });
+    expect(result.outputs[0].content).toContain("host media body");
+    expect(result.outputs[0].content).toContain("https://host.example/media/processed.png");
+});
+
+test("does not let a disconnected Host-owned upload settle into a later mount", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        type HostComposer = HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+            configureHostOwned(options: unknown): void;
+        };
+        let resolveOld: (() => void) | undefined;
+        const oldSettled = new Promise<void>((resolve) => { resolveOld = resolve; });
+        let resolveCurrent: (() => void) | undefined;
+        const currentSettled = new Promise<void>((resolve) => { resolveCurrent = resolve; });
+        const state = { uploads: 0, submits: 0, errors: 0 };
+        (window as any).__hostOwnedStaleState = state;
+
+        const create = () => {
+            const composer = document.createElement("ehagaki-composer") as HostComposer;
+            composer.configureHostOwned({
+                uploadMedia: async () => {
+                    state.uploads += 1;
+                    if (state.uploads === 1) {
+                        await oldSettled;
+                        return { url: "https://host.example/stale.png" };
+                    }
+                    await currentSettled;
+                    return { url: "https://host.example/current.png" };
+                },
+                submit: async () => { state.submits += 1; },
+            });
+            document.body.append(composer);
+            return composer;
+        };
+
+        const first = create();
+        await first.whenReady();
+        await first.setSettings({ imageCompressionLevel: "none", mediaFreePlacement: true });
+
+        (window as any).__hostOwnedStaleComposer = first;
+        (window as any).__hostOwnedStaleControls = {
+            releaseOld: () => resolveOld?.(),
+            releaseCurrent: () => resolveCurrent?.(),
+        };
+    });
+
+    const png = {
+        name: "stale.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            "base64",
+        ),
+    };
+    await page.locator("ehagaki-composer").nth(0).locator('input[type="file"]').setInputFiles(png);
+    await expect.poll(() => page.evaluate(() => (window as any).__hostOwnedStaleState.uploads)).toBe(1);
+
+    // Reconnect the same configured element, then start a second upload while
+    // the first handler is still ignoring its aborted signal.
+    await page.locator("ehagaki-composer").nth(0).evaluate((element) => element.remove());
+    await page.evaluate(async () => {
+        const composer = (window as any).__hostOwnedStaleComposer as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ imageCompressionLevel: "none", mediaFreePlacement: true });
+    });
+    await page.locator("ehagaki-composer").nth(0).locator('input[type="file"]').setInputFiles({ ...png, name: "current.png" });
+    await expect.poll(() => page.evaluate(() => (window as any).__hostOwnedStaleState.uploads)).toBe(2);
+
+    await page.evaluate(() => (window as any).__hostOwnedStaleControls.releaseOld());
+    await expect.poll(() => page.locator("ehagaki-composer").locator("button.post-button").isDisabled()).toBe(true);
+    await page.evaluate(() => (window as any).__hostOwnedStaleControls.releaseCurrent());
+    await expect(page.locator("ehagaki-composer .tiptap-editor img[src='https://host.example/current.png']")).toHaveCount(1);
+    const editor = page.locator("ehagaki-composer .tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("current upload body");
+    await page.locator("ehagaki-composer button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__hostOwnedStaleState.submits)).toBe(1);
+
+    const result = await page.evaluate(() => (window as any).__hostOwnedStaleState);
+
+    expect(result.uploads).toBe(2);
+    expect(result.submits).toBe(1);
+    expect(result.errors).toBe(0);
+    await expect(page.locator("ehagaki-composer img[src='https://host.example/stale.png']")).toHaveCount(0);
+    await expect(page.locator("ehagaki-composer .upload-error")).toHaveCount(0);
+});
+
+test("keeps Host-owned capability separate from a previous authenticated Web Component instance", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const previousPubkey = "3".repeat(64);
+    await page.evaluate(async ({ previousPubkey, relayOrigin, componentStoragePrefix }) => {
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [url, protocols] = args as [string | URL, string | string[] | undefined];
+                if (/^wss?:\/\//.test(String(url))) {
+                    return Reflect.construct(
+                        target,
+                        [relayOrigin, protocols].filter((value) => value !== undefined),
+                        newTarget,
+                    );
+                }
+                return Reflect.construct(target, args, newTarget);
+            },
+        });
+        window.nostr = {
+            getPublicKey: async () => previousPubkey,
+            signEvent: async (event: any) => ({ ...event, id: "4".repeat(64), sig: "5".repeat(64) }),
+        };
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([{ pubkeyHex: previousPubkey, type: "nip07", addedAt: 1 }]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, previousPubkey);
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+
+        const self = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        document.body.append(self);
+        await self.whenReady();
+        (window as any).__previousAuthenticatedComposer = self;
+    }, { previousPubkey, relayOrigin, componentStoragePrefix });
+
+    const selfComposer = page.locator("ehagaki-composer");
+    await expect(selfComposer.locator(".post-history-btn")).toHaveCount(1);
+    const relayCountAfterSelf = relayConnectionCount;
+
+    await selfComposer.evaluate((element) => element.remove());
+    await page.evaluate(async () => {
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setCustomEmojis(catalog: unknown[]): Promise<void>;
+            configureHostOwned(options: unknown): void;
+        };
+        composer.configureHostOwned({ submit: async () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setCustomEmojis([{ shortcode: "hostwave", url: "https://host.example/hostwave.webp" }]);
+    });
+
+    const hostComposer = page.locator("ehagaki-composer");
+    await expect(hostComposer.locator(".editor-account-placeholder")).toHaveCount(0);
+    await expect(hostComposer.locator(".post-history-btn")).toHaveCount(0);
+    await expect(hostComposer.locator("button.login-btn")).toHaveCount(0);
+    await expect.poll(() => relayConnectionCount).toBe(relayCountAfterSelf);
+
+    await hostComposer.locator("button.custom-emoji-button").click();
+    await expect(hostComposer.locator(".custom-emoji-picker .emoji-item img")).toHaveCount(1);
+    await hostComposer.locator(".custom-emoji-picker .emoji-item").click();
+    await page.waitForTimeout(50);
+
+    const storedUsage = await page.evaluate(async (previousPubkey) => {
+        const request = indexedDB.open("eHagakiDB");
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const transaction = database.transaction("customEmojiUsage", "readonly");
+        const records = await new Promise<any[]>((resolve, reject) => {
+            const getAll = transaction.objectStore("customEmojiUsage").getAll();
+            getAll.onsuccess = () => resolve(getAll.result);
+            getAll.onerror = () => reject(getAll.error);
+        });
+        database.close();
+        return records.filter((record) => record.pubkeyHex === previousPubkey);
+    }, previousPubkey);
+    expect(storedUsage).toEqual([]);
 });
 
 test("loads the FFmpeg class worker, core, and WASM from a cross-origin Web Component build", async ({ page }) => {

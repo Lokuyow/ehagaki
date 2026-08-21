@@ -57,6 +57,7 @@ describe('createPostUploadHandlers', () => {
             getImageXMap: () => ({}),
             getUploadFailedText: (key: string) => key,
             updateUploadState: vi.fn(),
+            setUploadErrorMessage: vi.fn(),
             uploadFiles,
         });
 
@@ -71,6 +72,7 @@ describe('createPostUploadHandlers', () => {
         let imageOxMap: Record<string, string> = { a: 'ox-a' };
         let imageXMap: Record<string, string> = { a: 'x-a' };
         const updateUploadState = vi.fn();
+        const setUploadErrorMessage = vi.fn();
         const uploadFiles = vi.fn(async (_params: unknown) => undefined);
         const handlers = createPostUploadHandlers({
             getCurrentEditor: () => editor,
@@ -79,6 +81,7 @@ describe('createPostUploadHandlers', () => {
             getImageXMap: () => imageXMap,
             getUploadFailedText: (key: string) => `translated:${key}`,
             updateUploadState,
+            setUploadErrorMessage,
             uploadFiles,
         });
 
@@ -93,6 +96,7 @@ describe('createPostUploadHandlers', () => {
             currentEditor: editor,
             fileInput,
             updateUploadState,
+            setUploadErrorMessage,
             imageOxMap: { b: 'ox-b' },
             imageXMap: { b: 'x-b' },
             getUploadFailedText: expect.any(Function),
@@ -117,6 +121,7 @@ describe('createPostUploadHandlers', () => {
             getImageXMap: () => ({}),
             getUploadFailedText: (key: string) => key,
             updateUploadState: vi.fn(),
+            setUploadErrorMessage: vi.fn(),
             uploadFiles,
         });
         const files = [new File(['content'], 'test.png', { type: 'image/png' })] as unknown as FileList;

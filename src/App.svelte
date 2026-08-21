@@ -446,9 +446,11 @@
     publicKeyState.setNsec(secretKey);
   });
 
+  // Host publication capability is independent from eHagaki account auth.
   let isAuthenticated = $derived(
-    isHostOwnedComposer || authState.value?.isAuthenticated === true,
+    !isHostOwnedComposer && authState.value?.isAuthenticated === true,
   );
+  let hasPostingCapability = $derived(isHostOwnedComposer || isAuthenticated);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
@@ -1905,6 +1907,7 @@
   }
 
   function recordCustomEmojiUse(emoji: CustomEmojiSelection): void {
+    if (isHostOwnedComposer) return;
     const pubkey = authState.value?.pubkey;
     if (!pubkey) return;
 
@@ -1999,6 +2002,7 @@
                     bind:this={postComponentRef}
                     {rxNostr}
                     hasStoredKey={isAuthenticated}
+                    hasPostingCapability={hasPostingCapability}
                     {isSwitchingAccount}
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
@@ -2018,7 +2022,7 @@
                   >
                     <CustomEmojiPickerComponent
                       {rxNostr}
-                      pubkey={authState.value.pubkey}
+                      pubkey={isHostOwnedComposer ? null : authState.value.pubkey}
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
@@ -2065,7 +2069,7 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
-        hasPostingCapability={isHostOwnedComposer || isAuthenticated}
+        hasPostingCapability={hasPostingCapability}
         mediaEnabled={!isHostOwnedComposer || !!hostOwnedConfig?.uploadMedia}
         customEmojiEnabled={isHostOwnedComposer || isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}

@@ -117,6 +117,7 @@ export interface InitializeEditorParams {
     editorContainerEl: HTMLElement | null;
     currentEditor: TipTapEditor | null;
     hasStoredKey: boolean;
+    hasPostingCapability?: boolean;
     submitPost: () => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
