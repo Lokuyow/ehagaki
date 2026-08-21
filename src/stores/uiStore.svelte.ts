@@ -63,8 +63,11 @@ function isVirtualKeyboardOverlayActive(): boolean {
     return isNonPwaAndroidChrome() && virtualKeyboard?.overlaysContent === true;
 }
 
-function getFooterReservedHeight(isKeyboardOpen: boolean): number {
-    return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
+function getFooterReservedHeight(
+    isKeyboardOpen: boolean,
+    hasFooter: boolean,
+): number {
+    return isKeyboardOpen || !hasFooter ? 0 : FOOTER_HEIGHT;
 }
 
 function getContainerKeyboardInset(
@@ -121,6 +124,7 @@ function syncLayoutCssVariables(
         getAppRuntimeEnvironment().layoutMode === "container";
     const footerReservedHeight = getFooterReservedHeight(
         isComposerKeyboardActive,
+        layoutCapabilities.hasFooter,
     );
     const usesKeyboardOverlay = viewportMetrics.usesKeyboardOverlay === true;
     const shouldUseKeyboardViewportHeight =
@@ -142,9 +146,10 @@ function syncLayoutCssVariables(
             : shouldUseKeyboardViewportHeight || shouldUseKeyboardOverlay,
     );
 
-    const keyboardButtonBarBottom = `${isComposerKeyboardActive ? effectiveKeyboardInset : FOOTER_HEIGHT}px`;
-    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : FOOTER_HEIGHT) + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
-    const footerBottom = isComposerKeyboardActive
+    const closedLayoutBottom = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
+    const keyboardButtonBarBottom = `${isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom}px`;
+    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom) + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
+    const footerBottom = !layoutCapabilities.hasFooter || isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
 
@@ -203,7 +208,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--main-content-top-spacing",
-        `${MAIN_CONTENT_TOP_SPACING}px`,
+        `${layoutCapabilities.hasHeader ? MAIN_CONTENT_TOP_SPACING : 0}px`,
     );
     setRootStyleProperty(
         "--composer-bottom-reserved-height",
@@ -281,6 +286,11 @@ export const reasonInputVisibleStore = {
 };
 
 // --- bottomPosition ストア ---
+const layoutCapabilities = $state({
+    hasHeader: true,
+    hasFooter: true,
+});
+
 let bottomPosition = $state(FOOTER_HEIGHT);
 
 // --- keyboardHeight ストア ---
@@ -327,7 +337,14 @@ interface VirtualKeyboardInfo {
  * コンポーネントの$effect内で呼び出す
  * @returns クリーンアップ関数
  */
-export function setupViewportListener(): (() => void) | undefined {
+export function setupViewportListener(
+    capabilities: Partial<typeof layoutCapabilities> = {},
+): (() => void) | undefined {
+    layoutCapabilities.hasHeader = capabilities.hasHeader ?? true;
+    layoutCapabilities.hasFooter = capabilities.hasFooter ?? true;
+    bottomPosition = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
+    syncLayoutCssVariables(false);
+
     if (typeof window === "undefined" || !window.visualViewport) {
         return undefined;
     }
