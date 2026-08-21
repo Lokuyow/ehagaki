@@ -1,6 +1,6 @@
 ---
 name: ehagaki-browser-debug
-description: "eHagakiのブラウザ固有または実ブラウザ統合の不具合を、再現・計測・根因特定・最小修正・レビューするときに使用する。対象はモバイルIME、viewport、focus、Dialog/Popover、Tiptap/ProseMirror、touch・clipboard、iframe、IndexedDB/PWA/service worker、media描画、Playwright調査。ブラウザ固有性のない通常のUI、CSS、文言変更には使用しない。"
+description: "eHagakiのブラウザ固有または実ブラウザ統合の不具合を、再現・計測・根因特定・最小修正・レビューするときに使用する。対象はモバイルIME、viewport、focus、Dialog/Popover、Tiptap/ProseMirror、touch・clipboard、iframe、Direct Web Component、IndexedDB/PWA/service worker、media描画、Playwright調査。ブラウザ固有性のない通常のUI、CSS、文言変更には使用しない。"
 ---
 
 # eHagaki Browser Debug
@@ -15,12 +15,21 @@ eHagakiの現在のcheckoutを根拠に、ブラウザ制約とアプリケー�
 4. `playwright.config.ts`、対象projectの実際の`browserName`、device descriptor、viewport、baseURL、webServer、testMatch、fixture/harnessを確認する。project名だけからbrowser engineを推測しない。
 5. ファイル名、関数名、browser support、library APIを記憶から決めず、現在のコード、ローカル型、既存利用箇所で確認する。
 
+## 実行環境と埋め込み境界
+
+- standalone/PWA、iframe、Direct Web Componentを別の実行環境として扱う。document、Window、origin、service worker、history、外部入力の差を最初に固定する。
+- iframeは別documentと`postMessage`/origin境界を持つ。Direct Web Componentはhost pageと同じWindow realmで動くため、host document、host element、Shadow DOM内部を分けて観測する。
+- viewport基準のレイアウトとcontainer基準のレイアウトを混同しない。host elementの幅だけでhost documentのviewport挙動を推測せず、両方のDOMRectとcomputed styleを比較する。
+- Shadow DOMはCSSの境界であって、positioningがhost-relativeになる証拠ではない。Shadow DOM内のmount target、overlay、Dialog/Popover、fixed/absolute要素を実際のgeometryで確認する。
+- browser realm、geometry、lifecycle、WebSocket interceptionなどの観測はこのSkillで扱う。NIP、event、tag、signer、relayのprotocol semanticsは[ehagaki-nostr](../ehagaki-nostr/SKILL.md)へ分離し、同じ説明を重複させない。
+- standaloneの360 CSS px minimumと、iframe/Web Componentで360px未満も対応対象とするembed方針を区別する。public sampleの代表幅確認を、360px未満の既存E2E確認とは扱わない。
+
 ## 再現条件を固定する
 
 次を区別して記録する。
 
 - OS、ブラウザ名とバージョン
-- 通常タブまたはPWA、iframe内または単独起動
+- standalone/PWA、iframe、Direct Web Componentのどれで実行したか
 - portraitまたはlandscape、layout/visual viewportサイズ
 - タッチまたはマウス、ソフトキーボードまたは物理キーボード
 - 対象inputまたはeditor、再現操作

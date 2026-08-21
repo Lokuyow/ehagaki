@@ -23,8 +23,9 @@ eHagakiの既存境界と実装済みライブラリAPIを基準に、Nostr関�
 3. discovery、descriptor生成、fetch、cache、renderingを必要以上に結合しない。
 4. NIPの仕様とeHagaki固有の仕様を分けて記述する。UI表示からプロトコル仕様を推測しない。
 5. `nostr-tools`と`rx-nostr`の責務を混同しない。
-6. 一時的な互換処理やフォールバックは、仕様、対応ブラウザ、再現ログ、既存互換契約のいずれかで必要性を示せる場合だけ追加する。
-7. 曖昧さがevent semanticsや互換性を変える場合は、推測せず`needs confirmation`として扱う。
+6. iframeまたはDirect Web Componentを含む場合も、event、tag、signer、relay、subscriptionのprotocol semanticsはこのSkillで扱い、browser realm、postMessage/WebSocket interception、Shadow DOM、geometry、mount/disconnect lifecycleの観測は[ehagaki-browser-debug](../ehagaki-browser-debug/SKILL.md)へ分離する。
+7. 一時的な互換処理やフォールバックは、仕様、対応ブラウザ、再現ログ、既存互換契約のいずれかで必要性を示せる場合だけ追加する。
+8. 曖昧さがevent semanticsや互換性を変える場合は、推測せず`needs confirmation`として扱う。
 
 ## 取得と購読を検証する
 
