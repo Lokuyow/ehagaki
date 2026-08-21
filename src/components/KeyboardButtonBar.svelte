@@ -23,6 +23,9 @@
         onPostButtonTap?: () => void;
         customEmojiPickerOpen?: boolean;
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
+        hasPostingCapability?: boolean;
+        mediaEnabled?: boolean;
+        customEmojiEnabled?: boolean;
     }
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
@@ -31,6 +34,9 @@
         onPostButtonTap,
         customEmojiPickerOpen = false,
         onCustomEmojiPickerOpenChange,
+        hasPostingCapability = false,
+        mediaEnabled = true,
+        customEmojiEnabled = true,
     }: Props = $props();
 
     // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
@@ -97,7 +103,7 @@
             !canPost ||
             postStatus.sending ||
             isUploading ||
-            !hasStoredKey ||
+            !(hasStoredKey || hasPostingCapability) ||
             !!postStatus.completed
         );
     }
@@ -225,7 +231,8 @@
                             variant="footer"
                             contentLayout="icon"
                             className="image-button"
-                            disabled={!hasStoredKey ||
+                            disabled={!mediaEnabled ||
+                                !(hasStoredKey || hasPostingCapability) ||
                                 postStatus.sending ||
                                 isUploading}
                             onClick={(e) => {
@@ -252,7 +259,7 @@
                 contentLayout="icon"
                 className="custom-emoji-button"
                 selected={customEmojiPickerOpen}
-                disabled={!hasStoredKey || postStatus.sending}
+                disabled={!customEmojiEnabled || postStatus.sending}
                 onClick={() => {
                     setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                 }}
@@ -318,7 +325,7 @@
                             disabled={!canPost ||
                                 postStatus.sending ||
                                 isUploading ||
-                                !hasStoredKey ||
+                                !(hasStoredKey || hasPostingCapability) ||
                                 postStatus.completed}
                             onClick={(e) => {
                                 if (typeof tooltipOnclick === "function") {

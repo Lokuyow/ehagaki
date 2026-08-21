@@ -84,6 +84,21 @@
   import ProfileAvatar from "./ProfileAvatar.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
+  import type {
+    EHagakiHostOwnedComposerOptions,
+  } from "../web-component/types";
+  import type { CustomEmojiItem } from "../lib/customEmoji";
+  import { buildHostOwnedComposerOutput, getHostSubmissionEventId } from "../lib/hostOwnedComposer";
+  import { createHostOwnedUploadExecutor } from "../lib/hostOwnedUpload";
+  import { uploadHelper, uploadFiles as defaultUploadFiles } from "../lib/uploadHelper";
+  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
+  import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
+  import {
+    contentWarningStore,
+    contentWarningReasonStore,
+    getHashtagDataSnapshot,
+    hashtagPinStore,
+  } from "../stores/tagsStore.svelte";
 
   interface Props {
     rxNostr?: RxNostr;
@@ -94,6 +109,8 @@
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     notificationPort?: AppPostNotificationPort;
+    hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
+    hostCustomEmojiItems?: CustomEmojiItem[];
   }
 
   let {
@@ -105,7 +122,11 @@
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
     notificationPort,
+    hostOwnedConfig,
+    hostCustomEmojiItems = [],
   }: Props = $props();
+  let isHostOwned = $derived(!!hostOwnedConfig);
+  let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
@@ -259,6 +280,35 @@
     updateUploadState: (isUploading: boolean, message?: string) => {
       updateEditorUploadState(editorState, isUploading, message);
     },
+    uploadFiles: async (params) => {
+      if (postStatus.sending || editorState.isUploading) return null;
+      if (!isHostOwned) {
+        return await defaultUploadFiles(params);
+      }
+      if (!hostOwnedConfig?.uploadMedia) {
+        updateEditorUploadState(editorState, false, $_("postComponent.media_not_supported"));
+        return null;
+      }
+      updateEditorUploadState(editorState, true, "");
+      const executor = createHostOwnedUploadExecutor({
+        uploadMedia: hostOwnedConfig.uploadMedia,
+        signal: hostOwnedConfig.signal,
+      });
+      try {
+        return await uploadHelper({
+          ...params,
+          showUploadError: (message) =>
+            updateEditorUploadState(editorState, true, message),
+          devMode: false,
+          prepareFiles: executor.prepareFiles,
+          uploadPreparedFiles: executor.uploadPreparedFiles,
+          fileUploadManager: executor.fileUploadManager,
+          deferUploadStateClear: true,
+        });
+      } finally {
+        updateEditorUploadState(editorState, false);
+      }
+    },
   });
   const postStatusHandlers = createPostStatusHandlers({
     updatePostStatus,
@@ -335,12 +385,17 @@
       placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
-      hasStoredKey,
+      hasStoredKey: hasStoredKey || isHostOwned,
       submitPost,
       onCustomEmojiSelect,
-      uploadFiles: (files: File[] | FileList) => {
-        void uploadHandlers.performUpload(files);
-      },
+      getCustomEmojiItems: isHostOwned
+        ? () => hostCustomEmojiItems
+        : undefined,
+      uploadFiles: mediaEnabled
+        ? (files: File[] | FileList) => {
+          void uploadHandlers.performUpload(files);
+        }
+        : undefined,
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
         onImageFullscreenRequest: (
@@ -412,6 +467,15 @@
           submitPost,
         });
         editorSubscriptionUnsubscribe = null;
+      }
+      if (isHostOwned) {
+        updatePostStatus({
+          sending: false,
+          success: false,
+          error: false,
+          message: "",
+          completed: false,
+        });
       }
     };
   });
@@ -609,8 +673,96 @@
     currentEditor.commands.keyboardShortcut("Enter");
   }
 
+  function canStartSubmit(): boolean {
+    return !!currentEditor &&
+      editorState.canPost &&
+      !postStatus.sending &&
+      !editorState.isUploading &&
+      !postStatus.completed &&
+      (isHostOwned || !!postManager);
+  }
+
+  function createHostOwnedImageImetaMap(editorInstance: TipTapEditor): Record<string, any> {
+    if (!mediaFreePlacement) {
+      return mediaGalleryStore.getImageBlurhashMap();
+    }
+    const attributes: Record<string, { dim?: string; alt?: string; size?: number }> = {};
+    editorInstance.state.doc.descendants((node: any) => {
+      if (node.type?.name !== "image" || !node.attrs?.src || node.attrs?.isPlaceholder) return;
+      const size = Number(node.attrs.size);
+      attributes[node.attrs.src] = {
+        dim: node.attrs.dim ?? undefined,
+        alt: node.attrs.alt ?? undefined,
+        ...(Number.isFinite(size) && size > 0 ? { size } : {}),
+      };
+    });
+    return Object.fromEntries(
+      Object.entries(extractImageBlurhashMap(editorInstance)).map(([url, blurhash]) => [
+        url,
+        {
+          m: getMimeTypeFromUrl(url),
+          blurhash,
+          ...attributes[url],
+          ox: imageOxMap[url],
+          x: imageXMap[url],
+        },
+      ]),
+    );
+  }
+
+  async function submitHostOwned(editorInstance: TipTapEditor): Promise<void> {
+    const config = hostOwnedConfig;
+    if (!config || !canStartSubmit()) return;
+
+    // Capture every mutable input before entering the host handler. The handler
+    // is then free to await without observing later editor/context mutations.
+    const extraction = extractPostContentWithEmojiTags(editorInstance);
+    const content = !mediaFreePlacement && mediaGalleryStore.getContentUrls().length > 0
+      ? [extraction.content.trim(), ...mediaGalleryStore.getContentUrls()]
+        .filter(Boolean)
+        .join("\n")
+      : extraction.content;
+    const hashtagSnapshot = getHashtagDataSnapshot();
+    const snapshot = {
+      content,
+      hashtagTags: hashtagSnapshot.tags.map((tag) => [...tag]),
+      hashtags: [...hashtagSnapshot.hashtags],
+      contentWarningEnabled: contentWarningStore.value,
+      contentWarningReason: contentWarningReasonStore.value,
+      emojiTags: extraction.emojiTags.map((tag) => [...tag]),
+      imageImetaMap: createHostOwnedImageImetaMap(editorInstance),
+      replyQuote: $state.snapshot(replyQuoteState.value),
+      channel: $state.snapshot(effectiveChannelContextState.value),
+    };
+
+    postStatusHandlers.markSending();
+    try {
+      const output = await buildHostOwnedComposerOutput(snapshot);
+      const result = await config.submit(output, { signal: config.signal });
+      if (config.signal.aborted) return;
+      const eventId = getHostSubmissionEventId(result);
+      notificationPort?.notifyPostSuccess({
+        ...(eventId ? { eventId } : {}),
+        ...(output.context.reply ? { replyToEventId: output.context.reply.eventId } : {}),
+        ...(output.context.quotes.length
+          ? { quotedEventIds: output.context.quotes.map((quote) => quote.eventId) }
+          : {}),
+      });
+      postStatusHandlers.markSuccess({ success: true, ...(eventId ? { eventId } : {}) });
+    } catch {
+      if (config.signal.aborted) return;
+      notificationPort?.notifyPostError("post_error");
+      postStatusHandlers.markFailure("postComponent.post_error");
+    }
+  }
+
   export async function submitPost() {
-    if (!postManager || !currentEditor) return;
+    if (!currentEditor || !canStartSubmit()) return;
+    if (isHostOwned) {
+      await submitHostOwned(currentEditor);
+      return;
+    }
+    if (!postManager) return;
     const postPayload = postManager.preparePostPayload(currentEditor);
     if (containsSecretKey(postPayload.content)) {
       postComponentUIStore.showSecretKeyDialog(
@@ -635,12 +787,31 @@
   }
 
   export function clearContentAfterSuccess() {
-    if (postManager && currentEditor)
+    if (postManager && currentEditor) {
       postManager.clearContentAfterSuccess(currentEditor);
+      return;
+    }
+    if (currentEditor) {
+      const pinnedHashtags = hashtagPinStore.value
+        ? [...getHashtagDataSnapshot().hashtags]
+        : [];
+      currentEditor.chain().clearContent().run();
+      contentWarningStore.reset();
+      contentWarningReasonStore.reset();
+      mediaGalleryStore.clearAll();
+      clearReplyQuote();
+      if (pinnedHashtags.length > 0) {
+        currentEditor.commands.insertContent(
+          ` ${pinnedHashtags.map((hashtag) => `#${hashtag}`).join(" ")}`,
+        );
+        currentEditor.commands.focus("start");
+      }
+    }
   }
 
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
+    if (!canStartSubmit()) return;
     const pendingPost = postComponentUIStore.getPendingPost();
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     postComponentUIStore.hideSecretKeyDialog();
@@ -701,6 +872,7 @@
   });
 
   export function openFileDialog() {
+    if (!mediaEnabled || postStatus.sending || editorState.isUploading) return;
     fileInput?.click();
   }
 
@@ -812,14 +984,16 @@
     <MediaGallery />
   {/if}
 
-  <input
-    type="file"
-    accept="image/*,video/*"
-    multiple
-    onchange={handleFileSelect}
-    bind:this={fileInput}
-    style="display: none;"
-  />
+  {#if mediaEnabled}
+    <input
+      type="file"
+      accept="image/*,video/*"
+      multiple
+      onchange={handleFileSelect}
+      bind:this={fileInput}
+      style="display: none;"
+    />
+  {/if}
 
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>

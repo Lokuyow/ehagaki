@@ -56,11 +56,12 @@ import { getAppStorage } from "./appStorage";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
+    FileUploadManagerConstructor = dependencies.FileUploadManager,
 ): FileUploadManagerInterface {
     const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
 
     if (
-        dependencies.FileUploadManager ===
+        FileUploadManagerConstructor ===
         (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])
     ) {
         const mimeSupport = new MimeTypeSupport(
@@ -96,7 +97,7 @@ function createFileUploadManager(
         );
     }
 
-    return new dependencies.FileUploadManager();
+    return new FileUploadManagerConstructor();
 }
 
 function getCurrentUploadDestinationIdentity(): {
@@ -299,10 +300,20 @@ export async function uploadHelper({
     updateUploadState,
     devMode,
     dependencies = createDefaultDependencies(),
+    prepareFiles,
+    uploadPreparedFiles,
+    fileUploadManager: fileUploadManagerOverride,
+    deferUploadStateClear = false,
 }: UploadHelperParams): Promise<UploadHelperResult> {
     const fileArray = Array.from(files);
+    const FileUploadManagerConstructor = fileUploadManagerOverride
+        ?? dependencies.FileUploadManager;
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
-    const uploadDestination = await dependencies.resolveUploadDestination?.();
+    // Host-owned transport deliberately has no eHagaki upload-destination,
+    // authentication, or relay resolution path.
+    const uploadDestination = uploadPreparedFiles
+        ? undefined
+        : await dependencies.resolveUploadDestination?.();
     const endpoint = getDestinationUploadEndpoint(uploadDestination) || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
@@ -321,7 +332,9 @@ export async function uploadHelper({
     // ファイル処理
     let fileProcessingResults;
     try {
-        fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
+        fileProcessingResults = prepareFiles
+            ? await prepareFiles(fileArray, dependencies)
+            : await processFilesForUpload(fileArray, dependencies);
     } catch (error) {
         // 中止された場合
         if (error instanceof Error && error.message === 'Upload aborted by user') {
@@ -330,6 +343,7 @@ export async function uploadHelper({
                     fileArray,
                     currentEditor,
                     updateUploadState,
+                    deferUploadStateClear,
                     devMode,
                     notifyAbortProgress: (fileCount) => {
                         notifyUploadProgress(
@@ -363,6 +377,7 @@ export async function uploadHelper({
         devMode,
         galleryCleanup,
         isUploadAborted: dependencies.isUploadAborted,
+        deferUploadStateClear,
         notifyAbortProgress: (fileCount) => {
             notifyUploadProgress(
                 managedUploadCallbacks,
@@ -388,7 +403,7 @@ export async function uploadHelper({
             fileProcessingResults,
             showUploadError,
             dependencies.imageSizeMapStore,
-            dependencies.FileUploadManager,
+            FileUploadManagerConstructor,
             devMode
         )
         : insertPlaceholdersIntoEditor(
@@ -397,7 +412,7 @@ export async function uploadHelper({
             currentEditor as TipTapEditor | null,
             showUploadError,
             dependencies.imageSizeMapStore,
-            dependencies.FileUploadManager,
+            FileUploadManagerConstructor,
             devMode
         );
 
@@ -428,7 +443,7 @@ export async function uploadHelper({
     // Blurhash生成
     await generateBlurhashes(
         placeholderMap,
-        dependencies.FileUploadManager,
+        FileUploadManagerConstructor,
         devMode,
         dependencies.isUploadAborted,
     );
@@ -445,25 +460,31 @@ export async function uploadHelper({
     // アップロード処理
     const validFiles = placeholderMap.map((entry: PlaceholderEntry) => entry.file);
     let results: FileUploadResponse[] | null = null;
-    const fileUploadManager = createFileUploadManager(dependencies);
+    const fileUploadManager = createFileUploadManager(
+        dependencies,
+        FileUploadManagerConstructor,
+    );
 
     try {
         const metadataList = prepareMetadataList(validFiles);
-        results = await uploadValidFiles(
-            fileUploadManager,
-            validFiles,
-            endpoint,
-            managedUploadCallbacks,
-            metadataList,
-            devMode,
-            uploadDestination,
-        );
+        results = uploadPreparedFiles
+            ? await uploadPreparedFiles(validFiles, placeholderMap)
+            : await uploadValidFiles(
+                fileUploadManager,
+                validFiles,
+                endpoint,
+                managedUploadCallbacks,
+                metadataList,
+                devMode,
+                uploadDestination,
+            );
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         showUploadError(errorMsg, 5000);
         results = null;
     } finally {
-        updateUploadState(false);
+        // The caller owns the operation lifetime. Keeping this state true
+        // through placeholder replacement prevents submit from racing media.
     }
 
     // 中止された場合は後続処理をスキップ
@@ -520,6 +541,10 @@ export async function uploadHelper({
 
     if (fileInput) fileInput.value = "";
 
+    if (!deferUploadStateClear) {
+        updateUploadState(false);
+    }
+
     return {
         placeholderMap,
         results,
@@ -534,6 +559,7 @@ export async function uploadHelper({
 
 export interface ShowUploadErrorMessageParams {
     updateUploadState: (isUploading: boolean, message?: string) => void;
+    keepUploading?: boolean;
 }
 
 export function showUploadErrorMessage(
@@ -541,8 +567,9 @@ export function showUploadErrorMessage(
     duration = 3000,
     params: ShowUploadErrorMessageParams
 ) {
-    params.updateUploadState(false, message);
-    setTimeout(() => params.updateUploadState(false, ""), duration);
+    const isUploading = params.keepUploading ?? false;
+    params.updateUploadState(isUploading, message);
+    setTimeout(() => params.updateUploadState(isUploading, ""), duration);
 }
 
 export interface PerformFileUploadParams {
@@ -574,17 +601,27 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
 
     if (!files || files.length === 0) return null;
 
-    const result: UploadHelperResult = await uploadHelper({
-        files,
-        currentEditor,
-        fileInput,
-        uploadCallbacks,
-        showUploadError: (msg: string, duration?: number) =>
-            showUploadErrorMessage(msg, duration, { updateUploadState }),
-        updateUploadState,
-        devMode,
-        dependencies,
-    });
+    updateUploadState(true, "");
+    let result: UploadHelperResult;
+    try {
+        result = await uploadHelper({
+            files,
+            currentEditor,
+            fileInput,
+            uploadCallbacks,
+            showUploadError: (msg: string, duration?: number) =>
+                showUploadErrorMessage(msg, duration, {
+                    updateUploadState,
+                    keepUploading: true,
+                }),
+            updateUploadState,
+            devMode,
+            dependencies,
+            deferUploadStateClear: true,
+        });
+    } finally {
+        updateUploadState(false);
+    }
 
     Object.assign(imageOxMap, result.imageOxMap);
     Object.assign(imageXMap, result.imageXMap);

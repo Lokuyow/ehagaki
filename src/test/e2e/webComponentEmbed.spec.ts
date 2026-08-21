@@ -1438,6 +1438,184 @@ test("queues setContext before ready and applies content and reply atomically", 
     expect(result.contentAfterInvalid).not.toContain("must not be applied");
 });
 
+test("hands Host-owned output to the host without relay startup and retains its immutable configuration on reconnect", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const replyEventId = "1".repeat(64);
+    const quoteEventId = "2".repeat(64);
+    const reply = nip19.noteEncode(replyEventId);
+    const quote = nip19.noteEncode(quoteEventId);
+
+    const initial = await page.evaluate(async ({ reply, quote }) => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        type HostComposer = HTMLElement & {
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+            setCustomEmojis(catalog: unknown[]): Promise<void>;
+            configureHostOwned(options: {
+                submit: (output: unknown, options: { signal: AbortSignal }) => unknown;
+                uploadMedia?: unknown;
+            }): void;
+        };
+        const state = {
+            calls: [] as Array<{ output: any; frozen: boolean }>,
+            events: [] as Array<{ type: string; detail: any }>,
+            webSocketCalls: 0,
+            release: undefined as (() => void) | undefined,
+        };
+        (window as any).__hostOwnedTestState = state;
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                state.webSocketCalls += 1;
+                return Reflect.construct(target, args, newTarget);
+            },
+        });
+
+        const malformed = document.createElement("ehagaki-composer") as HostComposer;
+        const invalidBeforeConnect = (() => {
+            try {
+                malformed.configureHostOwned({} as any);
+                return "resolved";
+            } catch (error) {
+                return error instanceof Error ? error.name : String(error);
+            }
+        })();
+        malformed.configureHostOwned({ submit: () => undefined });
+
+        const composer = document.createElement("ehagaki-composer") as HostComposer;
+        composer.configureHostOwned({
+            async submit(output) {
+                state.calls.push({
+                    output: JSON.parse(JSON.stringify(output)),
+                    frozen: Object.isFrozen(output)
+                        && Object.isFrozen((output as any).tags)
+                        && Object.isFrozen((output as any).context)
+                        && Object.isFrozen((output as any).context.reply?.relayHints),
+                });
+                await new Promise<void>((resolve) => {
+                    state.release = resolve;
+                });
+                return { eventId: "b".repeat(64) };
+            },
+        });
+        const catalogReady = composer.setCustomEmojis([
+            { shortcode: "wave", url: "https://example.invalid/emoji/wave.webp" },
+        ]);
+        for (const type of [
+            "ehagaki-post-success",
+            "ehagaki-post-error",
+            "ehagaki-composer-context-updated",
+        ]) {
+            composer.addEventListener(type, (event) => {
+                state.events.push({ type, detail: (event as CustomEvent).detail });
+            });
+        }
+        composer.style.width = "360px";
+        composer.style.height = "600px";
+        document.body.append(composer);
+        await composer.whenReady();
+        await catalogReady;
+        await composer.setContext({
+            content: "Host-owned body #HostOwned",
+            reply,
+            quotes: [quote],
+        });
+
+        const shadow = composer.shadowRoot!;
+        return {
+            invalidBeforeConnect,
+            previewCount: shadow.querySelectorAll(".reply-quote-preview").length,
+            loadingCount: shadow.querySelectorAll(".loading-status").length,
+            hasFileInput: !!shadow.querySelector('input[type="file"]'),
+            imageButtonDisabled: shadow.querySelector<HTMLButtonElement>("button.image-button")?.disabled,
+            hasLoginButton: !!shadow.querySelector("button.login-btn"),
+            webSocketCalls: state.webSocketCalls,
+        };
+    }, { reply, quote });
+
+    expect(initial.invalidBeforeConnect).toBe("TypeError");
+    expect(initial.previewCount).toBe(2);
+    expect(initial.loadingCount).toBe(0);
+    expect(initial.hasFileInput).toBe(false);
+    expect(initial.imageButtonDisabled).toBe(true);
+    expect(initial.hasLoginButton).toBe(false);
+    expect(initial.webSocketCalls).toBe(0);
+
+    const postButton = page.locator("ehagaki-composer").locator("button.post-button");
+    await expect(postButton).toBeEnabled();
+    await postButton.click();
+    await page.waitForFunction(() => (window as any).__hostOwnedTestState.calls.length === 1);
+
+    const pending = await page.evaluate(async () => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            setContext(value: unknown): Promise<void>;
+            configureHostOwned(options: unknown): void;
+        };
+        const setContextResult = await composer.setContext({ content: "must stay unchanged" }).then(
+            () => "resolved",
+            (error: Error) => error.message,
+        );
+        const reconfigureResult = (() => {
+            try {
+                composer.configureHostOwned({ submit: () => undefined });
+                return "resolved";
+            } catch (error) {
+                return error instanceof Error ? error.name : String(error);
+            }
+        })();
+        return { setContextResult, reconfigureResult };
+    });
+    expect(pending.setContextResult).toBe("submission_in_progress");
+    expect(pending.reconfigureResult).toBe("InvalidStateError");
+
+    await page.evaluate(() => (window as any).__hostOwnedTestState.release?.());
+    await page.waitForFunction(() =>
+        (window as any).__hostOwnedTestState.events.some((event: { type: string }) =>
+            event.type === "ehagaki-post-success"),
+    );
+
+    const result = await page.evaluate(async () => {
+        const state = (window as any).__hostOwnedTestState;
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.remove();
+        document.body.append(composer);
+        await composer.whenReady();
+        const shadow = composer.shadowRoot!;
+        return {
+            call: state.calls[0],
+            contextEvents: state.events.filter((event: { type: string }) =>
+                event.type === "ehagaki-composer-context-updated"),
+            successEvent: state.events.find((event: { type: string }) =>
+                event.type === "ehagaki-post-success"),
+            webSocketCalls: state.webSocketCalls,
+            reconnectedHasFileInput: !!shadow.querySelector('input[type="file"]'),
+            reconnectedHasLoginButton: !!shadow.querySelector("button.login-btn"),
+        };
+    });
+
+    expect(result.call.frozen).toBe(true);
+    expect(result.call.output).toMatchObject({
+        content: "Host-owned body #HostOwned",
+        context: {
+            reply: { eventId: replyEventId },
+            quotes: [{ eventId: quoteEventId }],
+        },
+    });
+    expect(result.call.output.tags.every((tag: string[]) =>
+        !["e", "p", "q", "a", "k", "client"].includes(tag[0]))).toBe(true);
+    expect(result.contextEvents.find((event: { detail: { reply?: string } }) =>
+        event.detail.reply === reply)?.detail).toMatchObject({
+        reply,
+        quotes: [quote],
+    });
+    expect(result.successEvent?.detail).toMatchObject({ eventId: "b".repeat(64) });
+    expect(result.webSocketCalls).toBe(0);
+    expect(result.reconnectedHasFileInput).toBe(false);
+    expect(result.reconnectedHasLoginButton).toBe(false);
+});
+
 test("loads the FFmpeg class worker, core, and WASM from a cross-origin Web Component build", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async (ffmpegModulePath) => {

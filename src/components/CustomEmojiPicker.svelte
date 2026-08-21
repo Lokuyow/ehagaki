@@ -46,6 +46,8 @@
         onMoveCaretRight?: () => void;
         onDeleteBackward?: () => void;
         onInsertLineBreak?: () => void;
+        /** Per Host-owned element catalog. Undefined retains account-backed behavior. */
+        hostCustomEmojiItems?: CustomEmojiItem[];
     }
 
     let {
@@ -59,6 +61,7 @@
         onMoveCaretRight,
         onDeleteBackward,
         onInsertLineBreak,
+        hostCustomEmojiItems,
     }: Props = $props();
     let search = $state("");
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
@@ -80,8 +83,8 @@
     let previousPubkey: string | null | undefined = undefined;
     const requestedImageCacheUrls = new Set<string>();
 
-    let items = $derived(customEmojiStore.items);
-    let loading = $derived(customEmojiStore.loading);
+    let items = $derived(hostCustomEmojiItems ?? customEmojiStore.items);
+    let loading = $derived(hostCustomEmojiItems === undefined && customEmojiStore.loading);
     let filteredItems = $derived.by(() => {
         const query = search.trim().toLowerCase();
         if (!query) return items;
@@ -161,6 +164,7 @@
     }
 
     function cacheLoadedEmojiImage(url: string): void {
+        if (hostCustomEmojiItems !== undefined) return;
         if (requestedImageCacheUrls.has(url)) return;
 
         requestedImageCacheUrls.add(url);
@@ -277,6 +281,13 @@
         const currentOpen = open;
         const currentRxNostr = rxNostr;
         const currentPubkey = pubkey;
+
+        if (hostCustomEmojiItems !== undefined) {
+            lastLoadRxNostr = undefined;
+            lastLoadPubkey = undefined;
+            if (currentOpen) schedulePickerLayoutUpdate();
+            return;
+        }
 
         if (!currentOpen) {
             lastLoadRxNostr = undefined;

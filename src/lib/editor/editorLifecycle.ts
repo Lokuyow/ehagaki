@@ -20,6 +20,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         hasStoredKey,
         submitPost,
         onCustomEmojiSelect,
+        getCustomEmojiItems,
         uploadFiles,
         eventCallbacks
     } = params;
@@ -32,6 +33,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         placeholderText,
         onSubmitPost: submitPost,
         onCustomEmojiSelect,
+        getCustomEmojiItems,
         onCreate: (editorInstance: TipTapEditor | null) => {
             currentEditorStore.set(editorInstance);
         }

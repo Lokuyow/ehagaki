@@ -605,6 +605,40 @@ describe("uploadHelper", () => {
             expect(updateUploadState).toHaveBeenCalledWith(false);
         });
 
+        it("uses a Host-provided prepared transport without resolving an eHagaki upload destination", async () => {
+            const file = createTestFile({ name: "host.png", type: "image/png", content: "content" });
+            const resolveUploadDestination = vi.fn(async () => {
+                throw new Error("must not resolve a Host-owned destination");
+            });
+            const prepareFiles = vi.fn(async (files: File[]) =>
+                files.map((preparedFile, index) => ({ file: preparedFile, index })),
+            );
+            const uploadPreparedFiles = vi.fn(async (files: File[]) =>
+                files.map((preparedFile) => ({
+                    success: true,
+                    url: `https://host.example/${preparedFile.name}`,
+                })),
+            );
+
+            const result = await uploadHelper({
+                files: [file],
+                currentEditor,
+                showUploadError: vi.fn(),
+                updateUploadState: vi.fn(),
+                devMode: false,
+                dependencies: { ...mockDependencies, resolveUploadDestination },
+                prepareFiles,
+                uploadPreparedFiles,
+            });
+
+            expect(result.results).toEqual([
+                expect.objectContaining({ success: true, url: "https://host.example/host.png" }),
+            ]);
+            expect(prepareFiles).toHaveBeenCalledWith([file], expect.any(Object));
+            expect(uploadPreparedFiles).toHaveBeenCalledWith([file], expect.any(Array));
+            expect(resolveUploadDestination).not.toHaveBeenCalled();
+        });
+
         it("forwards a resolved blossom destination instead of falling back to the legacy upload endpoint", async () => {
             const file = createTestFile({ name: "test.png", type: "image/png", content: "content" });
             const showUploadError = vi.fn();
@@ -1177,6 +1211,5 @@ describe("uploadHelper", () => {
         });
     });
 });
-
 
 

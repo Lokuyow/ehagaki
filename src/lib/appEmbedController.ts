@@ -113,6 +113,7 @@ export interface AppEmbedRuntimeStateGetters {
     getChannelContextState(): ChannelContextState | null;
     getChannelContextProvenance(): ChannelContextProvenance | null;
     getRuntimeSnapshot(): AppEmbedRuntimeSnapshot;
+    isSubmissionInProgress?(): boolean;
 }
 
 export interface AppEmbedStoragePort {
@@ -315,6 +316,9 @@ export function createAppEmbedController(
 
     return {
         async applyComposerContext(payload: unknown): Promise<void> {
+            if (deps.runtime.isSubmissionInProgress?.()) {
+                throw new Error("submission_in_progress");
+            }
             const backgroundTasks = applyRemoteComposerSetContext(payload);
             state.lastNotifiedComposerContextSignature = buildComposerContextSignature(
                 buildCurrentComposerContextPayload(),

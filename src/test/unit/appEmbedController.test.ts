@@ -120,6 +120,31 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifySettingsApplied).not.toHaveBeenCalled();
     });
 
+    it('direct setContext を送信中に拒否して既存contextを変更しない', async () => {
+        const composerInput = {
+            resetContent: vi.fn(),
+            insertText: vi.fn(),
+        };
+        const { controller, sharedContent, composerContextApply } = createController({
+            composerInput: { get: vi.fn(() => composerInput) },
+            runtime: {
+                isBootstrappingApp: vi.fn(() => false),
+                hasPendingParentAuth: vi.fn(() => false),
+                getReplyQuoteState: vi.fn(createReplyQuoteState),
+                getChannelContextState: vi.fn(createChannelContextState),
+                getChannelContextProvenance: vi.fn(() => null),
+                getRuntimeSnapshot: vi.fn(createRuntimeSnapshot),
+                isSubmissionInProgress: vi.fn(() => true),
+            },
+        });
+
+        await expect(controller.applyComposerContext({ content: 'blocked' }))
+            .rejects.toThrow('submission_in_progress');
+        expect(composerInput.insertText).not.toHaveBeenCalled();
+        expect(sharedContent.updateUrlQueryContentStore).not.toHaveBeenCalled();
+        expect(composerContextApply.applyReplyQuoteSelection).not.toHaveBeenCalled();
+    });
+
     it('bootstrapping 中の composer.setContext を保留し、flush で適用する', async () => {
         const { controller, composerInput, parentFrame, setBootstrappingApp } = createController();
         setBootstrappingApp(true);

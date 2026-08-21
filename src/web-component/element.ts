@@ -10,9 +10,11 @@ import appCss from "../app.css?inline";
 import photoSwipeCss from "photoswipe/style.css?inline";
 import {
     EHAGAKI_COMPOSER_API_VERSION,
+    type EHagakiCustomEmojiCatalogItem,
     type EHagakiComposerContext,
     type EHagakiComposerInitializationErrorDetail,
     type EHagakiComposerSettings,
+    type EHagakiHostOwnedComposerOptions,
 } from "./types";
 import { createWebComponentNotificationPort } from "./notificationPort";
 import { applyWebComponentIconAssetUrls } from "./iconAssets";
@@ -22,6 +24,7 @@ type AppInstance = {
     setEmbedSettings(
         payload: EmbedSettingsSetPayload,
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
+    setHostCustomEmojis(catalog: EHagakiCustomEmojiCatalogItem[]): Promise<void>;
 };
 
 let activeInstance: EHagakiComposerElement | null = null;
@@ -34,6 +37,58 @@ function createError(code: EHagakiComposerInitializationErrorDetail["code"], mes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHttpUrl(value: unknown): value is string {
+    if (typeof value !== "string") return false;
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
+function validateHostOwnedOptions(
+    value: EHagakiHostOwnedComposerOptions,
+): EHagakiHostOwnedComposerOptions {
+    if (!isRecord(value) || typeof value.submit !== "function") {
+        throw new TypeError("Host-owned Composer requires a submit handler.");
+    }
+    if (value.uploadMedia !== undefined && typeof value.uploadMedia !== "function") {
+        throw new TypeError("uploadMedia must be a function when provided.");
+    }
+    return {
+        submit: value.submit,
+        ...(value.uploadMedia ? { uploadMedia: value.uploadMedia } : {}),
+    };
+}
+
+function validateCustomEmojiCatalog(
+    catalog: readonly EHagakiCustomEmojiCatalogItem[],
+): EHagakiCustomEmojiCatalogItem[] {
+    if (!Array.isArray(catalog)) {
+        throw new TypeError("Custom emoji catalog must be an array.");
+    }
+    const seen = new Set<string>();
+    const next: EHagakiCustomEmojiCatalogItem[] = [];
+    for (const item of catalog) {
+        if (!isRecord(item) || typeof item.shortcode !== "string" || !isHttpUrl(item.url)) {
+            throw new TypeError("Custom emoji catalog contains an invalid item.");
+        }
+        const shortcode = item.shortcode.replace(/^:+|:+$/g, "").trim();
+        if (!/^[\p{L}\p{N}_+-]{1,64}$/u.test(shortcode)) {
+            throw new TypeError("Custom emoji catalog contains an invalid shortcode.");
+        }
+        const setAddress = typeof item.setAddress === "string" && item.setAddress.trim()
+            ? item.setAddress.trim()
+            : null;
+        const key = `${shortcode.toLowerCase()}\u0000${item.url}\u0000${setAddress ?? ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ shortcode, url: item.url, ...(setAddress ? { setAddress } : {}) });
+    }
+    return next;
 }
 
 function validateSettings(value: EHagakiComposerSettings): EmbedSettingsSetPayload {
@@ -135,6 +190,10 @@ export class EHagakiComposerElement extends HTMLElement {
     #operationQueue: Promise<void> = Promise.resolve();
     #connectionGeneration = 0;
     #assetStyleObserver: MutationObserver | null = null;
+    #hasEverConnected = false;
+    #hostOwnedOptions: EHagakiHostOwnedComposerOptions | null = null;
+    #hostCustomEmojiCatalog: EHagakiCustomEmojiCatalogItem[] = [];
+    #hostOperationAbortController: AbortController | null = null;
 
     get assetBase(): string | null {
         return this.getAttribute("asset-base");
@@ -154,6 +213,7 @@ export class EHagakiComposerElement extends HTMLElement {
     }
 
     connectedCallback(): void {
+        this.#hasEverConnected = true;
         if (this.#mountPromise) return;
         if (activeInstance && activeInstance !== this) {
             const error = createError(
@@ -174,6 +234,8 @@ export class EHagakiComposerElement extends HTMLElement {
 
     disconnectedCallback(): void {
         this.#connectionGeneration += 1;
+        this.#hostOperationAbortController?.abort();
+        this.#hostOperationAbortController = null;
         this.#assetStyleObserver?.disconnect();
         this.#assetStyleObserver = null;
         if (activeInstance === this) activeInstance = null;
@@ -204,6 +266,37 @@ export class EHagakiComposerElement extends HTMLElement {
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
         return this.enqueue(async () =>
             this.requireApp().setEmbedSettings(validateSettings(settings)));
+    }
+
+    /**
+     * Selects Host-owned publication exactly once before this element's first
+     * connection. Reconnection intentionally reuses this immutable choice.
+     */
+    configureHostOwned(options: EHagakiHostOwnedComposerOptions): void {
+        if (this.#hasEverConnected || this.#hostOwnedOptions) {
+            throw new DOMException(
+                "Host-owned Composer configuration is immutable after it is set or connected.",
+                "InvalidStateError",
+            );
+        }
+        // Validate before committing so a malformed pre-connection call does
+        // not consume the one permitted configuration attempt.
+        const validated = validateHostOwnedOptions(options);
+        this.#hostOwnedOptions = validated;
+    }
+
+    setCustomEmojis(catalog: readonly EHagakiCustomEmojiCatalogItem[]): Promise<void> {
+        if (!this.#hostOwnedOptions) {
+            return Promise.reject(new DOMException(
+                "Custom emoji catalogs are available only in Host-owned mode.",
+                "InvalidStateError",
+            ));
+        }
+        const validated = validateCustomEmojiCatalog(catalog);
+        this.#hostCustomEmojiCatalog = validated;
+        return this.enqueue(async () => {
+            await this.requireApp().setHostCustomEmojis(validated.map((item) => ({ ...item })));
+        });
     }
 
     dispatchSafeEvent(type: string, detail: Record<string, unknown>): boolean {
@@ -268,6 +361,9 @@ export class EHagakiComposerElement extends HTMLElement {
 
             const { default: App } = await import("../App.svelte");
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
+            this.#hostOperationAbortController = this.#hostOwnedOptions
+                ? new AbortController()
+                : null;
             this.#mountedApp = mount(App, {
                 target: mountTarget,
                 props: {
@@ -278,6 +374,15 @@ export class EHagakiComposerElement extends HTMLElement {
                         this.#readyResolve?.();
                         this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
                     },
+                    ...(this.#hostOwnedOptions
+                        ? {
+                            hostOwnedConfig: {
+                                ...this.#hostOwnedOptions,
+                                customEmojis: this.#hostCustomEmojiCatalog.map((item) => ({ ...item })),
+                                signal: this.#hostOperationAbortController!.signal,
+                            },
+                        }
+                        : {}),
                 },
             });
             applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);

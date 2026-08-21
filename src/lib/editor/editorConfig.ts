@@ -13,6 +13,7 @@ import { CustomEmoji } from './customEmojiExtension';
 import UniqueID from './uniqueIdExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, CustomEmojiDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion, ToolbarCaretExtension } from '.';
 import type { CustomEmojiSelection } from '../customEmojiUsage';
+import type { CustomEmojiItem } from '../customEmoji';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -130,6 +131,7 @@ export interface EditorConfigOptions {
     placeholderText: string;
     onSubmitPost: () => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
+    getCustomEmojiItems?: () => CustomEmojiItem[];
     onUpdate?: () => void;
     onCreate?: (editor: Editor) => void;
     onDestroy?: () => void;
@@ -139,7 +141,7 @@ export interface EditorConfigOptions {
  * Tiptap v3のエディターストアを作成
  */
 export function createEditorStore(options: EditorConfigOptions) {
-    const { placeholderText, onSubmitPost, onCustomEmojiSelect, onUpdate, onCreate, onDestroy } = options;
+    const { placeholderText, onSubmitPost, onCustomEmojiSelect, getCustomEmojiItems, onUpdate, onCreate, onDestroy } = options;
     const placeholderState: PlaceholderState = { text: placeholderText };
 
     const editorStore = createEditor({
@@ -279,9 +281,12 @@ export function createEditorStore(options: EditorConfigOptions) {
             ContentTrackingExtension,
             HashtagSuggestion,
             Video,
-            CustomEmoji,
+            CustomEmoji.configure({
+                ...(getCustomEmojiItems ? { getItems: getCustomEmojiItems } : {}),
+            }),
             CustomEmojiSuggestion.configure({
                 onSelectEmoji: onCustomEmojiSelect,
+                ...(getCustomEmojiItems ? { getItems: getCustomEmojiItems } : {}),
             }),
             ToolbarCaretExtension,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）

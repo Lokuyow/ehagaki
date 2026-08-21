@@ -292,6 +292,24 @@ export function setReplyQuoteError(target: ReplyQuoteUpdateTarget, error: string
     if (matched) notifyReplyQuoteChanged();
 }
 
+/**
+ * Host-owned Composer has no relay-backed hydration source. Preserve the
+ * selected reference while making the preview a stable reference-only value.
+ */
+export function settleReplyQuoteReferencesWithoutHydration(
+    targets: ReplyQuoteHydrationTarget[],
+): void {
+    let changed = false;
+    for (const target of targets) {
+        changed = updateMatchingReferences(target, (reference) => {
+            reference.referencedEvent = null;
+            reference.loading = false;
+            reference.error = null;
+        }) || changed;
+    }
+    if (changed) notifyReplyQuoteChanged();
+}
+
 export function updateAuthorProfile(
     target: ReplyQuoteUpdateTarget,
     pubkey: string,
