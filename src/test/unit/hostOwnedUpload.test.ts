@@ -39,6 +39,7 @@ describe("Host-owned media handoff", () => {
         }), { signal: controller.signal });
         expect(result).toMatchObject({
             success: true,
+            hostOwnedMedia: true,
             url: "https://media.example/abcdef",
             nip94: {
                 m: "image/webp",

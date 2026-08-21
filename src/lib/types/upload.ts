@@ -42,6 +42,8 @@ export interface FileValidationResult {
 
 export interface FileUploadResponse {
     success: boolean;
+    /** Internal provenance marker for results produced by Host-owned uploadMedia. */
+    hostOwnedMedia?: boolean;
     url?: string;
     error?: string;
     errorCode?: UploadErrorCode;

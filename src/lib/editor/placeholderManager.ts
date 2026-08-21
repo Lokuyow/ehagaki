@@ -142,7 +142,7 @@ function resolveImageReplacementMetadata(
 } {
     const { mFromServer, altFromServer, serverBlurhash, oxFromServer, xFromServer, dimFromServer, sizeFromServer } = extractNip94Metadata(result.nip94 || {});
     const dimensions = resolveImageDimensions(result, dimFromServer, matched);
-    const isHostOwned = result.uploadProtocol === 'custom-http';
+    const isHostOwned = result.hostOwnedMedia === true;
 
     return {
         mimeType: isHostOwned ? (mFromServer ?? matched.file.type) : undefined,
@@ -549,7 +549,7 @@ export async function replacePlaceholdersWithResults(
                         currentEditor,
                         (node: any) => node.type?.name === 'video' && node.attrs?.src === matched.placeholderId,
                         (node: any, pos: number) => {
-                            const hostMetadata = result.uploadProtocol === 'custom-http'
+                            const hostMetadata = result.hostOwnedMedia === true
                                 ? extractNip94Metadata(result.nip94 || {})
                                 : null;
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
@@ -563,7 +563,7 @@ export async function replacePlaceholdersWithResults(
                                 ...(hostMetadata?.sizeFromServer ? { size: hostMetadata.sizeFromServer } : {}),
                                 ...(hostMetadata?.oxFromServer ? { ox: hostMetadata.oxFromServer } : {}),
                                 ...(hostMetadata?.xFromServer ? { x: hostMetadata.xFromServer } : {}),
-                                ...(result.uploadProtocol === 'custom-http' ? { uploadProtocol: result.uploadProtocol } : {}),
+                                ...(result.hostOwnedMedia === true ? { uploadProtocol: result.uploadProtocol } : {}),
                             });
                             currentEditor!.view.dispatch(tr);
                         },
@@ -695,7 +695,7 @@ export async function replacePlaceholdersInGallery(
             },
             createMediaReplacementSuccessHandler({
                 onVideoSuccess: ({ url, matched, result }) => {
-                    const hostMetadata = result.uploadProtocol === 'custom-http'
+                    const hostMetadata = result.hostOwnedMedia === true
                         ? extractNip94Metadata(result.nip94 || {})
                         : null;
                     mediaGalleryStore.updateItem(matched.placeholderId, {
@@ -708,7 +708,7 @@ export async function replacePlaceholdersInGallery(
                         ...(hostMetadata?.sizeFromServer ? { size: parseImageSize(hostMetadata.sizeFromServer) } : {}),
                         ...(hostMetadata?.oxFromServer ? { ox: hostMetadata.oxFromServer } : {}),
                         ...(hostMetadata?.xFromServer ? { x: hostMetadata.xFromServer } : {}),
-                        ...(result.uploadProtocol === 'custom-http' ? { uploadProtocol: result.uploadProtocol } : {}),
+                        ...(result.hostOwnedMedia === true ? { uploadProtocol: result.uploadProtocol } : {}),
                     });
                 },
                 onImageSuccess: async ({ url, matched, imageMetadata }) => {

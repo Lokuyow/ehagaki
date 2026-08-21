@@ -213,6 +213,7 @@ export function createHostOwnedUploadExecutor(params: {
                     const imeta = sanitizeImeta(response.imeta);
                     results.push({
                         success: true,
+                        hostOwnedMedia: true,
                         url: response.url,
                         nip94: {
                             ...imeta,
