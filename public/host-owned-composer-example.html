@@ -32,6 +32,7 @@
       async function create(mediaEnabled) {
         composer?.remove();
         composer = document.createElement('ehagaki-composer');
+        composer.assetBase = new URL('./web-component/', location.href).href;
         composer.configureHostOwned({
           async submit(output, { signal }) {
             write('submit output:', output);
