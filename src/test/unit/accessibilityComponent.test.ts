@@ -68,8 +68,8 @@ import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import SvelteVideoNode from '../../components/SvelteVideoNode.svelte';
 import ProfileComponent from '../../components/ProfileComponent.svelte';
 import { authState } from '../../stores/authStore.svelte';
-import { currentEditorStore, editorState, resetPostStatus, updatePostStatus } from '../../stores/editorStore.svelte';
-import { profileDataStore } from '../../stores/profileStore.svelte';
+import { currentEditorStore, editorState, resetEditorState, resetPostStatus, updatePostStatus } from '../../stores/editorStore.svelte';
+import { isLoadingProfileStore, profileDataStore, profileLoadedStore } from '../../stores/profileStore.svelte';
 import { handleImageInteraction, requestNodeSelection } from '../../lib/utils/mediaNodeUtils';
 
 function createImageNode(attrs: Record<string, unknown> = {}) {
@@ -124,6 +124,9 @@ describe('accessibility component tests', () => {
             npub: 'npub1testprofile',
             nprofile: 'nprofile1testprofile',
         };
+        (profileLoadedStore as any).value = false;
+        (isLoadingProfileStore as any).value = false;
+        resetEditorState();
     });
 
     it('PostComponent exposes localized editor aria-label in Japanese and English', async () => {
@@ -138,6 +141,94 @@ describe('accessibility component tests', () => {
         await waitLocale();
 
         expect(screen.getByRole('textbox', { name: 'Post editor' })).toBeTruthy();
+    });
+
+    it('shows the active account avatar only while the editor is empty', async () => {
+        (profileDataStore as any).value = {
+            name: 'current-name',
+            displayName: 'Current display',
+            picture: 'https://example.com/current.png',
+            npub: 'npub1testprofile',
+            nprofile: 'nprofile1testprofile',
+        };
+        (profileLoadedStore as any).value = true;
+
+        const { container } = render(PostComponent, { hasStoredKey: true });
+        const editor = await waitFor(() => {
+            const instance = currentEditorStore.value;
+            if (!instance) throw new Error('Editor was not initialized');
+            return instance;
+        });
+        const avatarPlaceholder = container.querySelector('.editor-account-placeholder');
+
+        expect(avatarPlaceholder).toBeTruthy();
+        expect(avatarPlaceholder?.querySelector('img')?.getAttribute('src')).toBe(
+            'https://example.com/current.png',
+        );
+        expect(container.querySelector('.tiptap-editor p')?.getAttribute('data-placeholder')).toBe(
+            'いまどうしてる？',
+        );
+
+        editor.commands.insertContent('本文');
+        await waitFor(() => {
+            expect(container.querySelector('.editor-account-placeholder')).toBeNull();
+        });
+        expect(JSON.stringify(editor.getJSON())).not.toContain('current.png');
+
+        editor.commands.clearContent();
+        await waitFor(() => {
+            expect(container.querySelector('.editor-account-placeholder')).toBeTruthy();
+        });
+    });
+
+    it('does not show the avatar when unauthenticated or while switching accounts', async () => {
+        (profileDataStore as any).value = {
+            name: 'current-name',
+            displayName: 'Current display',
+            picture: 'https://example.com/current.png',
+            npub: 'npub1testprofile',
+            nprofile: 'nprofile1testprofile',
+        };
+        (profileLoadedStore as any).value = true;
+
+        const { container, rerender } = render(PostComponent, { hasStoredKey: false });
+        await waitFor(() => expect(currentEditorStore.value).toBeTruthy());
+        expect(container.querySelector('.editor-account-placeholder')).toBeNull();
+
+        await rerender({ hasStoredKey: true, isSwitchingAccount: true });
+        expect(container.querySelector('.editor-account-placeholder')).toBeNull();
+    });
+
+    it('uses the latest profile store value after the active account changes', async () => {
+        (profileDataStore as any).value = {
+            name: 'first-name',
+            displayName: 'First display',
+            picture: 'https://example.com/first.png',
+            npub: 'npub1first',
+            nprofile: 'nprofile1first',
+        };
+        (profileLoadedStore as any).value = true;
+
+        const { container, unmount } = render(PostComponent, { hasStoredKey: true });
+        await waitFor(() => expect(container.querySelector('.editor-account-placeholder')).toBeTruthy());
+        expect(container.querySelector('.editor-account-placeholder img')?.getAttribute('src')).toBe(
+            'https://example.com/first.png',
+        );
+
+        (profileDataStore as any).value = {
+            name: 'second-name',
+            displayName: 'Second display',
+            picture: 'https://example.com/second.png',
+            npub: 'npub1second',
+            nprofile: 'nprofile1second',
+        };
+        unmount();
+        cleanup();
+        const { container: nextContainer } = render(PostComponent, { hasStoredKey: true });
+
+        expect(nextContainer.querySelector('.editor-account-placeholder img')?.getAttribute('src')).toBe(
+            'https://example.com/second.png',
+        );
     });
 
     it('makes the editor read-only only while a post is sending', async () => {
