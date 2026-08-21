@@ -709,24 +709,35 @@ test("loads app-owned icons from the component asset base instead of the host", 
         document.body.append(composer);
         await composer.whenReady();
         const shadow = composer.shadowRoot!;
-        const logo = shadow.querySelector<HTMLImageElement>("img.site-icon")!;
-        const siteIconLink = shadow.querySelector<HTMLAnchorElement>("a.site-icon-link")!;
-        await new Promise<void>((resolve, reject) => {
-            if (logo.complete && logo.naturalWidth > 0) {
+        await new Promise<void>((resolve) => {
+            const selectors = [
+                "svg.site-icon",
+                "a.site-icon-link",
+                ".trash-icon",
+                ".login-icon",
+                ".settings-icon",
+            ];
+            const observer = new MutationObserver(() => {
+                if (selectors.every((selector) => shadow.querySelector(selector))) {
+                    observer.disconnect();
+                    resolve();
+                }
+            });
+            observer.observe(shadow, { childList: true, subtree: true });
+            if (selectors.every((selector) => shadow.querySelector(selector))) {
+                observer.disconnect();
                 resolve();
-                return;
             }
-            logo.addEventListener("load", () => resolve(), { once: true });
-            logo.addEventListener("error", () => reject(new Error("logo failed to load")), { once: true });
         });
+        const mascot = shadow.querySelector<SVGElement>("svg.site-icon");
+        const siteIconLink = shadow.querySelector<HTMLAnchorElement>("a.site-icon-link")!;
         const masks = [
             shadow.querySelector<HTMLElement>(".trash-icon")!,
             shadow.querySelector<HTMLElement>(".login-icon")!,
             shadow.querySelector<HTMLElement>(".settings-icon")!,
         ].map((icon) => getComputedStyle(icon).maskImage);
         return {
-            logoSrc: logo.src,
-            naturalWidth: logo.naturalWidth,
+            hasInlineMascot: mascot !== null,
             masks,
             siteIconHrefAttribute: siteIconLink.getAttribute("href"),
             siteIconHref: siteIconLink.href,
@@ -735,21 +746,22 @@ test("loads app-owned icons from the component asset base instead of the host", 
         };
     });
 
-    expect(result.logoSrc.startsWith(componentOrigin)).toBe(true);
+    expect(result.hasInlineMascot).toBe(true);
     expect(result.siteIconHrefAttribute).toBe("https://lokuyow.github.io/ehagaki/");
     expect(result.siteIconHref).toBe("https://lokuyow.github.io/ehagaki/");
     expect(result.siteIconTarget).toBe("_blank");
     expect(result.siteIconRel).toBe("noopener noreferrer");
     expect(result.siteIconHref).not.toContain(hostOrigin);
-    expect(result.naturalWidth).toBeGreaterThan(0);
     for (const mask of result.masks) {
         expect(mask).not.toBe("none");
         expect(mask).toContain(componentOrigin);
     }
     expect([...hostRequests].some((path) =>
-        path === "/ehagaki_icon.svg" || path.startsWith("/icons/"))).toBe(false);
-    expect(componentRequests).toContain("/ehagaki_icon.svg");
-    expect([...componentRequests].some((path) => path.startsWith("/icons/"))).toBe(true);
+        path.startsWith("/icons/"))).toBe(false);
+    await expect.poll(
+        () => [...componentRequests].some((path) => path.startsWith("/icons/")),
+        { message: "component server should receive a request for an app-owned mask icon" },
+    ).toBe(true);
 });
 
 test("rejects a second connected component and releases the slot after disconnect", async ({ page }) => {
