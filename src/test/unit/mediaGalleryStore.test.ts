@@ -86,4 +86,31 @@ describe('mediaGalleryStore', () => {
             expect(mediaGalleryStore.items.map(i => i.id)).toEqual(['img-1', 'img-2', 'img-3']);
         });
     });
+
+    it('returns metadata only for current non-placeholder image and video items', () => {
+        mediaGalleryStore.addItem({
+            id: 'image-1',
+            type: 'image',
+            src: 'https://host.example/image',
+            isPlaceholder: false,
+            mimeType: 'image/webp',
+            alt: 'image',
+        });
+        mediaGalleryStore.addItem({
+            id: 'video-1',
+            type: 'video',
+            src: 'https://host.example/video',
+            isPlaceholder: false,
+            mimeType: 'video/mp4',
+            dim: '640x360',
+        });
+
+        expect(mediaGalleryStore.getMediaImetaMap()).toEqual({
+            'https://host.example/image': expect.objectContaining({ m: 'image/webp', alt: 'image' }),
+            'https://host.example/video': expect.objectContaining({ m: 'video/mp4', dim: '640x360' }),
+        });
+
+        mediaGalleryStore.removeItem('video-1');
+        expect(mediaGalleryStore.getMediaImetaMap()).not.toHaveProperty('https://host.example/video');
+    });
 });

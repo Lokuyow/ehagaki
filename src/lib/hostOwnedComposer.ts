@@ -99,7 +99,7 @@ export async function buildHostOwnedComposerOutput(params: {
     contentWarningEnabled: boolean;
     contentWarningReason: string;
     emojiTags: string[][];
-    imageImetaMap: Record<string, {
+    mediaImetaMap: Record<string, {
         m: string;
         blurhash?: string;
         dim?: string;
@@ -132,7 +132,7 @@ export async function buildHostOwnedComposerOutput(params: {
         }
     }
 
-    for (const [url, metadata] of Object.entries(params.imageImetaMap)) {
+    for (const [url, metadata] of Object.entries(params.mediaImetaMap)) {
         if (url && metadata?.m) {
             tags.push(await createImetaTag({ url, ...metadata }));
         }

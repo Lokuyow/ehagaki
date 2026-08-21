@@ -95,7 +95,6 @@
     uploadFiles as defaultUploadFiles,
     showUploadErrorMessage,
   } from "../lib/uploadHelper";
-  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
   import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
   import {
     contentWarningStore,
@@ -714,32 +713,28 @@
       (hasPostingCapability || !!postManager);
   }
 
-  function createHostOwnedImageImetaMap(editorInstance: TipTapEditor): Record<string, any> {
+  function createHostOwnedMediaImetaMap(editorInstance: TipTapEditor): Record<string, any> {
     if (!mediaFreePlacement) {
-      return mediaGalleryStore.getImageBlurhashMap();
+      return mediaGalleryStore.getMediaImetaMap();
     }
-    const attributes: Record<string, { dim?: string; alt?: string; size?: number }> = {};
+    const mediaMetadata: Record<string, any> = {};
     editorInstance.state.doc.descendants((node: any) => {
-      if (node.type?.name !== "image" || !node.attrs?.src || node.attrs?.isPlaceholder) return;
+      if ((node.type?.name !== "image" && node.type?.name !== "video") || !node.attrs?.src || node.attrs?.isPlaceholder) return;
+      const m = node.attrs.m ?? node.attrs.mimeType;
+      if (typeof m !== "string" || !m) return;
       const size = Number(node.attrs.size);
-      attributes[node.attrs.src] = {
+      mediaMetadata[node.attrs.src] = {
+        m,
+        blurhash: node.attrs.blurhash ?? undefined,
         dim: node.attrs.dim ?? undefined,
         alt: node.attrs.alt ?? undefined,
         ...(Number.isFinite(size) && size > 0 ? { size } : {}),
+        ox: node.attrs.ox ?? imageOxMap[node.attrs.src],
+        x: node.attrs.x ?? imageXMap[node.attrs.src],
+        uploadProtocol: node.attrs.uploadProtocol ?? undefined,
       };
     });
-    return Object.fromEntries(
-      Object.entries(extractImageBlurhashMap(editorInstance)).map(([url, blurhash]) => [
-        url,
-        {
-          m: getMimeTypeFromUrl(url),
-          blurhash,
-          ...attributes[url],
-          ox: imageOxMap[url],
-          x: imageXMap[url],
-        },
-      ]),
-    );
+    return mediaMetadata;
   }
 
   async function submitHostOwned(editorInstance: TipTapEditor): Promise<void> {
@@ -762,7 +757,7 @@
       contentWarningEnabled: contentWarningStore.value,
       contentWarningReason: contentWarningReasonStore.value,
       emojiTags: extraction.emojiTags.map((tag) => [...tag]),
-      imageImetaMap: createHostOwnedImageImetaMap(editorInstance),
+      mediaImetaMap: createHostOwnedMediaImetaMap(editorInstance),
       replyQuote: $state.snapshot(replyQuoteState.value),
       channel: $state.snapshot(effectiveChannelContextState.value),
     };
@@ -831,6 +826,8 @@
       contentWarningStore.reset();
       contentWarningReasonStore.reset();
       mediaGalleryStore.clearAll();
+      imageOxMap = {};
+      imageXMap = {};
       clearReplyQuote();
       if (pinnedHashtags.length > 0) {
         currentEditor.commands.insertContent(

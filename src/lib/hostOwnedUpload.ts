@@ -216,6 +216,11 @@ export function createHostOwnedUploadExecutor(params: {
                         url: response.url,
                         nip94: {
                             ...imeta,
+                            m: imeta.m ?? metadata.processedType ?? file.type,
+                            ...(metadata.ox && !imeta.ox ? { ox: metadata.ox } : {}),
+                            ...(metadata.blurhash && !imeta.blurhash
+                                ? { blurhash: metadata.blurhash }
+                                : {}),
                             size: imeta.size ?? String(file.size),
                             ...(metadata.width && metadata.height
                                 ? { dim: imeta.dim ?? `${metadata.width}x${metadata.height}` }

@@ -32,7 +32,7 @@ describe("Host-owned Composer output", () => {
             contentWarningEnabled: true,
             contentWarningReason: "warning",
             emojiTags: [["emoji", "wave", "https://example.com/wave.webp"], ["q", "x"]],
-            imageImetaMap: {},
+            mediaImetaMap: {},
             replyQuote: { reply, quotes: [{ ...reply, mode: "quote", eventId: "3".repeat(64) }] },
             channel: {
                 eventId: "4".repeat(64),
@@ -74,6 +74,52 @@ describe("Host-owned Composer output", () => {
         expect(getHostSubmissionEventId(undefined)).toBeUndefined();
         expect(getHostSubmissionEventId({ eventId: "a".repeat(64) })).toBe("a".repeat(64));
         expect(() => getHostSubmissionEventId({ eventId: "not-an-id" })).toThrow();
+    });
+
+    it("emits Host-owned image and video imeta tags with supplied metadata", async () => {
+        const output = await buildHostOwnedComposerOutput({
+            content: "media",
+            hashtagTags: [],
+            hashtags: [],
+            contentWarningEnabled: false,
+            contentWarningReason: "",
+            emojiTags: [],
+            mediaImetaMap: {
+                "https://host.example/media/abcdef": {
+                    m: "image/webp",
+                    alt: "webp image",
+                    dim: "1x1",
+                    size: 12,
+                    x: "a".repeat(64),
+                },
+                "https://host.example/media/video": {
+                    m: "video/mp4",
+                    dim: "640x360",
+                    size: 42,
+                },
+            },
+            replyQuote: { reply: null, quotes: [] },
+            channel: null,
+        });
+
+        const imageTag = output.tags.find((tag) => tag[1] === "url https://host.example/media/abcdef");
+        const videoTag = output.tags.find((tag) => tag[1] === "url https://host.example/media/video");
+        expect(imageTag).toEqual(expect.arrayContaining([
+            "imeta",
+            "url https://host.example/media/abcdef",
+            "m image/webp",
+            "size 12",
+            "x " + "a".repeat(64),
+            "dim 1x1",
+            "alt webp image",
+        ]));
+        expect(videoTag).toEqual(expect.arrayContaining([
+            "imeta",
+            "url https://host.example/media/video",
+            "m video/mp4",
+            "size 42",
+            "dim 640x360",
+        ]));
     });
 
     it("copies reference-only context even when no referenced event was hydrated", () => {

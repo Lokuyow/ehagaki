@@ -261,6 +261,9 @@ export function createEditorStore(options: EditorConfigOptions) {
                         size: { default: null },
                         uploadProtocol: { default: null },
                         alt: { default: null },
+                        m: { default: null },
+                        ox: { default: null },
+                        x: { default: null },
                     };
                 },
                 addNodeView() {

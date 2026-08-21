@@ -1637,7 +1637,15 @@ test("runs Host-owned media preprocessing and transport without self-upload fall
         composer.configureHostOwned({
             uploadMedia: async (file: File, metadata: unknown) => {
                 state.uploads.push({ name: file.name, metadata });
-                return { url: "https://host.example/media/processed.png" };
+                return {
+                    url: "https://host.example/media/processed.png",
+                    imeta: {
+                        m: "image/webp",
+                        alt: "host supplied alt",
+                        size: "123",
+                        x: "a".repeat(64),
+                    },
+                };
             },
             submit: async (output: unknown) => {
                 state.outputs.push(output);
@@ -1680,6 +1688,13 @@ test("runs Host-owned media preprocessing and transport without self-upload fall
     });
     expect(result.outputs[0].content).toContain("host media body");
     expect(result.outputs[0].content).toContain("https://host.example/media/processed.png");
+    expect(result.outputs[0].tags).toContainEqual(expect.arrayContaining([
+        "imeta",
+        "url https://host.example/media/processed.png",
+        "m image/webp",
+        "alt host supplied alt",
+        "size 123",
+    ]));
 });
 
 test("does not let a disconnected Host-owned upload settle into a later mount", async ({ page }) => {
@@ -1695,7 +1710,7 @@ test("does not let a disconnected Host-owned upload settle into a later mount", 
         const oldSettled = new Promise<void>((resolve) => { resolveOld = resolve; });
         let resolveCurrent: (() => void) | undefined;
         const currentSettled = new Promise<void>((resolve) => { resolveCurrent = resolve; });
-        const state = { uploads: 0, submits: 0, errors: 0 };
+        const state = { uploads: 0, submits: 0, errors: 0, outputs: [] as any[] };
         (window as any).__hostOwnedStaleState = state;
 
         const create = () => {
@@ -1705,12 +1720,21 @@ test("does not let a disconnected Host-owned upload settle into a later mount", 
                     state.uploads += 1;
                     if (state.uploads === 1) {
                         await oldSettled;
-                        return { url: "https://host.example/stale.png" };
+                        return {
+                            url: "https://host.example/stale.png",
+                            imeta: { m: "image/png", alt: "stale metadata" },
+                        };
                     }
                     await currentSettled;
-                    return { url: "https://host.example/current.png" };
+                    return {
+                        url: "https://host.example/current.png",
+                        imeta: { m: "image/png", alt: "current metadata" },
+                    };
                 },
-                submit: async () => { state.submits += 1; },
+                submit: async (output: unknown) => {
+                    state.submits += 1;
+                    state.outputs.push(output);
+                },
             });
             document.body.append(composer);
             return composer;
@@ -1770,6 +1794,19 @@ test("does not let a disconnected Host-owned upload settle into a later mount", 
     expect(result.errors).toBe(0);
     await expect(page.locator("ehagaki-composer img[src='https://host.example/stale.png']")).toHaveCount(0);
     await expect(page.locator("ehagaki-composer .upload-error")).toHaveCount(0);
+    expect(result).toEqual(expect.objectContaining({
+        submits: 1,
+    }));
+    expect(result.outputs[0].tags).toEqual(expect.arrayContaining([
+        expect.arrayContaining([
+            "imeta",
+            "url https://host.example/current.png",
+            "alt current metadata",
+        ]),
+    ]));
+    expect(result.outputs[0].tags).not.toEqual(expect.arrayContaining([
+        expect.arrayContaining(["url https://host.example/stale.png"]),
+    ]));
 });
 
 test("keeps Host-owned capability separate from a previous authenticated Web Component instance", async ({ page }) => {

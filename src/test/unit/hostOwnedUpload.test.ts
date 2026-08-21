@@ -5,12 +5,20 @@ import { createHostOwnedUploadExecutor } from "../../lib/hostOwnedUpload";
 describe("Host-owned media handoff", () => {
     it("passes the same File instance to the host and accepts only an HTTP(S) result", async () => {
         const controller = new AbortController();
-        const file = new File(["media"], "photo.png", { type: "image/png" });
+        const file = new File(["media"], "photo.webp", { type: "image/webp" });
         const uploadMedia = vi.fn(async (received: File) => {
             expect(received).toBe(file);
             return {
-                url: "https://media.example/photo.png",
-                imeta: { alt: "photo", ignored: "ignored" },
+                url: "https://media.example/abcdef",
+                imeta: {
+                    m: "image/webp",
+                    alt: "photo",
+                    blurhash: "server-blurhash",
+                    dim: "1x1",
+                    size: "12",
+                    x: "a".repeat(64),
+                    ignored: "ignored",
+                },
             };
         });
         const executor = createHostOwnedUploadExecutor({
@@ -25,14 +33,21 @@ describe("Host-owned media handoff", () => {
         }]);
 
         expect(uploadMedia).toHaveBeenCalledWith(file, expect.objectContaining({
-            originalName: "photo.png",
-            processedName: "photo.png",
+            originalName: "photo.webp",
+            processedName: "photo.webp",
             blurhash: "blurhash-value",
         }), { signal: controller.signal });
         expect(result).toMatchObject({
             success: true,
-            url: "https://media.example/photo.png",
-            nip94: { alt: "photo" },
+            url: "https://media.example/abcdef",
+            nip94: {
+                m: "image/webp",
+                alt: "photo",
+                blurhash: "server-blurhash",
+                dim: "1x1",
+                size: "12",
+                x: "a".repeat(64),
+            },
             uploadProtocol: "custom-http",
         });
         expect(result.nip94).not.toHaveProperty("ignored");

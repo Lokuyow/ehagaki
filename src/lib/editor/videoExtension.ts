@@ -17,6 +17,30 @@ export const Video = Node.create({
             isPlaceholder: {
                 default: false,
             },
+            alt: {
+                default: null,
+            },
+            blurhash: {
+                default: null,
+            },
+            dim: {
+                default: null,
+            },
+            size: {
+                default: null,
+            },
+            uploadProtocol: {
+                default: null,
+            },
+            m: {
+                default: null,
+            },
+            ox: {
+                default: null,
+            },
+            x: {
+                default: null,
+            },
         };
     },
 
