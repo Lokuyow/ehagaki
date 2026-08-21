@@ -6,7 +6,7 @@ import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
  * 動画圧縮の結合テスト
  * 
  * このテストは実際のMediaBunnyライブラリとの統合をテストします。
- * FFmpegはモックを使用しますが、MediaBunnyの動作は実際の実装を使用します。
+ * MediaBunnyの動作は実際の実装を使用します。
  */
 
 // uploadAbortFlagStoreのモック
@@ -164,7 +164,7 @@ describe('Video Compression Integration Tests', () => {
             const video = createTestVideoFile(500 * 1024);
             const result = await service.compress(video);
 
-            // MediaBunnyまたはFFmpegによる圧縮が試行される
+            // MediaBunnyによる圧縮が試行され、非対応時は元ファイルが維持される
             expect(result).toBeDefined();
             expect(result.file).toBeDefined();
             expect(result.file.type).toBe('video/mp4');
@@ -200,8 +200,7 @@ describe('Video Compression Integration Tests', () => {
             storage.setItem('videoQualityLevel', 'medium');
             const video = createTestVideoFile(500 * 1024, 'my-video.mp4');
 
-            // MediaBunnyが使用できない環境ではFFmpegにフォールバック
-            // いずれの場合も圧縮が試行される
+            // MediaBunnyで圧縮できない環境では元ファイルが維持される
             const result = await service.compress(video);
 
             expect(result.file).toBeDefined();
@@ -379,7 +378,7 @@ describe('Video Compression Integration Tests', () => {
             }
         });
 
-        it('WebCodecs APIに対応していない環境ではFFmpegで変換される', async () => {
+        it('WebCodecs APIに対応していない環境では元ファイルをスキップとして返す', async () => {
             // VideoEncoder/VideoDecoderを削除してWebCodecs APIを無効化
             delete (globalThis as any).VideoEncoder;
             delete (globalThis as any).VideoDecoder;
@@ -393,13 +392,10 @@ describe('Video Compression Integration Tests', () => {
 
             const result = await testService.compress(video);
 
-            // FFmpegでの圧縮が試行される
-            expect(result).toBeDefined();
-            expect(result.file).toBeDefined();
-            expect(result.file.type).toBe('video/mp4');
+            expect(result).toEqual({ file: video, wasCompressed: false, wasSkipped: true });
         });
 
-        it('WebCodecs APIのオーディオエンコードに対応していない環境ではビデオだけWebCodecs APIで変換し、元動画のオーディオをFFmpegでマージする', async () => {
+        it('WebCodecs APIのオーディオエンコードに対応していない環境でもMediaBunnyのみで安全に処理する', async () => {
             // AudioEncoderのみ削除（VideoEncoder/VideoDecoderは維持）
             delete (globalThis as any).AudioEncoder;
 
@@ -411,8 +407,7 @@ describe('Video Compression Integration Tests', () => {
 
             const result = await testService.compress(video);
 
-            // MediaBunnyでビデオ圧縮 + FFmpegでオーディオマージが試行される
-            // 実際の動作は環境依存だが、エラーにならないことを確認
+            // MediaBunnyで再エンコードまたはpacket copyを試行する。実際の動作は環境依存。
             expect(result).toBeDefined();
             expect(result.file).toBeDefined();
             expect(result.file.type).toBe('video/mp4');

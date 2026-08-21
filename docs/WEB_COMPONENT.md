@@ -63,7 +63,7 @@ positioning 責務は変更されません。
 外へ出ないよう、現在は component-bound layout に統一しています。
 
 `asset-base` は、コンポーネントが実行時に参照する配信元のディレクトリです。エントリ
-モジュールを読み込む URL と、配布物内の `assets/`、`icons/`、`ffmpeg-core/` などを置いた
+モジュールを読み込む URL と、配布物内の `assets/`、`icons/` などを置いた
 ディレクトリを指定します。要素を接続する前に設定してください。
 
 要素を JavaScript で生成する場合は、`assetBase` property でも指定できます。
@@ -96,7 +96,7 @@ iframe 連携は含まれません。
   サイトの出力として配信し、上記の GitHub Pages 例のように `/web-component/` を
   `asset-base` に指定します。
 - CDN や別ホストへ置く場合は、`dist-web-component/` 全体をコピーしてください。エントリだけでなく、
-  `assets/`、`icons/`、`ffmpeg-core/`、`ehagaki_icon.svg` などの関連ファイルも必要です。
+  `assets/`、`icons/`、`ehagaki_icon.svg` などの関連ファイルも必要です。
   モジュール URL と `asset-base` は、その配布構成に対応する URL にします。
 
 単独配布物は、PWA サイトの出力と独立して別の配信方法に利用できます。通常の PWA build
@@ -135,12 +135,8 @@ iPhone Safariを含む一般的な実機確認には、LAN mode自体を引き�
 
 - Web Component のエントリから参照される動的チャンクと関連アセット
 - アプリ内のアイコンや `ehagaki_icon.svg`
-- FFmpeg の class-worker とそのワーカー用アセット
-- `ffmpeg-core/ffmpeg-core.js`
-- `ffmpeg-core/ffmpeg-core.wasm`
-
-動的チャンクは build が作る相対的なディレクトリ構成を保って配信してください。FFmpeg の
-class-worker、core、WASM は、特にクロスオリジン配信時に `asset-base` から到達できる必要があります。
+動的チャンクは build が作る相対的なディレクトリ構成を保って配信してください。動画圧縮で必要になる
+MediaBunnyの動的チャンクも、特にクロスオリジン配信時に `asset-base` から到達できる必要があります。
 
 同一オリジンでサイトと一緒に配信する場合の例です。
 
@@ -722,20 +718,16 @@ rx-nostr は relay を開くとき `globalThis.WebSocket` を使います。モ�
 ローカルリレー経路が見つかっていません。専用の relay-interceptor API は提供せず、Issue #89 の
 relay-interceptor proof も未完了です。
 
-## CORS / CSP / FFmpeg / Worker
+## CORS / CSP / 動的chunk / Worker
 
-クロスオリジン埋め込みでは、モジュール、チャンク、ワーカー、FFmpeg ファイル、WASM を、埋め込み元
+クロスオリジン埋め込みでは、モジュール、チャンク、ワーカー、WASM を、埋め込み元
 オリジンを許可する CORS ヘッダー付きで配信してください。`asset-base` は配信元のディレクトリを
 指し、そこから以下のファイルへアクセスできる必要があります。
 
-- Web Component のモジュール、チャンク、ワーカー用アセット
-- `ffmpeg-core.js`
-- `ffmpeg-core.wasm`
+- Web Component のモジュール、動的chunk、ワーカー用アセット
 
-FFmpeg は `asset-base` から同梱の class-worker モジュールを取得し、ホストオリジンの Blob URL を
-そのワーカー用に作成した後、`asset-base` から `ffmpeg-core.js` と `ffmpeg-core.wasm` を読み込みます。
-CSP の `worker-src` では配信元オリジンと `blob:` の両方を許可してください。この経路のプロキシを
-ホストの Service Worker に依存しないでください。
+CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがある場合に備え、配信元オリジンを許可してください。
+この経路のプロキシをホストの Service Worker に依存しないでください。
 
 同一オリジンの PWA 配信では、生成されたワーカー用アセットを引き続き直接利用します。iOS Safari は
 実際の配信元オリジンで確認してください。モバイルエミュレーションだけではワーカーや CORS の動作を

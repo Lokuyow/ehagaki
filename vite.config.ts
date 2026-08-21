@@ -1,12 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
 import basicSsl from '@vitejs/plugin-basic-ssl';
-import {
-  fixedLegacyBridgeEmitPlugin,
-  loadFixedLegacyBridgeManifest,
-} from './scripts/fixedLegacyBridge';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -27,20 +22,17 @@ const webComponentDevProxy = webComponentDevProxyEnabled && webComponentDevServe
       },
     }
   : undefined;
-const fixedLegacyBridgeManifest = loadFixedLegacyBridgeManifest();
-const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => asset.path);
 
 // https://vite.dev/config/
 export default defineConfig({
   base: baseUrl,
   optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util', '@jsquash/webp']
+    exclude: ['@jsquash/webp']
   },
   worker: {
     format: 'es',
-    // Worker output is also precached by the service worker. Keep it in the
-    // bridge namespace so the fixed legacy assets remain the only non-bridge
-    // entries in that manifest.
+    // Worker output is precached by the service worker and shares the regular
+    // hashed asset namespace with the application build.
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-bridge-[hash].js',
@@ -57,9 +49,7 @@ export default defineConfig({
     rollupOptions: {
       external: [],
       output: {
-        // The first bridge release uses a permanent namespace distinct from the
-        // fixed pre-handler asset URLs. This prevents a same-name collision even
-        // when Vite retains an old hash while rendered CSS bytes have changed.
+        // Keep all application assets in the hashed deployment namespace.
         entryFileNames: 'assets/[name]-bridge-[hash].js',
         chunkFileNames: 'assets/[name]-bridge-[hash].js',
         assetFileNames: 'assets/[name]-bridge-[hash][extname]',
@@ -77,9 +67,9 @@ export default defineConfig({
               id.includes('node_modules/@noble/')) {
             return 'vendor-nostr';
           }
-          // 動画圧縮 (mediabunny + ffmpeg)
-          if (id.includes('node_modules/mediabunny') ||
-              id.includes('node_modules/@ffmpeg/')) {
+          // 動画圧縮 (MediaBunny). The AAC encoder is dynamically imported
+          // only when native AAC encoding is unavailable, so keep it separate.
+          if (id.includes('node_modules/mediabunny')) {
             return 'vendor-video';
           }
           // 画像圧縮 + blurhash
@@ -107,15 +97,6 @@ export default defineConfig({
     }
   },
   plugins: [
-    fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
-    viteStaticCopy({
-      targets: [
-        {
-          src: 'node_modules/@ffmpeg/core/dist/esm/*',
-          dest: 'ffmpeg-core'
-        }
-      ]
-    }),
     svelte(),
     // basicSsl(),
     VitePWA({
@@ -192,15 +173,9 @@ export default defineConfig({
         // Vercel環境での追加設定
         globIgnores: [
           '**/node_modules/**/*',
-          'ffmpeg-core/**/*',
           'sw.js',
           'workbox-*.js',
-          ...fixedLegacyBridgePaths
         ],
-        additionalManifestEntries: fixedLegacyBridgePaths.map(url => ({
-          url,
-          revision: null,
-        }))
       }
     })
   ],
