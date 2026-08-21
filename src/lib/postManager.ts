@@ -779,7 +779,11 @@ export class PostManager {
     if (pinEnabled && hashtags.length > 0) {
       const hashtagText = ' ' + hashtags.map(h => '#' + h).join(' ');
       editor.commands.insertContent(hashtagText);
-      editor.commands.focus('start');
     }
+
+    // 投稿成功後は、固定ハッシュタグの有無にかかわらずエディターへ戻す。
+    // 固定ハッシュタグがある場合は、復元されたハッシュタグより前に
+    // カレットを置く既存の位置を維持する。
+    editor.commands.focus('start');
   }
 }

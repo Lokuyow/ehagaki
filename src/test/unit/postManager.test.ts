@@ -409,6 +409,7 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).not.toHaveBeenCalled();
+            expect(mockEditor.focus).toHaveBeenCalledWith('start');
             expect(mockDeps.contentWarningStore?.reset).toHaveBeenCalled();
             expect(mockDeps.contentWarningReasonStore?.reset).toHaveBeenCalled();
             expect(mockDeps.mediaGalleryStore?.clearAll).toHaveBeenCalled();
@@ -440,6 +441,7 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).not.toHaveBeenCalled();
+            expect(mockEditor.focus).toHaveBeenCalledWith('start');
         });
     });
 
