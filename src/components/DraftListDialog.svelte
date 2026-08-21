@@ -664,10 +664,19 @@
         min-width: 3em;
     }
 
+    .channel-context .context-name {
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
     .context-detail {
         flex: 0 1 auto;
         min-width: 0;
         color: var(--text-muted);
+    }
+
+    .channel-context .context-detail {
+        flex: 1 1 0;
     }
 
     .draft-timestamp {
