@@ -375,8 +375,9 @@ describe('NostrAuthService', () => {
             const event = decodeNostrHeader(result);
 
             expect(event.kind).toBe(24242);
-            expect(event.content).toBe('blossom stuff');
+            expect(event.content).toBe('Check Blossom upload availability');
             expect(event.tags).toContainEqual(['t', 'upload']);
+            expect(event.tags).not.toContainEqual(['t', 'list']);
             expect(event.tags).toContainEqual(['x', 'a'.repeat(64)]);
             expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
             expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
@@ -432,8 +433,9 @@ describe('NostrAuthService', () => {
             const event = decodeNostrHeader(result);
 
             expect(event.kind).toBe(24242);
-            expect(event.content).toBe('blossom stuff');
+            expect(event.content).toBe('Check Blossom upload availability');
             expect(event.tags).toContainEqual(['t', 'upload']);
+            expect(event.tags).not.toContainEqual(['t', 'list']);
             expect(event.tags).toContainEqual(['x', 'b'.repeat(64)]);
             expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
             expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);

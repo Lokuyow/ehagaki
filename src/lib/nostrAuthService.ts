@@ -170,7 +170,7 @@ export class NostrAuthService implements AuthService {
         const event = await signer.signEvent({
             kind: 24242,
             created_at: now,
-            content: "blossom stuff",
+            content: "Check Blossom upload availability",
             tags,
         });
 
