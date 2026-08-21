@@ -62,14 +62,20 @@ test.describe('post editor sending state', () => {
             const rootRect = root.getBoundingClientRect();
             const imageRect = image.getBoundingClientRect();
             const paragraphRect = paragraph.getBoundingClientRect();
+            const editorRect = document.querySelector('.editor-container')?.getBoundingClientRect();
+            if (!editorRect) {
+                throw new Error('Editor container geometry was not found.');
+            }
             const paddingLeft = Number.parseFloat(getComputedStyle(paragraph, '::before').paddingLeft) || 0;
 
             return {
+                editor: { x: editorRect.x, y: editorRect.y, width: editorRect.width, height: editorRect.height },
                 wrapper: { x: wrapperRect.x, y: wrapperRect.y, width: wrapperRect.width, height: wrapperRect.height },
                 root: { x: rootRect.x, y: rootRect.y, width: rootRect.width, height: rootRect.height },
                 image: { x: imageRect.x, y: imageRect.y, width: imageRect.width, height: imageRect.height },
                 paragraph: { x: paragraphRect.x, y: paragraphRect.y, width: paragraphRect.width, height: paragraphRect.height },
                 placeholderTextStart: paragraphRect.x + paddingLeft,
+                placeholderTextPaddingLeft: paddingLeft,
                 documentWidth: document.documentElement.scrollWidth,
                 viewportWidth: document.documentElement.clientWidth,
             };
@@ -77,6 +83,10 @@ test.describe('post editor sending state', () => {
 
         expect(geometry.wrapper.width).toBeCloseTo(28, 0);
         expect(geometry.wrapper.height).toBeCloseTo(28, 0);
+        expect(geometry.wrapper.x - geometry.editor.x).toBeCloseTo(14, 0);
+        expect(geometry.placeholderTextPaddingLeft).toBeCloseTo(38, 0);
+        expect(geometry.placeholderTextStart - geometry.editor.x).toBeCloseTo(48, 0);
+        expect(geometry.placeholderTextStart - (geometry.wrapper.x + geometry.wrapper.width)).toBeCloseTo(6, 0);
         expect(geometry.root.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
         expect(geometry.root.height).toBeLessThanOrEqual(geometry.wrapper.height + 0.5);
         expect(geometry.image.width).toBeLessThanOrEqual(geometry.wrapper.width + 0.5);
@@ -87,6 +97,36 @@ test.describe('post editor sending state', () => {
         expect(geometry.image.y + geometry.image.height).toBeLessThanOrEqual(geometry.wrapper.y + geometry.wrapper.height + 0.5);
         expect(geometry.image.x + geometry.image.width).toBeLessThanOrEqual(geometry.placeholderTextStart + 0.5);
         expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+
+        const selectionState = await page.evaluate(() => {
+            const wrapper = document.querySelector('.editor-account-placeholder');
+            const image = wrapper?.querySelector('img');
+            if (!wrapper || !image) throw new Error('Editor placeholder selection nodes were not found.');
+            const wrapperStyle = getComputedStyle(wrapper);
+            const imageStyle = getComputedStyle(image);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            return {
+                wrapperUserSelect: wrapperStyle.getPropertyValue('user-select'),
+                wrapperWebkitUserSelect: wrapperStyle.getPropertyValue('-webkit-user-select'),
+                imageUserSelect: imageStyle.getPropertyValue('user-select'),
+                imageWebkitUserSelect: imageStyle.getPropertyValue('-webkit-user-select'),
+            };
+        });
+        expect([selectionState.wrapperUserSelect, selectionState.wrapperWebkitUserSelect]).toContain('none');
+        expect([selectionState.imageUserSelect, selectionState.imageWebkitUserSelect]).toContain('none');
+
+        await page.mouse.dblclick(geometry.wrapper.x + geometry.wrapper.width / 2, geometry.wrapper.y + geometry.wrapper.height / 2);
+        const browserSelection = await page.evaluate(() => {
+            const image = document.querySelector('.editor-account-placeholder img');
+            const selection = window.getSelection();
+            return {
+                containsImage: Boolean(image && selection?.containsNode(image, true)),
+                activeElementIsEditor: document.activeElement === document.querySelector('.tiptap-editor'),
+            };
+        });
+        expect(browserSelection.containsImage).toBe(false);
+        expect(browserSelection.activeElementIsEditor).toBe(true);
 
         const clickPoint = await wrapper.boundingBox();
         if (!clickPoint) throw new Error('Editor placeholder wrapper has no box.');
@@ -100,6 +140,9 @@ test.describe('post editor sending state', () => {
             avatarVisible: Boolean(document.querySelector('.editor-account-placeholder')),
         }));
         expect(afterInput).toEqual({ placeholderVisible: false, avatarVisible: false });
+
+        await editor.locator('p').dblclick();
+        await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('geometry');
 
         for (let index = 0; index < 'geometry'.length; index += 1) {
             await page.keyboard.press('Backspace');

@@ -1117,12 +1117,14 @@
   :global(.editor-account-placeholder) {
     position: absolute;
     top: 11px;
-    left: 10px;
+    left: 14px;
     z-index: 3;
     width: 28px;
     height: 28px;
     opacity: 0.5;
     pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   :global(.editor-account-placeholder-avatar) {
@@ -1147,7 +1149,7 @@
 
   .editor-container.account-avatar-placeholder
     :global(p.is-editor-empty:first-child::before) {
-    padding-left: 34px;
+    padding-left: 38px;
   }
 
   .editor-container.sending {
