@@ -122,6 +122,11 @@ let timelineEvents = [];
 let selectedReplyReference = null;
 let selectedQuoteReferences = [];
 let selectedChannelContext = null;
+const urlContextOverrides = {
+    replyQuote: false,
+    channel: false,
+    content: false,
+};
 let timelineSubscription = null;
 let composerRequestSequence = 0;
 let settingsRequestSequence = 0;
@@ -762,6 +767,13 @@ function updateTimelineSelection() {
 }
 
 function applyComposerContextUpdate(payload) {
+    if (Object.hasOwn(payload, "reply") || Object.hasOwn(payload, "quotes")) {
+        urlContextOverrides.replyQuote = true;
+    }
+    if (Object.hasOwn(payload, "channel")) {
+        urlContextOverrides.channel = true;
+    }
+
     selectedReplyReference = typeof payload.reply === "string"
         ? createReferenceFromQueryValue(payload.reply)
         : null;
@@ -999,6 +1011,7 @@ async function selectReplyEvent(event) {
 
     if (isReplySelected(reference.eventId)) {
         selectedReplyReference = null;
+        urlContextOverrides.replyQuote = true;
         renderTimeline();
         reloadIframeForReplyQuote("reply テスト設定を解除しました", {
             quoteCount: selectedQuoteReferences.length,
@@ -1007,6 +1020,7 @@ async function selectReplyEvent(event) {
     }
 
     selectedReplyReference = reference;
+    urlContextOverrides.replyQuote = true;
     selectedQuoteReferences = selectedQuoteReferences.filter(
         (quoteReference) => quoteReference.eventId !== reference.eventId,
     );
@@ -1022,6 +1036,7 @@ async function toggleQuoteEvent(event) {
     const reference = createTimelineReference(event);
 
     if (isQuoteSelected(reference.eventId)) {
+        urlContextOverrides.replyQuote = true;
         selectedQuoteReferences = selectedQuoteReferences.filter(
             (quoteReference) => quoteReference.eventId !== reference.eventId,
         );
@@ -1037,6 +1052,7 @@ async function toggleQuoteEvent(event) {
         selectedReplyReference = null;
     }
 
+    urlContextOverrides.replyQuote = true;
     selectedQuoteReferences = [...selectedQuoteReferences, reference];
     renderTimeline();
     reloadIframeForReplyQuote("quote テスト設定を更新しました", {
@@ -1052,6 +1068,7 @@ function clearReplyQuoteSelection() {
 
     selectedReplyReference = null;
     selectedQuoteReferences = [];
+    urlContextOverrides.replyQuote = true;
     renderTimeline();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeReplyQuote: true }), {
         actionLabel: "reply / quote コンテキスト解除",
@@ -1070,6 +1087,7 @@ function syncChannelContext() {
         return;
     }
 
+    urlContextOverrides.channel = true;
     syncChannelInputsFromSelection();
     updateTimelineSelection();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
@@ -1090,6 +1108,7 @@ function clearChannelContext() {
     }
 
     selectedChannelContext = null;
+    urlContextOverrides.channel = true;
     syncChannelInputsFromSelection();
     updateTimelineSelection();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
@@ -1108,6 +1127,7 @@ function syncComposerContent() {
         return;
     }
 
+    urlContextOverrides.content = true;
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeContent: true }), {
         actionLabel: "本文同期",
         infoMessage: "本文同期を送信しました",
@@ -1123,6 +1143,7 @@ function syncComposerContent() {
 
 function clearComposerContent() {
     composerContentInput.value = "";
+    urlContextOverrides.content = true;
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ clearContent: true }), {
         actionLabel: "本文クリア",
         infoMessage: "本文クリアを送信しました",
@@ -1269,14 +1290,23 @@ function getConfiguredAppOrigin() {
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
-    url.searchParams.delete("content");
-    url.searchParams.delete("reply");
-    url.searchParams.delete("quote");
-    url.searchParams.delete("channel");
-    url.searchParams.delete("channelRelays");
-    url.searchParams.delete("channelName");
-    url.searchParams.delete("channelAbout");
-    url.searchParams.delete("channelPicture");
+
+    if (urlContextOverrides.content) {
+        url.searchParams.delete("content");
+    }
+
+    if (urlContextOverrides.replyQuote) {
+        url.searchParams.delete("reply");
+        url.searchParams.delete("quote");
+    }
+
+    if (urlContextOverrides.channel) {
+        url.searchParams.delete("channel");
+        url.searchParams.delete("channelRelays");
+        url.searchParams.delete("channelName");
+        url.searchParams.delete("channelAbout");
+        url.searchParams.delete("channelPicture");
+    }
     url.searchParams.delete("embedLocale");
     url.searchParams.delete("embedTheme");
     url.searchParams.delete("embedShowMascot");
@@ -2323,7 +2353,10 @@ syncRuntimeSettingsButton.addEventListener("click", () => {
     syncRuntimeSettings("手動 settings 同期");
 });
 resetInitialSettingsButton.addEventListener("click", resetInitialSettingsState);
-composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
+composerContentInput.addEventListener("input", () => {
+    urlContextOverrides.content = true;
+    updateDisplayedEmbedUrl();
+});
 syncChannelContextButton.addEventListener("click", syncChannelContext);
 clearChannelContextButton.addEventListener("click", clearChannelContext);
 loginNip07Button.addEventListener("click", () => {
