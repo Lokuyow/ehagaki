@@ -99,14 +99,27 @@ export function selectVerifiedPreloadedEvents(
         return {};
     }
 
-    const selected: Record<string, NostrEvent> = {};
+    const referencesByEventId = new Map<
+        string,
+        Array<Pick<ReplyQuoteHydrationTarget, "authorPubkey">>
+    >();
     for (const reference of references) {
+        const eventReferences = referencesByEventId.get(reference.eventId);
+        if (eventReferences) {
+            eventReferences.push(reference);
+        } else {
+            referencesByEventId.set(reference.eventId, [reference]);
+        }
+    }
+
+    const selected: Record<string, NostrEvent> = {};
+    for (const [eventId, eventReferences] of referencesByEventId) {
         try {
-            if (!Object.prototype.hasOwnProperty.call(value, reference.eventId)) {
+            if (!Object.prototype.hasOwnProperty.call(value, eventId)) {
                 continue;
             }
 
-            const candidate = value[reference.eventId];
+            const candidate = value[eventId];
             if (!isSignedNostrEvent(candidate)) {
                 continue;
             }
@@ -116,10 +129,10 @@ export function selectVerifiedPreloadedEvents(
                 !validateEvent(snapshot as never)
                 || getEventHash(snapshot as never) !== snapshot.id
                 || !verifyEvent(snapshot as never)
-                || snapshot.id !== reference.eventId
-                || (
+                || snapshot.id !== eventId
+                || eventReferences.some((reference) =>
                     reference.authorPubkey !== null
-                    && snapshot.pubkey !== reference.authorPubkey
+                    && snapshot.pubkey !== reference.authorPubkey,
                 )
             ) {
                 continue;
@@ -127,7 +140,7 @@ export function selectVerifiedPreloadedEvents(
 
             // verifyEvent may attach a library verification marker to its input.
             // Re-snapshot after verification so hydration receives wire fields only.
-            selected[reference.eventId] = createPlainNostrEventSnapshot(snapshot);
+            selected[eventId] = createPlainNostrEventSnapshot(snapshot);
         } catch {
             continue;
         }

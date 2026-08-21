@@ -19,10 +19,15 @@ function createSignedEvent(content = "hello") {
     );
 }
 
-function createReference(event: { id: string; pubkey: string }) {
+function createReference(
+    event: { id: string; pubkey: string },
+    authorPubkey: string | null = event.pubkey,
+    mode: "reply" | "quote" = "reply",
+) {
     return {
         eventId: event.id,
-        authorPubkey: event.pubkey,
+        authorPubkey,
+        mode,
     };
 }
 
@@ -75,6 +80,48 @@ describe("selectVerifiedPreloadedEvents", () => {
             { [event.id]: event },
             [createReference(event)],
         )).toEqual({});
+    });
+
+    it("accepts one preload for reply and quote targets sharing an event ID when all author hints match", () => {
+        const event = createSignedEvent();
+
+        const selected = selectVerifiedPreloadedEvents(
+            { [event.id]: event },
+            [
+                createReference(event, event.pubkey, "reply"),
+                createReference(event, event.pubkey, "quote"),
+            ],
+        );
+
+        expect(selected[event.id]).toEqual(createPlainNostrEventSnapshot(event));
+    });
+
+    it("rejects a preload when any target sharing its event ID has a mismatched author hint", () => {
+        const event = createSignedEvent();
+
+        const selected = selectVerifiedPreloadedEvents(
+            { [event.id]: event },
+            [
+                createReference(event, event.pubkey, "reply"),
+                createReference(event, "f".repeat(64), "quote"),
+            ],
+        );
+
+        expect(selected).toEqual({});
+    });
+
+    it("allows a null author hint alongside a matching author hint for the same event ID", () => {
+        const event = createSignedEvent();
+
+        const selected = selectVerifiedPreloadedEvents(
+            { [event.id]: event },
+            [
+                createReference(event, null, "reply"),
+                createReference(event, event.pubkey, "quote"),
+            ],
+        );
+
+        expect(selected[event.id]).toEqual(createPlainNostrEventSnapshot(event));
     });
 
     it.each([
