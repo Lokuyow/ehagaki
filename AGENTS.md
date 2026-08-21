@@ -23,8 +23,9 @@ Use `npm`. Do not replace it with `pnpm` or `yarn`.
 ## Before editing
 
 - Read the target files, their callers, related stores or services, and relevant tests.
-- Before designing or editing, read the repository skills under `.agents/skills/` whose declared scope matches the task. Do not read every skill unconditionally.
-- Treat skill references as navigation aids; if they differ from the current checkout, prefer the checkout.
+- Before designing or editing, read the repository skill under `.agents/skills/` whose declared scope matches the task. Do not read every skill unconditionally.
+- Use multiple matching skills together when the task crosses their boundaries.
+- Treat skill references and maps as navigation aids; if they differ from the current checkout, prefer the checkout.
 - Follow the current code's naming, design, and responsibility boundaries.
 - Preserve existing user-visible behavior unless the requested change requires otherwise.
 - Keep changes within the requested scope, and do not mix unrelated refactoring into feature work or bug fixes.
@@ -35,6 +36,15 @@ Use `npm`. Do not replace it with `pnpm` or `yarn`.
 - When implementation depends on current third-party library APIs, use Context7 when available after checking `package.json`, local types, and existing project usage. Prefer the repository code and applicable protocol specifications for project behavior. Do not use Context7 as a substitute for NIPs or eHagaki-specific design decisions.
 
 Prefer existing project abstractions and installed-library APIs over new bespoke implementations. Check `package.json` and the relevant local documentation before adding a dependency or duplicating functionality.
+
+### Repository skill routing
+
+- `.agents/skills/ehagaki-nostr/SKILL.md`: NIP, event/tag, relay, signing, and Nostr protocol or data-flow work.
+- `.agents/skills/ehagaki-browser-debug/SKILL.md`: browser-specific behavior, IME, viewport, focus, and real-browser reproduction or measurement.
+- `.agents/skills/ehagaki-embed-runtime/SKILL.md`: standalone, iframe, and Web Component runtime boundaries, Parent Client, Custom Element, and delegation contracts.
+- `.agents/skills/ehagaki-editor/SKILL.md`: Tiptap/ProseMirror documents, extensions/plugins, transactions, and editor state or lifecycle.
+
+These skills contain the detailed investigation procedures and implementation maps for their domains. Read only the matching skill(s), and use their references as indexes rather than copying their domain-specific runbooks into this file.
 
 ## Abstraction and tooling threshold
 
@@ -179,6 +189,12 @@ Controller and service modules currently live under `src/lib/` as well as its fo
 
 App-level authentication, session restoration, dialog coordination, initialization, and external-input handling belong in the existing app, controller, or bootstrap layers rather than component rendering code or stores.
 
+## Embedded runtime boundaries
+
+- For runtime-specific work, use `.agents/skills/ehagaki-embed-runtime/` and preserve the existing runtime boundary, ownership, and trust-validation model.
+- Keep embed-specific behavior within its runtime boundary rather than leaking it into unrelated standalone or global behavior.
+- Do not weaken origin, authentication, or secret validation at runtime boundaries.
+
 ## Svelte components and UI
 
 - Use Svelte 5 syntax and runes.
@@ -225,27 +241,23 @@ Follow neighboring store naming and state-shape conventions instead of imposing 
 
 ## Tiptap and ProseMirror
 
-Use Tiptap v3 and ProseMirror APIs, and preserve the editor's existing plain-text Nostr posting semantics. The composer may render links, media, custom emoji, placeholders, and decorations, but do not introduce unrelated rich-text or Markdown semantics without an explicit requirement.
+For editor-related work, use `.agents/skills/ehagaki-editor/`. Use Tiptap v3 and ProseMirror APIs, and preserve the editor's existing plain-text Nostr posting semantics. The composer may render links, media, custom emoji, placeholders, and decorations, but do not introduce unrelated rich-text or Markdown semantics without an explicit requirement.
 
 - Do not mutate a ProseMirror document or apply structural transactions while traversing it with `descendants()`, `nodesBetween()`, or a similar iterator.
-- Collect intended changes first and apply position-changing operations from the end of the document toward the beginning.
-- Set extension priority explicitly when ordering affects parsing, input rules, paste behavior, key handling, or decorations.
+- Collect intended structural changes before applying position-changing operations.
 - Avoid circular paths such as editor subscription -> store setter -> dispatch -> editor subscription.
-- Prevent append-transaction loops with transaction metadata, changed-range checks, or no-op checks as appropriate.
+- Prevent append-transaction loops and respect no-op updates.
 - Preserve undo and redo grouping when adding normalization transactions.
-- No-op when an update would reproduce the existing document, attributes, decoration state, or placeholder value.
 - Clean up DOM listeners, timers, subscriptions, and editor-owned references on destruction.
-- Update translated placeholder text from a component-side `$effect` that depends on both the translated text and current editor instance.
 
 Keep posting UI, gallery UI, upload-result messaging, and upload workflow state out of `src/lib/editor/`. Reuse existing editor utilities, tag utilities, and extensions before adding duplicate parsing or document logic.
 
 ## Nostr behavior and secrets
 
-For Nostr protocol or data-flow work, use `.agents/skills/ehagaki-nostr/` for the detailed workflow.
+For Nostr protocol or data-flow work, use `.agents/skills/ehagaki-nostr/` for the detailed workflow and implementation map.
 
 - Prefer existing builders, resolvers, services, and utilities over new protocol paths or direct library calls from UI code.
-- Verify the applicable NIPs and event/tag semantics.
-- Do not infer protocol behavior from UI appearance.
+- Verify the applicable NIPs and event/tag semantics; do not infer protocol behavior from UI appearance.
 - Add or update protocol-focused tests for event or tag construction changes.
 - Never expose nsec values, private keys, authentication payloads, tokens, or other secrets in logs, fixtures, screenshots, or reports.
 
@@ -300,13 +312,14 @@ Test user-visible behavior and public module behavior rather than private implem
 
 ## Playwright and browser verification
 
-For browser-specific regressions, use `.agents/skills/ehagaki-browser-debug/`.
+Use Playwright for real-browser integration and user interactions that unit or component tests cannot prove. For browser-specific regressions or cause investigation, use `.agents/skills/ehagaki-browser-debug/`.
 
 - Reuse existing Playwright projects, fixtures, and harnesses when they fit.
 - Prefer semantic locators such as `getByRole`, `getByLabel`, `getByText`, or `data-testid`.
-- Add persistent E2E coverage only when unit, component, or integration tests are insufficient. Keep it deterministic and independent of external networks, real accounts, secrets, and local user data.
-- Delete temporary specs, harnesses, scripts, screenshots, and traces when the investigation is complete.
-- Report the executed project, viewport, operation, result, and whether real-device verification was performed.
+- Add persistent E2E coverage only when lower-level tests are insufficient. Keep it deterministic and independent of external networks, real accounts, secrets, and local user data.
+- Delete temporary investigation specs, harnesses, scripts, screenshots, and traces when complete; do not commit Playwright artifacts.
+- Report the executed browser project, viewport, operation, result, and whether real-device verification was performed.
+- Treat Playwright device emulation as distinct from real OS keyboard, browser chrome, PWA standalone UI, or WebView behavior.
 
 Do not commit:
 
