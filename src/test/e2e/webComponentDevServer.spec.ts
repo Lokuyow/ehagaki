@@ -123,6 +123,61 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(failedWebComponentRequests).toEqual([]);
         expect(consoleErrors.filter((message) => /404|module/i.test(message))).toEqual([]);
 
+        webComponentResponses.length = 0;
+        failedWebComponentRequests.length = 0;
+        consoleErrors.length = 0;
+        await page.goto(`${origin}/ehagaki/host-owned-composer-example.html`);
+        webComponentResponses.length = 0;
+        failedWebComponentRequests.length = 0;
+        consoleErrors.length = 0;
+        await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":false}");
+        await expect(page.locator("ehagaki-composer")).toBeVisible();
+        await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const icons = [
+                shadow.querySelector<HTMLElement>("button.post-button .plane-icon"),
+                shadow.querySelector<HTMLElement>(".content-warning-icon"),
+                shadow.querySelector<HTMLElement>(".hashtag-icon"),
+            ];
+            return icons.map((icon) => icon ? getComputedStyle(icon).maskImage : "missing");
+        })).toEqual(expect.arrayContaining([
+            expect.stringContaining(`${origin}/ehagaki/web-component/icons/`),
+        ]));
+        const sampleIconState = await page.locator("ehagaki-composer").evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const icons = [
+                shadow.querySelector<HTMLElement>("button.post-button .plane-icon"),
+                shadow.querySelector<HTMLElement>(".content-warning-icon"),
+                shadow.querySelector<HTMLElement>(".hashtag-icon"),
+            ];
+            return icons.map((icon) => icon ? getComputedStyle(icon).maskImage : "missing");
+        });
+        expect(sampleIconState).toHaveLength(3);
+        expect(sampleIconState.every((mask) => mask !== "none" && mask.includes(`${origin}/ehagaki/web-component/icons/`))).toBe(true);
+        expect(sampleIconState.every((mask) => !mask.includes(`${origin}/ehagaki/web-component/assets/icons/`))).toBe(true);
+
+        const sampleEditor = page.locator("ehagaki-composer .tiptap-editor");
+        await sampleEditor.click();
+        await sampleEditor.pressSequentially("host-owned sample body");
+        await page.locator("#context").click();
+        await expect(page.locator("#log")).toContainText("ehagaki-composer-context-updated");
+        await page.locator("ehagaki-composer button.post-button").click();
+        await expect(page.locator("#log")).toContainText("submit output:");
+        await page.locator("#media").click();
+        await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":true}");
+        const iconStatuses = await page.evaluate(async () => Promise.all([
+            "paper-plane-solid-full.svg",
+            "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
+            "tag_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
+        ].map(async (icon) => (await fetch(`./web-component/icons/${icon}`)).status)));
+        expect(iconStatuses).toEqual([200, 200, 200]);
+
+        const sampleRequests = webComponentResponses.filter(({ path }) => path.includes("/ehagaki/web-component/"));
+        expect(sampleRequests.some(({ path, status }) => path.endsWith("/icons/paper-plane-solid-full.svg") && status === 200)).toBe(true);
+        expect(sampleRequests.some(({ path }) => path.includes("/assets/icons/") && path.endsWith(".svg"))).toBe(false);
+        expect(sampleRequests.some(({ status }) => status === 404)).toBe(false);
+        expect(failedWebComponentRequests).toEqual([]);
+
         const entryPath = join(process.cwd(), "src", "web-component", "entry.ts");
         const entryStat = await stat(entryPath);
         await expect.poll(() => (output.join("").match(/built in/g) ?? []).length, {
