@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { nip19 } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
@@ -1438,14 +1438,90 @@ test("queues setContext before ready and applies content and reply atomically", 
     expect(result.contentAfterInvalid).not.toContain("must not be applied");
 });
 
+test("uses a verified preloaded event in Direct Web Component setContext", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const event = finalizeEvent({
+        kind: 1,
+        content: "web component preloaded reply",
+        tags: [],
+        created_at: 1,
+    }, generateSecretKey());
+    const reply = nip19.neventEncode({ id: event.id, author: event.pubkey });
+    const invalidEvent = { ...event, sig: "0".repeat(128) };
+
+    const result = await page.evaluate(async ({ reply, event }) => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setContext({
+            reply,
+            preloadedEvents: { [event.id]: event },
+        });
+        return {
+            previewCount: composer.shadowRoot?.querySelectorAll(".reply-quote-preview").length ?? 0,
+        };
+    }, { reply, event });
+
+    expect(result.previewCount).toBe(1);
+    const welcomeButton = page.locator("ehagaki-composer").locator(".welcome-dialog button.primary");
+    if (await welcomeButton.isVisible()) {
+        await welcomeButton.click();
+    }
+    await page.locator("ehagaki-composer").locator(".reply-quote-preview .preview-label").click();
+    await page.waitForFunction(
+        ({ content }) => document.querySelector("ehagaki-composer")
+            ?.shadowRoot?.textContent?.includes(content),
+        { content: event.content },
+    );
+
+    const invalidResult = await page.evaluate(async ({ reply, invalidEvent }) => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            setContext(value: unknown): Promise<void>;
+        };
+        return await composer.setContext({
+            reply,
+            preloadedEvents: { [invalidEvent.id]: invalidEvent },
+        }).then(
+            () => "resolved",
+            (error: Error) => error.name,
+        );
+    }, { reply, invalidEvent });
+    expect(invalidResult).toBe("resolved");
+});
+
 test("hands Host-owned output to the host without relay startup and retains its immutable configuration on reconnect", async ({ page }) => {
     await page.goto(hostOrigin);
-    const replyEventId = "1".repeat(64);
-    const quoteEventId = "2".repeat(64);
-    const reply = nip19.noteEncode(replyEventId);
-    const quote = nip19.noteEncode(quoteEventId);
+    const validReplyEvent = finalizeEvent({
+        kind: 1,
+        content: "host-owned preloaded reply",
+        tags: [],
+        created_at: 1,
+    }, generateSecretKey());
+    const invalidQuoteEvent = finalizeEvent({
+        kind: 1,
+        content: "must not hydrate",
+        tags: [],
+        created_at: 1,
+    }, generateSecretKey());
+    const replyEventId = validReplyEvent.id;
+    const quoteEventId = invalidQuoteEvent.id;
+    const missingQuoteEventId = "3".repeat(64);
+    const reply = nip19.noteEncode(validReplyEvent.id);
+    const quote = nip19.noteEncode(invalidQuoteEvent.id);
+    const missingQuote = nip19.noteEncode(missingQuoteEventId);
+    const preloadedEvents = {
+        [validReplyEvent.id]: validReplyEvent,
+        [invalidQuoteEvent.id]: {
+            ...invalidQuoteEvent,
+            sig: "0".repeat(128),
+        },
+    };
 
-    const initial = await page.evaluate(async ({ reply, quote }) => {
+    const initial = await page.evaluate(async ({ reply, quote, missingQuote, preloadedEvents }) => {
         await import(`${window.__componentOrigin}/ehagaki-composer.js`);
         type HostComposer = HTMLElement & {
             whenReady(): Promise<void>;
@@ -1518,7 +1594,8 @@ test("hands Host-owned output to the host without relay startup and retains its 
         await composer.setContext({
             content: "Host-owned body #HostOwned",
             reply,
-            quotes: [quote],
+            quotes: [quote, missingQuote],
+            preloadedEvents,
         });
 
         const shadow = composer.shadowRoot!;
@@ -1531,15 +1608,42 @@ test("hands Host-owned output to the host without relay startup and retains its 
             hasLoginButton: !!shadow.querySelector("button.login-btn"),
             webSocketCalls: state.webSocketCalls,
         };
-    }, { reply, quote });
+    }, { reply, quote, missingQuote, preloadedEvents });
 
     expect(initial.invalidBeforeConnect).toBe("TypeError");
-    expect(initial.previewCount).toBe(2);
+    expect(initial.previewCount).toBe(3);
     expect(initial.loadingCount).toBe(0);
     expect(initial.hasFileInput).toBe(false);
     expect(initial.hasImageButton).toBe(false);
     expect(initial.hasLoginButton).toBe(false);
     expect(initial.webSocketCalls).toBe(0);
+
+    await page.locator("ehagaki-composer").locator(".reply-quote-preview .preview-label").first().click();
+    await page.waitForFunction(() =>
+        Array.from(
+            document.querySelector("ehagaki-composer")?.shadowRoot
+                ?.querySelectorAll(".reply-quote-preview") ?? [],
+        ).some((preview) => preview.textContent?.includes("host-owned preloaded reply")),
+    );
+    const preloadResult = await page.evaluate(() => {
+        const previews = Array.from(
+            document.querySelector("ehagaki-composer")?.shadowRoot
+                ?.querySelectorAll(".reply-quote-preview") ?? [],
+        );
+        return {
+            matchingPreload: previews.filter((preview) =>
+                preview.textContent?.includes("host-owned preloaded reply"),
+            ).length,
+            hasInvalidEventContent: previews.some((preview) =>
+                preview.textContent?.includes("must not hydrate"),
+            ),
+            loadingCount: document.querySelector("ehagaki-composer")?.shadowRoot
+                ?.querySelectorAll(".loading-status").length ?? 0,
+        };
+    });
+    expect(preloadResult.matchingPreload).toBe(1);
+    expect(preloadResult.hasInvalidEventContent).toBe(false);
+    expect(preloadResult.loadingCount).toBe(0);
 
     const postButton = page.locator("ehagaki-composer").locator("button.post-button");
     await expect(postButton).toBeEnabled();
@@ -1600,7 +1704,10 @@ test("hands Host-owned output to the host without relay startup and retains its 
         content: "Host-owned body #HostOwned",
         context: {
             reply: { eventId: replyEventId },
-            quotes: [{ eventId: quoteEventId }],
+            quotes: [
+                { eventId: quoteEventId },
+                { eventId: missingQuoteEventId },
+            ],
         },
     });
     expect(result.call.output.tags.every((tag: string[]) =>
@@ -1608,12 +1715,12 @@ test("hands Host-owned output to the host without relay startup and retains its 
     expect(result.contextEvents.find((event: { detail: { reply?: string } }) =>
         event.detail.reply === reply)?.detail).toMatchObject({
         reply,
-        quotes: [quote],
+        quotes: [quote, missingQuote],
     });
     expect(result.successEvent?.detail).toMatchObject({
         eventId: "b".repeat(64),
         replyToEventId: replyEventId,
-        quotedEventIds: [quoteEventId],
+        quotedEventIds: [quoteEventId, missingQuoteEventId],
     });
     expect(result.webSocketCalls).toBe(0);
     expect(result.reconnectedHasFileInput).toBe(false);

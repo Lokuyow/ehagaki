@@ -2,6 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import type {
     ChannelContextQueryTarget,
     ChannelContextState,
+    NostrEvent,
     RelayConfig,
     ReplyQuoteComposerState,
     ReplyQuoteQueryResult,
@@ -20,7 +21,10 @@ import {
     buildComposerContextSignature,
     buildComposerContextUpdatedPayload,
 } from "./embedComposerContextNotification";
-import { validateEmbedComposerSetContextPayload } from "./embedComposerContextValidation";
+import {
+    selectVerifiedPreloadedEvents,
+    validateEmbedComposerSetContextPayload,
+} from "./embedComposerContextValidation";
 
 export interface AppEmbedComposerInputPort {
     resetContent(): void;
@@ -32,6 +36,7 @@ export interface AppEmbedComposerContextApplyPort {
     hydrateReplyQuoteReferences(
         references: ReplyQuoteHydrationTarget[],
         runtime: AppEmbedRuntimeSnapshot,
+        preloadedEvents?: Record<string, NostrEvent>,
     ): Promise<void>;
     clearReplyQuote(): void;
     applyChannelContextQuery(
@@ -265,10 +270,15 @@ export function createAppEmbedController(
         const references = deps.composerContextApply.applyReplyQuoteSelection(
             replyQuoteQuery,
         );
+        const selectedPreloadedEvents = selectVerifiedPreloadedEvents(
+            payload.preloadedEvents,
+            references,
+        );
         return references.length > 0
             ? [() => deps.composerContextApply.hydrateReplyQuoteReferences(
                 references,
                 runtimeSnapshot,
+                selectedPreloadedEvents,
             )]
             : [];
     }

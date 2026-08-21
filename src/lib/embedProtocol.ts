@@ -1,3 +1,5 @@
+import type { NostrEvent } from "./types";
+
 export const EMBED_MESSAGE_NAMESPACE = "ehagaki.embed" as const;
 export const EMBED_MESSAGE_VERSION = 1 as const;
 
@@ -67,6 +69,7 @@ export interface EmbedComposerSetContextPayload {
     quotes?: string[] | null;
     content?: string | null;
     channel?: EmbedChannelContextPayload | null;
+    preloadedEvents?: Record<string, NostrEvent>;
 }
 
 export interface EmbedSettingsSetPayload {

@@ -287,6 +287,9 @@ window.addEventListener('message', (event) => {
 - `channel.relays` は kind 42 用の一時的な追加write relay候補です。正規化・重複排除後、`channel.relays`を先、`reference`内のrelay hintを後の順に共有する最大3件枠へ制限され、検証済みcacheや現行V1下書きには保存されません
 - `channel.name` / `channel.about` / `channel.picture` は三値です。省略（`undefined`）はDB・relayから補完可能、`null` は明示クリア、非空文字列は明示値として扱い、同じcomposerセッション中はDB・relay結果で上書きされません
 - `composer.setContext`はpayload全体をstate変更前に検証します。metadataの空文字・空白のみ、型不一致、不正なreference、不正なrelay、または一部でも不正なquoteがあれば全体を適用せず`composer.contextError`を返します。`channel.reference`、`reply`、`quotes[]`の`nevent`内relayもすべて明示的な`ws:`/`wss:` URLである必要があり、不正値を1件でも含むreferenceはrejectします。重複quoteはevent idで重複排除します
+- `preloadedEvents` は、親クライアントがすでに保持している署名済みNostr eventを、`event id` をkeyにして同じ `composer.setContext` の reply / quote hydrationへ一時的に渡す任意フィールドです。値は `{ id, pubkey, created_at, kind, tags, content, sig }` の完全なeventにしてください
+- `preloadedEvents` の各eventは、構造、event ID、hash、署名、referenceのevent ID、`nevent` にauthor hintがある場合のpubkeyを検証します。検証済みのwire-field snapshotだけが利用され、個別eventが不正でもcontext全体はrejectされません。無効なcontainerやeventはpreloadなしとして扱い、relay hydrationへfallbackします
+- `preloadedEvents` はURL queryへ指定できず、保存されず、`composer.contextUpdated`にも返りません。`composer.contextApplied`は従来どおりevent hydration完了を待ちません
 - `composer.setContext` は patch として扱われます。`undefined` は変更なし、`reply: null` は reply 解除、`quotes: []` または `quotes: null` は quote 全解除、`channel: null` はパブリックチャット解除、`content: null` は本文クリアです
 - `composer.setContext` の `requestId` は必須です。iframe は `composer.contextApplied` / `composer.contextError` に同じ `requestId` を載せて返します
 - `composer.contextApplied` の payload は `{ timestamp }` です。payload全体の構文とreferenceを検証し、channel、reply、quotes、contentの利用可能な初期状態を設定した時点で返します。IndexedDB補完、kind 40 / kind 41取得、reply / quote参照イベントhydrate、プロフィール取得の完了は待ちません

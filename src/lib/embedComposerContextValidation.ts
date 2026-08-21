@@ -1,6 +1,12 @@
+import { getEventHash, validateEvent, verifyEvent } from "nostr-tools";
 import type { EmbedComposerSetContextPayload } from "./embedProtocol";
 import { decodeEventPointerValue } from "./eventPointerUtils";
+import {
+    createPlainNostrEventSnapshot,
+    isSignedNostrEvent,
+} from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import type { NostrEvent, ReplyQuoteHydrationTarget } from "./types";
 
 export class EmbedComposerContextValidationError extends Error {
     constructor() {
@@ -78,4 +84,67 @@ export function validateEmbedComposerSetContextPayload(
     validateChannel(value.channel);
 
     return value as unknown as EmbedComposerSetContextPayload;
+}
+
+/**
+ * Selects verified, target-matching preload events from an external composer
+ * context. The returned snapshots intentionally do not retain a reference to
+ * the host-provided objects.
+ */
+export function selectVerifiedPreloadedEvents(
+    value: unknown,
+    references: readonly Pick<ReplyQuoteHydrationTarget, "eventId" | "authorPubkey">[],
+): Record<string, NostrEvent> {
+    if (!isRecord(value)) {
+        return {};
+    }
+
+    const referencesByEventId = new Map<
+        string,
+        Array<Pick<ReplyQuoteHydrationTarget, "authorPubkey">>
+    >();
+    for (const reference of references) {
+        const eventReferences = referencesByEventId.get(reference.eventId);
+        if (eventReferences) {
+            eventReferences.push(reference);
+        } else {
+            referencesByEventId.set(reference.eventId, [reference]);
+        }
+    }
+
+    const selected: Record<string, NostrEvent> = {};
+    for (const [eventId, eventReferences] of referencesByEventId) {
+        try {
+            if (!Object.prototype.hasOwnProperty.call(value, eventId)) {
+                continue;
+            }
+
+            const candidate = value[eventId];
+            if (!isSignedNostrEvent(candidate)) {
+                continue;
+            }
+
+            const snapshot = createPlainNostrEventSnapshot(candidate);
+            if (
+                !validateEvent(snapshot as never)
+                || getEventHash(snapshot as never) !== snapshot.id
+                || !verifyEvent(snapshot as never)
+                || snapshot.id !== eventId
+                || eventReferences.some((reference) =>
+                    reference.authorPubkey !== null
+                    && snapshot.pubkey !== reference.authorPubkey,
+                )
+            ) {
+                continue;
+            }
+
+            // verifyEvent may attach a library verification marker to its input.
+            // Re-snapshot after verification so hydration receives wire fields only.
+            selected[eventId] = createPlainNostrEventSnapshot(snapshot);
+        } catch {
+            continue;
+        }
+    }
+
+    return selected;
 }
