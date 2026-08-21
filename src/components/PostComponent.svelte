@@ -70,18 +70,25 @@
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
+  import {
+    profileDataStore,
+    isLoadingProfileStore,
+    profileLoadedStore,
+  } from "../stores/profileStore.svelte";
   import { POST_EDITOR_MIN_HEIGHT } from "../lib/postLayoutUtils";
   import {
     measureElementOuterHeight,
     resolvePostEditorTargetHeight,
   } from "../lib/utils/composerLayoutUtils";
   import ImageFullscreen from "./ImageFullscreen.svelte";
+  import ProfileAvatar from "./ProfileAvatar.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
 
   interface Props {
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
+    isSwitchingAccount?: boolean;
     onPostSuccess?: (result?: PostResult) => void;
     availableComposerHeight?: number;
     minEditorHeight?: number;
@@ -92,6 +99,7 @@
   let {
     rxNostr,
     hasStoredKey,
+    isSwitchingAccount = false,
     onPostSuccess,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
@@ -108,6 +116,17 @@
   let mediaFreePlacement = $derived(mediaFreePlacementStore.value);
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
+  let profileData = $derived(profileDataStore.value);
+  let profileLoaded = $derived(profileLoadedStore.value);
+  let isLoadingProfile = $derived(isLoadingProfileStore.value);
+  let editorIsEmpty = $state(true);
+  let showAccountPlaceholder = $derived(
+    hasStoredKey &&
+      !isSwitchingAccount &&
+      profileLoaded &&
+      !isLoadingProfile &&
+      editorIsEmpty,
+  );
   let postContainerEl: HTMLDivElement | null = null;
   let editorContainerEl: HTMLElement | null = null;
   let editorResources: InitializeEditorResult | null = null;
@@ -340,9 +359,21 @@
     editor = editorResources.editor;
 
     // エディターの購読
+    let subscribedEditor: TipTapEditor | null = null;
+    const handleEditorTransaction = ({ editor: editorInstance }: { editor: TipTapEditor }) => {
+      editorIsEmpty = editorInstance.isEmpty;
+    };
+
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
+        if (subscribedEditor) {
+          subscribedEditor.off("transaction", handleEditorTransaction);
+        }
+
+        subscribedEditor = editorInstance;
         currentEditor = editorInstance;
+        editorIsEmpty = editorInstance?.isEmpty ?? true;
+        editorInstance?.on("transaction", handleEditorTransaction);
         // ストアにも設定
         currentEditorStore.set(editorInstance);
       },
@@ -369,6 +400,9 @@
         handleImageFullscreenRequest,
       );
       if (editorResources) {
+        if (subscribedEditor) {
+          subscribedEditor.off("transaction", handleEditorTransaction);
+        }
         cleanupEditor({
           unsubscribe: editorResources.unsubscribe,
           componentUnsubscribe: editorSubscriptionUnsubscribe ?? (() => {}),
@@ -741,6 +775,7 @@
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
     class:sending={postStatus.sending}
+    class:account-avatar-placeholder={showAccountPlaceholder}
     onclick={handleEditorContainerClick}
     onkeydown={handleEditorContainerKeydown}
     use:fileDropActionWithDragState={{
@@ -755,6 +790,18 @@
     tabindex="-1"
     bind:this={editorContainerEl}
   >
+    {#if showAccountPlaceholder}
+      <div class="editor-account-placeholder" aria-hidden="true">
+        <ProfileAvatar
+          src={profileData?.picture || ""}
+          alt=""
+          fallbackAriaLabel=""
+          rootClassName="editor-account-placeholder-avatar"
+          imageClassName="editor-account-placeholder-image"
+          fallbackClassName="editor-account-placeholder-fallback"
+        />
+      </div>
+    {/if}
     {#if editor && currentEditor}
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
       <EditorContent editor={currentEditor as any} class="editor-content" />
@@ -862,6 +909,42 @@
     background: var(--bg-input);
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
+  }
+
+  :global(.editor-account-placeholder) {
+    position: absolute;
+    top: 11px;
+    left: 10px;
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  :global(.editor-account-placeholder-avatar) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 50%;
+  }
+
+  :global(.editor-account-placeholder-image),
+  :global(.editor-account-placeholder-fallback) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+  }
+
+  :global(.editor-account-placeholder-image) {
+    object-fit: cover;
+  }
+
+  .editor-container.account-avatar-placeholder
+    :global(p.is-editor-empty:first-child::before) {
+    padding-left: 36px;
   }
 
   .editor-container.sending {

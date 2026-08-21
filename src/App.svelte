@@ -1921,6 +1921,7 @@
                     bind:this={postComponentRef}
                     {rxNostr}
                     hasStoredKey={isAuthenticated}
+                    {isSwitchingAccount}
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
