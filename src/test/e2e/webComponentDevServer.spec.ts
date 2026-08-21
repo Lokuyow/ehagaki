@@ -132,6 +132,24 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         consoleErrors.length = 0;
         await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":false}");
         await expect(page.locator("ehagaki-composer")).toBeVisible();
+        const closedHostOwnedGeometry = await page.locator("ehagaki-composer").evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const content = shadow.querySelector<HTMLElement>(".main-content")!;
+            const buttonBar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
+            const component = element.getBoundingClientRect();
+            const buttonBarRect = buttonBar.getBoundingClientRect();
+            return {
+                topSpacing: getComputedStyle(content).paddingTop,
+                buttonBarHeight: buttonBarRect.height,
+                buttonBarBottom: buttonBarRect.bottom,
+                componentBottom: component.bottom,
+                footerPresent: !!shadow.querySelector(".footer-bar"),
+            };
+        });
+        expect(closedHostOwnedGeometry.topSpacing).toBe("0px");
+        expect(closedHostOwnedGeometry.buttonBarHeight).toBe(50);
+        expect(Math.abs(closedHostOwnedGeometry.buttonBarBottom - closedHostOwnedGeometry.componentBottom)).toBeLessThanOrEqual(1);
+        expect(closedHostOwnedGeometry.footerPresent).toBe(false);
         await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
             const icons = [
@@ -155,6 +173,22 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(sampleIconState).toHaveLength(3);
         expect(sampleIconState.every((mask) => mask !== "none" && mask.includes(`${origin}/ehagaki/web-component/icons/`))).toBe(true);
         expect(sampleIconState.every((mask) => !mask.includes(`${origin}/ehagaki/web-component/assets/icons/`))).toBe(true);
+
+        await page.locator("ehagaki-composer .content-warning-icon").click();
+        await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+            const reason = element.shadowRoot!.querySelector<HTMLElement>(".reason-input-container");
+            return reason?.getBoundingClientRect().height ?? 0;
+        })).toBe(50);
+        const hostOwnedWarningGeometry = await page.locator("ehagaki-composer").evaluate((element) => {
+            const shadow = element.shadowRoot!;
+            const reason = shadow.querySelector<HTMLElement>(".reason-input-container")!;
+            const buttonBar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
+            return {
+                reasonBottom: reason.getBoundingClientRect().bottom,
+                buttonBarTop: buttonBar.getBoundingClientRect().top,
+            };
+        });
+        expect(Math.abs(hostOwnedWarningGeometry.reasonBottom - hostOwnedWarningGeometry.buttonBarTop)).toBeLessThanOrEqual(1);
 
         const sampleEditor = page.locator("ehagaki-composer .tiptap-editor");
         await sampleEditor.click();

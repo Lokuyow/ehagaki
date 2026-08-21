@@ -559,7 +559,11 @@
   }
 
   const composerLayoutMetrics = useComposerLayoutMetrics({
-    setupViewportListener,
+    setupViewportListener: () =>
+      setupViewportListener({
+        hasHeader: !isHostOwnedComposer,
+        hasFooter: !isHostOwnedComposer,
+      }),
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
