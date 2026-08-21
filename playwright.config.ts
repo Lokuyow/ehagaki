@@ -1,15 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
-import { fileURLToPath, URL as NodeURL } from 'node:url';
 import {
     buildPlaywrightEndpoints,
     buildPlaywrightViteCommand,
     resolvePlaywrightPort,
 } from './scripts/playwrightWorktreePort';
 
-const worktreeRoot = import.meta.url.startsWith('file://')
-    ? fileURLToPath(new NodeURL('.', import.meta.url))
-    : process.cwd();
-const resolvedPort = resolvePlaywrightPort({ rootPath: worktreeRoot });
+const resolvedPort = resolvePlaywrightPort({});
 const endpoints = buildPlaywrightEndpoints(resolvedPort);
 
 export default defineConfig({

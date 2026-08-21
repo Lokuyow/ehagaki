@@ -1,21 +1,30 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+    AUTO_PORT_MAX_EXCLUSIVE,
+    AUTO_PORT_MIN,
     buildPlaywrightEndpoints,
     buildPlaywrightViteCommand,
-    derivePlaywrightPort,
-    normalizeWorktreeRoot,
+    generatePlaywrightPort,
     parsePlaywrightPort,
     resolvePlaywrightPort,
 } from '../../../scripts/playwrightWorktreePort';
 
-describe('playwright worktree port resolver', () => {
+describe('playwright port resolver', () => {
+    const originalAutoPort = process.env.EHAGAKI_E2E_AUTO_PORT;
+
+    afterEach(() => {
+        if (originalAutoPort === undefined) {
+            delete process.env.EHAGAKI_E2E_AUTO_PORT;
+        } else {
+            process.env.EHAGAKI_E2E_AUTO_PORT = originalAutoPort;
+        }
+    });
+
     it('uses a valid explicit port and trims surrounding whitespace', () => {
         expect(parsePlaywrightPort('4173')).toBe(4173);
         expect(
             resolvePlaywrightPort({
-                rootPath: 'C:/worktrees/ehagaki',
                 envPort: '  51234  ',
-                platform: 'win32',
             }),
         ).toBe(51234);
     });
@@ -34,49 +43,39 @@ describe('playwright worktree port resolver', () => {
         expect(parsePlaywrightPort('65535')).toBe(65535);
     });
 
-    it('normalizes Windows separators, case, dot segments, and trailing separators', () => {
-        const slashPath = normalizeWorktreeRoot(
-            'C:/Users/Example/ehagaki/./test/../',
-            'win32',
-        );
-        const backslashPath = normalizeWorktreeRoot(
-            'c:\\users\\example\\ehagaki\\',
-            'win32',
-        );
-
-        expect(slashPath).toBe('c:\\users\\example\\ehagaki');
-        expect(backslashPath).toBe(slashPath);
+    it('generates a port in the automatic range', () => {
+        expect(generatePlaywrightPort(() => AUTO_PORT_MIN)).toBe(AUTO_PORT_MIN);
+        expect(
+            generatePlaywrightPort(() => AUTO_PORT_MAX_EXCLUSIVE - 1),
+        ).toBe(AUTO_PORT_MAX_EXCLUSIVE - 1);
     });
 
-    it('derives a stable port for the same root and distinct ports for representative roots', () => {
-        const firstRoot = normalizeWorktreeRoot(
-            'C:/Users/Example/.codex/worktrees/first/ehagaki',
-            'win32',
-        );
-        const secondRoot = normalizeWorktreeRoot(
-            'C:/Users/Example/.codex/worktrees/second/ehagaki',
-            'win32',
-        );
+    it('reuses one generated port when the config is evaluated again', () => {
+        delete process.env.EHAGAKI_E2E_AUTO_PORT;
+        const portSource = vi.fn(() => 45_123);
 
-        const firstPort = derivePlaywrightPort(firstRoot);
-        expect(resolvePlaywrightPort({
-            rootPath: 'c:\\users\\example\\.codex\\worktrees\\first\\ehagaki\\',
-            platform: 'win32',
-        })).toBe(firstPort);
-        expect(firstPort).not.toBe(derivePlaywrightPort(secondRoot));
-        expect(firstPort).toBeGreaterThanOrEqual(1024);
-        expect(firstPort).toBeLessThanOrEqual(65535);
+        expect(resolvePlaywrightPort({ portSource })).toBe(45_123);
+        expect(resolvePlaywrightPort({ portSource })).toBe(45_123);
+        expect(portSource).toHaveBeenCalledTimes(1);
     });
 
-    it('is independent of time, process id, and randomness', () => {
-        const root = normalizeWorktreeRoot('C:/worktrees/ehagaki', 'win32');
+    it.each([44_999, 55_000, 45_123.5, Number.NaN])(
+        'rejects an invalid generated port %j',
+        (value) => {
+            expect(() => generatePlaywrightPort(() => value)).toThrow(
+                /Generated Playwright port/,
+            );
+        },
+    );
 
-        expect([
-            derivePlaywrightPort(root),
-            derivePlaywrightPort(root),
-            derivePlaywrightPort(root),
-        ]).toEqual([expect.any(Number), expect.any(Number), expect.any(Number)]);
-        expect(derivePlaywrightPort(root)).toBe(derivePlaywrightPort(root));
+    it('does not allow the automatic source to override an explicit port', () => {
+        const portSource = () => {
+            throw new Error('port source should not be called');
+        };
+
+        expect(
+            resolvePlaywrightPort({ envPort: '51234', portSource }),
+        ).toBe(51234);
     });
 });
 
@@ -95,6 +94,8 @@ describe('Playwright config connection values', () => {
         expect(baseUrl.hostname).toBe('127.0.0.1');
         expect(readyUrl.hostname).toBe('127.0.0.1');
         expect(baseUrl.port).toBe(readyUrl.port);
+        expect(Number(baseUrl.port)).toBeGreaterThanOrEqual(AUTO_PORT_MIN);
+        expect(Number(baseUrl.port)).toBeLessThan(AUTO_PORT_MAX_EXCLUSIVE);
         expect(baseUrl.pathname).toBe('/ehagaki/');
         expect(readyUrl.pathname).toBe(
             '/ehagaki/post-history-dialog-playwright.html',
