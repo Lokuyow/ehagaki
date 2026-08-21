@@ -276,7 +276,14 @@ describe('accessibility component tests', () => {
             src: 'https://example.com/test.webp',
             setAddress: null,
         });
+
+        const selectionBeforePickerActions = editor.state.selection.toJSON();
+        (component as any).moveCaretLeft();
+        (component as any).moveCaretRight();
+        (component as any).deleteBackward();
+        (component as any).insertLineBreak();
         expect(editor.getJSON()).toEqual(contentBeforeInput);
+        expect(editor.state.selection.toJSON()).toEqual(selectionBeforePickerActions);
 
         updatePostStatus({ ...editorState.postStatus, sending: false });
         await tick();

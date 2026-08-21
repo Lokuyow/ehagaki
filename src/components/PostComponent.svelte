@@ -632,7 +632,7 @@
   }
 
   function moveCaret(direction: -1 | 1): void {
-    if (!currentEditor) return;
+    if (!currentEditor || postStatus.sending) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -663,7 +663,7 @@
   }
 
   export function deleteBackward(): void {
-    if (!currentEditor) return;
+    if (!currentEditor || postStatus.sending) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -699,7 +699,7 @@
   }
 
   export function insertLineBreak(): void {
-    if (!currentEditor) return;
+    if (!currentEditor || postStatus.sending) return;
     revealToolbarCaret();
     currentEditor.commands.keyboardShortcut("Enter");
   }
@@ -833,8 +833,8 @@
         currentEditor.commands.insertContent(
           ` ${pinnedHashtags.map((hashtag) => `#${hashtag}`).join(" ")}`,
         );
-        currentEditor.commands.focus("start");
       }
+      currentEditor.commands.focus("start");
     }
   }
 

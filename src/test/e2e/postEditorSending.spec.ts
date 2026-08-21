@@ -122,4 +122,58 @@ test.describe('post editor sending state', () => {
         expect(fallbackGeometry.width).toBeLessThanOrEqual(wrapperGeometry.width + 0.5);
         expect(fallbackGeometry.height).toBeLessThanOrEqual(wrapperGeometry.height + 0.5);
     });
+
+    test('preserves the open picker and restores editor focus after a successful post', async ({ page }) => {
+        await page.goto('post-editor-sending-playwright.html');
+
+        const editorContainer = page.getByRole('textbox', { name: '投稿エディター' });
+        const editor = editorContainer.locator('.tiptap-editor');
+        const pickerToggle = page.getByTestId('toggle-picker');
+        const pickerHost = page.getByTestId('custom-emoji-picker-host');
+
+        await editor.click();
+        await page.keyboard.type('投稿成功後にクリアされる本文');
+        await pickerToggle.click();
+        await expect(pickerHost).toBeVisible();
+        await expect(page.getByAltText(':sending-safe:')).toBeVisible();
+
+        const pickerIdentity = await pickerHost.locator('.custom-emoji-picker').elementHandle();
+        if (!pickerIdentity) throw new Error('Custom emoji picker was not mounted.');
+
+        await page.getByTestId('toggle-sending').click();
+        await expect(editor).toHaveAttribute('contenteditable', 'false');
+        await expect(pickerHost).toBeVisible();
+
+        const contentBeforePickerSelection = await editor.textContent();
+        await page.getByAltText(':sending-safe:').click();
+        await expect(editor).toHaveText(contentBeforePickerSelection ?? '');
+
+        await page.getByTestId('complete-post').click();
+        await expect(editor).toHaveAttribute('contenteditable', 'true');
+        await expect(editor).toHaveText('');
+        await expect(pickerHost).toBeVisible();
+        await expect.poll(() => editor.evaluate((element) => document.activeElement === element)).toBe(true);
+        expect(await pickerHost.evaluate((element, picker) => element.querySelector('.custom-emoji-picker') === picker, pickerIdentity)).toBe(true);
+    });
+
+    test('preserves a closed picker after a failed post', async ({ page }) => {
+        await page.goto('post-editor-sending-playwright.html');
+
+        const editor = page.getByRole('textbox', { name: '投稿エディター' }).locator('.tiptap-editor');
+        await editor.click();
+        await page.keyboard.type('失敗する本文');
+
+        await page.getByTestId('toggle-sending').click();
+        await page.getByTestId('fail-post').click();
+
+        await expect(page.getByTestId('custom-emoji-picker-host')).toHaveCount(0);
+        await expect(editor).toHaveText('失敗する本文');
+
+        await page.goto('post-editor-sending-playwright.html');
+        await page.getByTestId('toggle-picker').click();
+        await expect(page.getByTestId('custom-emoji-picker-host')).toBeVisible();
+        await page.getByTestId('toggle-sending').click();
+        await page.getByTestId('fail-post').click();
+        await expect(page.getByTestId('custom-emoji-picker-host')).toBeVisible();
+    });
 });
