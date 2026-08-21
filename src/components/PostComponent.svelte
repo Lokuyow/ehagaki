@@ -944,7 +944,7 @@
 
   .editor-container.account-avatar-placeholder
     :global(p.is-editor-empty:first-child::before) {
-    padding-left: 36px;
+    padding-left: 34px;
   }
 
   .editor-container.sending {
