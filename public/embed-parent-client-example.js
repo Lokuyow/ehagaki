@@ -122,6 +122,12 @@ let timelineEvents = [];
 let selectedReplyReference = null;
 let selectedQuoteReferences = [];
 let selectedChannelContext = null;
+const urlContextOverrides = {
+    replyQuote: false,
+    channel: false,
+    content: false,
+    settings: false,
+};
 let timelineSubscription = null;
 let composerRequestSequence = 0;
 let settingsRequestSequence = 0;
@@ -999,6 +1005,7 @@ async function selectReplyEvent(event) {
 
     if (isReplySelected(reference.eventId)) {
         selectedReplyReference = null;
+        urlContextOverrides.replyQuote = true;
         renderTimeline();
         reloadIframeForReplyQuote("reply テスト設定を解除しました", {
             quoteCount: selectedQuoteReferences.length,
@@ -1007,6 +1014,7 @@ async function selectReplyEvent(event) {
     }
 
     selectedReplyReference = reference;
+    urlContextOverrides.replyQuote = true;
     selectedQuoteReferences = selectedQuoteReferences.filter(
         (quoteReference) => quoteReference.eventId !== reference.eventId,
     );
@@ -1022,6 +1030,7 @@ async function toggleQuoteEvent(event) {
     const reference = createTimelineReference(event);
 
     if (isQuoteSelected(reference.eventId)) {
+        urlContextOverrides.replyQuote = true;
         selectedQuoteReferences = selectedQuoteReferences.filter(
             (quoteReference) => quoteReference.eventId !== reference.eventId,
         );
@@ -1037,6 +1046,7 @@ async function toggleQuoteEvent(event) {
         selectedReplyReference = null;
     }
 
+    urlContextOverrides.replyQuote = true;
     selectedQuoteReferences = [...selectedQuoteReferences, reference];
     renderTimeline();
     reloadIframeForReplyQuote("quote テスト設定を更新しました", {
@@ -1052,6 +1062,7 @@ function clearReplyQuoteSelection() {
 
     selectedReplyReference = null;
     selectedQuoteReferences = [];
+    urlContextOverrides.replyQuote = true;
     renderTimeline();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeReplyQuote: true }), {
         actionLabel: "reply / quote コンテキスト解除",
@@ -1070,6 +1081,7 @@ function syncChannelContext() {
         return;
     }
 
+    urlContextOverrides.channel = true;
     syncChannelInputsFromSelection();
     updateTimelineSelection();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
@@ -1090,6 +1102,7 @@ function clearChannelContext() {
     }
 
     selectedChannelContext = null;
+    urlContextOverrides.channel = true;
     syncChannelInputsFromSelection();
     updateTimelineSelection();
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
@@ -1108,6 +1121,7 @@ function syncComposerContent() {
         return;
     }
 
+    urlContextOverrides.content = true;
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeContent: true }), {
         actionLabel: "本文同期",
         infoMessage: "本文同期を送信しました",
@@ -1123,6 +1137,7 @@ function syncComposerContent() {
 
 function clearComposerContent() {
     composerContentInput.value = "";
+    urlContextOverrides.content = true;
     sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ clearContent: true }), {
         actionLabel: "本文クリア",
         infoMessage: "本文クリアを送信しました",
@@ -1231,7 +1246,6 @@ function normalizeInitialReplyNotification(value) {
 function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
-        initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
         const hasDefaultSettings = [
             "defaultLocale",
             "defaultTheme",
@@ -1240,22 +1254,25 @@ function syncInitialSettingsControlsFromAppUrl() {
             "defaultReplyNotification",
         ].some((key) => url.searchParams.has(key));
         initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
-        if (hasDefaultSettings) {
-            initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("defaultLocale"));
-        }
-        const initialTheme = url.searchParams.get(hasDefaultSettings ? "defaultTheme" : "embedTheme");
-        if (initialTheme !== null) {
-            initialThemeSelect.value = normalizeInitialTheme(initialTheme);
-        }
+        const queryPrefix = hasDefaultSettings ? "default" : "embed";
+        initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get(`${queryPrefix}Locale`));
+        initialThemeSelect.value = normalizeInitialTheme(url.searchParams.get(`${queryPrefix}Theme`));
         initialHideMascotInput.checked = url.searchParams.get(
-            hasDefaultSettings ? "defaultShowMascot" : "embedShowMascot",
+            `${queryPrefix}ShowMascot`,
         ) === "false";
         initialReplyNotificationSelect.value = normalizeInitialReplyNotification(
-            url.searchParams.get(hasDefaultSettings ? "defaultReplyNotification" : "embedReplyNotification"),
+            url.searchParams.get(`${queryPrefix}ReplyNotification`),
         );
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
     }
+}
+
+function resetUrlContextOverrides() {
+    urlContextOverrides.replyQuote = false;
+    urlContextOverrides.channel = false;
+    urlContextOverrides.content = false;
+    urlContextOverrides.settings = false;
 }
 
 function getTargetOrigin() {
@@ -1269,66 +1286,81 @@ function getConfiguredAppOrigin() {
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
-    url.searchParams.delete("content");
-    url.searchParams.delete("reply");
-    url.searchParams.delete("quote");
-    url.searchParams.delete("channel");
-    url.searchParams.delete("channelRelays");
-    url.searchParams.delete("channelName");
-    url.searchParams.delete("channelAbout");
-    url.searchParams.delete("channelPicture");
-    url.searchParams.delete("embedLocale");
-    url.searchParams.delete("embedTheme");
-    url.searchParams.delete("embedShowMascot");
-    url.searchParams.delete("embedShowFlavorText");
-    url.searchParams.delete("embedReplyNotification");
-    url.searchParams.delete("defaultLocale");
-    url.searchParams.delete("defaultTheme");
-    url.searchParams.delete("defaultShowMascot");
-    url.searchParams.delete("defaultShowFlavorText");
-    url.searchParams.delete("defaultReplyNotification");
 
-    const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
-    const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
-    const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
-    const initialLocale =
-        normalizeInitialLocale(initialLocaleSelect.value)
-        || (queryPrefix === "default" ? storedLocale : "");
-    const initialTheme =
-        resolveInitialTheme(initialThemeSelect.value)
-        || (queryPrefix === "default" ? storedTheme : "");
-
-    if (initialLocale) {
-        url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
+    if (urlContextOverrides.content) {
+        url.searchParams.delete("content");
     }
 
-    if (initialTheme) {
-        url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
+    if (urlContextOverrides.replyQuote) {
+        url.searchParams.delete("reply");
+        url.searchParams.delete("quote");
     }
 
-    if (initialHideMascotInput.checked) {
-        url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
+    if (urlContextOverrides.channel) {
+        url.searchParams.delete("channel");
+        url.searchParams.delete("channelRelays");
+        url.searchParams.delete("channelName");
+        url.searchParams.delete("channelAbout");
+        url.searchParams.delete("channelPicture");
+    }
+    if (urlContextOverrides.settings) {
+        [
+            "embedLocale",
+            "embedTheme",
+            "embedShowMascot",
+            "embedReplyNotification",
+            "defaultLocale",
+            "defaultTheme",
+            "defaultShowMascot",
+            "defaultReplyNotification",
+        ].forEach((key) => url.searchParams.delete(key));
+
+        const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
+        const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
+        const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
+        const initialLocale =
+            normalizeInitialLocale(initialLocaleSelect.value)
+            || (queryPrefix === "default" ? storedLocale : "");
+        const initialTheme =
+            resolveInitialTheme(initialThemeSelect.value)
+            || (queryPrefix === "default" ? storedTheme : "");
+
+        if (initialLocale) {
+            url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
+        }
+
+        if (initialTheme) {
+            url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
+        }
+
+        if (initialHideMascotInput.checked) {
+            url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
+        }
+
+        const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
+        if (replyNotification) {
+            url.searchParams.set(`${queryPrefix}ReplyNotification`, replyNotification);
+        }
     }
 
-    const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
-    if (replyNotification) {
-        url.searchParams.set(`${queryPrefix}ReplyNotification`, replyNotification);
+    if (urlContextOverrides.content) {
+        const content = getComposerContentValue();
+        if (content !== null) {
+            url.searchParams.set("content", content);
+        }
     }
 
-    const content = getComposerContentValue();
-    if (content !== null) {
-        url.searchParams.set("content", content);
+    if (urlContextOverrides.replyQuote) {
+        if (selectedReplyReference) {
+            url.searchParams.set("reply", selectedReplyReference.queryValue);
+        }
+
+        selectedQuoteReferences.forEach((reference) => {
+            url.searchParams.append("quote", reference.queryValue);
+        });
     }
 
-    if (selectedReplyReference) {
-        url.searchParams.set("reply", selectedReplyReference.queryValue);
-    }
-
-    selectedQuoteReferences.forEach((reference) => {
-        url.searchParams.append("quote", reference.queryValue);
-    });
-
-    if (selectedChannelContext) {
+    if (urlContextOverrides.channel && selectedChannelContext) {
         url.searchParams.set("channel", selectedChannelContext.reference);
         if (Array.isArray(selectedChannelContext.relays) && selectedChannelContext.relays.length > 0) {
             url.searchParams.set("channelRelays", selectedChannelContext.relays.join(","));
@@ -2308,22 +2340,32 @@ syncChannelInputsFromSelection();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
 appUrlInput.addEventListener("input", () => {
+    resetUrlContextOverrides();
     syncInitialSettingsControlsFromAppUrl();
     updateDisplayedEmbedUrl();
 });
 appUrlInput.addEventListener("change", () => {
+    resetUrlContextOverrides();
     syncInitialSettingsControlsFromAppUrl();
     updateDisplayedEmbedUrl();
 });
-initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
-initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
+function updateDisplayedEmbedUrlForSettingsChange() {
+    urlContextOverrides.settings = true;
+    updateDisplayedEmbedUrl();
+}
+initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialReplyNotificationSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
 syncRuntimeSettingsButton.addEventListener("click", () => {
     syncRuntimeSettings("手動 settings 同期");
 });
 resetInitialSettingsButton.addEventListener("click", resetInitialSettingsState);
-composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
+composerContentInput.addEventListener("input", () => {
+    urlContextOverrides.content = true;
+    updateDisplayedEmbedUrl();
+});
 syncChannelContextButton.addEventListener("click", syncChannelContext);
 clearChannelContextButton.addEventListener("click", clearChannelContext);
 loginNip07Button.addEventListener("click", () => {
