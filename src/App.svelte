@@ -1241,17 +1241,16 @@
         }
         return references;
       },
-      hydrateReplyQuoteReferences: (references, runtime) =>
-        isHostOwnedComposer && !runtime.rxNostr
-          ? Promise.resolve()
-          : hydrateReplyQuoteReferences({
-            references,
-            rxNostr: runtime.rxNostr,
-            relayConfig: runtime.relayConfig,
-            updateReferencedEvent,
-            initializeReplyNotificationRecipients,
-            setReplyQuoteError,
-          }),
+      hydrateReplyQuoteReferences: (references, runtime, preloadedEvents) =>
+        hydrateReplyQuoteReferences({
+          references,
+          preloadedEvents,
+          rxNostr: runtime.rxNostr,
+          relayConfig: runtime.relayConfig,
+          updateReferencedEvent,
+          initializeReplyNotificationRecipients,
+          setReplyQuoteError,
+        }),
       clearReplyQuote,
       applyChannelContextQuery: (query, runtime) => {
         channelContextApplyController.applyExternal({

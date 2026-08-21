@@ -87,6 +87,14 @@
 - 関連テスト: `src/test/unit/replyQuoteService.test.ts`、`src/test/unit/urlQueryHandler.test.ts`、`src/test/unit/eventPointerUtils.test.ts`、`src/test/unit/composerTargetUtils.test.ts`、`src/test/unit/postHistoryQuoteUtils.test.ts`
 - 注意点: inline quoteの抽出対象はnote/neventである。post history表示でもnaddr URIはquote targetとして解決しないことがテストされている。
 
+## 外部 Composer の preloaded event
+
+- 機能: iframe / Direct Web Component の composer contextに親が保持する完全なNostr eventを一時的に渡し、reply / quoteの既存hydrationでrelay再取得を省略する。
+- 関連NIP: NIP-01、NIP-10、NIP-18、NIP-19
+- 主な実装ファイル: `src/lib/embedComposerContextValidation.ts`、`src/lib/appEmbedController.ts`、`src/lib/bootstrap/externalInputBootstrap.ts`
+- 主な関数または責務: 外部objectを `createPlainNostrEventSnapshot()` へ変換し、`validateEvent()`、event hash、`verifyEvent()`、target ID／author hintを検証する。検証済みsnapshotだけを既存 `preloadedEvents` hydrationへ渡し、不正候補はcontextをrejectせずrelayまたはreference-onlyへfallbackする。
+- 注意点: preloadは同一context callの一時入力であり、URL、保存、`composer.contextUpdated`、kind hint伝播、profile preloadには使わない。Host-ownedの既存reference-only settleと共有hydrationの両方を維持する。
+
 ## パブリックチャット
 
 - 機能: channel creation/metadata/messageを解決し、channel context付きkind 42投稿を構築する。

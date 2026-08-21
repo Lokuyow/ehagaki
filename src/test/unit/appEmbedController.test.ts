@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { nip19 } from 'nostr-tools';
+import { finalizeEvent, generateSecretKey, nip19 } from 'nostr-tools';
 
 import { createAppEmbedController } from '../../lib/appEmbedController';
 import type { ReplyQuoteComposerState } from '../../lib/types';
+import { createPlainNostrEventSnapshot } from '../../lib/postHistoryEventUtils';
 
 function createRuntimeSnapshot() {
     return {
@@ -247,6 +248,49 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-quote-fast-ack');
         expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
             .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
+    });
+
+    it('valid preloaded event は detached plain snapshot として hydration port へ渡す', async () => {
+        const event = finalizeEvent({
+            kind: 1,
+            content: 'preloaded',
+            tags: [],
+            created_at: 1,
+        }, generateSecretKey());
+        const reply = {
+            eventId: event.id,
+            mode: 'reply' as const,
+            ownerToken: Symbol('reply-owner'),
+            relayHints: [],
+            authorPubkey: event.pubkey,
+        };
+        const applyReplyQuoteSelection = vi.fn(() => [reply]);
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const { controller } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection,
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+        const externalEvent = {
+            ...event,
+            libraryMetadata: { shouldNotBeForwarded: true },
+        } as typeof event & { libraryMetadata: unknown };
+
+        await controller.handleRemoteComposerSetContext({
+            reply: nip19.neventEncode({ id: event.id, author: event.pubkey }),
+            preloadedEvents: { [event.id]: externalEvent },
+        }, 'req-preloaded');
+
+        externalEvent.content = 'mutated after selection';
+        const selected = hydrateReplyQuoteReferences.mock.calls[0]?.[2];
+        expect(selected[event.id]).toEqual(createPlainNostrEventSnapshot(event));
+        expect(selected[event.id]).not.toBe(externalEvent);
+        expect(selected[event.id].content).toBe('preloaded');
+        expect(selected[event.id].libraryMetadata).toBeUndefined();
     });
 
     it('channel・reply・quotes同時指定でも初期状態だけでackし、hydrate失敗は非致命的に扱う', async () => {

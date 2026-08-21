@@ -303,6 +303,32 @@ console.log('applied settings:', [...applied]);
 `reply`、`quotes` の各値、`channel.reference` には NIP-19 の `note1...` または `nevent1...`
 を使用します。実際のイベント参照に置き換えてください。
 
+親がすでに完全な署名済みNostr eventを保持している場合は、event IDをkeyにした
+`preloadedEvents` を同じ `setContext()` に指定できます。これはその呼び出しのreply / quote
+hydrationだけに使われ、保存や後続のcontextへは持ち越されません。
+
+```js
+await composer.setContext({
+  reply: 'nevent1...',
+  preloadedEvents: {
+    'event-id-hex': {
+      id: 'event-id-hex',
+      pubkey: 'author-pubkey-hex',
+      created_at: 1700000000,
+      kind: 1,
+      tags: [],
+      content: '親が取得済みの本文',
+      sig: 'event-signature-hex',
+    },
+  },
+});
+```
+
+eventは構造、ID、hash、署名、reference ID、author hintとの一致を検証し、検証済みの
+wire-field snapshotだけがhydrationへ渡されます。不正なpreloadだけが無視され、context全体は
+rejectされません。relay runtimeがある場合は既存relay取得へfallbackし、Host-owned modeでは
+従来どおりreference-only表示を維持します。
+
 ### 通常投稿と本文の初期値
 
 ```js
@@ -394,6 +420,8 @@ await composer.setContext({
 - `channel` がオブジェクトではない場合
 - `channel.relays` が配列ではない場合、またはリレー URL が不正な場合
 - `channel.name` / `channel.about` が指定されているのに、空でない文字列または `null` ではない場合
+- `preloadedEvents` は補助入力のため、containerがobjectでない場合や個別eventが不正な場合も、
+  context全体を拒否せずpreloadなしとして扱います
 
 不正な参照を含むペイロードは、本文だけ先に適用されることはありません。`content`、
 reply、quotes、channel をまとめて指定した場合も、検証が失敗すれば状態は変更されません。
