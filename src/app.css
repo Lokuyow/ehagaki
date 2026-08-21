@@ -41,54 +41,54 @@
   /* ライトモード・ダークモード用のneutral surface生成 */
   --surface-bg: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 94%)) 14%, hsl(0, 0%, 94%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 24%, hsl(0, 0%, 12%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 20%, hsl(0, 0%, 12%))
   );
   --surface-input: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 10%, hsl(0, 0%, 100%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 18%, hsl(0, 0%, 19%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 15%, hsl(0, 0%, 19%))
   );
   --surface-footer: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 82%)) 18%, hsl(0, 0%, 82%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 28%, hsl(0, 0%, 10%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 24%, hsl(0, 0%, 10%))
   );
   --surface-buttonbar: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 91%)) 16%, hsl(0, 0%, 91%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 28%)) 24%, hsl(0, 0%, 28%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 28%)) 20%, hsl(0, 0%, 28%))
   );
 
   --surface-button: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 14%, hsl(0, 0%, 92%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 25%)) 22%, hsl(0, 0%, 25%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 25%)) 18%, hsl(0, 0%, 25%))
   );
   --surface-button-border: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 75%)) 20%, hsl(0, 0%, 75%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 28%, hsl(0, 0%, 30%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 24%, hsl(0, 0%, 30%))
   );
   --surface-button-preview-action: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 74%)) 18%, hsl(0, 0%, 74%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 36%)) 28%, hsl(0, 0%, 36%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 36%)) 24%, hsl(0, 0%, 36%))
   );
 
   --surface-border: light-dark(
     color-mix(in srgb, var(--base-color, var(--light-gray)) 20%, var(--light-gray)),
-    color-mix(in srgb, var(--base-color, dimgray) 28%, dimgray)
+    color-mix(in srgb, var(--base-color, dimgray) 24%, dimgray)
   );
   --surface-border-hr: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 84%)) 16%, hsl(0, 0%, 84%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 24%, hsl(0, 0%, 30%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 30%)) 20%, hsl(0, 0%, 30%))
   );
   --surface-border-hr-light: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 12%, hsl(0, 0%, 92%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 20%)) 18%, hsl(0, 0%, 20%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 20%)) 15%, hsl(0, 0%, 20%))
   );
 
   --surface-dialog: light-dark(
     color-mix(in srgb, var(--base-color, white) 10%, white),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 18%, hsl(0, 0%, 14%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 15%, hsl(0, 0%, 14%))
   );
   --surface-window: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 95%)) 10%, hsl(0, 0%, 95%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 18%, hsl(0, 0%, 14%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 14%)) 15%, hsl(0, 0%, 14%))
   );
 
   --bg: var(--surface-bg);
