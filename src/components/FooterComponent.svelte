@@ -199,6 +199,9 @@
     :global(:host(.light) .ehagaki-app-root :where(.footer-bar button):not(.login-btn)) {
         --btn-bg: white;
     }
+    :global(:root[data-base-color-set="true"] .ehagaki-app-root :where(.footer-bar button):not(.login-btn)) {
+        --btn-bg: var(--surface-editor);
+    }
     .footer-bar {
         display: flex;
         align-items: center;

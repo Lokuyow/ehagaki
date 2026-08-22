@@ -50,6 +50,7 @@ describe('themeColorStore', () => {
         expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBe('#0000ff');
         expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('#ff0000');
         expect(styleTarget.style.getPropertyValue('--base-color')).toBe('#0000ff');
+        expect(styleTarget.getAttribute('data-base-color-set')).toBe('true');
     });
 
     it('keeps the last valid color when an invalid value is submitted', () => {
@@ -70,6 +71,7 @@ describe('themeColorStore', () => {
         expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBeNull();
         expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('');
         expect(styleTarget.style.getPropertyValue('--base-color')).toBe('');
+        expect(styleTarget.hasAttribute('data-base-color-set')).toBe(false);
     });
 
     it('does not write or override host styles in Web Component container mode', () => {

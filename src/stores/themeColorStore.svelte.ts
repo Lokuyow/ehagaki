@@ -25,7 +25,8 @@ function applyThemeColors(colors: ThemeColors): void {
         return;
     }
 
-    const style = getAppRuntimeEnvironment().styleTarget.style;
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    const style = runtimeEnvironment.styleTarget.style;
     if (colors.accentColor) {
         style.setProperty("--accent-color", colors.accentColor);
     } else {
@@ -36,6 +37,11 @@ function applyThemeColors(colors: ThemeColors): void {
         style.setProperty("--base-color", colors.baseColor);
     } else {
         style.removeProperty("--base-color");
+    }
+    if (colors.baseColor) {
+        runtimeEnvironment.styleTarget.setAttribute("data-base-color-set", "true");
+    } else {
+        runtimeEnvironment.styleTarget.removeAttribute("data-base-color-set");
     }
 }
 

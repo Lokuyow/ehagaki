@@ -459,7 +459,7 @@
         max-width: 800px;
         height: var(--keyboard-button-bar-height);
         margin: auto;
-        background: var(--bg-buttonbar);
+        background: var(--footer-buttonbar-bg);
         position: var(--app-overlay-position);
         left: 0;
         right: 0;
