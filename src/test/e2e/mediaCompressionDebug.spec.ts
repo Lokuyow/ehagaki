@@ -51,6 +51,8 @@ test.describe('media compression debug panel', () => {
 
         await expect(panel.locator('pre')).toContainText('Forced audio packet copy');
         await expect(panel.locator('pre')).toContainText('audio diagnostic mode: force-packet-copy');
+        await expect(panel.locator('pre')).toContainText('Video latency: quality (default)');
+        await expect(panel.locator('pre')).toContainText('video latency mode: quality (MediaBunny default)');
         await expect(panel.locator('pre')).toContainText('effective audio encoding mode: packet-copy');
         await expect(panel.locator('pre')).toContainText('audio path: packet-copy');
         await expect(panel.locator('pre')).toContainText('reason: debug-forced-packet-copy');
@@ -66,5 +68,33 @@ test.describe('media compression debug panel', () => {
         });
         expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
         expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+    });
+
+    test('shows the realtime video latency experiment with packet stats', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime');
+        const panel = page.locator('.media-debug-panel');
+        await page.getByRole('button', { name: /Media Compression Debug/ }).click();
+
+        await expect(panel.locator('pre')).toContainText('Forced audio packet copy');
+        await expect(panel.locator('pre')).toContainText('Video latency: realtime');
+        await expect(panel.locator('pre')).toContainText('video diagnostic mode: realtime');
+        await expect(panel.locator('pre')).toContainText('input frames: 627');
+        await expect(panel.locator('pre')).toContainText('output frames: 620');
+        await expect(panel.locator('pre')).toContainText('input video stats scan:');
+        await expect(panel.locator('pre')).toContainText('output video stats scan:');
+
+        const geometry = await panel.evaluate((element) => ({
+            right: element.getBoundingClientRect().right,
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+        }));
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+
+        await page.getByRole('button', { name: 'Copy' }).click();
+        await expect(page.getByRole('status')).toHaveText(/Copied|Copy failed|Clipboard unavailable/);
+        await page.getByRole('button', { name: 'Clear' }).click();
+        await expect(panel.locator('pre')).toContainText('No conversions recorded.');
     });
 });

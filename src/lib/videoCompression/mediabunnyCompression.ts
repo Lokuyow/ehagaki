@@ -26,9 +26,11 @@ import {
     classifyMediaCompressionAudioPath,
     getAacCustomEncoderState,
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugVideoRealtimeEnabled,
     setAacCustomEncoderState,
     startMediaCompressionDiagnostic,
     type MediaCompressionDiagnosticSession,
+    type MediaCompressionVideoPacketStats,
 } from './mediaCompressionDiagnostics';
 
 let aacEncoderRegistration: Promise<void> | null = null;
@@ -135,6 +137,7 @@ export class MediaBunnyCompression extends BaseCompression {
         track: InputVideoTrack,
         dimensions: { width: number; height: number },
         quality: Quality | undefined,
+        videoLatencyMode: 'realtime' | undefined,
         diagnostic: MediaCompressionDiagnosticSession | null,
         trackIndex: number,
     ): Promise<boolean> {
@@ -144,6 +147,7 @@ export class MediaBunnyCompression extends BaseCompression {
         const canEncode = await canEncodeVideo('avc', {
             ...dimensions,
             ...(quality ? { quality } : {}),
+            ...(videoLatencyMode ? { latencyMode: videoLatencyMode } : {}),
         });
         diagnostic?.setVideo(trackIndex, { avcEncode: canEncode });
         return canEncode;
@@ -246,6 +250,7 @@ export class MediaBunnyCompression extends BaseCompression {
         track: InputVideoTrack,
         options: any,
         quality: Quality | undefined,
+        videoLatencyMode: 'realtime' | undefined,
         diagnostic: MediaCompressionDiagnosticSession | null,
         trackIndex: number,
     ): Promise<{ options: ConversionVideoOptions; dimensions: { width: number; height: number } }> {
@@ -256,6 +261,7 @@ export class MediaBunnyCompression extends BaseCompression {
             codec: 'avc',
             forceTranscode: true,
             ...(quality ? { quality } : {}),
+            ...(videoLatencyMode ? { latencyMode: videoLatencyMode } : {}),
         };
         if (typeof options.maxSize === 'number' && Number.isFinite(options.maxSize)) {
             if (displayWidth > displayHeight) {
@@ -289,6 +295,58 @@ export class MediaBunnyCompression extends BaseCompression {
         });
 
         return { options: videoOptions, dimensions: { width, height } };
+    }
+
+    private async collectVideoPacketStats(
+        getTrack: () => Promise<InputVideoTrack | null>,
+        diagnostic: MediaCompressionDiagnosticSession,
+        trackIndex: number,
+        side: 'input' | 'output',
+    ): Promise<void> {
+        const timingKey = side === 'input' ? 'input video stats scan' : 'output video stats scan';
+        try {
+            const stats = await diagnostic.measureDiagnosticScan(timingKey, async (): Promise<MediaCompressionVideoPacketStats | null> => {
+                const track = await getTrack();
+                if (!track) return null;
+                const [packetStats, duration] = await Promise.all([
+                    track.computePacketStats(),
+                    track.getDurationFromMetadata(),
+                ]);
+                return { ...packetStats, duration };
+            });
+            diagnostic.setVideo(trackIndex, side === 'input'
+                ? { inputPacketStats: stats }
+                : { outputPacketStats: stats });
+        } catch {
+            diagnostic.setVideo(trackIndex, side === 'input'
+                ? { inputPacketStats: null }
+                : { outputPacketStats: null });
+        }
+    }
+
+    private async collectOutputVideoPacketStats(
+        file: File,
+        diagnostic: MediaCompressionDiagnosticSession,
+    ): Promise<void> {
+        try {
+            const stats = await diagnostic.measureDiagnosticScan('output video stats scan', async (): Promise<MediaCompressionVideoPacketStats | null> => {
+                const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+                try {
+                    const track = (await input.getVideoTracks())[0];
+                    if (!track) return null;
+                    const [packetStats, duration] = await Promise.all([
+                        track.computePacketStats(),
+                        track.getDurationFromMetadata(),
+                    ]);
+                    return { ...packetStats, duration };
+                } finally {
+                    input.dispose();
+                }
+            });
+            diagnostic.setVideo(0, { outputPacketStats: stats });
+        } catch {
+            diagnostic.setVideo(0, { outputPacketStats: null });
+        }
     }
 
     private async outputPreservesAudio(
@@ -337,20 +395,24 @@ export class MediaBunnyCompression extends BaseCompression {
                     'input / track inspection',
                     inspectionStartedAt === null ? 0 : Math.max(0, performance.now() - inspectionStartedAt),
                 );
+                if (videoTracks[0]) {
+                    await this.collectVideoPacketStats(async () => videoTracks[0], diagnostic, 0, 'input');
+                }
             }
             const videoQuality = getQualityFromFactor(options?.mediabunnyVideoQualityFactor);
             const audioQuality = getQualityFromFactor(options?.mediabunnyAudioQualityFactor);
+            const videoLatencyMode = isMediaCompressionDebugVideoRealtimeEnabled() ? 'realtime' as const : undefined;
 
             const videoOptionsStartedAt = diagnostic ? performance.now() : null;
             const videoOptions = videoTracks.length > 0
-                ? await this.buildVideoOptions(videoTracks[0], options, videoQuality, diagnostic, 0)
+                ? await this.buildVideoOptions(videoTracks[0], options, videoQuality, videoLatencyMode, diagnostic, 0)
                 : null;
             if (diagnostic && videoOptionsStartedAt !== null) {
                 diagnostic.setTiming('video option construction', Math.max(0, performance.now() - videoOptionsStartedAt));
             }
             const videoCapabilityStartedAt = diagnostic ? performance.now() : null;
             const videoCanTranscode = videoOptions
-                ? await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, videoQuality, diagnostic, 0)
+                ? await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, videoQuality, videoLatencyMode, diagnostic, 0)
                 : false;
             if (diagnostic && videoCapabilityStartedAt !== null) {
                 diagnostic.setTiming('video capability', Math.max(0, performance.now() - videoCapabilityStartedAt));
@@ -373,6 +435,7 @@ export class MediaBunnyCompression extends BaseCompression {
                         track,
                         options,
                         videoQuality,
+                        videoLatencyMode,
                         diagnostic,
                         videoTracks.indexOf(track),
                     )).options),
@@ -466,6 +529,10 @@ export class MediaBunnyCompression extends BaseCompression {
                 devWarn(this.context, 'MediaBunny output lost input audio; keeping the original file.');
                 diagnostic?.setConversion({ fallback: true, fallbackReason: 'output-audio-not-preserved' });
                 return finish({ file, wasCompressed: false, wasSkipped: true });
+            }
+
+            if (diagnostic) {
+                await this.collectOutputVideoPacketStats(result.file, diagnostic);
             }
 
             this.updateProgress(100);

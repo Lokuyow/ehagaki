@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
     nativeAac: true,
     customAac: false,
     outputAudioSampleRate: 44100,
+    outputVideoPacketCount: 627,
     preserveAudio: true,
     failConversion: false,
     videoOptions: [] as any[],
@@ -21,15 +22,24 @@ const state = vi.hoisted(() => ({
 vi.mock('mediabunny', () => {
     class Input {
         source: { blob: File };
-        videoTrack = {
-            canDecode: vi.fn(async () => state.videoTrackCanDecode),
-            getCodec: vi.fn(async () => 'avc'),
-            getDisplayWidth: vi.fn(async () => state.videoWidth),
-            getDisplayHeight: vi.fn(async () => state.videoHeight),
-            isVideoTrack: () => true,
-        };
         constructor({ source }: any) { this.source = source; }
-        async getVideoTracks() { return [this.videoTrack]; }
+        async getVideoTracks() {
+            const isOutput = this.source.blob.name.includes('_compressed');
+            const track = {
+                canDecode: vi.fn(async () => state.videoTrackCanDecode),
+                getCodec: vi.fn(async () => 'avc'),
+                getDisplayWidth: vi.fn(async () => state.videoWidth),
+                getDisplayHeight: vi.fn(async () => state.videoHeight),
+                getDurationFromMetadata: vi.fn(async () => 1.5),
+                computePacketStats: vi.fn(async () => ({
+                    packetCount: isOutput ? state.outputVideoPacketCount : 627,
+                    averagePacketRate: isOutput ? 29.8 : 30,
+                    averageBitrate: isOutput ? 3_900_000 : 4_000_000,
+                })),
+                isVideoTrack: () => true,
+            };
+            return [track];
+        }
         async getAudioTracks() {
             const isOutput = this.source.blob.name.includes('_compressed');
             const track = {
@@ -100,6 +110,7 @@ vi.mock('@mediabunny/aac-encoder', () => ({
 import { MediaBunnyCompression } from '../../lib/videoCompression/mediabunnyCompression';
 import {
     clearMediaCompressionDiagnosticRecords,
+    formatMediaCompressionDiagnostics,
     getMediaCompressionDiagnosticRecords,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
@@ -131,6 +142,7 @@ describe('MediaBunnyCompression', () => {
             nativeAac: true,
             customAac: false,
             outputAudioSampleRate: 44100,
+            outputVideoPacketCount: 627,
             preserveAudio: true,
             failConversion: false,
             videoOptions: [],
@@ -194,6 +206,28 @@ describe('MediaBunnyCompression', () => {
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
     });
 
+    it('does not enable realtime video latency when the realtime query is not fully gated', async () => {
+        window.history.replaceState({}, '', '/?media-debug-video-latency=realtime');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
+        expect(state.videoOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
+    });
+
+    it('keeps realtime disabled when diagnostics do not use forced audio copy', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-video-latency=realtime');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(record?.videoDiagnosticMode).toBe('default-quality');
+        expect(state.videoOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
+    });
+
     it('records the first native AAC decision in diagnostic mode without loading custom AAC', async () => {
         window.history.replaceState({}, '', '/?media-debug=1');
         const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
@@ -201,7 +235,7 @@ describe('MediaBunnyCompression', () => {
 
         expect(result.wasCompressed).toBe(true);
         expect(record).toMatchObject({
-            conversionId: 1,
+            conversionId: expect.any(Number),
             input: { mime: 'video/mp4' },
             aac: { stateAtStart: 'not-loaded' },
             audioDiagnosticMode: 'normal',
@@ -233,6 +267,8 @@ describe('MediaBunnyCompression', () => {
         expect(result.wasCompressed).toBe(true);
         expect(state.registeredAacEncoder).toBe(0);
         expect(state.audioOptions).toEqual([{}]);
+        expect(state.videoOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
         expect(record).toMatchObject({
             audioDiagnosticMode: 'force-packet-copy',
             audio: [{
@@ -245,6 +281,69 @@ describe('MediaBunnyCompression', () => {
                 outputSampleRate: 48000,
                 outputChannels: 2,
             }],
+        });
+    });
+
+    it('adds realtime latency to the video option and matching capability check only for the experimental A/B mode', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime');
+        state.outputVideoPacketCount = 620;
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.registeredAacEncoder).toBe(0);
+        expect(state.audioOptions).toEqual([{}]);
+        expect(state.videoOptions[0]).toEqual(expect.objectContaining({
+            codec: 'avc',
+            forceTranscode: true,
+            latencyMode: 'realtime',
+        }));
+        expect(state.videoCapabilityOptions[0]).toEqual(expect.objectContaining({
+            latencyMode: 'realtime',
+        }));
+        expect(record).toMatchObject({
+            audioDiagnosticMode: 'force-packet-copy',
+            videoDiagnosticMode: 'realtime',
+        });
+        expect(record?.video[0]).toMatchObject({
+            inputPacketStats: {
+                packetCount: 627,
+                averagePacketRate: 30,
+                averageBitrate: 4_000_000,
+                duration: 1.5,
+            },
+            outputPacketStats: {
+                packetCount: 620,
+                averagePacketRate: 29.8,
+                averageBitrate: 3_900_000,
+                duration: 1.5,
+            },
+        });
+        expect(record?.timing['input video stats scan']).toBeGreaterThanOrEqual(0);
+        expect(record?.timing['output video stats scan']).toBeGreaterThanOrEqual(0);
+        expect(record?.timing['diagnostic total']).toBeGreaterThanOrEqual(record?.timing['total compression'] ?? 0);
+
+        const text = formatMediaCompressionDiagnostics();
+        expect(text).toContain('Video latency: realtime');
+        expect(text).toContain('input frames: 627');
+        expect(text).toContain('output frames: 620');
+        expect(text).toContain('input video stats scan:');
+        expect(text).toContain('output video stats scan:');
+    });
+
+    it('uses the existing video capability fallback when realtime latency is unsupported', async () => {
+        state.canEncodeVideo = false;
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime');
+        const file = videoFile();
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(file, options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+        expect(state.videoCapabilityOptions[0]).toEqual(expect.objectContaining({ latencyMode: 'realtime' }));
+        expect(record).toMatchObject({
+            videoDiagnosticMode: 'realtime',
+            video: [{ avcEncode: false }],
+            conversion: { fallback: true, fallbackReason: 'video-capability-unavailable' },
         });
     });
 

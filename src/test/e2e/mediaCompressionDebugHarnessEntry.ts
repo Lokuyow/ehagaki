@@ -3,6 +3,7 @@ import { mount } from 'svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
 import {
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
@@ -14,6 +15,7 @@ if (!target) {
 
 const session = startMediaCompressionDiagnostic(new File(['diagnostic'], 'ignored.mp4', { type: 'video/mp4' }));
 const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
+const realtimeVideoLatency = isMediaCompressionDebugVideoRealtimeEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
     codec: 'avc',
@@ -25,6 +27,18 @@ session?.setVideo(0, {
     avcEncode: true,
     compressionLevel: 'medium',
     quality: 'medium',
+    inputPacketStats: {
+        packetCount: 627,
+        averagePacketRate: 30,
+        averageBitrate: 4_000_000,
+        duration: 20.9,
+    },
+    outputPacketStats: {
+        packetCount: realtimeVideoLatency ? 620 : 627,
+        averagePacketRate: realtimeVideoLatency ? 29.7 : 30,
+        averageBitrate: realtimeVideoLatency ? 3_900_000 : 4_000_000,
+        duration: 20.9,
+    },
 });
 session?.setAudio(0, {
     codec: 'aac',

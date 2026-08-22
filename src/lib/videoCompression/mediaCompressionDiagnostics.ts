@@ -6,6 +6,8 @@ export type MediaCompressionAudioDiagnosticMode = 'normal' | 'force-packet-copy'
 
 export type MediaCompressionAudioEncodingMode = 'quality' | 'bitrate' | 'default' | 'packet-copy';
 
+export type MediaCompressionVideoDiagnosticMode = 'default-quality' | 'realtime';
+
 export interface AudioPathClassification {
     path: AudioPath;
     reason?: string;
@@ -50,10 +52,13 @@ export type MediaCompressionTimingKey =
     | 'video capability'
     | 'audio preparation'
     | 'aac custom load/register'
+    | 'input video stats scan'
     | 'conversion.init'
     | 'conversion.execute'
     | 'compressed File creation'
     | 'output audio preservation verification'
+    | 'output video stats scan'
+    | 'diagnostic total'
     | 'total compression';
 
 export interface MediaCompressionEnvironment {
@@ -80,6 +85,15 @@ export interface MediaCompressionVideoDiagnostic {
     compressionLevel?: string;
     quality?: string;
     avcEncode?: boolean;
+    inputPacketStats?: MediaCompressionVideoPacketStats | null;
+    outputPacketStats?: MediaCompressionVideoPacketStats | null;
+}
+
+export interface MediaCompressionVideoPacketStats {
+    packetCount: number;
+    averagePacketRate: number;
+    averageBitrate: number;
+    duration?: number | null;
 }
 
 export interface MediaCompressionAudioDiagnostic {
@@ -107,6 +121,7 @@ export interface MediaCompressionAudioDiagnostic {
 export interface MediaCompressionDiagnosticRecord {
     conversionId: number;
     audioDiagnosticMode: MediaCompressionAudioDiagnosticMode;
+    videoDiagnosticMode: MediaCompressionVideoDiagnosticMode;
     input: {
         mime: string;
         size: number;
@@ -166,6 +181,18 @@ export function isMediaCompressionDebugAudioCopyEnabled(search?: string): boolea
     const locationSearch = search ?? (isBrowser() ? window.location.search : '');
     const params = new URLSearchParams(locationSearch);
     return params.get('media-debug') === '1' && params.get('media-debug-audio') === 'copy';
+}
+
+export function isMediaCompressionDebugVideoRealtimeEnabled(search?: string): boolean {
+    const locationSearch = search ?? (isBrowser() ? window.location.search : '');
+    const params = new URLSearchParams(locationSearch);
+    return params.get('media-debug') === '1'
+        && params.get('media-debug-audio') === 'copy'
+        && params.get('media-debug-video-latency') === 'realtime';
+}
+
+export function getMediaCompressionVideoDiagnosticMode(search?: string): MediaCompressionVideoDiagnosticMode {
+    return isMediaCompressionDebugVideoRealtimeEnabled(search) ? 'realtime' : 'default-quality';
 }
 
 export function getMediaCompressionAudioDiagnosticMode(search?: string): MediaCompressionAudioDiagnosticMode {
@@ -274,10 +301,13 @@ export interface MediaCompressionDiagnosticSession {
     setConversion(value: Partial<MediaCompressionDiagnosticRecord['conversion']>): void;
     setResult(value: Partial<MediaCompressionDiagnosticRecord['result']>): void;
     setError(error: unknown): void;
+    measureDiagnosticScan<T>(key: 'input video stats scan' | 'output video stats scan', task: () => Promise<T>): Promise<T>;
     finish(result: { file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }): void;
 }
 
 class DiagnosticSession implements MediaCompressionDiagnosticSession {
+    private diagnosticOverhead = 0;
+
     constructor(private record: MediaCompressionDiagnosticRecord, private startedAt: number) { }
 
     get conversionId(): number {
@@ -332,6 +362,20 @@ class DiagnosticSession implements MediaCompressionDiagnosticSession {
         notify();
     }
 
+    async measureDiagnosticScan<T>(
+        key: 'input video stats scan' | 'output video stats scan',
+        task: () => Promise<T>,
+    ): Promise<T> {
+        const startedAt = now();
+        try {
+            return await task();
+        } finally {
+            const duration = durationSince(startedAt);
+            this.diagnosticOverhead += duration;
+            this.setTiming(key, duration);
+        }
+    }
+
     finish(result: { file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }): void {
         this.setResult({
             outputSize: result.file.size,
@@ -339,7 +383,8 @@ class DiagnosticSession implements MediaCompressionDiagnosticSession {
             wasSkipped: result.wasSkipped ?? false,
         });
         this.setConversion({ aborted: result.aborted ?? false });
-        this.setTiming('total compression', durationSince(this.startedAt));
+        this.setTiming('diagnostic total', durationSince(this.startedAt));
+        this.setTiming('total compression', Math.max(0, durationSince(this.startedAt) - this.diagnosticOverhead));
     }
 }
 
@@ -350,6 +395,7 @@ export function startMediaCompressionDiagnostic(file: File): MediaCompressionDia
     const record: MediaCompressionDiagnosticRecord = {
         conversionId: ++conversionSequence,
         audioDiagnosticMode: getMediaCompressionAudioDiagnosticMode(),
+        videoDiagnosticMode: getMediaCompressionVideoDiagnosticMode(),
         input: { mime: file.type || 'unknown', size: file.size },
         tracks: { videoCount: 0, audioCount: 0 },
         video: [],
@@ -413,6 +459,7 @@ export function formatMediaCompressionDiagnostics(): string {
         ...(getMediaCompressionAudioDiagnosticMode() === 'force-packet-copy'
             ? ['Diagnostic A/B mode: audio is being packet-copied instead of transcoded.']
             : []),
+        `Video latency: ${getMediaCompressionVideoDiagnosticMode() === 'realtime' ? 'realtime' : 'quality (default)'}`,
         ...formatEnvironment(getMediaCompressionEnvironment()),
         '',
     ];
@@ -424,6 +471,8 @@ export function formatMediaCompressionDiagnostics(): string {
     for (const record of records) {
         lines.push(`Conversion #${record.conversionId}`);
         lines.push(`audio diagnostic mode: ${record.audioDiagnosticMode}`);
+        lines.push(`video diagnostic mode: ${record.videoDiagnosticMode}`);
+        lines.push(`video latency mode: ${record.videoDiagnosticMode === 'realtime' ? 'realtime' : 'quality (MediaBunny default)'}`);
         lines.push('Input');
         lines.push(`mime: ${formatValue(record.input.mime)}`);
         lines.push(`size: ${record.input.size} bytes`);
@@ -441,6 +490,22 @@ export function formatMediaCompressionDiagnostics(): string {
             lines.push(`AVC encode: ${formatBoolean(video.avcEncode)}`);
             lines.push(`compression level: ${formatValue(video.compressionLevel)}`);
             lines.push(`MediaBunny video Quality: ${formatValue(video.quality)}`);
+            if (video.inputPacketStats) {
+                lines.push(`input frames: ${video.inputPacketStats.packetCount}`);
+                lines.push(`input FPS: ${video.inputPacketStats.averagePacketRate.toFixed(2)}`);
+                lines.push(`input bitrate: ${video.inputPacketStats.averageBitrate} bps`);
+                lines.push(`input duration: ${formatValue(video.inputPacketStats.duration)} s`);
+            } else {
+                lines.push('input packet stats: not recorded');
+            }
+            if (video.outputPacketStats) {
+                lines.push(`output frames: ${video.outputPacketStats.packetCount}`);
+                lines.push(`output FPS: ${video.outputPacketStats.averagePacketRate.toFixed(2)}`);
+                lines.push(`output bitrate: ${video.outputPacketStats.averageBitrate} bps`);
+                lines.push(`output duration: ${formatValue(video.outputPacketStats.duration)} s`);
+            } else {
+                lines.push('output packet stats: not recorded');
+            }
         });
 
         record.audio.forEach((audio, index) => {
@@ -483,10 +548,13 @@ export function formatMediaCompressionDiagnostics(): string {
             'video capability',
             'audio preparation',
             'aac custom load/register',
+            'input video stats scan',
             'conversion.init',
             'conversion.execute',
             'compressed File creation',
             'output audio preservation verification',
+            'output video stats scan',
+            'diagnostic total',
             'total compression',
         ] as const) {
             lines.push(`${key}: ${formatDuration(record.timing[key])}`);

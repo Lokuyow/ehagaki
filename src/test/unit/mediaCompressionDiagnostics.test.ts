@@ -8,8 +8,10 @@ import {
     getAacCustomEncoderState,
     getMediaCompressionAudioDiagnosticMode,
     getMediaCompressionDiagnosticRecords,
+    getMediaCompressionVideoDiagnosticMode,
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
@@ -34,8 +36,13 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugEnabled('?media-debug=1')).toBe(true);
         expect(isMediaCompressionDebugAudioCopyEnabled('?media-debug-audio=copy')).toBe(false);
         expect(isMediaCompressionDebugAudioCopyEnabled('?media-debug=1&media-debug-audio=copy')).toBe(true);
+        expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug-video-latency=realtime')).toBe(false);
+        expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-video-latency=realtime')).toBe(false);
+        expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime')).toBe(true);
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1')).toBe('normal');
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
+        expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1')).toBe('default-quality');
+        expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime')).toBe('realtime');
         expect(startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }))).toBeNull();
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
     });
@@ -51,6 +58,20 @@ describe('media compression diagnostics', () => {
             sourceChannels: 2,
             audioPath: 'native-aac',
         });
+        session?.setVideo(0, {
+            inputPacketStats: {
+                packetCount: 627,
+                averagePacketRate: 30,
+                averageBitrate: 4_000_000,
+                duration: 20.9,
+            },
+            outputPacketStats: {
+                packetCount: 627,
+                averagePacketRate: 30,
+                averageBitrate: 3_900_000,
+                duration: 20.9,
+            },
+        });
         session?.finish({
             file: new File(['compressed'], 'output.mp4', { type: 'video/mp4' }),
             wasCompressed: true,
@@ -59,6 +80,8 @@ describe('media compression diagnostics', () => {
         const text = formatMediaCompressionDiagnostics();
         expect(text).toContain('Conversion #1');
         expect(text).toContain('audio path: native-aac');
+        expect(text).toContain('input frames: 627');
+        expect(text).toContain('output FPS: 30.00');
         expect(text).toContain('total compression:');
         expect(text).not.toContain('clip.mp4');
 
@@ -92,6 +115,31 @@ describe('media compression diagnostics', () => {
         expect(text).toContain('normal target: 44100 Hz / 2ch');
         expect(text).toContain('reason: debug-forced-packet-copy');
         expect(text).toContain('output audio: 48000 Hz / 2ch');
+    });
+
+    it('formats realtime video diagnostics and keeps packet scan timing separate', () => {
+        setSearch('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime');
+        const session = startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }));
+        session?.setVideo(0, {
+            inputPacketStats: { packetCount: 627, averagePacketRate: 30, averageBitrate: 4_000_000, duration: 20.9 },
+            outputPacketStats: { packetCount: 620, averagePacketRate: 29.7, averageBitrate: 3_900_000, duration: 20.9 },
+        });
+        session?.setTiming('input video stats scan', 25);
+        session?.setTiming('output video stats scan', 35);
+        session?.setTiming('conversion.execute', 16600);
+        session?.finish({
+            file: new File(['output'], 'output.mp4', { type: 'video/mp4' }),
+            wasCompressed: true,
+        });
+
+        const text = formatMediaCompressionDiagnostics();
+        expect(text).toContain('Video latency: realtime');
+        expect(text).toContain('video diagnostic mode: realtime');
+        expect(text).toContain('input frames: 627');
+        expect(text).toContain('output frames: 620');
+        expect(text).toContain('input video stats scan: 25.0 ms');
+        expect(text).toContain('output video stats scan: 35.0 ms');
+        expect(text).toContain('conversion.execute: 16600.0 ms');
     });
 
     it('classifies native, custom, packet-copy, and unknown paths from observed state', () => {
