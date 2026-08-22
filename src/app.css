@@ -47,9 +47,14 @@
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 14%, hsl(0, 0%, 100%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 14%, hsl(0, 0%, 19%))
   );
+  --surface-editor-base: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 9%, hsl(0, 0%, 100%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 22%)) 9%, hsl(0, 0%, 22%))
+  );
+  --surface-editor: var(--surface-editor-base);
   --surface-footer: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 82%)) 22%, hsl(0, 0%, 82%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 86%)) 34%, hsl(0, 0%, 86%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 16%)) 34%, hsl(0, 0%, 16%))
   );
   --surface-buttonbar: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 91%)) 20%, hsl(0, 0%, 91%)),

@@ -416,6 +416,70 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     expect(themedDark.danger).toBe(themedLight.danger);
 });
 
+test("balances editor and footer surfaces for warm and cool base colors", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & { whenReady(): Promise<void> };
+        document.body.append(composer);
+        await composer.whenReady();
+    });
+
+    const readSurfaces = (baseColor: string, themeMode: "light" | "dark") => page.locator("ehagaki-composer").evaluate(async (element, settings) => {
+        const composer = element as HTMLElement & { setSettings(value: { themeMode: "light" | "dark" }): Promise<string[]> };
+        await composer.setSettings({ themeMode: settings.themeMode });
+        element.style.setProperty("--ehagaki-base-color", settings.baseColor);
+        const shadow = element.shadowRoot!;
+        const editor = shadow.querySelector<HTMLElement>(".editor-container")!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const parseRgb = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+        const saturation = (value: string) => {
+            const [r, g, b] = parseRgb(value).map((channel) => channel / 255);
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            return max === 0 ? 0 : (max - min) / max;
+        };
+        const lightness = (value: string) => {
+            const [r, g, b] = parseRgb(value);
+            return (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+        };
+        const editorBackground = getComputedStyle(editor).backgroundColor;
+        const footerBackground = getComputedStyle(footer).backgroundColor;
+        return {
+            editorBackground,
+            footerBackground,
+            editorSaturation: saturation(editorBackground),
+            footerSaturation: saturation(footerBackground),
+            editorLightness: lightness(editorBackground),
+            footerLightness: lightness(footerBackground),
+        };
+    }, { baseColor, themeMode });
+
+    for (const baseColor of ["#0077ff", "#ff3b5c", "#f2b000"]) {
+        for (const themeMode of ["light", "dark"] as const) {
+            const surfaces = await readSurfaces(baseColor, themeMode);
+            expect(surfaces.footerSaturation, `${baseColor} ${themeMode} saturation`).toBeGreaterThan(surfaces.editorSaturation);
+            if (themeMode === "light") {
+                expect(surfaces.editorLightness, `${baseColor} ${themeMode} editor lightness`).toBeGreaterThan(surfaces.footerLightness);
+            } else {
+                expect(surfaces.footerLightness, `${baseColor} ${themeMode} footer lightness`).toBeGreaterThan(surfaces.editorLightness);
+            }
+        }
+    }
+
+    await page.locator("ehagaki-composer").evaluate((element) => {
+        element.style.setProperty("--ehagaki-input-background", "rgb(4, 5, 6)");
+        element.style.setProperty("--ehagaki-footer-background", "rgb(7, 8, 9)");
+    });
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        return {
+            editor: getComputedStyle(shadow.querySelector<HTMLElement>(".editor-container")!).backgroundColor,
+            footer: getComputedStyle(shadow.querySelector<HTMLElement>(".footer-bar")!).backgroundColor,
+        };
+    })).toEqual({ editor: "rgb(4, 5, 6)", footer: "rgb(7, 8, 9)" });
+});
+
 test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async () => {

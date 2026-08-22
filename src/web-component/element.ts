@@ -156,6 +156,7 @@ function getWebComponentThemeCss(): string {
         --border: var(--ehagaki-border, var(--surface-border));
         --link: var(--ehagaki-link, var(--semantic-link));
         --bg-input: var(--ehagaki-input-background, var(--surface-input));
+        --surface-editor: var(--ehagaki-input-background, var(--surface-editor-base));
         --bg-footer: var(--ehagaki-footer-background, var(--surface-footer));
         --dialog-bg: var(--ehagaki-dialog-background, var(--surface-dialog));
         font-family: var(--ehagaki-font-family, system-ui, sans-serif);

@@ -1109,7 +1109,7 @@
     position: relative;
     cursor: text;
     outline: none;
-    background: var(--bg-input);
+    background: var(--surface-editor);
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
   }
@@ -1153,7 +1153,7 @@
   }
 
   .editor-container.sending {
-    background: color-mix(in srgb, var(--bg-input) 82%, var(--surface-button) 18%);
+    background: color-mix(in srgb, var(--surface-editor) 82%, var(--surface-button) 18%);
     cursor: not-allowed;
   }
 
