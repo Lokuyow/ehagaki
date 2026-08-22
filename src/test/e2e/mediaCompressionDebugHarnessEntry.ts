@@ -6,6 +6,7 @@ import {
     isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoBitrateEnabled,
     isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
+    isMediaCompressionDebugVideoPipelineBenchmarkEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
@@ -15,12 +16,14 @@ import {
     type RawVideoEncoderBenchmarkResult,
 } from '../../lib/videoCompression/rawVideoEncoderBenchmark';
 import type { VideoDecodeBenchmarkResult } from '../../lib/videoCompression/videoDecodeBenchmark';
+import type { RealVideoPipelineBenchmarkResult } from '../../lib/videoCompression/realVideoPipelineBenchmark';
 
 declare global {
     interface Window {
         completeRawVideoEncoderBenchmark?: () => void;
         completeOffscreenCanvasVideoEncoderBenchmark?: () => void;
         completeVideoDecodeBenchmark?: () => void;
+        completeRealVideoPipelineBenchmark?: () => void;
     }
 }
 
@@ -36,6 +39,7 @@ const realtimeVideoLatency = isMediaCompressionDebugVideoRealtimeEnabled();
 const rawVideoEncoderBenchmark = isMediaCompressionDebugRawVideoEncoderEnabled();
 const videoBitrateRateControl = isMediaCompressionDebugVideoBitrateEnabled();
 const videoDecodeBenchmark = isMediaCompressionDebugVideoDecodeBenchmarkEnabled();
+const realVideoPipelineBenchmark = isMediaCompressionDebugVideoPipelineBenchmarkEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
     codec: 'avc',
@@ -179,7 +183,53 @@ const videoDecodeBenchmarkRunner = videoDecodeBenchmark
     })
     : undefined;
 
+const realVideoPipelineBenchmarkRunner = realVideoPipelineBenchmark
+    ? () => new Promise<RealVideoPipelineBenchmarkResult>((resolve) => {
+        window.completeRealVideoPipelineBenchmark = () => {
+            resolve({
+                status: 'completed',
+                input: {
+                    mime: 'video/quicktime',
+                    size: 39_681_322,
+                    duration: 20.9,
+                    videoCodec: 'avc1.4d401f',
+                    codedWidth: 1_920,
+                    codedHeight: 1_080,
+                    displayWidth: 1_080,
+                    displayHeight: 1_920,
+                    rotation: 90,
+                },
+                target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
+                capabilities: { decode: true, avcEncode: true },
+                samplesProcessed: 627,
+                framesSubmitted: 627,
+                encodedChunks: 627,
+                encodedBytes: 395_052,
+                keyChunks: 1,
+                deltaChunks: 626,
+                maxQueueSize: 4,
+                throughput: 98.4,
+                timings: {
+                    inputTrackSetup: 12,
+                    sampleWaitIteration: 6_300,
+                    videoTransform: 5_200,
+                    videoFrameCreation: 1_800,
+                    encodeSubmissionSync: 30,
+                    backpressureWait: 8_400,
+                    flushWait: 1_200,
+                    benchmarkTotalWall: 16_600,
+                },
+            });
+        };
+    })
+    : undefined;
+
 mount(MediaCompressionDebugPanel, {
     target,
-    props: { rawVideoEncoderBenchmarkRunner, offscreenCanvasVideoEncoderBenchmarkRunner, videoDecodeBenchmarkRunner },
+    props: {
+        rawVideoEncoderBenchmarkRunner,
+        offscreenCanvasVideoEncoderBenchmarkRunner,
+        videoDecodeBenchmarkRunner,
+        realVideoPipelineBenchmarkRunner,
+    },
 });

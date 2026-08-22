@@ -4,9 +4,14 @@
     VideoDecodeBenchmarkOptions,
     VideoDecodeBenchmarkResult,
   } from "../lib/videoCompression/videoDecodeBenchmark";
+  import type {
+    RealVideoPipelineBenchmarkOptions,
+    RealVideoPipelineBenchmarkResult,
+  } from "../lib/videoCompression/realVideoPipelineBenchmark";
   import {
     addRawVideoEncoderBenchmarkRecord,
     addVideoDecodeBenchmarkRecord,
+    addRealVideoPipelineBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
@@ -14,6 +19,7 @@
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
+    isMediaCompressionDebugVideoPipelineBenchmarkEnabled,
     subscribeToMediaCompressionDiagnostics,
   } from "../lib/videoCompression/mediaCompressionDiagnostics";
   import { runRawVideoEncoderBenchmark } from "../lib/videoCompression/rawVideoEncoderBenchmark";
@@ -23,6 +29,11 @@
     options?: VideoDecodeBenchmarkOptions,
   ) => Promise<VideoDecodeBenchmarkResult>;
   type VideoDecodeBenchmarkLoader = () => Promise<VideoDecodeBenchmarkRunner>;
+  type RealVideoPipelineBenchmarkRunner = (
+    file: File,
+    options?: RealVideoPipelineBenchmarkOptions,
+  ) => Promise<RealVideoPipelineBenchmarkResult>;
+  type RealVideoPipelineBenchmarkLoader = () => Promise<RealVideoPipelineBenchmarkRunner>;
   type RawVideoEncoderBenchmarkRunner = typeof runRawVideoEncoderBenchmark;
   type RawVideoEncoderBenchmarkOptions = Parameters<RawVideoEncoderBenchmarkRunner>[0];
 
@@ -35,6 +46,10 @@
     videoDecodeBenchmarkRunner?: VideoDecodeBenchmarkRunner;
     /** Test-only injection for the dynamic-import failure path. */
     videoDecodeBenchmarkLoader?: VideoDecodeBenchmarkLoader;
+    /** Harness injection only; production loads the real pipeline benchmark on demand. */
+    realVideoPipelineBenchmarkRunner?: RealVideoPipelineBenchmarkRunner;
+    /** Test-only injection for the real pipeline benchmark dynamic-import failure path. */
+    realVideoPipelineBenchmarkLoader?: RealVideoPipelineBenchmarkLoader;
   }
 
   let {
@@ -45,6 +60,8 @@
     }),
     videoDecodeBenchmarkRunner,
     videoDecodeBenchmarkLoader,
+    realVideoPipelineBenchmarkRunner,
+    realVideoPipelineBenchmarkLoader,
   }: Props = $props();
 
   let expanded = $state(false);
@@ -54,10 +71,13 @@
   let rawBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let offscreenCanvasBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let videoDecodeBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
+  let realVideoPipelineBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let rawRunController: AbortController | null = null;
   let offscreenCanvasRunController: AbortController | null = null;
   let videoDecodeRunController: AbortController | null = null;
+  let realVideoPipelineRunController: AbortController | null = null;
   let videoDecodeInput: HTMLInputElement | undefined = $state();
+  let realVideoPipelineInput: HTMLInputElement | undefined = $state();
 
   const diagnosticText = $derived.by(() => {
     void records;
@@ -74,7 +94,9 @@
       rawRunController?.abort();
       offscreenCanvasRunController?.abort();
       videoDecodeRunController?.abort();
+      realVideoPipelineRunController?.abort();
       if (videoDecodeInput) videoDecodeInput.value = "";
+      if (realVideoPipelineInput) realVideoPipelineInput.value = "";
       unsubscribe();
     };
   });
@@ -157,6 +179,33 @@
       videoDecodeRunController = null;
     }
   }
+
+  function selectRealVideoPipelineBenchmarkFile(): void {
+    if (realVideoPipelineBenchmarkStatus !== "running") realVideoPipelineInput?.click();
+  }
+
+  async function runRealVideoPipelineBenchmarkForSelectedFile(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || realVideoPipelineBenchmarkStatus === "running") return;
+
+    realVideoPipelineBenchmarkStatus = "running";
+    realVideoPipelineRunController = new AbortController();
+    try {
+      const runner = realVideoPipelineBenchmarkRunner
+        ?? (realVideoPipelineBenchmarkLoader
+          ? await realVideoPipelineBenchmarkLoader()
+          : (await import("../lib/videoCompression/realVideoPipelineBenchmark")).runRealVideoPipelineBenchmark);
+      const result = await runner(file, { signal: realVideoPipelineRunController.signal });
+      addRealVideoPipelineBenchmarkRecord(result);
+      realVideoPipelineBenchmarkStatus = result.status;
+    } catch {
+      realVideoPipelineBenchmarkStatus = "failed";
+    } finally {
+      realVideoPipelineRunController = null;
+    }
+  }
 </script>
 
 {#if isMediaCompressionDebugEnabled()}
@@ -210,12 +259,30 @@
               {videoDecodeBenchmarkStatus === "running" ? "Running video decode benchmark…" : "Run video decode benchmark"}
             </button>
           {/if}
+          {#if isMediaCompressionDebugVideoPipelineBenchmarkEnabled()}
+            <input
+              bind:this={realVideoPipelineInput}
+              class="media-debug-file-input"
+              type="file"
+              accept="video/*"
+              aria-label="Select video for real pipeline benchmark"
+              onchange={runRealVideoPipelineBenchmarkForSelectedFile}
+            />
+            <button
+              type="button"
+              disabled={realVideoPipelineBenchmarkStatus === "running"}
+              onclick={selectRealVideoPipelineBenchmarkFile}
+            >
+              {realVideoPipelineBenchmarkStatus === "running" ? "Running real video pipeline benchmark…" : "Run real video pipeline benchmark"}
+            </button>
+          {/if}
           <button type="button" onclick={copyDiagnostics}>Copy</button>
           <button type="button" onclick={clearDiagnostics}>Clear</button>
           {#if copyStatus}<span role="status">{copyStatus}</span>{/if}
           {#if rawBenchmarkStatus !== "idle"}<span role="status">Raw benchmark: {rawBenchmarkStatus}</span>{/if}
           {#if offscreenCanvasBenchmarkStatus !== "idle"}<span role="status">OffscreenCanvas benchmark: {offscreenCanvasBenchmarkStatus}</span>{/if}
           {#if videoDecodeBenchmarkStatus !== "idle"}<span role="status">Video decode benchmark: {videoDecodeBenchmarkStatus}</span>{/if}
+          {#if realVideoPipelineBenchmarkStatus !== "idle"}<span role="status">Real video pipeline benchmark: {realVideoPipelineBenchmarkStatus}</span>{/if}
         </div>
         <pre>{diagnosticText}</pre>
       </div>

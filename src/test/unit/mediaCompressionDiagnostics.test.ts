@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
 import {
     classifyMediaCompressionAudioPath,
+    addRealVideoPipelineBenchmarkRecord,
     addVideoDecodeBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
@@ -15,6 +16,7 @@ import {
     isMediaCompressionDebugAudioCopyEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
+    isMediaCompressionDebugVideoPipelineBenchmarkEnabled,
     isMediaCompressionDebugVideoBitrateEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
@@ -54,6 +56,9 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug-video-decode-benchmark=1')).toBe(false);
         expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug=1')).toBe(false);
         expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug=1&media-debug-video-decode-benchmark=1')).toBe(true);
+        expect(isMediaCompressionDebugVideoPipelineBenchmarkEnabled('?media-debug-video-pipeline-benchmark=1')).toBe(false);
+        expect(isMediaCompressionDebugVideoPipelineBenchmarkEnabled('?media-debug=1')).toBe(false);
+        expect(isMediaCompressionDebugVideoPipelineBenchmarkEnabled('?media-debug=1&media-debug-video-pipeline-benchmark=1')).toBe(true);
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1')).toBe('normal');
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
         expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1')).toBe('default-quality');
@@ -179,6 +184,55 @@ describe('media compression diagnostics', () => {
         expect(text).toContain('samples decoded: 627');
         expect(text).toContain('sample #627: +6800.0 ms');
         expect(text).toContain('No resize, video encode, audio, muxing, or file output is performed by this benchmark.');
+        expect(text).not.toContain('.mov');
+    });
+
+    it('formats real pipeline results with target, counts, timings, and no selected file name', () => {
+        setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
+        addRealVideoPipelineBenchmarkRecord({
+            status: 'completed',
+            input: {
+                mime: 'video/quicktime',
+                size: 39_681_322,
+                duration: 20.9,
+                videoCodec: 'avc1.4d401f',
+                codedWidth: 1920,
+                codedHeight: 1080,
+                displayWidth: 1080,
+                displayHeight: 1920,
+                rotation: 90,
+            },
+            target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
+            capabilities: { decode: true, avcEncode: true },
+            samplesProcessed: 627,
+            framesSubmitted: 627,
+            encodedChunks: 627,
+            encodedBytes: 395_052,
+            keyChunks: 1,
+            deltaChunks: 626,
+            maxQueueSize: 4,
+            throughput: 98.4,
+            timings: {
+                inputTrackSetup: 12,
+                sampleWaitIteration: 6300,
+                videoTransform: 5200,
+                videoFrameCreation: 1800,
+                encodeSubmissionSync: 30,
+                backpressureWait: 8400,
+                flushWait: 1200,
+                benchmarkTotalWall: 16600,
+            },
+        });
+
+        const text = formatMediaCompressionDiagnostics();
+        expect(text).toContain('Real video pipeline benchmark: enabled (manual run)');
+        expect(text).toContain('Real Video Pipeline Benchmark #1');
+        expect(text).toContain('source display: 1080x1920');
+        expect(text).toContain('target: 360x640');
+        expect(text).toContain('samples processed: 627');
+        expect(text).toContain('encoded chunks: 627');
+        expect(text).toContain('benchmark total wall: 16600.0 ms');
+        expect(text).toContain('Uses MediaBunny public Input/VideoSampleSink/VideoSample.transform only; no Conversion, audio, muxing, Blob, or file output.');
         expect(text).not.toContain('.mov');
     });
 
@@ -316,5 +370,42 @@ describe('media compression diagnostics', () => {
 
         expect(videoDecodeBenchmarkLoader).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Video decode benchmark: failed').textContent).toBe('Video decode benchmark: failed');
+    });
+
+    it('wires the real pipeline file selection through a lazy runner and returns to failed on loader error', async () => {
+        setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
+        const runner = vi.fn().mockResolvedValue({
+            status: 'completed',
+            input: { mime: 'video/quicktime', size: 5, duration: 1, videoCodec: 'avc', codedWidth: 1920, codedHeight: 1080, displayWidth: 1080, displayHeight: 1920, rotation: 90 },
+            target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
+            capabilities: { decode: true, avcEncode: true },
+            samplesProcessed: 1,
+            framesSubmitted: 1,
+            encodedChunks: 1,
+            encodedBytes: 100,
+            keyChunks: 1,
+            deltaChunks: 0,
+            maxQueueSize: 1,
+            throughput: 1,
+            timings: { inputTrackSetup: 1, sampleWaitIteration: 1, videoTransform: 1, videoFrameCreation: 1, encodeSubmissionSync: 1, backpressureWait: 1, flushWait: 1, benchmarkTotalWall: 1 },
+        });
+        render(MediaCompressionDebugPanel, { realVideoPipelineBenchmarkRunner: runner });
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        await fireEvent.change(screen.getByLabelText('Select video for real pipeline benchmark'), {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+        expect(runner).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('Real video pipeline benchmark: completed').textContent).toBe('Real video pipeline benchmark: completed');
+
+        clearMediaCompressionDiagnosticRecords();
+        setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
+        const loader = vi.fn().mockRejectedValue(new Error('benchmark chunk unavailable'));
+        render(MediaCompressionDebugPanel, { realVideoPipelineBenchmarkLoader: loader });
+        await fireEvent.click(screen.getAllByRole('button', { name: /Media Compression Debug/ })[1]);
+        await fireEvent.change(screen.getAllByLabelText('Select video for real pipeline benchmark')[1], {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+        expect(loader).toHaveBeenCalledTimes(1);
+        expect(screen.getAllByText('Real video pipeline benchmark: failed')[0].textContent).toBe('Real video pipeline benchmark: failed');
     });
 });
