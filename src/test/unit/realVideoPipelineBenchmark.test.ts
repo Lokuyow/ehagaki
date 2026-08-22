@@ -20,7 +20,7 @@ class FakeFrame {
 
 class FakeSample implements RealVideoPipelineBenchmarkSampleLike {
     timestamp: number;
-    readonly duration = 33_333;
+    readonly duration = 1 / 30;
     readonly codedWidth = 1_920;
     readonly codedHeight = 1_080;
     readonly rotation = 90;
@@ -97,7 +97,7 @@ class FakeEncoder extends EventTarget {
             throw error;
         }
         this.queueSize += 1;
-        this.output({ byteLength: 100, type: FakeEncoder.encodeOptions.length === 1 ? 'key' : 'delta' });
+        this.output({ byteLength: 100, type: options?.keyFrame === true ? 'key' : 'delta' });
         queueMicrotask(() => {
             this.queueSize = Math.max(0, this.queueSize - 1);
             this.dispatchEvent(new Event('dequeue'));
@@ -137,7 +137,7 @@ function createTrack(canDecode = true): RealVideoPipelineBenchmarkTrackLike {
         getDisplayWidth: vi.fn(async () => 1_080),
         getDisplayHeight: vi.fn(async () => 1_920),
         getRotation: vi.fn(async () => 90),
-        getFirstTimestamp: vi.fn(async () => 100_000),
+        getFirstTimestamp: vi.fn(async () => 100),
     };
 }
 
@@ -182,7 +182,7 @@ describe('runRealVideoPipelineBenchmark', () => {
     it('uses the fixed High Profile AVC config and transforms every sample into native WebCodecs', async () => {
         FakeEncoder.reset();
         FakeSample.reset();
-        const samples = [new FakeSample(100_000), new FakeSample(133_333), new FakeSample(166_666)];
+        const samples = [new FakeSample(100), new FakeSample(100 + 1 / 30), new FakeSample(100 + 2 / 30)];
         const dispose = vi.fn();
         const result = await runRealVideoPipelineBenchmark(
             new File(['video'], 'private.mov', { type: 'video/quicktime' }),
@@ -221,6 +221,37 @@ describe('runRealVideoPipelineBenchmark', () => {
         expect(FakeSample.frames.every((frame) => frame.close.mock.calls.length === 1)).toBe(true);
         expect(dispose).toHaveBeenCalledTimes(1);
         expect(JSON.stringify(result)).not.toContain('private.mov');
+    });
+
+    it('schedules keyframes from normalized second timestamps at five-second boundaries', async () => {
+        FakeEncoder.reset();
+        FakeSample.reset();
+        const firstTimestamp = 100;
+        const relativeTimestamps = [0, 1, 4.999, 5, 9.999, 10];
+        const samples = relativeTimestamps.map((timestamp) => new FakeSample(firstTimestamp + timestamp));
+        const track = createTrack();
+        track.getFirstTimestamp = vi.fn(async () => firstTimestamp);
+
+        const result = await runRealVideoPipelineBenchmark(
+            new File(['video'], 'ignored.mov', { type: 'video/quicktime' }),
+            createOptions(track, samples),
+        );
+
+        expect(result.status).toBe('completed');
+        const normalizedTimestamps = samples.map((sample) => sample.setTimestamp.mock.calls[0]?.[0]);
+        normalizedTimestamps.forEach((timestamp, index) => {
+            expect(timestamp).toBeCloseTo(relativeTimestamps[index], 12);
+        });
+        expect(FakeEncoder.encodeOptions).toEqual([
+            { keyFrame: true },
+            { keyFrame: false },
+            { keyFrame: false },
+            { keyFrame: true },
+            { keyFrame: false },
+            { keyFrame: true },
+        ]);
+        expect(result.keyChunks).toBe(3);
+        expect(result.deltaChunks).toBe(3);
     });
 
     it('keeps the 360x640, 30fps, 400kbps raw encoder conditions as the native encode target', () => {
@@ -269,7 +300,7 @@ describe('runRealVideoPipelineBenchmark', () => {
             FakeSample.reset();
             FakeEncoder.mode = mode === 'transform' ? 'success' : mode;
             FakeSample.transformError = mode === 'transform';
-            const sample = new FakeSample(100_000);
+            const sample = new FakeSample(100);
             const dispose = vi.fn();
             const result = await runRealVideoPipelineBenchmark(
                 new File(['x'], 'ignored.mov', { type: 'video/quicktime' }),

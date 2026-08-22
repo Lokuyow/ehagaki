@@ -621,7 +621,7 @@ function formatRealVideoPipelineBenchmark(record: RealVideoPipelineBenchmarkResu
         `fit: ${record.target.fit}`,
         `transform rotate: ${record.target.rotate}°`,
         `alpha: ${record.target.alpha}`,
-        `key frame interval: 2 s`,
+        `key frame interval: 5 s`,
         'Capabilities',
         `decode: ${formatBoolean(record.capabilities.decode ?? undefined)}`,
         `AVC encode: ${formatBoolean(record.capabilities.avcEncode ?? undefined)}`,

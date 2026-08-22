@@ -17,7 +17,7 @@ export const REAL_VIDEO_PIPELINE_BENCHMARK_TARGET = {
     alpha: 'discard',
 } as const satisfies VideoSampleTransformOptions;
 
-const REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL = 2;
+const REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL = 5;
 
 export type RealVideoPipelineBenchmarkFailureStage =
     | 'no-video-track'
@@ -402,7 +402,7 @@ export async function runRealVideoPipelineBenchmark(
                         );
                         result.timings.backpressureWait += Math.max(0, now() - waitStartedAt);
                         const encodeStartedAt = now();
-                        const keyFrameInterval = Math.floor(sample.timestamp / 1_000_000 / REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL);
+                        const keyFrameInterval = Math.floor(sample.timestamp / REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL);
                         const keyFrame = keyFrameInterval !== lastKeyFrameInterval;
                         lastKeyFrameInterval = keyFrameInterval;
                         encoder.encode(frame, { keyFrame });
