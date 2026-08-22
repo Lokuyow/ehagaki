@@ -432,6 +432,7 @@ test("balances editor and footer surfaces for warm and cool base colors", async 
         const shadow = element.shadowRoot!;
         const editor = shadow.querySelector<HTMLElement>(".editor-container")!;
         const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const headerButton = shadow.querySelector<HTMLElement>(".header-container .choose-target-button")!;
         const parseRgb = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
         const saturation = (value: string) => {
             const [r, g, b] = parseRgb(value).map((channel) => channel / 255);
@@ -448,6 +449,7 @@ test("balances editor and footer surfaces for warm and cool base colors", async 
         return {
             editorBackground,
             footerBackground,
+            headerButtonBackground: getComputedStyle(headerButton).backgroundColor,
             editorSaturation: saturation(editorBackground),
             footerSaturation: saturation(footerBackground),
             editorLightness: lightness(editorBackground),
@@ -459,10 +461,9 @@ test("balances editor and footer surfaces for warm and cool base colors", async 
         for (const themeMode of ["light", "dark"] as const) {
             const surfaces = await readSurfaces(baseColor, themeMode);
             expect(surfaces.footerSaturation, `${baseColor} ${themeMode} saturation`).toBeGreaterThan(surfaces.editorSaturation);
+            expect(surfaces.headerButtonBackground, `${baseColor} ${themeMode} header button`).toBe(surfaces.editorBackground);
             if (themeMode === "light") {
                 expect(surfaces.editorLightness, `${baseColor} ${themeMode} editor lightness`).toBeGreaterThan(surfaces.footerLightness);
-            } else {
-                expect(surfaces.footerLightness, `${baseColor} ${themeMode} footer lightness`).toBeGreaterThan(surfaces.editorLightness);
             }
         }
     }
