@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import {
+  fixedLegacyBridgeEmitPlugin,
+  loadFixedLegacyBridgeManifest,
+} from './scripts/fixedLegacyBridge';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -22,6 +26,8 @@ const webComponentDevProxy = webComponentDevProxyEnabled && webComponentDevServe
       },
     }
   : undefined;
+const fixedLegacyBridgeManifest = loadFixedLegacyBridgeManifest();
+const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => asset.path);
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -97,6 +103,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    fixedLegacyBridgeEmitPlugin(fixedLegacyBridgeManifest),
     svelte(),
     // basicSsl(),
     VitePWA({
@@ -175,7 +182,12 @@ export default defineConfig({
           '**/node_modules/**/*',
           'sw.js',
           'workbox-*.js',
+          ...fixedLegacyBridgePaths
         ],
+        additionalManifestEntries: fixedLegacyBridgePaths.map(url => ({
+          url,
+          revision: null,
+        }))
       }
     })
   ],
