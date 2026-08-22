@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-    canDecodeVideo: true,
+    videoTrackCanDecode: true,
+    videoWidth: 1280,
+    videoHeight: 720,
     canEncodeVideo: true,
+    canEncodeVideoPredicate: null as ((options: any) => boolean) | null,
+    videoCapabilityOptions: [] as any[],
     canDecodeAudio: true,
     nativeAac: true,
     customAac: false,
     preserveAudio: true,
     failConversion: false,
+    videoOptions: [] as any[],
     audioOptions: [] as any[],
     registeredAacEncoder: 0,
 }));
@@ -15,8 +20,14 @@ const state = vi.hoisted(() => ({
 vi.mock('mediabunny', () => {
     class Input {
         source: { blob: File };
+        videoTrack = {
+            canDecode: vi.fn(async () => state.videoTrackCanDecode),
+            getDisplayWidth: vi.fn(async () => state.videoWidth),
+            getDisplayHeight: vi.fn(async () => state.videoHeight),
+            isVideoTrack: () => true,
+        };
         constructor({ source }: any) { this.source = source; }
-        async getVideoTracks() { return [{ codec: 'avc', displayWidth: 1280, displayHeight: 720 }]; }
+        async getVideoTracks() { return [this.videoTrack]; }
         async getAudioTracks() {
             return this.source.blob.name.includes('_compressed')
                 ? (state.preserveAudio ? [{ codec: 'aac', numberOfChannels: 2, sampleRate: 44100 }] : [])
@@ -31,12 +42,15 @@ vi.mock('mediabunny', () => {
     return {
         ALL_FORMATS: [], BlobSource, BufferTarget, Input, Output, Mp4OutputFormat,
         QUALITY_HIGH: { factor: 2 }, QUALITY_MEDIUM: { factor: 1 }, QUALITY_VERY_LOW: { factor: 0.3 },
-        canDecodeVideo: vi.fn(async () => state.canDecodeVideo),
-        canEncodeVideo: vi.fn(async () => state.canEncodeVideo),
+        canEncodeVideo: vi.fn(async (_codec: string, options: any) => {
+            state.videoCapabilityOptions.push(options);
+            return state.canEncodeVideoPredicate?.(options) ?? state.canEncodeVideo;
+        }),
         canDecodeAudio: vi.fn(async () => state.canDecodeAudio),
         canEncodeAudio: vi.fn(async () => state.nativeAac || state.customAac),
         Conversion: {
             init: vi.fn(async (options: any) => {
+                state.videoOptions.push(await options.video((await options.input.getVideoTracks())[0]));
                 state.audioOptions.push(await options.audio({ codec: 'aac', numberOfChannels: 2, sampleRate: 44100 }));
                 const conversion: any = {
                     isValid: true,
@@ -80,22 +94,60 @@ const options = {
 describe('MediaBunnyCompression', () => {
     beforeEach(() => {
         Object.assign(state, {
-            canDecodeVideo: true,
+            videoTrackCanDecode: true,
+            videoWidth: 1280,
+            videoHeight: 720,
             canEncodeVideo: true,
+            canEncodeVideoPredicate: null,
+            videoCapabilityOptions: [],
             canDecodeAudio: true,
             nativeAac: true,
             customAac: false,
             preserveAudio: true,
             failConversion: false,
+            videoOptions: [],
             audioOptions: [],
             registeredAacEncoder: 0,
         });
     });
 
     it('skips compression when video decode or AVC encode is unavailable', async () => {
-        state.canDecodeVideo = false;
+        state.videoTrackCanDecode = false;
         const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
         expect(result).toMatchObject({ wasCompressed: false, wasSkipped: true });
+        expect(state.videoCapabilityOptions).toEqual([]);
+        expect(state.videoOptions).toEqual([]);
+    });
+
+    it('uses the resized landscape dimensions for AVC capability checks', async () => {
+        state.videoWidth = 3840;
+        state.videoHeight = 2160;
+        state.canEncodeVideoPredicate = ({ width, height }) => width <= 640 && height <= 360;
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 640, height: 360 })]);
+        expect(state.videoOptions[0]).toEqual(expect.objectContaining({ width: 640 }));
+    });
+
+    it('uses the resized portrait dimensions for AVC capability checks', async () => {
+        state.videoWidth = 2160;
+        state.videoHeight = 3840;
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 360, height: 640 })]);
+        expect(state.videoOptions[0]).toEqual(expect.objectContaining({ height: 640 }));
+    });
+
+    it('keeps the original dimensions when maxSize does not require resizing', async () => {
+        state.videoWidth = 320;
+        state.videoHeight = 240;
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 320, height: 240 })]);
+        expect(state.videoOptions[0]).toEqual(expect.objectContaining({ width: 320 }));
     });
 
     it('uses native AAC encoding without loading the optional encoder', async () => {

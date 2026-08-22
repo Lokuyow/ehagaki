@@ -3,7 +3,6 @@ import {
     BlobSource,
     BufferTarget,
     canDecodeAudio,
-    canDecodeVideo,
     canEncodeAudio,
     canEncodeVideo,
     Conversion,
@@ -25,6 +24,10 @@ import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devWarn } from './compressionUtils';
 
 let aacEncoderRegistration: Promise<void> | null = null;
+
+function ceilToMultipleOfTwo(value: number): number {
+    return Math.ceil(value / 2) * 2;
+}
 
 function getQualityFromFactor(factor: number | null | undefined): Quality | undefined {
     if (factor === 0.3) return QUALITY_VERY_LOW;
@@ -65,12 +68,12 @@ export class MediaBunnyCompression extends BaseCompression {
 
     private async canTranscodeVideo(
         track: InputVideoTrack,
+        dimensions: { width: number; height: number },
         quality: Quality | undefined,
     ): Promise<boolean> {
-        if (!track.codec || !await canDecodeVideo(track.codec)) return false;
+        if (!await track.canDecode()) return false;
         return canEncodeVideo('avc', {
-            width: track.displayWidth,
-            height: track.displayHeight,
+            ...dimensions,
             ...(quality ? { quality } : {}),
         });
     }
@@ -105,24 +108,40 @@ export class MediaBunnyCompression extends BaseCompression {
         return { codec: 'aac', forceTranscode: true, ...encoderOptions };
     }
 
-    private buildVideoOptions(
+    private async buildVideoOptions(
         track: InputVideoTrack,
         options: any,
         quality: Quality | undefined,
-    ): ConversionVideoOptions {
+    ): Promise<{ options: ConversionVideoOptions; dimensions: { width: number; height: number } }> {
+        const displayWidth = await track.getDisplayWidth();
+        const displayHeight = await track.getDisplayHeight();
         const videoOptions: ConversionVideoOptions = {
             codec: 'avc',
             forceTranscode: true,
             ...(quality ? { quality } : {}),
         };
         if (typeof options.maxSize === 'number' && Number.isFinite(options.maxSize)) {
-            if (track.displayWidth > track.displayHeight) {
-                videoOptions.width = Math.min(track.displayWidth, options.maxSize);
+            if (displayWidth > displayHeight) {
+                videoOptions.width = Math.min(displayWidth, options.maxSize);
             } else {
-                videoOptions.height = Math.min(track.displayHeight, options.maxSize);
+                videoOptions.height = Math.min(displayHeight, options.maxSize);
             }
         }
-        return videoOptions;
+
+        // Keep capability dimensions identical to MediaBunny's one-sided conversion resize:
+        // the requested side is rounded up to an even number, then the other side is inferred
+        // from the input aspect ratio and rounded up to an even number as well.
+        let width = displayWidth;
+        let height = displayHeight;
+        if (videoOptions.width !== undefined) {
+            width = ceilToMultipleOfTwo(videoOptions.width);
+            height = ceilToMultipleOfTwo(Math.round(width / (displayWidth / displayHeight)));
+        } else if (videoOptions.height !== undefined) {
+            height = ceilToMultipleOfTwo(videoOptions.height);
+            width = ceilToMultipleOfTwo(Math.round(height * (displayWidth / displayHeight)));
+        }
+
+        return { options: videoOptions, dimensions: { width, height } };
     }
 
     private async outputPreservesAudio(file: File, expectedTrackCount: number): Promise<boolean> {
@@ -146,7 +165,10 @@ export class MediaBunnyCompression extends BaseCompression {
             const videoQuality = getQualityFromFactor(options?.mediabunnyVideoQualityFactor);
             const audioQuality = getQualityFromFactor(options?.mediabunnyAudioQualityFactor);
 
-            if (videoTracks.length === 0 || !await this.canTranscodeVideo(videoTracks[0], videoQuality)) {
+            const videoOptions = videoTracks.length > 0
+                ? await this.buildVideoOptions(videoTracks[0], options, videoQuality)
+                : null;
+            if (!videoOptions || !await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, videoQuality)) {
                 this.log('Required video decode or AVC encode capability is unavailable; skipping compression.');
                 return { file, wasCompressed: false, wasSkipped: true };
             }
@@ -156,7 +178,9 @@ export class MediaBunnyCompression extends BaseCompression {
             const conversion = await Conversion.init({
                 input,
                 output,
-                video: (track) => this.buildVideoOptions(track, options, videoQuality),
+                video: async (track) => (track === videoTracks[0]
+                    ? videoOptions.options
+                    : (await this.buildVideoOptions(track, options, videoQuality)).options),
                 audio: (track) => this.buildAudioOptions(track, options, audioQuality),
                 showWarnings: false,
             });
