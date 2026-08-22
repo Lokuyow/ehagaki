@@ -29,6 +29,7 @@
   } from "./lib/embedStorageService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
+  import MediaCompressionDebugPanel from "./components/MediaCompressionDebugPanel.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
@@ -147,6 +148,7 @@
     POST_EDITOR_MIN_HEIGHT,
   } from "./lib/postLayoutUtils";
   import { setupViewportListener } from "./stores/uiStore.svelte";
+  import { isMediaCompressionDebugEnabled } from "./lib/videoCompression/mediaCompressionDiagnostics";
   import {
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
@@ -224,6 +226,7 @@
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
+  const mediaCompressionDebugEnabled = isMediaCompressionDebugEnabled();
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
@@ -2083,6 +2086,9 @@
           onOpenSettingsDialog={handleOpenSettingsFromFooter}
           onOpenLogoutDialog={logoutDialog.open}
         />
+      {/if}
+      {#if mediaCompressionDebugEnabled}
+        <MediaCompressionDebugPanel />
       {/if}
       <ConfirmDialog
         open={showStaleAssetReloadPrompt}

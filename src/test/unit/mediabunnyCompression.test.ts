@@ -22,6 +22,7 @@ vi.mock('mediabunny', () => {
         source: { blob: File };
         videoTrack = {
             canDecode: vi.fn(async () => state.videoTrackCanDecode),
+            getCodec: vi.fn(async () => 'avc'),
             getDisplayWidth: vi.fn(async () => state.videoWidth),
             getDisplayHeight: vi.fn(async () => state.videoHeight),
             isVideoTrack: () => true,
@@ -29,10 +30,20 @@ vi.mock('mediabunny', () => {
         constructor({ source }: any) { this.source = source; }
         async getVideoTracks() { return [this.videoTrack]; }
         async getAudioTracks() {
+            const track = {
+                codec: 'aac',
+                numberOfChannels: 2,
+                sampleRate: 44100,
+                getCodec: vi.fn(async () => 'aac'),
+                getNumberOfChannels: vi.fn(async () => 2),
+                getSampleRate: vi.fn(async () => 44100),
+                isAudioTrack: () => true,
+            };
             return this.source.blob.name.includes('_compressed')
-                ? (state.preserveAudio ? [{ codec: 'aac', numberOfChannels: 2, sampleRate: 44100 }] : [])
-                : [{ codec: 'aac', numberOfChannels: 2, sampleRate: 44100 }];
+                ? (state.preserveAudio ? [track] : [])
+                : [track];
         }
+        async getDurationFromMetadata() { return 1.5; }
         dispose() { }
     }
     class BlobSource { constructor(public blob: File) { } }
@@ -51,7 +62,15 @@ vi.mock('mediabunny', () => {
         Conversion: {
             init: vi.fn(async (options: any) => {
                 state.videoOptions.push(await options.video((await options.input.getVideoTracks())[0]));
-                state.audioOptions.push(await options.audio({ codec: 'aac', numberOfChannels: 2, sampleRate: 44100 }));
+                state.audioOptions.push(await options.audio({
+                    codec: 'aac',
+                    numberOfChannels: 2,
+                    sampleRate: 44100,
+                    getCodec: vi.fn(async () => 'aac'),
+                    getNumberOfChannels: vi.fn(async () => 2),
+                    getSampleRate: vi.fn(async () => 44100),
+                    isAudioTrack: () => true,
+                }));
                 const conversion: any = {
                     isValid: true,
                     discardedTracks: state.preserveAudio ? [] : [{ track: { isVideoTrack: () => false, isAudioTrack: () => true } }],
@@ -77,6 +96,10 @@ vi.mock('@mediabunny/aac-encoder', () => ({
 }));
 
 import { MediaBunnyCompression } from '../../lib/videoCompression/mediabunnyCompression';
+import {
+    clearMediaCompressionDiagnosticRecords,
+    getMediaCompressionDiagnosticRecords,
+} from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
 function videoFile(): File {
     return new File([new Uint8Array(300 * 1024)], 'clip.mp4', { type: 'video/mp4' });
@@ -93,6 +116,8 @@ const options = {
 
 describe('MediaBunnyCompression', () => {
     beforeEach(() => {
+        window.history.replaceState({}, '', '/');
+        clearMediaCompressionDiagnosticRecords();
         Object.assign(state, {
             videoTrackCanDecode: true,
             videoWidth: 1280,
@@ -157,18 +182,65 @@ describe('MediaBunnyCompression', () => {
         expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
     });
 
+    it('records the first native AAC decision in diagnostic mode without loading custom AAC', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(record).toMatchObject({
+            conversionId: 1,
+            input: { mime: 'video/mp4' },
+            aac: { stateAtStart: 'not-loaded' },
+            audio: [{
+                nativeCapabilityBeforeRegistration: true,
+                customImport: 'no',
+                audioPath: 'native-aac',
+            }],
+        });
+        expect(record?.timing['total compression']).toBeGreaterThanOrEqual(0);
+        expect(state.registeredAacEncoder).toBe(0);
+    });
+
     it('registers the optional AAC encoder only when native AAC encoding is unavailable', async () => {
         state.nativeAac = false;
+        window.history.replaceState({}, '', '/?media-debug=1');
         const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
         expect(result.wasCompressed).toBe(true);
         expect(state.registeredAacEncoder).toBe(1);
+        expect(record?.audio[0]).toMatchObject({
+            nativeCapabilityBeforeRegistration: false,
+            customImport: 'yes',
+            customRegistration: 'success',
+            capabilityAfterRegistration: true,
+            audioPath: 'custom-aac',
+        });
+        expect(record?.aac.loadRegisterDuration).toBeGreaterThanOrEqual(0);
     });
 
     it('packet-copies audio when it cannot be decoded for AAC transcoding', async () => {
         state.canDecodeAudio = false;
+        window.history.replaceState({}, '', '/?media-debug=1');
         const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
         expect(result.wasCompressed).toBe(true);
         expect(state.audioOptions).toEqual([{}]);
+        expect(record?.audio[0]).toMatchObject({ audioPath: 'packet-copy', reason: 'decode-unavailable' });
+    });
+
+    it('labels a matching registered custom encoder as custom AAC on later conversions', async () => {
+        state.customAac = true;
+        window.history.replaceState({}, '', '/?media-debug=1');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(record?.aac.stateAtStart).toBe('registered');
+        expect(record?.audio[0]).toMatchObject({
+            customImport: 'already registered',
+            audioPath: 'custom-aac',
+        });
     });
 
     it('keeps the original file when MediaBunny would discard input audio', async () => {
