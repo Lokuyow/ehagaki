@@ -47,13 +47,9 @@
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 14%, hsl(0, 0%, 100%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 14%, hsl(0, 0%, 19%))
   );
-  --surface-editor-base: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 6%, hsl(0, 0%, 100%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 22%)) 9%, hsl(0, 0%, 22%))
-  );
-  --surface-editor: var(--surface-editor-base);
+  --surface-editor: var(--surface-input);
   --surface-footer: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 86%)) 34%, hsl(0, 0%, 86%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 82%)) 22%, hsl(0, 0%, 82%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
   );
   --surface-buttonbar: light-dark(
@@ -101,6 +97,7 @@
   --bg-footer: var(--surface-footer);
   --bg-translucent: light-dark(#EDEDEDcc, #212121cc);
   --bg-buttonbar: var(--surface-buttonbar);
+  --footer-buttonbar-bg: var(--bg-buttonbar);
 
   --btn-bg: var(--surface-button);
   --btn-bg2: light-dark(color-mix(in srgb, var(--btn-bg), black 6%), color-mix(in srgb, var(--btn-bg), white 10%));
@@ -169,18 +166,20 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Settings-dialog Base Color tuning is standalone-only. Keep the default
-   neutral surface and Web Component fallback unchanged when no Base Color
-   is set on the document root. */
-html[style*="--base-color"] {
+html[data-base-color-set="true"] {
   --surface-bg: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 97%)) 18%, hsl(0, 0%, 97%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 18%, hsl(0, 0%, 12%))
+    color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 97%)),
+    color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 12%))
+  );
+  --surface-editor: light-dark(
+    color-mix(in srgb, var(--base-color) 6%, hsl(0, 0%, 100%)),
+    color-mix(in srgb, var(--base-color) 9%, hsl(0, 0%, 22%))
   );
   --surface-footer: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 86%)) 34%, hsl(0, 0%, 86%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
+    color-mix(in srgb, var(--base-color) 34%, hsl(0, 0%, 86%)),
+    color-mix(in srgb, var(--base-color) 22%, hsl(0, 0%, 10%))
   );
+  --footer-buttonbar-bg: var(--bg);
 }
 
 * {

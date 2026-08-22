@@ -228,7 +228,6 @@
 
     .header {
         border: 1px solid var(--hagaki);
-        --btn-bg: var(--surface-editor);
         @media (hover: hover) and (pointer: fine) {
             :global(:root.light) &,
             :global(:host(.light)) & {
@@ -238,6 +237,14 @@
             }
         }
 
+        :global(:root.light) &,
+        :global(:host(.light)) & {
+            --btn-bg: white;
+        }
+
+        :global(:root[data-base-color-set="true"]) & {
+            --btn-bg: var(--surface-editor);
+        }
     }
 
     .danger {
