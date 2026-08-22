@@ -23,10 +23,14 @@
     options?: VideoDecodeBenchmarkOptions,
   ) => Promise<VideoDecodeBenchmarkResult>;
   type VideoDecodeBenchmarkLoader = () => Promise<VideoDecodeBenchmarkRunner>;
+  type RawVideoEncoderBenchmarkRunner = typeof runRawVideoEncoderBenchmark;
+  type RawVideoEncoderBenchmarkOptions = Parameters<RawVideoEncoderBenchmarkRunner>[0];
 
   interface Props {
     /** Harness injection only; production uses the native WebCodecs benchmark. */
-    rawVideoEncoderBenchmarkRunner?: typeof runRawVideoEncoderBenchmark;
+    rawVideoEncoderBenchmarkRunner?: RawVideoEncoderBenchmarkRunner;
+    /** Harness injection only; production uses the same benchmark with an OffscreenCanvas source. */
+    offscreenCanvasVideoEncoderBenchmarkRunner?: RawVideoEncoderBenchmarkRunner;
     /** Harness injection only; production loads the decoder benchmark on demand. */
     videoDecodeBenchmarkRunner?: VideoDecodeBenchmarkRunner;
     /** Test-only injection for the dynamic-import failure path. */
@@ -35,6 +39,10 @@
 
   let {
     rawVideoEncoderBenchmarkRunner = runRawVideoEncoderBenchmark,
+    offscreenCanvasVideoEncoderBenchmarkRunner = (options: RawVideoEncoderBenchmarkOptions = {}) => runRawVideoEncoderBenchmark({
+      ...options,
+      canvasSource: "offscreen-canvas",
+    }),
     videoDecodeBenchmarkRunner,
     videoDecodeBenchmarkLoader,
   }: Props = $props();
@@ -44,8 +52,10 @@
   let aacState = $state(getAacCustomEncoderState());
   let copyStatus = $state("");
   let rawBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
+  let offscreenCanvasBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let videoDecodeBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let rawRunController: AbortController | null = null;
+  let offscreenCanvasRunController: AbortController | null = null;
   let videoDecodeRunController: AbortController | null = null;
   let videoDecodeInput: HTMLInputElement | undefined = $state();
 
@@ -62,6 +72,7 @@
     });
     return () => {
       rawRunController?.abort();
+      offscreenCanvasRunController?.abort();
       videoDecodeRunController?.abort();
       if (videoDecodeInput) videoDecodeInput.value = "";
       unsubscribe();
@@ -101,6 +112,22 @@
       rawBenchmarkStatus = "failed";
     } finally {
       rawRunController = null;
+    }
+  }
+
+  async function runOffscreenCanvasBenchmark(): Promise<void> {
+    if (offscreenCanvasBenchmarkStatus === "running") return;
+
+    offscreenCanvasBenchmarkStatus = "running";
+    offscreenCanvasRunController = new AbortController();
+    try {
+      const result = await offscreenCanvasVideoEncoderBenchmarkRunner({ signal: offscreenCanvasRunController.signal });
+      addRawVideoEncoderBenchmarkRecord(result);
+      offscreenCanvasBenchmarkStatus = result.status;
+    } catch {
+      offscreenCanvasBenchmarkStatus = "failed";
+    } finally {
+      offscreenCanvasRunController = null;
     }
   }
 
@@ -156,7 +183,14 @@
               disabled={rawBenchmarkStatus === "running"}
               onclick={runRawBenchmark}
             >
-              {rawBenchmarkStatus === "running" ? "Running raw VideoEncoder benchmark…" : "Run raw VideoEncoder benchmark"}
+              {rawBenchmarkStatus === "running" ? "Running HTMLCanvas VideoEncoder benchmark…" : "Run HTMLCanvas VideoEncoder benchmark"}
+            </button>
+            <button
+              type="button"
+              disabled={offscreenCanvasBenchmarkStatus === "running"}
+              onclick={runOffscreenCanvasBenchmark}
+            >
+              {offscreenCanvasBenchmarkStatus === "running" ? "Running OffscreenCanvas VideoEncoder benchmark…" : "Run OffscreenCanvas VideoEncoder benchmark"}
             </button>
           {/if}
           {#if isMediaCompressionDebugVideoDecodeBenchmarkEnabled()}
@@ -180,6 +214,7 @@
           <button type="button" onclick={clearDiagnostics}>Clear</button>
           {#if copyStatus}<span role="status">{copyStatus}</span>{/if}
           {#if rawBenchmarkStatus !== "idle"}<span role="status">Raw benchmark: {rawBenchmarkStatus}</span>{/if}
+          {#if offscreenCanvasBenchmarkStatus !== "idle"}<span role="status">OffscreenCanvas benchmark: {offscreenCanvasBenchmarkStatus}</span>{/if}
           {#if videoDecodeBenchmarkStatus !== "idle"}<span role="status">Video decode benchmark: {videoDecodeBenchmarkStatus}</span>{/if}
         </div>
         <pre>{diagnosticText}</pre>

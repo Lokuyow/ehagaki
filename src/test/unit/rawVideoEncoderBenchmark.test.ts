@@ -69,6 +69,41 @@ class FakeEncoder extends EventTarget {
     }
 }
 
+class FakeOffscreenCanvas {
+    width: number;
+    height: number;
+    readonly context = {
+        fillStyle: '',
+        fillRect: (_x: number, _y: number, _width: number, _height: number) => undefined,
+    };
+
+    constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+    }
+
+    getContext(_contextId: '2d') {
+        return this.context;
+    }
+}
+
+class FakeVideoFrame {
+    static sources: unknown[] = [];
+    closed = false;
+
+    constructor(source: unknown, _init: VideoFrameInit) {
+        FakeVideoFrame.sources.push(source);
+    }
+
+    close(): void {
+        this.closed = true;
+    }
+
+    static reset(): void {
+        FakeVideoFrame.sources = [];
+    }
+}
+
 function createFrame(_index: number, timestamp: number): { timestamp: number; closed: boolean; close(): void } {
     return {
         timestamp,
@@ -92,6 +127,7 @@ describe('raw VideoEncoder benchmark', () => {
         expect(result).toMatchObject({
             status: 'completed',
             config: RAW_VIDEO_ENCODER_BENCHMARK_CONFIG,
+            canvasSource: 'html-canvas',
             frameCount: 5,
             queueLimit: 2,
             framesSubmitted: 5,
@@ -111,6 +147,33 @@ describe('raw VideoEncoder benchmark', () => {
         expect(FakeEncoder.frames).toHaveLength(5);
         expect(FakeEncoder.frames.every((frame) => frame.closed)).toBe(true);
         expect(FakeEncoder.frames.map((frame) => frame.timestamp)).toEqual([0, 33333, 66667, 100000, 133333]);
+    });
+
+    it('uses the same fixed benchmark conditions with an OffscreenCanvas source', async () => {
+        FakeEncoder.reset();
+        FakeVideoFrame.reset();
+        const result = await runRawVideoEncoderBenchmark({
+            VideoEncoder: FakeEncoder as unknown as RawVideoEncoderConstructor,
+            VideoFrame: FakeVideoFrame as unknown as { new(source: CanvasImageSource, init: VideoFrameInit): { close(): void } },
+            OffscreenCanvas: FakeOffscreenCanvas,
+            canvasSource: 'offscreen-canvas',
+            frameCount: 5,
+            queueLimit: 2,
+        });
+
+        expect(result).toMatchObject({
+            status: 'completed',
+            canvasSource: 'offscreen-canvas',
+            config: RAW_VIDEO_ENCODER_BENCHMARK_CONFIG,
+            frameCount: 5,
+            queueLimit: 2,
+            framesSubmitted: 5,
+        });
+        expect(FakeEncoder.supportConfigs).toEqual([RAW_VIDEO_ENCODER_BENCHMARK_CONFIG]);
+        expect(FakeEncoder.configureConfigs).toEqual([RAW_VIDEO_ENCODER_BENCHMARK_CONFIG]);
+        expect(FakeVideoFrame.sources).toHaveLength(5);
+        expect(FakeVideoFrame.sources.every((source) => source instanceof FakeOffscreenCanvas)).toBe(true);
+        expect(FakeEncoder.frames.every((frame) => frame.closed)).toBe(true);
     });
 
     it('creates monotonic microsecond timestamps at 30 fps', () => {
@@ -136,6 +199,34 @@ describe('raw VideoEncoder benchmark', () => {
         expect(unsupported.failure?.stage).toBe('config-unsupported');
         expect(FakeEncoder.configureCalls).toBe(0);
         expect(FakeEncoder.frames).toHaveLength(0);
+    });
+
+    it('reports OffscreenCanvas unavailability without affecting the HTMLCanvas path', async () => {
+        FakeEncoder.reset();
+        const result = await runRawVideoEncoderBenchmark({
+            VideoEncoder: FakeEncoder as unknown as RawVideoEncoderConstructor,
+            VideoFrame: FakeVideoFrame as unknown as { new(source: CanvasImageSource, init: VideoFrameInit): { close(): void } },
+            canvasSource: 'offscreen-canvas',
+            frameCount: 2,
+        });
+
+        expect(result).toMatchObject({
+            status: 'failed',
+            canvasSource: 'offscreen-canvas',
+            failure: { stage: 'setup-failure', message: 'OffscreenCanvas unavailable.' },
+        });
+        expect(FakeEncoder.configureCalls).toBe(1);
+        expect(FakeEncoder.frames).toHaveLength(0);
+
+        FakeEncoder.reset();
+        const htmlResult = await runRawVideoEncoderBenchmark({
+            VideoEncoder: FakeEncoder as unknown as RawVideoEncoderConstructor,
+            createFrame,
+            canvasSource: 'html-canvas',
+            frameCount: 2,
+        });
+        expect(htmlResult.status).toBe('completed');
+        expect(htmlResult.canvasSource).toBe('html-canvas');
     });
 
     it.each([

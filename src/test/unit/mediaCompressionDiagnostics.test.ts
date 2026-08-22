@@ -253,6 +253,7 @@ describe('media compression diagnostics', () => {
         const rawRunner = vi.fn().mockResolvedValue({
             status: 'failed',
             source: 'canvas-2d synthetic pattern',
+            canvasSource: 'html-canvas',
             config: { codec: 'avc1.64001E', width: 360, height: 640, framerate: 30, bitrate: 400_000 },
             frameCount: 627,
             queueLimit: 4,
@@ -276,7 +277,7 @@ describe('media compression diagnostics', () => {
         render(MediaCompressionDebugPanel, { rawVideoEncoderBenchmarkRunner: rawRunner });
 
         await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
-        await fireEvent.click(screen.getByRole('button', { name: 'Run raw VideoEncoder benchmark' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Run HTMLCanvas VideoEncoder benchmark' }));
         expect(rawRunner).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Raw benchmark: failed').textContent).toBe('Raw benchmark: failed');
         expect(document.querySelector('pre')?.textContent).toContain('failure: api-unavailable');

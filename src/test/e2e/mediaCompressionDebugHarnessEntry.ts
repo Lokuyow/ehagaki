@@ -19,6 +19,7 @@ import type { VideoDecodeBenchmarkResult } from '../../lib/videoCompression/vide
 declare global {
     interface Window {
         completeRawVideoEncoderBenchmark?: () => void;
+        completeOffscreenCanvasVideoEncoderBenchmark?: () => void;
         completeVideoDecodeBenchmark?: () => void;
     }
 }
@@ -91,6 +92,38 @@ const rawVideoEncoderBenchmarkRunner = rawVideoEncoderBenchmark
             resolve({
                 status: 'completed',
                 source: RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+                canvasSource: 'html-canvas',
+                config: { ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG },
+                frameCount: 3,
+                queueLimit: 2,
+                maxQueueSize: 2,
+                timings: {
+                    configSupportCheck: 1,
+                    encoderSetupConfigure: 2,
+                    benchmarkWall: 30,
+                    framePreparationSync: 3,
+                    encodeSubmissionSync: 4,
+                    backpressureWait: 5,
+                    flushWait: 6,
+                },
+                framesSubmitted: 3,
+                chunks: 3,
+                bytes: 240,
+                keyChunks: 1,
+                deltaChunks: 2,
+                throughput: 100,
+            });
+        };
+    })
+    : undefined;
+
+const offscreenCanvasVideoEncoderBenchmarkRunner = rawVideoEncoderBenchmark
+    ? () => new Promise<RawVideoEncoderBenchmarkResult>((resolve) => {
+        window.completeOffscreenCanvasVideoEncoderBenchmark = () => {
+            resolve({
+                status: 'completed',
+                source: RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+                canvasSource: 'offscreen-canvas',
                 config: { ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG },
                 frameCount: 3,
                 queueLimit: 2,
@@ -146,4 +179,7 @@ const videoDecodeBenchmarkRunner = videoDecodeBenchmark
     })
     : undefined;
 
-mount(MediaCompressionDebugPanel, { target, props: { rawVideoEncoderBenchmarkRunner, videoDecodeBenchmarkRunner } });
+mount(MediaCompressionDebugPanel, {
+    target,
+    props: { rawVideoEncoderBenchmarkRunner, offscreenCanvasVideoEncoderBenchmarkRunner, videoDecodeBenchmarkRunner },
+});

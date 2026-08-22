@@ -135,13 +135,15 @@ test.describe('media compression debug panel', () => {
         await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-raw-video-encoder=1');
         const panel = page.locator('.media-debug-panel');
         await page.getByRole('button', { name: /Media Compression Debug/ }).click();
-        const runButton = page.getByRole('button', { name: 'Run raw VideoEncoder benchmark' });
+        const runButton = page.getByRole('button', { name: /HTMLCanvas VideoEncoder benchmark/ });
+        const offscreenRunButton = page.getByRole('button', { name: /OffscreenCanvas VideoEncoder benchmark/ });
         await expect(runButton).toBeVisible();
+        await expect(offscreenRunButton).toBeVisible();
         await expect(panel.locator('pre')).toContainText('Raw native VideoEncoder benchmark: enabled (manual run)');
         await expect(panel.locator('pre')).toContainText('Normal audio transcode');
 
         await runButton.click();
-        await expect(page.getByRole('button', { name: /raw VideoEncoder benchmark/ })).toBeDisabled();
+        await expect(runButton).toBeDisabled();
         await expect(page.locator('[role="status"]').filter({ hasText: 'Raw benchmark:' })).toHaveText('Raw benchmark: running');
         await page.evaluate(() => {
             (window as Window & { completeRawVideoEncoderBenchmark?: () => void }).completeRawVideoEncoderBenchmark?.();
@@ -150,8 +152,20 @@ test.describe('media compression debug panel', () => {
         await expect(page.locator('[role="status"]').filter({ hasText: 'Raw benchmark:' })).toHaveText('Raw benchmark: completed');
         await expect(panel.locator('pre')).toContainText('Raw VideoEncoder Benchmark #1');
         await expect(panel.locator('pre')).toContainText('codec: avc1.64001E');
+        await expect(panel.locator('pre')).toContainText('canvas/source kind: html-canvas');
         await expect(panel.locator('pre')).toContainText('frames submitted: 3');
         await expect(panel.locator('pre')).toContainText('Timing (overlaps; do not sum)');
+
+        await offscreenRunButton.click();
+        await expect(offscreenRunButton).toBeDisabled();
+        await expect(page.locator('[role="status"]').filter({ hasText: 'OffscreenCanvas benchmark:' })).toHaveText('OffscreenCanvas benchmark: running');
+        await page.evaluate(() => {
+            (window as Window & { completeOffscreenCanvasVideoEncoderBenchmark?: () => void }).completeOffscreenCanvasVideoEncoderBenchmark?.();
+        });
+
+        await expect(page.locator('[role="status"]').filter({ hasText: 'OffscreenCanvas benchmark:' })).toHaveText('OffscreenCanvas benchmark: completed');
+        await expect(panel.locator('pre')).toContainText('Raw VideoEncoder Benchmark #2');
+        await expect(panel.locator('pre')).toContainText('canvas/source kind: offscreen-canvas');
 
         const geometry = await panel.evaluate((element) => ({
             right: element.getBoundingClientRect().right,
@@ -165,6 +179,7 @@ test.describe('media compression debug panel', () => {
         await expect(page.getByRole('status').filter({ hasText: /Copied|Copy failed|Clipboard unavailable/ })).toBeVisible();
         await page.getByRole('button', { name: 'Clear' }).click();
         await expect(panel.locator('pre')).not.toContainText('Raw VideoEncoder Benchmark #1');
+        await expect(panel.locator('pre')).not.toContainText('Raw VideoEncoder Benchmark #2');
     });
 
     test('runs the manual decode benchmark only when its full query gate is present', async ({ page }) => {

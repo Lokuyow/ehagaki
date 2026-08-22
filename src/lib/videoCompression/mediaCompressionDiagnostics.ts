@@ -508,6 +508,7 @@ function formatRawVideoEncoderBenchmark(record: RawVideoEncoderBenchmarkResult, 
     const lines = [
         `Raw VideoEncoder Benchmark #${index + 1}`,
         `status: ${record.status}`,
+        `canvas/source kind: ${record.canvasSource}`,
         `source: ${record.source}`,
         'config',
         `codec: ${record.config.codec}`,

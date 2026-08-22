@@ -10,6 +10,9 @@ export const RAW_VIDEO_ENCODER_BENCHMARK_FRAME_COUNT = 627;
 export const RAW_VIDEO_ENCODER_BENCHMARK_QUEUE_LIMIT = 4;
 export const RAW_VIDEO_ENCODER_BENCHMARK_SOURCE = 'canvas-2d synthetic pattern';
 
+export const RAW_VIDEO_ENCODER_BENCHMARK_CANVAS_SOURCES = ['html-canvas', 'offscreen-canvas'] as const;
+export type RawVideoEncoderBenchmarkCanvasSource = typeof RAW_VIDEO_ENCODER_BENCHMARK_CANVAS_SOURCES[number];
+
 export type RawVideoEncoderBenchmarkFailureStage =
     | 'api-unavailable'
     | 'config-unsupported'
@@ -32,6 +35,7 @@ export interface RawVideoEncoderBenchmarkTimings {
 export interface RawVideoEncoderBenchmarkResult {
     status: 'completed' | 'failed';
     source: typeof RAW_VIDEO_ENCODER_BENCHMARK_SOURCE;
+    canvasSource: RawVideoEncoderBenchmarkCanvasSource;
     config: VideoEncoderConfig;
     frameCount: number;
     queueLimit: number;
@@ -69,8 +73,17 @@ interface RawVideoEncoderBenchmarkOptions {
     /** Test-only overrides keep the production benchmark fixed at 627 frames. */
     frameCount?: number;
     queueLimit?: number;
+    canvasSource?: RawVideoEncoderBenchmarkCanvasSource;
     VideoEncoder?: RawVideoEncoderConstructor | null;
     VideoFrame?: { new(source: CanvasImageSource, init: VideoFrameInit): { close(): void } } | null;
+    OffscreenCanvas?: { new(width: number, height: number): {
+        width: number;
+        height: number;
+        getContext(contextId: '2d'): {
+            fillStyle: string;
+            fillRect(x: number, y: number, width: number, height: number): void;
+        } | null;
+    } } | null;
     createFrame?: (frameIndex: number, timestamp: number, duration: number) => { close(): void };
     now?: () => number;
     signal?: AbortSignal;
@@ -108,6 +121,7 @@ function makeFailure(
     stage: RawVideoEncoderBenchmarkFailureStage,
     message: string,
     timings: RawVideoEncoderBenchmarkTimings,
+    canvasSource: RawVideoEncoderBenchmarkCanvasSource,
     frameCount: number,
     queueLimit: number,
     statistics: Pick<RawVideoEncoderBenchmarkResult, 'maxQueueSize' | 'framesSubmitted' | 'chunks' | 'bytes' | 'keyChunks' | 'deltaChunks'>,
@@ -115,6 +129,7 @@ function makeFailure(
     return {
         status: 'failed',
         source: RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+        canvasSource,
         config: { ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG },
         frameCount,
         queueLimit,
@@ -126,12 +141,30 @@ function makeFailure(
 
 function createSyntheticFrameFactory(
     VideoFrameConstructor: RawVideoEncoderBenchmarkOptions['VideoFrame'],
+    canvasSource: RawVideoEncoderBenchmarkCanvasSource,
+    OffscreenCanvasConstructor: RawVideoEncoderBenchmarkOptions['OffscreenCanvas'],
 ): (frameIndex: number, timestamp: number, duration: number) => { close(): void } {
-    if (!VideoFrameConstructor || typeof document === 'undefined') {
-        throw new Error('VideoFrame or Canvas 2D is unavailable.');
+    if (!VideoFrameConstructor) {
+        throw new Error('VideoFrame is unavailable.');
     }
 
-    const canvas = document.createElement('canvas');
+    type SyntheticCanvas = CanvasImageSource & {
+        width: number;
+        height: number;
+        getContext(contextId: '2d'): {
+            fillStyle: CanvasRenderingContext2D['fillStyle'];
+            fillRect(x: number, y: number, width: number, height: number): void;
+        } | null;
+    };
+    let canvas: SyntheticCanvas | null;
+    if (canvasSource === 'offscreen-canvas') {
+        const Constructor = OffscreenCanvasConstructor ?? (globalThis.OffscreenCanvas as RawVideoEncoderBenchmarkOptions['OffscreenCanvas']);
+        if (!Constructor) throw new Error('OffscreenCanvas unavailable.');
+        canvas = new Constructor(RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.width, RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.height) as SyntheticCanvas;
+    } else {
+        canvas = typeof document === 'undefined' ? null : document.createElement('canvas') as SyntheticCanvas;
+    }
+    if (!canvas) throw new Error('HTMLCanvasElement is unavailable.');
     canvas.width = RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.width;
     canvas.height = RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.height;
     const context = canvas.getContext('2d');
@@ -187,6 +220,7 @@ function classifyFailure(error: unknown, phase: 'configure' | 'setup' | 'encode'
 export async function runRawVideoEncoderBenchmark(
     options: RawVideoEncoderBenchmarkOptions = {},
 ): Promise<RawVideoEncoderBenchmarkResult> {
+    const canvasSource = options.canvasSource ?? 'html-canvas';
     const frameCount = options.frameCount ?? RAW_VIDEO_ENCODER_BENCHMARK_FRAME_COUNT;
     const queueLimit = options.queueLimit ?? RAW_VIDEO_ENCODER_BENCHMARK_QUEUE_LIMIT;
     const now = options.now ?? (() => performance.now());
@@ -200,7 +234,7 @@ export async function runRawVideoEncoderBenchmark(
         : options.VideoFrame ?? undefined;
 
     if (!VideoEncoderConstructor || (!options.createFrame && !VideoFrameConstructor)) {
-        return makeFailure('api-unavailable', 'VideoEncoder or VideoFrame is unavailable.', timings, frameCount, queueLimit, statistics);
+        return makeFailure('api-unavailable', 'VideoEncoder or VideoFrame is unavailable.', timings, canvasSource, frameCount, queueLimit, statistics);
     }
 
     const supportStartedAt = now();
@@ -209,11 +243,11 @@ export async function runRawVideoEncoderBenchmark(
         support = await VideoEncoderConstructor.isConfigSupported({ ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG });
     } catch (error) {
         timings.configSupportCheck = Math.max(0, now() - supportStartedAt);
-        return makeFailure('config-unsupported', shortErrorMessage(error), timings, frameCount, queueLimit, statistics);
+        return makeFailure('config-unsupported', shortErrorMessage(error), timings, canvasSource, frameCount, queueLimit, statistics);
     }
     timings.configSupportCheck = Math.max(0, now() - supportStartedAt);
     if (!support.supported) {
-        return makeFailure('config-unsupported', 'VideoEncoder does not support the fixed AVC configuration.', timings, frameCount, queueLimit, statistics);
+        return makeFailure('config-unsupported', 'VideoEncoder does not support the fixed AVC configuration.', timings, canvasSource, frameCount, queueLimit, statistics);
     }
 
     let encoder: RawVideoEncoderLike | undefined;
@@ -242,7 +276,11 @@ export async function runRawVideoEncoderBenchmark(
         encoder.configure({ ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG });
         let createFrame: (frameIndex: number, timestamp: number, duration: number) => { close(): void };
         phase = 'setup';
-        createFrame = options.createFrame ?? createSyntheticFrameFactory(VideoFrameConstructor);
+        createFrame = options.createFrame ?? createSyntheticFrameFactory(
+            VideoFrameConstructor,
+            canvasSource,
+            options.OffscreenCanvas ?? (globalThis.OffscreenCanvas as RawVideoEncoderBenchmarkOptions['OffscreenCanvas']),
+        );
         timings.encoderSetupConfigure = Math.max(0, now() - setupStartedAt);
 
         const benchmarkStartedAt = now();
@@ -303,6 +341,7 @@ export async function runRawVideoEncoderBenchmark(
         return {
             status: 'completed',
             source: RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+            canvasSource,
             config: { ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG },
             frameCount,
             queueLimit,
@@ -315,6 +354,7 @@ export async function runRawVideoEncoderBenchmark(
             classifyFailure(error, phase),
             shortErrorMessage(error),
             timings,
+            canvasSource,
             frameCount,
             queueLimit,
             statistics,
