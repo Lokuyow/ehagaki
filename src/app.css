@@ -54,7 +54,7 @@
   --surface-editor: var(--surface-editor-base);
   --surface-footer: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 86%)) 34%, hsl(0, 0%, 86%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 34%, hsl(0, 0%, 12%))
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
   );
   --surface-buttonbar: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 91%)) 20%, hsl(0, 0%, 91%)),
@@ -167,6 +167,20 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Settings-dialog Base Color tuning is standalone-only. Keep the default
+   neutral surface and Web Component fallback unchanged when no Base Color
+   is set on the document root. */
+html[style*="--base-color"] {
+  --surface-bg: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 97%)) 18%, hsl(0, 0%, 97%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 18%, hsl(0, 0%, 12%))
+  );
+  --surface-footer: light-dark(
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 86%)) 34%, hsl(0, 0%, 86%)),
+    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
+  );
 }
 
 * {
