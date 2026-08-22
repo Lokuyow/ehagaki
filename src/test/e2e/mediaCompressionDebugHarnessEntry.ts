@@ -4,6 +4,7 @@ import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPa
 import {
     isMediaCompressionDebugAudioCopyEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
+    isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
@@ -12,10 +13,12 @@ import {
     RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
     type RawVideoEncoderBenchmarkResult,
 } from '../../lib/videoCompression/rawVideoEncoderBenchmark';
+import type { VideoDecodeBenchmarkResult } from '../../lib/videoCompression/videoDecodeBenchmark';
 
 declare global {
     interface Window {
         completeRawVideoEncoderBenchmark?: () => void;
+        completeVideoDecodeBenchmark?: () => void;
     }
 }
 
@@ -29,6 +32,7 @@ const session = startMediaCompressionDiagnostic(new File(['diagnostic'], 'ignore
 const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
 const realtimeVideoLatency = isMediaCompressionDebugVideoRealtimeEnabled();
 const rawVideoEncoderBenchmark = isMediaCompressionDebugRawVideoEncoderEnabled();
+const videoDecodeBenchmark = isMediaCompressionDebugVideoDecodeBenchmarkEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
     codec: 'avc',
@@ -108,4 +112,35 @@ const rawVideoEncoderBenchmarkRunner = rawVideoEncoderBenchmark
     })
     : undefined;
 
-mount(MediaCompressionDebugPanel, { target, props: { rawVideoEncoderBenchmarkRunner } });
+const videoDecodeBenchmarkRunner = videoDecodeBenchmark
+    ? () => new Promise<VideoDecodeBenchmarkResult>((resolve) => {
+        window.completeVideoDecodeBenchmark = () => {
+            resolve({
+                status: 'completed',
+                input: {
+                    mime: 'video/quicktime',
+                    size: 39_681_322,
+                    duration: 20.9,
+                    videoCodec: 'avc',
+                    displayWidth: 1080,
+                    displayHeight: 1920,
+                },
+                decode: {
+                    samplesDecoded: 627,
+                    firstSample: {
+                        format: 'NV12',
+                        codedWidth: 1080,
+                        codedHeight: 1920,
+                        displayWidth: 1080,
+                        displayHeight: 1920,
+                    },
+                    milestoneOffsets: { 1: 10, 100: 1000, 300: 3000, 500: 5000, 627: 6270 },
+                    lastSampleOffset: 6270,
+                },
+                timing: { inputTrackSetup: 12, decodeWall: 6280, throughput: 99.84 },
+            });
+        };
+    })
+    : undefined;
+
+mount(MediaCompressionDebugPanel, { target, props: { rawVideoEncoderBenchmarkRunner, videoDecodeBenchmarkRunner } });

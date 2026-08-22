@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
 import {
     classifyMediaCompressionAudioPath,
+    addVideoDecodeBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
@@ -12,6 +13,7 @@ import {
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugAudioCopyEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
+    isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
@@ -43,6 +45,9 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug-raw-video-encoder=1')).toBe(false);
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1')).toBe(false);
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1&media-debug-raw-video-encoder=1')).toBe(true);
+        expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug-video-decode-benchmark=1')).toBe(false);
+        expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug=1')).toBe(false);
+        expect(isMediaCompressionDebugVideoDecodeBenchmarkEnabled('?media-debug=1&media-debug-video-decode-benchmark=1')).toBe(true);
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1')).toBe('normal');
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
         expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1')).toBe('default-quality');
@@ -146,6 +151,29 @@ describe('media compression diagnostics', () => {
         expect(text).toContain('conversion.execute: 16600.0 ms');
     });
 
+    it('formats decode-only results without retaining a selected file name or samples', () => {
+        setSearch('?media-debug=1&media-debug-video-decode-benchmark=1');
+        addVideoDecodeBenchmarkRecord({
+            status: 'completed',
+            input: { mime: 'video/quicktime', size: 39_681_322, duration: 20.9, videoCodec: 'avc', displayWidth: 1080, displayHeight: 1920 },
+            decode: {
+                samplesDecoded: 627,
+                firstSample: { format: 'NV12', codedWidth: 1080, codedHeight: 1920, displayWidth: 1080, displayHeight: 1920 },
+                milestoneOffsets: { 1: 11, 100: 1200, 300: 3400, 500: 5400, 627: 6800 },
+                lastSampleOffset: 6800,
+            },
+            timing: { inputTrackSetup: 12, decodeWall: 6900, throughput: 90.87 },
+        });
+
+        const text = formatMediaCompressionDiagnostics();
+        expect(text).toContain('Video decode benchmark: enabled (manual run)');
+        expect(text).toContain('Video Decode Benchmark #1');
+        expect(text).toContain('samples decoded: 627');
+        expect(text).toContain('sample #627: +6800.0 ms');
+        expect(text).toContain('No resize, video encode, audio, muxing, or file output is performed by this benchmark.');
+        expect(text).not.toContain('.mov');
+    });
+
     it('classifies native, custom, packet-copy, and unknown paths from observed state', () => {
         expect(classifyMediaCompressionAudioPath({
             decodeAvailable: true,
@@ -217,7 +245,7 @@ describe('media compression diagnostics', () => {
         const rawRunner = vi.fn().mockResolvedValue({
             status: 'failed',
             source: 'canvas-2d synthetic pattern',
-            config: { codec: 'avc1.42001E', width: 360, height: 640, framerate: 30, bitrate: 400_000 },
+            config: { codec: 'avc1.64001E', width: 360, height: 640, framerate: 30, bitrate: 400_000 },
             frameCount: 627,
             queueLimit: 4,
             maxQueueSize: 0,
@@ -244,5 +272,26 @@ describe('media compression diagnostics', () => {
         expect(rawRunner).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Raw benchmark: failed').textContent).toBe('Raw benchmark: failed');
         expect(document.querySelector('pre')?.textContent).toContain('failure: api-unavailable');
+    });
+
+    it('wires the manual decode file selection only for its fully gated diagnostic query', async () => {
+        setSearch('?media-debug=1&media-debug-video-decode-benchmark=1');
+        const decodeRunner = vi.fn().mockResolvedValue({
+            status: 'completed',
+            input: { mime: 'video/quicktime', size: 5, duration: 1, videoCodec: 'avc', displayWidth: 1080, displayHeight: 1920 },
+            decode: { samplesDecoded: 1, firstSample: null, milestoneOffsets: { 1: 2 }, lastSampleOffset: 2 },
+            timing: { inputTrackSetup: 1, decodeWall: 2, throughput: 500 },
+        });
+        render(MediaCompressionDebugPanel, { videoDecodeBenchmarkRunner: decodeRunner });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        expect(screen.getByRole('button', { name: 'Run video decode benchmark' })).toBeDefined();
+        const input = screen.getByLabelText('Select video for decode benchmark');
+        await fireEvent.change(input, { target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] } });
+        expect(decodeRunner).toHaveBeenCalledTimes(1);
+        expect(decodeRunner.mock.calls[0][0]).toBeInstanceOf(File);
+        expect(screen.getByText('Video decode benchmark: completed').textContent).toBe('Video decode benchmark: completed');
+        expect(document.querySelector('pre')?.textContent).toContain('Video Decode Benchmark #1');
+        expect(document.querySelector('pre')?.textContent).not.toContain('private.mov');
     });
 });

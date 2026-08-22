@@ -1,4 +1,5 @@
 import type { RawVideoEncoderBenchmarkResult } from './rawVideoEncoderBenchmark';
+import type { VideoDecodeBenchmarkResult } from './videoDecodeBenchmark';
 
 export type AacCustomEncoderState = 'not-loaded' | 'loading' | 'registered' | 'failed';
 
@@ -166,6 +167,7 @@ type DiagnosticListener = () => void;
 
 const records: MediaCompressionDiagnosticRecord[] = [];
 const rawVideoEncoderBenchmarkRecords: RawVideoEncoderBenchmarkResult[] = [];
+const videoDecodeBenchmarkRecords: VideoDecodeBenchmarkResult[] = [];
 const listeners = new Set<DiagnosticListener>();
 let conversionSequence = 0;
 let aacCustomEncoderState: AacCustomEncoderState = 'not-loaded';
@@ -198,6 +200,12 @@ export function isMediaCompressionDebugRawVideoEncoderEnabled(search?: string): 
     const locationSearch = search ?? (isBrowser() ? window.location.search : '');
     const params = new URLSearchParams(locationSearch);
     return params.get('media-debug') === '1' && params.get('media-debug-raw-video-encoder') === '1';
+}
+
+export function isMediaCompressionDebugVideoDecodeBenchmarkEnabled(search?: string): boolean {
+    const locationSearch = search ?? (isBrowser() ? window.location.search : '');
+    const params = new URLSearchParams(locationSearch);
+    return params.get('media-debug') === '1' && params.get('media-debug-video-decode-benchmark') === '1';
 }
 
 export function getMediaCompressionVideoDiagnosticMode(search?: string): MediaCompressionVideoDiagnosticMode {
@@ -270,8 +278,17 @@ export function getRawVideoEncoderBenchmarkRecords(): RawVideoEncoderBenchmarkRe
     return rawVideoEncoderBenchmarkRecords;
 }
 
+export function getVideoDecodeBenchmarkRecords(): VideoDecodeBenchmarkResult[] {
+    return videoDecodeBenchmarkRecords;
+}
+
 export function addRawVideoEncoderBenchmarkRecord(result: RawVideoEncoderBenchmarkResult): void {
     rawVideoEncoderBenchmarkRecords.push(result);
+    notify();
+}
+
+export function addVideoDecodeBenchmarkRecord(result: VideoDecodeBenchmarkResult): void {
+    videoDecodeBenchmarkRecords.push(result);
     notify();
 }
 
@@ -283,6 +300,7 @@ export function subscribeToMediaCompressionDiagnostics(listener: DiagnosticListe
 export function clearMediaCompressionDiagnosticRecords(): void {
     records.length = 0;
     rawVideoEncoderBenchmarkRecords.length = 0;
+    videoDecodeBenchmarkRecords.length = 0;
     notify();
 }
 
@@ -506,6 +524,45 @@ function formatRawVideoEncoderBenchmark(record: RawVideoEncoderBenchmarkResult, 
     return lines;
 }
 
+function formatDecodeOffset(value: number | undefined | null): string {
+    return value === undefined || value === null ? 'not reached' : `+${value.toFixed(1)} ms`;
+}
+
+function formatVideoDecodeBenchmark(record: VideoDecodeBenchmarkResult, index: number): string[] {
+    const firstSample = record.decode.firstSample;
+    const lines = [
+        `Video Decode Benchmark #${index + 1}`,
+        `status: ${record.status}`,
+        'Input',
+        `mime: ${record.input.mime}`,
+        `size: ${record.input.size} bytes`,
+        `duration: ${record.input.duration === null ? 'unknown' : `${record.input.duration.toFixed(3)} s`}`,
+        `video codec: ${formatValue(record.input.videoCodec)}`,
+        `source size: ${record.input.displayWidth === null || record.input.displayHeight === null
+            ? 'unknown'
+            : `${record.input.displayWidth}x${record.input.displayHeight}`}`,
+        'Decode',
+        `samples decoded: ${record.decode.samplesDecoded}`,
+        `first sample format: ${formatValue(firstSample?.format)}`,
+        `first sample size: ${firstSample ? `${firstSample.codedWidth}x${firstSample.codedHeight} coded / ${firstSample.displayWidth}x${firstSample.displayHeight} display` : 'not recorded'}`,
+        `sample #1: ${formatDecodeOffset(record.decode.milestoneOffsets[1])}`,
+        `sample #100: ${formatDecodeOffset(record.decode.milestoneOffsets[100])}`,
+        `sample #300: ${formatDecodeOffset(record.decode.milestoneOffsets[300])}`,
+        `sample #500: ${formatDecodeOffset(record.decode.milestoneOffsets[500])}`,
+        `sample #627: ${formatDecodeOffset(record.decode.milestoneOffsets[627])}`,
+        `last sample: ${formatDecodeOffset(record.decode.lastSampleOffset)}`,
+        'Timing',
+        `input / track setup: ${formatDuration(record.timing.inputTrackSetup)}`,
+        `decode wall: ${formatDuration(record.timing.decodeWall)}`,
+        `throughput: ${record.timing.throughput === null ? 'not recorded' : `${record.timing.throughput.toFixed(2)} fps`}`,
+    ];
+    if (record.failure) {
+        lines.push(`failure: ${record.failure.stage}: ${record.failure.message}`);
+    }
+    lines.push('No resize, video encode, audio, muxing, or file output is performed by this benchmark.', '');
+    return lines;
+}
+
 export function formatMediaCompressionDiagnostics(): string {
     const lines = [
         'Media Compression Debug',
@@ -518,6 +575,7 @@ export function formatMediaCompressionDiagnostics(): string {
             : []),
         `Video latency: ${getMediaCompressionVideoDiagnosticMode() === 'realtime' ? 'realtime' : 'quality (default)'}`,
         `Raw native VideoEncoder benchmark: ${isMediaCompressionDebugRawVideoEncoderEnabled() ? 'enabled (manual run)' : 'disabled'}`,
+        `Video decode benchmark: ${isMediaCompressionDebugVideoDecodeBenchmarkEnabled() ? 'enabled (manual run)' : 'disabled'}`,
         ...formatEnvironment(getMediaCompressionEnvironment()),
         '',
     ];
@@ -628,6 +686,10 @@ export function formatMediaCompressionDiagnostics(): string {
 
     rawVideoEncoderBenchmarkRecords.forEach((record, index) => {
         lines.push(...formatRawVideoEncoderBenchmark(record, index));
+    });
+
+    videoDecodeBenchmarkRecords.forEach((record, index) => {
+        lines.push(...formatVideoDecodeBenchmark(record, index));
     });
 
     lines.push('Reload the page before Conversion #1 to test AAC capability before the custom encoder is registered.');

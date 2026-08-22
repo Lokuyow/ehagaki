@@ -137,4 +137,50 @@ test.describe('media compression debug panel', () => {
         await page.getByRole('button', { name: 'Clear' }).click();
         await expect(panel.locator('pre')).not.toContainText('Raw VideoEncoder Benchmark #1');
     });
+
+    test('runs the manual decode benchmark only when its full query gate is present', async ({ page }) => {
+        await page.goto('media-compression-debug-playwright.html?media-debug-video-decode-benchmark=1');
+        await expect(page.locator('.media-debug-panel')).toHaveCount(0);
+
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-video-decode-benchmark=1');
+        const panel = page.locator('.media-debug-panel');
+        await page.getByRole('button', { name: /Media Compression Debug/ }).click();
+        const runButton = page.getByRole('button', { name: 'Run video decode benchmark' });
+        await expect(runButton).toBeVisible();
+        await expect(panel.locator('pre')).toContainText('Video decode benchmark: enabled (manual run)');
+
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await runButton.click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: 'private.mov',
+            mimeType: 'video/quicktime',
+            buffer: Buffer.from('video'),
+        });
+        await expect(page.getByRole('button', { name: /video decode benchmark/ })).toBeDisabled();
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Video decode benchmark:' })).toHaveText('Video decode benchmark: running');
+        await page.evaluate(() => {
+            (window as Window & { completeVideoDecodeBenchmark?: () => void }).completeVideoDecodeBenchmark?.();
+        });
+
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Video decode benchmark:' })).toHaveText('Video decode benchmark: completed');
+        await expect(panel.locator('pre')).toContainText('Video Decode Benchmark #1');
+        await expect(panel.locator('pre')).toContainText('samples decoded: 627');
+        await expect(panel.locator('pre')).toContainText('sample #627: +6270.0 ms');
+        await expect(panel.locator('pre')).not.toContainText('private.mov');
+
+        const geometry = await panel.evaluate((element) => ({
+            right: element.getBoundingClientRect().right,
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+        }));
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+
+        await page.getByRole('button', { name: 'Copy' }).click();
+        await expect(page.getByRole('status').filter({ hasText: /Copied|Copy failed|Clipboard unavailable/ })).toBeVisible();
+        await page.getByRole('button', { name: 'Clear' }).click();
+        await expect(panel.locator('pre')).not.toContainText('Video Decode Benchmark #1');
+    });
 });

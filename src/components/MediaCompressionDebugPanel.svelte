@@ -2,29 +2,40 @@
   import { onMount } from "svelte";
   import {
     addRawVideoEncoderBenchmarkRecord,
+    addVideoDecodeBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
     getMediaCompressionDiagnosticRecords,
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
+    isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
     subscribeToMediaCompressionDiagnostics,
   } from "../lib/videoCompression/mediaCompressionDiagnostics";
   import { runRawVideoEncoderBenchmark } from "../lib/videoCompression/rawVideoEncoderBenchmark";
+  import { runVideoDecodeBenchmark } from "../lib/videoCompression/videoDecodeBenchmark";
 
   interface Props {
     /** Harness injection only; production uses the native WebCodecs benchmark. */
     rawVideoEncoderBenchmarkRunner?: typeof runRawVideoEncoderBenchmark;
+    /** Harness injection only; production decodes with MediaBunny's public sample API. */
+    videoDecodeBenchmarkRunner?: typeof runVideoDecodeBenchmark;
   }
 
-  let { rawVideoEncoderBenchmarkRunner = runRawVideoEncoderBenchmark }: Props = $props();
+  let {
+    rawVideoEncoderBenchmarkRunner = runRawVideoEncoderBenchmark,
+    videoDecodeBenchmarkRunner = runVideoDecodeBenchmark,
+  }: Props = $props();
 
   let expanded = $state(false);
   let records = $state(getMediaCompressionDiagnosticRecords());
   let aacState = $state(getAacCustomEncoderState());
   let copyStatus = $state("");
   let rawBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
+  let videoDecodeBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let rawRunController: AbortController | null = null;
+  let videoDecodeRunController: AbortController | null = null;
+  let videoDecodeInput: HTMLInputElement | undefined = $state();
 
   const diagnosticText = $derived.by(() => {
     void records;
@@ -39,6 +50,8 @@
     });
     return () => {
       rawRunController?.abort();
+      videoDecodeRunController?.abort();
+      if (videoDecodeInput) videoDecodeInput.value = "";
       unsubscribe();
     };
   });
@@ -78,6 +91,29 @@
       rawRunController = null;
     }
   }
+
+  function selectVideoDecodeBenchmarkFile(): void {
+    if (videoDecodeBenchmarkStatus !== "running") videoDecodeInput?.click();
+  }
+
+  async function runVideoDecodeBenchmarkForSelectedFile(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || videoDecodeBenchmarkStatus === "running") return;
+
+    videoDecodeBenchmarkStatus = "running";
+    videoDecodeRunController = new AbortController();
+    try {
+      const result = await videoDecodeBenchmarkRunner(file, { signal: videoDecodeRunController.signal });
+      addVideoDecodeBenchmarkRecord(result);
+      videoDecodeBenchmarkStatus = result.status;
+    } catch {
+      videoDecodeBenchmarkStatus = "failed";
+    } finally {
+      videoDecodeRunController = null;
+    }
+  }
 </script>
 
 {#if isMediaCompressionDebugEnabled()}
@@ -107,10 +143,28 @@
               {rawBenchmarkStatus === "running" ? "Running raw VideoEncoder benchmark…" : "Run raw VideoEncoder benchmark"}
             </button>
           {/if}
+          {#if isMediaCompressionDebugVideoDecodeBenchmarkEnabled()}
+            <input
+              bind:this={videoDecodeInput}
+              class="media-debug-file-input"
+              type="file"
+              accept="video/*"
+              aria-label="Select video for decode benchmark"
+              onchange={runVideoDecodeBenchmarkForSelectedFile}
+            />
+            <button
+              type="button"
+              disabled={videoDecodeBenchmarkStatus === "running"}
+              onclick={selectVideoDecodeBenchmarkFile}
+            >
+              {videoDecodeBenchmarkStatus === "running" ? "Running video decode benchmark…" : "Run video decode benchmark"}
+            </button>
+          {/if}
           <button type="button" onclick={copyDiagnostics}>Copy</button>
           <button type="button" onclick={clearDiagnostics}>Clear</button>
           {#if copyStatus}<span role="status">{copyStatus}</span>{/if}
           {#if rawBenchmarkStatus !== "idle"}<span role="status">Raw benchmark: {rawBenchmarkStatus}</span>{/if}
+          {#if videoDecodeBenchmarkStatus !== "idle"}<span role="status">Video decode benchmark: {videoDecodeBenchmarkStatus}</span>{/if}
         </div>
         <pre>{diagnosticText}</pre>
       </div>
@@ -180,6 +234,10 @@
 
   .media-debug-actions span {
     color: var(--text-light);
+  }
+
+  .media-debug-file-input {
+    display: none;
   }
 
   pre {
