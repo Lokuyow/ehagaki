@@ -16,6 +16,8 @@ test.describe('media compression debug panel', () => {
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(panel.locator('pre')).toContainText('Conversion #1');
+        await expect(panel.locator('pre')).toContainText('Normal audio transcode');
+        await expect(panel.locator('pre')).toContainText('effective audio encoding mode: quality');
         await expect(panel.locator('pre')).toContainText('audio path: native-aac');
 
         const geometry = await panel.evaluate((element) => {
@@ -38,5 +40,31 @@ test.describe('media compression debug panel', () => {
         await page.getByRole('button', { name: 'Clear' }).click();
         await expect(panel.locator('pre')).toContainText('No conversions recorded.');
         await expect(panel.locator('pre')).toContainText('Reload the page before Conversion #1');
+    });
+
+    test('shows forced audio packet-copy mode without changing the narrow layout', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-audio=copy');
+        const panel = page.locator('.media-debug-panel');
+        const toggle = page.getByRole('button', { name: /Media Compression Debug/ });
+        await toggle.click();
+
+        await expect(panel.locator('pre')).toContainText('Forced audio packet copy');
+        await expect(panel.locator('pre')).toContainText('audio diagnostic mode: force-packet-copy');
+        await expect(panel.locator('pre')).toContainText('effective audio encoding mode: packet-copy');
+        await expect(panel.locator('pre')).toContainText('audio path: packet-copy');
+        await expect(panel.locator('pre')).toContainText('reason: debug-forced-packet-copy');
+        await expect(panel.locator('pre')).toContainText('output audio: 48000 Hz / 2ch');
+
+        const geometry = await panel.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+                right: rect.right,
+                documentWidth: document.documentElement.scrollWidth,
+                viewportWidth: window.innerWidth,
+            };
+        });
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
     });
 });

@@ -25,6 +25,7 @@ import { createCompressedFile, devWarn } from './compressionUtils';
 import {
     classifyMediaCompressionAudioPath,
     getAacCustomEncoderState,
+    isMediaCompressionDebugAudioCopyEnabled,
     setAacCustomEncoderState,
     startMediaCompressionDiagnostic,
     type MediaCompressionDiagnosticSession,
@@ -153,6 +154,7 @@ export class MediaBunnyCompression extends BaseCompression {
         options: any,
         quality: Quality | undefined,
         diagnostic: MediaCompressionDiagnosticSession | null,
+        forcePacketCopy: boolean,
         trackIndex: number,
     ): Promise<ConversionAudioOptions> {
         const codec = await track.getCodec();
@@ -165,27 +167,48 @@ export class MediaBunnyCompression extends BaseCompression {
             sourceSampleRate,
             decode: canDecode,
         });
+
+        const numberOfChannels = options.audioChannels ?? sourceChannels;
+        const sampleRate = options.audioSampleRate ?? sourceSampleRate;
+        const bitrate = this.parseAudioBitrate(options.audioBitrate);
+        const effectiveEncodingMode = quality ? 'quality' as const : bitrate ? 'bitrate' as const : 'default' as const;
+        const encoderOptions = {
+            numberOfChannels,
+            sampleRate,
+            ...(quality ? { quality } : bitrate ? { bitrate } : {}),
+        };
+
+        diagnostic?.setAudio(trackIndex, {
+            targetChannels: numberOfChannels,
+            targetSampleRate: sampleRate,
+            configuredBitrate: bitrate,
+            quality: getQualityLabel(options.mediabunnyAudioQualityFactor),
+            effectiveEncodingMode: forcePacketCopy ? 'packet-copy' : effectiveEncodingMode,
+        });
+
+        if (forcePacketCopy) {
+            const nativeCapability = codec && canDecode ? await canEncodeAudio('aac', encoderOptions) : undefined;
+            diagnostic?.setAudio(trackIndex, {
+                nativeCapabilityBeforeRegistration: getAacCustomEncoderState() === 'not-loaded'
+                    ? nativeCapability
+                    : undefined,
+                capabilityBeforeSelection: nativeCapability,
+                audioPath: 'packet-copy',
+                reason: 'debug-forced-packet-copy',
+            });
+            this.log('Media debug audio mode is forcing packet copy without transcoding.', { codec });
+            return {};
+        }
+
         if (!codec || !canDecode) {
             this.log('Audio decode is unavailable; preserving packets without transcoding.', { codec });
             diagnostic?.setAudio(trackIndex, { audioPath: 'packet-copy', reason: 'decode-unavailable' });
             return {};
         }
 
-        const numberOfChannels = options.audioChannels ?? sourceChannels;
-        const sampleRate = options.audioSampleRate ?? sourceSampleRate;
-        const bitrate = this.parseAudioBitrate(options.audioBitrate);
-        const encoderOptions = {
-            numberOfChannels,
-            sampleRate,
-            ...(quality ? { quality } : bitrate ? { bitrate } : {}),
-        };
         const stateAtStart = getAacCustomEncoderState();
         const nativeCapability = await canEncodeAudio('aac', encoderOptions);
         diagnostic?.setAudio(trackIndex, {
-            targetChannels: numberOfChannels,
-            targetSampleRate: sampleRate,
-            targetBitrate: bitrate,
-            quality: getQualityLabel(options.mediabunnyAudioQualityFactor),
             nativeCapabilityBeforeRegistration: stateAtStart === 'not-loaded' ? nativeCapability : undefined,
             capabilityBeforeSelection: nativeCapability,
             ...(stateAtStart === 'registered'
@@ -268,10 +291,24 @@ export class MediaBunnyCompression extends BaseCompression {
         return { options: videoOptions, dimensions: { width, height } };
     }
 
-    private async outputPreservesAudio(file: File, expectedTrackCount: number): Promise<boolean> {
+    private async outputPreservesAudio(
+        file: File,
+        expectedTrackCount: number,
+        diagnostic: MediaCompressionDiagnosticSession | null,
+    ): Promise<boolean> {
         const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
         try {
-            return (await input.getAudioTracks()).length >= expectedTrackCount;
+            const audioTracks = await input.getAudioTracks();
+            if (diagnostic) {
+                for (const [index, track] of audioTracks.entries()) {
+                    diagnostic.setAudio(index, {
+                        outputCodec: await track.getCodec(),
+                        outputSampleRate: await track.getSampleRate(),
+                        outputChannels: await track.getNumberOfChannels(),
+                    });
+                }
+            }
+            return audioTracks.length >= expectedTrackCount;
         } finally {
             input.dispose();
         }
@@ -280,6 +317,7 @@ export class MediaBunnyCompression extends BaseCompression {
     public async compressWithMediabunny(file: File, options: any): Promise<VideoCompressionResult> {
         let input: Input | null = null;
         const diagnostic = startMediaCompressionDiagnostic(file);
+        const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
         const finish = (result: VideoCompressionResult): VideoCompressionResult => {
             diagnostic?.finish(result);
             return result;
@@ -345,6 +383,7 @@ export class MediaBunnyCompression extends BaseCompression {
                         options,
                         audioQuality,
                         diagnostic,
+                        forceAudioPacketCopy,
                         Math.max(0, audioTracks.indexOf(track)),
                     );
                     if (diagnostic && audioPreparationStartedAt !== null) {
@@ -415,7 +454,7 @@ export class MediaBunnyCompression extends BaseCompression {
             const audioVerificationStartedAt = diagnostic ? performance.now() : null;
             const audioPreserved = audioTracks.length === 0
                 ? true
-                : await this.outputPreservesAudio(result.file, audioTracks.length);
+                : await this.outputPreservesAudio(result.file, audioTracks.length, diagnostic);
             diagnostic?.setResult({ outputAudioPreserved: audioPreserved });
             if (diagnostic && audioVerificationStartedAt !== null) {
                 diagnostic.setTiming(

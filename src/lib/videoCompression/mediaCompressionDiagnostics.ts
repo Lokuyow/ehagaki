@@ -2,6 +2,10 @@ export type AacCustomEncoderState = 'not-loaded' | 'loading' | 'registered' | 'f
 
 export type AudioPath = 'native-aac' | 'custom-aac' | 'packet-copy' | 'unavailable' | 'unknown';
 
+export type MediaCompressionAudioDiagnosticMode = 'normal' | 'force-packet-copy';
+
+export type MediaCompressionAudioEncodingMode = 'quality' | 'bitrate' | 'default' | 'packet-copy';
+
 export interface AudioPathClassification {
     path: AudioPath;
     reason?: string;
@@ -85,8 +89,9 @@ export interface MediaCompressionAudioDiagnostic {
     decode?: boolean;
     targetSampleRate?: number;
     targetChannels?: number;
-    targetBitrate?: number | null;
+    configuredBitrate?: number | null;
     quality?: string;
+    effectiveEncodingMode?: MediaCompressionAudioEncodingMode;
     nativeCapabilityBeforeRegistration?: boolean;
     capabilityBeforeSelection?: boolean;
     capabilityAfterRegistration?: boolean;
@@ -94,10 +99,14 @@ export interface MediaCompressionAudioDiagnostic {
     customRegistration?: 'not-needed' | 'success' | 'failure' | 'unknown';
     audioPath?: AudioPath;
     reason?: string;
+    outputCodec?: string | null;
+    outputSampleRate?: number;
+    outputChannels?: number;
 }
 
 export interface MediaCompressionDiagnosticRecord {
     conversionId: number;
+    audioDiagnosticMode: MediaCompressionAudioDiagnosticMode;
     input: {
         mime: string;
         size: number;
@@ -151,6 +160,16 @@ function isBrowser(): boolean {
 export function isMediaCompressionDebugEnabled(search?: string): boolean {
     const locationSearch = search ?? (isBrowser() ? window.location.search : '');
     return new URLSearchParams(locationSearch).get('media-debug') === '1';
+}
+
+export function isMediaCompressionDebugAudioCopyEnabled(search?: string): boolean {
+    const locationSearch = search ?? (isBrowser() ? window.location.search : '');
+    const params = new URLSearchParams(locationSearch);
+    return params.get('media-debug') === '1' && params.get('media-debug-audio') === 'copy';
+}
+
+export function getMediaCompressionAudioDiagnosticMode(search?: string): MediaCompressionAudioDiagnosticMode {
+    return isMediaCompressionDebugAudioCopyEnabled(search) ? 'force-packet-copy' : 'normal';
 }
 
 function notify(): void {
@@ -330,6 +349,7 @@ export function startMediaCompressionDiagnostic(file: File): MediaCompressionDia
     environment ??= readEnvironment();
     const record: MediaCompressionDiagnosticRecord = {
         conversionId: ++conversionSequence,
+        audioDiagnosticMode: getMediaCompressionAudioDiagnosticMode(),
         input: { mime: file.type || 'unknown', size: file.size },
         tracks: { videoCount: 0, audioCount: 0 },
         video: [],
@@ -387,6 +407,12 @@ export function formatMediaCompressionDiagnostics(): string {
     const lines = [
         'Media Compression Debug',
         'Keep this data on the device. It is not sent to a server.',
+        `Diagnostic A/B mode: ${getMediaCompressionAudioDiagnosticMode() === 'force-packet-copy'
+            ? 'Forced audio packet copy'
+            : 'Normal audio transcode'}`,
+        ...(getMediaCompressionAudioDiagnosticMode() === 'force-packet-copy'
+            ? ['Diagnostic A/B mode: audio is being packet-copied instead of transcoded.']
+            : []),
         ...formatEnvironment(getMediaCompressionEnvironment()),
         '',
     ];
@@ -397,6 +423,7 @@ export function formatMediaCompressionDiagnostics(): string {
 
     for (const record of records) {
         lines.push(`Conversion #${record.conversionId}`);
+        lines.push(`audio diagnostic mode: ${record.audioDiagnosticMode}`);
         lines.push('Input');
         lines.push(`mime: ${formatValue(record.input.mime)}`);
         lines.push(`size: ${record.input.size} bytes`);
@@ -420,9 +447,10 @@ export function formatMediaCompressionDiagnostics(): string {
             lines.push(`Audio #${index + 1}`);
             lines.push(`codec: ${formatValue(audio.codec)}`);
             lines.push(`source: ${formatValue(audio.sourceSampleRate)} Hz / ${formatValue(audio.sourceChannels)}ch`);
-            lines.push(`target: ${formatValue(audio.targetSampleRate)} Hz / ${formatValue(audio.targetChannels)}ch`);
+            lines.push(`${record.audioDiagnosticMode === 'force-packet-copy' ? 'normal target' : 'target'}: ${formatValue(audio.targetSampleRate)} Hz / ${formatValue(audio.targetChannels)}ch`);
             lines.push(`decode: ${formatBoolean(audio.decode)}`);
-            lines.push(`target bitrate: ${formatValue(audio.targetBitrate)}`);
+            lines.push(`effective audio encoding mode: ${formatValue(audio.effectiveEncodingMode)}`);
+            lines.push(`configured audio bitrate: ${formatValue(audio.configuredBitrate)}`);
             lines.push(`MediaBunny audio Quality: ${formatValue(audio.quality)}`);
             lines.push(`native AAC before registration: ${formatBoolean(audio.nativeCapabilityBeforeRegistration)}`);
             lines.push(`AAC capability before selection: ${formatBoolean(audio.capabilityBeforeSelection)}`);
@@ -431,6 +459,8 @@ export function formatMediaCompressionDiagnostics(): string {
             lines.push(`AAC after registration: ${formatBoolean(audio.capabilityAfterRegistration)}`);
             lines.push(`audio path: ${formatValue(audio.audioPath)}`);
             if (audio.reason) lines.push(`reason: ${audio.reason}`);
+            lines.push(`output codec: ${formatValue(audio.outputCodec)}`);
+            lines.push(`output audio: ${formatValue(audio.outputSampleRate)} Hz / ${formatValue(audio.outputChannels)}ch`);
         });
 
         lines.push('Conversion');

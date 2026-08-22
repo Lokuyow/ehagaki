@@ -6,8 +6,10 @@ import {
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
+    getMediaCompressionAudioDiagnosticMode,
     getMediaCompressionDiagnosticRecords,
     isMediaCompressionDebugEnabled,
+    isMediaCompressionDebugAudioCopyEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
@@ -30,6 +32,10 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugEnabled('')).toBe(false);
         expect(isMediaCompressionDebugEnabled('?media-debug=0')).toBe(false);
         expect(isMediaCompressionDebugEnabled('?media-debug=1')).toBe(true);
+        expect(isMediaCompressionDebugAudioCopyEnabled('?media-debug-audio=copy')).toBe(false);
+        expect(isMediaCompressionDebugAudioCopyEnabled('?media-debug=1&media-debug-audio=copy')).toBe(true);
+        expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1')).toBe('normal');
+        expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
         expect(startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }))).toBeNull();
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
     });
@@ -59,6 +65,33 @@ describe('media compression diagnostics', () => {
         clearMediaCompressionDiagnosticRecords();
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
         expect(getAacCustomEncoderState()).toBe('not-loaded');
+    });
+
+    it('records and formats the forced packet-copy mode only when both query parameters are present', () => {
+        setSearch('?media-debug-audio=copy');
+        expect(startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }))).toBeNull();
+
+        setSearch('?media-debug=1&media-debug-audio=copy');
+        const session = startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }));
+        session?.setAudio(0, {
+            sourceSampleRate: 48000,
+            sourceChannels: 2,
+            targetSampleRate: 44100,
+            targetChannels: 2,
+            effectiveEncodingMode: 'packet-copy',
+            audioPath: 'packet-copy',
+            reason: 'debug-forced-packet-copy',
+            outputCodec: 'aac',
+            outputSampleRate: 48000,
+            outputChannels: 2,
+        });
+
+        const text = formatMediaCompressionDiagnostics();
+        expect(text).toContain('Forced audio packet copy');
+        expect(text).toContain('audio diagnostic mode: force-packet-copy');
+        expect(text).toContain('normal target: 44100 Hz / 2ch');
+        expect(text).toContain('reason: debug-forced-packet-copy');
+        expect(text).toContain('output audio: 48000 Hz / 2ch');
     });
 
     it('classifies native, custom, packet-copy, and unknown paths from observed state', () => {

@@ -1,7 +1,10 @@
 import '../../app.css';
 import { mount } from 'svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
-import { startMediaCompressionDiagnostic } from '../../lib/videoCompression/mediaCompressionDiagnostics';
+import {
+    isMediaCompressionDebugAudioCopyEnabled,
+    startMediaCompressionDiagnostic,
+} from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
 const target = document.getElementById('app');
 
@@ -10,6 +13,7 @@ if (!target) {
 }
 
 const session = startMediaCompressionDiagnostic(new File(['diagnostic'], 'ignored.mp4', { type: 'video/mp4' }));
+const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
     codec: 'avc',
@@ -33,7 +37,13 @@ session?.setAudio(0, {
     capabilityBeforeSelection: true,
     customImport: 'no',
     customRegistration: 'not-needed',
-    audioPath: 'native-aac',
+    effectiveEncodingMode: forceAudioPacketCopy ? 'packet-copy' : 'quality',
+    configuredBitrate: 64000,
+    audioPath: forceAudioPacketCopy ? 'packet-copy' : 'native-aac',
+    reason: forceAudioPacketCopy ? 'debug-forced-packet-copy' : undefined,
+    outputCodec: 'aac',
+    outputSampleRate: forceAudioPacketCopy ? 48000 : 44100,
+    outputChannels: 2,
 });
 session?.setConversion({ isValid: true, execute: 'success' });
 session?.finish({

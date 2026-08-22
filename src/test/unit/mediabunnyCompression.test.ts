@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
     canDecodeAudio: true,
     nativeAac: true,
     customAac: false,
+    outputAudioSampleRate: 44100,
     preserveAudio: true,
     failConversion: false,
     videoOptions: [] as any[],
@@ -30,13 +31,14 @@ vi.mock('mediabunny', () => {
         constructor({ source }: any) { this.source = source; }
         async getVideoTracks() { return [this.videoTrack]; }
         async getAudioTracks() {
+            const isOutput = this.source.blob.name.includes('_compressed');
             const track = {
                 codec: 'aac',
                 numberOfChannels: 2,
-                sampleRate: 44100,
+                sampleRate: isOutput ? state.outputAudioSampleRate : 48000,
                 getCodec: vi.fn(async () => 'aac'),
                 getNumberOfChannels: vi.fn(async () => 2),
-                getSampleRate: vi.fn(async () => 44100),
+                getSampleRate: vi.fn(async () => isOutput ? state.outputAudioSampleRate : 48000),
                 isAudioTrack: () => true,
             };
             return this.source.blob.name.includes('_compressed')
@@ -128,6 +130,7 @@ describe('MediaBunnyCompression', () => {
             canDecodeAudio: true,
             nativeAac: true,
             customAac: false,
+            outputAudioSampleRate: 44100,
             preserveAudio: true,
             failConversion: false,
             videoOptions: [],
@@ -182,6 +185,15 @@ describe('MediaBunnyCompression', () => {
         expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
     });
 
+    it('does not enable forced packet copy when media-debug-audio is used without media-debug', async () => {
+        window.history.replaceState({}, '', '/?media-debug-audio=copy');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
+        expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
+    });
+
     it('records the first native AAC decision in diagnostic mode without loading custom AAC', async () => {
         window.history.replaceState({}, '', '/?media-debug=1');
         const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
@@ -192,14 +204,63 @@ describe('MediaBunnyCompression', () => {
             conversionId: 1,
             input: { mime: 'video/mp4' },
             aac: { stateAtStart: 'not-loaded' },
+            audioDiagnosticMode: 'normal',
             audio: [{
                 nativeCapabilityBeforeRegistration: true,
                 customImport: 'no',
+                effectiveEncodingMode: 'quality',
+                configuredBitrate: 64_000,
                 audioPath: 'native-aac',
+                outputCodec: 'aac',
+                outputSampleRate: 44100,
+                outputChannels: 2,
             }],
         });
+        const text = (await import('../../lib/videoCompression/mediaCompressionDiagnostics')).formatMediaCompressionDiagnostics();
+        expect(text).toContain('effective audio encoding mode: quality');
+        expect(text).toContain('configured audio bitrate: 64000');
+        expect(text).not.toContain('target bitrate: 64000');
         expect(record?.timing['total compression']).toBeGreaterThanOrEqual(0);
         expect(state.registeredAacEncoder).toBe(0);
+    });
+
+    it('forces packet-copy audio in diagnostic A/B mode without loading custom AAC', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-audio=copy');
+        state.outputAudioSampleRate = 48000;
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.registeredAacEncoder).toBe(0);
+        expect(state.audioOptions).toEqual([{}]);
+        expect(record).toMatchObject({
+            audioDiagnosticMode: 'force-packet-copy',
+            audio: [{
+                nativeCapabilityBeforeRegistration: true,
+                capabilityBeforeSelection: true,
+                effectiveEncodingMode: 'packet-copy',
+                audioPath: 'packet-copy',
+                reason: 'debug-forced-packet-copy',
+                outputCodec: 'aac',
+                outputSampleRate: 48000,
+                outputChannels: 2,
+            }],
+        });
+    });
+
+    it('does not load custom AAC when forced packet-copy mode observes unavailable native AAC', async () => {
+        state.nativeAac = false;
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-audio=copy');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.registeredAacEncoder).toBe(0);
+        expect(state.audioOptions).toEqual([{}]);
+        expect(record?.audio[0]).toMatchObject({
+            audioPath: 'packet-copy',
+            reason: 'debug-forced-packet-copy',
+        });
     });
 
     it('registers the optional AAC encoder only when native AAC encoding is unavailable', async () => {
