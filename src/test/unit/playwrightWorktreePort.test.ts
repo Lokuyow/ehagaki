@@ -134,6 +134,7 @@ describe('Playwright config connection values', () => {
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
+                '**/mediaCompressionDebug.spec.ts',
             ]);
         } finally {
             if (originalPortOverride === undefined) {

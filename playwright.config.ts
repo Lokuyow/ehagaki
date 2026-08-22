@@ -49,6 +49,7 @@ export default defineConfig({
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
+                '**/mediaCompressionDebug.spec.ts',
             ],
             use: {
                 ...devices['iPhone 13'],
