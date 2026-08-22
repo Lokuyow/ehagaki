@@ -15,6 +15,7 @@ test.describe('media compression debug panel', () => {
 
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.getByRole('button', { name: 'Run video decode benchmark' })).toHaveCount(0);
         await expect(panel.locator('pre')).toContainText('Conversion #1');
         await expect(panel.locator('pre')).toContainText('Normal audio transcode');
         await expect(panel.locator('pre')).toContainText('effective audio encoding mode: quality');

@@ -1,5 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type {
+    VideoDecodeBenchmarkOptions,
+    VideoDecodeBenchmarkResult,
+  } from "../lib/videoCompression/videoDecodeBenchmark";
   import {
     addRawVideoEncoderBenchmarkRecord,
     addVideoDecodeBenchmarkRecord,
@@ -13,18 +17,26 @@
     subscribeToMediaCompressionDiagnostics,
   } from "../lib/videoCompression/mediaCompressionDiagnostics";
   import { runRawVideoEncoderBenchmark } from "../lib/videoCompression/rawVideoEncoderBenchmark";
-  import { runVideoDecodeBenchmark } from "../lib/videoCompression/videoDecodeBenchmark";
+
+  type VideoDecodeBenchmarkRunner = (
+    file: File,
+    options?: VideoDecodeBenchmarkOptions,
+  ) => Promise<VideoDecodeBenchmarkResult>;
+  type VideoDecodeBenchmarkLoader = () => Promise<VideoDecodeBenchmarkRunner>;
 
   interface Props {
     /** Harness injection only; production uses the native WebCodecs benchmark. */
     rawVideoEncoderBenchmarkRunner?: typeof runRawVideoEncoderBenchmark;
-    /** Harness injection only; production decodes with MediaBunny's public sample API. */
-    videoDecodeBenchmarkRunner?: typeof runVideoDecodeBenchmark;
+    /** Harness injection only; production loads the decoder benchmark on demand. */
+    videoDecodeBenchmarkRunner?: VideoDecodeBenchmarkRunner;
+    /** Test-only injection for the dynamic-import failure path. */
+    videoDecodeBenchmarkLoader?: VideoDecodeBenchmarkLoader;
   }
 
   let {
     rawVideoEncoderBenchmarkRunner = runRawVideoEncoderBenchmark,
-    videoDecodeBenchmarkRunner = runVideoDecodeBenchmark,
+    videoDecodeBenchmarkRunner,
+    videoDecodeBenchmarkLoader,
   }: Props = $props();
 
   let expanded = $state(false);
@@ -105,7 +117,11 @@
     videoDecodeBenchmarkStatus = "running";
     videoDecodeRunController = new AbortController();
     try {
-      const result = await videoDecodeBenchmarkRunner(file, { signal: videoDecodeRunController.signal });
+      const runner = videoDecodeBenchmarkRunner
+        ?? (videoDecodeBenchmarkLoader
+          ? await videoDecodeBenchmarkLoader()
+          : (await import("../lib/videoCompression/videoDecodeBenchmark")).runVideoDecodeBenchmark);
+      const result = await runner(file, { signal: videoDecodeRunController.signal });
       addVideoDecodeBenchmarkRecord(result);
       videoDecodeBenchmarkStatus = result.status;
     } catch {

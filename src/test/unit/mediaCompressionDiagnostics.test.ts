@@ -294,4 +294,18 @@ describe('media compression diagnostics', () => {
         expect(document.querySelector('pre')?.textContent).toContain('Video Decode Benchmark #1');
         expect(document.querySelector('pre')?.textContent).not.toContain('private.mov');
     });
+
+    it('returns the decode control to failed when the lazy benchmark import fails', async () => {
+        setSearch('?media-debug=1&media-debug-video-decode-benchmark=1');
+        const videoDecodeBenchmarkLoader = vi.fn().mockRejectedValue(new Error('benchmark chunk unavailable'));
+        render(MediaCompressionDebugPanel, { videoDecodeBenchmarkLoader });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        await fireEvent.change(screen.getByLabelText('Select video for decode benchmark'), {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+
+        expect(videoDecodeBenchmarkLoader).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('Video decode benchmark: failed').textContent).toBe('Video decode benchmark: failed');
+    });
 });
