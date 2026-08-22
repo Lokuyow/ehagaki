@@ -112,6 +112,7 @@ import {
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getMediaCompressionDiagnosticRecords,
+    getRawVideoEncoderBenchmarkRecords,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
 
 function videoFile(): File {
@@ -214,6 +215,18 @@ describe('MediaBunnyCompression', () => {
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
         expect(state.videoOptions[0]).not.toHaveProperty('latencyMode');
         expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
+    });
+
+    it('keeps MediaBunny options and AAC loading unchanged when only the raw encoder benchmark is enabled', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-raw-video-encoder=1');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+
+        expect(result.wasCompressed).toBe(true);
+        expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
+        expect(state.videoOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
+        expect(state.registeredAacEncoder).toBe(0);
+        expect(getRawVideoEncoderBenchmarkRecords()).toHaveLength(0);
     });
 
     it('keeps realtime disabled when diagnostics do not use forced audio copy', async () => {

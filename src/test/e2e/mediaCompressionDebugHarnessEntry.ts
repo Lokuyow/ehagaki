@@ -3,9 +3,21 @@ import { mount } from 'svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
 import {
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
+import {
+    RAW_VIDEO_ENCODER_BENCHMARK_CONFIG,
+    RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+    type RawVideoEncoderBenchmarkResult,
+} from '../../lib/videoCompression/rawVideoEncoderBenchmark';
+
+declare global {
+    interface Window {
+        completeRawVideoEncoderBenchmark?: () => void;
+    }
+}
 
 const target = document.getElementById('app');
 
@@ -16,6 +28,7 @@ if (!target) {
 const session = startMediaCompressionDiagnostic(new File(['diagnostic'], 'ignored.mp4', { type: 'video/mp4' }));
 const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
 const realtimeVideoLatency = isMediaCompressionDebugVideoRealtimeEnabled();
+const rawVideoEncoderBenchmark = isMediaCompressionDebugRawVideoEncoderEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
     codec: 'avc',
@@ -65,4 +78,34 @@ session?.finish({
     wasCompressed: true,
 });
 
-mount(MediaCompressionDebugPanel, { target });
+const rawVideoEncoderBenchmarkRunner = rawVideoEncoderBenchmark
+    ? () => new Promise<RawVideoEncoderBenchmarkResult>((resolve) => {
+        window.completeRawVideoEncoderBenchmark = () => {
+            resolve({
+                status: 'completed',
+                source: RAW_VIDEO_ENCODER_BENCHMARK_SOURCE,
+                config: { ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG },
+                frameCount: 3,
+                queueLimit: 2,
+                maxQueueSize: 2,
+                timings: {
+                    configSupportCheck: 1,
+                    encoderSetupConfigure: 2,
+                    benchmarkWall: 30,
+                    framePreparationSync: 3,
+                    encodeSubmissionSync: 4,
+                    backpressureWait: 5,
+                    flushWait: 6,
+                },
+                framesSubmitted: 3,
+                chunks: 3,
+                bytes: 240,
+                keyChunks: 1,
+                deltaChunks: 2,
+                throughput: 100,
+            });
+        };
+    })
+    : undefined;
+
+mount(MediaCompressionDebugPanel, { target, props: { rawVideoEncoderBenchmarkRunner } });

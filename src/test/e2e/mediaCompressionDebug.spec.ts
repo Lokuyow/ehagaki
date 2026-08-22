@@ -97,4 +97,44 @@ test.describe('media compression debug panel', () => {
         await page.getByRole('button', { name: 'Clear' }).click();
         await expect(panel.locator('pre')).toContainText('No conversions recorded.');
     });
+
+    test('runs the raw WebCodecs benchmark only when its full query gate is present', async ({ page }) => {
+        await page.goto('media-compression-debug-playwright.html?media-debug-raw-video-encoder=1');
+        await expect(page.locator('.media-debug-panel')).toHaveCount(0);
+
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-raw-video-encoder=1');
+        const panel = page.locator('.media-debug-panel');
+        await page.getByRole('button', { name: /Media Compression Debug/ }).click();
+        const runButton = page.getByRole('button', { name: 'Run raw VideoEncoder benchmark' });
+        await expect(runButton).toBeVisible();
+        await expect(panel.locator('pre')).toContainText('Raw native VideoEncoder benchmark: enabled (manual run)');
+        await expect(panel.locator('pre')).toContainText('Normal audio transcode');
+
+        await runButton.click();
+        await expect(page.getByRole('button', { name: /raw VideoEncoder benchmark/ })).toBeDisabled();
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Raw benchmark:' })).toHaveText('Raw benchmark: running');
+        await page.evaluate(() => {
+            (window as Window & { completeRawVideoEncoderBenchmark?: () => void }).completeRawVideoEncoderBenchmark?.();
+        });
+
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Raw benchmark:' })).toHaveText('Raw benchmark: completed');
+        await expect(panel.locator('pre')).toContainText('Raw VideoEncoder Benchmark #1');
+        await expect(panel.locator('pre')).toContainText('codec: avc1.42001E');
+        await expect(panel.locator('pre')).toContainText('frames submitted: 3');
+        await expect(panel.locator('pre')).toContainText('Timing (overlaps; do not sum)');
+
+        const geometry = await panel.evaluate((element) => ({
+            right: element.getBoundingClientRect().right,
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+        }));
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+
+        await page.getByRole('button', { name: 'Copy' }).click();
+        await expect(page.getByRole('status').filter({ hasText: /Copied|Copy failed|Clipboard unavailable/ })).toBeVisible();
+        await page.getByRole('button', { name: 'Clear' }).click();
+        await expect(panel.locator('pre')).not.toContainText('Raw VideoEncoder Benchmark #1');
+    });
 });

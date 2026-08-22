@@ -1,3 +1,5 @@
+import type { RawVideoEncoderBenchmarkResult } from './rawVideoEncoderBenchmark';
+
 export type AacCustomEncoderState = 'not-loaded' | 'loading' | 'registered' | 'failed';
 
 export type AudioPath = 'native-aac' | 'custom-aac' | 'packet-copy' | 'unavailable' | 'unknown';
@@ -163,6 +165,7 @@ export interface MediaCompressionDiagnosticRecord {
 type DiagnosticListener = () => void;
 
 const records: MediaCompressionDiagnosticRecord[] = [];
+const rawVideoEncoderBenchmarkRecords: RawVideoEncoderBenchmarkResult[] = [];
 const listeners = new Set<DiagnosticListener>();
 let conversionSequence = 0;
 let aacCustomEncoderState: AacCustomEncoderState = 'not-loaded';
@@ -189,6 +192,12 @@ export function isMediaCompressionDebugVideoRealtimeEnabled(search?: string): bo
     return params.get('media-debug') === '1'
         && params.get('media-debug-audio') === 'copy'
         && params.get('media-debug-video-latency') === 'realtime';
+}
+
+export function isMediaCompressionDebugRawVideoEncoderEnabled(search?: string): boolean {
+    const locationSearch = search ?? (isBrowser() ? window.location.search : '');
+    const params = new URLSearchParams(locationSearch);
+    return params.get('media-debug') === '1' && params.get('media-debug-raw-video-encoder') === '1';
 }
 
 export function getMediaCompressionVideoDiagnosticMode(search?: string): MediaCompressionVideoDiagnosticMode {
@@ -257,6 +266,15 @@ export function getMediaCompressionDiagnosticRecords(): MediaCompressionDiagnost
     return records;
 }
 
+export function getRawVideoEncoderBenchmarkRecords(): RawVideoEncoderBenchmarkResult[] {
+    return rawVideoEncoderBenchmarkRecords;
+}
+
+export function addRawVideoEncoderBenchmarkRecord(result: RawVideoEncoderBenchmarkResult): void {
+    rawVideoEncoderBenchmarkRecords.push(result);
+    notify();
+}
+
 export function subscribeToMediaCompressionDiagnostics(listener: DiagnosticListener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -264,6 +282,7 @@ export function subscribeToMediaCompressionDiagnostics(listener: DiagnosticListe
 
 export function clearMediaCompressionDiagnosticRecords(): void {
     records.length = 0;
+    rawVideoEncoderBenchmarkRecords.length = 0;
     notify();
 }
 
@@ -449,6 +468,44 @@ function formatEnvironment(value: MediaCompressionEnvironment | null): string[] 
     ];
 }
 
+function formatRawVideoEncoderBenchmark(record: RawVideoEncoderBenchmarkResult, index: number): string[] {
+    const lines = [
+        `Raw VideoEncoder Benchmark #${index + 1}`,
+        `status: ${record.status}`,
+        `source: ${record.source}`,
+        'config',
+        `codec: ${record.config.codec}`,
+        `size: ${record.config.width}x${record.config.height}`,
+        `framerate: ${record.config.framerate}`,
+        `bitrate: ${record.config.bitrate} bps`,
+        'latencyMode: omitted/default',
+        'hardwareAcceleration: omitted/default',
+        'bitrateMode: omitted/default',
+        `frames requested: ${record.frameCount}`,
+        `queue limit: ${record.queueLimit}`,
+        `max queue size: ${record.maxQueueSize}`,
+        `frames submitted: ${record.framesSubmitted}`,
+        `encoded chunks: ${record.chunks}`,
+        `encoded bytes: ${record.bytes}`,
+        `key chunks: ${record.keyChunks}`,
+        `delta chunks: ${record.deltaChunks}`,
+        `throughput: ${record.throughput === undefined ? 'not recorded' : `${record.throughput.toFixed(2)} fps`}`,
+        'Timing (overlaps; do not sum)',
+        `config support check: ${formatDuration(record.timings.configSupportCheck)}`,
+        `encoder setup/configure: ${formatDuration(record.timings.encoderSetupConfigure)}`,
+        `benchmark wall: ${formatDuration(record.timings.benchmarkWall)}`,
+        `frame preparation sync: ${formatDuration(record.timings.framePreparationSync)}`,
+        `encode() submission sync: ${formatDuration(record.timings.encodeSubmissionSync)}`,
+        `backpressure wait: ${formatDuration(record.timings.backpressureWait)}`,
+        `flush wait: ${formatDuration(record.timings.flushWait)}`,
+    ];
+    if (record.failure) {
+        lines.push(`failure: ${record.failure.stage}: ${record.failure.message}`);
+    }
+    lines.push('No MediaBunny, audio, muxing, Blob, or file output is used by this benchmark.', '');
+    return lines;
+}
+
 export function formatMediaCompressionDiagnostics(): string {
     const lines = [
         'Media Compression Debug',
@@ -460,6 +517,7 @@ export function formatMediaCompressionDiagnostics(): string {
             ? ['Diagnostic A/B mode: audio is being packet-copied instead of transcoded.']
             : []),
         `Video latency: ${getMediaCompressionVideoDiagnosticMode() === 'realtime' ? 'realtime' : 'quality (default)'}`,
+        `Raw native VideoEncoder benchmark: ${isMediaCompressionDebugRawVideoEncoderEnabled() ? 'enabled (manual run)' : 'disabled'}`,
         ...formatEnvironment(getMediaCompressionEnvironment()),
         '',
     ];
@@ -567,6 +625,10 @@ export function formatMediaCompressionDiagnostics(): string {
         lines.push(`output audio preserved: ${formatBoolean(record.result.outputAudioPreserved)}`);
         lines.push('');
     }
+
+    rawVideoEncoderBenchmarkRecords.forEach((record, index) => {
+        lines.push(...formatRawVideoEncoderBenchmark(record, index));
+    });
 
     lines.push('Reload the page before Conversion #1 to test AAC capability before the custom encoder is registered.');
     return lines.join('\n');

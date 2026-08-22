@@ -11,6 +11,7 @@ import {
     getMediaCompressionVideoDiagnosticMode,
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
@@ -39,6 +40,9 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug-video-latency=realtime')).toBe(false);
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-video-latency=realtime')).toBe(false);
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime')).toBe(true);
+        expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug-raw-video-encoder=1')).toBe(false);
+        expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1')).toBe(false);
+        expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1&media-debug-raw-video-encoder=1')).toBe(true);
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1')).toBe('normal');
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
         expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1')).toBe('default-quality');
@@ -206,5 +210,39 @@ describe('media compression diagnostics', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
         expect(document.querySelector('pre')?.textContent).toContain('No conversions recorded.');
         expect(getAacCustomEncoderState()).toBe('not-loaded');
+    });
+
+    it('shows the manual raw encoder control only for its fully gated diagnostic query', async () => {
+        setSearch('?media-debug=1&media-debug-raw-video-encoder=1');
+        const rawRunner = vi.fn().mockResolvedValue({
+            status: 'failed',
+            source: 'canvas-2d synthetic pattern',
+            config: { codec: 'avc1.42001E', width: 360, height: 640, framerate: 30, bitrate: 400_000 },
+            frameCount: 627,
+            queueLimit: 4,
+            maxQueueSize: 0,
+            framesSubmitted: 0,
+            chunks: 0,
+            bytes: 0,
+            keyChunks: 0,
+            deltaChunks: 0,
+            timings: {
+                configSupportCheck: 1,
+                encoderSetupConfigure: 0,
+                benchmarkWall: 0,
+                framePreparationSync: 0,
+                encodeSubmissionSync: 0,
+                backpressureWait: 0,
+                flushWait: 0,
+            },
+            failure: { stage: 'api-unavailable', message: 'VideoEncoder or VideoFrame is unavailable.' },
+        });
+        render(MediaCompressionDebugPanel, { rawVideoEncoderBenchmarkRunner: rawRunner });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Run raw VideoEncoder benchmark' }));
+        expect(rawRunner).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('Raw benchmark: failed').textContent).toBe('Raw benchmark: failed');
+        expect(document.querySelector('pre')?.textContent).toContain('failure: api-unavailable');
     });
 });

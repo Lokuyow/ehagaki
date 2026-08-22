@@ -1,18 +1,30 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    addRawVideoEncoderBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
     getMediaCompressionDiagnosticRecords,
     isMediaCompressionDebugEnabled,
+    isMediaCompressionDebugRawVideoEncoderEnabled,
     subscribeToMediaCompressionDiagnostics,
   } from "../lib/videoCompression/mediaCompressionDiagnostics";
+  import { runRawVideoEncoderBenchmark } from "../lib/videoCompression/rawVideoEncoderBenchmark";
+
+  interface Props {
+    /** Harness injection only; production uses the native WebCodecs benchmark. */
+    rawVideoEncoderBenchmarkRunner?: typeof runRawVideoEncoderBenchmark;
+  }
+
+  let { rawVideoEncoderBenchmarkRunner = runRawVideoEncoderBenchmark }: Props = $props();
 
   let expanded = $state(false);
   let records = $state(getMediaCompressionDiagnosticRecords());
   let aacState = $state(getAacCustomEncoderState());
   let copyStatus = $state("");
+  let rawBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
+  let rawRunController: AbortController | null = null;
 
   const diagnosticText = $derived.by(() => {
     void records;
@@ -25,7 +37,10 @@
       records = [...getMediaCompressionDiagnosticRecords()];
       aacState = getAacCustomEncoderState();
     });
-    return unsubscribe;
+    return () => {
+      rawRunController?.abort();
+      unsubscribe();
+    };
   });
 
   async function copyDiagnostics(): Promise<void> {
@@ -47,6 +62,22 @@
     clearMediaCompressionDiagnosticRecords();
     copyStatus = "";
   }
+
+  async function runRawBenchmark(): Promise<void> {
+    if (rawBenchmarkStatus === "running") return;
+
+    rawBenchmarkStatus = "running";
+    rawRunController = new AbortController();
+    try {
+      const result = await rawVideoEncoderBenchmarkRunner({ signal: rawRunController.signal });
+      addRawVideoEncoderBenchmarkRecord(result);
+      rawBenchmarkStatus = result.status;
+    } catch {
+      rawBenchmarkStatus = "failed";
+    } finally {
+      rawRunController = null;
+    }
+  }
 </script>
 
 {#if isMediaCompressionDebugEnabled()}
@@ -67,9 +98,19 @@
           Clear removes displayed records only. Reload the page to reset AAC custom registration and the session.
         </p>
         <div class="media-debug-actions">
+          {#if isMediaCompressionDebugRawVideoEncoderEnabled()}
+            <button
+              type="button"
+              disabled={rawBenchmarkStatus === "running"}
+              onclick={runRawBenchmark}
+            >
+              {rawBenchmarkStatus === "running" ? "Running raw VideoEncoder benchmark…" : "Run raw VideoEncoder benchmark"}
+            </button>
+          {/if}
           <button type="button" onclick={copyDiagnostics}>Copy</button>
           <button type="button" onclick={clearDiagnostics}>Clear</button>
           {#if copyStatus}<span role="status">{copyStatus}</span>{/if}
+          {#if rawBenchmarkStatus !== "idle"}<span role="status">Raw benchmark: {rawBenchmarkStatus}</span>{/if}
         </div>
         <pre>{diagnosticText}</pre>
       </div>
@@ -131,6 +172,7 @@
   .media-debug-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     margin-bottom: 8px;
     font-family: system-ui, sans-serif;
