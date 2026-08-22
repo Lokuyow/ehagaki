@@ -12,11 +12,11 @@ import {
     QUALITY_HIGH,
     QUALITY_MEDIUM,
     QUALITY_VERY_LOW,
+    Quality,
     type ConversionAudioOptions,
     type ConversionVideoOptions,
     type InputAudioTrack,
     type InputVideoTrack,
-    type Quality,
 } from 'mediabunny';
 import type { VideoCompressionResult } from '../types';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
@@ -26,10 +26,12 @@ import {
     classifyMediaCompressionAudioPath,
     getAacCustomEncoderState,
     isMediaCompressionDebugAudioCopyEnabled,
+    isMediaCompressionDebugVideoBitrateEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     setAacCustomEncoderState,
     startMediaCompressionDiagnostic,
     type MediaCompressionDiagnosticSession,
+    type MediaCompressionVideoRateControlMode,
     type MediaCompressionVideoPacketStats,
 } from './mediaCompressionDiagnostics';
 
@@ -52,6 +54,8 @@ function getQualityLabel(factor: number | null | undefined): string | undefined 
     if (factor === 2) return 'high';
     return undefined;
 }
+
+const MEDIA_DEBUG_VIDEO_BITRATE = 400_000;
 
 function getCompressionLevel(options: any): string | undefined {
     if (options?.maxSize === 1280 && options?.mediabunnyVideoQualityFactor === 2) return 'high';
@@ -251,6 +255,7 @@ export class MediaBunnyCompression extends BaseCompression {
         options: any,
         quality: Quality | undefined,
         videoLatencyMode: 'realtime' | undefined,
+        videoRateControlMode: MediaCompressionVideoRateControlMode,
         diagnostic: MediaCompressionDiagnosticSession | null,
         trackIndex: number,
     ): Promise<{ options: ConversionVideoOptions; dimensions: { width: number; height: number } }> {
@@ -292,6 +297,9 @@ export class MediaBunnyCompression extends BaseCompression {
             targetHeight: height,
             compressionLevel: getCompressionLevel(options),
             quality: getQualityLabel(options?.mediabunnyVideoQualityFactor),
+            ...(videoRateControlMode === 'explicit-bitrate'
+                ? { configuredBitrate: MEDIA_DEBUG_VIDEO_BITRATE, bitrateMode: 'variable' as const }
+                : {}),
         });
 
         return { options: videoOptions, dimensions: { width, height } };
@@ -400,19 +408,25 @@ export class MediaBunnyCompression extends BaseCompression {
                 }
             }
             const videoQuality = getQualityFromFactor(options?.mediabunnyVideoQualityFactor);
+            const videoRateControlMode = isMediaCompressionDebugVideoBitrateEnabled()
+                ? 'explicit-bitrate' as const
+                : 'subjective-quality' as const;
+            const effectiveVideoQuality = videoRateControlMode === 'explicit-bitrate'
+                ? new Quality({ bitrate: MEDIA_DEBUG_VIDEO_BITRATE, bitrateMode: 'variable' })
+                : videoQuality;
             const audioQuality = getQualityFromFactor(options?.mediabunnyAudioQualityFactor);
             const videoLatencyMode = isMediaCompressionDebugVideoRealtimeEnabled() ? 'realtime' as const : undefined;
 
             const videoOptionsStartedAt = diagnostic ? performance.now() : null;
             const videoOptions = videoTracks.length > 0
-                ? await this.buildVideoOptions(videoTracks[0], options, videoQuality, videoLatencyMode, diagnostic, 0)
+                ? await this.buildVideoOptions(videoTracks[0], options, effectiveVideoQuality, videoLatencyMode, videoRateControlMode, diagnostic, 0)
                 : null;
             if (diagnostic && videoOptionsStartedAt !== null) {
                 diagnostic.setTiming('video option construction', Math.max(0, performance.now() - videoOptionsStartedAt));
             }
             const videoCapabilityStartedAt = diagnostic ? performance.now() : null;
             const videoCanTranscode = videoOptions
-                ? await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, videoQuality, videoLatencyMode, diagnostic, 0)
+                ? await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, effectiveVideoQuality, videoLatencyMode, diagnostic, 0)
                 : false;
             if (diagnostic && videoCapabilityStartedAt !== null) {
                 diagnostic.setTiming('video capability', Math.max(0, performance.now() - videoCapabilityStartedAt));
@@ -434,8 +448,9 @@ export class MediaBunnyCompression extends BaseCompression {
                     : (await this.buildVideoOptions(
                         track,
                         options,
-                        videoQuality,
+                        effectiveVideoQuality,
                         videoLatencyMode,
+                        videoRateControlMode,
                         diagnostic,
                         videoTracks.indexOf(track),
                     )).options),

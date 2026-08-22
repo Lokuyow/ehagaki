@@ -10,10 +10,12 @@ import {
     getMediaCompressionAudioDiagnosticMode,
     getMediaCompressionDiagnosticRecords,
     getMediaCompressionVideoDiagnosticMode,
+    getMediaCompressionVideoRateControlMode,
     isMediaCompressionDebugEnabled,
     isMediaCompressionDebugAudioCopyEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
     isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
+    isMediaCompressionDebugVideoBitrateEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
 } from '../../lib/videoCompression/mediaCompressionDiagnostics';
@@ -42,6 +44,10 @@ describe('media compression diagnostics', () => {
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug-video-latency=realtime')).toBe(false);
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-video-latency=realtime')).toBe(false);
         expect(isMediaCompressionDebugVideoRealtimeEnabled('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime')).toBe(true);
+        expect(isMediaCompressionDebugVideoBitrateEnabled('?media-debug-video-rate-control=bitrate')).toBe(false);
+        expect(isMediaCompressionDebugVideoBitrateEnabled('?media-debug=1&media-debug-video-rate-control=bitrate')).toBe(false);
+        expect(isMediaCompressionDebugVideoBitrateEnabled('?media-debug=1&media-debug-audio=copy')).toBe(false);
+        expect(isMediaCompressionDebugVideoBitrateEnabled('?media-debug=1&media-debug-audio=copy&media-debug-video-rate-control=bitrate')).toBe(true);
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug-raw-video-encoder=1')).toBe(false);
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1')).toBe(false);
         expect(isMediaCompressionDebugRawVideoEncoderEnabled('?media-debug=1&media-debug-raw-video-encoder=1')).toBe(true);
@@ -52,6 +58,8 @@ describe('media compression diagnostics', () => {
         expect(getMediaCompressionAudioDiagnosticMode('?media-debug=1&media-debug-audio=copy')).toBe('force-packet-copy');
         expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1')).toBe('default-quality');
         expect(getMediaCompressionVideoDiagnosticMode('?media-debug=1&media-debug-audio=copy&media-debug-video-latency=realtime')).toBe('realtime');
+        expect(getMediaCompressionVideoRateControlMode('?media-debug=1&media-debug-audio=copy')).toBe('subjective-quality');
+        expect(getMediaCompressionVideoRateControlMode('?media-debug=1&media-debug-audio=copy&media-debug-video-rate-control=bitrate')).toBe('explicit-bitrate');
         expect(startMediaCompressionDiagnostic(new File(['x'], 'clip.mp4', { type: 'video/mp4' }))).toBeNull();
         expect(getMediaCompressionDiagnosticRecords()).toHaveLength(0);
     });

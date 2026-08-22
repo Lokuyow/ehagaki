@@ -18,6 +18,7 @@ test.describe('media compression debug panel', () => {
         await expect(page.getByRole('button', { name: 'Run video decode benchmark' })).toHaveCount(0);
         await expect(panel.locator('pre')).toContainText('Conversion #1');
         await expect(panel.locator('pre')).toContainText('Normal audio transcode');
+        await expect(panel.locator('pre')).toContainText('video rate control: subjective-quality');
         await expect(panel.locator('pre')).toContainText('effective audio encoding mode: quality');
         await expect(panel.locator('pre')).toContainText('audio path: native-aac');
 
@@ -69,6 +70,33 @@ test.describe('media compression debug panel', () => {
         });
         expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
         expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+    });
+
+    test('shows explicit variable-bitrate video rate control only for the complete A/B query', async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-audio=copy&media-debug-video-rate-control=bitrate');
+        const panel = page.locator('.media-debug-panel');
+        await page.getByRole('button', { name: /Media Compression Debug/ }).click();
+
+        await expect(panel.locator('pre')).toContainText('Forced audio packet copy');
+        await expect(panel.locator('pre')).toContainText('video rate control: explicit-bitrate');
+        await expect(panel.locator('pre')).toContainText('configured video bitrate: 400000 bps');
+        await expect(panel.locator('pre')).toContainText('bitrate mode: variable');
+        await expect(panel.locator('pre')).toContainText('audio path: packet-copy');
+        await expect(panel.locator('pre')).toContainText('target: 640x360');
+
+        const geometry = await panel.evaluate((element) => ({
+            right: element.getBoundingClientRect().right,
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+        }));
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 0.5);
+
+        await page.getByRole('button', { name: 'Copy' }).click();
+        await expect(page.getByRole('status').filter({ hasText: /Copied|Copy failed|Clipboard unavailable/ })).toBeVisible();
+        await page.getByRole('button', { name: 'Clear' }).click();
+        await expect(panel.locator('pre')).toContainText('No conversions recorded.');
     });
 
     test('shows the realtime video latency experiment with packet stats', async ({ page }) => {

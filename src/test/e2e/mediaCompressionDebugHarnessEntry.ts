@@ -4,6 +4,7 @@ import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPa
 import {
     isMediaCompressionDebugAudioCopyEnabled,
     isMediaCompressionDebugRawVideoEncoderEnabled,
+    isMediaCompressionDebugVideoBitrateEnabled,
     isMediaCompressionDebugVideoDecodeBenchmarkEnabled,
     isMediaCompressionDebugVideoRealtimeEnabled,
     startMediaCompressionDiagnostic,
@@ -32,6 +33,7 @@ const session = startMediaCompressionDiagnostic(new File(['diagnostic'], 'ignore
 const forceAudioPacketCopy = isMediaCompressionDebugAudioCopyEnabled();
 const realtimeVideoLatency = isMediaCompressionDebugVideoRealtimeEnabled();
 const rawVideoEncoderBenchmark = isMediaCompressionDebugRawVideoEncoderEnabled();
+const videoBitrateRateControl = isMediaCompressionDebugVideoBitrateEnabled();
 const videoDecodeBenchmark = isMediaCompressionDebugVideoDecodeBenchmarkEnabled();
 session?.setTrackCounts(1, 1);
 session?.setVideo(0, {
@@ -44,6 +46,7 @@ session?.setVideo(0, {
     avcEncode: true,
     compressionLevel: 'medium',
     quality: 'medium',
+    ...(videoBitrateRateControl ? { configuredBitrate: 400_000, bitrateMode: 'variable' as const } : {}),
     inputPacketStats: {
         packetCount: 627,
         averagePacketRate: 30,

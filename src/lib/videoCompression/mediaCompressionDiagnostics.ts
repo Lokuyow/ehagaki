@@ -11,6 +11,8 @@ export type MediaCompressionAudioEncodingMode = 'quality' | 'bitrate' | 'default
 
 export type MediaCompressionVideoDiagnosticMode = 'default-quality' | 'realtime';
 
+export type MediaCompressionVideoRateControlMode = 'subjective-quality' | 'explicit-bitrate';
+
 export interface AudioPathClassification {
     path: AudioPath;
     reason?: string;
@@ -87,6 +89,8 @@ export interface MediaCompressionVideoDiagnostic {
     targetHeight?: number;
     compressionLevel?: string;
     quality?: string;
+    configuredBitrate?: number;
+    bitrateMode?: 'constant' | 'variable';
     avcEncode?: boolean;
     inputPacketStats?: MediaCompressionVideoPacketStats | null;
     outputPacketStats?: MediaCompressionVideoPacketStats | null;
@@ -125,6 +129,7 @@ export interface MediaCompressionDiagnosticRecord {
     conversionId: number;
     audioDiagnosticMode: MediaCompressionAudioDiagnosticMode;
     videoDiagnosticMode: MediaCompressionVideoDiagnosticMode;
+    videoRateControlMode: MediaCompressionVideoRateControlMode;
     input: {
         mime: string;
         size: number;
@@ -194,6 +199,18 @@ export function isMediaCompressionDebugVideoRealtimeEnabled(search?: string): bo
     return params.get('media-debug') === '1'
         && params.get('media-debug-audio') === 'copy'
         && params.get('media-debug-video-latency') === 'realtime';
+}
+
+export function isMediaCompressionDebugVideoBitrateEnabled(search?: string): boolean {
+    const locationSearch = search ?? (isBrowser() ? window.location.search : '');
+    const params = new URLSearchParams(locationSearch);
+    return params.get('media-debug') === '1'
+        && params.get('media-debug-audio') === 'copy'
+        && params.get('media-debug-video-rate-control') === 'bitrate';
+}
+
+export function getMediaCompressionVideoRateControlMode(search?: string): MediaCompressionVideoRateControlMode {
+    return isMediaCompressionDebugVideoBitrateEnabled(search) ? 'explicit-bitrate' : 'subjective-quality';
 }
 
 export function isMediaCompressionDebugRawVideoEncoderEnabled(search?: string): boolean {
@@ -433,6 +450,7 @@ export function startMediaCompressionDiagnostic(file: File): MediaCompressionDia
         conversionId: ++conversionSequence,
         audioDiagnosticMode: getMediaCompressionAudioDiagnosticMode(),
         videoDiagnosticMode: getMediaCompressionVideoDiagnosticMode(),
+        videoRateControlMode: getMediaCompressionVideoRateControlMode(),
         input: { mime: file.type || 'unknown', size: file.size },
         tracks: { videoCount: 0, audioCount: 0 },
         video: [],
@@ -574,6 +592,7 @@ export function formatMediaCompressionDiagnostics(): string {
             ? ['Diagnostic A/B mode: audio is being packet-copied instead of transcoded.']
             : []),
         `Video latency: ${getMediaCompressionVideoDiagnosticMode() === 'realtime' ? 'realtime' : 'quality (default)'}`,
+        `Video rate control: ${getMediaCompressionVideoRateControlMode()}`,
         `Raw native VideoEncoder benchmark: ${isMediaCompressionDebugRawVideoEncoderEnabled() ? 'enabled (manual run)' : 'disabled'}`,
         `Video decode benchmark: ${isMediaCompressionDebugVideoDecodeBenchmarkEnabled() ? 'enabled (manual run)' : 'disabled'}`,
         ...formatEnvironment(getMediaCompressionEnvironment()),
@@ -588,6 +607,7 @@ export function formatMediaCompressionDiagnostics(): string {
         lines.push(`Conversion #${record.conversionId}`);
         lines.push(`audio diagnostic mode: ${record.audioDiagnosticMode}`);
         lines.push(`video diagnostic mode: ${record.videoDiagnosticMode}`);
+        lines.push(`video rate control: ${record.videoRateControlMode}`);
         lines.push(`video latency mode: ${record.videoDiagnosticMode === 'realtime' ? 'realtime' : 'quality (MediaBunny default)'}`);
         lines.push('Input');
         lines.push(`mime: ${formatValue(record.input.mime)}`);
@@ -606,6 +626,12 @@ export function formatMediaCompressionDiagnostics(): string {
             lines.push(`AVC encode: ${formatBoolean(video.avcEncode)}`);
             lines.push(`compression level: ${formatValue(video.compressionLevel)}`);
             lines.push(`MediaBunny video Quality: ${formatValue(video.quality)}`);
+            if (video.configuredBitrate !== undefined) {
+                lines.push(`configured video bitrate: ${video.configuredBitrate} bps`);
+            }
+            if (video.bitrateMode !== undefined) {
+                lines.push(`bitrate mode: ${video.bitrateMode}`);
+            }
             if (video.inputPacketStats) {
                 lines.push(`input frames: ${video.inputPacketStats.packetCount}`);
                 lines.push(`input FPS: ${video.inputPacketStats.averagePacketRate.toFixed(2)}`);

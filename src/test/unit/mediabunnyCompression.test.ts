@@ -62,8 +62,12 @@ vi.mock('mediabunny', () => {
     class BufferTarget { buffer: ArrayBuffer | null = null; }
     class Output { constructor(public options: { target: BufferTarget }) { } }
     class Mp4OutputFormat { }
+    class Quality {
+        constructor(public options: any) { }
+    }
     return {
         ALL_FORMATS: [], BlobSource, BufferTarget, Input, Output, Mp4OutputFormat,
+        Quality,
         QUALITY_HIGH: { factor: 2 }, QUALITY_MEDIUM: { factor: 1 }, QUALITY_VERY_LOW: { factor: 0.3 },
         canEncodeVideo: vi.fn(async (_codec: string, options: any) => {
             state.videoCapabilityOptions.push(options);
@@ -239,6 +243,60 @@ describe('MediaBunnyCompression', () => {
         expect(state.videoCapabilityOptions[0]).not.toHaveProperty('latencyMode');
         expect(state.registeredAacEncoder).toBe(0);
         expect(getRawVideoEncoderBenchmarkRecords()).toHaveLength(0);
+    });
+
+    it('keeps subjective video Quality for every partial rate-control query', async () => {
+        const searches = [
+            '/',
+            '/?media-debug=1',
+            '/?media-debug-video-rate-control=bitrate',
+            '/?media-debug=1&media-debug-video-rate-control=bitrate',
+            '/?media-debug=1&media-debug-audio=copy',
+        ];
+
+        for (const search of searches) {
+            clearMediaCompressionDiagnosticRecords();
+            window.history.replaceState({}, '', search);
+            state.videoCapabilityOptions = [];
+            state.videoOptions = [];
+            const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+            const record = getMediaCompressionDiagnosticRecords().at(-1);
+
+            expect(result.wasCompressed).toBe(true);
+            expect(state.videoOptions[0].quality).toEqual({ factor: 1 });
+            expect(state.videoCapabilityOptions[0].quality).toBe(state.videoOptions[0].quality);
+            expect(record?.videoRateControlMode).toBe(search.includes('media-debug=1') ? 'subjective-quality' : undefined);
+        }
+    });
+
+    it('uses the same explicit variable-bitrate Quality for capability and Conversion only for the full A/B gate', async () => {
+        window.history.replaceState({}, '', '/?media-debug=1&media-debug-audio=copy&media-debug-video-rate-control=bitrate');
+        const result = await new MediaBunnyCompression(() => 64_000).compressWithMediabunny(videoFile(), options);
+        const record = getMediaCompressionDiagnosticRecords().at(-1);
+        const capabilityQuality = state.videoCapabilityOptions[0].quality;
+        const conversionQuality = state.videoOptions[0].quality;
+
+        expect(result.wasCompressed).toBe(true);
+        expect(capabilityQuality).toBe(conversionQuality);
+        expect(capabilityQuality).toEqual({ options: { bitrate: 400_000, bitrateMode: 'variable' } });
+        expect(state.videoCapabilityOptions[0]).toEqual(expect.objectContaining({ width: 640, height: 360, quality: capabilityQuality }));
+        expect(state.videoOptions[0]).toEqual(expect.objectContaining({
+            codec: 'avc',
+            forceTranscode: true,
+            width: 640,
+            quality: conversionQuality,
+        }));
+        expect(state.audioOptions).toEqual([{}]);
+        expect(record?.audioDiagnosticMode).toBe('force-packet-copy');
+        expect(record?.videoRateControlMode).toBe('explicit-bitrate');
+        expect(record?.video[0]).toEqual(expect.objectContaining({
+            configuredBitrate: 400_000,
+            bitrateMode: 'variable',
+            quality: 'medium',
+        }));
+        expect(formatMediaCompressionDiagnostics()).toContain('video rate control: explicit-bitrate');
+        expect(formatMediaCompressionDiagnostics()).toContain('configured video bitrate: 400000 bps');
+        expect(formatMediaCompressionDiagnostics()).toContain('bitrate mode: variable');
     });
 
     it('keeps realtime disabled when diagnostics do not use forced audio copy', async () => {
