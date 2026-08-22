@@ -179,7 +179,7 @@ html[data-base-color-set="true"] {
     color-mix(in srgb, var(--base-color) 34%, hsl(0, 0%, 86%)),
     color-mix(in srgb, var(--base-color) 22%, hsl(0, 0%, 10%))
   );
-  --footer-buttonbar-bg: var(--bg);
+  --footer-buttonbar-bg: light-dark(var(--bg), var(--bg-buttonbar));
 }
 
 * {
