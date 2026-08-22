@@ -120,7 +120,7 @@ test.describe('media compression debug panel', () => {
 
         await expect(page.locator('[role="status"]').filter({ hasText: 'Raw benchmark:' })).toHaveText('Raw benchmark: completed');
         await expect(panel.locator('pre')).toContainText('Raw VideoEncoder Benchmark #1');
-        await expect(panel.locator('pre')).toContainText('codec: avc1.42001E');
+        await expect(panel.locator('pre')).toContainText('codec: avc1.64001E');
         await expect(panel.locator('pre')).toContainText('frames submitted: 3');
         await expect(panel.locator('pre')).toContainText('Timing (overlaps; do not sum)');
 

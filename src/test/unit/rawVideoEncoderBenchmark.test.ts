@@ -9,6 +9,8 @@ import {
 class FakeEncoder extends EventTarget {
     static supported = true;
     static configureCalls = 0;
+    static supportConfigs: VideoEncoderConfig[] = [];
+    static configureConfigs: VideoEncoderConfig[] = [];
     static closeCalls = 0;
     static flushCalls = 0;
     static mode: 'success' | 'encode-failure' | 'flush-failure' = 'success';
@@ -24,11 +26,13 @@ class FakeEncoder extends EventTarget {
     }
 
     static async isConfigSupported(config: VideoEncoderConfig): Promise<{ supported: boolean; config: VideoEncoderConfig }> {
+        FakeEncoder.supportConfigs.push({ ...config });
         return { supported: FakeEncoder.supported, config };
     }
 
-    configure(): void {
+    configure(config: VideoEncoderConfig): void {
         FakeEncoder.configureCalls += 1;
+        FakeEncoder.configureConfigs.push({ ...config });
     }
 
     encode(frame: { timestamp: number; closed: boolean; close(): void }): void {
@@ -55,6 +59,8 @@ class FakeEncoder extends EventTarget {
     static reset(): void {
         FakeEncoder.supported = true;
         FakeEncoder.configureCalls = 0;
+        FakeEncoder.supportConfigs = [];
+        FakeEncoder.configureConfigs = [];
         FakeEncoder.closeCalls = 0;
         FakeEncoder.flushCalls = 0;
         FakeEncoder.mode = 'success';
@@ -94,6 +100,9 @@ describe('raw VideoEncoder benchmark', () => {
             keyChunks: 1,
             deltaChunks: 4,
         });
+        expect(RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.codec).toBe('avc1.64001E');
+        expect(FakeEncoder.supportConfigs).toEqual([RAW_VIDEO_ENCODER_BENCHMARK_CONFIG]);
+        expect(FakeEncoder.configureConfigs).toEqual([RAW_VIDEO_ENCODER_BENCHMARK_CONFIG]);
         expect(result.throughput).toBeGreaterThan(0);
         expect(FakeEncoder.configureCalls).toBe(1);
         expect(FakeEncoder.flushCalls).toBe(1);

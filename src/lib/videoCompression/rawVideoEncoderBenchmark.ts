@@ -1,5 +1,5 @@
 export const RAW_VIDEO_ENCODER_BENCHMARK_CONFIG = {
-    codec: 'avc1.42001E',
+    codec: 'avc1.64001E',
     width: 360,
     height: 640,
     framerate: 30,
