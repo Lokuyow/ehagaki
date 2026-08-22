@@ -97,8 +97,8 @@ Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いま
 
 ### メディア処理
 - [browser-image-compression](https://github.com/Donaldcwl/browser-image-compression) - 画像圧縮
-- [FFmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm) - 動画圧縮（WebAssembly版）
 - [mediabunny](https://mediabunny.dev/) - 動画圧縮（WebCodecs API）
+- [@mediabunny/aac-encoder](https://mediabunny.dev/guide/extensions/aac-encoder) - ネイティブAACエンコード非対応時の任意ロードAAC encoder
 - [blurhash](https://github.com/woltapp/blurhash) - 画像プレースホルダー生成
 - Google Fonts Icons（Material Icons 相当）の SVG アイコンを使用
 
@@ -132,10 +132,9 @@ eHagaki のアプリケーション本体のソースコードは MIT License �
 
 主な第三者コンポーネント:
 
-- FFmpeg.wasm / @ffmpeg/core
-- @ffmpeg/ffmpeg / @ffmpeg/util
 - Font Awesome Free SVG Icons
 - Mediabunny
+- @mediabunny/aac-encoder
 - GitHub Mark
 
 詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。

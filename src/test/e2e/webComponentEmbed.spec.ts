@@ -22,7 +22,6 @@ let componentServer: Server;
 let hostServer: Server;
 let componentOrigin = "";
 let hostOrigin = "";
-let ffmpegCompressionModulePath = "";
 let relayServer: WebSocketServer;
 let relayOrigin = "";
 let relayConnectionCount = 0;
@@ -131,14 +130,6 @@ test.beforeAll(async () => {
     });
     const componentPort = await listen(componentServer);
     componentOrigin = `http://127.0.0.1:${componentPort}`;
-    const componentAssets = await readdir(join(process.cwd(), "dist-web-component", "assets"));
-    const ffmpegCompressionAsset = componentAssets.find((asset) =>
-        asset.startsWith("ffmpegCompression-") && asset.endsWith(".js"),
-    );
-    if (!ffmpegCompressionAsset) {
-        throw new Error("Web Component FFmpeg compression asset was not emitted.");
-    }
-    ffmpegCompressionModulePath = `assets/${ffmpegCompressionAsset}`;
 
     hostServer = createServer((request, response) => {
         const pathname = new URL(request.url ?? "/", hostOrigin).pathname;
@@ -1995,37 +1986,4 @@ test("keeps Host-owned capability separate from a previous authenticated Web Com
         return records.filter((record) => record.pubkeyHex === previousPubkey);
     }, previousPubkey);
     expect(storedUsage).toEqual([]);
-});
-
-test("loads the FFmpeg class worker, core, and WASM from a cross-origin Web Component build", async ({ page }) => {
-    await page.goto(hostOrigin);
-    const result = await page.evaluate(async (ffmpegModulePath) => {
-        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
-        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
-            whenReady(): Promise<void>;
-            assetBase: string | null;
-        };
-        composer.assetBase = `${window.__componentOrigin}/`;
-        document.body.append(composer);
-        await composer.whenReady();
-
-        const module = await import(`${window.__componentOrigin}/${ffmpegModulePath}`) as {
-            FFmpegCompression: new () => { loadFFmpeg(): Promise<void>; cleanup(): Promise<void>; isLoaded: boolean };
-        };
-        const compression = new module.FFmpegCompression();
-        const loadResult = await Promise.race([
-            compression.loadFFmpeg().then(() => "loaded"),
-            new Promise<string>((resolve) => setTimeout(() => resolve("timed-out"), 10_000)),
-        ]);
-        const loaded = compression.isLoaded;
-        await compression.cleanup();
-        return { loaded, loadResult };
-    }, ffmpegCompressionModulePath);
-
-    expect(result.loaded).toBe(true);
-    expect(result.loadResult).toBe("loaded");
-    expect([...componentRequests]).toContain(`/${ffmpegCompressionModulePath}`);
-    expect([...componentRequests].some((path) => /^\/assets\/worker-.*\.js$/.test(path))).toBe(true);
-    expect(componentRequests).toContain("/ffmpeg-core/ffmpeg-core.js");
-    expect(componentRequests).toContain("/ffmpeg-core/ffmpeg-core.wasm");
 });

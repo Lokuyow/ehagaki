@@ -112,7 +112,7 @@ registerRoute(
     ({ request, url }) =>
         request.method === 'GET' &&
         url.origin === self.location.origin &&
-        (url.pathname.includes('/ffmpeg-core/') || url.pathname.endsWith('.wasm')),
+        url.pathname.endsWith('.wasm'),
     new CacheFirst({
         cacheName: RUNTIME_LARGE_ASSET_CACHE_NAME
     })

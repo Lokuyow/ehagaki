@@ -3,34 +3,6 @@
 This project includes third-party software and assets.
 The eHagaki application source code is licensed under the MIT License unless otherwise noted.
 
-## FFmpeg.wasm / @ffmpeg/core
-
-This project uses `@ffmpeg/core` for browser-based video processing.
-
-- Package: `@ffmpeg/core`
-- License: GPL-2.0-or-later
-- Source: https://www.npmjs.com/package/@ffmpeg/core
-- Repository: https://github.com/ffmpegwasm/ffmpeg.wasm
-
-The `@ffmpeg/core` runtime files are copied into the built application for browser-side execution.
-
-FFmpeg and FFmpeg.wasm include software under their own license terms.
-Refer to the FFmpeg.wasm and FFmpeg license files for the applicable details.
-
-## @ffmpeg/ffmpeg / @ffmpeg/util
-
-This project uses `@ffmpeg/ffmpeg` and `@ffmpeg/util` to load and interact with FFmpeg.wasm in the browser.
-
-- Package: `@ffmpeg/ffmpeg`
-- License: MIT
-- Source: https://www.npmjs.com/package/@ffmpeg/ffmpeg
-- Repository: https://github.com/ffmpegwasm/ffmpeg.wasm
-
-- Package: `@ffmpeg/util`
-- License: MIT
-- Source: https://www.npmjs.com/package/@ffmpeg/util
-- Repository: https://github.com/ffmpegwasm/ffmpeg.wasm
-
 ## Font Awesome Free SVG Icons
 
 This project uses SVG icons from Font Awesome Free.
@@ -63,6 +35,18 @@ This project uses Mediabunny for browser-based media processing.
 - Website: https://mediabunny.dev/
 
 This project does not modify Mediabunny source code.
+
+## @mediabunny/aac-encoder
+
+This project uses `@mediabunny/aac-encoder` as an optional, dynamically loaded AAC encoder when a browser does not provide native AAC encoding.
+
+- Package: `@mediabunny/aac-encoder`
+- License: MPL-2.0
+- Source: https://www.npmjs.com/package/@mediabunny/aac-encoder
+- Repository: https://github.com/Vanilagy/mediabunny/tree/main/packages/aac-encoder
+- Website: https://mediabunny.dev/guide/extensions/aac-encoder
+
+The package bundles a size-optimized WebAssembly build of FFmpeg's AAC encoder. This is an internal implementation detail of the optional encoder package; eHagaki no longer ships the separate `@ffmpeg/core` runtime or the `@ffmpeg/ffmpeg` / `@ffmpeg/util` packages.
 
 ## GitHub Mark
 

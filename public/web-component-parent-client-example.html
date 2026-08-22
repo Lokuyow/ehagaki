@@ -252,7 +252,7 @@
                             <input id="asset-base" type="url" spellcheck="false">
                         </div>
                         <p class="small">通常は、ページを開いたときに標準のモジュールを自動で読み込みます。別のモジュールを試す場合はURL末尾に <code>?manual=1</code> を付け、URLを編集してから「作成して表示（Create / Mount）」を押してください。手動モードでは、作成操作をするまで読み込みません。<code>moduleUrl</code> などのqueryだけで別モジュールを自動実行することはありません。</p>
-                        <p class="small">外部モジュールはこのページと同じJavaScript権限で動作します。関連ファイルのURLにはworker/FFmpegなど実行可能なファイルも含まれるため、信頼できるURLだけを指定してください。asset-baseは作成・再作成時にelementへ設定されます。読み込み後は別モジュールへ切り替えられないため、試す場合はページを再読み込みしてください。</p>
+                        <p class="small">外部モジュールはこのページと同じJavaScript権限で動作します。関連ファイルのURLには実行可能なモジュールやworkerも含まれるため、信頼できるURLだけを指定してください。asset-baseは作成・再作成時にelementへ設定されます。読み込み後は別モジュールへ切り替えられないため、試す場合はページを再読み込みしてください。</p>
                     </div>
 
                     <div class="card stack component-lifecycle-card">

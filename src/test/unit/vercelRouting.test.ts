@@ -32,7 +32,6 @@ describe("Vercel routing", () => {
             "/web-component/ehagaki-composer.js",
             "/web-component/assets/entry.js",
             "/web-component/icons/settings.svg",
-            "/web-component/ffmpeg-core/ffmpeg-core.wasm",
         ].every((path) => !fallback.test(path))).toBe(true);
         expect(fallback.test("/settings")).toBe(true);
     });

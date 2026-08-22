@@ -36,7 +36,7 @@ export default defineConfig({
     // set of runtime assets used by the component is copied explicitly below.
     publicDir: false,
     optimizeDeps: {
-        exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util", "@jsquash/webp"],
+        exclude: ["@jsquash/webp"],
     },
     worker: { format: "es" },
     assetsInclude: ["**/*.wasm"],
@@ -45,10 +45,6 @@ export default defineConfig({
         svelte({ compilerOptions: { customElement: true } }),
         viteStaticCopy({
             targets: [
-                {
-                    src: "node_modules/@ffmpeg/core/dist/esm/*",
-                    dest: "ffmpeg-core",
-                },
                 {
                     src: "public/icons/**/*",
                     dest: "icons",
