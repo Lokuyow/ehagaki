@@ -1,96 +1,157 @@
-import { describe, it, expect } from 'vitest';
-import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-/**
- * 動画圧縮設定のユニットテスト
- * 
- * 設定値の相対関係・妥当性を検証します。
- * 個別値の完全一致テストは定数変更時に壊れるだけで保護にならないため省略。
- * 実際の圧縮フローは integration/video-compression.integration.test.ts で検証します。
- */
+const state = vi.hoisted(() => ({
+    instances: 0,
+    constructorError: false,
+    compressError: false,
+    compressCalls: [] as Array<{ file: File; options: unknown }>,
+    progressCallbacks: [] as Array<((progress: number) => void) | undefined>,
+    abortCalls: 0,
+    cleanupCalls: 0,
+}));
 
-describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
-    describe('構造の検証', () => {
-        it('すべての圧縮レベルが定義されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP).toHaveProperty('none');
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP).toHaveProperty('low');
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP).toHaveProperty('medium');
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP).toHaveProperty('high');
-        });
+vi.mock('../../lib/videoCompression/mediabunnyCompression', () => ({
+    MediaBunnyCompression: class {
+        constructor() {
+            state.instances += 1;
+            if (state.constructorError) throw new Error('MediaBunny module initialization failed');
+        }
 
-        it('noneレベルにskipフラグが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.none).toEqual({ skip: true });
-        });
+        setProgressCallback(callback?: (progress: number) => void): void {
+            state.progressCallbacks.push(callback);
+        }
 
-        it('各レベルに必要なプロパティが含まれている', () => {
-            const levels = ['low', 'medium', 'high'] as const;
-            levels.forEach(level => {
-                const config = VIDEO_COMPRESSION_OPTIONS_MAP[level];
-                expect(config).toHaveProperty('maxSize');
-                expect(config).toHaveProperty('mediabunnyVideoQualityFactor');
-                expect(config).toHaveProperty('mediabunnyAudioQualityFactor');
-                expect(config).not.toHaveProperty('crf');
-                expect(config).not.toHaveProperty('preset');
-                expect(config).not.toHaveProperty('audioBitrate');
-            });
+        abort(): void {
+            state.abortCalls += 1;
+        }
+
+        async cleanup(): Promise<void> {
+            state.cleanupCalls += 1;
+        }
+
+        async compress(file: File, options: unknown) {
+            state.compressCalls.push({ file, options });
+            if (state.compressError) throw new Error('MediaBunny compression failed');
+            return { file, wasCompressed: true };
+        }
+    },
+}));
+
+import { VideoCompressionService } from '../../lib/videoCompression/videoCompressionService';
+import {
+    MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES,
+    VIDEO_COMPRESSION_OPTIONS_MAP,
+} from '../../lib/videoCompression/videoCompressionConfig';
+
+class TestStorage implements Storage {
+    private readonly values = new Map<string, string>();
+    get length(): number { return this.values.size; }
+    clear(): void { this.values.clear(); }
+    getItem(key: string): string | null { return this.values.get(key) ?? null; }
+    key(index: number): string | null { return [...this.values.keys()][index] ?? null; }
+    removeItem(key: string): void { this.values.delete(key); }
+    setItem(key: string, value: string): void { this.values.set(key, value); }
+}
+
+function videoFile(size = MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES + 1): File {
+    return new File([new Uint8Array(size)], 'clip.mp4', { type: 'video/mp4' });
+}
+
+describe('VideoCompressionService', () => {
+    beforeEach(() => {
+        Object.assign(state, {
+            instances: 0,
+            constructorError: false,
+            compressError: false,
+            compressCalls: [],
+            progressCallbacks: [],
+            abortCalls: 0,
+            cleanupCalls: 0,
         });
     });
 
-    describe('設定値の相対関係', () => {
-        it('maxSizeが高→中→低の順で小さくなる', () => {
-            const lowSize = VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize!;
-            const mediumSize = VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize!;
-            const highSize = VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize!;
+    it('returns a non-video file without loading the adapter', async () => {
+        const file = new File(['text'], 'note.txt', { type: 'text/plain' });
+        const result = await new VideoCompressionService(new TestStorage()).compress(file);
 
-            expect(highSize).toBeGreaterThan(mediumSize);
-            expect(mediumSize).toBeGreaterThan(lowSize);
-        });
-
-        it('MediaBunny Quality factorがHigh→Medium→Lowの順で下がる', () => {
-            const { high, medium, low } = VIDEO_COMPRESSION_OPTIONS_MAP;
-
-            expect(high.mediabunnyAudioQualityFactor).toBeGreaterThan(medium.mediabunnyAudioQualityFactor);
-            expect(medium.mediabunnyAudioQualityFactor).toBeGreaterThan(low.mediabunnyAudioQualityFactor);
-            expect(high.mediabunnyVideoQualityFactor).toBe(high.mediabunnyAudioQualityFactor);
-            expect(medium.mediabunnyVideoQualityFactor).toBe(medium.mediabunnyAudioQualityFactor);
-            expect(low.mediabunnyVideoQualityFactor).toBe(low.mediabunnyAudioQualityFactor);
-        });
-
-        it('Lowの音声サンプルレートがAAC互換の44100Hzである', () => {
-            const mediumSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioSampleRate!;
-            const lowSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.low.audioSampleRate!;
-
-            expect(mediumSampleRate).toBe(44100);
-            expect(lowSampleRate).toBe(44100);
-        });
+        expect(result).toEqual({ file, wasCompressed: false });
+        expect(state.instances).toBe(0);
     });
 
-    describe('設定値の妥当性', () => {
-        it('maxSizeが正の整数である', () => {
-            const levels = ['low', 'medium', 'high'] as const;
+    it('skips videos at or below the minimum size without loading the adapter', async () => {
+        const file = videoFile(MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES);
+        const result = await new VideoCompressionService(new TestStorage()).compress(file);
 
-            levels.forEach(level => {
-                const maxSize = VIDEO_COMPRESSION_OPTIONS_MAP[level].maxSize!;
-                expect(maxSize).toBeGreaterThan(0);
-                expect(Number.isInteger(maxSize)).toBe(true);
-            });
-        });
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+        expect(state.instances).toBe(0);
+    });
 
-        it('音声サンプルレートが正の整数である', () => {
-            const mediumSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioSampleRate!;
-            const lowSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.low.audioSampleRate!;
+    it('skips disabled compression without loading the adapter', async () => {
+        const storage = new TestStorage();
+        storage.setItem('videoQualityLevel', 'none');
+        const file = videoFile();
 
-            expect(mediumSampleRate).toBeGreaterThan(0);
-            expect(lowSampleRate).toBeGreaterThan(0);
-            expect(Number.isInteger(mediumSampleRate)).toBe(true);
-            expect(Number.isInteger(lowSampleRate)).toBe(true);
-        });
+        const result = await new VideoCompressionService(storage).compress(file);
 
-        it('音声チャンネル数が正の整数である', () => {
-            const channels = VIDEO_COMPRESSION_OPTIONS_MAP.low.audioChannels!;
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+        expect(state.instances).toBe(0);
+    });
 
-            expect(channels).toBeGreaterThan(0);
-            expect(Number.isInteger(channels)).toBe(true);
-        });
+    it('passes the typed active configuration to the lazy adapter', async () => {
+        const storage = new TestStorage();
+        storage.setItem('videoQualityLevel', 'low');
+        const file = videoFile();
+
+        await new VideoCompressionService(storage).compress(file);
+
+        expect(state.compressCalls).toEqual([{ file, options: VIDEO_COMPRESSION_OPTIONS_MAP.low }]);
+    });
+
+    it('keeps the original file when adapter initialization fails', async () => {
+        state.constructorError = true;
+        const file = videoFile();
+
+        const result = await new VideoCompressionService(new TestStorage()).compress(file);
+
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+    });
+
+    it('keeps the original file when adapter compression fails', async () => {
+        state.compressError = true;
+        const file = videoFile();
+
+        const result = await new VideoCompressionService(new TestStorage()).compress(file);
+
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
+    });
+
+    it('returns the abort contract before loading the adapter and resets progress', async () => {
+        const onProgress = vi.fn();
+        const file = videoFile();
+        const service = new VideoCompressionService(new TestStorage(), () => true);
+        service.setProgressCallback(onProgress);
+
+        const result = await service.compress(file);
+
+        expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true, aborted: true });
+        expect(onProgress).toHaveBeenCalledWith(0);
+        expect(state.instances).toBe(0);
+    });
+
+    it('forwards progress, abort, cleanup, and reuses one lazy adapter instance', async () => {
+        const onProgress = vi.fn();
+        const service = new VideoCompressionService(new TestStorage());
+        service.setProgressCallback(onProgress);
+
+        await service.compress(videoFile());
+        await service.compress(videoFile());
+        service.abort();
+        await service.cleanup();
+
+        expect(state.instances).toBe(1);
+        expect(state.progressCallbacks).toEqual([onProgress]);
+        expect(onProgress).toHaveBeenCalledWith(0);
+        expect(state.abortCalls).toBe(1);
+        expect(state.cleanupCalls).toBe(1);
     });
 });

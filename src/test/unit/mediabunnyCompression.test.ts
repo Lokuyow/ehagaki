@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
     customAac: false,
     preserveAudio: true,
     failConversion: false,
+    outputByteLength: 64,
+    conversionProgress: 1,
     videoOptions: [] as any[],
     audioOptions: [] as any[],
     registeredAacEncoder: 0,
@@ -62,8 +64,8 @@ vi.mock('mediabunny', () => {
                     onProgress: undefined as ((progress: number) => void) | undefined,
                     execute: async () => {
                         if (state.failConversion) throw new Error('conversion failed');
-                        options.output.options.target.buffer = new ArrayBuffer(64);
-                        conversion.onProgress?.(1);
+                        options.output.options.target.buffer = new ArrayBuffer(state.outputByteLength);
+                        conversion.onProgress?.(state.conversionProgress);
                     },
                     cancel: async () => { },
                 };
@@ -84,8 +86,8 @@ import { MediaBunnyCompression } from '../../lib/videoCompression/mediabunnyComp
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
 import { QUALITY_HIGH, QUALITY_MEDIUM, QUALITY_VERY_LOW } from 'mediabunny';
 
-function videoFile(): File {
-    return new File([new Uint8Array(300 * 1024)], 'clip.mp4', { type: 'video/mp4' });
+function videoFile(size = 300 * 1024): File {
+    return new File([new Uint8Array(size)], 'clip.mp4', { type: 'video/mp4' });
 }
 
 const options = VIDEO_COMPRESSION_OPTIONS_MAP.medium;
@@ -105,6 +107,8 @@ describe('MediaBunnyCompression', () => {
             customAac: false,
             preserveAudio: true,
             failConversion: false,
+            outputByteLength: 64,
+            conversionProgress: 1,
             videoOptions: [],
             audioOptions: [],
             registeredAacEncoder: 0,
@@ -113,7 +117,7 @@ describe('MediaBunnyCompression', () => {
 
     it('skips compression when video decode or AVC encode is unavailable', async () => {
         state.videoTrackCanDecode = false;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
         expect(result).toMatchObject({ wasCompressed: false, wasSkipped: true });
         expect(state.videoCapabilityOptions).toEqual([]);
         expect(state.videoOptions).toEqual([]);
@@ -123,7 +127,7 @@ describe('MediaBunnyCompression', () => {
         state.videoWidth = 3840;
         state.videoHeight = 2160;
         state.canEncodeVideoPredicate = ({ width, height }) => width <= 640 && height <= 360;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
 
         expect(result.wasCompressed).toBe(true);
         expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 640, height: 360 })]);
@@ -133,7 +137,7 @@ describe('MediaBunnyCompression', () => {
     it('uses the resized portrait dimensions for AVC capability checks', async () => {
         state.videoWidth = 2160;
         state.videoHeight = 3840;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
 
         expect(result.wasCompressed).toBe(true);
         expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 360, height: 640 })]);
@@ -143,7 +147,7 @@ describe('MediaBunnyCompression', () => {
     it('keeps the original dimensions when maxSize does not require resizing', async () => {
         state.videoWidth = 320;
         state.videoHeight = 240;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
 
         expect(result.wasCompressed).toBe(true);
         expect(state.videoCapabilityOptions).toEqual([expect.objectContaining({ width: 320, height: 240 })]);
@@ -151,7 +155,7 @@ describe('MediaBunnyCompression', () => {
     });
 
     it('uses native AAC encoding without loading the optional encoder', async () => {
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
         expect(result.wasCompressed).toBe(true);
         expect(state.registeredAacEncoder).toBe(0);
         expect(state.audioOptions).toEqual([expect.objectContaining({ codec: 'aac', forceTranscode: true })]);
@@ -168,7 +172,7 @@ describe('MediaBunnyCompression', () => {
         sampleRate,
         numberOfChannels,
     ) => {
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), levelOptions);
+        const result = await new MediaBunnyCompression().compress(videoFile(), levelOptions);
         const expectedOptions = { numberOfChannels, sampleRate, bitrate };
 
         expect(result.wasCompressed).toBe(true);
@@ -182,7 +186,7 @@ describe('MediaBunnyCompression', () => {
     });
 
     it('keeps the existing video Quality option unchanged', async () => {
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
 
         expect(result.wasCompressed).toBe(true);
         expect(state.videoOptions).toEqual([expect.objectContaining({ quality: QUALITY_MEDIUM })]);
@@ -191,7 +195,7 @@ describe('MediaBunnyCompression', () => {
 
     it('registers the optional AAC encoder only when native AAC encoding is unavailable', async () => {
         state.nativeAac = false;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
         expect(result.wasCompressed).toBe(true);
         expect(state.registeredAacEncoder).toBe(1);
         expect(state.audioCapabilityOptions).toEqual([
@@ -202,7 +206,7 @@ describe('MediaBunnyCompression', () => {
 
     it('packet-copies audio when custom AAC encoding remains unavailable', async () => {
         state.nativeAac = false;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
 
         expect(result.wasCompressed).toBe(true);
         expect(state.audioOptions).toEqual([{}]);
@@ -210,7 +214,7 @@ describe('MediaBunnyCompression', () => {
 
     it('packet-copies audio when it cannot be decoded for AAC transcoding', async () => {
         state.canDecodeAudio = false;
-        const result = await new MediaBunnyCompression().compressWithMediabunny(videoFile(), options);
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
         expect(result.wasCompressed).toBe(true);
         expect(state.audioOptions).toEqual([{}]);
     });
@@ -218,20 +222,62 @@ describe('MediaBunnyCompression', () => {
     it('keeps the original file when MediaBunny would discard input audio', async () => {
         state.preserveAudio = false;
         const file = videoFile();
-        const result = await new MediaBunnyCompression().compressWithMediabunny(file, options);
+        const result = await new MediaBunnyCompression().compress(file, options);
         expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
     });
 
     it('keeps the original file when conversion fails', async () => {
         state.failConversion = true;
         const file = videoFile();
-        const result = await new MediaBunnyCompression().compressWithMediabunny(file, options);
+        const result = await new MediaBunnyCompression().compress(file, options);
         expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true });
     });
 
     it('keeps the aborted result contract', async () => {
         const file = videoFile();
-        const result = await new MediaBunnyCompression(() => true).compressWithMediabunny(file, options);
+        const result = await new MediaBunnyCompression(() => true).compress(file, options);
         expect(result).toEqual({ file, wasCompressed: false, wasSkipped: true, aborted: true });
+    });
+
+    it('creates an MP4 compressed file when the MediaBunny output is smaller', async () => {
+        const result = await new MediaBunnyCompression().compress(videoFile(), options);
+
+        expect(result).toMatchObject({ wasCompressed: true });
+        expect(result.file.name).toBe('clip_compressed.mp4');
+        expect(result.file.type).toBe('video/mp4');
+    });
+
+    it.each([
+        ['the same size', 128],
+        ['larger', 129],
+    ])('keeps the original file when the MediaBunny output is %s', async (_label, outputByteLength) => {
+        const file = videoFile(128);
+        state.outputByteLength = outputByteLength;
+
+        const result = await new MediaBunnyCompression().compress(file, options);
+
+        expect(result).toEqual({ file, wasCompressed: false });
+    });
+
+    it('rounds Conversion progress to the existing 0 to 100 scale', async () => {
+        const onProgress = vi.fn();
+        state.conversionProgress = 0.456;
+        const compression = new MediaBunnyCompression();
+        compression.setProgressCallback(onProgress);
+
+        await compression.compress(videoFile(), options);
+
+        expect(onProgress).toHaveBeenCalledWith(46);
+        expect(onProgress).toHaveBeenLastCalledWith(100);
+    });
+
+    it('resets progress when abort is requested', () => {
+        const onProgress = vi.fn();
+        const compression = new MediaBunnyCompression();
+        compression.setProgressCallback(onProgress);
+
+        compression.abort();
+
+        expect(onProgress).toHaveBeenCalledWith(0);
     });
 });

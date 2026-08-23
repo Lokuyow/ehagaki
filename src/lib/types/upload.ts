@@ -2,7 +2,7 @@
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Signer } from "nostr-tools/signer";
-import { VIDEO_COMPRESSION_OPTIONS_MAP } from "../constants";
+export type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
 import type { ImageDimensions } from './media';
 
 // Upload-related types
@@ -188,8 +188,6 @@ export interface VideoCompressionResult {
     wasSkipped?: boolean;
     aborted?: boolean;
 }
-
-export type VideoCompressionLevel = keyof typeof VIDEO_COMPRESSION_OPTIONS_MAP;
 
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;
