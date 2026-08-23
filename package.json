@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",
-    "@mediabunny/aac-encoder": "^1.55.1",
+    "@mediabunny/aac-encoder": "1.44.2",
     "@rx-nostr/crypto": "^3.1.6",
     "@tiptap/core": "^3.22.4",
     "@tiptap/extension-image": "^3.22.4",
