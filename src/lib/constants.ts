@@ -43,29 +43,20 @@ export const COMPRESSION_OPTIONS_MAP = {
 export const VIDEO_COMPRESSION_OPTIONS_MAP = {
     none: { skip: true },
     high: {
-        crf: 20,
-        preset: 'superfast',
         maxSize: 1280,
-        audioBitrate: '128k',
         // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
         mediabunnyVideoQualityFactor: 2,   // QUALITY_HIGH
         mediabunnyAudioQualityFactor: 2,   // QUALITY_HIGH
     },
     medium: {
-        crf: 26,
-        preset: 'superfast',
         maxSize: 640,
-        audioBitrate: '64k',
         audioSampleRate: 44100,
         // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
         mediabunnyVideoQualityFactor: 1,   // QUALITY_MEDIUM
         mediabunnyAudioQualityFactor: 1,   // QUALITY_MEDIUM
     },
     low: {
-        crf: 28,
-        preset: 'medium',
         maxSize: 320,
-        audioBitrate: '32k',
         audioSampleRate: 44100,
         audioChannels: 1,
         // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）

@@ -50,7 +50,6 @@ export class MediaBunnyCompression extends BaseCompression {
     private abortRequested = false;
 
     constructor(
-        private parseAudioBitrate: (audioBitrate: unknown) => number | null,
         isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
     ) {
         super('MediaBunnyCompression', isUploadAborted);
@@ -90,11 +89,10 @@ export class MediaBunnyCompression extends BaseCompression {
 
         const numberOfChannels = options.audioChannels ?? track.numberOfChannels;
         const sampleRate = options.audioSampleRate ?? track.sampleRate;
-        const bitrate = this.parseAudioBitrate(options.audioBitrate);
         const encoderOptions = {
             numberOfChannels,
             sampleRate,
-            ...(quality ? { quality } : bitrate ? { bitrate } : {}),
+            ...(quality ? { bitrate: quality } : {}),
         };
 
         if (!await canEncodeAudio('aac', encoderOptions)) {
