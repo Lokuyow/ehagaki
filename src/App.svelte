@@ -151,6 +151,7 @@
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
+  import { resolveNip07AutoLoginSession } from "./lib/bootstrap/nip07AutoLoginBootstrap";
   import {
     applyReplyQuoteQuery,
     applyReplyQuoteSelection,
@@ -1611,6 +1612,13 @@
           localeInitialized = true;
         },
         initializeAuth: () => authService.initializeAuth(),
+        resolveAuthenticatedSession: appRuntimeEnvironment.autoLoginNip07Enabled
+          ? (current) =>
+              resolveNip07AutoLoginSession(current, {
+                authenticateWithNip07: () => authService.authenticateWithNip07(),
+                console,
+              })
+          : undefined,
         handleAuthenticated: handlePostAuth,
         initializeGuestSession: () => initializeNostr(),
         stopProfileLoading: () => isLoadingProfileStore.set(false),

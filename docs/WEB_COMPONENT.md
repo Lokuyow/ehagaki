@@ -148,6 +148,27 @@ MediaBunnyの動的チャンクも、特にクロスオリジン配信時に `as
 GitHub Pages のようにサイトがサブパス配下にある場合は、root-relative URL を固定せず、
 実際の配信ベースを使ってください。公開サンプルは `./web-component/` を基準に URL を解決しています。
 
+## `auto-login` / `autoLogin`
+
+`auto-login` は、起動時の復元で認証状態が得られなかった場合に、ホストの `window.nostr` で
+NIP-07 ログインを行う opt-in です。既定は無効で、指定しない限り現在の動作から変わりません。
+
+```html
+<ehagaki-composer asset-base="/ehagaki/web-component/" auto-login></ehagaki-composer>
+```
+
+`disabled` などと同じ HTML の boolean 属性で、存在すれば有効です（`auto-login="false"` も
+有効になります）。無効にするには属性を削除するか `element.autoLogin = false` を使ってください。
+
+- ホストが `window.nostr` を用意していて、誰として署名するかが決まっている埋め込みを想定した
+  opt-in です。NIP-07 拡張は公開鍵の取得時に確認ダイアログを出すことが多いため、既定では
+  行いません。
+- `asset-base` と同じく mount 時に読み取られます。接続後に変更した場合は次の mount から有効です。
+- 保存済みアカウントがある場合は従来どおりそちらが復元され、この経路は使われません。初回の
+  ログインが成功するとアカウントが保存されるので、確認ダイアログは通常初回だけです。
+- 拡張の注入を待つため、`window.nostr` が用意されていない状態で有効にすると起動が最大 3 秒
+  延びます。その場合はログインせずゲスト状態で続行します。
+
 ## 準備完了を待つ `whenReady()`
 
 `whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
@@ -638,6 +659,8 @@ Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定
 Web Component 専用の signer callback/provider API はありません。
 
 - NIP-07 では、コンポーネントと同じ Window realm にあるホストの `window.nostr` を直接利用します。
+- 保存済みアカウントが無い初回に自動でログインさせたい場合は、[`auto-login`](#auto-login--autologin)
+  を指定します。既定では行いません。
 - NIP-46 は、コンポーネント内の既存 eHagaki UI からログインします。
 - ローカル秘密鍵（nsec）の入力、保存、保存済みアカウントの復元には対応しません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。

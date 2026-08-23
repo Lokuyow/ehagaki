@@ -48,7 +48,7 @@
 ## Web Component entrypoint と public API
 
 - **entry/build input:** `src/web-component/entry.ts` は `EHAGAKI_COMPOSER_TAG_NAME` (`ehagaki-composer`) を既に登録されていなければ `EHagakiComposerElement` として登録する。型と API version は `src/web-component/types.ts`。
-- **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base`、対応 property は `assetBase`。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`。`setContext` / `setSettings` は connect 前や ready 前の呼び出しを operation queue に入れる。
+- **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base` と `auto-login`、対応 property は `assetBase` と `autoLogin`。どちらも mount 時に読み取られ、接続後の変更は次の mount から有効。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`。`setContext` / `setSettings` は connect 前や ready 前の呼び出しを operation queue に入れる。
 - **events:** `ehagaki-ready`（`apiVersion`）、`ehagaki-initialization-error`（`initialization_failed` / `multiple_instances_unsupported` / `disconnected`）、`ehagaki-post-success`、`ehagaki-post-error`、`ehagaki-composer-context-updated`。`src/web-component/notificationPort.ts` が App notification を composed/bubbling CustomEvent に adapter する。
 - **app seam:** `App.svelte` が export する `setEmbedContext()` / `setEmbedSettings()` を element が in-process に使用する。Web Component は Parent Client `postMessage` を使わない。
 - **関連資料/検証:** `docs/WEB_COMPONENT.md`、`public/web-component-parent-client-example.html` / `.js`、`src/test/unit/webComponentNotificationPort.test.ts`、`src/test/integration/webComponentSubst.integration.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`。
@@ -63,7 +63,7 @@
 ## Web Component storage、auth、navigation の差
 
 - **storage:** `src/lib/appStorage.ts` の `createWebComponentStorage()` は host `localStorage` を versioned `ehagaki.web-component.v1:` namespace に限定する。raw host storage を App に渡さない。
-- **auth/navigation/runtime switches:** element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false` に設定する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
+- **auth/navigation/runtime switches:** element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false`、`auto-login` 属性に従う `autoLoginNip07Enabled` に設定する。`autoLoginNip07Enabled` の既定は `false` で、有効時のみ `App.svelte` が `runAppInitializationBootstrap` の `resolveAuthenticatedSession` へ `src/lib/bootstrap/nip07AutoLoginBootstrap.ts` の `resolveNip07AutoLoginSession` を渡し、restore 後も未認証なら `AuthService.authenticateWithNip07()` を呼ぶ。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
 - **確認対象:** component-only change では、host storage namespace、service worker registration、history behavior、local nsec UI/legacy cleanup を Web Component E2E の該当 case と照合する。
 
 ## asset base、Shadow DOM、style surface

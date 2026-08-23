@@ -177,7 +177,7 @@ function getWebComponentThemeCss(): string {
 
 export class EHagakiComposerElement extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ["asset-base"];
+        return ["asset-base", "auto-login"];
     }
 
     #app: AppInstance | null = null;
@@ -207,9 +207,22 @@ export class EHagakiComposerElement extends HTMLElement {
         this.setAttribute("asset-base", value);
     }
 
+    /**
+     * Opts into signing in with the host's `window.nostr` when startup restore
+     * finds no session. Absent by default: reading the public key prompts.
+     */
+    get autoLogin(): boolean {
+        return this.hasAttribute("auto-login");
+    }
+
+    set autoLogin(value: boolean) {
+        this.toggleAttribute("auto-login", !!value);
+    }
+
     attributeChangedCallback(): void {
-        // The delivery base must be configured before the stateful app graph
-        // is imported. Changing it after connection applies on the next mount.
+        // The delivery base and the startup sign-in choice must be configured
+        // before the stateful app graph is imported. Changing either after
+        // connection applies on the next mount.
     }
 
     connectedCallback(): void {
@@ -357,6 +370,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 externalInputEnabled: false,
                 historyEnabled: false,
                 localNsecAuthEnabled: false,
+                autoLoginNip07Enabled: this.autoLogin,
             });
 
             const { default: App } = await import("../App.svelte");
