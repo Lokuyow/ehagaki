@@ -107,7 +107,7 @@ describe('Video Compression Integration Tests', () => {
                 preset: 'medium',
                 maxSize: 320,
                 audioBitrate: '32k',
-                audioSampleRate: 16000,
+                audioSampleRate: 44100,
                 audioChannels: 1,
             });
         });

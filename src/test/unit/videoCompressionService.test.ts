@@ -66,11 +66,12 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             expect(mediumBitrate).toBeGreaterThan(lowBitrate);
         });
 
-        it('音声サンプルレートがmedium→lowで小さくなる', () => {
+        it('Lowの音声サンプルレートがAAC互換の44100Hzである', () => {
             const mediumSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioSampleRate!;
             const lowSampleRate = VIDEO_COMPRESSION_OPTIONS_MAP.low.audioSampleRate!;
 
-            expect(mediumSampleRate).toBeGreaterThan(lowSampleRate);
+            expect(mediumSampleRate).toBe(44100);
+            expect(lowSampleRate).toBe(44100);
         });
     });
 

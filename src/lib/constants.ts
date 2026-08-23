@@ -66,7 +66,7 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         preset: 'medium',
         maxSize: 320,
         audioBitrate: '32k',
-        audioSampleRate: 16000,
+        audioSampleRate: 44100,
         audioChannels: 1,
         // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
         mediabunnyVideoQualityFactor: 0.3, // QUALITY_VERY_LOW
