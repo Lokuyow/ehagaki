@@ -1,4 +1,5 @@
 import type { RawVideoEncoderBenchmarkResult } from './rawVideoEncoderBenchmark';
+import type { LegacyLikeCanvasPipelineBenchmarkResult } from './legacyLikeCanvasPipelineBenchmark';
 import type { RealVideoPipelineBenchmarkResult } from './realVideoPipelineBenchmark';
 import type { VideoDecodeBenchmarkResult } from './videoDecodeBenchmark';
 
@@ -175,6 +176,7 @@ const records: MediaCompressionDiagnosticRecord[] = [];
 const rawVideoEncoderBenchmarkRecords: RawVideoEncoderBenchmarkResult[] = [];
 const videoDecodeBenchmarkRecords: VideoDecodeBenchmarkResult[] = [];
 const realVideoPipelineBenchmarkRecords: RealVideoPipelineBenchmarkResult[] = [];
+const legacyLikeCanvasPipelineBenchmarkRecords: LegacyLikeCanvasPipelineBenchmarkResult[] = [];
 const listeners = new Set<DiagnosticListener>();
 let conversionSequence = 0;
 let aacCustomEncoderState: AacCustomEncoderState = 'not-loaded';
@@ -311,6 +313,10 @@ export function getRealVideoPipelineBenchmarkRecords(): RealVideoPipelineBenchma
     return realVideoPipelineBenchmarkRecords;
 }
 
+export function getLegacyLikeCanvasPipelineBenchmarkRecords(): LegacyLikeCanvasPipelineBenchmarkResult[] {
+    return legacyLikeCanvasPipelineBenchmarkRecords;
+}
+
 export function addRawVideoEncoderBenchmarkRecord(result: RawVideoEncoderBenchmarkResult): void {
     rawVideoEncoderBenchmarkRecords.push(result);
     notify();
@@ -326,6 +332,11 @@ export function addRealVideoPipelineBenchmarkRecord(result: RealVideoPipelineBen
     notify();
 }
 
+export function addLegacyLikeCanvasPipelineBenchmarkRecord(result: LegacyLikeCanvasPipelineBenchmarkResult): void {
+    legacyLikeCanvasPipelineBenchmarkRecords.push(result);
+    notify();
+}
+
 export function subscribeToMediaCompressionDiagnostics(listener: DiagnosticListener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -336,6 +347,7 @@ export function clearMediaCompressionDiagnosticRecords(): void {
     rawVideoEncoderBenchmarkRecords.length = 0;
     videoDecodeBenchmarkRecords.length = 0;
     realVideoPipelineBenchmarkRecords.length = 0;
+    legacyLikeCanvasPipelineBenchmarkRecords.length = 0;
     notify();
 }
 
@@ -603,6 +615,7 @@ function formatVideoDecodeBenchmark(record: VideoDecodeBenchmarkResult, index: n
 function formatRealVideoPipelineBenchmark(record: RealVideoPipelineBenchmarkResult, index: number): string[] {
     const lines = [
         `Real Video Pipeline Benchmark #${index + 1}`,
+        `pipeline kind: ${record.pipelineKind}`,
         `status: ${record.status}`,
         'Input',
         `mime: ${record.input.mime}`,
@@ -648,6 +661,60 @@ function formatRealVideoPipelineBenchmark(record: RealVideoPipelineBenchmarkResu
         lines.push(`failure: ${record.failure.stage}: ${record.failure.message}`);
     }
     lines.push('Uses MediaBunny public Input/VideoSampleSink/VideoSample.transform only; no Conversion, audio, muxing, Blob, or file output.', '');
+    return lines;
+}
+
+function formatLegacyLikeCanvasPipelineBenchmark(record: LegacyLikeCanvasPipelineBenchmarkResult, index: number): string[] {
+    const lines = [
+        `Legacy-like Canvas Pipeline Benchmark #${index + 1}`,
+        `pipeline kind: ${record.pipelineKind}`,
+        `status: ${record.status}`,
+        'Input',
+        `mime: ${record.input.mime}`,
+        `size: ${record.input.size} bytes`,
+        `duration: ${record.input.duration === null ? 'unknown' : `${record.input.duration.toFixed(3)} s`}`,
+        `video codec: ${formatValue(record.input.videoCodec)}`,
+        `coded size: ${record.input.codedWidth === null || record.input.codedHeight === null
+            ? 'unknown'
+            : `${record.input.codedWidth}x${record.input.codedHeight}`}`,
+        `source display: ${record.input.displayWidth === null || record.input.displayHeight === null
+            ? 'unknown'
+            : `${record.input.displayWidth}x${record.input.displayHeight}`}`,
+        `source rotation: ${formatValue(record.input.rotation)}°`,
+        'Target',
+        `target: ${record.target.width}x${record.target.height}`,
+        `fit: ${record.target.fit}`,
+        `rotation baked into Canvas: ${record.input.rotation === null ? 'unknown' : `${record.input.rotation}°`}`,
+        `alpha: ${record.target.alpha}`,
+        'canvas: reused HTMLCanvasElement 2D context',
+        'key frame interval: 5 s',
+        'Capabilities',
+        `decode: ${formatBoolean(record.capabilities.decode ?? undefined)}`,
+        `AVC encode: ${formatBoolean(record.capabilities.avcEncode ?? undefined)}`,
+        'Counts',
+        `samples processed: ${record.samplesProcessed}`,
+        `frames submitted: ${record.framesSubmitted}`,
+        `encoded chunks: ${record.encodedChunks}`,
+        `encoded bytes: ${record.encodedBytes}`,
+        `key chunks: ${record.keyChunks}`,
+        `delta chunks: ${record.deltaChunks}`,
+        `max queue size: ${record.maxQueueSize}`,
+        `throughput: ${record.throughput === null ? 'not recorded' : `${record.throughput.toFixed(2)} fps`}`,
+        'Timing (overlaps; do not sum)',
+        `input / track setup: ${formatDuration(record.timings.inputTrackSetup)}`,
+        `sample wait / iteration: ${formatDuration(record.timings.sampleWaitIteration)}`,
+        `source VideoFrame acquisition: ${formatDuration(record.timings.sourceVideoFrameAcquisition)}`,
+        `Canvas draw / rotation / resize: ${formatDuration(record.timings.canvasDrawRotationResize)}`,
+        `output VideoFrame creation: ${formatDuration(record.timings.outputVideoFrameCreation)}`,
+        `encode() submission sync: ${formatDuration(record.timings.encodeSubmissionSync)}`,
+        `backpressure wait: ${formatDuration(record.timings.backpressureWait)}`,
+        `flush wait: ${formatDuration(record.timings.flushWait)}`,
+        `benchmark total wall: ${formatDuration(record.timings.benchmarkTotalWall)}`,
+    ];
+    if (record.failure) {
+        lines.push(`failure: ${record.failure.stage}: ${record.failure.message}`);
+    }
+    lines.push('Uses MediaBunny public Input/VideoSampleSink/toVideoFrame plus a reused HTMLCanvasElement and native WebCodecs; no VideoSample.transform, Conversion, audio, muxing, Blob, or file output.', '');
     return lines;
 }
 
@@ -791,6 +858,10 @@ export function formatMediaCompressionDiagnostics(): string {
 
     realVideoPipelineBenchmarkRecords.forEach((record, index) => {
         lines.push(...formatRealVideoPipelineBenchmark(record, index));
+    });
+
+    legacyLikeCanvasPipelineBenchmarkRecords.forEach((record, index) => {
+        lines.push(...formatLegacyLikeCanvasPipelineBenchmark(record, index));
     });
 
     lines.push('Reload the page before Conversion #1 to test AAC capability before the custom encoder is registered.');

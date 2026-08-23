@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import MediaCompressionDebugPanel from '../../components/MediaCompressionDebugPanel.svelte';
+import type { LegacyLikeCanvasPipelineBenchmarkOptions, LegacyLikeCanvasPipelineBenchmarkResult } from '../../lib/videoCompression/legacyLikeCanvasPipelineBenchmark';
+import type { RealVideoPipelineBenchmarkOptions, RealVideoPipelineBenchmarkResult } from '../../lib/videoCompression/realVideoPipelineBenchmark';
 import {
     classifyMediaCompressionAudioPath,
+    addLegacyLikeCanvasPipelineBenchmarkRecord,
     addRealVideoPipelineBenchmarkRecord,
     addVideoDecodeBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
@@ -190,6 +193,7 @@ describe('media compression diagnostics', () => {
     it('formats real pipeline results with target, counts, timings, and no selected file name', () => {
         setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
         addRealVideoPipelineBenchmarkRecord({
+            pipelineKind: 'mediabunny-transform',
             status: 'completed',
             input: {
                 mime: 'video/quicktime',
@@ -227,6 +231,7 @@ describe('media compression diagnostics', () => {
         const text = formatMediaCompressionDiagnostics();
         expect(text).toContain('Real video pipeline benchmark: enabled (manual run)');
         expect(text).toContain('Real Video Pipeline Benchmark #1');
+        expect(text).toContain('pipeline kind: mediabunny-transform');
         expect(text).toContain('source display: 1080x1920');
         expect(text).toContain('target: 360x640');
         expect(text).toContain('samples processed: 627');
@@ -375,6 +380,7 @@ describe('media compression diagnostics', () => {
     it('wires the real pipeline file selection through a lazy runner and returns to failed on loader error', async () => {
         setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
         const runner = vi.fn().mockResolvedValue({
+            pipelineKind: 'mediabunny-transform' as const,
             status: 'completed',
             input: { mime: 'video/quicktime', size: 5, duration: 1, videoCodec: 'avc', codedWidth: 1920, codedHeight: 1080, displayWidth: 1080, displayHeight: 1920, rotation: 90 },
             target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
@@ -391,21 +397,94 @@ describe('media compression diagnostics', () => {
         });
         render(MediaCompressionDebugPanel, { realVideoPipelineBenchmarkRunner: runner });
         await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
-        await fireEvent.change(screen.getByLabelText('Select video for real pipeline benchmark'), {
+        await fireEvent.change(screen.getByLabelText('Select video for MediaBunny transform pipeline benchmark'), {
             target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
         });
         expect(runner).toHaveBeenCalledTimes(1);
-        expect(screen.getByText('Real video pipeline benchmark: completed').textContent).toBe('Real video pipeline benchmark: completed');
+        expect(screen.getByText('MediaBunny transform pipeline benchmark: completed').textContent).toBe('MediaBunny transform pipeline benchmark: completed');
 
         clearMediaCompressionDiagnosticRecords();
         setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
         const loader = vi.fn().mockRejectedValue(new Error('benchmark chunk unavailable'));
         render(MediaCompressionDebugPanel, { realVideoPipelineBenchmarkLoader: loader });
         await fireEvent.click(screen.getAllByRole('button', { name: /Media Compression Debug/ })[1]);
-        await fireEvent.change(screen.getAllByLabelText('Select video for real pipeline benchmark')[1], {
+        await fireEvent.change(screen.getAllByLabelText('Select video for MediaBunny transform pipeline benchmark')[1], {
             target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
         });
         expect(loader).toHaveBeenCalledTimes(1);
-        expect(screen.getAllByText('Real video pipeline benchmark: failed')[0].textContent).toBe('Real video pipeline benchmark: failed');
+        expect(screen.getAllByText('MediaBunny transform pipeline benchmark: failed')[0].textContent).toBe('MediaBunny transform pipeline benchmark: failed');
+    });
+
+    it('records a distinct legacy-like Canvas result and keeps both pipeline controls mutually exclusive', async () => {
+        setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
+        let completeTransform: (() => void) | undefined;
+        const transformRunner = vi.fn((_file: File, _options?: RealVideoPipelineBenchmarkOptions) => new Promise<RealVideoPipelineBenchmarkResult>((resolve) => {
+            completeTransform = () => resolve({
+                pipelineKind: 'mediabunny-transform' as const,
+                status: 'completed' as const,
+                input: { mime: 'video/quicktime', size: 5, duration: 1, videoCodec: 'avc', codedWidth: 1920, codedHeight: 1080, displayWidth: 1080, displayHeight: 1920, rotation: 90 },
+                target: { width: 360, height: 640, fit: 'fill' as const, rotate: 0 as const, alpha: 'discard' as const },
+                capabilities: { decode: true, avcEncode: true },
+                samplesProcessed: 1, framesSubmitted: 1, encodedChunks: 1, encodedBytes: 100, keyChunks: 1, deltaChunks: 0, maxQueueSize: 1, throughput: 1,
+                timings: { inputTrackSetup: 1, sampleWaitIteration: 1, videoTransform: 1, videoFrameCreation: 1, encodeSubmissionSync: 1, backpressureWait: 1, flushWait: 1, benchmarkTotalWall: 1 },
+            });
+        }));
+        const canvasRunner = vi.fn((_file: File, _options?: LegacyLikeCanvasPipelineBenchmarkOptions): Promise<LegacyLikeCanvasPipelineBenchmarkResult> => Promise.resolve({
+            pipelineKind: 'legacy-like-html-canvas' as const,
+            status: 'completed' as const,
+            input: { mime: 'video/quicktime', size: 5, duration: 1, videoCodec: 'avc', codedWidth: 1920, codedHeight: 1080, displayWidth: 1080, displayHeight: 1920, rotation: 90 },
+            target: { width: 360, height: 640, fit: 'fill' as const, rotate: 0 as const, alpha: 'discard' as const },
+            capabilities: { decode: true, avcEncode: true },
+            samplesProcessed: 1, framesSubmitted: 1, encodedChunks: 1, encodedBytes: 100, keyChunks: 1, deltaChunks: 0, maxQueueSize: 1, throughput: 1,
+            timings: { inputTrackSetup: 1, sampleWaitIteration: 1, sourceVideoFrameAcquisition: 1, canvasDrawRotationResize: 1, outputVideoFrameCreation: 1, encodeSubmissionSync: 1, backpressureWait: 1, flushWait: 1, benchmarkTotalWall: 1 },
+        }));
+        render(MediaCompressionDebugPanel, {
+            realVideoPipelineBenchmarkRunner: transformRunner,
+            legacyLikeCanvasPipelineBenchmarkRunner: canvasRunner,
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        await fireEvent.change(screen.getByLabelText('Select video for MediaBunny transform pipeline benchmark'), {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+        expect((screen.getByRole('button', { name: /legacy-like Canvas pipeline benchmark/ }) as HTMLButtonElement).disabled).toBe(true);
+        expect(canvasRunner).not.toHaveBeenCalled();
+        completeTransform?.();
+        await vi.waitFor(() => expect(screen.getByText('MediaBunny transform pipeline benchmark: completed')).toBeDefined());
+
+        await fireEvent.change(screen.getByLabelText('Select video for legacy-like Canvas pipeline benchmark'), {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+        expect(canvasRunner).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('pre')?.textContent).toContain('pipeline kind: legacy-like-html-canvas');
+        expect(document.querySelector('pre')?.textContent).not.toContain('private.mov');
+
+        addLegacyLikeCanvasPipelineBenchmarkRecord({
+            pipelineKind: 'legacy-like-html-canvas', status: 'failed',
+            input: { mime: 'video/quicktime', size: 5, duration: null, videoCodec: null, codedWidth: null, codedHeight: null, displayWidth: null, displayHeight: null, rotation: null },
+            target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
+            capabilities: { decode: true, avcEncode: true },
+            samplesProcessed: 0, framesSubmitted: 0, encodedChunks: 0, encodedBytes: 0, keyChunks: 0, deltaChunks: 0, maxQueueSize: 0, throughput: null,
+            timings: { inputTrackSetup: 1, sampleWaitIteration: 0, sourceVideoFrameAcquisition: 0, canvasDrawRotationResize: 0, outputVideoFrameCreation: 0, encodeSubmissionSync: 0, backpressureWait: 0, flushWait: 0, benchmarkTotalWall: 1 },
+            failure: { stage: 'canvas-draw-failure', message: 'draw stopped' },
+        });
+        await vi.waitFor(() => expect(document.querySelector('pre')?.textContent).toContain('failure: canvas-draw-failure: draw stopped'));
+    });
+
+    it('aborts an in-flight legacy-like Canvas benchmark when the debug panel unmounts', async () => {
+        setSearch('?media-debug=1&media-debug-video-pipeline-benchmark=1');
+        const abortSpy = vi.fn();
+        const runner = vi.fn((_file: File, options?: LegacyLikeCanvasPipelineBenchmarkOptions) => new Promise<LegacyLikeCanvasPipelineBenchmarkResult>(() => {
+            options?.signal?.addEventListener('abort', abortSpy, { once: true });
+        }));
+        const view = render(MediaCompressionDebugPanel, { legacyLikeCanvasPipelineBenchmarkRunner: runner });
+
+        await fireEvent.click(screen.getByRole('button', { name: /Media Compression Debug/ }));
+        await fireEvent.change(screen.getByLabelText('Select video for legacy-like Canvas pipeline benchmark'), {
+            target: { files: [new File(['video'], 'private.mov', { type: 'video/quicktime' })] },
+        });
+        view.unmount();
+
+        expect(abortSpy).toHaveBeenCalledTimes(1);
     });
 });

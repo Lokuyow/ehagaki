@@ -16,7 +16,8 @@ test.describe('media compression debug panel', () => {
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(page.getByRole('button', { name: 'Run video decode benchmark' })).toHaveCount(0);
-        await expect(page.getByRole('button', { name: 'Run real video pipeline benchmark' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Run MediaBunny transform pipeline benchmark' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Run legacy-like Canvas pipeline benchmark' })).toHaveCount(0);
         await expect(panel.locator('pre')).toContainText('Conversion #1');
         await expect(panel.locator('pre')).toContainText('Normal audio transcode');
         await expect(panel.locator('pre')).toContainText('video rate control: subjective-quality');
@@ -237,26 +238,30 @@ test.describe('media compression debug panel', () => {
         await page.goto('media-compression-debug-playwright.html?media-debug=1&media-debug-video-pipeline-benchmark=1');
         const panel = page.locator('.media-debug-panel');
         await page.getByRole('button', { name: /Media Compression Debug/ }).click();
-        const runButton = page.getByRole('button', { name: /real video pipeline benchmark/ });
-        await expect(runButton).toBeVisible();
+        const transformRunButton = page.getByRole('button', { name: /MediaBunny transform pipeline benchmark/ });
+        const canvasRunButton = page.getByRole('button', { name: /legacy-like Canvas pipeline benchmark/ });
+        await expect(transformRunButton).toBeVisible();
+        await expect(canvasRunButton).toBeVisible();
         await expect(panel.locator('pre')).toContainText('Real video pipeline benchmark: enabled (manual run)');
 
         const fileChooserPromise = page.waitForEvent('filechooser');
-        await runButton.click();
+        await transformRunButton.click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({
             name: 'private.mov',
             mimeType: 'video/quicktime',
             buffer: Buffer.from('video'),
         });
-        await expect(runButton).toBeDisabled();
-        await expect(page.locator('[role="status"]').filter({ hasText: 'Real video pipeline benchmark:' })).toHaveText('Real video pipeline benchmark: running');
+        await expect(transformRunButton).toBeDisabled();
+        await expect(canvasRunButton).toBeDisabled();
+        await expect(page.locator('[role="status"]').filter({ hasText: 'MediaBunny transform pipeline benchmark:' })).toHaveText('MediaBunny transform pipeline benchmark: running');
         await page.evaluate(() => {
             (window as Window & { completeRealVideoPipelineBenchmark?: () => void }).completeRealVideoPipelineBenchmark?.();
         });
 
-        await expect(page.locator('[role="status"]').filter({ hasText: 'Real video pipeline benchmark:' })).toHaveText('Real video pipeline benchmark: completed');
+        await expect(page.locator('[role="status"]').filter({ hasText: 'MediaBunny transform pipeline benchmark:' })).toHaveText('MediaBunny transform pipeline benchmark: completed');
         await expect(panel.locator('pre')).toContainText('Real Video Pipeline Benchmark #1');
+        await expect(panel.locator('pre')).toContainText('pipeline kind: mediabunny-transform');
         await expect(panel.locator('pre')).toContainText('source display: 1080x1920');
         await expect(panel.locator('pre')).toContainText('target: 360x640');
         await expect(panel.locator('pre')).toContainText('samples processed: 627');
@@ -264,6 +269,25 @@ test.describe('media compression debug panel', () => {
         await expect(panel.locator('pre')).toContainText('key chunks: 1');
         await expect(panel.locator('pre')).toContainText('Timing (overlaps; do not sum)');
         await expect(panel.locator('pre')).not.toContainText('private.mov');
+
+        const canvasFileChooserPromise = page.waitForEvent('filechooser');
+        await canvasRunButton.click();
+        const canvasFileChooser = await canvasFileChooserPromise;
+        await canvasFileChooser.setFiles({
+            name: 'private.mov',
+            mimeType: 'video/quicktime',
+            buffer: Buffer.from('video'),
+        });
+        await expect(canvasRunButton).toBeDisabled();
+        await expect(transformRunButton).toBeDisabled();
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Legacy-like Canvas pipeline benchmark:' })).toHaveText('Legacy-like Canvas pipeline benchmark: running');
+        await page.evaluate(() => {
+            (window as Window & { completeLegacyLikeCanvasPipelineBenchmark?: () => void }).completeLegacyLikeCanvasPipelineBenchmark?.();
+        });
+        await expect(page.locator('[role="status"]').filter({ hasText: 'Legacy-like Canvas pipeline benchmark:' })).toHaveText('Legacy-like Canvas pipeline benchmark: completed');
+        await expect(panel.locator('pre')).toContainText('Legacy-like Canvas Pipeline Benchmark #1');
+        await expect(panel.locator('pre')).toContainText('pipeline kind: legacy-like-html-canvas');
+        await expect(panel.locator('pre')).toContainText('Canvas draw / rotation / resize: 500.0 ms');
 
         await page.getByRole('button', { name: 'Copy' }).click();
         await expect(page.getByRole('status').filter({ hasText: /Copied|Copy failed|Clipboard unavailable/ })).toBeVisible();

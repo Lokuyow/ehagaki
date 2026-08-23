@@ -16,6 +16,7 @@ import {
     type RawVideoEncoderBenchmarkResult,
 } from '../../lib/videoCompression/rawVideoEncoderBenchmark';
 import type { VideoDecodeBenchmarkResult } from '../../lib/videoCompression/videoDecodeBenchmark';
+import type { LegacyLikeCanvasPipelineBenchmarkResult } from '../../lib/videoCompression/legacyLikeCanvasPipelineBenchmark';
 import type { RealVideoPipelineBenchmarkResult } from '../../lib/videoCompression/realVideoPipelineBenchmark';
 
 declare global {
@@ -24,6 +25,7 @@ declare global {
         completeOffscreenCanvasVideoEncoderBenchmark?: () => void;
         completeVideoDecodeBenchmark?: () => void;
         completeRealVideoPipelineBenchmark?: () => void;
+        completeLegacyLikeCanvasPipelineBenchmark?: () => void;
     }
 }
 
@@ -187,6 +189,7 @@ const realVideoPipelineBenchmarkRunner = realVideoPipelineBenchmark
     ? () => new Promise<RealVideoPipelineBenchmarkResult>((resolve) => {
         window.completeRealVideoPipelineBenchmark = () => {
             resolve({
+                pipelineKind: 'mediabunny-transform',
                 status: 'completed',
                 input: {
                     mime: 'video/quicktime',
@@ -224,6 +227,49 @@ const realVideoPipelineBenchmarkRunner = realVideoPipelineBenchmark
     })
     : undefined;
 
+const legacyLikeCanvasPipelineBenchmarkRunner = realVideoPipelineBenchmark
+    ? () => new Promise<LegacyLikeCanvasPipelineBenchmarkResult>((resolve) => {
+        window.completeLegacyLikeCanvasPipelineBenchmark = () => {
+            resolve({
+                pipelineKind: 'legacy-like-html-canvas',
+                status: 'completed',
+                input: {
+                    mime: 'video/quicktime',
+                    size: 39_681_321,
+                    duration: 20.905,
+                    videoCodec: 'avc1.4d401f',
+                    codedWidth: 1_920,
+                    codedHeight: 1_080,
+                    displayWidth: 1_080,
+                    displayHeight: 1_920,
+                    rotation: 90,
+                },
+                target: { width: 360, height: 640, fit: 'fill', rotate: 0, alpha: 'discard' },
+                capabilities: { decode: true, avcEncode: true },
+                samplesProcessed: 627,
+                framesSubmitted: 627,
+                encodedChunks: 627,
+                encodedBytes: 400_000,
+                keyChunks: 5,
+                deltaChunks: 622,
+                maxQueueSize: 4,
+                throughput: 40,
+                timings: {
+                    inputTrackSetup: 12,
+                    sampleWaitIteration: 686,
+                    sourceVideoFrameAcquisition: 8,
+                    canvasDrawRotationResize: 500,
+                    outputVideoFrameCreation: 8,
+                    encodeSubmissionSync: 21,
+                    backpressureWait: 9,
+                    flushWait: 6,
+                    benchmarkTotalWall: 1_250,
+                },
+            });
+        };
+    })
+    : undefined;
+
 mount(MediaCompressionDebugPanel, {
     target,
     props: {
@@ -231,5 +277,6 @@ mount(MediaCompressionDebugPanel, {
         offscreenCanvasVideoEncoderBenchmarkRunner,
         videoDecodeBenchmarkRunner,
         realVideoPipelineBenchmarkRunner,
+        legacyLikeCanvasPipelineBenchmarkRunner,
     },
 });

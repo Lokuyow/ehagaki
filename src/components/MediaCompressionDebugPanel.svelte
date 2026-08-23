@@ -8,10 +8,15 @@
     RealVideoPipelineBenchmarkOptions,
     RealVideoPipelineBenchmarkResult,
   } from "../lib/videoCompression/realVideoPipelineBenchmark";
+  import type {
+    LegacyLikeCanvasPipelineBenchmarkOptions,
+    LegacyLikeCanvasPipelineBenchmarkResult,
+  } from "../lib/videoCompression/legacyLikeCanvasPipelineBenchmark";
   import {
     addRawVideoEncoderBenchmarkRecord,
     addVideoDecodeBenchmarkRecord,
     addRealVideoPipelineBenchmarkRecord,
+    addLegacyLikeCanvasPipelineBenchmarkRecord,
     clearMediaCompressionDiagnosticRecords,
     formatMediaCompressionDiagnostics,
     getAacCustomEncoderState,
@@ -34,6 +39,11 @@
     options?: RealVideoPipelineBenchmarkOptions,
   ) => Promise<RealVideoPipelineBenchmarkResult>;
   type RealVideoPipelineBenchmarkLoader = () => Promise<RealVideoPipelineBenchmarkRunner>;
+  type LegacyLikeCanvasPipelineBenchmarkRunner = (
+    file: File,
+    options?: LegacyLikeCanvasPipelineBenchmarkOptions,
+  ) => Promise<LegacyLikeCanvasPipelineBenchmarkResult>;
+  type LegacyLikeCanvasPipelineBenchmarkLoader = () => Promise<LegacyLikeCanvasPipelineBenchmarkRunner>;
   type RawVideoEncoderBenchmarkRunner = typeof runRawVideoEncoderBenchmark;
   type RawVideoEncoderBenchmarkOptions = Parameters<RawVideoEncoderBenchmarkRunner>[0];
 
@@ -50,6 +60,10 @@
     realVideoPipelineBenchmarkRunner?: RealVideoPipelineBenchmarkRunner;
     /** Test-only injection for the real pipeline benchmark dynamic-import failure path. */
     realVideoPipelineBenchmarkLoader?: RealVideoPipelineBenchmarkLoader;
+    /** Harness injection only; production loads the legacy-like Canvas benchmark on demand. */
+    legacyLikeCanvasPipelineBenchmarkRunner?: LegacyLikeCanvasPipelineBenchmarkRunner;
+    /** Test-only injection for the legacy-like Canvas benchmark dynamic-import failure path. */
+    legacyLikeCanvasPipelineBenchmarkLoader?: LegacyLikeCanvasPipelineBenchmarkLoader;
   }
 
   let {
@@ -62,6 +76,8 @@
     videoDecodeBenchmarkLoader,
     realVideoPipelineBenchmarkRunner,
     realVideoPipelineBenchmarkLoader,
+    legacyLikeCanvasPipelineBenchmarkRunner,
+    legacyLikeCanvasPipelineBenchmarkLoader,
   }: Props = $props();
 
   let expanded = $state(false);
@@ -72,12 +88,19 @@
   let offscreenCanvasBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let videoDecodeBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let realVideoPipelineBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
+  let legacyLikeCanvasPipelineBenchmarkStatus = $state<"idle" | "running" | "completed" | "failed">("idle");
   let rawRunController: AbortController | null = null;
   let offscreenCanvasRunController: AbortController | null = null;
   let videoDecodeRunController: AbortController | null = null;
   let realVideoPipelineRunController: AbortController | null = null;
+  let legacyLikeCanvasPipelineRunController: AbortController | null = null;
   let videoDecodeInput: HTMLInputElement | undefined = $state();
   let realVideoPipelineInput: HTMLInputElement | undefined = $state();
+  let legacyLikeCanvasPipelineInput: HTMLInputElement | undefined = $state();
+
+  const videoPipelineBenchmarkRunning = $derived(
+    realVideoPipelineBenchmarkStatus === "running" || legacyLikeCanvasPipelineBenchmarkStatus === "running",
+  );
 
   const diagnosticText = $derived.by(() => {
     void records;
@@ -95,8 +118,10 @@
       offscreenCanvasRunController?.abort();
       videoDecodeRunController?.abort();
       realVideoPipelineRunController?.abort();
+      legacyLikeCanvasPipelineRunController?.abort();
       if (videoDecodeInput) videoDecodeInput.value = "";
       if (realVideoPipelineInput) realVideoPipelineInput.value = "";
+      if (legacyLikeCanvasPipelineInput) legacyLikeCanvasPipelineInput.value = "";
       unsubscribe();
     };
   });
@@ -181,14 +206,14 @@
   }
 
   function selectRealVideoPipelineBenchmarkFile(): void {
-    if (realVideoPipelineBenchmarkStatus !== "running") realVideoPipelineInput?.click();
+    if (!videoPipelineBenchmarkRunning) realVideoPipelineInput?.click();
   }
 
   async function runRealVideoPipelineBenchmarkForSelectedFile(event: Event): Promise<void> {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
-    if (!file || realVideoPipelineBenchmarkStatus === "running") return;
+    if (!file || videoPipelineBenchmarkRunning) return;
 
     realVideoPipelineBenchmarkStatus = "running";
     realVideoPipelineRunController = new AbortController();
@@ -204,6 +229,33 @@
       realVideoPipelineBenchmarkStatus = "failed";
     } finally {
       realVideoPipelineRunController = null;
+    }
+  }
+
+  function selectLegacyLikeCanvasPipelineBenchmarkFile(): void {
+    if (!videoPipelineBenchmarkRunning) legacyLikeCanvasPipelineInput?.click();
+  }
+
+  async function runLegacyLikeCanvasPipelineBenchmarkForSelectedFile(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || videoPipelineBenchmarkRunning) return;
+
+    legacyLikeCanvasPipelineBenchmarkStatus = "running";
+    legacyLikeCanvasPipelineRunController = new AbortController();
+    try {
+      const runner = legacyLikeCanvasPipelineBenchmarkRunner
+        ?? (legacyLikeCanvasPipelineBenchmarkLoader
+          ? await legacyLikeCanvasPipelineBenchmarkLoader()
+          : (await import("../lib/videoCompression/legacyLikeCanvasPipelineBenchmark")).runLegacyLikeCanvasPipelineBenchmark);
+      const result = await runner(file, { signal: legacyLikeCanvasPipelineRunController.signal });
+      addLegacyLikeCanvasPipelineBenchmarkRecord(result);
+      legacyLikeCanvasPipelineBenchmarkStatus = result.status;
+    } catch {
+      legacyLikeCanvasPipelineBenchmarkStatus = "failed";
+    } finally {
+      legacyLikeCanvasPipelineRunController = null;
     }
   }
 </script>
@@ -265,15 +317,30 @@
               class="media-debug-file-input"
               type="file"
               accept="video/*"
-              aria-label="Select video for real pipeline benchmark"
+              aria-label="Select video for MediaBunny transform pipeline benchmark"
               onchange={runRealVideoPipelineBenchmarkForSelectedFile}
             />
             <button
               type="button"
-              disabled={realVideoPipelineBenchmarkStatus === "running"}
+              disabled={videoPipelineBenchmarkRunning}
               onclick={selectRealVideoPipelineBenchmarkFile}
             >
-              {realVideoPipelineBenchmarkStatus === "running" ? "Running real video pipeline benchmark…" : "Run real video pipeline benchmark"}
+              {realVideoPipelineBenchmarkStatus === "running" ? "Running MediaBunny transform pipeline benchmark…" : "Run MediaBunny transform pipeline benchmark"}
+            </button>
+            <input
+              bind:this={legacyLikeCanvasPipelineInput}
+              class="media-debug-file-input"
+              type="file"
+              accept="video/*"
+              aria-label="Select video for legacy-like Canvas pipeline benchmark"
+              onchange={runLegacyLikeCanvasPipelineBenchmarkForSelectedFile}
+            />
+            <button
+              type="button"
+              disabled={videoPipelineBenchmarkRunning}
+              onclick={selectLegacyLikeCanvasPipelineBenchmarkFile}
+            >
+              {legacyLikeCanvasPipelineBenchmarkStatus === "running" ? "Running legacy-like Canvas pipeline benchmark…" : "Run legacy-like Canvas pipeline benchmark"}
             </button>
           {/if}
           <button type="button" onclick={copyDiagnostics}>Copy</button>
@@ -282,7 +349,8 @@
           {#if rawBenchmarkStatus !== "idle"}<span role="status">Raw benchmark: {rawBenchmarkStatus}</span>{/if}
           {#if offscreenCanvasBenchmarkStatus !== "idle"}<span role="status">OffscreenCanvas benchmark: {offscreenCanvasBenchmarkStatus}</span>{/if}
           {#if videoDecodeBenchmarkStatus !== "idle"}<span role="status">Video decode benchmark: {videoDecodeBenchmarkStatus}</span>{/if}
-          {#if realVideoPipelineBenchmarkStatus !== "idle"}<span role="status">Real video pipeline benchmark: {realVideoPipelineBenchmarkStatus}</span>{/if}
+          {#if realVideoPipelineBenchmarkStatus !== "idle"}<span role="status">MediaBunny transform pipeline benchmark: {realVideoPipelineBenchmarkStatus}</span>{/if}
+          {#if legacyLikeCanvasPipelineBenchmarkStatus !== "idle"}<span role="status">Legacy-like Canvas pipeline benchmark: {legacyLikeCanvasPipelineBenchmarkStatus}</span>{/if}
         </div>
         <pre>{diagnosticText}</pre>
       </div>

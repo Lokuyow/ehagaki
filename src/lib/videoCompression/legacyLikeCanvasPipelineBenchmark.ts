@@ -4,45 +4,46 @@ import {
     Input,
     VideoSampleSink,
     type InputVideoTrack,
-    type VideoSampleTransformOptions,
 } from 'mediabunny';
 
 import { RAW_VIDEO_ENCODER_BENCHMARK_CONFIG, RAW_VIDEO_ENCODER_BENCHMARK_QUEUE_LIMIT } from './rawVideoEncoderBenchmark';
+import {
+    REAL_VIDEO_PIPELINE_BENCHMARK_TARGET,
+    REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL,
+    type RealVideoPipelineBenchmarkEncoderConstructor,
+    type RealVideoPipelineBenchmarkInputLike,
+    type RealVideoPipelineBenchmarkSinkLike,
+    type RealVideoPipelineBenchmarkTrackLike,
+} from './realVideoPipelineBenchmark';
 
-export const REAL_VIDEO_PIPELINE_BENCHMARK_TARGET = {
-    width: RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.width,
-    height: RAW_VIDEO_ENCODER_BENCHMARK_CONFIG.height,
-    fit: 'fill',
-    rotate: 0,
-    alpha: 'discard',
-} as const satisfies VideoSampleTransformOptions;
-
-export const REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL = 5;
-
-export type RealVideoPipelineBenchmarkFailureStage =
+export type LegacyLikeCanvasPipelineBenchmarkFailureStage =
     | 'no-video-track'
     | 'decode-unavailable'
     | 'encoder-unavailable'
     | 'config-unsupported'
-    | 'transform-failure'
+    | 'canvas-unavailable'
+    | 'canvas-context-unavailable'
+    | 'source-frame-failure'
+    | 'canvas-draw-failure'
     | 'encode-failure'
     | 'flush-failure'
     | 'aborted'
     | 'setup-failure';
 
-export interface RealVideoPipelineBenchmarkTimings {
+export interface LegacyLikeCanvasPipelineBenchmarkTimings {
     inputTrackSetup: number;
     sampleWaitIteration: number;
-    videoTransform: number;
-    videoFrameCreation: number;
+    sourceVideoFrameAcquisition: number;
+    canvasDrawRotationResize: number;
+    outputVideoFrameCreation: number;
     encodeSubmissionSync: number;
     backpressureWait: number;
     flushWait: number;
     benchmarkTotalWall: number;
 }
 
-export interface RealVideoPipelineBenchmarkResult {
-    pipelineKind: 'mediabunny-transform';
+export interface LegacyLikeCanvasPipelineBenchmarkResult {
+    pipelineKind: 'legacy-like-html-canvas';
     status: 'completed' | 'failed';
     input: {
         mime: string;
@@ -55,13 +56,7 @@ export interface RealVideoPipelineBenchmarkResult {
         displayHeight: number | null;
         rotation: number | null;
     };
-    target: {
-        width: number;
-        height: number;
-        fit: 'fill';
-        rotate: 0;
-        alpha: 'discard';
-    };
+    target: typeof REAL_VIDEO_PIPELINE_BENCHMARK_TARGET;
     capabilities: {
         decode: boolean | null;
         avcEncode: boolean | null;
@@ -74,73 +69,55 @@ export interface RealVideoPipelineBenchmarkResult {
     deltaChunks: number;
     maxQueueSize: number;
     throughput: number | null;
-    timings: RealVideoPipelineBenchmarkTimings;
+    timings: LegacyLikeCanvasPipelineBenchmarkTimings;
     failure?: {
-        stage: RealVideoPipelineBenchmarkFailureStage;
+        stage: LegacyLikeCanvasPipelineBenchmarkFailureStage;
         message: string;
     };
 }
 
-export interface RealVideoPipelineBenchmarkSampleLike {
-    timestamp: number;
-    duration: number;
-    codedWidth: number;
-    codedHeight: number;
-    rotation: number;
-    setTimestamp(timestamp: number): void;
-    transform(options: VideoSampleTransformOptions): Promise<RealVideoPipelineBenchmarkSampleLike>;
-    toVideoFrame(): { close(): void };
+export interface LegacyLikeCanvasPipelineBenchmarkFrameLike {
+    readonly displayWidth: number;
+    readonly displayHeight: number;
     close(): void;
 }
 
-export interface RealVideoPipelineBenchmarkTrackLike {
-    canDecode(): Promise<boolean>;
-    getCodec(): Promise<string | null>;
-    getCodedWidth(): Promise<number>;
-    getCodedHeight(): Promise<number>;
-    getDisplayWidth(): Promise<number>;
-    getDisplayHeight(): Promise<number>;
-    getRotation(): Promise<number>;
-    getFirstTimestamp(): Promise<number>;
+export interface LegacyLikeCanvasPipelineBenchmarkSampleLike {
+    timestamp: number;
+    duration: number;
+    setTimestamp(timestamp: number): void;
+    toVideoFrame(): LegacyLikeCanvasPipelineBenchmarkFrameLike;
+    close(): void;
 }
 
-export interface RealVideoPipelineBenchmarkInputLike {
-    getVideoTracks(): Promise<RealVideoPipelineBenchmarkTrackLike[]>;
-    getDurationFromMetadata(): Promise<number | null>;
-    dispose(): void;
+export interface LegacyLikeCanvasPipelineBenchmarkSinkLike extends Omit<RealVideoPipelineBenchmarkSinkLike, 'samples'> {
+    samples(): AsyncIterable<LegacyLikeCanvasPipelineBenchmarkSampleLike>;
 }
 
-export interface RealVideoPipelineBenchmarkSinkLike {
-    samples(): AsyncIterable<RealVideoPipelineBenchmarkSampleLike>;
-}
-
-export interface RealVideoPipelineBenchmarkOptions {
+export interface LegacyLikeCanvasPipelineBenchmarkOptions {
     signal?: AbortSignal;
     now?: () => number;
     VideoEncoder?: RealVideoPipelineBenchmarkEncoderConstructor | null;
     createInput?: (file: File) => RealVideoPipelineBenchmarkInputLike;
-    createVideoSampleSink?: (track: RealVideoPipelineBenchmarkTrackLike) => RealVideoPipelineBenchmarkSinkLike;
+    createVideoSampleSink?: (track: RealVideoPipelineBenchmarkTrackLike) => LegacyLikeCanvasPipelineBenchmarkSinkLike;
+    createCanvas?: () => HTMLCanvasElement | null;
+    createOutputVideoFrame?: (
+        canvas: HTMLCanvasElement,
+        init: VideoFrameInit,
+    ) => LegacyLikeCanvasPipelineBenchmarkFrameLike;
 }
 
-interface RealVideoPipelineBenchmarkEncoder extends EventTarget {
+interface LegacyLikeCanvasPipelineBenchmarkEncoder extends EventTarget {
     readonly encodeQueueSize: number;
     configure(config: VideoEncoderConfig): void;
-    encode(frame: { close(): void }, options?: VideoEncoderEncodeOptions): void;
+    encode(frame: LegacyLikeCanvasPipelineBenchmarkFrameLike, options?: VideoEncoderEncodeOptions): void;
     flush(): Promise<void>;
     close(): void;
 }
 
-export interface RealVideoPipelineBenchmarkEncoderConstructor {
-    new(init: {
-        output: (chunk: { byteLength: number; type: EncodedVideoChunkType }) => void;
-        error: (error: unknown) => void;
-    }): RealVideoPipelineBenchmarkEncoder;
-    isConfigSupported(config: VideoEncoderConfig): Promise<{ supported?: boolean; config?: VideoEncoderConfig }>;
-}
-
-class RealVideoPipelineBenchmarkAbortError extends Error {
+class LegacyLikeCanvasPipelineBenchmarkAbortError extends Error {
     constructor() {
-        super('Real video pipeline benchmark was aborted.');
+        super('Legacy-like Canvas pipeline benchmark was aborted.');
         this.name = 'AbortError';
     }
 }
@@ -150,12 +127,13 @@ function shortErrorMessage(error: unknown): string {
     return message.replace(/[\r\n]+/g, ' ').slice(0, 240);
 }
 
-function createTimings(): RealVideoPipelineBenchmarkTimings {
+function createTimings(): LegacyLikeCanvasPipelineBenchmarkTimings {
     return {
         inputTrackSetup: 0,
         sampleWaitIteration: 0,
-        videoTransform: 0,
-        videoFrameCreation: 0,
+        sourceVideoFrameAcquisition: 0,
+        canvasDrawRotationResize: 0,
+        outputVideoFrameCreation: 0,
         encodeSubmissionSync: 0,
         backpressureWait: 0,
         flushWait: 0,
@@ -163,9 +141,9 @@ function createTimings(): RealVideoPipelineBenchmarkTimings {
     };
 }
 
-function createResult(file: File): RealVideoPipelineBenchmarkResult {
+function createResult(file: File): LegacyLikeCanvasPipelineBenchmarkResult {
     return {
-        pipelineKind: 'mediabunny-transform',
+        pipelineKind: 'legacy-like-html-canvas',
         status: 'failed',
         input: {
             mime: file.type || 'unknown',
@@ -178,7 +156,7 @@ function createResult(file: File): RealVideoPipelineBenchmarkResult {
             displayHeight: null,
             rotation: null,
         },
-        target: { ...REAL_VIDEO_PIPELINE_BENCHMARK_TARGET },
+        target: REAL_VIDEO_PIPELINE_BENCHMARK_TARGET,
         capabilities: { decode: null, avcEncode: null },
         samplesProcessed: 0,
         framesSubmitted: 0,
@@ -196,16 +174,30 @@ function createProductionInput(file: File): RealVideoPipelineBenchmarkInputLike 
     return new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
 }
 
-function createProductionVideoSampleSink(track: RealVideoPipelineBenchmarkTrackLike): RealVideoPipelineBenchmarkSinkLike {
-    return new VideoSampleSink(track as InputVideoTrack);
+function createProductionVideoSampleSink(track: RealVideoPipelineBenchmarkTrackLike): LegacyLikeCanvasPipelineBenchmarkSinkLike {
+    return new VideoSampleSink(track as InputVideoTrack) as unknown as LegacyLikeCanvasPipelineBenchmarkSinkLike;
+}
+
+function createProductionCanvas(): HTMLCanvasElement | null {
+    return typeof document === 'undefined' ? null : document.createElement('canvas');
+}
+
+function createProductionOutputVideoFrame(
+    canvas: HTMLCanvasElement,
+    init: VideoFrameInit,
+): LegacyLikeCanvasPipelineBenchmarkFrameLike {
+    if (typeof globalThis.VideoFrame !== 'function') {
+        throw new Error('VideoFrame is unavailable.');
+    }
+    return new globalThis.VideoFrame(canvas, init);
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
-    if (signal?.aborted) throw new RealVideoPipelineBenchmarkAbortError();
+    if (signal?.aborted) throw new LegacyLikeCanvasPipelineBenchmarkAbortError();
 }
 
 async function waitForEncoderQueue(
-    encoder: RealVideoPipelineBenchmarkEncoder,
+    encoder: LegacyLikeCanvasPipelineBenchmarkEncoder,
     queueLimit: number,
     signal: AbortSignal | undefined,
     callbackError: () => unknown,
@@ -226,7 +218,7 @@ async function waitForEncoderQueue(
         const onDequeue = () => {
             if (encoder.encodeQueueSize < queueLimit) finish(resolve);
         };
-        const onAbort = () => finish(() => reject(new RealVideoPipelineBenchmarkAbortError()));
+        const onAbort = () => finish(() => reject(new LegacyLikeCanvasPipelineBenchmarkAbortError()));
         const rejectForEncoderError = (error: unknown) => finish(() => reject(error));
         encoder.addEventListener('dequeue', onDequeue);
         signal?.addEventListener('abort', onAbort, { once: true });
@@ -237,38 +229,84 @@ async function waitForEncoderQueue(
     });
 }
 
+function resetCanvasTransform(context: CanvasRenderingContext2D): void {
+    if (typeof context.resetTransform === 'function') context.resetTransform();
+    else context.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+/**
+ * Mirrors the v1.44.2 CanvasSink target-case geometry without reusing its private
+ * APIs: a 90° rotation is baked into a reused portrait canvas before encoding.
+ */
+export function drawLegacyLikeCanvasFrame(
+    context: CanvasRenderingContext2D,
+    sourceFrame: LegacyLikeCanvasPipelineBenchmarkFrameLike,
+    rotation: number,
+): void {
+    const { width: targetWidth, height: targetHeight } = REAL_VIDEO_PIPELINE_BENCHMARK_TARGET;
+    if (!sourceFrame.displayWidth || !sourceFrame.displayHeight) {
+        throw new Error('Source VideoFrame has no drawable dimensions.');
+    }
+
+    resetCanvasTransform(context);
+    context.clearRect(0, 0, targetWidth, targetHeight);
+    context.save();
+    const rotationInRadians = rotation * Math.PI / 180;
+    const aspectRatioChange = rotation % 180 === 0 ? 1 : targetWidth / targetHeight;
+    context.translate(targetWidth / 2, targetHeight / 2);
+    context.rotate(rotationInRadians);
+    context.scale(1 / aspectRatioChange, aspectRatioChange);
+    context.translate(-targetWidth / 2, -targetHeight / 2);
+    context.drawImage(
+        sourceFrame as unknown as CanvasImageSource,
+        0,
+        0,
+        sourceFrame.displayWidth,
+        sourceFrame.displayHeight,
+        0,
+        0,
+        targetWidth,
+        targetHeight,
+    );
+    context.restore();
+}
+
 function classifyFailure(
     error: unknown,
-    phase: 'setup' | 'transform' | 'encode' | 'flush',
+    phase: 'setup' | 'source-frame' | 'canvas-draw' | 'encode' | 'flush',
     signal: AbortSignal | undefined,
-): RealVideoPipelineBenchmarkFailureStage {
-    if (signal?.aborted || error instanceof RealVideoPipelineBenchmarkAbortError) return 'aborted';
-    if (phase === 'transform') return 'transform-failure';
+): LegacyLikeCanvasPipelineBenchmarkFailureStage {
+    if (signal?.aborted || error instanceof LegacyLikeCanvasPipelineBenchmarkAbortError) return 'aborted';
+    if (phase === 'source-frame') return 'source-frame-failure';
+    if (phase === 'canvas-draw') return 'canvas-draw-failure';
     if (phase === 'encode') return 'encode-failure';
     if (phase === 'flush') return 'flush-failure';
     return 'setup-failure';
 }
 
 /**
- * Runs MediaBunny's public decode and VideoSample.transform pipeline directly into
- * native WebCodecs. It deliberately does not use Conversion, Output, muxing, or files.
+ * Runs a diagnostic-only, legacy-like HTMLCanvas path for the portrait MOV case.
+ * It uses only current MediaBunny public APIs and deliberately never calls
+ * VideoSample.transform(), Conversion, muxing, audio, or file output.
  */
-export async function runRealVideoPipelineBenchmark(
+export async function runLegacyLikeCanvasPipelineBenchmark(
     file: File,
-    options: RealVideoPipelineBenchmarkOptions = {},
-): Promise<RealVideoPipelineBenchmarkResult> {
+    options: LegacyLikeCanvasPipelineBenchmarkOptions = {},
+): Promise<LegacyLikeCanvasPipelineBenchmarkResult> {
     const now = options.now ?? (() => performance.now());
     const result = createResult(file);
     const createInput = options.createInput ?? createProductionInput;
     const createVideoSampleSink = options.createVideoSampleSink ?? createProductionVideoSampleSink;
+    const createCanvas = options.createCanvas ?? createProductionCanvas;
+    const createOutputVideoFrame = options.createOutputVideoFrame ?? createProductionOutputVideoFrame;
     const VideoEncoderConstructor = options.VideoEncoder === undefined
         ? (globalThis.VideoEncoder as unknown as RealVideoPipelineBenchmarkEncoderConstructor | undefined)
         : options.VideoEncoder ?? undefined;
     let input: RealVideoPipelineBenchmarkInputLike | undefined;
     let inputDisposed = false;
-    let encoder: RealVideoPipelineBenchmarkEncoder | undefined;
+    let encoder: LegacyLikeCanvasPipelineBenchmarkEncoder | undefined;
     let callbackError: unknown;
-    let phase: 'setup' | 'transform' | 'encode' | 'flush' = 'setup';
+    let phase: 'setup' | 'source-frame' | 'canvas-draw' | 'encode' | 'flush' = 'setup';
     const waitingRejectors = new Set<(error: unknown) => void>();
     const benchmarkStartedAt = now();
 
@@ -286,7 +324,7 @@ export async function runRealVideoPipelineBenchmark(
         waitingRejectors.clear();
     };
     const abortInput = () => {
-        rejectWaiters(new RealVideoPipelineBenchmarkAbortError());
+        rejectWaiters(new LegacyLikeCanvasPipelineBenchmarkAbortError());
         disposeInput();
     };
     options.signal?.addEventListener('abort', abortInput, { once: true });
@@ -347,13 +385,29 @@ export async function runRealVideoPipelineBenchmark(
             result.failure = { stage: 'config-unsupported', message: shortErrorMessage(error) };
             return result;
         }
-        result.timings.inputTrackSetup = Math.max(0, now() - setupStartedAt);
         if (!support.supported) {
             result.capabilities.avcEncode = false;
+            result.timings.inputTrackSetup = Math.max(0, now() - setupStartedAt);
             result.failure = { stage: 'config-unsupported', message: 'VideoEncoder does not support the fixed AVC configuration.' };
             return result;
         }
         result.capabilities.avcEncode = true;
+
+        const canvas = createCanvas();
+        if (!canvas) {
+            result.timings.inputTrackSetup = Math.max(0, now() - setupStartedAt);
+            result.failure = { stage: 'canvas-unavailable', message: 'HTMLCanvasElement is unavailable.' };
+            return result;
+        }
+        canvas.width = REAL_VIDEO_PIPELINE_BENCHMARK_TARGET.width;
+        canvas.height = REAL_VIDEO_PIPELINE_BENCHMARK_TARGET.height;
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) {
+            result.timings.inputTrackSetup = Math.max(0, now() - setupStartedAt);
+            result.failure = { stage: 'canvas-context-unavailable', message: 'Canvas 2D context is unavailable.' };
+            return result;
+        }
+        result.timings.inputTrackSetup = Math.max(0, now() - setupStartedAt);
 
         encoder = new VideoEncoderConstructor({
             output: (chunk) => {
@@ -366,7 +420,7 @@ export async function runRealVideoPipelineBenchmark(
                 callbackError ??= error;
                 rejectWaiters(error);
             },
-        });
+        }) as unknown as LegacyLikeCanvasPipelineBenchmarkEncoder;
         encoder.configure({ ...RAW_VIDEO_ENCODER_BENCHMARK_CONFIG });
 
         const sink = createVideoSampleSink(track);
@@ -383,15 +437,23 @@ export async function runRealVideoPipelineBenchmark(
             result.samplesProcessed += 1;
             try {
                 throwIfAborted(options.signal);
-                sample.setTimestamp(Math.max(sample.timestamp - firstTimestamp, 0));
-                phase = 'transform';
-                const transformStartedAt = now();
-                const transformedSample = await sample.transform(REAL_VIDEO_PIPELINE_BENCHMARK_TARGET);
-                result.timings.videoTransform += Math.max(0, now() - transformStartedAt);
+                const normalizedTimestamp = Math.max(sample.timestamp - firstTimestamp, 0);
+                sample.setTimestamp(normalizedTimestamp);
+                phase = 'source-frame';
+                const sourceFrameStartedAt = now();
+                const sourceFrame = sample.toVideoFrame();
+                result.timings.sourceVideoFrameAcquisition += Math.max(0, now() - sourceFrameStartedAt);
                 try {
-                    const frameStartedAt = now();
-                    const frame = transformedSample.toVideoFrame();
-                    result.timings.videoFrameCreation += Math.max(0, now() - frameStartedAt);
+                    phase = 'canvas-draw';
+                    const canvasDrawStartedAt = now();
+                    drawLegacyLikeCanvasFrame(context, sourceFrame, rotation);
+                    result.timings.canvasDrawRotationResize += Math.max(0, now() - canvasDrawStartedAt);
+                    const outputFrameStartedAt = now();
+                    const outputFrame = createOutputVideoFrame(canvas, {
+                        timestamp: Math.round(normalizedTimestamp * 1_000_000),
+                        duration: Math.round(sample.duration * 1_000_000),
+                    });
+                    result.timings.outputVideoFrameCreation += Math.max(0, now() - outputFrameStartedAt);
                     try {
                         phase = 'encode';
                         const waitStartedAt = now();
@@ -404,22 +466,21 @@ export async function runRealVideoPipelineBenchmark(
                         );
                         result.timings.backpressureWait += Math.max(0, now() - waitStartedAt);
                         const encodeStartedAt = now();
-                        const keyFrameInterval = Math.floor(sample.timestamp / REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL);
+                        const keyFrameInterval = Math.floor(normalizedTimestamp / REAL_VIDEO_PIPELINE_KEY_FRAME_INTERVAL);
                         const keyFrame = keyFrameInterval !== lastKeyFrameInterval;
                         lastKeyFrameInterval = keyFrameInterval;
-                        encoder.encode(frame, { keyFrame });
+                        encoder.encode(outputFrame, { keyFrame });
                         result.timings.encodeSubmissionSync += Math.max(0, now() - encodeStartedAt);
                         result.framesSubmitted += 1;
                         result.maxQueueSize = Math.max(result.maxQueueSize, encoder.encodeQueueSize);
                         if (callbackError) throw callbackError;
                     } finally {
-                        frame.close();
+                        outputFrame.close();
                     }
                 } finally {
-                    transformedSample.close();
+                    sourceFrame.close();
                 }
             } catch (error) {
-                phase = phase === 'transform' ? 'transform' : 'encode';
                 throw error;
             } finally {
                 sample.close();
@@ -446,7 +507,7 @@ export async function runRealVideoPipelineBenchmark(
         return result;
     } finally {
         options.signal?.removeEventListener('abort', abortInput);
-        rejectWaiters(new RealVideoPipelineBenchmarkAbortError());
+        rejectWaiters(new LegacyLikeCanvasPipelineBenchmarkAbortError());
         if (result.timings.benchmarkTotalWall === 0) {
             result.timings.benchmarkTotalWall = Math.max(0, now() - benchmarkStartedAt);
         }
