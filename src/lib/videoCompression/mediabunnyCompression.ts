@@ -20,20 +20,47 @@ import {
 } from 'mediabunny';
 import type { VideoCompressionResult } from '../types';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
-import { BaseCompression } from './baseCompression';
-import { createCompressedFile, devWarn } from './compressionUtils';
+import type {
+    EnabledVideoCompressionOptions,
+    VideoCompressionQualityPreset,
+} from './videoCompressionConfig';
 
+const CONTEXT = 'MediaBunnyCompression';
 let aacEncoderRegistration: Promise<void> | null = null;
+
+function devLog(...args: unknown[]): void {
+    if (import.meta.env.DEV) console.log(`[${CONTEXT}]`, ...args);
+}
+
+function devWarn(...args: unknown[]): void {
+    if (import.meta.env.DEV) console.warn(`[${CONTEXT}]`, ...args);
+}
 
 function ceilToMultipleOfTwo(value: number): number {
     return Math.ceil(value / 2) * 2;
 }
 
-function getQualityFromFactor(factor: number | null | undefined): Quality | undefined {
-    if (factor === 0.3) return QUALITY_VERY_LOW;
-    if (factor === 1) return QUALITY_MEDIUM;
-    if (factor === 2) return QUALITY_HIGH;
-    return undefined;
+function getMediaBunnyQuality(preset: VideoCompressionQualityPreset): Quality {
+    switch (preset) {
+        case 'high': return QUALITY_HIGH;
+        case 'medium': return QUALITY_MEDIUM;
+        case 'low': return QUALITY_VERY_LOW;
+    }
+}
+
+function createCompressedResult(blob: Blob, originalFile: File): VideoCompressionResult {
+    if (blob.size >= originalFile.size) {
+        devLog('Compressed file is larger, using original');
+        return { file: originalFile, wasCompressed: false };
+    }
+
+    const nameWithoutExt = originalFile.name.replace(/\.[^.]+$/, '');
+    const file = new File([blob], `${nameWithoutExt}_compressed.mp4`, { type: 'video/mp4' });
+    if (import.meta.env.DEV) {
+        const ratio = ((1 - file.size / originalFile.size) * 100).toFixed(1);
+        devLog('Compression successful:', { originalSize: originalFile.size, compressedSize: file.size, ratio: `${ratio}%` });
+    }
+    return { file, wasCompressed: true };
 }
 
 async function registerAacEncoder(): Promise<void> {
@@ -45,15 +72,14 @@ async function registerAacEncoder(): Promise<void> {
     await aacEncoderRegistration;
 }
 
-export class MediaBunnyCompression extends BaseCompression {
+export class MediaBunnyCompression {
     private abortController: AbortController | null = null;
     private abortRequested = false;
+    private onProgress?: (progress: number) => void;
 
     constructor(
-        isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
-    ) {
-        super('MediaBunnyCompression', isUploadAborted);
-    }
+        private readonly isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
+    ) { }
 
     public abort(): void {
         this.abortRequested = true;
@@ -65,70 +91,72 @@ export class MediaBunnyCompression extends BaseCompression {
         this.abortController = null;
     }
 
-    private async canTranscodeVideo(
-        track: InputVideoTrack,
-        dimensions: { width: number; height: number },
-        quality: Quality | undefined,
-    ): Promise<boolean> {
+    public setProgressCallback(callback?: (progress: number) => void): void {
+        this.onProgress = callback;
+    }
+
+    private resetProgress(): void {
+        this.onProgress?.(0);
+    }
+
+    private updateProgress(progress: number): void {
+        this.onProgress?.(Math.round(progress));
+    }
+
+    private getAbortedResult(file: File): VideoCompressionResult | null {
+        if (!this.isUploadAborted()) return null;
+        devLog('Compression aborted');
+        this.resetProgress();
+        return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+    }
+
+    private async canTranscodeVideo(track: InputVideoTrack, dimensions: { width: number; height: number }, quality: Quality): Promise<boolean> {
         if (!await track.canDecode()) return false;
-        return canEncodeVideo('avc', {
-            ...dimensions,
-            ...(quality ? { quality } : {}),
-        });
+        return canEncodeVideo('avc', { ...dimensions, ...{ quality } });
     }
 
     private async buildAudioOptions(
         track: InputAudioTrack,
-        options: any,
-        quality: Quality | undefined,
+        options: EnabledVideoCompressionOptions,
+        quality: Quality,
     ): Promise<ConversionAudioOptions> {
         if (!track.codec || !await canDecodeAudio(track.codec)) {
-            this.log('Audio decode is unavailable; preserving packets without transcoding.', { codec: track.codec });
+            devLog('Audio decode is unavailable; preserving packets without transcoding.', { codec: track.codec });
             return {};
         }
 
-        const numberOfChannels = options.audioChannels ?? track.numberOfChannels;
-        const sampleRate = options.audioSampleRate ?? track.sampleRate;
         const encoderOptions = {
-            numberOfChannels,
-            sampleRate,
-            ...(quality ? { bitrate: quality } : {}),
+            numberOfChannels: options.audioChannels ?? track.numberOfChannels,
+            sampleRate: options.audioSampleRate ?? track.sampleRate,
+            bitrate: quality,
         };
-
+        if (!await canEncodeAudio('aac', encoderOptions)) await registerAacEncoder();
         if (!await canEncodeAudio('aac', encoderOptions)) {
-            await registerAacEncoder();
-        }
-        if (!await canEncodeAudio('aac', encoderOptions)) {
-            this.log('AAC encoding is unavailable; preserving packets without transcoding.', { codec: track.codec });
+            devLog('AAC encoding is unavailable; preserving packets without transcoding.', { codec: track.codec });
             return {};
         }
-
         return { codec: 'aac', forceTranscode: true, ...encoderOptions };
     }
 
     private async buildVideoOptions(
         track: InputVideoTrack,
-        options: any,
-        quality: Quality | undefined,
+        options: EnabledVideoCompressionOptions,
+        quality: Quality,
     ): Promise<{ options: ConversionVideoOptions; dimensions: { width: number; height: number } }> {
         const displayWidth = await track.getDisplayWidth();
         const displayHeight = await track.getDisplayHeight();
         const videoOptions: ConversionVideoOptions = {
             codec: 'avc',
             forceTranscode: true,
-            ...(quality ? { quality } : {}),
+            ...{ quality },
         };
-        if (typeof options.maxSize === 'number' && Number.isFinite(options.maxSize)) {
-            if (displayWidth > displayHeight) {
-                videoOptions.width = Math.min(displayWidth, options.maxSize);
-            } else {
-                videoOptions.height = Math.min(displayHeight, options.maxSize);
-            }
+        if (displayWidth > displayHeight) {
+            videoOptions.width = Math.min(displayWidth, options.maxSize);
+        } else {
+            videoOptions.height = Math.min(displayHeight, options.maxSize);
         }
 
-        // Keep capability dimensions identical to MediaBunny's one-sided conversion resize:
-        // the requested side is rounded up to an even number, then the other side is inferred
-        // from the input aspect ratio and rounded up to an even number as well.
+        // Keep capability dimensions identical to MediaBunny's one-sided conversion resize.
         let width = displayWidth;
         let height = displayHeight;
         if (videoOptions.width !== undefined) {
@@ -138,7 +166,6 @@ export class MediaBunnyCompression extends BaseCompression {
             height = ceilToMultipleOfTwo(videoOptions.height);
             width = ceilToMultipleOfTwo(Math.round(height * (displayWidth / displayHeight)));
         }
-
         return { options: videoOptions, dimensions: { width, height } };
     }
 
@@ -151,7 +178,7 @@ export class MediaBunnyCompression extends BaseCompression {
         }
     }
 
-    public async compressWithMediabunny(file: File, options: any): Promise<VideoCompressionResult> {
+    public async compress(file: File, options: EnabledVideoCompressionOptions): Promise<VideoCompressionResult> {
         let input: Input | null = null;
         try {
             this.abortRequested = false;
@@ -160,14 +187,12 @@ export class MediaBunnyCompression extends BaseCompression {
 
             const videoTracks = await input.getVideoTracks();
             const audioTracks = await input.getAudioTracks();
-            const videoQuality = getQualityFromFactor(options?.mediabunnyVideoQualityFactor);
-            const audioQuality = getQualityFromFactor(options?.mediabunnyAudioQualityFactor);
-
+            const quality = getMediaBunnyQuality(options.qualityPreset);
             const videoOptions = videoTracks.length > 0
-                ? await this.buildVideoOptions(videoTracks[0], options, videoQuality)
+                ? await this.buildVideoOptions(videoTracks[0], options, quality)
                 : null;
-            if (!videoOptions || !await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, videoQuality)) {
-                this.log('Required video decode or AVC encode capability is unavailable; skipping compression.');
+            if (!videoOptions || !await this.canTranscodeVideo(videoTracks[0], videoOptions.dimensions, quality)) {
+                devLog('Required video decode or AVC encode capability is unavailable; skipping compression.');
                 return { file, wasCompressed: false, wasSkipped: true };
             }
 
@@ -178,13 +203,12 @@ export class MediaBunnyCompression extends BaseCompression {
                 output,
                 video: async (track) => (track === videoTracks[0]
                     ? videoOptions.options
-                    : (await this.buildVideoOptions(track, options, videoQuality)).options),
-                audio: (track) => this.buildAudioOptions(track, options, audioQuality),
+                    : (await this.buildVideoOptions(track, options, quality)).options),
+                audio: (track) => this.buildAudioOptions(track, options, quality),
                 showWarnings: false,
             });
-
             if (!conversion.isValid || conversion.discardedTracks.some(({ track }) => track.isVideoTrack() || track.isAudioTrack())) {
-                devWarn(this.context, 'MediaBunny cannot preserve all required tracks; skipping compression.', conversion.discardedTracks);
+                devWarn('MediaBunny cannot preserve all required tracks; skipping compression.', conversion.discardedTracks);
                 return { file, wasCompressed: false, wasSkipped: true };
             }
 
@@ -193,26 +217,25 @@ export class MediaBunnyCompression extends BaseCompression {
             await conversion.execute();
 
             const aborted = this.abortRequested
-                ? { file, wasCompressed: false, wasSkipped: true, aborted: true }
-                : this.checkAbort(file);
+                ? (this.resetProgress(), { file, wasCompressed: false, wasSkipped: true, aborted: true })
+                : this.getAbortedResult(file);
             if (aborted) return aborted;
             if (!target.buffer) throw new Error('MediaBunny did not produce an output buffer.');
 
-            const result = createCompressedFile(new Blob([target.buffer], { type: 'video/mp4' }), file, this.context);
+            const result = createCompressedResult(new Blob([target.buffer], { type: 'video/mp4' }), file);
             if (!result.wasCompressed) return result;
             if (audioTracks.length > 0 && !await this.outputPreservesAudio(result.file, audioTracks.length)) {
-                devWarn(this.context, 'MediaBunny output lost input audio; keeping the original file.');
+                devWarn('MediaBunny output lost input audio; keeping the original file.');
                 return { file, wasCompressed: false, wasSkipped: true };
             }
-
             this.updateProgress(100);
             return result;
         } catch (error) {
             const aborted = this.abortRequested
-                ? { file, wasCompressed: false, wasSkipped: true, aborted: true }
-                : this.checkAbort(file);
+                ? (this.resetProgress(), { file, wasCompressed: false, wasSkipped: true, aborted: true })
+                : this.getAbortedResult(file);
             if (aborted) return aborted;
-            devWarn(this.context, 'MediaBunny compression failed; keeping the original file.', error);
+            devWarn('MediaBunny compression failed; keeping the original file.', error);
             return { file, wasCompressed: false, wasSkipped: true };
         } finally {
             input?.dispose();
