@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { File as NodeFile } from 'node:buffer';
 import { VideoCompressionService } from '../../lib/videoCompression/videoCompressionService';
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
 
@@ -60,7 +61,9 @@ function createTestVideoFile(size: number = 300 * 1024, name: string = 'test.mp4
         ...new Uint8Array(size - 32),
     ]);
 
-    return new File([header], name, { type: 'video/mp4' });
+    // MediaBunny 1.44.2 reads BlobSource through arrayBuffer() in jsdom. Node's
+    // File implementation provides the same Blob methods as a browser File.
+    return new NodeFile([header], name, { type: 'video/mp4' }) as unknown as File;
 }
 
 describe('Video Compression Integration Tests', () => {
@@ -227,7 +230,7 @@ describe('Video Compression Integration Tests', () => {
             storage.setItem('videoQualityLevel', 'medium');
 
             // 不正なファイルを作成
-            const invalidVideo = new File(['invalid'], 'invalid.mp4', { type: 'video/mp4' });
+            const invalidVideo = new NodeFile(['invalid'], 'invalid.mp4', { type: 'video/mp4' }) as unknown as File;
 
             const result = await service.compress(invalidVideo);
 
