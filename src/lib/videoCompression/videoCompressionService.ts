@@ -20,7 +20,7 @@ export class VideoCompressionService {
         if (this.mediabunnyCompression) return;
         if (!this.initPromise) {
             this.initPromise = import('./mediabunnyCompression').then(({ MediaBunnyCompression }) => {
-                this.mediabunnyCompression = new MediaBunnyCompression(this.parseAudioBitrate.bind(this), this.isUploadAborted);
+                this.mediabunnyCompression = new MediaBunnyCompression(this.isUploadAborted);
                 this.mediabunnyCompression.setProgressCallback(this.onProgress);
             });
         }
@@ -46,15 +46,6 @@ export class VideoCompressionService {
 
     public hasCompressionSettings(): boolean {
         return this.getCompressionOptions() !== null;
-    }
-
-    private parseAudioBitrate(audioBitrate: unknown): number | null {
-        if (typeof audioBitrate === 'number' && Number.isFinite(audioBitrate)) return audioBitrate;
-        if (typeof audioBitrate === 'string') {
-            const numeric = Number.parseInt(audioBitrate, 10);
-            return Number.isFinite(numeric) && numeric > 0 ? numeric * 1000 : null;
-        }
-        return null;
     }
 
     public async compress(file: File): Promise<VideoCompressionResult> {

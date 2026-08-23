@@ -26,25 +26,17 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             const levels = ['low', 'medium', 'high'] as const;
             levels.forEach(level => {
                 const config = VIDEO_COMPRESSION_OPTIONS_MAP[level];
-                expect(config).toHaveProperty('crf');
                 expect(config).toHaveProperty('maxSize');
-                expect(config).toHaveProperty('audioBitrate');
                 expect(config).toHaveProperty('mediabunnyVideoQualityFactor');
                 expect(config).toHaveProperty('mediabunnyAudioQualityFactor');
+                expect(config).not.toHaveProperty('crf');
+                expect(config).not.toHaveProperty('preset');
+                expect(config).not.toHaveProperty('audioBitrate');
             });
         });
     });
 
     describe('設定値の相対関係', () => {
-        it('CRF値が高→中→低の順で大きくなる（品質が低くなる）', () => {
-            const lowCrf = VIDEO_COMPRESSION_OPTIONS_MAP.low.crf!;
-            const mediumCrf = VIDEO_COMPRESSION_OPTIONS_MAP.medium.crf!;
-            const highCrf = VIDEO_COMPRESSION_OPTIONS_MAP.high.crf!;
-
-            expect(highCrf).toBeLessThan(mediumCrf);
-            expect(mediumCrf).toBeLessThan(lowCrf);
-        });
-
         it('maxSizeが高→中→低の順で小さくなる', () => {
             const lowSize = VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize!;
             const mediumSize = VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize!;
@@ -54,16 +46,14 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             expect(mediumSize).toBeGreaterThan(lowSize);
         });
 
-        it('音声ビットレートが高→中→低の順で小さくなる', () => {
-            // ビットレートは文字列なので数値に変換して比較
-            const parseBitrate = (br: string) => parseInt(br.replace('k', ''), 10);
+        it('MediaBunny Quality factorがHigh→Medium→Lowの順で下がる', () => {
+            const { high, medium, low } = VIDEO_COMPRESSION_OPTIONS_MAP;
 
-            const lowBitrate = parseBitrate(VIDEO_COMPRESSION_OPTIONS_MAP.low.audioBitrate!);
-            const mediumBitrate = parseBitrate(VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioBitrate!);
-            const highBitrate = parseBitrate(VIDEO_COMPRESSION_OPTIONS_MAP.high.audioBitrate!);
-
-            expect(highBitrate).toBeGreaterThan(mediumBitrate);
-            expect(mediumBitrate).toBeGreaterThan(lowBitrate);
+            expect(high.mediabunnyAudioQualityFactor).toBeGreaterThan(medium.mediabunnyAudioQualityFactor);
+            expect(medium.mediabunnyAudioQualityFactor).toBeGreaterThan(low.mediabunnyAudioQualityFactor);
+            expect(high.mediabunnyVideoQualityFactor).toBe(high.mediabunnyAudioQualityFactor);
+            expect(medium.mediabunnyVideoQualityFactor).toBe(medium.mediabunnyAudioQualityFactor);
+            expect(low.mediabunnyVideoQualityFactor).toBe(low.mediabunnyAudioQualityFactor);
         });
 
         it('Lowの音声サンプルレートがAAC互換の44100Hzである', () => {
@@ -76,16 +66,6 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
     });
 
     describe('設定値の妥当性', () => {
-        it('CRF値が有効範囲内（0-51）である', () => {
-            const levels = ['low', 'medium', 'high'] as const;
-
-            levels.forEach(level => {
-                const crf = VIDEO_COMPRESSION_OPTIONS_MAP[level].crf!;
-                expect(crf).toBeGreaterThanOrEqual(0);
-                expect(crf).toBeLessThanOrEqual(51);
-            });
-        });
-
         it('maxSizeが正の整数である', () => {
             const levels = ['low', 'medium', 'high'] as const;
 

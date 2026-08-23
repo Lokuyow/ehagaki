@@ -86,30 +86,34 @@ describe('Video Compression Integration Tests', () => {
         it('各圧縮レベルに必要なプロパティが存在する', () => {
             // high
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toMatchObject({
-                crf: 20,
-                preset: 'superfast',
                 maxSize: 1280,
-                audioBitrate: '128k',
+                mediabunnyVideoQualityFactor: 2,
+                mediabunnyAudioQualityFactor: 2,
             });
 
             // medium
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toMatchObject({
-                crf: 26,
-                preset: 'superfast',
                 maxSize: 640,
-                audioBitrate: '64k',
                 audioSampleRate: 44100,
+                mediabunnyVideoQualityFactor: 1,
+                mediabunnyAudioQualityFactor: 1,
             });
 
             // low
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toMatchObject({
-                crf: 28,
-                preset: 'medium',
                 maxSize: 320,
-                audioBitrate: '32k',
                 audioSampleRate: 44100,
                 audioChannels: 1,
+                mediabunnyVideoQualityFactor: 0.3,
+                mediabunnyAudioQualityFactor: 0.3,
             });
+
+            for (const level of ['high', 'medium', 'low'] as const) {
+                const config = VIDEO_COMPRESSION_OPTIONS_MAP[level];
+                expect(config).not.toHaveProperty('audioBitrate');
+                expect(config).not.toHaveProperty('crf');
+                expect(config).not.toHaveProperty('preset');
+            }
         });
 
         it('maxSizeが適切に設定されている（高→中→低の順で小さくなる）', () => {
