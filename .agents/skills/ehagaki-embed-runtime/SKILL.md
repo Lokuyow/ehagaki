@@ -11,7 +11,7 @@ eHagaki の standalone、iframe、Direct Web Component の公開契約と runtim
 
 変更前に対象 runtime を確定する。`AppRuntimeEnvironment.runtimeKind`、各 iframe service の実際の iframe 判定、Web Component entrypoint を source of truth とし、DOM 形状や layout から推測しない。複数 runtime に影響する変更では、共通の App 側責務と runtime 固有の adapter/entrypoint を分けて caller・callee・テストまで追う。
 
-- standalone / iframe の document entry は `src/main.ts`、Direct Web Component は `src/web-component/entry.ts` と `element.ts` から始める。
+- standalone / iframe の document entry は `src/main.ts` から始める。Direct Web Component は、まず Full distribution か Host-owned Lite distribution かを確定し、Full は `src/web-component/entry.ts`、Lite は `src/web-component/host-owned-entry.ts` を entrypoint として調査する。必要に応じて共通の element lifecycle と、distribution 固有の element/root まで追う。
 - iframe の Parent Client、settings、composer context、storage、IndexedDB delegation はそれぞれ独立した service を持つ。いずれも同じ `postMessage` を使うからといって、勝手に一つの transport や state に統合しない。
 - Web Component は host page と同じ Window realm で動き、`postMessage` の代わりに public method と composed DOM event を使う。Shadow DOM 内の app-owned DOM と host document の責務を混同しない。
 
@@ -21,7 +21,7 @@ eHagaki の standalone、iframe、Direct Web Component の公開契約と runtim
 
 - iframe は `embedProtocol.ts` の namespace/version/envelope、message type、`requestId` 要否、payload validation を起点に、service・controller・`public/embed-parent-client-example.*`・関連 test を揃えて確認する。
 - 親との通信では `parentOrigin`、`event.origin`、`event.source`、envelope/schema、capability、request ID、timeout、pending request cleanup を確認する。embed の利便性を理由に既存 validation を省略しない。
-- Web Component は tag、attribute/property、`whenReady()`、public method、event、ready/error、single-instance と reconnect 契約を `src/web-component/types.ts`、`element.ts`、`docs/WEB_COMPONENT.md`、sample/E2E で突き合わせる。実装にない attribute、event、`::part()` surface、複数 instance 対応を新しい仕様として足さない。
+- Web Component は distribution ごとの tag、attribute/property、`whenReady()`、public method、event、ready/error、single-instance と reconnect 契約を確認する。Full は self-publish 専用で `configureHostOwned()` / `setCustomEmojis()` を公開せず、Lite が Host-owned API を所有する。共通実装と詳細なファイル索引は `references/embed-runtime-map.md` を起点に、現在の `types.ts`、element、distribution 固有 root、docs、sample/E2E と突き合わせる。実装にない attribute、event、`::part()` surface、複数 instance 対応を新しい仕様として足さない。
 - URL query、external input、settings bootstrap、runtime message は別の入力経路である。parser、bootstrap、controller、runtime service、sample の一部だけを変えない。
 
 ## ownership と lifecycle を守る
@@ -29,6 +29,7 @@ eHagaki の standalone、iframe、Direct Web Component の公開契約と runtim
 値または副作用ごとに app-owned、host-owned、delegated、shared contract のいずれかを実装から特定する。parent client に委譲する state に、根拠なく local fallback・二重 source of truth・standalone global state を追加しない。
 
 - Web Component では connect / ready / disconnect / remove / recreate、Svelte mount/unmount、listener/observer、queued operation、pending ready promise、single-instance slot を追う。iframe service では listener registration、request timeout、pending request、disconnect cleanup の owner を追う。
+- Host-owned の auth / relay、submit / media handoff、およびそれを持たない責務境界は Lite distribution 側の契約として調査する。Full の self-publish runtime に Host-owned API や Lite 専用の ownership を持ち込まない。
 - 初期化中または parent auth 中に保留する composer context は、既存 controller の queue/flush 境界を保つ。任意の timer や global workaround を追加しない。
 - runtime 固有の機能制御（service worker、external input、history、local nsec auth、storage namespace、layout/overlay/theme target）は `AppRuntimeEnvironment` と各 entrypoint で確認し、別 runtime へ漏らさない。
 
