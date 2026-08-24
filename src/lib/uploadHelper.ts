@@ -54,6 +54,9 @@ import { authState } from "../stores/authStore.svelte";
 import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
 import { getAppStorage } from "./appStorage";
 
+const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined"
+    && __EHAGAKI_COMPOSER_LITE__;
+
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
     FileUploadManagerConstructor = dependencies.FileUploadManager,
@@ -61,6 +64,7 @@ function createFileUploadManager(
     const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
 
     if (
+        !isHostOwnedLiteBuild &&
         FileUploadManagerConstructor ===
         (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])
     ) {
@@ -299,13 +303,19 @@ export async function uploadHelper({
     showUploadError,
     updateUploadState,
     devMode,
-    dependencies = createDefaultDependencies(),
+    dependencies,
     prepareFiles,
     uploadPreparedFiles,
     fileUploadManager: fileUploadManagerOverride,
     deferUploadStateClear = false,
     isUploadAborted: operationAbortChecker,
 }: UploadHelperParams): Promise<UploadHelperResult> {
+    if (!dependencies) {
+        if (isHostOwnedLiteBuild) {
+            throw new Error("Host-owned Composer Lite requires explicit upload dependencies.");
+        }
+        dependencies = createDefaultDependencies();
+    }
     const effectiveDependencies = operationAbortChecker
         ? { ...dependencies, isUploadAborted: operationAbortChecker }
         : dependencies;
@@ -605,11 +615,14 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
         devMode,
         imageOxMap,
         imageXMap,
-        dependencies = createDefaultDependencies(),
+        dependencies,
         getUploadFailedText,
     } = params;
 
     if (!files || files.length === 0) return null;
+    if (!dependencies && isHostOwnedLiteBuild) {
+        throw new Error("Host-owned Composer Lite does not provide the normal uploader.");
+    }
 
     updateUploadState(true, "");
     let result: UploadHelperResult;
@@ -627,7 +640,7 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
                 }),
             updateUploadState,
             devMode,
-            dependencies,
+            dependencies: dependencies ?? createDefaultDependencies(),
             deferUploadStateClear: true,
         });
     } finally {

@@ -2,6 +2,10 @@ import { ImageCompressionService } from "./imageCompressionService";
 import { MimeTypeSupport } from "./mimeTypeSupport";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import { calculateSHA256Hex, getImageDimensions } from "./utils/fileUtils";
+import { tick } from "svelte";
+import { getAppStorage } from "./appStorage";
+import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
+import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import { calculateImageDisplaySize } from "./utils/mediaNodeUtils";
 import { MAX_FILE_SIZE } from "./constants";
 import { generateBlurhashForFile } from "./tags/imetaTag";
@@ -53,6 +57,27 @@ export interface HostOwnedUploadExecutor {
     prepareFiles(files: File[], deps: UploadHelperDependencies): Promise<PreparedUploadFile[]>;
     uploadPreparedFiles(files: File[], placeholders: PlaceholderEntry[]): Promise<FileUploadResponse[]>;
     fileUploadManager: UploadHelperDependencies["FileUploadManager"];
+}
+
+/**
+ * Shared placeholder/media processing needs these pure local dependencies;
+ * Host-owned media intentionally supplies no destination resolver or auth.
+ */
+export function createHostOwnedUploadDependencies(
+    fileUploadManager: UploadHelperDependencies["FileUploadManager"],
+): UploadHelperDependencies {
+    return {
+        localStorage: getAppStorage(),
+        crypto: window.crypto.subtle,
+        tick,
+        FileUploadManager: fileUploadManager,
+        getImageDimensions,
+        extractImageBlurhashMap,
+        calculateImageHash,
+        getMimeTypeFromUrl,
+        createImetaTag: async (params: any) => await createImetaTag(params),
+        imageSizeMapStore,
+    };
 }
 
 /**

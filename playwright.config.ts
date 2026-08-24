@@ -47,6 +47,7 @@ export default defineConfig({
             testMatch: [
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
+                '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
             ],

@@ -47,8 +47,9 @@
 
 ## Web Component entrypoint と public API
 
-- **entry/build input:** `src/web-component/entry.ts` は `EHAGAKI_COMPOSER_TAG_NAME` (`ehagaki-composer`) を既に登録されていなければ `EHagakiComposerElement` として登録する。型と API version は `src/web-component/types.ts`。
+- **entry/build input:** full entry は `src/web-component/entry.ts`、Host-owned Lite entry は `src/web-component/host-owned-entry.ts`。それぞれ `/web-component/ehagaki-composer.js` と `/web-component/host-owned/ehagaki-composer.js` として同じ `EHAGAKI_COMPOSER_TAG_NAME` (`ehagaki-composer`) を登録する。`src/web-component/distributionRegistration.ts` は document ごとに一方だけを許可し、cross-distribution import を決定論的に reject する。型と API version は `src/web-component/types.ts`。
 - **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base`、対応 property は `assetBase`。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`。`setContext` / `setSettings` は connect 前や ready 前の呼び出しを operation queue に入れる。
+- **Host-owned modes:** full は既存 self-publish と `configureHostOwned()` の両方を提供する。Lite は `configureHostOwned()` を connection 前に一度だけ必要とし、auth/account/session、relay/NIP-46、event signing/send、history/draft、iframe Parent Client、通常 uploader transport を composition graph に含めない。shared composer UI は `PostComponent.svelte`、Lite root は `src/host-owned-composer-lite/HostOwnedComposerLiteApp.svelte`。
 - **events:** `ehagaki-ready`（`apiVersion`）、`ehagaki-initialization-error`（`initialization_failed` / `multiple_instances_unsupported` / `disconnected`）、`ehagaki-post-success`、`ehagaki-post-error`、`ehagaki-composer-context-updated`。`src/web-component/notificationPort.ts` が App notification を composed/bubbling CustomEvent に adapter する。
 - **app seam:** `App.svelte` が export する `setEmbedContext()` / `setEmbedSettings()` を element が in-process に使用する。Web Component は Parent Client `postMessage` を使わない。
 - **関連資料/検証:** `docs/WEB_COMPONENT.md`、`public/web-component-parent-client-example.html` / `.js`、`src/test/unit/webComponentNotificationPort.test.ts`、`src/test/integration/webComponentSubst.integration.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`、`webComponentParentClientExample.spec.ts`。
@@ -68,7 +69,7 @@
 
 ## asset base、Shadow DOM、style surface
 
-- **asset flow:** document app は `import.meta.env.BASE_URL` から `assetBase` を設定する。`src/lib/appAssetUrl.ts` の `resolveAppAssetUrl()` と asset-consuming caller は active runtime base を使う。Web Component は `asset-base` または entry module URL に相対な base を `new URL(..., import.meta.url)` で解決する。
+- **asset flow:** document app は `import.meta.env.BASE_URL` から `assetBase` を設定する。`src/lib/appAssetUrl.ts` の `resolveAppAssetUrl()` と asset-consuming caller は active runtime base を使う。Web Component は `asset-base` または entry module URL に相対な base を `new URL(..., import.meta.url)` で解決する。full の未指定 fallback semantics は維持する。公式 full Host-owned / Lite sample と E2E は connection 前に、full には full distribution directory、Lite には Lite distribution directory を明示する。
 - **icons/build transform:** `src/web-component/element.ts` は app CSS を open ShadowRoot に inline し、document-root selector を `:host` / shell 用に transform する。`src/web-component/iconAssets.ts` は build-only icon CSS variable を component `assetBase` の `icons/*.svg` URL に置換する。FFmpeg worker/core/WASM も active asset base の caller を確認する。
 - **style API:** host に提供されている theme surface は `getWebComponentThemeCss()` の `--ehagaki-accent-color`、`--ehagaki-base-color`、`--ehagaki-background`、`--ehagaki-text`、`--ehagaki-border`、`--ehagaki-link`、`--ehagaki-input-background`、`--ehagaki-footer-background`、`--ehagaki-dialog-background`、`--ehagaki-font-family`。Shadow root は open。公開 `::part()` API は checkout で確認できない。
 - **layout:** component shell は `container-type: inline-size`。container behavior、overlay containment、host width/height、computed styles は `webComponentEmbed.spec.ts` の DOM/geometry assertions を基準に確認する。browser-specific geometry は `ehagaki-browser-debug` の領域。
@@ -76,9 +77,9 @@
 
 ## Web Component build、delivery、sample
 
-- **scripts:** `package.json` の `build:web-component` は `scripts/runWebComponentBuild.mjs`、`dev:web-component` は `scripts/devWebComponentSample.mjs` を入口にする。build execution/working directory は `scripts/webComponentBuildRunner.mjs` と `scripts/webComponentBuildWorkingDirectory.mjs`、dev host/proxy config は `scripts/webComponentDevServerConfig.mjs`、output validation は `scripts/verifyWebComponentBuild.mjs`、site assembly は `scripts/assembleWebComponentSite.mjs` を確認する。
-- **contract-relevant output:** `dist-web-component/ehagaki-composer.js`、その asset directory、host page からの module import、`asset-base`、production/dev sample の URL はまとめて扱う。Windows working-directory handling は build plumbing であり、runtime contract に影響する output/path のときだけ追う。
-- **sample:** `public/web-component-parent-client-example.html` / `.js` は host API、asset-base、mount/destroy/recreate、auto/manual module loading の consumer。iframe の parent sample はこれと別に `public/embed-parent-client-example.html` / `.js`。
+- **scripts:** `package.json` の `build:web-component` は `scripts/runWebComponentBuild.mjs`、`dev:web-component` は `scripts/devWebComponentSample.mjs` を入口にする。`scripts/webComponentBuildRunner.mjs` は full と Lite output を順に作り、`scripts/hostOwnedLiteGraphGate.mjs` は Lite entry から static/dynamic graph を走査して forbidden dependency を build failure にする。build execution/working directory は `scripts/webComponentBuildWorkingDirectory.mjs`、dev host/proxy config は `scripts/webComponentDevServerConfig.mjs`、output validation は `scripts/verifyWebComponentBuild.mjs`、site assembly は `scripts/assembleWebComponentSite.mjs` を確認する。
+- **contract-relevant output:** full は `dist-web-component/ehagaki-composer.js` と `dist-web-component/assets/`、Lite は `dist-web-component/host-owned/ehagaki-composer.js` と `dist-web-component/host-owned/assets/` および `icons/`。host page からの module import、`asset-base`、production/dev sample の URL は distribution 単位でまとめて扱う。
+- **sample:** `public/host-owned-composer-example.html` は full Host-owned、`public/host-owned-composer-lite-example.html` は Lite Host-owned の小さな consumer。どちらも `asset-base`、mount/destroy/recreate、Host handoff を示す。iframe の parent sample はこれと別に `public/embed-parent-client-example.html` / `.js`。
 - **関連 test/config:** `src/test/unit/webComponentDevServerConfig.test.ts`、`webComponentBuildWorkingDirectory.test.ts`、`src/test/e2e/webComponentDevServer.spec.ts`、`playwright.web-component-dev.config.ts`。通常 E2E project は `playwright.config.ts` の desktop Chromium/mobile Chromium/mobile WebKit/desktop Firefox の実際の `testMatch` / `testIgnore` を確認する。
 
 ## 検証選択

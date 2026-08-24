@@ -34,6 +34,16 @@ export function createWebComponentBuildCommand(workingDirectory, { watch = false
     };
 }
 
+/** @param {string} workingDirectory @returns {NodeCommand} */
+export function createHostOwnedLiteWebComponentBuildCommand(workingDirectory) {
+    const viteCli = resolve(workingDirectory, "node_modules", "vite", "bin", "vite.js");
+    return {
+        command: process.execPath,
+        args: [viteCli, "build", "--config", "vite.web-component.config.ts", "--mode", "host-owned-lite"],
+        cwd: workingDirectory,
+    };
+}
+
 /** @param {string} physicalRepositoryRoot @param {PhysicalViteDevServerOptions} options */
 export function createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
     host,
@@ -106,6 +116,7 @@ export async function runWebComponentInitialBuild(workingDirectory, { onChildSta
     /** @type {[string, NodeCommand][]} */
     const commands = [
         ["Web Component build", createWebComponentBuildCommand(workingDirectory)],
+        ["Host-owned Composer Lite build", createHostOwnedLiteWebComponentBuildCommand(workingDirectory)],
         ["Web Component build verification", createWebComponentBuildVerificationCommand(workingDirectory)],
     ];
     for (const [label, command] of commands) {

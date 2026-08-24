@@ -175,7 +175,7 @@ function getWebComponentThemeCss(): string {
     }`;
 }
 
-export class EHagakiComposerElement extends HTMLElement {
+export abstract class EHagakiComposerElement extends HTMLElement {
     static get observedAttributes(): string[] {
         return ["asset-base"];
     }
@@ -215,6 +215,14 @@ export class EHagakiComposerElement extends HTMLElement {
     connectedCallback(): void {
         this.#hasEverConnected = true;
         if (this.#mountPromise) return;
+        if (this.requiresHostOwnedConfiguration() && !this.#hostOwnedOptions) {
+            const error = createError(
+                "initialization_failed",
+                "Host-owned Composer Lite requires configureHostOwned() before connection.",
+            );
+            this.fail("initialization_failed", error.message, error);
+            return;
+        }
         if (activeInstance && activeInstance !== this) {
             const error = createError(
                 "multiple_instances_unsupported",
@@ -359,7 +367,7 @@ export class EHagakiComposerElement extends HTMLElement {
                 localNsecAuthEnabled: false,
             });
 
-            const { default: App } = await import("../App.svelte");
+            const { default: App } = await this.loadApp();
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
             this.#hostOperationAbortController = this.#hostOwnedOptions
                 ? new AbortController()
@@ -398,6 +406,14 @@ export class EHagakiComposerElement extends HTMLElement {
             throw createError("initialization_failed", "eHagaki Composer is not ready.");
         }
         return this.#app;
+    }
+
+    /** Each distribution provides its own build-time composition root. */
+    protected abstract loadApp(): Promise<{ default: any }>;
+
+    /** Lite overrides this so Host-owned configuration is a pre-connect contract. */
+    protected requiresHostOwnedConfiguration(): boolean {
+        return false;
     }
 
     private enqueue<T>(operation: () => Promise<T>): Promise<T> {

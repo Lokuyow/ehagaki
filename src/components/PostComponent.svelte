@@ -19,6 +19,7 @@
   import { sanitizeDraftHtml } from "../lib/draftHtmlSanitizer";
   import {
     createPostUploadHandlers,
+    type UploadFilesExecutor,
     updateEditorUploadState,
   } from "../lib/postUploadUtils";
   import FloatingMessage from "./FloatingMessage.svelte";
@@ -89,10 +90,12 @@
   } from "../web-component/types";
   import type { CustomEmojiItem } from "../lib/customEmoji";
   import { buildHostOwnedComposerOutput, getHostSubmissionEventId } from "../lib/hostOwnedComposer";
-  import { createHostOwnedUploadExecutor } from "../lib/hostOwnedUpload";
+  import {
+    createHostOwnedUploadDependencies,
+    createHostOwnedUploadExecutor,
+  } from "../lib/hostOwnedUpload";
   import {
     uploadHelper,
-    uploadFiles as defaultUploadFiles,
     showUploadErrorMessage,
   } from "../lib/uploadHelper";
   import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
@@ -115,6 +118,8 @@
     notificationPort?: AppPostNotificationPort;
     hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
     hostCustomEmojiItems?: CustomEmojiItem[];
+    /** The full composition root supplies the normal authenticated uploader. */
+    normalUploadFiles?: UploadFilesExecutor;
   }
 
   let {
@@ -129,8 +134,11 @@
     notificationPort,
     hostOwnedConfig,
     hostCustomEmojiItems = [],
+    normalUploadFiles,
   }: Props = $props();
   let isHostOwned = $derived(!!hostOwnedConfig);
+  const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined"
+    && __EHAGAKI_COMPOSER_LITE__;
   let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
   let hostMountActive = true;
   let editor: any = $state(null);
@@ -148,7 +156,7 @@
   let isLoadingProfile = $derived(isLoadingProfileStore.value);
   let editorIsEmpty = $state(true);
   let showAccountPlaceholder = $derived(
-    hasStoredKey &&
+    !isHostOwnedLiteBuild && hasStoredKey &&
       !isSwitchingAccount &&
       profileLoaded &&
       !isLoadingProfile &&
@@ -256,7 +264,7 @@
 
   // --- PostManager初期化 ---
   $effect(() => {
-    if (rxNostr) {
+    if (!isHostOwnedLiteBuild && rxNostr) {
       if (!postManager)
         postManager = new PostManager(rxNostr as RxNostr, {
           getNip46SignerForSessionFn: (expectedPubkey) =>
@@ -296,7 +304,10 @@
         return null;
       }
       if (!isHostOwned) {
-        return await defaultUploadFiles(params);
+        if (normalUploadFiles) return await normalUploadFiles(params);
+        if (isHostOwnedLiteBuild) return null;
+        const { uploadFiles } = await import("../lib/uploadHelper");
+        return await uploadFiles(params);
       }
       if (!hostOwnedConfig?.uploadMedia) {
         updateEditorUploadState(editorState, false, $_("postComponent.media_not_supported"));
@@ -325,6 +336,7 @@
             if (hostMountActive) editorState.uploadErrorMessage = message;
           },
           devMode: false,
+          dependencies: createHostOwnedUploadDependencies(executor.fileUploadManager),
           prepareFiles: executor.prepareFiles,
           uploadPreparedFiles: executor.uploadPreparedFiles,
           fileUploadManager: executor.fileUploadManager,
@@ -789,6 +801,7 @@
       await submitHostOwned(currentEditor);
       return;
     }
+    if (isHostOwnedLiteBuild) return;
     if (!postManager) return;
     const postPayload = postManager.preparePostPayload(currentEditor);
     if (containsSecretKey(postPayload.content)) {
@@ -809,12 +822,12 @@
   }
 
   export function resetPostContent() {
-    if (postManager && currentEditor)
+    if (!isHostOwnedLiteBuild && postManager && currentEditor)
       postManager.resetPostContent(currentEditor);
   }
 
   export function clearContentAfterSuccess() {
-    if (postManager && currentEditor) {
+    if (!isHostOwnedLiteBuild && postManager && currentEditor) {
       postManager.clearContentAfterSuccess(currentEditor);
       return;
     }
@@ -844,7 +857,7 @@
     const pendingPost = postComponentUIStore.getPendingPost();
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     postComponentUIStore.hideSecretKeyDialog();
-    if (postManager && currentEditor) {
+    if (!isHostOwnedLiteBuild && postManager && currentEditor) {
       await submitPendingPostWithSecretKey({
         postManager,
         currentEditor,
@@ -891,7 +904,7 @@
 
   $effect(() => {
     if (
-      currentEditor &&
+      !isHostOwnedLiteBuild && currentEditor &&
       postManager &&
       postManager.preparePostContent(currentEditor) !== editorState.content &&
       postStatus.error
@@ -991,7 +1004,7 @@
     tabindex="-1"
     bind:this={editorContainerEl}
   >
-    {#if showAccountPlaceholder}
+    {#if !isHostOwnedLiteBuild && showAccountPlaceholder}
       <div class="editor-account-placeholder" aria-hidden="true">
         <ProfileAvatar
           src={profileData?.picture || ""}
@@ -1029,17 +1042,19 @@
   {/if}
 </div>
 
-<ConfirmDialog
-  open={showSecretKeyDialog}
-  title={$_("postComponent.warning")}
-  description={$_("postComponent.secret_key_detected")}
-  confirmLabel={$_("postComponent.post")}
-  cancelLabel={$_("postComponent.cancel")}
-  confirmVariant="danger"
-  onConfirm={confirmSendWithSecretKey}
-  onCancel={cancelSendWithSecretKey}
-  contentClass="secretkey-warning-dialog"
-/>
+{#if !isHostOwnedLiteBuild}
+  <ConfirmDialog
+    open={showSecretKeyDialog}
+    title={$_("postComponent.warning")}
+    description={$_("postComponent.secret_key_detected")}
+    confirmLabel={$_("postComponent.post")}
+    cancelLabel={$_("postComponent.cancel")}
+    confirmVariant="danger"
+    onConfirm={confirmSendWithSecretKey}
+    onCancel={cancelSendWithSecretKey}
+    contentClass="secretkey-warning-dialog"
+  />
+{/if}
 
 <ImageFullscreen
   bind:show={showImageFullscreen}

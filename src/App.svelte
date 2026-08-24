@@ -222,6 +222,7 @@
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
+  import { uploadFiles as normalUploadFiles } from "./lib/uploadHelper";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {
@@ -2006,6 +2007,7 @@
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {notificationPort}
                     {hostOwnedConfig}
+                    {normalUploadFiles}
                     hostCustomEmojiItems={isHostOwnedComposer
                       ? hostCustomEmojiItems
                       : undefined}
