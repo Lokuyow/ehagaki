@@ -391,22 +391,8 @@
     <div class="modal-body">
         <!-- SW更新セクション -->
         {#if $swNeedRefresh || isStaleAssetReloadRequired}
-            <div class="setting-section sw-update-section">
+            <div class="setting-section">
                 <div class="setting-row">
-                    <span class="setting-label sw-update-label">
-                        {#if isStaleAssetReloadRequired}
-                            {$_("settingsDialog.reload_required")}
-                        {:else if isDbUpgradeBlocked}
-                            {$_("settingsDialog.db_upgrade_blocked") ||
-                                "ほかのeHagakiタブを閉じるか再読み込みしてください"}
-                        {:else if isSwInstalling}
-                            {$_("settingsDialog.sw_update_installing") ||
-                                "アプリの更新をインストール中です"}
-                        {:else}
-                            {$_("settingsDialog.sw_update_available") ||
-                                "アプリの更新があります"}
-                        {/if}
-                    </span>
                     <div class="setting-control">
                         <Button
                             variant="primary"
@@ -1182,16 +1168,6 @@
         :global(.bui-switch-thumb) {
             transition: none;
         }
-    }
-
-    .sw-update-section {
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--theme) 5%, transparent);
-    }
-
-    .sw-update-label {
-        color: var(--theme);
-        font-weight: 600;
     }
 
     :global(.sw-update-btn.primary) {
