@@ -340,6 +340,8 @@ describe("Web Component build working directory", () => {
                 "build",
                 "--config",
                 "vite.web-component.config.ts",
+                "--mode",
+                "web-component-watch",
                 "--watch",
             ],
             cwd: "Y:\\",

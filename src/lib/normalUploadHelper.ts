@@ -27,6 +27,7 @@ import { authState } from "../stores/authStore.svelte";
 import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
 import { getAppStorage } from "./appStorage";
 import { showUploadErrorMessage, uploadHelper } from "./uploadHelper";
+import { isDefaultUploadAborted } from "./uploadAbortUtils";
 
 export interface UploadFilesParams {
     files: File[] | FileList;
@@ -59,6 +60,7 @@ function createDefaultDependencies(): UploadHelperDependencies {
         getMimeTypeFromUrl,
         createImetaTag: async (params: any) => await createImetaTag(params),
         imageSizeMapStore,
+        isUploadAborted: isDefaultUploadAborted,
         resolveUploadDestination: resolveCurrentUploadDestination,
     };
 }
@@ -66,10 +68,18 @@ function createDefaultDependencies(): UploadHelperDependencies {
 function createNormalFileUploadManager(
     dependencies: UploadHelperDependencies,
 ): FileUploadManagerInterface {
+    const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
     if (dependencies.FileUploadManager !== (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])) {
-        return new dependencies.FileUploadManager();
+        return new dependencies.FileUploadManager({
+            localStorage: dependencies.localStorage,
+            fetch: window.fetch.bind(window),
+            crypto: dependencies.crypto,
+            document: typeof document === "undefined" ? undefined : document,
+            window: typeof window === "undefined" ? undefined : window,
+            navigator: typeof navigator === "undefined" ? undefined : navigator,
+            isUploadAborted,
+        });
     }
-    const isUploadAborted = dependencies.isUploadAborted ?? (() => false);
     const mimeSupport = new MimeTypeSupport(typeof document === "undefined" ? undefined : document);
     const imageCompressionService = new ImageCompressionService(mimeSupport, dependencies.localStorage, isUploadAborted);
     const videoCompressionService = new VideoCompressionService(dependencies.localStorage, isUploadAborted);
