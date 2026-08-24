@@ -478,6 +478,37 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByRole('button', { name: '新しい検索結果を表示' })).toHaveCount(0);
     });
 
+    test('closing and reopening the dialog resets post history search state', async ({ page }) => {
+        const harness = await gotoHarness(page);
+
+        await expectSummary(page, harness.totalPosts);
+        await expectVisiblePostCount(page, 50);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
+        await expectSummary(page, harness.matchingPosts);
+        await expectVisiblePostCount(page, 50);
+
+        await page.getByRole('button', { name: 'さらに古い検索結果を表示' }).click();
+        await expectSummary(page, harness.matchingPosts);
+        await expectVisiblePostCount(page, harness.matchingPosts);
+
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(1);
+        await page.getByRole('button', { name: '閉じる', exact: true }).click();
+        await expect(page.locator('.post-history-dialog')).toHaveCount(0);
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(0);
+
+        await page.getByTestId('post-history-reopen').click();
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(1);
+        await expect(page.locator('.post-history-dialog')).toBeVisible();
+        await expect(page.getByRole('searchbox', { name: '検索' })).toHaveCount(0);
+        await expectSummary(page, harness.totalPosts);
+        await expectVisiblePostCount(page, 50);
+        await expect(page.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'さらに古い検索結果を表示' })).toHaveCount(0);
+    });
+
     test('desktop newer prepend keeps the current post anchored', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
 

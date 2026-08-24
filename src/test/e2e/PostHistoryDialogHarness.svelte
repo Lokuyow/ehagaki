@@ -35,6 +35,7 @@
     }, HARNESS_SECRET_KEY));
 
     let ready = $state(false);
+    let showDialog = $state(true);
 
     type HarnessState = {
         ready: boolean;
@@ -416,18 +417,29 @@
 </svelte:head>
 
 <div class="post-history-playwright-harness">
-    {#if ready}
-        <PostHistoryDialog
-            show={true}
-            onClose={() => undefined}
-            pubkeyHex={HARNESS_PUBKEY}
-            rxNostr={{
-                use: () => ({
-                    subscribe: () => ({ unsubscribe: () => undefined }),
-                }),
-            } as unknown as RxNostr}
-            onQuotePost={() => undefined}
-        />
+    {#if ready && showDialog}
+        <div data-testid="post-history-mounted">
+            <PostHistoryDialog
+                show={showDialog}
+                onClose={() => (showDialog = false)}
+                pubkeyHex={HARNESS_PUBKEY}
+                rxNostr={{
+                    use: () => ({
+                        subscribe: () => ({ unsubscribe: () => undefined }),
+                    }),
+                } as unknown as RxNostr}
+                onQuotePost={() => undefined}
+            />
+        </div>
+    {/if}
+    {#if ready && !showDialog}
+        <button
+            type="button"
+            data-testid="post-history-reopen"
+            onclick={() => (showDialog = true)}
+        >
+            reopen post history
+        </button>
     {/if}
 </div>
 

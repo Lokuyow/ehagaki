@@ -988,6 +988,8 @@ export function usePostHistoryListing({
         state.searchTotalCount = 0;
         state.searchHasNext = false;
         appliedSearchQuery = "";
+        persistCurrentViewState();
+        persistCurrentListingSnapshot();
     }
 
     function clearCurrentListingState(): void {
@@ -1014,6 +1016,43 @@ export function usePostHistoryListing({
     function canPersistStateForCurrentPubkey(): boolean {
         const currentPubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
         return !!currentPubkeyKey && currentPubkeyKey === stateOwnerPubkeyKey;
+    }
+
+    function persistCurrentViewState(): void {
+        if (!canPersistStateForCurrentPubkey()) {
+            return;
+        }
+
+        writePersistedPostHistoryViewState(getPubkeyHex(), {
+            searchInput: state.searchInput,
+            searchQuery: state.searchQuery,
+            currentPage: state.currentPage,
+            searchPage: state.searchPage,
+        });
+    }
+
+    function persistCurrentListingSnapshot(): void {
+        if (!canPersistStateForCurrentPubkey()) {
+            return;
+        }
+
+        writePersistedListingSnapshot(getPubkeyHex(), {
+            loadedPosts: state.loadedPosts,
+            searchPosts: state.searchPosts,
+            searchQuery: state.searchQuery,
+            totalCount: state.totalCount,
+            totalCountKnown: state.totalCountKnown,
+            totalCountFailed: state.totalCountStatus === "failed",
+            searchTotalCount: state.searchTotalCount,
+            searchHasNext: state.searchHasNext,
+            hasMoreRemote: state.hasMoreRemote,
+            nextUntil: state.nextUntil,
+            lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
+            visibleUntil: state.visibleUntil,
+            hasJumpCacheAnchors: state.hasJumpCacheAnchors,
+            hasOlderLocal: state.hasOlderLocal,
+            hasNewerLocal: state.hasNewerLocal,
+        });
     }
 
     function markStateOwner(pubkeyHex: string | null | undefined): void {
@@ -4293,40 +4332,11 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (!canPersistStateForCurrentPubkey()) {
-            return;
-        }
-
-        writePersistedPostHistoryViewState(getPubkeyHex(), {
-            searchInput: state.searchInput,
-            searchQuery: state.searchQuery,
-            currentPage: state.currentPage,
-            searchPage: state.searchPage,
-        });
+        persistCurrentViewState();
     });
 
     $effect(() => {
-        if (!canPersistStateForCurrentPubkey()) {
-            return;
-        }
-
-        writePersistedListingSnapshot(getPubkeyHex(), {
-            loadedPosts: state.loadedPosts,
-            searchPosts: state.searchPosts,
-            searchQuery: state.searchQuery,
-            totalCount: state.totalCount,
-            totalCountKnown: state.totalCountKnown,
-            totalCountFailed: state.totalCountStatus === "failed",
-            searchTotalCount: state.searchTotalCount,
-            searchHasNext: state.searchHasNext,
-            hasMoreRemote: state.hasMoreRemote,
-            nextUntil: state.nextUntil,
-            lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
-            visibleUntil: state.visibleUntil,
-            hasJumpCacheAnchors: state.hasJumpCacheAnchors,
-            hasOlderLocal: state.hasOlderLocal,
-            hasNewerLocal: state.hasNewerLocal,
-        });
+        persistCurrentListingSnapshot();
     });
 
     $effect(() => {
