@@ -121,6 +121,15 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifySettingsApplied).not.toHaveBeenCalled();
     });
 
+    it('keeps the Full self-publish context path free of the Host-owned submission guard', async () => {
+        const { controller, composerInput, runtime } = createController();
+
+        expect((runtime as Record<string, unknown>).isSubmissionInProgress).toBeUndefined();
+        await controller.applyComposerContext({ content: 'self-publish context' });
+
+        expect(composerInput.insertText).toHaveBeenCalledWith('self-publish context');
+    });
+
     it('direct setContext を送信中に拒否して既存contextを変更しない', async () => {
         const composerInput = {
             resetContent: vi.fn(),

@@ -1270,8 +1270,6 @@
         rxNostr,
         relayConfig: relayConfigStore.value,
       }),
-      isSubmissionInProgress: () =>
-        editorState.postStatus.sending,
     },
     storage: {
       getEmbedStorageSnapshot: async () => {
