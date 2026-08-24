@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AuthServiceDependencies } from '../../lib/types';
-import type { MockKeyManager } from '../helpers';
+import { MockStorage, type MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
 import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies, createMockParentClientSession } from './authServiceTestUtils';
 import { expectConsoleCallsNotToContain } from '../logAssertions';
+import { AccountManager } from '../../lib/accountManager';
+import { getNip46SessionStorageKey } from '../../lib/authStorageKeys';
+import { STORAGE_KEYS } from '../../lib/constants';
 
 describe('AuthService.authenticateWithNsec', () => {
     let authService: AuthService;
@@ -216,6 +219,67 @@ describe('AuthService.authenticateWithNip07', () => {
         const result = await service.authenticateWithNip07();
 
         expect(result.success).toBe(false);
+    });
+
+    it('auto-loginで同一pubkeyのNIP-46アカウントをNIP-07へ置換し、方式固有sessionだけ削除する', async () => {
+        const pubkeyHex = 'ab'.repeat(32);
+        const storage = new MockStorage();
+        const deps = createMockDependencies();
+        deps.localStorage = storage;
+        const accountManager = new AccountManager({ localStorage: storage, console: deps.console });
+        accountManager.addAccount(pubkeyHex, 'nip46');
+        storage.setItem(getNip46SessionStorageKey(pubkeyHex), 'session');
+        storage.setItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex, 'profile');
+        storage.setItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex, 'relays');
+        const { nip46Service, Nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(Nip46Service.clearSession).mockImplementation((targetStorage, targetPubkey) => {
+            targetStorage.removeItem(getNip46SessionStorageKey(targetPubkey));
+        });
+
+        const service = new AuthService(deps);
+        service.setAccountManager(accountManager);
+        const result = await service.authenticateWithNip07ForAutoLogin({
+            hex: pubkeyHex,
+            npub: 'npub1replacement',
+            nprofile: 'nprofile1replacement',
+        });
+
+        expect(result).toEqual({ success: true, pubkeyHex });
+        expect(accountManager.getAccountType(pubkeyHex)).toBe('nip07');
+        expect(accountManager.getActiveAccountPubkey()).toBe(pubkeyHex);
+        expect(nip46Service.disconnect).toHaveBeenCalledOnce();
+        expect(storage.getItem(getNip46SessionStorageKey(pubkeyHex))).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex)).toBe('profile');
+        expect(storage.getItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex)).toBe('relays');
+    });
+
+    it('旧認証方式のcleanup失敗でもauto-login成功とNIP-07保存を維持する', async () => {
+        const pubkeyHex = 'cd'.repeat(32);
+        const storage = new MockStorage();
+        const deps = createMockDependencies();
+        deps.localStorage = storage;
+        const accountManager = new AccountManager({ localStorage: storage, console: deps.console });
+        accountManager.addAccount(pubkeyHex, 'nip46');
+        const { nip46Service, Nip46Service } = await import('../../lib/nip46Service');
+        vi.mocked(nip46Service.disconnect).mockRejectedValueOnce(new Error('disconnect failed'));
+        vi.mocked(Nip46Service.clearSession).mockImplementationOnce(() => {
+            throw new Error('storage failed');
+        });
+
+        const service = new AuthService(deps);
+        service.setAccountManager(accountManager);
+
+        await expect(service.authenticateWithNip07ForAutoLogin({
+            hex: pubkeyHex,
+            npub: 'npub1replacement',
+            nprofile: 'nprofile1replacement',
+        })).resolves.toEqual({ success: true, pubkeyHex });
+        expect(accountManager.getAccountType(pubkeyHex)).toBe('nip07');
+        expect(accountManager.getActiveAccountPubkey()).toBe(pubkeyHex);
+        expect(deps.console?.error).toHaveBeenCalledWith(
+            '認証方式固有データの削除に失敗しました',
+            expect.objectContaining({ stage: 'auto-login-auth-replacement' }),
+        );
     });
 });
 

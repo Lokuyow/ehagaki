@@ -6,6 +6,7 @@ import {
     createManagedAuthRestoreDependencies,
     restoreManagedAccount,
     runManagedAuthRestore,
+    type AuthInitializationResult,
     type ManagedRestoreResult,
     runLegacyAuthChecks,
     type RestoreResult,
@@ -13,11 +14,13 @@ import {
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
 import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
 import { resetManagedAccountData } from './accountDataReset';
-import type { Nip46PendingNostrConnectSession } from './nip46Service';
+import { Nip46Service, type Nip46PendingNostrConnectSession } from './nip46Service';
 import {
     captureLegacyNsecMigrationSnapshot,
     migrateLegacyNsec,
 } from './legacyNsecMigration';
+import { getNsecStorageKey } from './authStorageKeys';
+import type { PublicKeyData, StoredAccount } from './types';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
 
@@ -99,6 +102,41 @@ export class AuthService {
         this.runtime.setNip07AuthFn(result.pubkeyData.hex, result.pubkeyData.npub, result.pubkeyData.nprofile);
         this.accountManager?.addAccount(result.pubkeyHex, 'nip07');
         return { success: true, pubkeyHex: result.pubkeyHex };
+    }
+
+    async authenticateWithNip07ForAutoLogin(
+        identity?: PublicKeyData,
+    ): Promise<AuthResult> {
+        let resolvedIdentity = identity;
+        if (!resolvedIdentity) {
+            const available = await this.runtime.nip07Service.waitForExtension(3000);
+            if (!available) {
+                return { success: false, error: 'nip07_not_available' };
+            }
+
+            const result = await this.runtime.nip07Service.authenticate({ timeoutMs: 3000 });
+            if (!result.success || !result.pubkeyHex || !result.pubkeyData) {
+                return { success: false, error: result.error || 'nip07_auth_error' };
+            }
+            if (result.pubkeyHex !== result.pubkeyData.hex) {
+                return { success: false, error: 'nip07_auth_error' };
+            }
+            resolvedIdentity = result.pubkeyData;
+        }
+
+        const previousType = this.accountManager?.getAccountType(resolvedIdentity.hex);
+        this.accountManager?.addAccount(resolvedIdentity.hex, 'nip07');
+        this.runtime.setNip07AuthFn(
+            resolvedIdentity.hex,
+            resolvedIdentity.npub,
+            resolvedIdentity.nprofile,
+        );
+
+        if (previousType && previousType !== 'nip07') {
+            await this.cleanupReplacedAuthData(resolvedIdentity.hex, previousType);
+        }
+
+        return { success: true, pubkeyHex: resolvedIdentity.hex };
     }
 
     // --- NIP-46認証 ---
@@ -254,7 +292,7 @@ export class AuthService {
 
     // --- 初期化 ---
 
-    async initializeAuth(): Promise<RestoreResult> {
+    async initializeAuth(): Promise<AuthInitializationResult> {
         try {
             if (this.accountManager) {
                 if (!this.runtime.localNsecAuthEnabled) {
@@ -262,31 +300,51 @@ export class AuthService {
                 }
                 const snapshotResult = captureLegacyNsecMigrationSnapshot(this.runtime.localStorage);
                 if (snapshotResult.status === 'failed') {
-                    return { hasAuth: false };
+                    return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
                 }
 
                 this.accountManager.cleanupNostrLoginData();
                 if (!snapshotResult.snapshot.accountListExisted) {
                     this.accountManager.migrateFromSingleAccount();
                 }
-                migrateLegacyNsec({
+                const migrationResult = migrateLegacyNsec({
                     localStorage: this.runtime.localStorage,
                     keyManager: this.runtime.keyManager,
                     snapshot: snapshotResult.snapshot,
                 });
+                if (![
+                    'legacy-credential-missing',
+                    'migrated',
+                    'already-migrated',
+                ].includes(migrationResult.status)) {
+                    return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
+                }
+
+                const restoreSnapshotResult = this.accountManager.getAuthRestoreSnapshot();
+                if (restoreSnapshotResult.status === 'failed') {
+                    return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
+                }
                 return await runManagedAuthRestore({
+                    restoreSnapshot: restoreSnapshotResult.snapshot,
                     accountManager: this.accountManager,
-                    restoreAccount: (pubkeyHex, type) => this.restoreAccount(pubkeyHex, type),
+                    restoreAccount: (pubkeyHex, type, nip07Identity) =>
+                        this.restoreAccount(pubkeyHex, type, {
+                            nip07Identity,
+                            expectedAccounts: restoreSnapshotResult.snapshot.accounts,
+                        }),
                 });
             }
 
-            return await this.initializeLegacyAuth();
+            const result = await this.initializeLegacyAuth();
+            return result.hasAuth
+                ? result
+                : { ...result, restoreOutcome: 'completed' };
         } catch (error) {
             this.runtime.console.error('認証初期化失敗', {
                 stage: 'restore',
                 reason: 'unexpected',
             });
-            return { hasAuth: false };
+            return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
         }
     }
 
@@ -329,6 +387,10 @@ export class AuthService {
     async restoreAccount(
         pubkeyHex: string,
         type: 'nsec' | 'nip07' | 'nip46' | 'parentClient',
+        options: {
+            nip07Identity?: PublicKeyData;
+            expectedAccounts?: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
+        } = {},
     ): Promise<ManagedRestoreResult> {
         if (type === 'nsec' && !this.runtime.localNsecAuthEnabled) {
             return { hasAuth: false, reason: 'local-nsec-auth-disabled' };
@@ -338,7 +400,13 @@ export class AuthService {
             return { hasAuth: false, reason: 'invalid-requested-pubkey' };
         }
 
-        if (!this.accountManager || this.accountManager.getAccountType(pubkeyHex) !== type) {
+        const isExpectedAccount = (targetPubkeyHex: string, expectedType: StoredAccount['type']) =>
+            options.expectedAccounts
+                ? options.expectedAccounts.some((account) =>
+                    account.pubkeyHex === targetPubkeyHex && account.type === expectedType)
+                : this.accountManager?.getAccountType(targetPubkeyHex) === expectedType;
+
+        if (!this.accountManager || !isExpectedAccount(pubkeyHex, type)) {
             return { hasAuth: false, reason: 'account-record-mismatch' };
         }
 
@@ -347,9 +415,9 @@ export class AuthService {
             type,
             createManagedAuthRestoreDependencies({
                 ...this.createRestoreDependencies(),
-                isExpectedAccount: (targetPubkeyHex, expectedType) =>
-                    this.accountManager?.getAccountType(targetPubkeyHex) === expectedType,
+                isExpectedAccount,
             }),
+            options.nip07Identity,
         );
     }
 
@@ -365,6 +433,50 @@ export class AuthService {
             ...this.runtime,
             accountManager: this.accountManager,
         };
+    }
+
+    private async cleanupReplacedAuthData(
+        pubkeyHex: string,
+        previousType: StoredAccount['type'],
+    ): Promise<void> {
+        const cleanupActions: Array<{ target: string; run: () => void | Promise<void> }> = [];
+        if (previousType === 'nsec') {
+            cleanupActions.push({
+                target: 'nsec-credential',
+                run: () => this.runtime.localStorage.removeItem(getNsecStorageKey(pubkeyHex)),
+            });
+        } else if (previousType === 'nip46') {
+            cleanupActions.push(
+                { target: 'nip46-runtime', run: () => this.runtime.nip46Svc.disconnect() },
+                {
+                    target: 'nip46-session',
+                    run: () => Nip46Service.clearSession(this.runtime.localStorage, pubkeyHex),
+                },
+            );
+        } else if (previousType === 'parentClient') {
+            cleanupActions.push(
+                {
+                    target: 'parent-client-runtime',
+                    run: () => this.runtime.parentClientSvc.disconnect(false),
+                },
+                {
+                    target: 'parent-client-session',
+                    run: () => ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex),
+                },
+            );
+        }
+
+        for (const action of cleanupActions) {
+            try {
+                await action.run();
+            } catch {
+                this.runtime.console.error('認証方式固有データの削除に失敗しました', {
+                    stage: 'auto-login-auth-replacement',
+                    target: action.target,
+                    reason: 'unexpected',
+                });
+            }
+        }
     }
 
     // --- プロフィール画像キャッシュクリア ---

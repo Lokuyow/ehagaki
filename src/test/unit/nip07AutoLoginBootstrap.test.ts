@@ -1,9 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { resolveNip07AutoLoginSession } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
+import type { Nip07AutoLoginDependencies } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
+
+const reusedIdentity = {
+    hex: 'ab'.repeat(32),
+    npub: 'npub1reused',
+    nprofile: 'nprofile1reused',
+};
 
 function createDeps(authenticateWithNip07: ReturnType<typeof vi.fn>) {
-    return { authenticateWithNip07, console: { error: vi.fn() } };
+    return {
+        authenticateWithNip07:
+            authenticateWithNip07 as Nip07AutoLoginDependencies['authenticateWithNip07'],
+        console: { error: vi.fn() },
+    };
 }
 
 describe('resolveNip07AutoLoginSession', () => {
@@ -28,6 +39,34 @@ describe('resolveNip07AutoLoginSession', () => {
 
         expect(deps.authenticateWithNip07).toHaveBeenCalledOnce();
         expect(result).toEqual({ hasAuth: true, pubkeyHex: 'host-pubkey' });
+    });
+
+    it('managed restoreで取得済みのNIP-07 identityを再利用する', async () => {
+        const authenticateWithNip07 = vi.fn()
+            .mockResolvedValue({ success: true, pubkeyHex: reusedIdentity.hex });
+        const deps = createDeps(authenticateWithNip07);
+
+        const result = await resolveNip07AutoLoginSession({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+            nip07Identity: reusedIdentity,
+        }, deps);
+
+        expect(authenticateWithNip07).toHaveBeenCalledOnce();
+        expect(authenticateWithNip07).toHaveBeenCalledWith(reusedIdentity);
+        expect(result).toEqual({ hasAuth: true, pubkeyHex: reusedIdentity.hex });
+    });
+
+    it('認証基盤異常ではNIP-07 fallbackを開始しない', async () => {
+        const authenticateWithNip07 = vi.fn();
+        const current = {
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure' as const,
+        };
+        const deps = createDeps(authenticateWithNip07);
+
+        await expect(resolveNip07AutoLoginSession(current, deps)).resolves.toBe(current);
+        expect(authenticateWithNip07).not.toHaveBeenCalled();
     });
 
     it('拡張が無い場合は元の結果を維持し、エラーログを出さない', async () => {

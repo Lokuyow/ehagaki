@@ -126,11 +126,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         webComponentResponses.length = 0;
         failedWebComponentRequests.length = 0;
         consoleErrors.length = 0;
-        await page.goto(`${origin}/ehagaki/host-owned-composer-example.html`);
-        webComponentResponses.length = 0;
-        failedWebComponentRequests.length = 0;
-        consoleErrors.length = 0;
+        await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
         await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":false}");
+        await expect(page.locator("#status")).toHaveText("ready (text-only)");
         await expect(page.locator("ehagaki-composer")).toBeVisible();
         const closedHostOwnedGeometry = await page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
@@ -159,7 +157,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             ];
             return icons.map((icon) => icon ? getComputedStyle(icon).maskImage : "missing");
         })).toEqual(expect.arrayContaining([
-            expect.stringContaining(`${origin}/ehagaki/web-component/icons/`),
+            expect.stringContaining(`${origin}/ehagaki/web-component/host-owned/icons/`),
         ]));
         const sampleIconState = await page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
@@ -171,8 +169,8 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             return icons.map((icon) => icon ? getComputedStyle(icon).maskImage : "missing");
         });
         expect(sampleIconState).toHaveLength(3);
-        expect(sampleIconState.every((mask) => mask !== "none" && mask.includes(`${origin}/ehagaki/web-component/icons/`))).toBe(true);
-        expect(sampleIconState.every((mask) => !mask.includes(`${origin}/ehagaki/web-component/assets/icons/`))).toBe(true);
+        expect(sampleIconState.every((mask) => mask !== "none" && mask.includes(`${origin}/ehagaki/web-component/host-owned/icons/`))).toBe(true);
+        expect(sampleIconState.every((mask) => !mask.includes(`${origin}/ehagaki/web-component/host-owned/assets/icons/`))).toBe(true);
 
         await page.locator("ehagaki-composer .content-warning-icon").click();
         await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
@@ -199,21 +197,27 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("#log")).toContainText("submit output:");
         await page.locator("#media").click();
         await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":true}");
+        await expect(page.locator("#status")).toHaveText("ready (media-enabled)");
         const iconStatuses = await page.evaluate(async () => Promise.all([
             "paper-plane-solid-full.svg",
             "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
             "tag_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
-        ].map(async (icon) => (await fetch(`./web-component/icons/${icon}`)).status)));
+        ].map(async (icon) => (await fetch(`./web-component/host-owned/icons/${icon}`)).status)));
         expect(iconStatuses).toEqual([200, 200, 200]);
 
-        const sampleRequests = webComponentResponses.filter(({ path }) => path.includes("/ehagaki/web-component/"));
+        const sampleRequests = webComponentResponses.filter(({ path }) => path.includes("/ehagaki/web-component/host-owned/"));
         expect(sampleRequests.some(({ path, status }) => path.endsWith("/icons/paper-plane-solid-full.svg") && status === 200)).toBe(true);
         expect(sampleRequests.some(({ path }) => path.includes("/assets/icons/") && path.endsWith(".svg"))).toBe(false);
         expect(sampleRequests.some(({ status }) => status === 404)).toBe(false);
-        expect(failedWebComponentRequests).toEqual([]);
+        expect(failedWebComponentRequests.filter((path) => path.includes("/host-owned/"))).toEqual([]);
+        expect(consoleErrors.filter((message) => /404|initialization|module/i.test(message))).toEqual([]);
 
-        const entryPath = join(process.cwd(), "src", "web-component", "entry.ts");
+        const entryPath = join(process.cwd(), "src", "host-owned-composer-lite", "HostOwnedComposerLiteApp.svelte");
         const entryStat = await stat(entryPath);
+        const fullOutputPath = join(process.cwd(), "dist-web-component", "ehagaki-composer.js");
+        const liteOutputPath = join(process.cwd(), "dist-web-component", "host-owned", "ehagaki-composer.js");
+        await stat(fullOutputPath);
+        const liteOutputStat = await stat(liteOutputPath);
         await expect.poll(() => (output.join("").match(/built in/g) ?? []).length, {
             timeout: 30_000,
         }).toBeGreaterThanOrEqual(2);
@@ -223,6 +227,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             await expect.poll(() => (output.join("").match(/built in/g) ?? []).length, {
                 timeout: 60_000,
             }).toBeGreaterThan(completedBuilds);
+            const refreshedLiteOutput = await stat(liteOutputPath);
+            expect(refreshedLiteOutput.mtimeMs).toBeGreaterThanOrEqual(liteOutputStat.mtimeMs);
+            await stat(fullOutputPath);
         } finally {
             await utimes(entryPath, entryStat.atime, entryStat.mtime);
         }

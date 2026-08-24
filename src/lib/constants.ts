@@ -40,39 +40,7 @@ export const COMPRESSION_OPTIONS_MAP = {
     }
 } as const;
 
-export const VIDEO_COMPRESSION_OPTIONS_MAP = {
-    none: { skip: true },
-    high: {
-        crf: 20,
-        preset: 'superfast',
-        maxSize: 1280,
-        audioBitrate: '128k',
-        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
-        mediabunnyVideoQualityFactor: 2,   // QUALITY_HIGH
-        mediabunnyAudioQualityFactor: 2,   // QUALITY_HIGH
-    },
-    medium: {
-        crf: 26,
-        preset: 'superfast',
-        maxSize: 640,
-        audioBitrate: '64k',
-        audioSampleRate: 44100,
-        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
-        mediabunnyVideoQualityFactor: 1,   // QUALITY_MEDIUM
-        mediabunnyAudioQualityFactor: 1,   // QUALITY_MEDIUM
-    },
-    low: {
-        crf: 28,
-        preset: 'medium',
-        maxSize: 320,
-        audioBitrate: '32k',
-        audioSampleRate: 16000,
-        audioChannels: 1,
-        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
-        mediabunnyVideoQualityFactor: 0.3, // QUALITY_VERY_LOW
-        mediabunnyAudioQualityFactor: 0.3, // QUALITY_VERY_LOW
-    },
-} as const;
+export { VIDEO_COMPRESSION_OPTIONS_MAP } from './videoCompression/videoCompressionConfig';
 
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 

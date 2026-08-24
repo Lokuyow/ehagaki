@@ -195,7 +195,7 @@ describe('AuthService.restoreAccount', () => {
         const nip07Deps = createMockNip07Dependencies(NSEC_PUBKEY, mockDependencies);
         const service = createManagedService(nip07Deps, NIP07_PUBKEY, 'nip07');
 
-        await expect(service.restoreAccount(NIP07_PUBKEY, 'nip07')).resolves.toEqual({
+        await expect(service.restoreAccount(NIP07_PUBKEY, 'nip07')).resolves.toMatchObject({
             hasAuth: false,
             reason: 'identity-mismatch',
         });

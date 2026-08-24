@@ -163,16 +163,32 @@ NIP-07 ログインを行う opt-in です。既定は無効で、指定しな�
 - ホストが `window.nostr` を用意していて、誰として署名するかが決まっている埋め込みを想定した
   opt-in です。NIP-07 拡張は公開鍵の取得時に確認ダイアログを出すことが多いため、既定では
   行いません。
-- `asset-base` と同じく mount 時に読み取られます。接続後に変更した場合は次の mount から有効です。
-- 保存済みアカウントがある場合は従来どおりそちらが復元され、この経路は使われません。初回の
-  ログインが成功するとアカウントが保存されるので、確認ダイアログは通常初回だけです。
-- 拡張の注入を待つため、`window.nostr` が用意されていない状態で有効にすると起動が最大 3 秒
-  延びます。その場合はログインせずゲスト状態で続行します。
+- Full self-publish distribution 専用です。Lite Host-owned では属性/propertyを指定しても無視され、
+  eHagaki の認証は開始しません。`setSettings()` の設定項目ではありません。
+- `asset-base` と同じく mount 時に読み取られます。接続後に変更しても現在の mount では認証を開始せず、
+  次の mount から有効です。
+- 起動時は先に、NIP-07 / NIP-46 など保存済み managed account を既存順序ですべて復元します。どれかを
+  復元できれば NIP-07 fallback は行いません。候補を正常に評価し終えても未認証だった場合だけ、
+  初回に限らずホストの NIP-07 identity を fallback として使います。migration や storage 読み取りなど
+  認証基盤自体の異常で評価を完了できなかった場合は NIP-07 を開始せず、ゲスト起動へ進みます。
+- 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
+  最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
+- 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、
+  その他の通常の NIP-07 失敗では通知を表示せず、ゲスト状態で起動を続行します。自動試行は 1 mount
+  につき 1 回です。
+- 成功した identity は通常の NIP-07 アカウントとして保存され、active account になります。同じ pubkey が
+  別認証方式で保存済みなら type を NIP-07 へ更新し、旧方式固有の credential/session だけを best-effort
+  で削除します。プロフィール、リレー設定、別 pubkey の保存済みアカウントは維持します。
 
 ## 準備完了を待つ `whenReady()`
 
 `whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
 `ehagaki-ready` も同じ準備完了時に発火します。
+
+Full で `auto-login` を有効にした場合は、保存済み認証または NIP-07 fallback の認証後 bootstrap
+（Nostr session、リレー・プロフィール、ストア同期を含む）、もしくは失敗後の guest session
+bootstrap が完了するまで、どちらも成立しません。`auto-login` 未指定の Full と Lite Host-owned の
+既存 ready timing は変更されません。
 
 ```js
 const composer = document.querySelector('ehagaki-composer');
@@ -213,12 +229,29 @@ await settingsPromise;
 await contextPromise;
 ```
 
-## Host-owned Composer mode
+## Full self-publish と Lite Host-owned
 
-通常の Direct Web Component は従来どおり eHagaki が署名・Relay publish を行う self-publish
-mode です。Host-owned mode は明示的 opt-in です。`configureHostOwned()` を要素生成後、**最初の
-`connectedCallback` より前に一度だけ**呼び出します。接続・切断・再接続後に mode や handler を
-交換することはできません。変更が必要な場合は新しい element instance を生成してください。
+通常の Full distribution (`/web-component/ehagaki-composer.js`) は eHagaki が署名・Relay
+publish を行う self-publish 専用です。既存の `whenReady()`、`assetBase`、`setContext()`、
+`setSettings()`、イベント、Shadow DOM、single-instance 制約はそのまま利用できます。Full
+element には Host-owned の `configureHostOwned()` と `setCustomEmojis()` は公開されません。
+
+Host-owned を組み込むページは Lite distribution
+(`/web-component/host-owned/ehagaki-composer.js`) だけを import してください。両方の
+distribution は同じ `<ehagaki-composer>` tag を定義するため、1 document では **exactly one**
+だけを import します。Lite は `configureHostOwned()` を element の生成後、**最初の
+`connectedCallback` より前に一度だけ**呼び出す必要があります。接続・切断・再接続後に mode や
+handler を交換することはできません。変更が必要な場合は新しい element instance を生成して
+ください。
+
+`asset-base`/`assetBase` は import した distribution のディレクトリを connection 前に指定します。
+Full は `/web-component/`、Lite は `/web-component/host-owned/` です。これにより icons、dynamic
+chunks、MediaBunny、optional AAC encoder、image compression が同じ distribution から解決されます。
+省略時の既存 fallback 挙動は維持され、新しい readiness error にはなりません。
+`auto-login`/`autoLogin` は Full 専用で、Lite は指定されても無視します。
+
+唯一の Host-owned manual sample は
+[host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html) です。
 
 ```js
 const composer = document.createElement('ehagaki-composer');
@@ -243,13 +276,13 @@ await composer.whenReady();
 await customEmojisReady;
 ```
 
-`submit` は必須です。`uploadMedia` は optional capability で、未指定時は file picker、paste、
+`submit` は Lite で必須です。`uploadMedia` は optional capability で、未指定時は file picker、paste、
 drag & drop、gallery への新規メディア入力を受け付けず、eHagaki の upload destination や Nostr
 認証への fallback は行いません。指定時は、eHagaki が圧縮・プレビュー・ギャラリー処理を行った
 同じ Window realm の `File` を handler へ渡します。Base64 化はしません。handler は HTTP(S) URL と
 allowlist 済みの imeta field だけを返せます。
 
-Host handler に渡る `output` は `{ content, tags, context }` です。`tags` には hashtag、content
+Lite の Host handler に渡る `output` は `{ content, tags, context }` です。`tags` には hashtag、content
 warning、custom emoji、imeta など composer-owned tag のみが入り、`kind`、`pubkey`、`created_at`、
 `id`、`sig`、`e`/`p`/`q`/`a`/`k`、`client` は入りません。`context` は reply/quote/channel を
 immutable snapshot として保持します。Host-owned mode では eHagaki は認証、guest Relay、target
@@ -261,7 +294,7 @@ upload 中は submit を開始できず、submit 中は media input を開始で
 `setContext()` は既存どおり利用できますが、Host-owned submit 中は `submission_in_progress` で
 reject されます。`ehagaki-composer-context-updated`、clear、`whenReady()`、`setSettings()` は維持されます。
 
-`setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
+Lite の `setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
 検証してから atomic に反映し、空配列は clear です。catalog は reconnect では保持し、別 element や
 self-publish mode の account-scoped catalog へは漏れません。
 
@@ -659,8 +692,8 @@ Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定
 Web Component 専用の signer callback/provider API はありません。
 
 - NIP-07 では、コンポーネントと同じ Window realm にあるホストの `window.nostr` を直接利用します。
-- 保存済みアカウントが無い初回に自動でログインさせたい場合は、[`auto-login`](#auto-login--autologin)
-  を指定します。既定では行いません。
+- 保存済み認証を優先し、復元できない場合に NIP-07 fallback を行うには、Full distribution で
+  [`auto-login`](#auto-login--autologin) を指定します。既定では行いません。
 - NIP-46 は、コンポーネント内の既存 eHagaki UI からログインします。
 - ローカル秘密鍵（nsec）の入力、保存、保存済みアカウントの復元には対応しません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。
@@ -783,6 +816,5 @@ CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがあ�
 だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、
 module URL と `asset-base` には信頼できる URL だけを指定してください。
 
-Host-owned の別サンプルは [host-owned-composer-example.html](../public/host-owned-composer-example.html)
-です。text-only / media-enabled の切替、catalog、context、host submit/upload の成功・失敗を、既存の
-Parent Client sample とは独立して確認できます。
+Lite の Host-owned sample では text-only / media-enabled の切替、catalog、context、host submit/upload
+の成功・失敗を、既存の Parent Client sample とは独立して確認できます。

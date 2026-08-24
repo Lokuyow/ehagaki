@@ -11,6 +11,7 @@ import {
     VALID_COMPRESSION_LEVELS,
     uploadEndpoints,
 } from "../constants";
+import type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
 import {
     normalizeExternalNostrClient,
     normalizeExternalNostrClientUrlTemplate,
@@ -329,7 +330,7 @@ export function getImageCompressionLevelPreference(
         ?? DEFAULT_COMPRESSION_LEVEL;
 }
 
-export function getVideoCompressionLevelPreference(storage: ReadWriteStorage): string {
+export function getVideoCompressionLevelPreference(storage: ReadWriteStorage): VideoCompressionLevel {
     const storedValue = migrateLegacyQualityLevelPreference(
         storage,
         STORAGE_KEYS.VIDEO_QUALITY_LEVEL,
@@ -343,11 +344,11 @@ export function getVideoCompressionLevelPreference(storage: ReadWriteStorage): s
     }
 
     if (storedValue) {
-        return storedValue;
+        return storedValue as VideoCompressionLevel;
     }
 
     storage.setItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL, DEFAULT_COMPRESSION_LEVEL);
-    return DEFAULT_COMPRESSION_LEVEL;
+    return DEFAULT_COMPRESSION_LEVEL as VideoCompressionLevel;
 }
 
 export function getMediaFreePlacementPreference(storage: ReadWriteStorage): boolean {

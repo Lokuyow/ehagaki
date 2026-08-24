@@ -7,6 +7,10 @@ import {
 } from './authStorageKeys';
 import { profilesRepository } from './storage/profilesRepository';
 import { relayConfigsRepository } from './storage/relayConfigsRepository';
+import {
+    captureLegacyNsecMigrationSnapshot,
+    type LegacyNsecMigrationSnapshotResult,
+} from './legacyNsecMigration';
 
 export interface AccountManagerDeps {
     localStorage: Storage;
@@ -47,6 +51,11 @@ export class AccountManager {
 
     getActiveAccountPubkey(): string | null {
         return this.localStorage.getItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) || null;
+    }
+
+    /** Strict startup snapshot; unlike UI reads, storage failures are preserved. */
+    getAuthRestoreSnapshot(): LegacyNsecMigrationSnapshotResult {
+        return captureLegacyNsecMigrationSnapshot(this.localStorage);
     }
 
     setActiveAccount(pubkeyHex: string): void {

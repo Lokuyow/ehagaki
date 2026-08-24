@@ -29,7 +29,17 @@ export function createWebComponentBuildCommand(workingDirectory, { watch = false
     const viteCli = resolve(workingDirectory, "node_modules", "vite", "bin", "vite.js");
     return {
         command: process.execPath,
-        args: [viteCli, "build", "--config", "vite.web-component.config.ts", ...(watch ? ["--watch"] : [])],
+        args: [viteCli, "build", "--config", "vite.web-component.config.ts", ...(watch ? ["--mode", "web-component-watch", "--watch"] : [])],
+        cwd: workingDirectory,
+    };
+}
+
+/** @param {string} workingDirectory @returns {NodeCommand} */
+export function createHostOwnedLiteWebComponentBuildCommand(workingDirectory, { watch = false } = {}) {
+    const viteCli = resolve(workingDirectory, "node_modules", "vite", "bin", "vite.js");
+    return {
+        command: process.execPath,
+        args: [viteCli, "build", "--config", "vite.web-component.config.ts", "--mode", "host-owned-lite", ...(watch ? ["--watch"] : [])],
         cwd: workingDirectory,
     };
 }
@@ -84,6 +94,11 @@ export function startWebComponentBuild(workingDirectory, options) {
     return startNodeCommand(createWebComponentBuildCommand(workingDirectory, options), options);
 }
 
+/** @param {string} workingDirectory @param {WebComponentBuildOptions & StartNodeCommandOptions} [options] */
+export function startHostOwnedLiteWebComponentBuild(workingDirectory, options) {
+    return startNodeCommand(createHostOwnedLiteWebComponentBuildCommand(workingDirectory, options), options);
+}
+
 /** @param {string} label @param {import("node:child_process").ChildProcess} child @returns {Promise<void>} */
 function waitForSuccessfulExit(label, child) {
     return new Promise((resolveExit, reject) => {
@@ -106,6 +121,7 @@ export async function runWebComponentInitialBuild(workingDirectory, { onChildSta
     /** @type {[string, NodeCommand][]} */
     const commands = [
         ["Web Component build", createWebComponentBuildCommand(workingDirectory)],
+        ["Host-owned Composer Lite build", createHostOwnedLiteWebComponentBuildCommand(workingDirectory)],
         ["Web Component build verification", createWebComponentBuildVerificationCommand(workingDirectory)],
     ];
     for (const [label, command] of commands) {

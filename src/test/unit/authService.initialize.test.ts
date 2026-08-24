@@ -42,6 +42,9 @@ describe('AuthService.initializeAuth', () => {
     it('マルチアカウント: アクティブアカウント復元成功', async () => {
         mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
         mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
 
         mockKeyManager.readStoredKey.mockReturnValue({ status: 'found', secretKey: 'valid-nsec' });
         mockKeyManager.isValidNsec.mockReturnValue(true);
@@ -188,6 +191,89 @@ describe('AuthService.initializeAuth', () => {
         expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
     });
 
+    it('保存済みNIP-07 mismatchのidentityを保持し、後続候補を最後まで試す', async () => {
+        const nip07Deps = createMockNip07Dependencies(FALLBACK_PUBKEY, mockDependencies);
+        const getPublicKey = (nip07Deps.window as any).nostr.getPublicKey as ReturnType<typeof vi.fn>;
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(NIP07_PUBKEY);
+        mockAccountManager.getAccountType.mockImplementation((pubkeyHex: string) => {
+            if (pubkeyHex === NIP07_PUBKEY) return 'nip07';
+            if (pubkeyHex === ACTIVE_PUBKEY) return 'nsec';
+            return null;
+        });
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: NIP07_PUBKEY, type: 'nip07', addedAt: 1000 },
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 2000 },
+        ]);
+        mockKeyManager.readStoredKey.mockReturnValue({ status: 'missing' });
+
+        const service = new AuthService(nip07Deps);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toMatchObject({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+            nip07Identity: { hex: FALLBACK_PUBKEY },
+        });
+        expect(mockKeyManager.readStoredKey).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+        expect(getPublicKey).toHaveBeenCalledOnce();
+    });
+
+    it('保存済みNIP-07 mismatch identityが後続の保存済みNIP-07に一致すれば再問い合わせせず復元する', async () => {
+        const nip07Deps = createMockNip07Dependencies(FALLBACK_PUBKEY, mockDependencies);
+        const getPublicKey = (nip07Deps.window as any).nostr.getPublicKey as ReturnType<typeof vi.fn>;
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(NIP07_PUBKEY);
+        mockAccountManager.getAccountType.mockImplementation((pubkeyHex: string) =>
+            pubkeyHex === NIP07_PUBKEY || pubkeyHex === FALLBACK_PUBKEY ? 'nip07' : null,
+        );
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: NIP07_PUBKEY, type: 'nip07', addedAt: 1000 },
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nip07', addedAt: 2000 },
+        ]);
+
+        const service = new AuthService(nip07Deps);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: true,
+            pubkeyHex: FALLBACK_PUBKEY,
+        });
+        expect(getPublicKey).toHaveBeenCalledOnce();
+        expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+    });
+
+    it('NIP-46 managed restore失敗は正常評価済み未認証として返す', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nip46');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nip46', addedAt: 1000 },
+        ]);
+
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+        });
+    });
+
+    it('保存credential読み取り異常は通常候補失敗と区別する', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
+        mockKeyManager.readStoredKey.mockReturnValue({ status: 'error' });
+
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
+    });
+
     it('account listがない場合はlegacy NIP-07移行後にderived nsecをactiveとしてmanaged restoreする', async () => {
         const storage = new MockStorage();
         const derivedPubkey = 'ef'.repeat(32);
@@ -248,7 +334,10 @@ describe('AuthService.initializeAuth', () => {
         const service = new AuthService(mockDependencies);
         service.setAccountManager(mockAccountManager as any);
 
-        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
         expect(mockAccountManager.cleanupNostrLoginData).not.toHaveBeenCalled();
         expect(mockAccountManager.migrateFromSingleAccount).not.toHaveBeenCalled();
         expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
@@ -276,7 +365,10 @@ describe('AuthService.initializeAuth', () => {
             localNsecAuthEnabled: false,
         });
 
-        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+        });
         expect(mockKeyManager.loadFromStorage).not.toHaveBeenCalled();
         expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
     });

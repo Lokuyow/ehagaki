@@ -2,7 +2,7 @@
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Signer } from "nostr-tools/signer";
-import { VIDEO_COMPRESSION_OPTIONS_MAP } from "../constants";
+export type { VideoCompressionLevel } from '../videoCompression/videoCompressionConfig';
 import type { ImageDimensions } from './media';
 
 // Upload-related types
@@ -189,8 +189,6 @@ export interface VideoCompressionResult {
     aborted?: boolean;
 }
 
-export type VideoCompressionLevel = keyof typeof VIDEO_COMPRESSION_OPTIONS_MAP;
-
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;
     getBlossomSigner?(): Promise<Signer>;
@@ -293,6 +291,8 @@ export interface UploadHelperParams {
     ) => Promise<FileUploadResponse[]>;
     /** A local media-only manager for a transport that does not use Nostr auth. */
     fileUploadManager?: UploadHelperDependencies["FileUploadManager"];
+    /** A fully configured manager for the normal uploader or a host-owned operation. */
+    fileUploadManagerInstance?: FileUploadManagerInterface;
     /** The UI wrapper keeps `isUploading` through its post-upload cleanup. */
     deferUploadStateClear?: boolean;
 }

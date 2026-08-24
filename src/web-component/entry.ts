@@ -1,9 +1,19 @@
-import { EHagakiComposerElement } from "./element";
+import { EHagakiComposerElement } from "./fullElement";
+import { registerComposerDistribution } from "./distributionRegistration";
 import { EHAGAKI_COMPOSER_TAG_NAME } from "./types";
 
-export { EHagakiComposerElement, EHAGAKI_COMPOSER_TAG_NAME };
-export * from "./types";
+export { EHagakiComposerElement };
+export {
+    EHAGAKI_COMPOSER_API_VERSION,
+    EHAGAKI_COMPOSER_TAG_NAME,
+} from "./types";
+export type {
+    EHagakiComposerContext,
+    EHagakiComposerInitializationErrorDetail,
+    EHagakiComposerPostErrorDetail,
+    EHagakiComposerPostSuccessDetail,
+    EHagakiComposerReadyDetail,
+    EHagakiComposerSettings,
+} from "./types";
 
-if (!customElements.get(EHAGAKI_COMPOSER_TAG_NAME)) {
-    customElements.define(EHAGAKI_COMPOSER_TAG_NAME, EHagakiComposerElement);
-}
+registerComposerDistribution("full", EHagakiComposerElement);

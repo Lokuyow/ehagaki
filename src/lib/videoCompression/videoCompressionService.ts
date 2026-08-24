@@ -1,9 +1,13 @@
-import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
-import type { VideoCompressionResult, VideoCompressionLevel } from '../types';
+import type { VideoCompressionResult } from '../types';
 import { isDefaultUploadAborted } from '../uploadAbortUtils';
 import { getVideoCompressionLevelPreference } from '../utils/settingsStorage';
-import { devLog, isFileTooSmall, isVideoFile, shouldSkipCompression } from './compressionUtils';
 import type { MediaBunnyCompression } from './mediabunnyCompression';
+import {
+    MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES,
+    VIDEO_COMPRESSION_OPTIONS_MAP,
+    isEnabledVideoCompressionOptions,
+    type EnabledVideoCompressionOptions,
+} from './videoCompressionConfig';
 
 export class VideoCompressionService {
     private readonly context = 'VideoCompressionService';
@@ -20,7 +24,7 @@ export class VideoCompressionService {
         if (this.mediabunnyCompression) return;
         if (!this.initPromise) {
             this.initPromise = import('./mediabunnyCompression').then(({ MediaBunnyCompression }) => {
-                this.mediabunnyCompression = new MediaBunnyCompression(this.parseAudioBitrate.bind(this), this.isUploadAborted);
+                this.mediabunnyCompression = new MediaBunnyCompression(this.isUploadAborted);
                 this.mediabunnyCompression.setProgressCallback(this.onProgress);
             });
         }
@@ -28,7 +32,7 @@ export class VideoCompressionService {
     }
 
     public abort(): void {
-        devLog(this.context, 'Abort requested');
+        if (import.meta.env.DEV) console.log(`[${this.context}] Abort requested`);
         this.onProgress?.(0);
         this.mediabunnyCompression?.abort();
     }
@@ -38,30 +42,23 @@ export class VideoCompressionService {
         this.mediabunnyCompression?.setProgressCallback(callback);
     }
 
-    private getCompressionOptions(): any {
-        const level = getVideoCompressionLevelPreference(this.localStorage) as VideoCompressionLevel;
+    private getCompressionOptions(): EnabledVideoCompressionOptions | null {
+        const level = getVideoCompressionLevelPreference(this.localStorage);
         const options = VIDEO_COMPRESSION_OPTIONS_MAP[level];
-        return typeof options === 'object' && options && 'skip' in options && options.skip ? null : options ?? null;
+        return isEnabledVideoCompressionOptions(options) ? options : null;
     }
 
     public hasCompressionSettings(): boolean {
         return this.getCompressionOptions() !== null;
     }
 
-    private parseAudioBitrate(audioBitrate: unknown): number | null {
-        if (typeof audioBitrate === 'number' && Number.isFinite(audioBitrate)) return audioBitrate;
-        if (typeof audioBitrate === 'string') {
-            const numeric = Number.parseInt(audioBitrate, 10);
-            return Number.isFinite(numeric) && numeric > 0 ? numeric * 1000 : null;
-        }
-        return null;
-    }
-
     public async compress(file: File): Promise<VideoCompressionResult> {
-        if (!isVideoFile(file)) return { file, wasCompressed: false };
-        if (isFileTooSmall(file)) return { file, wasCompressed: false, wasSkipped: true };
+        if (!file.type.startsWith('video/')) return { file, wasCompressed: false };
+        if (file.size <= MIN_VIDEO_COMPRESSION_FILE_SIZE_BYTES) {
+            return { file, wasCompressed: false, wasSkipped: true };
+        }
         const options = this.getCompressionOptions();
-        if (shouldSkipCompression(options, this.context)) return { file, wasCompressed: false, wasSkipped: true };
+        if (!options) return { file, wasCompressed: false, wasSkipped: true };
         if (this.isUploadAborted()) {
             this.onProgress?.(0);
             return { file, wasCompressed: false, wasSkipped: true, aborted: true };
@@ -69,7 +66,9 @@ export class VideoCompressionService {
 
         try {
             await this.ensureInitialized();
-            return await this.mediabunnyCompression!.compressWithMediabunny(file, options);
+            const compression = this.mediabunnyCompression;
+            if (!compression) throw new Error('MediaBunny compression did not initialize.');
+            return await compression.compress(file, options);
         } catch (error) {
             console.error('[VideoCompressionService] Compression failed:', error);
             return { file, wasCompressed: false, wasSkipped: true };

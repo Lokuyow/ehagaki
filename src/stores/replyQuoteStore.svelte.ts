@@ -302,7 +302,10 @@ export function settleReplyQuoteReferencesWithoutHydration(
     let changed = false;
     for (const target of targets) {
         changed = updateMatchingReferences(target, (reference) => {
-            reference.referencedEvent = null;
+            // A signed host-provided preload has already been verified before
+            // this reference-only fallback is applied. Keep it for the shared
+            // Host-owned preview while still guaranteeing no relay hydration.
+            reference.referencedEvent ??= null;
             reference.loading = false;
             reference.error = null;
         }) || changed;

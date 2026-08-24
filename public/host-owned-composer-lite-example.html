@@ -3,26 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Host-owned Composer example</title>
+    <title>Host-owned Composer Lite example</title>
     <style>
       body { font: 16px system-ui, sans-serif; margin: 2rem auto; max-width: 760px; padding: 0 1rem; }
       #mount { height: 460px; border: 1px solid #bbb; margin: 1rem 0; }
       ehagaki-composer { display: block; height: 100%; }
-      button { margin: .25rem; } pre { min-height: 8rem; padding: .75rem; background: #f4f4f4; overflow: auto; }
+      button { margin: .25rem; }
+      pre { min-height: 8rem; padding: .75rem; background: #f4f4f4; overflow: auto; }
     </style>
   </head>
   <body>
-    <h1>Host-owned Composer</h1>
-    <p>Recreate to switch between text-only and media-enabled capability. The host handlers below intentionally use safe, local example responses.</p>
+    <h1>Host-owned Composer Lite</h1>
+    <p>This is the only Host-owned manual sample. It imports the Lite distribution and keeps submit, upload, context, and emoji ownership in the host page.</p>
     <button id="text">Create text-only</button>
     <button id="media">Create media-enabled</button>
     <button id="context">Set reply / quote context</button>
     <button id="fail">Make next submit fail</button>
     <div id="mount"></div>
+    <p id="status" role="status">loading</p>
     <pre id="log" aria-live="polite"></pre>
-    <script type="module" src="./web-component/ehagaki-composer.js"></script>
     <script type="module">
+      await import('./web-component/host-owned/ehagaki-composer.js');
       const mount = document.querySelector('#mount');
+      const status = document.querySelector('#status');
       const log = document.querySelector('#log');
       let composer;
       let failNext = false;
@@ -32,7 +35,8 @@
       async function create(mediaEnabled) {
         composer?.remove();
         composer = document.createElement('ehagaki-composer');
-        composer.assetBase = new URL('./web-component/', location.href).href;
+        composer.id = 'composer';
+        composer.assetBase = new URL('./web-component/host-owned/', import.meta.url).href;
         composer.configureHostOwned({
           async submit(output, { signal }) {
             write('submit output:', output);
@@ -40,6 +44,7 @@
               failNext = false;
               throw new Error('example host submit failure');
             }
+            status.textContent = `submit: ${output.content}`;
             return { eventId: 'a'.repeat(64) };
           },
           ...(mediaEnabled ? {
@@ -61,6 +66,7 @@
         mount.append(composer);
         await composer.whenReady();
         await emojisReady;
+        status.textContent = `ready (${mediaEnabled ? 'media-enabled' : 'text-only'})`;
         write('ready:', { mediaEnabled });
       }
 

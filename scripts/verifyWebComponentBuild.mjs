@@ -14,8 +14,12 @@ async function listFiles(directory) {
 
 const files = await listFiles(outputRoot);
 const entry = join(outputRoot, "ehagaki-composer.js");
+const liteEntry = join(outputRoot, "host-owned", "ehagaki-composer.js");
 if (!files.includes(entry)) {
     throw new Error("Web Component entry was not emitted");
+}
+if (!files.includes(liteEntry)) {
+    throw new Error("Host-owned Composer Lite entry was not emitted");
 }
 if (files.some((file) => /(^|[\\/])sw\.js$|manifest\.webmanifest$/.test(file))) {
     throw new Error("Web Component build must not emit a service worker or manifest");

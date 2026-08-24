@@ -106,7 +106,6 @@
     updateReferencedEvent,
     updateAuthorProfile,
     setReplyQuoteError,
-    settleReplyQuoteReferencesWithoutHydration,
     onReplyQuoteChanged,
     replyQuoteState,
     restoreReplyQuote,
@@ -198,14 +197,6 @@
   import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
-  import {
-    createCustomEmojiItem,
-    type CustomEmojiItem,
-  } from "./lib/customEmoji";
-  import type {
-    EHagakiCustomEmojiCatalogItem,
-    EHagakiHostOwnedComposerOptions,
-  } from "./web-component/types";
 
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
   import { usePostHistoryInboundInteractionsRealtime } from "./lib/hooks/usePostHistoryInboundInteractionsRealtime.svelte";
@@ -223,16 +214,13 @@
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
+  import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
     onInitialized?: () => void;
-    hostOwnedConfig?: EHagakiHostOwnedComposerOptions & {
-      customEmojis: EHagakiCustomEmojiCatalogItem[];
-      signal: AbortSignal;
-    };
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -252,32 +240,7 @@
   let {
     notificationPort = iframeNotificationPort,
     onInitialized = () => undefined,
-    hostOwnedConfig,
   }: Props = $props();
-  let isHostOwnedComposer = $derived(!!hostOwnedConfig);
-  let hostCustomEmojiItems = $state<CustomEmojiItem[]>([]);
-  let hostEmojiCatalogInitialized = false;
-
-  function replaceHostCustomEmojis(
-    catalog: readonly EHagakiCustomEmojiCatalogItem[],
-  ): void {
-    hostCustomEmojiItems = catalog.flatMap((item, sortIndex) => {
-      const normalized = createCustomEmojiItem({
-        shortcode: item.shortcode,
-        src: item.url,
-        setAddress: item.setAddress,
-        sortIndex,
-      });
-      return normalized ? [normalized] : [];
-    });
-  }
-
-  $effect(() => {
-    if (!hostEmojiCatalogInitialized && hostOwnedConfig) {
-      hostEmojiCatalogInitialized = true;
-      replaceHostCustomEmojis(hostOwnedConfig.customEmojis);
-    }
-  });
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -447,11 +410,8 @@
     publicKeyState.setNsec(secretKey);
   });
 
-  // Host publication capability is independent from eHagaki account auth.
-  let isAuthenticated = $derived(
-    !isHostOwnedComposer && authState.value?.isAuthenticated === true,
-  );
-  let hasPostingCapability = $derived(isHostOwnedComposer || isAuthenticated);
+  let isAuthenticated = $derived(authState.value?.isAuthenticated === true);
+  let hasPostingCapability = $derived(isAuthenticated);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
@@ -562,8 +522,8 @@
   const composerLayoutMetrics = useComposerLayoutMetrics({
     setupViewportListener: () =>
       setupViewportListener({
-        hasHeader: !isHostOwnedComposer,
-        hasFooter: !isHostOwnedComposer,
+        hasHeader: true,
+        hasFooter: true,
       }),
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
@@ -999,9 +959,17 @@
     }
   });
 
+  let startupAuthenticationSettled = $state(
+    !appRuntimeEnvironment.autoLoginNip07Enabled,
+  );
   let initializationNotified = false;
   $effect(() => {
-    if (!$locale || !localeInitialized || initializationNotified) return;
+    if (
+      !$locale
+      || !localeInitialized
+      || !startupAuthenticationSettled
+      || initializationNotified
+    ) return;
     initializationNotified = true;
     onInitialized();
   });
@@ -1235,9 +1203,6 @@
           replyQuoteQuery: query,
           setReplyQuote,
         });
-        if (isHostOwnedComposer && !rxNostr) {
-          settleReplyQuoteReferencesWithoutHydration(references);
-        }
         return references;
       },
       hydrateReplyQuoteReferences: (references, runtime, preloadedEvents) =>
@@ -1314,8 +1279,6 @@
         rxNostr,
         relayConfig: relayConfigStore.value,
       }),
-      isSubmissionInProgress: () =>
-        isHostOwnedComposer && editorState.postStatus.sending,
     },
     storage: {
       getEmbedStorageSnapshot: async () => {
@@ -1384,16 +1347,6 @@
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
     return appEmbedController.applySettings(payload);
-  }
-
-  /** Per-element Host-owned catalog; never writes to the account-scoped store. */
-  export async function setHostCustomEmojis(
-    catalog: EHagakiCustomEmojiCatalogItem[],
-  ): Promise<void> {
-    if (!isHostOwnedComposer) {
-      throw new DOMException("Host-owned Composer is not configured.", "InvalidStateError");
-    }
-    replaceHostCustomEmojis(catalog);
   }
 
   async function handleRemoteParentClientLogin(
@@ -1473,11 +1426,9 @@
   }
 
   $effect(() => {
-    if (!isHostOwnedComposer) {
-      appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
-        authState.value,
-      );
-    }
+    appAuthEffectController.runAuthenticatedCustomEmojiPrefetch(
+      authState.value,
+    );
   });
 
   $effect(() => {
@@ -1559,9 +1510,7 @@
         appEmbedController.notifyComposerContextUpdatedIfChanged(),
     });
 
-    // Host-owned Composer deliberately has no eHagaki authentication surface.
-    // Other runtimes retain delayed NIP-07 discovery.
-    if (!isHostOwnedComposer && !nip07ExtensionAvailable) {
+    if (!nip07ExtensionAvailable) {
       waitNostr(3000).then((nostr) => {
         if (nostr) nip07ExtensionAvailable = true;
       });
@@ -1594,55 +1543,47 @@
       allowSharedMediaRecovery: true,
     });
 
-    if (isHostOwnedComposer) {
-      // Do not restore accounts, start a guest relay session, resolve upload
-      // destinations, or run URL/share input. The host supplies publication.
-      void waitLocale().finally(() => {
+    void runAppInitializationBootstrap({
+      reloadSettings: () => settingsStore.reload(),
+      locationSearch: window.location.search,
+      clearSharedMediaError,
+      waitForLocale: waitLocale,
+      markLocaleInitialized: () => {
         localeInitialized = true;
-        isBootstrappingApp = false;
+      },
+      initializeAuth: () => authService.initializeAuth(),
+      resolveAuthenticatedSession: appRuntimeEnvironment.autoLoginNip07Enabled
+        ? (current) =>
+            resolveNip07AutoLoginSession(current, {
+              authenticateWithNip07: (identity) =>
+                authService.authenticateWithNip07ForAutoLogin(identity),
+              console,
+            })
+        : undefined,
+      handleAuthenticated: handlePostAuth,
+      initializeGuestSession: () => initializeNostr(),
+      stopProfileLoading: () => isLoadingProfileStore.set(false),
+      refreshAccountList,
+      markAuthInitialized: () => authService.markAuthInitialized(),
+      getExternalInputBootstrapParams,
+      externalInputEnabled: appRuntimeEnvironment.externalInputEnabled,
+      console,
+    }).finally(() => {
+      isBootstrappingApp = false;
+      if (appRuntimeEnvironment.autoLoginNip07Enabled) {
+        startupAuthenticationSettled = true;
+      }
+      void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
         appEmbedController.notifyComposerContextUpdatedIfChanged();
       });
-    } else {
-      void runAppInitializationBootstrap({
-        reloadSettings: () => settingsStore.reload(),
-        locationSearch: window.location.search,
-        clearSharedMediaError,
-        waitForLocale: waitLocale,
-        markLocaleInitialized: () => {
-          localeInitialized = true;
-        },
-        initializeAuth: () => authService.initializeAuth(),
-        resolveAuthenticatedSession: appRuntimeEnvironment.autoLoginNip07Enabled
-          ? (current) =>
-              resolveNip07AutoLoginSession(current, {
-                authenticateWithNip07: () => authService.authenticateWithNip07(),
-                console,
-              })
-          : undefined,
-        handleAuthenticated: handlePostAuth,
-        initializeGuestSession: () => initializeNostr(),
-        stopProfileLoading: () => isLoadingProfileStore.set(false),
-        refreshAccountList,
-        markAuthInitialized: () => authService.markAuthInitialized(),
-        getExternalInputBootstrapParams,
-        externalInputEnabled: appRuntimeEnvironment.externalInputEnabled,
-        console,
-      }).finally(() => {
-        isBootstrappingApp = false;
-        void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
-          appEmbedController.notifyComposerContextUpdatedIfChanged();
-        });
-      });
-    }
+    });
 
-    const cleanupVisibilityHandler = isHostOwnedComposer
-      ? () => undefined
-      : registerNip46VisibilityHandler({
-        document: appRuntimeEnvironment.document ?? document,
-        authState,
-        nip46Service,
-        console,
-      });
+    const cleanupVisibilityHandler = registerNip46VisibilityHandler({
+      document: appRuntimeEnvironment.document ?? document,
+      authState,
+      nip46Service,
+      console,
+    });
 
     return () => {
       overlayScopeTarget.classList.remove("ehagaki-app-root");
@@ -1659,10 +1600,8 @@
       } else {
         rxNostr = undefined;
       }
-      if (!isHostOwnedComposer) {
-        void cancelPendingNip46Auth(undefined, { preserveError: true });
-        void nip46Service.disconnect();
-      }
+      void cancelPendingNip46Auth(undefined, { preserveError: true });
+      void nip46Service.disconnect();
     };
   });
 
@@ -1912,7 +1851,6 @@
   }
 
   function recordCustomEmojiUse(emoji: CustomEmojiSelection): void {
-    if (isHostOwnedComposer) return;
     const pubkey = authState.value?.pubkey;
     if (!pubkey) return;
 
@@ -1938,22 +1876,20 @@
   <Tooltip.Provider>
     <main class="ehagaki-app-root">
       <div class="main-content">
-        {#if !isHostOwnedComposer}
-          <HeaderComponent
-            onResetPostContent={handleResetPostContent}
-            onShowDraftList={draftListDialog.open}
-            onChooseTarget={composerTargetDialog.open}
-            canResetPostContent={hasDraftComposerContext || undefined}
-            balloonMessage={showHeaderBalloonMessage
-              ? balloon.finalMessage
-              : null}
-            compactMessage={showHeaderBalloonMessage
-              ? null
-              : balloon.compactMessage}
-            showMascot={settingsStore.showMascot}
-            showFlavorText={showHeaderBalloonMessage}
-          />
-        {/if}
+        <HeaderComponent
+          onResetPostContent={handleResetPostContent}
+          onShowDraftList={draftListDialog.open}
+          onChooseTarget={composerTargetDialog.open}
+          canResetPostContent={hasDraftComposerContext || undefined}
+          balloonMessage={showHeaderBalloonMessage
+            ? balloon.finalMessage
+            : null}
+          compactMessage={showHeaderBalloonMessage
+            ? null
+            : balloon.compactMessage}
+          showMascot={settingsStore.showMascot}
+          showFlavorText={showHeaderBalloonMessage}
+        />
         <div
           class="composer-scroll-region"
           bind:this={composerScrollRegionEl}
@@ -2013,10 +1949,7 @@
                     onPostSuccess={handlePostSuccess}
                     onCustomEmojiSelect={recordCustomEmojiUse}
                     {notificationPort}
-                    {hostOwnedConfig}
-                    hostCustomEmojiItems={isHostOwnedComposer
-                      ? hostCustomEmojiItems
-                      : undefined}
+                    {normalUploadFiles}
                   />
                 {/if}
                 {#if customEmojiPickerOpen && CustomEmojiPickerComponent}
@@ -2026,16 +1959,11 @@
                   >
                     <CustomEmojiPickerComponent
                       {rxNostr}
-                      pubkey={isHostOwnedComposer ? null : authState.value.pubkey}
+                      pubkey={authState.value.pubkey}
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
-                      customEmojiUsageItems={isHostOwnedComposer
-                        ? []
-                        : customEmojiUsageStore.items}
-                      hostCustomEmojiItems={isHostOwnedComposer
-                        ? hostCustomEmojiItems
-                        : undefined}
+                      customEmojiUsageItems={customEmojiUsageStore.items}
                       onMoveCaretLeft={() =>
                         postComponentRef?.moveCaretLeft?.()}
                       onMoveCaretRight={() =>
@@ -2074,24 +2002,22 @@
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
         hasPostingCapability={hasPostingCapability}
-        mediaEnabled={!isHostOwnedComposer || !!hostOwnedConfig?.uploadMedia}
-        customEmojiEnabled={isHostOwnedComposer || isAuthenticated}
+        mediaEnabled={true}
+        customEmojiEnabled={isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
-      {#if !isHostOwnedComposer}
-        <FooterComponent
-          {isAuthenticated}
-          {isAuthInitialized}
-          {isSwitchingAccount}
-          swNeedRefresh={appRuntimeEnvironment.serviceWorkerEnabled &&
-            ($swNeedRefresh || staleAssetReloadRequired)}
-          onShowLoginDialog={loginDialog.open}
-          onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
-          onOpenPostHistoryDialog={postHistoryDialog.open}
-          onOpenSettingsDialog={handleOpenSettingsFromFooter}
-          onOpenLogoutDialog={logoutDialog.open}
-        />
-      {/if}
+      <FooterComponent
+        {isAuthenticated}
+        {isAuthInitialized}
+        {isSwitchingAccount}
+        swNeedRefresh={appRuntimeEnvironment.serviceWorkerEnabled &&
+          ($swNeedRefresh || staleAssetReloadRequired)}
+        onShowLoginDialog={loginDialog.open}
+        onPreloadPostHistoryDialog={handlePreloadPostHistoryDialog}
+        onOpenPostHistoryDialog={postHistoryDialog.open}
+        onOpenSettingsDialog={handleOpenSettingsFromFooter}
+        onOpenLogoutDialog={logoutDialog.open}
+      />
       <ConfirmDialog
         open={showStaleAssetReloadPrompt}
         onOpenChange={(open) => (showStaleAssetReloadPrompt = open)}

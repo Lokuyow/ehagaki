@@ -13,6 +13,7 @@ const requiredOutputPaths = [
     "dist/web-component-parent-client-example.html",
     "dist/web-component-parent-client-example.js",
     "dist-web-component/ehagaki-composer.js",
+    "dist-web-component/host-owned/ehagaki-composer.js",
 ];
 const sourceDirectories = ["public", "scripts", "legacy-bridge"];
 const sourceFiles = [

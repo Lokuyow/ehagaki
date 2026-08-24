@@ -133,7 +133,7 @@
 - 機能: 旧single-accountの`nostr-secret-key`を、nsec自身から導出したpubkeyのcredential、`nsec` account record、activation policyに沿うactive pointerへ安全に移行する。
 - 関連NIP: nsecのdecode/identity導出はNIP-19。migrationはrelay eventを生成・取得しない。
 - 主な実装ファイル: `src/lib/legacyNsecMigration.ts`、`src/lib/authService.ts`、`src/lib/keyManager.svelte.ts`、`src/lib/accountManager.ts`。
-- 主な関数または責務: `captureLegacyNsecMigrationSnapshot`がaccount listとactive pointerをstrictに取得し、`migrateLegacyNsec`がcredential readback、account record readback、activation policy、legacy削除を順に所有する。`AuthService.initializeAuth`はsnapshot後にNIP-07/NIP-46の旧single-account移行を必要時だけ実行し、nsec migrationの後に既存managed restoreへ進む。Direct Web Componentでは`AppRuntimeEnvironment.localNsecAuthEnabled=false`を認証serviceへ伝え、`AccountManager.cleanupLocalNsecAuthData`がWeb Component namespace内の旧nsec credential/account/active pointerだけを整理してから、NIP-07/NIP-46候補のrestoreへ進む。
+- 主な関数または責務: `captureLegacyNsecMigrationSnapshot`がaccount listとactive pointerをstrictに取得し、`migrateLegacyNsec`がcredential readback、account record readback、activation policy、legacy削除を順に所有する。`AuthService.initializeAuth`はsnapshot後にNIP-07/NIP-46の旧single-account移行を必要時だけ実行し、migration後のstrict snapshotから既存managed restoreへ進む。Direct Web Componentでは`AppRuntimeEnvironment.localNsecAuthEnabled=false`を認証serviceへ伝え、`AccountManager.cleanupLocalNsecAuthData`がWeb Component namespace内の旧nsec credential/account/active pointerだけを整理してから、NIP-07/NIP-46候補のrestoreへ進む。storage/migration/runtime commitの基盤異常は正常な全候補失敗と区別する。
 - 関連テスト: `src/test/unit/legacyNsecMigration.test.ts`、`src/test/unit/keyManager.test.ts`、`src/test/unit/accountManager.test.ts`、`src/test/unit/authService.initialize.test.ts`、`src/test/unit/authService.authenticate.test.ts`、`src/test/unit/authService.restore.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`。
 - 注意点: profile/relay storage keyのsuffixをidentity根拠に使わない。legacy credentialはすべての永続条件をreadbackで確認するまで削除しない。既存の有効なactive pointerはtypeにかかわらずmigration中に維持し、Parent clientは起動時managed restore候補へ追加しない。Direct Web Component以外ではlocal nsec capabilityを有効のまま維持する。
 
@@ -143,10 +143,10 @@
 - 関連NIP: NIP-07
 - event kind: 署名対象に従う。
 - 主なtag: 署名対象eventに従う。
-- 主な実装ファイル: `src/lib/nip07AuthService.ts`、`src/lib/nostrAuthService.ts`、`src/lib/authService.ts`
-- 主な関数または責務: `Nip07AuthService.waitForExtension`、`authenticate`、`signEvent`が`nip07-awaiter`とcaptured `window.nostr`を扱い、`NostrAuthService.getEventSigner`が共通Signer境界へ接続する。
-- 関連テスト: `src/test/unit/nip07AuthService.test.ts`、`src/test/unit/nostrAuthService.test.ts`、`src/test/unit/authService.authenticate.test.ts`
-- 注意点: extension注入待機と署名を独自pollingへ置き換えない。session pubkeyと署名者pubkeyの一致検証を保つ。
+- 主な実装ファイル: `src/lib/nip07AuthService.ts`、`src/lib/nostrAuthService.ts`、`src/lib/authService.ts`、`src/lib/authRestoreUtils.ts`、`src/lib/bootstrap/nip07AutoLoginBootstrap.ts`
+- 主な関数または責務: `Nip07AuthService.waitForExtension`、`authenticate`、`signEvent`が`nip07-awaiter`とcaptured `window.nostr`を扱い、`NostrAuthService.getEventSigner`が共通Signer境界へ接続する。Direct Web Componentのopt-in startup fallbackはmanaged restore完了後だけ実行し、保存済みNIP-07 mismatchで取得済みのidentityを残りの候補評価とfallbackで再利用する。fallback成功はNIP-07 accountを保存・active化し、同一pubkeyの旧方式固有credential/sessionだけをbest-effortで削除する。
+- 関連テスト: `src/test/unit/nip07AuthService.test.ts`、`src/test/unit/nostrAuthService.test.ts`、`src/test/unit/authService.authenticate.test.ts`、`src/test/unit/authService.initialize.test.ts`、`src/test/unit/nip07AutoLoginBootstrap.test.ts`、`src/test/e2e/webComponentEmbed.spec.ts`
+- 注意点: extension注入待機と署名を独自pollingへ置き換えない。session pubkeyと署名者pubkeyの一致検証を保つ。startup fallbackは通常Web Componentのmount-time opt-inに限定し、standalone/iframe/Host-ownedへ広げない。
 
 ## NIP-46
 
