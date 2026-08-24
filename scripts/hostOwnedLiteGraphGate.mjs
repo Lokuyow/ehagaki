@@ -11,6 +11,12 @@ const forbiddenPatterns = [
     /[\\/]src[\\/]lib[\\/]upload[\\/](uploadDestinationResolver|nostr)[\\/]/,
 ];
 
+const fullSelfPublishForbiddenPatterns = [
+    /[\\/]src[\\/]host-owned-composer-lite[\\/]/,
+    /[\\/]src[\\/]lib[\\/](hostOwnedComposer|hostOwnedUpload)\\.ts$/,
+    /[\\/]src[\\/]web-component[\\/]hostOwnedLiteElement\\.ts$/,
+];
+
 /** Exported separately so its static/dynamic traversal can be unit tested. */
 export function collectReachableModuleIds(entryId, getInfo) {
     const pending = [entryId];
@@ -65,6 +71,31 @@ export function createHostOwnedLiteGraphGate(repositoryRoot) {
             if (violations.length > 0) {
                 this.error(
                     `Host-owned Composer Lite reaches forbidden modules:\n${violations.sort().join("\n")}`,
+                );
+            }
+        },
+    };
+}
+
+export function createFullSelfPublishGraphGate(repositoryRoot) {
+    const normalizedRoot = normalize(repositoryRoot);
+    return {
+        name: "ehagaki-full-self-publish-graph-gate",
+        generateBundle() {
+            const entryId = [...this.getModuleIds()].find((id) =>
+                normalize(id).endsWith(normalize("src/web-component/entry.ts")),
+            );
+            if (!entryId) {
+                this.error("Full Web Component entry module was not found for graph validation.");
+            }
+            const reachable = collectReachableModuleIds(entryId, (id) => this.getModuleInfo(id));
+            const violations = [...reachable]
+                .filter((id) => fullSelfPublishForbiddenPatterns.some((pattern) => pattern.test(normalize(id))))
+                .map((id) => findModulePath(entryId, id, (moduleId) => this.getModuleInfo(moduleId))
+                    .map((moduleId) => relative(normalizedRoot, moduleId)).join(" -> "));
+            if (violations.length > 0) {
+                this.error(
+                    `Full Web Component reaches Host-owned-only modules:\n${violations.sort().join("\n")}`,
                 );
             }
         },
