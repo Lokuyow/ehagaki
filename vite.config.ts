@@ -32,6 +32,9 @@ const fixedLegacyBridgePaths = fixedLegacyBridgeManifest.assets.map(asset => ass
 // https://vite.dev/config/
 export default defineConfig({
   base: baseUrl,
+  define: {
+    __EHAGAKI_COMPOSER_LITE__: 'false',
+  },
   optimizeDeps: {
     exclude: ['@jsquash/webp']
   },

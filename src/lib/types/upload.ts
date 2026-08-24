@@ -291,6 +291,8 @@ export interface UploadHelperParams {
     ) => Promise<FileUploadResponse[]>;
     /** A local media-only manager for a transport that does not use Nostr auth. */
     fileUploadManager?: UploadHelperDependencies["FileUploadManager"];
+    /** A fully configured manager for the normal uploader or a host-owned operation. */
+    fileUploadManagerInstance?: FileUploadManagerInterface;
     /** The UI wrapper keeps `isUploading` through its post-upload cleanup. */
     deferUploadStateClear?: boolean;
 }

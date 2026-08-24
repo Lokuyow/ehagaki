@@ -18,7 +18,7 @@ describe("Vercel routing", () => {
     it("static asset namespacesをSPA fallbackから除外する", () => {
         expect(config.rewrites).toEqual([
             {
-                source: "/((?!assets/|web-component(?:/|$)|web-component-parent-client-example\\.(?:html|js)$|host-owned-composer-example\\.html$).*)",
+                source: "/((?!assets/|web-component(?:/|$)|web-component-parent-client-example\\.(?:html|js)$|host-owned-composer-example\\.html$|host-owned-composer-lite-example\\.html$).*)",
                 destination: "/index.html",
             },
         ]);
@@ -29,6 +29,7 @@ describe("Vercel routing", () => {
             "/web-component-parent-client-example.html",
             "/web-component-parent-client-example.js",
             "/host-owned-composer-example.html",
+            "/host-owned-composer-lite-example.html",
             "/web-component/ehagaki-composer.js",
             "/web-component/assets/entry.js",
             "/web-component/icons/settings.svg",

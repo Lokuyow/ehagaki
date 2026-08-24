@@ -194,6 +194,28 @@ await contextPromise;
 
 ## Host-owned Composer mode
 
+### Full and Lite distributions
+
+The existing full distribution remains `/web-component/ehagaki-composer.js`.
+Host-owned-only pages may instead import Lite from
+`/web-component/host-owned/ehagaki-composer.js`. Both distributions define the
+same `<ehagaki-composer>` tag, so import **exactly one** in a document; mixing
+them throws deterministically. The full distribution continues to support both
+self-publish and Host-owned mode. Lite requires `configureHostOwned()` before
+the element is connected.
+
+Set `asset-base`/`assetBase` before connection to the directory belonging to
+the imported distribution: `/web-component/` for full and
+`/web-component/host-owned/` for Lite. This makes icons, dynamic chunks,
+MediaBunny, the optional AAC encoder, and image compression resolve from that
+distribution. Omitting it retains the existing fallback behavior; it is not a
+new readiness error.
+
+The full Host-owned sample remains
+[host-owned-composer-example.html](../public/host-owned-composer-example.html).
+The Lite sample is
+[host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html).
+
 通常の Direct Web Component は従来どおり eHagaki が署名・Relay publish を行う self-publish
 mode です。Host-owned mode は明示的 opt-in です。`configureHostOwned()` を要素生成後、**最初の
 `connectedCallback` より前に一度だけ**呼び出します。接続・切断・再接続後に mode や handler を

@@ -132,6 +132,7 @@ describe('Playwright config connection values', () => {
             expect(config.projects?.[2]?.testMatch).toEqual([
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
+                '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
             ]);

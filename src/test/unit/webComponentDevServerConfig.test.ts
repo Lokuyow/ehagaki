@@ -34,6 +34,7 @@ describe("Web Component dev server host configuration", () => {
         expect(createLanSampleUrls(5173, ["192.168.1.20"])).toEqual([
             "http://192.168.1.20:5173/ehagaki/web-component-parent-client-example.html",
             "http://192.168.1.20:5173/ehagaki/host-owned-composer-example.html",
+            "http://192.168.1.20:5173/ehagaki/host-owned-composer-lite-example.html",
         ]);
     });
 
@@ -41,6 +42,7 @@ describe("Web Component dev server host configuration", () => {
         expect(createSampleUrls(5173, "localhost")).toEqual([
             "http://localhost:5173/ehagaki/web-component-parent-client-example.html",
             "http://localhost:5173/ehagaki/host-owned-composer-example.html",
+            "http://localhost:5173/ehagaki/host-owned-composer-lite-example.html",
         ]);
     });
 });

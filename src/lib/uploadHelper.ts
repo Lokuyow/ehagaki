@@ -1,18 +1,9 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
-import { FileUploadManager } from "./fileUploadManager";
-import { ImageCompressionService } from "./imageCompressionService";
-import { MimeTypeSupport } from "./mimeTypeSupport";
-import { NostrAuthService } from "./nostrAuthService";
-import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import {
     mediaFreePlacementStore,
-    setVideoCompressionService,
-    setImageCompressionService,
 } from '../stores/uploadStore.svelte';
-import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
-import { imageSizeMapStore } from "../stores/tagsStore.svelte";
-import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/fileUtils";
+import { prepareMetadataList, processFilesForUpload } from "./utils/fileUtils";
 import type {
     UploadHelperParams,
     UploadHelperResult,
@@ -20,10 +11,6 @@ import type {
     FileUploadResponse,
     UploadHelperDependencies,
     FileUploadManagerInterface,
-    FileUploadDependencies,
-    AuthService,
-    CompressionService,
-    MimeTypeSupportInterface,
     UploadProgress,
     UploadInfoCallbacks,
     ImageDimensions,
@@ -49,148 +36,39 @@ import {
     createUploadProgress,
     notifyUploadProgress,
 } from './uploadProgressUtils';
-import { uploadDestinationsRepository } from "./storage/uploadDestinationsRepository";
-import { authState } from "../stores/authStore.svelte";
-import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
-import { getAppStorage } from "./appStorage";
-
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
     FileUploadManagerConstructor = dependencies.FileUploadManager,
+    fileUploadManagerInstance?: FileUploadManagerInterface,
 ): FileUploadManagerInterface {
-    const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
-
-    if (
-        FileUploadManagerConstructor ===
-        (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])
-    ) {
-        const mimeSupport = new MimeTypeSupport(
-            typeof document === "undefined" ? undefined : document,
-        );
-        const imageCompressionService = new ImageCompressionService(
-            mimeSupport,
-            dependencies.localStorage,
-            isUploadAborted,
-        );
-        const videoCompressionService = new VideoCompressionService(
-            dependencies.localStorage,
-            isUploadAborted,
-        );
-
-        setImageCompressionService(imageCompressionService);
-        setVideoCompressionService(videoCompressionService);
-
-        return new FileUploadManager(
-            {
-                localStorage: dependencies.localStorage,
-                fetch: window.fetch.bind(window),
-                crypto: dependencies.crypto,
-                document: typeof document === "undefined" ? undefined : document,
-                window: typeof window === "undefined" ? undefined : window,
-                navigator: typeof navigator === "undefined" ? undefined : navigator,
-                isUploadAborted,
-            },
-            new NostrAuthService(),
-            imageCompressionService,
-            videoCompressionService,
-            mimeSupport,
-        );
-    }
-
-    return new FileUploadManagerConstructor();
+    return fileUploadManagerInstance ?? new FileUploadManagerConstructor();
 }
 
-function getCurrentUploadDestinationIdentity(): {
-    pubkeyHex: string | null;
-    npub: string | null;
-} {
-    if (!authState.value.isAuthenticated) {
-        return {
-            pubkeyHex: null,
-            npub: null,
-        };
-    }
-
-    return {
-        pubkeyHex: authState.value.pubkey || null,
-        npub: authState.value.npub || null,
-    };
+function getDestinationUploadEndpoint(destination: UploadDestination | undefined): string {
+    if (!destination) return "";
+    return destination.protocol === "nip96"
+        ? destination.resolvedUploadUrl || destination.serverUrl
+        : destination.serverUrl;
 }
 
-export async function resolveCurrentUploadDestination(): Promise<UploadDestination> {
-    const identity = getCurrentUploadDestinationIdentity();
-    return resolveUploadDestinationForUse(
-        await uploadDestinationsRepository.getDefault(identity.pubkeyHex),
-        identity,
-    );
-}
-
-function getDestinationUploadEndpoint(destination: UploadDestination | undefined): string | undefined {
-    if (!destination) return undefined;
-    if (destination.protocol === "nip96") {
-        return destination.resolvedUploadUrl || destination.serverUrl;
-    }
-    return destination.serverUrl;
-}
-
-async function uploadValidFiles(
-    fileUploadManager: FileUploadManagerInterface,
-    validFiles: File[],
-    endpoint: string,
-    uploadCallbacks: UploadInfoCallbacks | undefined,
-    metadataList: Array<Record<string, string | number | undefined>> | undefined,
+async function uploadWithManager(
+    manager: FileUploadManagerInterface,
+    files: File[],
+    destination: UploadDestination | undefined,
+    callbacks: UploadInfoCallbacks | undefined,
     devMode: boolean,
-    destination?: UploadDestination,
 ): Promise<FileUploadResponse[] | null> {
-    try {
-        if (validFiles.length === 1) {
-            const response = destination
-                ? await fileUploadManager.uploadFileWithCallbacks(
-                    validFiles[0],
-                    endpoint,
-                    uploadCallbacks,
-                    devMode,
-                    metadataList?.[0],
-                    destination,
-                )
-                : await fileUploadManager.uploadFileWithCallbacks(
-                    validFiles[0],
-                    endpoint,
-                    uploadCallbacks,
-                    devMode,
-                    metadataList?.[0],
-                );
-            return [response];
-        }
-
-        if (validFiles.length > 1) {
-            return destination
-                ? await fileUploadManager.uploadMultipleFilesWithCallbacks(
-                    validFiles,
-                    endpoint,
-                    uploadCallbacks,
-                    metadataList,
-                    destination,
-                )
-                : await fileUploadManager.uploadMultipleFilesWithCallbacks(
-                    validFiles,
-                    endpoint,
-                    uploadCallbacks,
-                    metadataList,
-                );
-        }
-    } catch (error) {
-        if (devMode) {
-            const modeLabel = import.meta.env.MODE === "development" ? "[dev]" : "[preview]";
-            console.error(`${modeLabel} [uploadHelper] Upload error`, {
-                stage: 'upload',
-                reason: 'unexpected',
-            });
-        }
-        throw error;
+    if (files.length === 0) return null;
+    const endpoint = getDestinationUploadEndpoint(destination);
+    const metadataList = prepareMetadataList(files);
+    if (files.length === 1) {
+        return [await manager.uploadFileWithCallbacks(
+            files[0], endpoint, callbacks, devMode, metadataList[0], destination,
+        )];
     }
-
-    return null;
+    return await manager.uploadMultipleFilesWithCallbacks(
+        files, endpoint, callbacks, metadataList, destination,
+    );
 }
 
 interface PlaceholderReplacementOutcome {
@@ -269,28 +147,6 @@ async function replaceUploadedPlaceholders(params: {
     };
 }
 
-// デフォルトの依存関係
-const createDefaultDependencies = (): UploadHelperDependencies => ({
-    localStorage: getAppStorage(),
-    crypto: window.crypto.subtle,
-    tick,
-    FileUploadManager: FileUploadManager as unknown as new (
-        deps?: FileUploadDependencies,
-        auth?: AuthService,
-        imageCompression?: CompressionService,
-        videoCompression?: CompressionService,
-        mime?: MimeTypeSupportInterface
-    ) => FileUploadManagerInterface,
-    getImageDimensions,
-    isUploadAborted: isDefaultUploadAborted,
-    extractImageBlurhashMap,
-    calculateImageHash,
-    getMimeTypeFromUrl,
-    createImetaTag: async (params: any) => await createImetaTag(params),
-    imageSizeMapStore,
-    resolveUploadDestination: resolveCurrentUploadDestination,
-});
-
 export async function uploadHelper({
     files,
     currentEditor,
@@ -299,13 +155,17 @@ export async function uploadHelper({
     showUploadError,
     updateUploadState,
     devMode,
-    dependencies = createDefaultDependencies(),
+    dependencies,
     prepareFiles,
     uploadPreparedFiles,
     fileUploadManager: fileUploadManagerOverride,
+    fileUploadManagerInstance,
     deferUploadStateClear = false,
     isUploadAborted: operationAbortChecker,
 }: UploadHelperParams): Promise<UploadHelperResult> {
+    if (!dependencies) {
+        throw new Error("Upload helper requires explicit runtime dependencies.");
+    }
     const effectiveDependencies = operationAbortChecker
         ? { ...dependencies, isUploadAborted: operationAbortChecker }
         : dependencies;
@@ -321,7 +181,6 @@ export async function uploadHelper({
     const uploadDestination = uploadPreparedFiles
         ? undefined
         : await dependencies.resolveUploadDestination?.();
-    const endpoint = getDestinationUploadEndpoint(uploadDestination) || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
@@ -470,20 +329,18 @@ export async function uploadHelper({
     const fileUploadManager = createFileUploadManager(
         effectiveDependencies,
         FileUploadManagerConstructor,
+        fileUploadManagerInstance,
     );
 
     try {
-        const metadataList = prepareMetadataList(validFiles);
         results = uploadPreparedFiles
             ? await uploadPreparedFiles(validFiles, placeholderMap)
-            : await uploadValidFiles(
+            : await uploadWithManager(
                 fileUploadManager,
                 validFiles,
-                endpoint,
-                managedUploadCallbacks,
-                metadataList,
-                devMode,
                 uploadDestination,
+                managedUploadCallbacks,
+                devMode,
             );
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -578,115 +435,4 @@ export function showUploadErrorMessage(
     const isUploading = params.keepUploading ?? false;
     params.updateUploadState(isUploading, message);
     setTimeout(() => params.setUploadErrorMessage(""), duration);
-}
-
-export interface PerformFileUploadParams {
-    files: File[] | FileList;
-    currentEditor: TipTapEditor | null;
-    fileInput?: HTMLInputElement;
-    uploadCallbacks?: UploadInfoCallbacks;
-    updateUploadState: (isUploading: boolean, message?: string) => void;
-    setUploadErrorMessage: (message: string) => void;
-    devMode: boolean;
-    imageOxMap: Record<string, string>;
-    imageXMap: Record<string, string>;
-    dependencies?: UploadHelperDependencies;
-    getUploadFailedText: (key: string) => string;
-}
-
-export async function performFileUpload(params: PerformFileUploadParams): Promise<UploadHelperResult | null> {
-    const {
-        files,
-        currentEditor,
-        fileInput,
-        uploadCallbacks,
-        updateUploadState,
-        setUploadErrorMessage,
-        devMode,
-        imageOxMap,
-        imageXMap,
-        dependencies = createDefaultDependencies(),
-        getUploadFailedText,
-    } = params;
-
-    if (!files || files.length === 0) return null;
-
-    updateUploadState(true, "");
-    let result: UploadHelperResult;
-    try {
-        result = await uploadHelper({
-            files,
-            currentEditor,
-            fileInput,
-            uploadCallbacks,
-            showUploadError: (msg: string, duration?: number) =>
-                showUploadErrorMessage(msg, duration, {
-                    updateUploadState,
-                    setUploadErrorMessage,
-                    keepUploading: true,
-                }),
-            updateUploadState,
-            devMode,
-            dependencies,
-            deferUploadStateClear: true,
-        });
-    } finally {
-        updateUploadState(false);
-    }
-
-    Object.assign(imageOxMap, result.imageOxMap);
-    Object.assign(imageXMap, result.imageXMap);
-
-    if (result.failedResults?.length) {
-        showUploadErrorMessage(
-            buildUploadFailureMessage(
-                result.failedResults,
-                getUploadFailedText("postComponent.upload_failed"),
-                (errorCode) => getUploadFailedText(`postComponent.${errorCode}`),
-            ) || result.errorMessage,
-            5000,
-            { updateUploadState, setUploadErrorMessage }
-        );
-    }
-    if (fileInput) fileInput.value = "";
-    return result;
-}
-
-export interface UploadFilesParams {
-    files: File[] | FileList;
-    currentEditor: TipTapEditor | null;
-    fileInput?: HTMLInputElement;
-    updateUploadState: (isUploading: boolean, message?: string) => void;
-    setUploadErrorMessage: (message: string) => void;
-    imageOxMap: Record<string, string>;
-    imageXMap: Record<string, string>;
-    getUploadFailedText: (key: string) => string;
-    dependencies?: UploadHelperDependencies;
-}
-
-export async function uploadFiles(params: UploadFilesParams): Promise<UploadHelperResult | null> {
-    const {
-        files,
-        currentEditor,
-        fileInput,
-        updateUploadState,
-        setUploadErrorMessage,
-        imageOxMap,
-        imageXMap,
-        getUploadFailedText,
-        dependencies,
-    } = params;
-
-    return await performFileUpload({
-        files,
-        currentEditor,
-        fileInput,
-        updateUploadState,
-        setUploadErrorMessage,
-        devMode: import.meta.env.MODE === "development",
-        imageOxMap,
-        imageXMap,
-        dependencies,
-        getUploadFailedText,
-    });
 }

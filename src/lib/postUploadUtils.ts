@@ -1,14 +1,21 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
 
-import {
-    uploadFiles as uploadFilesHelper,
-    type UploadFilesParams,
-} from './uploadHelper';
 import type { UploadHelperResult } from './types';
 
 type UploadableFiles = File[] | FileList | null | undefined;
 
-type UploadFilesExecutor = (params: UploadFilesParams) => Promise<UploadHelperResult | null | void>;
+export interface UploadFilesParams {
+    files: File[] | FileList;
+    currentEditor: TipTapEditor | null;
+    fileInput?: HTMLInputElement;
+    updateUploadState: (isUploading: boolean, message?: string) => void;
+    setUploadErrorMessage: (message: string) => void;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    getUploadFailedText: (key: string) => string;
+}
+
+export type UploadFilesExecutor = (params: UploadFilesParams) => Promise<UploadHelperResult | null | void>;
 
 interface UploadStateTarget {
     isUploading: boolean;
@@ -23,7 +30,7 @@ interface CreatePostUploadHandlersParams {
     getUploadFailedText: (key: string) => string;
     updateUploadState: (isUploading: boolean, message?: string) => void;
     setUploadErrorMessage: (message: string) => void;
-    uploadFiles?: UploadFilesExecutor;
+    uploadFiles: UploadFilesExecutor;
 }
 
 function hasFiles(files: UploadableFiles): files is File[] | FileList {
@@ -52,7 +59,7 @@ export function createPostUploadHandlers({
     getUploadFailedText,
     updateUploadState,
     setUploadErrorMessage,
-    uploadFiles = uploadFilesHelper,
+    uploadFiles,
 }: CreatePostUploadHandlersParams) {
     const performUpload = async (files: UploadableFiles): Promise<UploadHelperResult | null> => {
         if (!hasFiles(files)) {
