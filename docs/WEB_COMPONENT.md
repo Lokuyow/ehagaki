@@ -192,34 +192,28 @@ await settingsPromise;
 await contextPromise;
 ```
 
-## Host-owned Composer mode
+## Full self-publish と Lite Host-owned
 
-### Full and Lite distributions
+通常の Full distribution (`/web-component/ehagaki-composer.js`) は eHagaki が署名・Relay
+publish を行う self-publish 専用です。既存の `whenReady()`、`assetBase`、`setContext()`、
+`setSettings()`、イベント、Shadow DOM、single-instance 制約はそのまま利用できます。Full
+element には Host-owned の `configureHostOwned()` と `setCustomEmojis()` は公開されません。
 
-The existing full distribution remains `/web-component/ehagaki-composer.js`.
-Host-owned-only pages may instead import Lite from
-`/web-component/host-owned/ehagaki-composer.js`. Both distributions define the
-same `<ehagaki-composer>` tag, so import **exactly one** in a document; mixing
-them throws deterministically. The full distribution continues to support both
-self-publish and Host-owned mode. Lite requires `configureHostOwned()` before
-the element is connected.
+Host-owned を組み込むページは Lite distribution
+(`/web-component/host-owned/ehagaki-composer.js`) だけを import してください。両方の
+distribution は同じ `<ehagaki-composer>` tag を定義するため、1 document では **exactly one**
+だけを import します。Lite は `configureHostOwned()` を element の生成後、**最初の
+`connectedCallback` より前に一度だけ**呼び出す必要があります。接続・切断・再接続後に mode や
+handler を交換することはできません。変更が必要な場合は新しい element instance を生成して
+ください。
 
-Set `asset-base`/`assetBase` before connection to the directory belonging to
-the imported distribution: `/web-component/` for full and
-`/web-component/host-owned/` for Lite. This makes icons, dynamic chunks,
-MediaBunny, the optional AAC encoder, and image compression resolve from that
-distribution. Omitting it retains the existing fallback behavior; it is not a
-new readiness error.
+`asset-base`/`assetBase` は import した distribution のディレクトリを connection 前に指定します。
+Full は `/web-component/`、Lite は `/web-component/host-owned/` です。これにより icons、dynamic
+chunks、MediaBunny、optional AAC encoder、image compression が同じ distribution から解決されます。
+省略時の既存 fallback 挙動は維持され、新しい readiness error にはなりません。
 
-The full Host-owned sample remains
-[host-owned-composer-example.html](../public/host-owned-composer-example.html).
-The Lite sample is
-[host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html).
-
-通常の Direct Web Component は従来どおり eHagaki が署名・Relay publish を行う self-publish
-mode です。Host-owned mode は明示的 opt-in です。`configureHostOwned()` を要素生成後、**最初の
-`connectedCallback` より前に一度だけ**呼び出します。接続・切断・再接続後に mode や handler を
-交換することはできません。変更が必要な場合は新しい element instance を生成してください。
+唯一の Host-owned manual sample は
+[host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html) です。
 
 ```js
 const composer = document.createElement('ehagaki-composer');
@@ -244,13 +238,13 @@ await composer.whenReady();
 await customEmojisReady;
 ```
 
-`submit` は必須です。`uploadMedia` は optional capability で、未指定時は file picker、paste、
+`submit` は Lite で必須です。`uploadMedia` は optional capability で、未指定時は file picker、paste、
 drag & drop、gallery への新規メディア入力を受け付けず、eHagaki の upload destination や Nostr
 認証への fallback は行いません。指定時は、eHagaki が圧縮・プレビュー・ギャラリー処理を行った
 同じ Window realm の `File` を handler へ渡します。Base64 化はしません。handler は HTTP(S) URL と
 allowlist 済みの imeta field だけを返せます。
 
-Host handler に渡る `output` は `{ content, tags, context }` です。`tags` には hashtag、content
+Lite の Host handler に渡る `output` は `{ content, tags, context }` です。`tags` には hashtag、content
 warning、custom emoji、imeta など composer-owned tag のみが入り、`kind`、`pubkey`、`created_at`、
 `id`、`sig`、`e`/`p`/`q`/`a`/`k`、`client` は入りません。`context` は reply/quote/channel を
 immutable snapshot として保持します。Host-owned mode では eHagaki は認証、guest Relay、target
@@ -262,7 +256,7 @@ upload 中は submit を開始できず、submit 中は media input を開始で
 `setContext()` は既存どおり利用できますが、Host-owned submit 中は `submission_in_progress` で
 reject されます。`ehagaki-composer-context-updated`、clear、`whenReady()`、`setSettings()` は維持されます。
 
-`setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
+Lite の `setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
 検証してから atomic に反映し、空配列は clear です。catalog は reconnect では保持し、別 element や
 self-publish mode の account-scoped catalog へは漏れません。
 
@@ -782,6 +776,5 @@ CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがあ�
 だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、
 module URL と `asset-base` には信頼できる URL だけを指定してください。
 
-Host-owned の別サンプルは [host-owned-composer-example.html](../public/host-owned-composer-example.html)
-です。text-only / media-enabled の切替、catalog、context、host submit/upload の成功・失敗を、既存の
-Parent Client sample とは独立して確認できます。
+Lite の Host-owned sample では text-only / media-enabled の切替、catalog、context、host submit/upload
+の成功・失敗を、既存の Parent Client sample とは独立して確認できます。

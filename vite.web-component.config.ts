@@ -2,7 +2,10 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { getWebComponentIconVariableName } from "./src/web-component/iconAssets";
-import { createHostOwnedLiteGraphGate } from "./scripts/hostOwnedLiteGraphGate.mjs";
+import {
+    createFullSelfPublishGraphGate,
+    createHostOwnedLiteGraphGate,
+} from "./scripts/hostOwnedLiteGraphGate.mjs";
 import { resolve } from "node:path";
 
 const iconUrlPattern = /url\((["'])\/icons\/([^"'()]+)\1\)/g;
@@ -86,7 +89,9 @@ export default defineConfig(({ mode }) => {
         resolveWebComponentIconUrls(),
         ...(isHostOwnedLite ? [resolveHostOwnedLiteFullOnlyImports()] : []),
         svelte({ compilerOptions: { customElement: true } }),
-        ...(isHostOwnedLite ? [createHostOwnedLiteGraphGate(process.cwd())] : []),
+        isHostOwnedLite
+            ? createHostOwnedLiteGraphGate(process.cwd())
+            : createFullSelfPublishGraphGate(process.cwd()),
         viteStaticCopy({
             targets: [
                 {

@@ -136,9 +136,12 @@
     hostCustomEmojiItems = [],
     normalUploadFiles,
   }: Props = $props();
-  let isHostOwned = $derived(!!hostOwnedConfig);
   const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined"
     && __EHAGAKI_COMPOSER_LITE__;
+  // Host-owned behavior is a build-time capability. The full distribution
+  // never accepts the host config, allowing Rollup to remove this branch and
+  // its dedicated output/upload modules from the full graph.
+  const isHostOwned = isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
   let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
   let hostMountActive = true;
   let editor: any = $state(null);

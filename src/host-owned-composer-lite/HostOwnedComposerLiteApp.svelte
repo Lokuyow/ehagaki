@@ -41,6 +41,7 @@
   import { setupViewportListener } from "../stores/uiStore.svelte";
   import { clearUrlQueryContentStore, updateUrlQueryContentStore } from "../stores/sharedContentStore.svelte";
   import { settingsStore } from "../stores/settingsStore.svelte";
+  import { editorState } from "../stores/editorStore.svelte";
   import { uploadDestinationsRepository } from "../lib/storage/uploadDestinationsRepository";
   import type { CustomEmojiSelection } from "../lib/customEmojiUsage";
   import type { EHagakiCustomEmojiCatalogItem, EHagakiHostOwnedComposerOptions } from "../web-component/types";
@@ -130,6 +131,9 @@
   }
 
   export async function setEmbedContext(payload: unknown): Promise<void> {
+    if (editorState.postStatus.sending) {
+      throw new Error("submission_in_progress");
+    }
     const validated = validateEmbedComposerSetContextPayload(payload);
     const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
       validated,

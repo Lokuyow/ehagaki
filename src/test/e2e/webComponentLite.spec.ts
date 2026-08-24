@@ -10,6 +10,7 @@ let componentServer: Server;
 let hostServer: Server;
 let componentOrigin = "";
 let hostOrigin = "";
+const componentStoragePrefix = "ehagaki.web-component.v1:";
 
 function listen(server: Server): Promise<number> {
     return new Promise((resolve) => server.listen(0, "127.0.0.1", () => {
@@ -54,9 +55,9 @@ test.afterAll(async () => {
     await Promise.all([close(componentServer), close(hostServer)]);
 });
 
-async function mountHostOwned(page: import("@playwright/test").Page, distribution: "full" | "lite") {
-    return await page.evaluate(async ({ componentOrigin, distribution }) => {
-        const suffix = distribution === "lite" ? "/host-owned" : "";
+async function mountHostOwned(page: import("@playwright/test").Page) {
+    return await page.evaluate(async ({ componentOrigin }) => {
+        const suffix = "/host-owned";
         await import(`${componentOrigin}${suffix}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             assetBase: string;
@@ -82,7 +83,7 @@ async function mountHostOwned(page: import("@playwright/test").Page, distributio
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
         await composer.setContext({ content: "#lite", reply: "note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl", quotes: [] });
         return { events, assetBase: composer.assetBase };
-    }, { componentOrigin, distribution });
+    }, { componentOrigin });
 }
 
 test("Lite requires pre-connect Host-owned configuration without making assetBase a hard error", async ({ page }) => {
@@ -99,14 +100,65 @@ test("Lite requires pre-connect Host-owned configuration without making assetBas
     expect(result).toEqual({ rejected: true, events: ["error"] });
 });
 
-test("full Host-owned and Lite Host-owned keep the public lifecycle and explicit distribution asset base", async ({ page }) => {
+test("Lite configuration is immutable and aborts host work when disconnected", async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto(hostOrigin);
-    const full = await mountHostOwned(page, "full");
-    expect(full.events).toContain("ehagaki-ready");
-    expect(full.assetBase).toBe(`${componentOrigin}/`);
-    // A distribution choice is document-scoped. Use a fresh document for Lite.
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { uploadCalls: 0, aborted: false, resolveUpload: null as ((value: unknown) => void) | null };
+        (window as any).__liteAbortState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+        };
+        const options = {
+            submit: () => ({ eventId: "a".repeat(64) }),
+            uploadMedia: (_file: File, _metadata: unknown, { signal }: { signal: AbortSignal }) => {
+                state.uploadCalls += 1;
+                signal.addEventListener("abort", () => { state.aborted = true; }, { once: true });
+                return new Promise((resolve) => { state.resolveUpload = resolve; });
+            },
+        };
+        composer.configureHostOwned(options);
+        let secondConfigure = "resolved";
+        try { composer.configureHostOwned(options); } catch (error) { secondConfigure = (error as Error).name; }
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ imageCompressionLevel: "none" });
+        (window as any).__liteSecondConfigure = secondConfigure;
+    }, { componentOrigin });
+    expect(await page.evaluate(() => (window as any).__liteSecondConfigure)).toBe("InvalidStateError");
+    const composer = page.locator("ehagaki-composer");
+    await composer.locator('input[type="file"]').setInputFiles({
+        name: "pending.png",
+        mimeType: "image/png",
+        buffer: Buffer.alloc(21 * 1024),
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteAbortState.uploadCalls)).toBe(1);
+    await composer.evaluate((element) => element.remove());
+    await expect.poll(() => page.evaluate(() => (window as any).__liteAbortState.aborted)).toBe(true);
+});
+
+test("Lite does not flow into account, history, or relay state", async ({ page }) => {
     await page.goto(hostOrigin);
-    const lite = await mountHostOwned(page, "lite");
+    await page.evaluate(({ componentStoragePrefix }) => {
+        localStorage.setItem(`${componentStoragePrefix}nostr-accounts`, JSON.stringify([{ pubkeyHex: "f".repeat(64), type: "nip07" }]));
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, "f".repeat(64));
+        localStorage.setItem(`${componentStoragePrefix}nostr-relays-f${"f".repeat(63)}`, JSON.stringify({ "wss://example.invalid": { read: true, write: true } }));
+    }, { componentStoragePrefix });
+    await mountHostOwned(page);
+    const state = await page.evaluate(() => ({
+        postHistory: document.querySelector("ehagaki-composer")?.shadowRoot?.querySelectorAll(".post-history-btn").length ?? 0,
+        login: document.querySelector("ehagaki-composer")?.shadowRoot?.querySelectorAll("button.login-btn").length ?? 0,
+        placeholder: document.querySelector("ehagaki-composer")?.shadowRoot?.querySelectorAll(".editor-account-placeholder").length ?? 0,
+    }));
+    expect(state).toEqual({ postHistory: 0, login: 0, placeholder: 0 });
+});
+
+test("Lite keeps the explicit distribution asset base and lifecycle", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const lite = await mountHostOwned(page);
     expect(lite.events).toContain("ehagaki-ready");
     expect(lite.assetBase).toBe(`${componentOrigin}/host-owned/`);
 });
@@ -233,7 +285,148 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
         ["t", "litetag"],
         ["content-warning", "Lite CW"],
         ["emoji", "wave", "https://example.invalid/wave.webp"],
+        expect.arrayContaining(["imeta", "url https://host.example/lite-media.png", "m image/png"]),
     ]));
+});
+
+test("Lite rejects setContext before changing context while Host submit is pending", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const reply = nip19.noteEncode("b".repeat(64));
+    const channel = nip19.noteEncode("c".repeat(64));
+    await page.evaluate(async ({ componentOrigin, reply, channel }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = {
+            submitStarted: false,
+            submitted: null as any,
+            resolveSubmit: null as ((value: unknown) => void) | null,
+            events: [] as string[],
+        };
+        (window as any).__litePendingSubmitState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.submitStarted = true;
+                state.submitted = JSON.parse(JSON.stringify(output));
+                return new Promise((resolve) => { state.resolveSubmit = resolve; });
+            },
+        });
+        composer.addEventListener("ehagaki-post-success", () => state.events.push("success"));
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ imageCompressionLevel: "none", videoCompressionLevel: "none" });
+        await composer.setContext({
+            content: "before pending submit",
+            reply,
+            quotes: [],
+            channel: { reference: channel, name: "before channel", about: "before channel about" },
+        });
+    }, { componentOrigin, reply, channel });
+
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".tiptap-editor")).toContainText("before pending submit");
+    await expect(composer.locator(".reply-quote-preview")).toHaveCount(1);
+    await expect(composer.locator(".channel-context-preview")).toContainText("before channel");
+    await composer.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__litePendingSubmitState.submitStarted)).toBe(true);
+
+    const pending = await page.evaluate(async () => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            setContext(value: unknown): Promise<void>;
+        };
+        const result = await composer.setContext({
+            content: "must not apply while pending",
+            reply: null,
+            quotes: [],
+            channel: null,
+        }).then(
+            () => "resolved",
+            (error: Error) => error.message,
+        );
+        const shadow = composer.shadowRoot!;
+        return {
+            result,
+            content: shadow.querySelector(".tiptap-editor")?.textContent ?? "",
+            replies: shadow.querySelectorAll(".reply-quote-preview").length,
+            channel: shadow.querySelector(".channel-context-preview")?.textContent ?? "",
+            submitted: (window as any).__litePendingSubmitState.submitted,
+        };
+    });
+    expect(pending.result).toBe("submission_in_progress");
+    expect(pending.content).toContain("before pending submit");
+    expect(pending.replies).toBe(1);
+    expect(pending.channel).toContain("before channel");
+    expect(pending.submitted.content).toContain("before pending submit");
+
+    await page.evaluate(() => {
+        (window as any).__litePendingSubmitState.resolveSubmit({ eventId: "d".repeat(64) });
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__litePendingSubmitState.events)).toContain("success");
+    await expect(composer.locator(".tiptap-editor")).toHaveText("");
+    await expect(composer.locator(".reply-quote-preview")).toHaveCount(0);
+    await expect(composer.locator(".channel-context-preview")).toContainText("before channel");
+});
+
+test("Lite ignores a stale upload completion after reconnect", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = {
+            uploads: [] as string[],
+            deferred: {} as Record<string, (value: unknown) => void>,
+        };
+        (window as any).__liteStaleUploadState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+        };
+        composer.configureHostOwned({
+            submit: () => ({ eventId: "a".repeat(64) }),
+            uploadMedia(file: File) {
+                state.uploads.push(file.name);
+                return new Promise((resolve) => { state.deferred[file.name] = resolve; });
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ imageCompressionLevel: "none", mediaFreePlacement: true });
+        (window as any).__liteStaleUploadComposer = composer;
+    }, { componentOrigin });
+    const png = {
+        name: "stale.png",
+        mimeType: "image/png",
+        buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+    };
+    const composer = page.locator("ehagaki-composer");
+    await composer.locator('input[type="file"]').setInputFiles(png);
+    await expect.poll(() => page.evaluate(() => (window as any).__liteStaleUploadState.uploads.length)).toBe(1);
+    await composer.evaluate((element) => element.remove());
+    await page.evaluate(async () => {
+        const composer = (window as any).__liteStaleUploadComposer as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: unknown): Promise<unknown>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ imageCompressionLevel: "none", mediaFreePlacement: true });
+    });
+    await page.locator("ehagaki-composer").locator('input[type="file"]').setInputFiles({ ...png, name: "current.png" });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteStaleUploadState.uploads.length)).toBe(2);
+    await page.evaluate(() => (window as any).__liteStaleUploadState.deferred["stale.png"]({
+        url: "https://host.example/stale.png",
+        imeta: { m: "image/png", alt: "stale" },
+    }));
+    await expect(page.locator("ehagaki-composer img[src='https://host.example/stale.png']")).toHaveCount(0);
+    await page.evaluate(() => (window as any).__liteStaleUploadState.deferred["current.png"]({
+        url: "https://host.example/current.png",
+        imeta: { m: "image/png", alt: "current" },
+    }));
+    await expect(page.locator("ehagaki-composer img[src='https://host.example/current.png']")).toHaveCount(1);
 });
 
 test("Lite rejects a full/Lite dual import deterministically", async ({ page }) => {
@@ -252,7 +445,7 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     test.skip(browserName !== "chromium" || isMobile, "The controlled native-AAC-unavailable path requires desktop Chromium WebCodecs.");
     test.setTimeout(90_000);
     await page.goto(hostOrigin);
-    await mountHostOwned(page, "lite");
+    await mountHostOwned(page);
     const initial = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
     for (const capability of ["HostOwnedCustomEmojiPicker-", "browser-image-compression-", "mediabunnyCompression-", "mediabunny-aac-encoder-"]) {
         expect(initial.some((url) => url.includes(capability))).toBe(false);
@@ -281,7 +474,7 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     // Use a new document for each media boundary so a pending previous handoff
     // and its cache state cannot conceal the next dynamic import.
     await page.goto(hostOrigin);
-    await mountHostOwned(page, "lite");
+    await mountHostOwned(page);
     await page.evaluate(async () => {
         const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
             setSettings(value: unknown): Promise<unknown>;
@@ -298,7 +491,7 @@ test("Lite Resource Timing keeps initial media code lazy and resolves every capa
     const videoResources = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
 
     await page.goto(hostOrigin);
-    await mountHostOwned(page, "lite");
+    await mountHostOwned(page);
     await page.evaluate(async () => {
         const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
             setSettings(value: unknown): Promise<unknown>;
