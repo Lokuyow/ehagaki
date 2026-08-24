@@ -1,6 +1,6 @@
 import { createRxNostr } from "rx-nostr";
 import { verifier } from "@rx-nostr/crypto";
-import { ProfileUrlUtils } from "../profileManager";
+import { ProfileDataFactory, ProfileUrlUtils } from "../profileManager";
 import { RelayManager } from "../relayManager";
 import { RelayProfileService } from "../relayProfileService";
 import type { AccountManager } from "../accountManager";
@@ -166,6 +166,10 @@ export function applyProfileToStores({
     });
 }
 
+function createDefaultProfileForAccount(pubkeyHex: string): ProfileData {
+    return new ProfileDataFactory().createProfileData({}, pubkeyHex);
+}
+
 export async function refreshRelaysAndProfileForAccount({
     pubkeyHex,
     relayProfileService,
@@ -173,10 +177,8 @@ export async function refreshRelaysAndProfileForAccount({
     profileLoadedStore,
     accountProfileCacheStore,
 }: RefreshRelaysAndProfileForAccountParams): Promise<ProfileData | null> {
-    const profile = await relayProfileService.refreshRelaysAndProfile(pubkeyHex);
-    if (!profile) {
-        return null;
-    }
+    const fetchedProfile = await relayProfileService.refreshRelaysAndProfile(pubkeyHex);
+    const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
 
     applyProfileToStores({
         pubkeyHex,
@@ -212,17 +214,16 @@ export async function completePostAuthBootstrap({
             setRelayManager,
             onRelayConfigSaved,
         });
-        const profile = await session.relayProfileService.initializeForLogin(pubkeyHex);
+        const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex);
+        const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
 
-        if (profile) {
-            applyProfileToStores({
-                pubkeyHex,
-                profile,
-                profileDataStore,
-                profileLoadedStore,
-                accountProfileCacheStore,
-            });
-        }
+        applyProfileToStores({
+            pubkeyHex,
+            profile,
+            profileDataStore,
+            profileLoadedStore,
+            accountProfileCacheStore,
+        });
 
         return session;
     } finally {
