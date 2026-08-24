@@ -543,6 +543,11 @@
     }
 
     function handleClose() {
+        const wasSearchMode = history.isSearchMode;
+        if (wasSearchMode) {
+            historyViewport.clearCurrentSessionScrollAnchor();
+        }
+        history.resetSearchState();
         const shouldClearAllSessionScrollState = history.prepareForClose();
         if (shouldClearAllSessionScrollState) {
             historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();

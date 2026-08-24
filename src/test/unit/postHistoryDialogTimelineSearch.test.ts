@@ -66,7 +66,6 @@ async function persistSearchSnapshot(
     await waitFor(() => {
         expect(screen.getByText(String(post.content))).toBeTruthy();
     });
-    await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     view.unmount();
 }
 
@@ -665,7 +664,6 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => {
             expect(screen.getByText('保存済み検索結果')).toBeTruthy();
         });
-        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
         firstView.unmount();
 
         postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockClear();
@@ -988,8 +986,7 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
-    it('contiguous 表示中の検索を閉じて reopen した場合は既存の検索復元を維持する', async () => {
-        let searchDataRevision = 0;
+    it('ダイアログを閉じて reopen した場合は検索を解除して通常履歴を表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'search-reopen-normal', content: '検索復元前の通常一覧' }),
@@ -998,26 +995,10 @@ describe('PostHistoryDialog timeline search', () => {
         repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
         localSearchServiceMock.searchLocalPosts.mockImplementation(
             async ({ page }: { page: number }) => ({
-                items: searchDataRevision === 0
-                    ? [createRecord({
-                        eventId: `search-reopen-hit-${page}`,
-                        content: `reopen 検索結果 ${page}`,
-                    })]
-                    : page === 1
-                        ? [
-                            createRecord({
-                                eventId: 'search-reopen-newest-hit',
-                                content: 'reopen 新しい先頭結果',
-                            }),
-                            createRecord({
-                                eventId: 'search-reopen-hit-1',
-                                content: 'reopen 検索結果 1',
-                            }),
-                        ]
-                        : [createRecord({
-                            eventId: 'search-reopen-hit-2',
-                            content: 'reopen 検索結果 2',
-                        })],
+                items: [createRecord({
+                    eventId: `search-reopen-hit-${page}`,
+                    content: `reopen 検索結果 ${page}`,
+                })],
                 total: 100,
                 hasNext: page === 1,
             }),
@@ -1045,20 +1026,18 @@ describe('PostHistoryDialog timeline search', () => {
             expect(screen.getByText('reopen 検索結果 2')).toBeTruthy();
         });
 
-        repositoryMock.getLatestVisibleChunk.mockClear();
-        localSearchServiceMock.searchLocalPosts.mockClear();
-
         await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
         await waitFor(() => {
             expect(onClose).toHaveBeenCalledTimes(1);
         });
-        searchDataRevision = 1;
-
+        await waitFor(() => {
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+        });
         expect(readPersistedPostHistoryViewState(PUBKEY_HEX)).toEqual({
             currentPage: 1,
-            searchPage: 2,
-            searchInput: 'alpha',
-            searchQuery: 'alpha',
+            searchPage: 1,
+            searchInput: '',
+            searchQuery: '',
         });
 
         await view.rerender({
@@ -1073,23 +1052,11 @@ describe('PostHistoryDialog timeline search', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('reopen 新しい先頭結果')).toBeTruthy();
-            expect(screen.getByText('reopen 検索結果 1')).toBeTruthy();
-            expect(screen.getByText('reopen 検索結果 2')).toBeTruthy();
+            expect(screen.getByText('検索復元前の通常一覧')).toBeTruthy();
+            expect(screen.queryByText('reopen 検索結果 1')).toBeNull();
+            expect(screen.queryByText('reopen 検索結果 2')).toBeNull();
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
         });
-
-        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
-        expect(localSearchServiceMock.searchLocalPosts.mock.calls.map(([args]) => args.page))
-            .toEqual([1, 2]);
-        expect(screen.queryByText('reopen 検索結果 3')).toBeNull();
-        expect(
-            [...document.querySelectorAll<HTMLElement>('.post-history-item')]
-                .map((element) => element.dataset.postHistoryEventId),
-        ).toEqual([
-            'search-reopen-newest-hit',
-            'search-reopen-hit-1',
-            'search-reopen-hit-2',
-        ]);
 
         view.unmount();
     });

@@ -35,6 +35,7 @@
     }, HARNESS_SECRET_KEY));
 
     let ready = $state(false);
+    let showDialog = $state(true);
 
     type HarnessState = {
         ready: boolean;
@@ -418,7 +419,7 @@
 <div class="post-history-playwright-harness">
     {#if ready}
         <PostHistoryDialog
-            show={true}
+            bind:show={showDialog}
             onClose={() => undefined}
             pubkeyHex={HARNESS_PUBKEY}
             rxNostr={{
@@ -428,6 +429,15 @@
             } as unknown as RxNostr}
             onQuotePost={() => undefined}
         />
+    {/if}
+    {#if ready && !showDialog}
+        <button
+            type="button"
+            data-testid="post-history-reopen"
+            onclick={() => (showDialog = true)}
+        >
+            reopen post history
+        </button>
     {/if}
 </div>
 
