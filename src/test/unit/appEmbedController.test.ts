@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { finalizeEvent, generateSecretKey, nip19 } from 'nostr-tools';
 
-import { createAppEmbedController } from '../../lib/appEmbedController';
-import type { ReplyQuoteComposerState } from '../../lib/types';
+import {
+    createAppEmbedController,
+    type AppEmbedRuntimeSnapshot,
+} from '../../lib/appEmbedController';
+import type {
+    ReplyQuoteComposerState,
+    ReplyQuoteHydrationTarget,
+    ReplyQuoteState,
+} from '../../lib/types';
 import { createPlainNostrEventSnapshot } from '../../lib/postHistoryEventUtils';
 
-function createRuntimeSnapshot() {
+function createRuntimeSnapshot(): AppEmbedRuntimeSnapshot {
     return {
         rxNostr: undefined,
         relayConfig: null,
@@ -21,6 +28,33 @@ function createReplyQuoteState() {
 
 function createChannelContextState() {
     return null;
+}
+
+function createSelectedReplyQuoteState(
+    references: ReplyQuoteHydrationTarget[],
+): ReplyQuoteComposerState {
+    const toState = (reference: ReplyQuoteHydrationTarget): ReplyQuoteState => ({
+        ...reference,
+        quoteNotificationEnabled: false,
+        replyNotificationRecipients: [],
+        authorDisplayName: null,
+        authorPicture: null,
+        referencedEvent: null,
+        rootEventId: null,
+        rootRelayHint: null,
+        rootPubkey: null,
+        loading: true,
+        error: null,
+    });
+
+    return {
+        reply: references.find((reference) => reference.mode === 'reply')
+            ? toState(references.find((reference) => reference.mode === 'reply')!)
+            : null,
+        quotes: references
+            .filter((reference) => reference.mode === 'quote')
+            .map(toState),
+    };
 }
 
 function createController(overrides: Record<string, unknown> = {}) {
@@ -60,15 +94,17 @@ function createController(overrides: Record<string, unknown> = {}) {
         error: vi.fn(),
     };
     let bootstrappingApp = false;
-    let pendingParentAuth = false;
+    let parentClientTransitioning = false;
+    let replyQuoteState: ReplyQuoteComposerState = createReplyQuoteState();
+    let runtimeSnapshot = createRuntimeSnapshot();
 
     const runtime = {
         isBootstrappingApp: vi.fn(() => bootstrappingApp),
-        hasPendingParentAuth: vi.fn(() => pendingParentAuth),
-        getReplyQuoteState: vi.fn(createReplyQuoteState),
+        isParentClientTransitioning: vi.fn(() => parentClientTransitioning),
+        getReplyQuoteState: vi.fn(() => replyQuoteState),
         getChannelContextState: vi.fn(createChannelContextState),
         getChannelContextProvenance: vi.fn(() => null),
-        getRuntimeSnapshot: vi.fn(createRuntimeSnapshot),
+        getRuntimeSnapshot: vi.fn(() => runtimeSnapshot),
     };
 
     const controller = createAppEmbedController({
@@ -98,8 +134,14 @@ function createController(overrides: Record<string, unknown> = {}) {
         setBootstrappingApp(value: boolean) {
             bootstrappingApp = value;
         },
-        setPendingParentAuth(value: boolean) {
-            pendingParentAuth = value;
+        setParentClientTransitioning(value: boolean) {
+            parentClientTransitioning = value;
+        },
+        setReplyQuoteState(value: ReplyQuoteComposerState) {
+            replyQuoteState = value;
+        },
+        setRuntimeSnapshot(value: ReturnType<typeof createRuntimeSnapshot>) {
+            runtimeSnapshot = value;
         },
     };
 }
@@ -139,7 +181,7 @@ describe('createAppEmbedController', () => {
             composerInput: { get: vi.fn(() => composerInput) },
             runtime: {
                 isBootstrappingApp: vi.fn(() => false),
-                hasPendingParentAuth: vi.fn(() => false),
+                isParentClientTransitioning: vi.fn(() => false),
                 getReplyQuoteState: vi.fn(createReplyQuoteState),
                 getChannelContextState: vi.fn(createChannelContextState),
                 getChannelContextProvenance: vi.fn(() => null),
@@ -193,7 +235,7 @@ describe('createAppEmbedController', () => {
         expect(parentFrame.notifyComposerContextUpdated).not.toHaveBeenCalled();
     });
 
-    it('reply選択を同期適用してhydrate完了前にackし、hydrateはack後に開始する', async () => {
+    it('runtime未準備では選択とackだけを適用し、stable runtime後に1回だけhydrateする', async () => {
         let resolveHydration!: () => void;
         const hydration = new Promise<void>((resolve) => {
             resolveHydration = resolve;
@@ -207,7 +249,13 @@ describe('createAppEmbedController', () => {
         };
         const applyReplyQuoteSelection = vi.fn(() => [reply]);
         const hydrateReplyQuoteReferences = vi.fn(() => hydration);
-        const { controller, parentFrame } = createController({
+        const {
+            controller,
+            parentFrame,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
             composerContextApply: {
                 applyReplyQuoteSelection,
                 hydrateReplyQuoteReferences,
@@ -216,6 +264,8 @@ describe('createAppEmbedController', () => {
                 clearChannelContext: vi.fn(),
             },
         });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([reply]));
 
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(reply.eventId),
@@ -223,14 +273,30 @@ describe('createAppEmbedController', () => {
 
         expect(applyReplyQuoteSelection).toHaveBeenCalledOnce();
         expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-reply-fast-ack');
+        expect(hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
+        setRuntimeSnapshot({ rxNostr: stableRxNostr, relayConfig: null });
+        await controller.flushPendingReplyQuoteHydration();
+        expect(hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        setParentClientTransitioning(false);
+        const hydrationFlush = controller.flushPendingReplyQuoteHydration();
+
         expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            [reply],
+            { rxNostr: stableRxNostr, relayConfig: null },
+        );
         expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
             .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
+        await controller.flushPendingReplyQuoteHydration();
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
         resolveHydration();
-        await hydration;
+        await hydrationFlush;
     });
 
-    it('quoteだけのpayloadも選択設定直後にackしてからhydrateする', async () => {
+    it('reply/quotesを変更しないpatchはtransition中も即時適用し、pending hydrationを維持する', async () => {
         const quote = {
             eventId: '5'.repeat(64),
             mode: 'quote' as const,
@@ -240,23 +306,59 @@ describe('createAppEmbedController', () => {
         };
         const applyReplyQuoteSelection = vi.fn(() => [quote]);
         const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
-        const { controller, parentFrame } = createController({
+        const applyChannelContextQuery = vi.fn();
+        const {
+            controller,
+            composerInput,
+            parentFrame,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
             composerContextApply: {
                 applyReplyQuoteSelection,
                 hydrateReplyQuoteReferences,
                 clearReplyQuote: vi.fn(),
-                applyChannelContextQuery: vi.fn(),
+                applyChannelContextQuery,
                 clearChannelContext: vi.fn(),
             },
         });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([quote]));
 
         await controller.handleRemoteComposerSetContext({
             quotes: [nip19.noteEncode(quote.eventId)],
-        }, 'req-quote-fast-ack');
+        }, 'req-quote-pending');
+        await controller.handleRemoteComposerSetContext({
+            content: 'content patch',
+        }, 'req-content-patch');
+        await controller.handleRemoteComposerSetContext({
+            channel: { reference: nip19.noteEncode('6'.repeat(64)) },
+        }, 'req-channel-patch');
+        await controller.handleRemoteComposerSetContext({
+            content: 'combined patch',
+            channel: null,
+        }, 'req-combined-patch');
+        await controller.handleRemoteComposerSetContext({
+            preloadedEvents: {},
+        }, 'req-preload-only-patch');
 
-        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-quote-fast-ack');
-        expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
-            .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
+        expect(composerInput.insertText).toHaveBeenCalledWith('content patch');
+        expect(composerInput.insertText).toHaveBeenCalledWith('combined patch');
+        expect(applyChannelContextQuery).toHaveBeenCalledOnce();
+        expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledTimes(5);
+        expect(hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
+        setRuntimeSnapshot({ rxNostr: stableRxNostr, relayConfig: null });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            [quote],
+            { rxNostr: stableRxNostr, relayConfig: null },
+        );
     });
 
     it('valid preloaded event は detached plain snapshot として hydration port へ渡す', async () => {
@@ -275,7 +377,11 @@ describe('createAppEmbedController', () => {
         };
         const applyReplyQuoteSelection = vi.fn(() => [reply]);
         const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
-        const { controller } = createController({
+        const {
+            controller,
+            setParentClientTransitioning,
+            setRuntimeSnapshot,
+        } = createController({
             composerContextApply: {
                 applyReplyQuoteSelection,
                 hydrateReplyQuoteReferences,
@@ -284,6 +390,7 @@ describe('createAppEmbedController', () => {
                 clearChannelContext: vi.fn(),
             },
         });
+        setParentClientTransitioning(true);
         const externalEvent = {
             ...event,
             libraryMetadata: { shouldNotBeForwarded: true },
@@ -300,6 +407,243 @@ describe('createAppEmbedController', () => {
         expect(selected[event.id]).not.toBe(externalEvent);
         expect(selected[event.id].content).toBe('preloaded');
         expect(selected[event.id].libraryMetadata).toBeUndefined();
+        expect(hydrateReplyQuoteReferences.mock.calls[0]?.[1].rxNostr).toBeUndefined();
+
+        setRuntimeSnapshot({
+            rxNostr: {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>,
+            relayConfig: null,
+        });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
+    });
+
+    it('valid preloadとmissing referenceの混在時はvalidだけを即時、missingだけを後でhydrateする', async () => {
+        const event = finalizeEvent({
+            kind: 1,
+            content: 'mixed preload',
+            tags: [],
+            created_at: 2,
+        }, generateSecretKey());
+        const preloadedQuote: ReplyQuoteHydrationTarget = {
+            eventId: event.id,
+            mode: 'quote',
+            ownerToken: Symbol('preloaded-quote-owner'),
+            relayHints: [],
+            authorPubkey: event.pubkey,
+        };
+        const relayQuote: ReplyQuoteHydrationTarget = {
+            eventId: '7'.repeat(64),
+            mode: 'quote',
+            ownerToken: Symbol('relay-quote-owner'),
+            relayHints: ['wss://relay.example.com'],
+            authorPubkey: null,
+        };
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const {
+            controller,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection: vi.fn(() => [preloadedQuote, relayQuote]),
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([preloadedQuote, relayQuote]));
+
+        await controller.handleRemoteComposerSetContext({
+            quotes: [
+                nip19.neventEncode({ id: event.id, author: event.pubkey }),
+                nip19.noteEncode(relayQuote.eventId),
+            ],
+            preloadedEvents: { [event.id]: event },
+        }, 'req-mixed-preload');
+
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
+        expect(hydrateReplyQuoteReferences.mock.calls[0]?.[0]).toEqual([preloadedQuote]);
+        expect(hydrateReplyQuoteReferences.mock.calls[0]?.[1].rxNostr).toBeUndefined();
+        expect(hydrateReplyQuoteReferences.mock.calls[0]?.[2]).toHaveProperty(event.id);
+
+        const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
+        setRuntimeSnapshot({ rxNostr: stableRxNostr, relayConfig: null });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledTimes(2);
+        expect(hydrateReplyQuoteReferences.mock.calls[1]).toEqual([
+            [relayQuote],
+            { rxNostr: stableRxNostr, relayConfig: null },
+        ]);
+    });
+
+    it('invalidまたはmismatch preloadはpendingに残してstable runtimeでrelay fallbackする', async () => {
+        const signedEvent = finalizeEvent({
+            kind: 1,
+            content: 'signed',
+            tags: [],
+            created_at: 3,
+        }, generateSecretKey());
+        const invalidTarget: ReplyQuoteHydrationTarget = {
+            eventId: signedEvent.id,
+            mode: 'quote',
+            ownerToken: Symbol('invalid-preload-owner'),
+            relayHints: [],
+            authorPubkey: signedEvent.pubkey,
+        };
+        const mismatchTarget: ReplyQuoteHydrationTarget = {
+            eventId: '8'.repeat(64),
+            mode: 'quote',
+            ownerToken: Symbol('mismatch-preload-owner'),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const {
+            controller,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection: vi.fn(() => [invalidTarget, mismatchTarget]),
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([invalidTarget, mismatchTarget]));
+
+        await controller.handleRemoteComposerSetContext({
+            quotes: [
+                nip19.neventEncode({ id: signedEvent.id, author: signedEvent.pubkey }),
+                nip19.noteEncode(mismatchTarget.eventId),
+            ],
+            preloadedEvents: {
+                [signedEvent.id]: { ...signedEvent, content: 'tampered' },
+                [mismatchTarget.eventId]: signedEvent,
+            },
+        }, 'req-invalid-preloads');
+
+        expect(hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+        const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
+        setRuntimeSnapshot({ rxNostr: stableRxNostr, relayConfig: null });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            [invalidTarget, mismatchTarget],
+            { rxNostr: stableRxNostr, relayConfig: null },
+        );
+    });
+
+    it('新しいselectionはpendingを置換し、旧ownerはrelay fetchしない', async () => {
+        const oldTarget: ReplyQuoteHydrationTarget = {
+            eventId: '9'.repeat(64),
+            mode: 'reply',
+            ownerToken: Symbol('old-owner'),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const newTarget: ReplyQuoteHydrationTarget = {
+            eventId: 'a'.repeat(64),
+            mode: 'reply',
+            ownerToken: Symbol('new-owner'),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const applyReplyQuoteSelection = vi.fn()
+            .mockReturnValueOnce([oldTarget])
+            .mockReturnValueOnce([newTarget]);
+        const {
+            controller,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection,
+                hydrateReplyQuoteReferences,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([oldTarget]));
+        await controller.handleRemoteComposerSetContext({
+            reply: nip19.noteEncode(oldTarget.eventId),
+        }, 'req-old-owner');
+
+        setReplyQuoteState(createSelectedReplyQuoteState([newTarget]));
+        await controller.handleRemoteComposerSetContext({
+            reply: nip19.noteEncode(newTarget.eventId),
+        }, 'req-new-owner');
+
+        const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
+        setRuntimeSnapshot({ rxNostr: stableRxNostr, relayConfig: null });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledOnce();
+        expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            [newTarget],
+            { rxNostr: stableRxNostr, relayConfig: null },
+        );
+    });
+
+    it('reply/quotes clearはpending hydrationも破棄する', async () => {
+        const reply: ReplyQuoteHydrationTarget = {
+            eventId: 'b'.repeat(64),
+            mode: 'reply',
+            ownerToken: Symbol('clear-owner'),
+            relayHints: [],
+            authorPubkey: null,
+        };
+        const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
+        const clearReplyQuote = vi.fn();
+        const {
+            controller,
+            setParentClientTransitioning,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection: vi.fn(() => [reply]),
+                hydrateReplyQuoteReferences,
+                clearReplyQuote,
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+        setParentClientTransitioning(true);
+        setReplyQuoteState(createSelectedReplyQuoteState([reply]));
+        await controller.handleRemoteComposerSetContext({
+            reply: nip19.noteEncode(reply.eventId),
+        }, 'req-before-clear');
+
+        await controller.handleRemoteComposerSetContext({
+            reply: null,
+            quotes: null,
+        }, 'req-clear');
+        setReplyQuoteState(createReplyQuoteState());
+        setRuntimeSnapshot({
+            rxNostr: {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>,
+            relayConfig: null,
+        });
+        setParentClientTransitioning(false);
+        await controller.flushPendingReplyQuoteHydration();
+
+        expect(clearReplyQuote).toHaveBeenCalledOnce();
+        expect(hydrateReplyQuoteReferences).not.toHaveBeenCalled();
     });
 
     it('channel・reply・quotes同時指定でも初期状態だけでackし、hydrate失敗は非致命的に扱う', async () => {
@@ -321,7 +665,13 @@ describe('createAppEmbedController', () => {
         const applyReplyQuoteSelection = vi.fn(() => [reply, quote]);
         const hydrateError = new Error('hydrate failed');
         const hydrateReplyQuoteReferences = vi.fn().mockRejectedValue(hydrateError);
-        const { controller, parentFrame, logger } = createController({
+        const {
+            controller,
+            parentFrame,
+            logger,
+            setReplyQuoteState,
+            setRuntimeSnapshot,
+        } = createController({
             composerContextApply: {
                 applyReplyQuoteSelection,
                 hydrateReplyQuoteReferences,
@@ -329,6 +679,11 @@ describe('createAppEmbedController', () => {
                 applyChannelContextQuery,
                 clearChannelContext: vi.fn(),
             },
+        });
+        setReplyQuoteState(createSelectedReplyQuoteState([reply, quote]));
+        setRuntimeSnapshot({
+            rxNostr: {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>,
+            relayConfig: null,
         });
 
         await controller.handleRemoteComposerSetContext({
@@ -532,17 +887,16 @@ describe('createAppEmbedController', () => {
         );
     });
 
-    it('pending parent auth 中の composer.setContext も保留し、解除後 flush で適用する', async () => {
-        const { controller, composerInput, parentFrame, setPendingParentAuth } = createController();
-        setPendingParentAuth(true);
+    it('parent-client transition中もcontent patchとackは保留しない', async () => {
+        const {
+            controller,
+            composerInput,
+            parentFrame,
+            setParentClientTransitioning,
+        } = createController();
+        setParentClientTransitioning(true);
 
         await controller.handleRemoteComposerSetContext({ content: 'pending auth message' }, 'req-pa-1');
-
-        expect(composerInput.insertText).not.toHaveBeenCalled();
-        expect(parentFrame.notifyComposerContextApplied).not.toHaveBeenCalled();
-
-        setPendingParentAuth(false);
-        await controller.flushPendingComposerAction();
 
         expect(composerInput.insertText).toHaveBeenCalledWith('pending auth message');
         expect(parentFrame.notifyComposerContextApplied).toHaveBeenCalledWith('req-pa-1');
@@ -592,7 +946,7 @@ describe('createAppEmbedController', () => {
         const { controller, parentFrame } = createController({
             runtime: {
                 isBootstrappingApp: vi.fn(() => bootstrapping),
-                hasPendingParentAuth: vi.fn(() => false),
+                isParentClientTransitioning: vi.fn(() => false),
                 getReplyQuoteState: vi.fn(() => replyState),
                 getChannelContextState: vi.fn(() => null),
                 getChannelContextProvenance: vi.fn(() => null),
@@ -658,7 +1012,7 @@ describe('createAppEmbedController', () => {
         const { controller, parentFrame } = createController({
             runtime: {
                 isBootstrappingApp: vi.fn(() => false),
-                hasPendingParentAuth: vi.fn(() => false),
+                isParentClientTransitioning: vi.fn(() => false),
                 getReplyQuoteState: vi.fn(createReplyQuoteState),
                 getChannelContextState: vi.fn(() => channelContext),
                 getChannelContextProvenance: vi.fn(() => provenance),

@@ -113,7 +113,7 @@ export interface AppEmbedRuntimeSnapshot {
 
 export interface AppEmbedRuntimeStateGetters {
     isBootstrappingApp(): boolean;
-    hasPendingParentAuth(): boolean;
+    isParentClientTransitioning(): boolean;
     getReplyQuoteState(): ReplyQuoteComposerState;
     getChannelContextState(): ChannelContextState | null;
     getChannelContextProvenance(): ChannelContextProvenance | null;
@@ -163,6 +163,9 @@ export type AppEmbedPendingComposerAction = Readonly<{
 
 interface AppEmbedControllerState {
     pendingComposerAction?: AppEmbedPendingComposerAction;
+    pendingReplyQuoteHydration?: Readonly<{
+        references: ReplyQuoteHydrationTarget[];
+    }>;
     lastNotifiedComposerContextSignature: string | null;
     applyingComposerContext: boolean;
 }
@@ -187,13 +190,14 @@ export interface AppEmbedController {
         requestId: string,
     ): void;
     flushPendingComposerAction(): Promise<void>;
+    flushPendingReplyQuoteHydration(): Promise<void>;
     notifyComposerContextUpdatedIfChanged(): void;
     initializeEmbedStorageSync(): Promise<void>;
     resetNotifiedComposerContextSignature(): void;
 }
 
 function shouldQueueAction(getters: AppEmbedRuntimeStateGetters): boolean {
-    return getters.isBootstrappingApp() || getters.hasPendingParentAuth();
+    return getters.isBootstrappingApp();
 }
 
 export function createAppEmbedController(
@@ -207,6 +211,7 @@ export function createAppEmbedController(
         })();
     const state: AppEmbedControllerState = {
         pendingComposerAction: undefined,
+        pendingReplyQuoteHydration: undefined,
         lastNotifiedComposerContextSignature: null,
         applyingComposerContext: false,
     };
@@ -263,6 +268,7 @@ export function createAppEmbedController(
         }
 
         if (replyQuoteQuery === null) {
+            state.pendingReplyQuoteHydration = undefined;
             deps.composerContextApply.clearReplyQuote();
             return [];
         }
@@ -274,13 +280,86 @@ export function createAppEmbedController(
             payload.preloadedEvents,
             references,
         );
-        return references.length > 0
-            ? [() => deps.composerContextApply.hydrateReplyQuoteReferences(
-                references,
-                runtimeSnapshot,
+        const preloadedReferences = references.filter((reference) =>
+            Object.prototype.hasOwnProperty.call(
                 selectedPreloadedEvents,
-            )]
-            : [];
+                reference.eventId,
+            ),
+        );
+        const relayReferences = references.filter((reference) =>
+            !Object.prototype.hasOwnProperty.call(
+                selectedPreloadedEvents,
+                reference.eventId,
+            ),
+        );
+
+        state.pendingReplyQuoteHydration = relayReferences.length > 0
+            ? { references: [...relayReferences] }
+            : undefined;
+
+        const tasks: Array<() => Promise<void>> = [];
+        if (preloadedReferences.length > 0) {
+            tasks.push(() => deps.composerContextApply.hydrateReplyQuoteReferences(
+                preloadedReferences,
+                {
+                    rxNostr: undefined,
+                    relayConfig: runtimeSnapshot.relayConfig,
+                },
+                selectedPreloadedEvents,
+            ));
+        }
+        if (relayReferences.length > 0) {
+            tasks.push(flushPendingReplyQuoteHydration);
+        }
+        return tasks;
+    }
+
+    function isCurrentReplyQuoteHydrationTarget(
+        target: ReplyQuoteHydrationTarget,
+    ): boolean {
+        const current = deps.runtime.getReplyQuoteState();
+        if (target.mode === "reply") {
+            return current.reply?.eventId === target.eventId
+                && current.reply.ownerToken === target.ownerToken;
+        }
+
+        return current.quotes.some((quote) =>
+            quote.eventId === target.eventId
+            && quote.ownerToken === target.ownerToken,
+        );
+    }
+
+    async function flushPendingReplyQuoteHydration(): Promise<void> {
+        if (deps.runtime.isParentClientTransitioning()) {
+            return;
+        }
+
+        const runtimeSnapshot = deps.runtime.getRuntimeSnapshot();
+        if (!runtimeSnapshot.rxNostr) {
+            return;
+        }
+
+        const pending = state.pendingReplyQuoteHydration;
+        if (!pending) {
+            return;
+        }
+
+        const currentReferences = pending.references.filter(
+            isCurrentReplyQuoteHydrationTarget,
+        );
+        state.pendingReplyQuoteHydration = undefined;
+        if (currentReferences.length === 0) {
+            return;
+        }
+
+        try {
+            await deps.composerContextApply.hydrateReplyQuoteReferences(
+                currentReferences,
+                runtimeSnapshot,
+            );
+        } catch (error) {
+            deps.logger.warn("composer context の非同期補完をスキップ:", error);
+        }
     }
 
     function runBackgroundComposerTasks(tasks: Array<() => Promise<void>>): void {
@@ -417,6 +496,8 @@ export function createAppEmbedController(
                 );
             }
         },
+
+        flushPendingReplyQuoteHydration,
 
         notifyComposerContextUpdatedIfChanged(): void {
             if (deps.runtime.isBootstrappingApp() || state.applyingComposerContext) {
