@@ -551,7 +551,7 @@
         const shouldClearAllSessionScrollState = history.prepareForClose();
         if (shouldClearAllSessionScrollState) {
             historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
-        } else {
+        } else if (!wasSearchMode) {
             historyViewport.saveCurrentSessionScrollAnchor();
         }
         channelDisplay.cancelCurrentChannelResolution();

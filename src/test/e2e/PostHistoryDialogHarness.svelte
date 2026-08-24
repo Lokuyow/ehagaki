@@ -417,18 +417,20 @@
 </svelte:head>
 
 <div class="post-history-playwright-harness">
-    {#if ready}
-        <PostHistoryDialog
-            bind:show={showDialog}
-            onClose={() => undefined}
-            pubkeyHex={HARNESS_PUBKEY}
-            rxNostr={{
-                use: () => ({
-                    subscribe: () => ({ unsubscribe: () => undefined }),
-                }),
-            } as unknown as RxNostr}
-            onQuotePost={() => undefined}
-        />
+    {#if ready && showDialog}
+        <div data-testid="post-history-mounted">
+            <PostHistoryDialog
+                show={showDialog}
+                onClose={() => (showDialog = false)}
+                pubkeyHex={HARNESS_PUBKEY}
+                rxNostr={{
+                    use: () => ({
+                        subscribe: () => ({ unsubscribe: () => undefined }),
+                    }),
+                } as unknown as RxNostr}
+                onQuotePost={() => undefined}
+            />
+        </div>
     {/if}
     {#if ready && !showDialog}
         <button

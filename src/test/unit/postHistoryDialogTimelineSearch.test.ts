@@ -18,6 +18,11 @@ import {
     waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
 import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
+import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hooks/usePostHistoryListing.svelte';
+import {
+    readPostHistoryDialogScrollState,
+    writePostHistoryDialogScrollState,
+} from '../../lib/postHistoryDialogScrollState';
 
 function controlAnimationFrames() {
     let nextId = 1;
@@ -1039,16 +1044,21 @@ describe('PostHistoryDialog timeline search', () => {
             searchInput: '',
             searchQuery: '',
         });
-
-        await view.rerender({
-            show: false,
-            onClose,
-            pubkeyHex: PUBKEY_HEX,
+        expect(readPersistedPostHistoryListingSnapshotForPubkey(PUBKEY_HEX)).toMatchObject({
+            loadedPosts: [expect.objectContaining({ eventId: 'search-reopen-normal' })],
+            searchPosts: [],
+            searchQuery: '',
+            searchTotalCount: 0,
+            searchHasNext: false,
         });
-        await view.rerender({
-            show: true,
-            onClose,
-            pubkeyHex: PUBKEY_HEX,
+
+        view.unmount();
+        const reopenedView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+            },
         });
 
         await waitFor(() => {
@@ -1057,6 +1067,74 @@ describe('PostHistoryDialog timeline search', () => {
             expect(screen.queryByText('reopen 検索結果 2')).toBeNull();
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
         });
+
+        reopenedView.unmount();
+    });
+
+    it('検索中に閉じても検索結果の scroll anchor を通常履歴へ保存しない', async () => {
+        const normalPost = createRecord({
+            eventId: 'search-close-normal-anchor',
+            content: '通常履歴 anchor',
+        });
+        const searchPost = createRecord({
+            eventId: 'search-close-search-anchor',
+            content: '検索結果 anchor',
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([normalPost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [searchPost],
+            total: 1,
+            hasNext: false,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('通常履歴 anchor')).toBeTruthy();
+        });
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: { eventId: normalPost.eventId, offsetTop: 64 },
+            savedAt: 100,
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await waitForSearchDebounce();
+        await waitFor(() => {
+            expect(screen.getByText('検索結果 anchor')).toBeTruthy();
+        });
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'search',
+            searchQuery: 'alpha',
+            anchor: { eventId: searchPost.eventId, offsetTop: 24 },
+            savedAt: 101,
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+
+        expect(readPostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+        })).toMatchObject({
+            anchor: { eventId: normalPost.eventId, offsetTop: 64 },
+        });
+        expect(readPostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'search',
+            searchQuery: 'alpha',
+        })).toBeNull();
 
         view.unmount();
     });

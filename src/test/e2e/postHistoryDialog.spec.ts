@@ -494,10 +494,13 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, harness.matchingPosts);
 
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(1);
         await page.getByRole('button', { name: '閉じる', exact: true }).click();
         await expect(page.locator('.post-history-dialog')).toHaveCount(0);
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(0);
 
         await page.getByTestId('post-history-reopen').click();
+        await expect(page.getByTestId('post-history-mounted')).toHaveCount(1);
         await expect(page.locator('.post-history-dialog')).toBeVisible();
         await expect(page.getByRole('searchbox', { name: '検索' })).toHaveCount(0);
         await expectSummary(page, harness.totalPosts);
