@@ -81,7 +81,7 @@ export function createMockParentClientSession(
 }
 
 export function createMockAccountManager(overrides: Record<string, unknown> = {}) {
-    return {
+    const accountManager = {
         addAccount: vi.fn(),
         getAccountType: vi.fn(),
         removeAccount: vi.fn(),
@@ -92,6 +92,18 @@ export function createMockAccountManager(overrides: Record<string, unknown> = {}
         setActiveAccount: vi.fn(),
         migrateFromSingleAccount: vi.fn(),
         hasAccount: vi.fn(),
+    };
+    return {
+        ...accountManager,
+        getAuthRestoreSnapshot: vi.fn(() => ({
+            status: 'ready' as const,
+            snapshot: {
+                accountListExisted: accountManager.getAccounts().length > 0,
+                accounts: accountManager.getAccounts(),
+                activePubkey: accountManager.getActiveAccountPubkey(),
+                activePointerIsValid: accountManager.getActiveAccountPubkey() !== null,
+            },
+        })),
         ...overrides,
     };
 }

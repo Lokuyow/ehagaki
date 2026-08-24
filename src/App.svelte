@@ -150,6 +150,7 @@
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
+  import { resolveNip07AutoLoginSession } from "./lib/bootstrap/nip07AutoLoginBootstrap";
   import {
     applyReplyQuoteQuery,
     applyReplyQuoteSelection,
@@ -958,9 +959,17 @@
     }
   });
 
+  let startupAuthenticationSettled = $state(
+    !appRuntimeEnvironment.autoLoginNip07Enabled,
+  );
   let initializationNotified = false;
   $effect(() => {
-    if (!$locale || !localeInitialized || initializationNotified) return;
+    if (
+      !$locale
+      || !localeInitialized
+      || !startupAuthenticationSettled
+      || initializationNotified
+    ) return;
     initializationNotified = true;
     onInitialized();
   });
@@ -1543,6 +1552,14 @@
         localeInitialized = true;
       },
       initializeAuth: () => authService.initializeAuth(),
+      resolveAuthenticatedSession: appRuntimeEnvironment.autoLoginNip07Enabled
+        ? (current) =>
+            resolveNip07AutoLoginSession(current, {
+              authenticateWithNip07: (identity) =>
+                authService.authenticateWithNip07ForAutoLogin(identity),
+              console,
+            })
+        : undefined,
       handleAuthenticated: handlePostAuth,
       initializeGuestSession: () => initializeNostr(),
       stopProfileLoading: () => isLoadingProfileStore.set(false),
@@ -1553,6 +1570,9 @@
       console,
     }).finally(() => {
       isBootstrappingApp = false;
+      if (appRuntimeEnvironment.autoLoginNip07Enabled) {
+        startupAuthenticationSettled = true;
+      }
       void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
         appEmbedController.notifyComposerContextUpdatedIfChanged();
       });

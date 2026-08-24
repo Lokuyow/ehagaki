@@ -12,6 +12,12 @@ import type { ParentClientAuthService } from './parentClientAuthService';
 const LEGACY_NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 
 export type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
+export type AuthInitializationResult = RestoreResult & {
+    /** Whether startup restore candidates were evaluated without an infrastructure failure. */
+    restoreOutcome?: 'completed' | 'infrastructure-failure';
+    /** NIP-07 identity already read while restoring a saved account. */
+    nip07Identity?: PublicKeyData;
+};
 export type ManagedRestoreFailureReason =
     | 'invalid-requested-pubkey'
     | 'local-nsec-auth-disabled'
@@ -29,10 +35,19 @@ export type ManagedRestoreFailureReason =
     | 'unsupported-account-type';
 export type ManagedRestoreResult =
     | { hasAuth: true; pubkeyHex: string }
-    | { hasAuth: false; reason: ManagedRestoreFailureReason };
+    | {
+        hasAuth: false;
+        reason: ManagedRestoreFailureReason;
+        nip07Identity?: PublicKeyData;
+    };
 
 export const MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS = 1_000;
 export const MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS = 3_000;
+const MANAGED_RESTORE_INFRASTRUCTURE_FAILURES = new Set<ManagedRestoreFailureReason>([
+    'credential-read-failed',
+    'persistence-failed',
+    'runtime-commit-failed',
+]);
 
 type AccountAuthType = StoredAccount['type'];
 type PublicKeyAuthType = 'nip07' | 'nip46' | 'parentClient';
@@ -91,16 +106,19 @@ interface LegacyNip46Dependencies extends PublicKeyAuthDependencies {
 }
 
 interface ManagedAccountRestoreDependencies {
-    accountManager: Pick<
-        AccountMigrationTarget,
-        never
-    > & {
-        getActiveAccountPubkey(): string | null;
-        getAccountType(pubkeyHex: string): AccountAuthType | null;
-        getAccounts(): Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
+    restoreSnapshot: {
+        activePubkey: string | null;
+        accounts: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
+    };
+    infrastructureFailureDetected?: boolean;
+    accountManager: {
         setActiveAccount(pubkeyHex: string): void;
     };
-    restoreAccount(pubkeyHex: string, type: AccountAuthType): Promise<RestoreResult>;
+    restoreAccount(
+        pubkeyHex: string,
+        type: AccountAuthType,
+        nip07Identity?: PublicKeyData,
+    ): Promise<ManagedRestoreResult>;
 }
 
 export interface LegacyAuthCheckDependencies extends LegacyNsecDependencies, LegacyNip07Dependencies, LegacyNip46Dependencies {
@@ -200,17 +218,27 @@ export async function restoreManagedNsecAccount(
 export async function restoreManagedNip07Account(
     pubkeyHex: string,
     dependencies: ManagedAuthRestoreDependencies,
+    nip07Identity?: PublicKeyData,
 ): Promise<ManagedRestoreResult> {
-    const available = await dependencies.nip07Service.waitForExtension(
-        MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS,
-    );
-    if (!available) {
-        return { hasAuth: false, reason: 'identity-source-unavailable' };
-    }
+    let result: Awaited<ReturnType<ManagedAuthRestoreDependencies['nip07Service']['authenticate']>>;
+    if (nip07Identity) {
+        result = {
+            success: true,
+            pubkeyHex: nip07Identity.hex,
+            pubkeyData: nip07Identity,
+        };
+    } else {
+        const available = await dependencies.nip07Service.waitForExtension(
+            MANAGED_NIP07_EXTENSION_DISCOVERY_TIMEOUT_MS,
+        );
+        if (!available) {
+            return { hasAuth: false, reason: 'identity-source-unavailable' };
+        }
 
-    const result = await dependencies.nip07Service.authenticate({
-        timeoutMs: MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
-    });
+        result = await dependencies.nip07Service.authenticate({
+            timeoutMs: MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
+        });
+    }
     if (!result.success || !result.pubkeyHex || !result.pubkeyData) {
         return { hasAuth: false, reason: 'identity-read-failed' };
     }
@@ -218,7 +246,11 @@ export async function restoreManagedNip07Account(
         return { hasAuth: false, reason: 'identity-read-failed' };
     }
     if (result.pubkeyHex !== pubkeyHex) {
-        return { hasAuth: false, reason: 'identity-mismatch' };
+        return {
+            hasAuth: false,
+            reason: 'identity-mismatch',
+            nip07Identity: result.pubkeyData,
+        };
     }
     if (!dependencies.isExpectedAccount(pubkeyHex, 'nip07')) {
         return { hasAuth: false, reason: 'account-record-mismatch' };
@@ -310,7 +342,11 @@ export async function restoreManagedParentClientAccount(
 
 const managedRestoreStrategies: Record<
     AccountAuthType,
-    (pubkeyHex: string, dependencies: ManagedAuthRestoreDependencies) => Promise<ManagedRestoreResult>
+    (
+        pubkeyHex: string,
+        dependencies: ManagedAuthRestoreDependencies,
+        nip07Identity?: PublicKeyData,
+    ) => Promise<ManagedRestoreResult>
 > = {
     nsec: restoreManagedNsecAccount,
     nip07: restoreManagedNip07Account,
@@ -328,6 +364,7 @@ export async function restoreManagedAccount(
     pubkeyHex: string,
     type: AccountAuthType,
     dependencies: ManagedAuthRestoreDependencies,
+    nip07Identity?: PublicKeyData,
 ): Promise<ManagedRestoreResult> {
     if (!/^[0-9a-fA-F]{64}$/.test(pubkeyHex)) {
         return { hasAuth: false, reason: 'invalid-requested-pubkey' };
@@ -335,7 +372,7 @@ export async function restoreManagedAccount(
 
     const strategy = managedRestoreStrategies[type];
     return strategy
-        ? strategy(pubkeyHex, dependencies)
+        ? strategy(pubkeyHex, dependencies, nip07Identity)
         : { hasAuth: false, reason: 'unsupported-account-type' };
 }
 
@@ -417,26 +454,40 @@ export async function runLegacyAuthChecks(
 
 export async function runManagedAuthRestore(
     dependencies: ManagedAccountRestoreDependencies,
-): Promise<RestoreResult> {
-    const activePubkey = dependencies.accountManager.getActiveAccountPubkey();
+): Promise<AuthInitializationResult> {
+    const { activePubkey, accounts } = dependencies.restoreSnapshot;
 
     const candidates = buildManagedRestoreCandidates({
         activePubkey,
         activeType: activePubkey
-            ? dependencies.accountManager.getAccountType(activePubkey)
+            ? accounts.find((account) => account.pubkeyHex === activePubkey)?.type ?? null
             : null,
-        accounts: dependencies.accountManager.getAccounts(),
+        accounts,
     });
+    let nip07Identity: PublicKeyData | undefined;
+    let infrastructureFailureDetected = dependencies.infrastructureFailureDetected ?? false;
 
     for (const candidate of candidates) {
-        const result = await dependencies.restoreAccount(candidate.pubkeyHex, candidate.type);
+        const result = await dependencies.restoreAccount(
+            candidate.pubkeyHex,
+            candidate.type,
+            nip07Identity,
+        );
         if (result.hasAuth) {
             if (candidate.activateOnSuccess) {
                 dependencies.accountManager.setActiveAccount(candidate.pubkeyHex);
             }
             return result;
         }
+        nip07Identity = result.nip07Identity ?? nip07Identity;
+        if (MANAGED_RESTORE_INFRASTRUCTURE_FAILURES.has(result.reason)) {
+            infrastructureFailureDetected = true;
+        }
     }
 
-    return { hasAuth: false };
+    return {
+        hasAuth: false,
+        restoreOutcome: infrastructureFailureDetected ? 'infrastructure-failure' : 'completed',
+        ...(nip07Identity ? { nip07Identity } : {}),
+    };
 }

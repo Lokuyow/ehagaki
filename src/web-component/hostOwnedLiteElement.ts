@@ -127,6 +127,10 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
         this.#hostOperationAbortController = null;
     }
 
+    protected override isAutoLoginNip07Enabled(): boolean {
+        return false;
+    }
+
     protected override getAdditionalMountProps(): Record<string, unknown> {
         if (!this.#hostOwnedOptions) {
             throw new Error("Host-owned Composer Lite configuration is missing.");

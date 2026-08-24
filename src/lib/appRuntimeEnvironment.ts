@@ -23,6 +23,8 @@ export interface AppRuntimeEnvironment {
     externalInputEnabled: boolean;
     historyEnabled: boolean;
     localNsecAuthEnabled: boolean;
+    /** Host opt-in: sign in with NIP-07 at startup when no session is restored. */
+    autoLoginNip07Enabled: boolean;
 }
 
 function createFallbackElement(): HTMLElement {
@@ -62,6 +64,9 @@ function createDefaultEnvironment(): AppRuntimeEnvironment {
         externalInputEnabled: true,
         historyEnabled: true,
         localNsecAuthEnabled: true,
+        // Startup NIP-07 sign-in stays opt-in so an installed extension does
+        // not prompt merely because a page was opened.
+        autoLoginNip07Enabled: false,
     };
 }
 

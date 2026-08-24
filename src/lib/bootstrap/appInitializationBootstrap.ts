@@ -1,11 +1,7 @@
 import { runExternalInputBootstrap, type RunExternalInputBootstrapParams } from "./externalInputBootstrap";
+import type { AuthInitializationResult } from "../authRestoreUtils";
 
 export const NIP46_BACKGROUND_RECOVERY_THRESHOLD_MS = 30000;
-
-interface AuthInitializationResult {
-    hasAuth: boolean;
-    pubkeyHex?: string;
-}
 
 interface DocumentLike {
     visibilityState: Document["visibilityState"];

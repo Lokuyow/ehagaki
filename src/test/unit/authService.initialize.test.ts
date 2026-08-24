@@ -6,6 +6,7 @@ import './authServiceModuleMocks';
 import { AuthService } from '../../lib/authService';
 import { MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS } from '../../lib/authRestoreUtils';
 import { AccountManager } from '../../lib/accountManager';
+import { resolveNip07AutoLoginSession } from '../../lib/bootstrap/nip07AutoLoginBootstrap';
 import { getNsecStorageKey } from '../../lib/authStorageKeys';
 import { STORAGE_KEYS } from '../../lib/constants';
 import {
@@ -42,6 +43,9 @@ describe('AuthService.initializeAuth', () => {
     it('マルチアカウント: アクティブアカウント復元成功', async () => {
         mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
         mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
 
         mockKeyManager.readStoredKey.mockReturnValue({ status: 'found', secretKey: 'valid-nsec' });
         mockKeyManager.isValidNsec.mockReturnValue(true);
@@ -89,6 +93,41 @@ describe('AuthService.initializeAuth', () => {
         expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
     });
 
+    it('active候補のcredential読み取り異常後も後続候補を復元・active化し、auto-loginへ進まない', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 2000 },
+        ]);
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) => {
+            if (pubkey === ACTIVE_PUBKEY) return { status: 'error' };
+            if (pubkey === FALLBACK_PUBKEY) {
+                return { status: 'found', secretKey: 'fallback-nsec' };
+            }
+            return { status: 'missing' };
+        });
+        mockKeyManager.isValidNsec.mockReturnValue(true);
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: FALLBACK_PUBKEY,
+            npub: 'npub1fallback',
+            nprofile: 'nprofile1fallback',
+        });
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.initializeAuth();
+        const authenticateWithNip07 = vi.fn();
+
+        expect(result).toEqual({ hasAuth: true, pubkeyHex: FALLBACK_PUBKEY });
+        expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+        await expect(resolveNip07AutoLoginSession(result, {
+            authenticateWithNip07: authenticateWithNip07 as any,
+            console: { error: vi.fn() },
+        })).resolves.toBe(result);
+        expect(authenticateWithNip07).not.toHaveBeenCalled();
+    });
+
     it('マルチアカウント: 全アカウント復元失敗', async () => {
         mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
         mockAccountManager.getAccountType.mockReturnValue('nsec');
@@ -102,8 +141,17 @@ describe('AuthService.initializeAuth', () => {
         service.setAccountManager(mockAccountManager as any);
 
         const result = await service.initializeAuth();
+        const authenticateWithNip07 = vi.fn().mockResolvedValue({
+            success: true,
+            pubkeyHex: NIP07_PUBKEY,
+        });
 
-        expect(result.hasAuth).toBe(false);
+        expect(result).toEqual({ hasAuth: false, restoreOutcome: 'completed' });
+        await expect(resolveNip07AutoLoginSession(result, {
+            authenticateWithNip07: authenticateWithNip07 as any,
+            console: { error: vi.fn() },
+        })).resolves.toEqual({ hasAuth: true, pubkeyHex: NIP07_PUBKEY });
+        expect(authenticateWithNip07).toHaveBeenCalledOnce();
     });
 
     it('マルチアカウント: parentClient は起動時自動復元せず他アカウントへフォールバックする', async () => {
@@ -188,6 +236,180 @@ describe('AuthService.initializeAuth', () => {
         expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
     });
 
+    it('保存済みNIP-07 mismatchのidentityを保持し、後続候補を最後まで試す', async () => {
+        const nip07Deps = createMockNip07Dependencies(FALLBACK_PUBKEY, mockDependencies);
+        const getPublicKey = (nip07Deps.window as any).nostr.getPublicKey as ReturnType<typeof vi.fn>;
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(NIP07_PUBKEY);
+        mockAccountManager.getAccountType.mockImplementation((pubkeyHex: string) => {
+            if (pubkeyHex === NIP07_PUBKEY) return 'nip07';
+            if (pubkeyHex === ACTIVE_PUBKEY) return 'nsec';
+            return null;
+        });
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: NIP07_PUBKEY, type: 'nip07', addedAt: 1000 },
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 2000 },
+        ]);
+        mockKeyManager.readStoredKey.mockReturnValue({ status: 'missing' });
+
+        const service = new AuthService(nip07Deps);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toMatchObject({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+            nip07Identity: { hex: FALLBACK_PUBKEY },
+        });
+        expect(mockKeyManager.readStoredKey).toHaveBeenCalledWith(ACTIVE_PUBKEY);
+        expect(getPublicKey).toHaveBeenCalledOnce();
+    });
+
+    it('保存済みNIP-07 mismatch identityが後続の保存済みNIP-07に一致すれば再問い合わせせず復元する', async () => {
+        const nip07Deps = createMockNip07Dependencies(FALLBACK_PUBKEY, mockDependencies);
+        const getPublicKey = (nip07Deps.window as any).nostr.getPublicKey as ReturnType<typeof vi.fn>;
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(NIP07_PUBKEY);
+        mockAccountManager.getAccountType.mockImplementation((pubkeyHex: string) =>
+            pubkeyHex === NIP07_PUBKEY || pubkeyHex === FALLBACK_PUBKEY ? 'nip07' : null,
+        );
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: NIP07_PUBKEY, type: 'nip07', addedAt: 1000 },
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nip07', addedAt: 2000 },
+        ]);
+
+        const service = new AuthService(nip07Deps);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: true,
+            pubkeyHex: FALLBACK_PUBKEY,
+        });
+        expect(getPublicKey).toHaveBeenCalledOnce();
+        expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+    });
+
+    it('NIP-46 managed restore失敗は正常評価済み未認証として返す', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nip46');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nip46', addedAt: 1000 },
+        ]);
+
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+        });
+    });
+
+    it('保存credential読み取り異常は通常候補失敗と区別する', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
+        mockKeyManager.readStoredKey.mockReturnValue({ status: 'error' });
+
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
+    });
+
+    it('全managed候補失敗までにcredential読み取り異常があればauto-loginを抑止する', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(ACTIVE_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: ACTIVE_PUBKEY, type: 'nsec', addedAt: 1000 },
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 2000 },
+        ]);
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) =>
+            pubkey === ACTIVE_PUBKEY ? { status: 'error' } : { status: 'missing' },
+        );
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.initializeAuth();
+        const authenticateWithNip07 = vi.fn();
+
+        expect(mockKeyManager.readStoredKey).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+        expect(result).toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
+        await expect(resolveNip07AutoLoginSession(result, {
+            authenticateWithNip07: authenticateWithNip07 as any,
+            console: { error: vi.fn() },
+        })).resolves.toBe(result);
+        expect(authenticateWithNip07).not.toHaveBeenCalled();
+    });
+
+    it('legacy nsec migration失敗後もstrict snapshotから有効なmanaged accountを復元する', async () => {
+        const storage = mockDependencies.localStorage as MockStorage;
+        storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, JSON.stringify([
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]));
+        storage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, FALLBACK_PUBKEY);
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(FALLBACK_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) =>
+            pubkey
+                ? { status: 'found', secretKey: 'managed-nsec' }
+                : { status: 'found', secretKey: 'invalid-legacy-nsec' },
+        );
+        mockKeyManager.isValidNsec.mockImplementation((secretKey: string) =>
+            secretKey === 'managed-nsec',
+        );
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: FALLBACK_PUBKEY,
+            npub: 'npub1fallback',
+            nprofile: 'nprofile1fallback',
+        });
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: true,
+            pubkeyHex: FALLBACK_PUBKEY,
+        });
+        expect(mockAccountManager.getAuthRestoreSnapshot).toHaveBeenCalledOnce();
+        expect(mockDependencies.setNsecAuth).toHaveBeenCalledOnce();
+    });
+
+    it('legacy nsec migration失敗をmanaged全候補の通常失敗後に保持する', async () => {
+        const storage = mockDependencies.localStorage as MockStorage;
+        storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, JSON.stringify([
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]));
+        storage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, FALLBACK_PUBKEY);
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue(FALLBACK_PUBKEY);
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: FALLBACK_PUBKEY, type: 'nsec', addedAt: 1000 },
+        ]);
+        mockKeyManager.readStoredKey.mockImplementation((pubkey?: string) =>
+            pubkey
+                ? { status: 'missing' }
+                : { status: 'found', secretKey: 'invalid-legacy-nsec' },
+        );
+        mockKeyManager.isValidNsec.mockReturnValue(false);
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
+        expect(mockAccountManager.getAuthRestoreSnapshot).toHaveBeenCalledOnce();
+        expect(mockKeyManager.readStoredKey).toHaveBeenCalledWith(FALLBACK_PUBKEY);
+    });
+
     it('account listがない場合はlegacy NIP-07移行後にderived nsecをactiveとしてmanaged restoreする', async () => {
         const storage = new MockStorage();
         const derivedPubkey = 'ef'.repeat(32);
@@ -248,10 +470,35 @@ describe('AuthService.initializeAuth', () => {
         const service = new AuthService(mockDependencies);
         service.setAccountManager(mockAccountManager as any);
 
-        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
         expect(mockAccountManager.cleanupNostrLoginData).not.toHaveBeenCalled();
         expect(mockAccountManager.migrateFromSingleAccount).not.toHaveBeenCalled();
         expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
+    });
+
+    it('migration後のstrict restore snapshotを取得できない場合はauto-loginへ進まない', async () => {
+        mockAccountManager.getAuthRestoreSnapshot.mockReturnValue({
+            status: 'failed',
+            reason: 'account-record-read-failed',
+        } as any);
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.initializeAuth();
+        const authenticateWithNip07 = vi.fn();
+
+        expect(result).toEqual({
+            hasAuth: false,
+            restoreOutcome: 'infrastructure-failure',
+        });
+        await expect(resolveNip07AutoLoginSession(result, {
+            authenticateWithNip07: authenticateWithNip07 as any,
+            console: { error: vi.fn() },
+        })).resolves.toBe(result);
+        expect(authenticateWithNip07).not.toHaveBeenCalled();
     });
 
     it('アカウントなし→レガシーnsec検出', async () => {
@@ -276,7 +523,10 @@ describe('AuthService.initializeAuth', () => {
             localNsecAuthEnabled: false,
         });
 
-        await expect(service.initializeAuth()).resolves.toEqual({ hasAuth: false });
+        await expect(service.initializeAuth()).resolves.toEqual({
+            hasAuth: false,
+            restoreOutcome: 'completed',
+        });
         expect(mockKeyManager.loadFromStorage).not.toHaveBeenCalled();
         expect(mockDependencies.setNsecAuth).not.toHaveBeenCalled();
     });

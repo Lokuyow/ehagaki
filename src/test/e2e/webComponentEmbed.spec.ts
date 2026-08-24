@@ -25,6 +25,8 @@ let hostOrigin = "";
 let relayServer: WebSocketServer;
 let relayOrigin = "";
 let relayConnectionCount = 0;
+let relayRequestsPaused = false;
+let pendingRelayResponses: Array<() => void> = [];
 const componentRequests = new Set<string>();
 const hostRequests = new Set<string>();
 const componentStoragePrefix = "ehagaki.web-component.v1:";
@@ -99,7 +101,15 @@ test.beforeAll(async () => {
             try {
                 const message = JSON.parse(rawMessage.toString()) as unknown[];
                 if (message[0] === "REQ" && typeof message[1] === "string") {
-                    socket.send(JSON.stringify(["EOSE", message[1]]));
+                    const sendEose = () => {
+                        try {
+                            socket.send(JSON.stringify(["EOSE", message[1]]));
+                        } catch {
+                            // A disconnected test client no longer needs its EOSE.
+                        }
+                    };
+                    if (relayRequestsPaused) pendingRelayResponses.push(sendEose);
+                    else sendEose();
                 }
             } catch {
                 // The relay only needs to accept the browser connection for this proof.
@@ -156,7 +166,16 @@ test.beforeEach(() => {
     componentRequests.clear();
     hostRequests.clear();
     relayConnectionCount = 0;
+    relayRequestsPaused = false;
+    pendingRelayResponses = [];
 });
+
+function releasePausedRelayRequests(): void {
+    relayRequestsPaused = false;
+    const responses = pendingRelayResponses;
+    pendingRelayResponses = [];
+    for (const respond of responses) respond();
+}
 
 test.afterAll(async () => {
     await Promise.all([
@@ -164,6 +183,202 @@ test.afterAll(async () => {
         hostServer && close(hostServer),
         relayServer && closeWebSocketServer(relayServer),
     ]);
+});
+
+test("keeps startup NIP-07 opt-in and preserves the existing ready path when absent", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        const state = { getPublicKeyCalls: 0, readyEvents: 0 };
+        window.nostr = {
+            getPublicKey: async () => {
+                state.getPublicKeyCalls += 1;
+                return "12".repeat(32);
+            },
+            signEvent: async (event: unknown) => event,
+        } as any;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            autoLogin: boolean;
+            whenReady(): Promise<void>;
+        };
+        composer.addEventListener("ehagaki-ready", () => state.readyEvents += 1);
+        document.body.append(composer);
+        await composer.whenReady();
+        return {
+            ...state,
+            autoLogin: composer.autoLogin,
+            hasAccountStorage: Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+                .some((key) => key === "ehagaki.web-component.v1:nostr-accounts"),
+        };
+    }, { componentOrigin });
+
+    expect(result).toEqual({
+        getPublicKeyCalls: 0,
+        readyEvents: 1,
+        autoLogin: false,
+        hasAccountStorage: false,
+    });
+});
+
+test("auto-login persists NIP-07 and delays ready through authenticated bootstrap", async ({ page }) => {
+    relayRequestsPaused = true;
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin, relayOrigin }) => {
+        const state = {
+            getPublicKeyCalls: 0,
+            ready: false,
+            readyEvents: 0,
+        };
+        (window as any).__autoLoginState = state;
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [, protocols] = args as [string | URL, string | string[] | undefined];
+                return Reflect.construct(
+                    target,
+                    [relayOrigin, protocols].filter((value) => value !== undefined),
+                    newTarget,
+                );
+            },
+        });
+        window.nostr = {
+            getPublicKey: async () => {
+                state.getPublicKeyCalls += 1;
+                return "23".repeat(32);
+            },
+            signEvent: async (event: unknown) => event,
+        } as any;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            autoLogin: boolean;
+            whenReady(): Promise<void>;
+        };
+        composer.setAttribute("auto-login", "false");
+        composer.addEventListener("ehagaki-ready", () => state.readyEvents += 1);
+        document.body.append(composer);
+        void composer.whenReady().then(() => {
+            state.ready = true;
+        });
+    }, { componentOrigin, relayOrigin });
+
+    await expect.poll(() => page.evaluate(() => (window as any).__autoLoginState.getPublicKeyCalls)).toBe(1);
+    await expect.poll(() => pendingRelayResponses.length).toBeGreaterThan(0);
+    expect(await page.evaluate(() => (window as any).__autoLoginState.ready)).toBe(false);
+
+    releasePausedRelayRequests();
+    await expect.poll(() => page.evaluate(() => (window as any).__autoLoginState.ready)).toBe(true);
+    const result = await page.evaluate(({ componentStoragePrefix }) => {
+        const state = (window as any).__autoLoginState;
+        const pubkeyHex = "23".repeat(32);
+        return {
+            ...state,
+            autoLogin: (document.querySelector("ehagaki-composer") as any).autoLogin,
+            accounts: JSON.parse(localStorage.getItem(`${componentStoragePrefix}nostr-accounts`) ?? "[]"),
+            activePubkey: localStorage.getItem(`${componentStoragePrefix}nostr-active-account`),
+            expectedPubkey: pubkeyHex,
+        };
+    }, { componentStoragePrefix });
+
+    expect(result.getPublicKeyCalls).toBe(1);
+    expect(result.readyEvents).toBe(1);
+    expect(result.autoLogin).toBe(true);
+    expect(result.accounts).toEqual([
+        expect.objectContaining({ pubkeyHex: result.expectedPubkey, type: "nip07" }),
+    ]);
+    expect(result.activePubkey).toBe(result.expectedPubkey);
+});
+
+test("auto-login failure continues as guest without retry or initialization error", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin, componentStoragePrefix }) => {
+        const state = {
+            getPublicKeyCalls: 0,
+            readyEvents: 0,
+            initializationErrors: 0,
+            consoleErrors: [] as string[],
+        };
+        const originalConsoleError = console.error;
+        console.error = (...args: unknown[]) => {
+            state.consoleErrors.push(String(args[0]));
+            originalConsoleError(...args);
+        };
+        window.nostr = {
+            getPublicKey: async () => {
+                state.getPublicKeyCalls += 1;
+                throw new Error("user rejected");
+            },
+            signEvent: async (event: unknown) => event,
+        } as any;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        composer.setAttribute("auto-login", "");
+        composer.addEventListener("ehagaki-ready", () => state.readyEvents += 1);
+        composer.addEventListener("ehagaki-initialization-error", () => state.initializationErrors += 1);
+        document.body.append(composer);
+        await composer.whenReady();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+            ...state,
+            accounts: localStorage.getItem(`${componentStoragePrefix}nostr-accounts`),
+            visibleAutoLoginError: composer.shadowRoot?.textContent?.includes("自動ログイン失敗") ?? false,
+        };
+    }, { componentOrigin, componentStoragePrefix });
+
+    expect(result.getPublicKeyCalls).toBe(1);
+    expect(result.readyEvents).toBe(1);
+    expect(result.initializationErrors).toBe(0);
+    expect(result.accounts).toBeNull();
+    expect(result.visibleAutoLoginError).toBe(false);
+    expect(result.consoleErrors.some((message) => message.includes("NIP-07"))).toBe(false);
+});
+
+test("treats auto-login changes after connection as next-mount configuration", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin, relayOrigin }) => {
+        const state = { getPublicKeyCalls: 0 };
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [, protocols] = args as [string | URL, string | string[] | undefined];
+                return Reflect.construct(
+                    target,
+                    [relayOrigin, protocols].filter((value) => value !== undefined),
+                    newTarget,
+                );
+            },
+        });
+        window.nostr = {
+            getPublicKey: async () => {
+                state.getPublicKeyCalls += 1;
+                return "34".repeat(32);
+            },
+            signEvent: async (event: unknown) => event,
+        } as any;
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            autoLogin: boolean;
+            whenReady(): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        composer.autoLogin = true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const callsDuringCurrentMount = state.getPublicKeyCalls;
+        composer.remove();
+        document.body.append(composer);
+        await composer.whenReady();
+        return {
+            callsDuringCurrentMount,
+            callsAfterRemount: state.getPublicKeyCalls,
+        };
+    }, { componentOrigin, relayOrigin });
+
+    expect(result).toEqual({
+        callsDuringCurrentMount: 0,
+        callsAfterRemount: 1,
+    });
 });
 
 test("routes the real authenticated relay connection through the host WebSocket interceptor", async ({ page }) => {

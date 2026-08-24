@@ -148,10 +148,49 @@ MediaBunnyの動的チャンクも、特にクロスオリジン配信時に `as
 GitHub Pages のようにサイトがサブパス配下にある場合は、root-relative URL を固定せず、
 実際の配信ベースを使ってください。公開サンプルは `./web-component/` を基準に URL を解決しています。
 
+## `auto-login` / `autoLogin`
+
+`auto-login` は、起動時の復元で認証状態が得られなかった場合に、ホストの `window.nostr` で
+NIP-07 ログインを行う opt-in です。既定は無効で、指定しない限り現在の動作から変わりません。
+
+```html
+<ehagaki-composer asset-base="/ehagaki/web-component/" auto-login></ehagaki-composer>
+```
+
+`disabled` などと同じ HTML の boolean 属性で、存在すれば有効です（`auto-login="false"` も
+有効になります）。無効にするには属性を削除するか `element.autoLogin = false` を使ってください。
+
+- ホストが `window.nostr` を用意していて、誰として署名するかが決まっている埋め込みを想定した
+  opt-in です。NIP-07 拡張は公開鍵の取得時に確認ダイアログを出すことが多いため、既定では
+  行いません。
+- Full self-publish distribution 専用です。Lite Host-owned では属性/propertyを指定しても無視され、
+  eHagaki の認証は開始しません。`setSettings()` の設定項目ではありません。
+- `asset-base` と同じく mount 時に読み取られます。接続後に変更しても現在の mount では認証を開始せず、
+  次の mount から有効です。
+- 起動時は先に、NIP-07 / NIP-46 など保存済み managed account を既存順序ですべて復元します。どれかを
+  復元できれば NIP-07 fallback は行いません。候補を正常に評価し終えても未認証だった場合だけ、
+  初回に限らずホストの NIP-07 identity を fallback として使います。1候補の storage 読み取りなどで
+  認証基盤異常が起きても残りの保存済み候補を試し、どれも復元できなかった場合は NIP-07 を開始せず、
+  ゲスト起動へ進みます。legacy nsec migration の異常時も、安全な strict snapshot を取得できる限り
+  保存済み候補の復元を続けます。
+- 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
+  最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
+- 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、
+  その他の通常の NIP-07 失敗では通知を表示せず、ゲスト状態で起動を続行します。自動試行は 1 mount
+  につき 1 回です。
+- 成功した identity は通常の NIP-07 アカウントとして保存され、active account になります。同じ pubkey が
+  別認証方式で保存済みなら type を NIP-07 へ更新し、旧方式固有の credential/session だけを best-effort
+  で削除します。プロフィール、リレー設定、別 pubkey の保存済みアカウントは維持します。
+
 ## 準備完了を待つ `whenReady()`
 
 `whenReady(): Promise<void>` は、アプリのマウントと初期化が完了した後に解決します。
 `ehagaki-ready` も同じ準備完了時に発火します。
+
+Full で `auto-login` を有効にした場合は、保存済み認証または NIP-07 fallback の認証後 bootstrap
+（Nostr session、リレー・プロフィール、ストア同期を含む）、もしくは失敗後の guest session
+bootstrap が完了するまで、どちらも成立しません。`auto-login` 未指定の Full と Lite Host-owned の
+既存 ready timing は変更されません。
 
 ```js
 const composer = document.querySelector('ehagaki-composer');
@@ -211,6 +250,7 @@ handler を交換することはできません。変更が必要な場合は新
 Full は `/web-component/`、Lite は `/web-component/host-owned/` です。これにより icons、dynamic
 chunks、MediaBunny、optional AAC encoder、image compression が同じ distribution から解決されます。
 省略時の既存 fallback 挙動は維持され、新しい readiness error にはなりません。
+`auto-login`/`autoLogin` は Full 専用で、Lite は指定されても無視します。
 
 唯一の Host-owned manual sample は
 [host-owned-composer-lite-example.html](../public/host-owned-composer-lite-example.html) です。
@@ -654,6 +694,8 @@ Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定
 Web Component 専用の signer callback/provider API はありません。
 
 - NIP-07 では、コンポーネントと同じ Window realm にあるホストの `window.nostr` を直接利用します。
+- 保存済み認証を優先し、復元できない場合に NIP-07 fallback を行うには、Full distribution で
+  [`auto-login`](#auto-login--autologin) を指定します。既定では行いません。
 - NIP-46 は、コンポーネント内の既存 eHagaki UI からログインします。
 - ローカル秘密鍵（nsec）の入力、保存、保存済みアカウントの復元には対応しません。
 - iframe の `auth.*` / `rpc.*` メッセージは Web Component では使いません。

@@ -48,7 +48,7 @@
 ## Web Component entrypoint と public API
 
 - **entry/build input:** full entry は `src/web-component/entry.ts`、Host-owned Lite entry は `src/web-component/host-owned-entry.ts`。それぞれ `/web-component/ehagaki-composer.js` と `/web-component/host-owned/ehagaki-composer.js` として同じ `EHAGAKI_COMPOSER_TAG_NAME` (`ehagaki-composer`) を登録する。`src/web-component/distributionRegistration.ts` は document ごとに一方だけを許可し、cross-distribution import を決定論的に reject する。型と API version は `src/web-component/types.ts`。
-- **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base`、対応 property は `assetBase`。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`。`setContext` / `setSettings` は connect 前や ready 前の呼び出しを operation queue に入れる。
+- **public surface:** `src/web-component/element.ts` の observed attribute は `asset-base` と `auto-login`、対応 property は `assetBase` と `autoLogin`。どちらも mount 時に読み取られ、接続後の変更は次の mount から有効。公開 method は `whenReady(): Promise<void>`、`setContext(context)`、`setSettings(settings)`。`setContext` / `setSettings` は connect 前や ready 前の呼び出しを operation queue に入れる。
 - **Host-owned modes:** full は self-publish 専用で、`configureHostOwned()` / `setCustomEmojis()` を公開しない。Lite は `configureHostOwned()` を connection 前に一度だけ必要とし、auth/account/session、relay/NIP-46、event signing/send、history/draft、iframe Parent Client、通常 uploader transport を composition graph に含めない。shared composer UI は `PostComponent.svelte`、Lite root は `src/host-owned-composer-lite/HostOwnedComposerLiteApp.svelte`。
 - **events:** `ehagaki-ready`（`apiVersion`）、`ehagaki-initialization-error`（`initialization_failed` / `multiple_instances_unsupported` / `disconnected`）、`ehagaki-post-success`、`ehagaki-post-error`、`ehagaki-composer-context-updated`。`src/web-component/notificationPort.ts` が App notification を composed/bubbling CustomEvent に adapter する。
 - **app seam:** `App.svelte` が export する `setEmbedContext()` / `setEmbedSettings()` を element が in-process に使用する。Web Component は Parent Client `postMessage` を使わない。
@@ -57,14 +57,14 @@
 ## Web Component lifecycle と instance ownership
 
 - **責務:** `EHagakiComposerElement.connectedCallback()` は one connected instance を許可し、2 個目は `multiple_instances_unsupported` で ready promise を reject する。`disconnectedCallback()` は connection generation を進め、MutationObserver を disconnect、Svelte app を unmount、active slot を release する。
-- **ready/error:** mount 後の App `onInitialized` が ready promise を resolve して `ehagaki-ready` を dispatch する。mount failure、ready 前 disconnect、同時 primary instance は initialization error を dispatch し promise を reject する。remove 後に replacement を connect するのは既存 contract。
+- **ready/error:** mount 後の App `onInitialized` が ready promise を resolve して `ehagaki-ready` を dispatch する。Full で `auto-login` が有効な場合だけ startup auth または guest fallback bootstrap の完了も待つ。未指定の Full と Host-owned Lite の ready timing は従来どおり。mount failure、ready 前 disconnect、同時 primary instance は initialization error を dispatch し promise を reject する。remove 後に replacement を connect するのは既存 contract。
 - **host/component boundary:** host は element の creation/removal、size、attribute/property/method/event consumer。component は shadow root、mount target、overlay root、stateful App instance、operation queue、asset observer を所有する。hidden/redisplay と remove/recreate は同じものではない。
 - **関連 E2E:** `webComponentEmbed.spec.ts` は second instance rejection、disconnect/recreate、hidden redisplay、ready 前 `setContext`、host/storage/service-worker isolation を確認する。`webComponentParentClientExample.spec.ts` は sample の auto/manual mount と lifecycle control を確認する。
 
 ## Web Component storage、auth、navigation の差
 
 - **storage:** `src/lib/appStorage.ts` の `createWebComponentStorage()` は host `localStorage` を versioned `ehagaki.web-component.v1:` namespace に限定する。raw host storage を App に渡さない。
-- **auth/navigation/runtime switches:** element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false` に設定する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
+- **auth/navigation/runtime switches:** Full element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false`、`auto-login` 属性に従う `autoLoginNip07Enabled` に設定する。既定は `false`。有効時は managed restore を既存順序で最後まで評価し、途中の基盤異常より後続候補の成功を優先する。全候補が正常失敗した場合だけ `resolveNip07AutoLoginSession` が NIP-07 fallback を行い、全候補失敗までに基盤異常を観測した場合は fallback しない。保存済み NIP-07 mismatch で既に得た identity は再問い合わせせず再利用する。Host-owned Lite は属性を許容するが認証を開始せず無視する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
 - **確認対象:** component-only change では、host storage namespace、service worker registration、history behavior、local nsec UI/legacy cleanup を Web Component E2E の該当 case と照合する。
 
 ## asset base、Shadow DOM、style surface

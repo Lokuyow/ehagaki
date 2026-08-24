@@ -100,6 +100,35 @@ test("Lite requires pre-connect Host-owned configuration without making assetBas
     expect(result).toEqual({ rejected: true, events: ["error"] });
 });
 
+test("Lite ignores auto-login while preserving Host-owned ready", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        let getPublicKeyCalls = 0;
+        window.nostr = {
+            getPublicKey: async () => {
+                getPublicKeyCalls += 1;
+                return "ab".repeat(32);
+            },
+            signEvent: async (event: unknown) => event,
+        } as any;
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            autoLogin: boolean;
+            configureHostOwned(options: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.setAttribute("auto-login", "");
+        let readyEvents = 0;
+        composer.addEventListener("ehagaki-ready", () => readyEvents += 1);
+        composer.configureHostOwned({ submit: () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        return { autoLogin: composer.autoLogin, getPublicKeyCalls, readyEvents };
+    }, { componentOrigin });
+
+    expect(result).toEqual({ autoLogin: true, getPublicKeyCalls: 0, readyEvents: 1 });
+});
+
 test("Lite configuration is immutable and aborts host work when disconnected", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(hostOrigin);
