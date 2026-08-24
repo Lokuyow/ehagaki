@@ -392,7 +392,7 @@
         <!-- SW更新セクション -->
         {#if $swNeedRefresh || isStaleAssetReloadRequired}
             <div class="setting-section">
-                <div class="setting-row">
+                <div class="setting-row sw-update-row">
                     <div class="setting-control">
                         <Button
                             variant="primary"
@@ -1175,6 +1175,10 @@
         width: auto;
         padding: 12px 10px 12px 8px;
         flex-shrink: 0;
+    }
+
+    .sw-update-row {
+        justify-content: flex-end;
     }
 
     :global(.sw-update-btn:disabled) {
