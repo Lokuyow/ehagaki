@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
-import { nip19 } from 'nostr-tools';
+import { finalizeEvent, generateSecretKey, nip19 } from 'nostr-tools';
 import {
     mockAuthStoreModule,
     mockProfileStoreModule,
@@ -82,11 +82,7 @@ const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
     const logoutAccount = vi.fn(() => null);
     const applyReplyQuoteQuery = vi.fn(({ replyQuoteQuery, setReplyQuote }: any) => {
-        setReplyQuote(replyQuoteQuery);
-        return [
-            ...(replyQuoteQuery.reply ? [replyQuoteQuery.reply] : []),
-            ...replyQuoteQuery.quotes,
-        ];
+        return setReplyQuote(replyQuoteQuery);
     });
     const authenticateWithParentClient = vi.fn(async () => ({
         success: true,
@@ -109,7 +105,7 @@ const mockState = vi.hoisted(() => {
             }),
         },
     }));
-    const runInitializeNostrSession = vi.fn(async () => ({
+    const runInitializeNostrSession = vi.fn(async (_params?: any): Promise<any> => ({
         rxNostr: undefined,
         relayProfileService: {
             getRelayManager: () => ({
@@ -117,7 +113,7 @@ const mockState = vi.hoisted(() => {
             }),
         },
     }));
-    const completePostAuthBootstrap = vi.fn(async () => ({
+    const completePostAuthBootstrap = vi.fn(async (): Promise<any> => ({
         rxNostr: undefined,
         relayProfileService: {
             getRelayManager: () => ({
@@ -128,6 +124,7 @@ const mockState = vi.hoisted(() => {
     const runAppInitializationBootstrap = vi.fn((params: {
         markLocaleInitialized: () => void;
         handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+        initializeGuestSession: () => Promise<void>;
         getExternalInputBootstrapParams: () => {
             rxNostr?: unknown;
             relayProfileService?: unknown;
@@ -199,6 +196,7 @@ const mockState = vi.hoisted(() => {
         accountManager,
         bootstrapParams: null as {
             handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+            initializeGuestSession: () => Promise<void>;
             getExternalInputBootstrapParams: () => {
                 rxNostr?: unknown;
                 relayProfileService?: unknown;
@@ -433,7 +431,27 @@ describe('App parentClient integration', () => {
         mockSharedContentStoreModule.updateUrlQueryContentStore.mockClear();
         mockSharedContentStoreModule.clearUrlQueryContentStore.mockClear();
         mockState.initializeNostrSession.mockClear();
+        mockState.runInitializeNostrSession.mockResolvedValue({
+            rxNostr: undefined,
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        } as any);
         mockState.completePostAuthBootstrap.mockClear();
+        mockState.completePostAuthBootstrap.mockResolvedValue({
+            rxNostr: undefined,
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        } as any);
         mockState.applyReplyQuoteQuery.mockClear();
         mockState.getReplyQuoteFromEmbedPayload.mockClear();
         mockState.getChannelFromEmbedPayload.mockClear();
@@ -443,6 +461,8 @@ describe('App parentClient integration', () => {
         mockState.notifySettingsApplied.mockClear();
         mockState.notifySettingsError.mockClear();
         mockState.applyUploadEndpointPreference.mockClear();
+        mockState.hydrateReplyQuoteReferences.mockReset();
+        mockState.hydrateReplyQuoteReferences.mockResolvedValue(undefined);
         mockState.settingsRemoteSetListener = null;
         mockState.syncAccountStores.mockClear();
     });
@@ -538,6 +558,326 @@ describe('App parentClient integration', () => {
                 }),
             );
         });
+    });
+
+    it('bootstrap中のauth.result後はstable parent-client session確立までrelay hydrationを保留する', async () => {
+        const stableSession = {
+            rxNostr: { tag: 'stable-parent-client-rxnostr' },
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        };
+        const replyQuoteQuery = {
+            reply: {
+                eventId: QUEUED_REPLY_EVENT_ID,
+                relayHints: ['wss://hint-relay.example.com'],
+                authorPubkey: null,
+            },
+            quotes: [],
+        };
+        let resolveBootstrap!: () => void;
+        let resolvePostAuth!: (session: typeof stableSession) => void;
+        mockState.runAppInitializationBootstrap.mockImplementationOnce((params: any) => {
+            mockState.bootstrapParams = params;
+            params.markLocaleInitialized();
+            return new Promise<void>((resolve) => {
+                resolveBootstrap = resolve;
+            });
+        });
+        mockState.completePostAuthBootstrap.mockImplementationOnce(() =>
+            new Promise((resolve) => {
+                resolvePostAuth = resolve;
+            }),
+        );
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(replyQuoteQuery);
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.parentRemoteLoginListener).toBeTruthy();
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+        });
+
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        mockState.composerRemoteSetContextListener?.({
+            reply: nip19.noteEncode(QUEUED_REPLY_EVENT_ID),
+        }, 'composer-ready-race');
+        resolveBootstrap();
+
+        await waitFor(() => {
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalled();
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-ready-race',
+            );
+        });
+        expect(mockState.hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        resolvePostAuth(stableSession);
+
+        await waitFor(() => {
+            expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
+        });
+        expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            expect.objectContaining({
+                rxNostr: stableSession.rxNostr,
+                references: [expect.objectContaining({
+                    eventId: QUEUED_REPLY_EVENT_ID,
+                    mode: 'reply',
+                    ownerToken: expect.any(Symbol),
+                })],
+            }),
+        );
+    });
+
+    it('transition終了時にruntimeがなければpendingを維持し、後続guest session確立時にflushする', async () => {
+        const noRuntimeSession = {
+            rxNostr: undefined,
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        };
+        const guestSession = {
+            rxNostr: { tag: 'later-guest-rxnostr' },
+            relayProfileService: noRuntimeSession.relayProfileService,
+        };
+        let resolvePostAuth!: (session: typeof noRuntimeSession) => void;
+        const postAuthPromise = new Promise<typeof noRuntimeSession>((resolve) => {
+            resolvePostAuth = resolve;
+        });
+        mockState.completePostAuthBootstrap.mockReturnValueOnce(postAuthPromise as any);
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue({
+            reply: {
+                eventId: DEFAULT_REPLY_EVENT_ID,
+                relayHints: [],
+                authorPubkey: null,
+            },
+            quotes: [],
+        });
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.parentRemoteLoginListener).toBeTruthy();
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+            expect(mockState.bootstrapParams).toBeTruthy();
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        await waitFor(() => {
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalled();
+        });
+        mockState.composerRemoteSetContextListener?.({
+            reply: nip19.noteEncode(DEFAULT_REPLY_EVENT_ID),
+        }, 'composer-pending-without-runtime');
+
+        await waitFor(() => {
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-pending-without-runtime',
+            );
+        });
+        resolvePostAuth(noRuntimeSession);
+        await postAuthPromise;
+        await Promise.resolve();
+        expect(mockState.hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        mockState.runInitializeNostrSession.mockImplementationOnce(async (params: any) => {
+            params.onSession(guestSession);
+            return guestSession;
+        });
+        await mockState.bootstrapParams?.initializeGuestSession();
+
+        await waitFor(() => {
+            expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
+        });
+        expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            expect.objectContaining({
+                rxNostr: guestSession.rxNostr,
+                references: [expect.objectContaining({
+                    eventId: DEFAULT_REPLY_EVENT_ID,
+                    ownerToken: expect.any(Symbol),
+                })],
+            }),
+        );
+    });
+
+    it('並行parent-client transitionは最後のsession確立までstable扱いにしない', async () => {
+        const firstSession = {
+            rxNostr: { tag: 'first-parent-client-rxnostr' },
+            relayProfileService: {
+                getRelayManager: () => ({ loadRelayConfigForUI: vi.fn() }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        };
+        const secondSession = {
+            ...firstSession,
+            rxNostr: { tag: 'second-parent-client-rxnostr' },
+        };
+        let resolveAuth!: (result: { success: true; pubkeyHex: string }) => void;
+        const authPromise = new Promise<{ success: true; pubkeyHex: string }>((resolve) => {
+            resolveAuth = resolve;
+        });
+        let resolveFirstSession!: (session: typeof firstSession) => void;
+        let resolveSecondSession!: (session: typeof secondSession) => void;
+        const firstSessionPromise = new Promise<typeof firstSession>((resolve) => {
+            resolveFirstSession = resolve;
+        });
+        const secondSessionPromise = new Promise<typeof secondSession>((resolve) => {
+            resolveSecondSession = resolve;
+        });
+        mockState.authenticateWithParentClient.mockReturnValue(authPromise as any);
+        mockState.completePostAuthBootstrap
+            .mockReturnValueOnce(firstSessionPromise as any)
+            .mockReturnValueOnce(secondSessionPromise as any);
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue({
+            reply: {
+                eventId: DEFAULT_REPLY_EVENT_ID,
+                relayHints: [],
+                authorPubkey: null,
+            },
+            quotes: [],
+        });
+
+        render(App);
+        await waitFor(() => {
+            expect(mockState.parentRemoteLoginListener).toBeTruthy();
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        await waitFor(() => {
+            expect(mockState.authenticateWithParentClient).toHaveBeenCalledTimes(1);
+        });
+        resolveAuth({ success: true, pubkeyHex: PARENT_CLIENT_PUBKEY });
+        await waitFor(() => {
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalledTimes(2);
+        });
+
+        mockState.composerRemoteSetContextListener?.({
+            reply: nip19.noteEncode(DEFAULT_REPLY_EVENT_ID),
+        }, 'composer-concurrent-transition');
+        await waitFor(() => {
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-concurrent-transition',
+            );
+        });
+
+        resolveFirstSession(firstSession);
+        await firstSessionPromise;
+        await Promise.resolve();
+        expect(mockState.hydrateReplyQuoteReferences).not.toHaveBeenCalled();
+
+        resolveSecondSession(secondSession);
+        await secondSessionPromise;
+        await waitFor(() => {
+            expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
+        });
+        expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            expect.objectContaining({
+                rxNostr: secondSession.rxNostr,
+            }),
+        );
+    });
+
+    it('transition中もcontent-only、channel-only、valid preloadを即時適用する', async () => {
+        const preloadedEvent = finalizeEvent({
+            kind: 1,
+            content: 'integration preload',
+            tags: [],
+            created_at: 4,
+        }, generateSecretKey());
+        const noRuntimeSession = {
+            rxNostr: undefined,
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+                subscribeProfile: vi.fn(() => () => undefined),
+                fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+            },
+        };
+        let resolvePostAuth!: (session: typeof noRuntimeSession) => void;
+        const postAuthPromise = new Promise<typeof noRuntimeSession>((resolve) => {
+            resolvePostAuth = resolve;
+        });
+        mockState.completePostAuthBootstrap.mockReturnValueOnce(postAuthPromise as any);
+        mockState.getChannelFromEmbedPayload.mockReturnValue({
+            eventId: CHANNEL_EVENT_ID,
+            relayHints: [],
+        } as any);
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue({
+            reply: {
+                eventId: preloadedEvent.id,
+                relayHints: [],
+                authorPubkey: preloadedEvent.pubkey,
+            },
+            quotes: [],
+        });
+
+        render(App);
+        await waitFor(() => {
+            expect(mockState.parentRemoteLoginListener).toBeTruthy();
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        mockState.parentRemoteLoginListener?.(PARENT_CLIENT_PUBKEY);
+        await waitFor(() => {
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalled();
+        });
+
+        mockState.composerRemoteSetContextListener?.({
+            content: 'during transition',
+        }, 'composer-transition-content');
+        mockState.composerRemoteSetContextListener?.({
+            channel: { reference: nip19.noteEncode(CHANNEL_EVENT_ID) },
+        } as any, 'composer-transition-channel');
+        mockState.composerRemoteSetContextListener?.({
+            reply: nip19.neventEncode({
+                id: preloadedEvent.id,
+                author: preloadedEvent.pubkey,
+            }),
+            preloadedEvents: { [preloadedEvent.id]: preloadedEvent },
+        } as any, 'composer-transition-preload');
+
+        await waitFor(() => {
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-transition-content',
+            );
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-transition-channel',
+            );
+            expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(
+                'composer-transition-preload',
+            );
+            expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledTimes(1);
+        });
+        expect(mockSharedContentStoreModule.clearUrlQueryContentStore).toHaveBeenCalled();
+        expect(mockState.hydrateReplyQuoteReferences).toHaveBeenCalledWith(
+            expect.objectContaining({
+                rxNostr: undefined,
+                preloadedEvents: {
+                    [preloadedEvent.id]: expect.objectContaining({ id: preloadedEvent.id }),
+                },
+            }),
+        );
+
+        resolvePostAuth(noRuntimeSession);
+        await postAuthPromise;
     });
 
     it('remote logout を受け取ると parentClient アカウントを notify なしでログアウトする', async () => {
@@ -709,6 +1049,7 @@ describe('App parentClient integration', () => {
         mockState.runAppInitializationBootstrap.mockImplementationOnce((params: {
             markLocaleInitialized: () => void;
             handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+            initializeGuestSession: () => Promise<void>;
             getExternalInputBootstrapParams: () => {
                 rxNostr?: unknown;
                 relayProfileService?: unknown;

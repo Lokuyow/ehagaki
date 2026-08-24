@@ -538,6 +538,7 @@
   let customEmojiPickerHeight = $derived(
     composerLayoutMetrics.customEmojiPickerHeight,
   );
+  let parentClientTransitionCount = 0;
   const parentClientAuthCoordinator = createParentClientAuthCoordinator({
     authenticateWithParentClient: (options) =>
       authService.authenticateWithParentClient(options),
@@ -1076,6 +1077,7 @@
       onSession: (session) => {
         rxNostr = session.rxNostr;
         relayProfileService = session.relayProfileService;
+        void flushPendingReplyQuoteHydrationWhenRuntimeReady();
       },
     });
   }
@@ -1108,6 +1110,7 @@
 
     rxNostr = session.rxNostr;
     relayProfileService = session.relayProfileService;
+    void flushPendingReplyQuoteHydrationWhenRuntimeReady();
   }
 
   /** アカウントリストストアを保存済みプロフィールキャッシュから同期 */
@@ -1134,7 +1137,9 @@
       timeoutMs?: number;
     } = {},
   ): Promise<string | undefined> {
-    return appAuthLoginController.activateParentClientAuth(options);
+    return runParentClientTransition(() =>
+      appAuthLoginController.activateParentClientAuth(options),
+    );
   }
 
   function getReplyQuoteApplyParams() {
@@ -1270,8 +1275,7 @@
     },
     runtime: {
       isBootstrappingApp: () => isBootstrappingApp,
-      hasPendingParentAuth: () =>
-        parentClientAuthCoordinator.hasPendingRequest(),
+      isParentClientTransitioning: () => parentClientTransitionCount > 0,
       getReplyQuoteState: () => replyQuoteState.value,
       getChannelContextState: () => channelContextState.value,
       getChannelContextProvenance: () => channelContextProvenanceState.value,
@@ -1304,6 +1308,26 @@
       },
     },
   });
+
+  async function flushPendingReplyQuoteHydrationWhenRuntimeReady(): Promise<void> {
+    if (!rxNostr || parentClientTransitionCount > 0) {
+      return;
+    }
+
+    await appEmbedController.flushPendingReplyQuoteHydration();
+  }
+
+  async function runParentClientTransition<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    parentClientTransitionCount += 1;
+    try {
+      return await operation();
+    } finally {
+      parentClientTransitionCount -= 1;
+      void flushPendingReplyQuoteHydrationWhenRuntimeReady();
+    }
+  }
   const appParentClientSyncController = createAppParentClientSyncController({
     isBootstrappingApp: () => isBootstrappingApp,
     hasPendingParentAuth: () => parentClientAuthCoordinator.hasPendingRequest(),
@@ -1412,7 +1436,9 @@
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
-    return appAuthLoginController.handleParentClientLogin();
+    return runParentClientTransition(() =>
+      appAuthLoginController.handleParentClientLogin(),
+    );
   }
 
   async function handleNip46Login(
@@ -1574,6 +1600,7 @@
         startupAuthenticationSettled = true;
       }
       void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
+        void flushPendingReplyQuoteHydrationWhenRuntimeReady();
         appEmbedController.notifyComposerContextUpdatedIfChanged();
       });
     });
