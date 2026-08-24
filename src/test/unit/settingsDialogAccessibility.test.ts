@@ -423,7 +423,7 @@ describe('SettingsDialog accessibility', () => {
         );
     });
 
-    it('DB blocked解除後は待機中のSW更新表示とボタンを復元する', async () => {
+    it('DB blocked解除後は更新ボタンを復元し、状態ラベルを表示しない', async () => {
         swUpdateStatus.set('ready');
         dbUpgradeBlocked.set(true);
         swNeedRefresh.set(true);
@@ -435,14 +435,17 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        expect(screen.getByText('settingsDialog.db_upgrade_blocked')).toBeTruthy();
-        expect(document.body.querySelector('.sw-update-btn')?.hasAttribute('disabled')).toBe(true);
+        const updateButton = document.body.querySelector('.sw-update-btn');
+        expect(updateButton?.hasAttribute('disabled')).toBe(true);
+        expect(document.body.querySelector('.sw-update-label')).toBeNull();
+        expect(document.body.textContent).not.toContain('アプリの更新があります');
+        expect(document.body.textContent).not.toContain('アプリの更新をインストール中です');
 
         dbUpgradeBlocked.set(false);
         await tick();
 
-        expect(screen.getByText('A new update is available')).toBeTruthy();
-        expect(document.body.querySelector('.sw-update-btn')?.hasAttribute('disabled')).toBe(false);
+        expect(updateButton?.hasAttribute('disabled')).toBe(false);
+        expect(document.body.textContent).not.toContain('A new update is available');
 
         swUpdateStatus.set('idle');
         swNeedRefresh.set(false);
@@ -462,8 +465,8 @@ describe('SettingsDialog accessibility', () => {
         });
         await tick();
 
-        expect(screen.getByText('Reload to use the new version')).toBeTruthy();
         const reloadButton = screen.getByRole('button', { name: 'Reload' });
+        expect(document.body.querySelector('.sw-update-label')).toBeNull();
         await fireEvent.click(reloadButton);
 
         expect(staleAssetState.requestPrompt).toHaveBeenCalledOnce();
