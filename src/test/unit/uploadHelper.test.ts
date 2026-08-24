@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-    performFileUpload,
-    resolveCurrentUploadDestination,
     showUploadErrorMessage,
     uploadHelper,
 } from "../../lib/uploadHelper";
+import {
+    performFileUpload,
+    resolveCurrentUploadDestination,
+} from "../../lib/normalUploadHelper";
 import { generateBlurhashes, insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
 import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/fileUtils";
 import {

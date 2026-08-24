@@ -306,7 +306,7 @@
       if (!isHostOwned) {
         if (normalUploadFiles) return await normalUploadFiles(params);
         if (isHostOwnedLiteBuild) return null;
-        const { uploadFiles } = await import("../lib/uploadHelper");
+        const { uploadFiles } = await import("../lib/normalUploadHelper");
         return await uploadFiles(params);
       }
       if (!hostOwnedConfig?.uploadMedia) {
@@ -340,6 +340,7 @@
           prepareFiles: executor.prepareFiles,
           uploadPreparedFiles: executor.uploadPreparedFiles,
           fileUploadManager: executor.fileUploadManager,
+          fileUploadManagerInstance: new executor.fileUploadManager(),
           deferUploadStateClear: true,
           isUploadAborted: () => (
             !hostMountActive || !!hostOwnedConfig.signal.aborted

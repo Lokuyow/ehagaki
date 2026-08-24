@@ -31,3 +31,26 @@ export function findCustomEmojiByShortcode(items: CustomEmojiItem[], shortcode: 
 export function findUniqueCustomEmojiByShortcode(items: CustomEmojiItem[], shortcode: unknown): CustomEmojiItem | null { const found = findCustomEmojiCandidatesByShortcode(items, shortcode); return found.length === 1 ? found[0] : null; }
 export function getCustomEmojiSuggestionItems(items: CustomEmojiItem[], query: unknown, limit = CUSTOM_EMOJI_SUGGESTION_LIMIT): CustomEmojiItem[] { const value = normalizeEmojiShortcodeForLookup(query); return items.filter((item) => item.shortcodeLower.includes(value)).slice(0, limit); }
 export function isCustomEmojiShortcodeText(value: unknown): boolean { return /^:[\p{L}\p{N}_+-]{1,64}:$/u.test(String(value).trim()); }
+
+export interface CustomEmojiTagReference {
+    shortcode: string;
+    shortcodeLower: string;
+    url: string;
+}
+
+/** Minimal render-only tag parser used by shared context previews. */
+export function buildCustomEmojiTagMap(tags: string[][]): Map<string, CustomEmojiTagReference> {
+    const map = new Map<string, CustomEmojiTagReference>();
+    for (const tag of tags) {
+        if (tag[0] !== "emoji") continue;
+        const item = createCustomEmojiItem({ shortcode: tag[1], src: tag[2], sortIndex: 0 });
+        if (item && !map.has(item.shortcodeLower)) {
+            map.set(item.shortcodeLower, {
+                shortcode: item.shortcode,
+                shortcodeLower: item.shortcodeLower,
+                url: item.src,
+            });
+        }
+    }
+    return map;
+}

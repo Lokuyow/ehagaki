@@ -222,7 +222,7 @@
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
   import { uploadDestinationStore } from "./stores/uploadDestinationStore.svelte";
-  import { uploadFiles as normalUploadFiles } from "./lib/uploadHelper";
+  import { uploadFiles as normalUploadFiles } from "./lib/normalUploadHelper";
 
   const appRuntimeEnvironment = getAppRuntimeEnvironment();
   interface Props {

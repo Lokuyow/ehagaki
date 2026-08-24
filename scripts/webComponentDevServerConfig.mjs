@@ -5,6 +5,7 @@ export const LAN_HOST = "0.0.0.0";
 const SAMPLE_PATHS = [
     "web-component-parent-client-example.html",
     "host-owned-composer-example.html",
+    "host-owned-composer-lite-example.html",
 ];
 
 /** @param {boolean} lanMode */

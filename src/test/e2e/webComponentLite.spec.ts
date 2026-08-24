@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
+import { POST_EDITOR_MIN_HEIGHT } from "../../lib/postLayoutUtils";
 
 let componentServer: Server;
 let hostServer: Server;
@@ -117,7 +118,8 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
     const quoteEvent = finalizeEvent({ kind: 1, content: "preloaded Lite quote", tags: [], created_at: 2 }, generateSecretKey());
     const reply = nip19.noteEncode(replyEvent.id);
     const quote = nip19.noteEncode(quoteEvent.id);
-    await page.evaluate(async ({ componentOrigin, reply, quote, replyEvent, quoteEvent }) => {
+    const channel = nip19.noteEncode("d".repeat(64));
+    await page.evaluate(async ({ componentOrigin, reply, quote, channel, replyEvent, quoteEvent }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
         const state = { outputs: [] as any[], uploads: 0, events: [] as string[] };
         (window as any).__liteContractState = state;
@@ -149,6 +151,11 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
             content: "Lite seeded #context",
             reply,
             quotes: [quote],
+            channel: {
+                reference: channel,
+                name: "Lite channel",
+                about: "Host supplied channel preview",
+            },
             preloadedEvents: { [replyEvent.id]: replyEvent, [quoteEvent.id]: quoteEvent },
         });
         document.body.append(composer);
@@ -156,14 +163,41 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
         await context;
         await composer.setSettings({ mediaFreePlacement: true, imageCompressionLevel: "none", videoCompressionLevel: "none" });
         await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
-    }, { componentOrigin, reply, quote, replyEvent, quoteEvent });
+    }, { componentOrigin, reply, quote, channel, replyEvent, quoteEvent });
 
     const composer = page.locator("ehagaki-composer");
     await expect(composer.locator(".tiptap-editor")).toContainText("Lite seeded #context");
+    await composer.locator(".reply-quote-preview").first().getByRole("button").first().click();
+    await composer.locator(".reply-quote-preview").last().getByRole("button").first().click();
+    await expect(composer.locator(".reply-quote-preview").first()).toContainText("preloaded Lite reply");
+    await expect(composer.locator(".reply-quote-preview").last()).toContainText("preloaded Lite quote");
+    await expect(composer.locator(".channel-context-preview")).toContainText("Lite channel");
+    const closedGeometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const component = element.getBoundingClientRect();
+        const bar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
+        const region = shadow.querySelector<HTMLElement>(".composer-scroll-region")!;
+        return {
+            footerPresent: !!shadow.querySelector(".footer-bar"),
+            barBottom: bar.getBoundingClientRect().bottom,
+            componentBottom: component.bottom,
+            regionHeight: region.getBoundingClientRect().height,
+        };
+    });
+    expect(closedGeometry.footerPresent).toBe(false);
+    expect(Math.abs(closedGeometry.barBottom - closedGeometry.componentBottom)).toBeLessThanOrEqual(1);
+    expect(closedGeometry.regionHeight).toBeGreaterThan(POST_EDITOR_MIN_HEIGHT);
     await composer.locator(".tiptap-editor").click();
     await composer.locator(".tiptap-editor").pressSequentially(" body #LiteTag ");
     await composer.locator(".button-group-right button").nth(0).click();
     await composer.locator("#content-warning-reason-input").fill("Lite CW");
+    const warningGeometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const reason = shadow.querySelector<HTMLElement>(".reason-input-container")!;
+        const bar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
+        return { reasonBottom: reason.getBoundingClientRect().bottom, barTop: bar.getBoundingClientRect().top };
+    });
+    expect(Math.abs(warningGeometry.reasonBottom - warningGeometry.barTop)).toBeLessThanOrEqual(1);
     await composer.locator(".custom-emoji-button").click();
     await composer.locator(".emoji-button[aria-label=':wave:']").click();
     await composer.locator('input[type="file"]').setInputFiles({

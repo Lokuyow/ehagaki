@@ -30,7 +30,7 @@ function resolveWebComponentIconUrls() {
 function resolveHostOwnedLiteFullOnlyImports() {
     const root = process.cwd();
     const fullOnlyStub = resolve(root, "src/host-owned-composer-lite/fullOnlyRuntimeStub.ts");
-    const uploadStub = resolve(root, "src/host-owned-composer-lite/hostOwnedUploadHelper.ts");
+    const normalUploadStub = resolve(root, "src/host-owned-composer-lite/normalUploadLiteStub.ts");
     const fullOnlyImports = new Set([
         "../lib/postManager",
         "../lib/nip46Service",
@@ -51,7 +51,7 @@ function resolveHostOwnedLiteFullOnlyImports() {
             }
             if (!importer?.endsWith("src/components/PostComponent.svelte")) return null;
             if (fullOnlyImports.has(source)) return fullOnlyStub;
-            if (source === "../lib/uploadHelper") return uploadStub;
+            if (source === "../lib/normalUploadHelper") return normalUploadStub;
             return null;
         },
     };
@@ -64,6 +64,7 @@ function resolveHostOwnedLiteFullOnlyImports() {
  */
 export default defineConfig(({ mode }) => {
     const isHostOwnedLite = mode === "host-owned-lite";
+    const isWatchBuild = mode === "web-component-watch";
     const distributionDirectory = isHostOwnedLite
         ? "dist-web-component/host-owned"
         : "dist-web-component";
@@ -103,7 +104,7 @@ export default defineConfig(({ mode }) => {
         outDir: distributionDirectory,
         // The Lite directory is nested under the full distribution output.
         // It must not erase the full files built immediately before it.
-        emptyOutDir: !isHostOwnedLite,
+        emptyOutDir: !isHostOwnedLite && !isWatchBuild,
         cssCodeSplit: false,
         lib: {
             entry: isHostOwnedLite

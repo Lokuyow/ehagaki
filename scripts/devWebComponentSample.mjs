@@ -9,6 +9,7 @@ import {
     createPhysicalViteDevServerCommand,
     runWebComponentInitialBuild,
     startNodeCommand,
+    startHostOwnedLiteWebComponentBuild,
     startWebComponentBuild,
 } from "./webComponentBuildRunner.mjs";
 import {
@@ -29,6 +30,7 @@ let webComponentServer;
 let webComponentBuildWorkingDirectory;
 let initialBuild;
 let watcher;
+let liteWatcher;
 let viteServer;
 let shuttingDown = false;
 
@@ -185,6 +187,7 @@ async function shutdown(exitCode) {
     const terminationResults = await Promise.allSettled([
         terminateChild(initialBuild),
         terminateChild(watcher),
+        terminateChild(liteWatcher),
         terminateChild(viteServer),
         closeServer(webComponentServer),
     ]);
@@ -218,6 +221,7 @@ async function main() {
 
     webComponentServer = await startWebComponentServer();
     watcher = startWebComponentBuild(webComponentBuildWorkingDirectory.workingDirectory, { watch: true });
+    liteWatcher = startHostOwnedLiteWebComponentBuild(webComponentBuildWorkingDirectory.workingDirectory, { watch: true });
     console.log(`Vite dev server uses physical repository path ${physicalRepositoryRoot}`);
     const viteDevServerCommand = createPhysicalViteDevServerCommand(physicalRepositoryRoot, {
         host: appHost,
@@ -226,6 +230,7 @@ async function main() {
     });
     viteServer = startNodeCommand(viteDevServerCommand, { environment: viteDevServerCommand.environment });
     watchChild("Web Component watcher", watcher);
+    watchChild("Host-owned Composer Lite watcher", liteWatcher);
     watchChild("Vite dev server", viteServer);
 
     if (lanMode) {

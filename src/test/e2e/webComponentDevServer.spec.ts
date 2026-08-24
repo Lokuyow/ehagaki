@@ -212,8 +212,34 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(sampleRequests.some(({ status }) => status === 404)).toBe(false);
         expect(failedWebComponentRequests).toEqual([]);
 
-        const entryPath = join(process.cwd(), "src", "web-component", "entry.ts");
+        webComponentResponses.length = 0;
+        failedWebComponentRequests.length = 0;
+        consoleErrors.length = 0;
+        await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
+        await expect(page.locator("#status")).toHaveText("ready");
+        const liteComposer = page.locator("ehagaki-composer");
+        await expect(liteComposer.locator(".tiptap-editor")).toBeVisible();
+        await liteComposer.locator(".tiptap-editor").click();
+        await liteComposer.locator(".tiptap-editor").pressSequentially("Lite public sample");
+        await liteComposer.locator("button.post-button").click();
+        await expect(page.locator("#status")).toContainText("submit: Lite public sample");
+        const liteIconStatus = await page.evaluate(async () => (
+            await fetch("./web-component/host-owned/icons/paper-plane-solid-full.svg")
+        ).status);
+        expect(liteIconStatus).toBe(200);
+        const liteRequests = webComponentResponses.filter(({ path }) => path.includes("/ehagaki/web-component/host-owned/"));
+        expect(liteRequests.some(({ path, status }) => path.endsWith("/ehagaki-composer.js") && status === 200)).toBe(true);
+        expect(liteRequests.some(({ path, status }) => path.includes("/icons/") && status === 200)).toBe(true);
+        expect(liteRequests.some(({ status }) => status === 404)).toBe(false);
+        expect(failedWebComponentRequests.filter((path) => path.includes("/host-owned/"))).toEqual([]);
+        expect(consoleErrors.filter((message) => /404|initialization|module/i.test(message))).toEqual([]);
+
+        const entryPath = join(process.cwd(), "src", "host-owned-composer-lite", "HostOwnedComposerLiteApp.svelte");
         const entryStat = await stat(entryPath);
+        const fullOutputPath = join(process.cwd(), "dist-web-component", "ehagaki-composer.js");
+        const liteOutputPath = join(process.cwd(), "dist-web-component", "host-owned", "ehagaki-composer.js");
+        await stat(fullOutputPath);
+        const liteOutputStat = await stat(liteOutputPath);
         await expect.poll(() => (output.join("").match(/built in/g) ?? []).length, {
             timeout: 30_000,
         }).toBeGreaterThanOrEqual(2);
@@ -223,6 +249,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             await expect.poll(() => (output.join("").match(/built in/g) ?? []).length, {
                 timeout: 60_000,
             }).toBeGreaterThan(completedBuilds);
+            const refreshedLiteOutput = await stat(liteOutputPath);
+            expect(refreshedLiteOutput.mtimeMs).toBeGreaterThanOrEqual(liteOutputStat.mtimeMs);
+            await stat(fullOutputPath);
         } finally {
             await utimes(entryPath, entryStat.atime, entryStat.mtime);
         }
