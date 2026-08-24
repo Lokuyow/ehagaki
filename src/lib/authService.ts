@@ -312,13 +312,11 @@ export class AuthService {
                     keyManager: this.runtime.keyManager,
                     snapshot: snapshotResult.snapshot,
                 });
-                if (![
+                const migrationInfrastructureFailure = ![
                     'legacy-credential-missing',
                     'migrated',
                     'already-migrated',
-                ].includes(migrationResult.status)) {
-                    return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
-                }
+                ].includes(migrationResult.status);
 
                 const restoreSnapshotResult = this.accountManager.getAuthRestoreSnapshot();
                 if (restoreSnapshotResult.status === 'failed') {
@@ -326,6 +324,7 @@ export class AuthService {
                 }
                 return await runManagedAuthRestore({
                     restoreSnapshot: restoreSnapshotResult.snapshot,
+                    infrastructureFailureDetected: migrationInfrastructureFailure,
                     accountManager: this.accountManager,
                     restoreAccount: (pubkeyHex, type, nip07Identity) =>
                         this.restoreAccount(pubkeyHex, type, {

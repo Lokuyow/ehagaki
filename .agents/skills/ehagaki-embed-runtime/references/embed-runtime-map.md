@@ -64,7 +64,7 @@
 ## Web Component storage、auth、navigation の差
 
 - **storage:** `src/lib/appStorage.ts` の `createWebComponentStorage()` は host `localStorage` を versioned `ehagaki.web-component.v1:` namespace に限定する。raw host storage を App に渡さない。
-- **auth/navigation/runtime switches:** Full element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false`、`auto-login` 属性に従う `autoLoginNip07Enabled` に設定する。既定は `false`。有効時は managed restore を既存順序で完了し、正常に未認証となった場合だけ `resolveNip07AutoLoginSession` が NIP-07 fallback を行う。保存済み NIP-07 mismatch で既に得た identity は再問い合わせせず再利用し、restore 基盤異常では fallback しない。Host-owned Lite は属性を許容するが認証を開始せず無視する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
+- **auth/navigation/runtime switches:** Full element は runtime を `web-component`、container layout、ShadowRoot/host targets、`serviceWorkerEnabled: false`、`externalInputEnabled: false`、`historyEnabled: false`、`localNsecAuthEnabled: false`、`auto-login` 属性に従う `autoLoginNip07Enabled` に設定する。既定は `false`。有効時は managed restore を既存順序で最後まで評価し、途中の基盤異常より後続候補の成功を優先する。全候補が正常失敗した場合だけ `resolveNip07AutoLoginSession` が NIP-07 fallback を行い、全候補失敗までに基盤異常を観測した場合は fallback しない。保存済み NIP-07 mismatch で既に得た identity は再問い合わせせず再利用する。Host-owned Lite は属性を許容するが認証を開始せず無視する。NIP-07/NIP-46 の contract 自体は Nostr/auth implementation を確認する。
 - **確認対象:** component-only change では、host storage namespace、service worker registration、history behavior、local nsec UI/legacy cleanup を Web Component E2E の該当 case と照合する。
 
 ## asset base、Shadow DOM、style surface

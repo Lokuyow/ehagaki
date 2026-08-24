@@ -110,6 +110,7 @@ interface ManagedAccountRestoreDependencies {
         activePubkey: string | null;
         accounts: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
     };
+    infrastructureFailureDetected?: boolean;
     accountManager: {
         setActiveAccount(pubkeyHex: string): void;
     };
@@ -464,6 +465,7 @@ export async function runManagedAuthRestore(
         accounts,
     });
     let nip07Identity: PublicKeyData | undefined;
+    let infrastructureFailureDetected = dependencies.infrastructureFailureDetected ?? false;
 
     for (const candidate of candidates) {
         const result = await dependencies.restoreAccount(
@@ -477,15 +479,15 @@ export async function runManagedAuthRestore(
             }
             return result;
         }
-        if (MANAGED_RESTORE_INFRASTRUCTURE_FAILURES.has(result.reason)) {
-            return { hasAuth: false, restoreOutcome: 'infrastructure-failure' };
-        }
         nip07Identity = result.nip07Identity ?? nip07Identity;
+        if (MANAGED_RESTORE_INFRASTRUCTURE_FAILURES.has(result.reason)) {
+            infrastructureFailureDetected = true;
+        }
     }
 
     return {
         hasAuth: false,
-        restoreOutcome: 'completed',
+        restoreOutcome: infrastructureFailureDetected ? 'infrastructure-failure' : 'completed',
         ...(nip07Identity ? { nip07Identity } : {}),
     };
 }

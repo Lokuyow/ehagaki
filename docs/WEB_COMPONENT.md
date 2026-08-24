@@ -169,8 +169,10 @@ NIP-07 ログインを行う opt-in です。既定は無効で、指定しな�
   次の mount から有効です。
 - 起動時は先に、NIP-07 / NIP-46 など保存済み managed account を既存順序ですべて復元します。どれかを
   復元できれば NIP-07 fallback は行いません。候補を正常に評価し終えても未認証だった場合だけ、
-  初回に限らずホストの NIP-07 identity を fallback として使います。migration や storage 読み取りなど
-  認証基盤自体の異常で評価を完了できなかった場合は NIP-07 を開始せず、ゲスト起動へ進みます。
+  初回に限らずホストの NIP-07 identity を fallback として使います。1候補の storage 読み取りなどで
+  認証基盤異常が起きても残りの保存済み候補を試し、どれも復元できなかった場合は NIP-07 を開始せず、
+  ゲスト起動へ進みます。legacy nsec migration の異常時も、安全な strict snapshot を取得できる限り
+  保存済み候補の復元を続けます。
 - 保存済み NIP-07 の identity mismatch で現在の identity を取得済みなら、残りの保存済み候補を
   最後まで試し、すべて失敗した場合だけ同じ identity を再問い合わせせず fallback に使います。
 - 再利用できる identity がない場合、`window.nostr` の注入を最大 3 秒待ちます。拡張未検出、ユーザー拒否、
