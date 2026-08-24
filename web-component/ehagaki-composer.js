@@ -1,4 +1,4 @@
-import { bk as _, bl as a, bm as O } from "./assets/entry-B_zlOICe.js";
+import { bk as _, bl as a, bm as O } from "./assets/entry-tn6az_XN.js";
 export {
   _ as EHAGAKI_COMPOSER_API_VERSION,
   a as EHAGAKI_COMPOSER_TAG_NAME,
