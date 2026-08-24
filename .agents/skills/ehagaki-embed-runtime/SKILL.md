@@ -29,7 +29,7 @@ eHagaki の standalone、iframe、Direct Web Component の公開契約と runtim
 値または副作用ごとに app-owned、host-owned、delegated、shared contract のいずれかを実装から特定する。parent client に委譲する state に、根拠なく local fallback・二重 source of truth・standalone global state を追加しない。
 
 - Web Component では connect / ready / disconnect / remove / recreate、Svelte mount/unmount、listener/observer、queued operation、pending ready promise、single-instance slot を追う。iframe service では listener registration、request timeout、pending request、disconnect cleanup の owner を追う。
-- Host-owned の auth / relay、submit / media handoff、およびそれを持たない責務境界は Lite distribution 側の契約として調査する。Full の self-publish runtime に Host-owned API や Lite 専用の ownership を持ち込まない。
+- Host-owned Lite では、submit / media handoff は Host 側の責務であり、eHagaki 側は auth / account / session、relay / NIP-46、event sign / send を持たない。この責務境界を Lite の契約として確認し、Full の self-publish runtime に Host-owned API や Lite 専用の ownership を持ち込まない。
 - 初期化中または parent auth 中に保留する composer context は、既存 controller の queue/flush 境界を保つ。任意の timer や global workaround を追加しない。
 - runtime 固有の機能制御（service worker、external input、history、local nsec auth、storage namespace、layout/overlay/theme target）は `AppRuntimeEnvironment` と各 entrypoint で確認し、別 runtime へ漏らさない。
 
