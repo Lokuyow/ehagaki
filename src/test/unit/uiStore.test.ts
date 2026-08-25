@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushSync } from 'svelte';
+import { render } from '@testing-library/svelte';
+
+import ComposerLayoutMetricsHook from './fixtures/ComposerLayoutMetricsHook.svelte';
 
 type ViewportListener = () => void;
 
@@ -277,6 +281,56 @@ describe('uiStore', () => {
 
         requestAnimationFrameSpy.mockRestore();
         cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('composer layout metricsのeffectはkeyboard geometry変更でviewport listenerを再登録しない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+
+        const { visualViewport } = createVisualViewportMock(800);
+        const virtualKeyboard = createVirtualKeyboardMock();
+        const { keyboardHeightStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const setupViewportListenerSpy = vi.fn(() => setupViewportListener());
+        const { rerender, unmount } = render(ComposerLayoutMetricsHook, {
+            setupViewportListener: setupViewportListenerSpy,
+            keyboardLayoutState: keyboardHeightStore.value,
+        });
+
+        flushSync();
+        expect(setupViewportListenerSpy).toHaveBeenCalledOnce();
+        expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2);
+        expect(virtualKeyboard.virtualKeyboard.addEventListener).toHaveBeenCalledOnce();
+
+        virtualKeyboard.setHeight(300);
+        virtualKeyboard.emitGeometryChange();
+        flushSync();
+        await rerender({
+            setupViewportListener: setupViewportListenerSpy,
+            keyboardLayoutState: keyboardHeightStore.value,
+        });
+
+        expect(setupViewportListenerSpy).toHaveBeenCalledOnce();
+        expect(visualViewport.removeEventListener).not.toHaveBeenCalled();
+        expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2);
+        expect(virtualKeyboard.virtualKeyboard.removeEventListener).not.toHaveBeenCalled();
+        expect(virtualKeyboard.virtualKeyboard.addEventListener).toHaveBeenCalledOnce();
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(true);
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
+
+        unmount();
+
+        expect(visualViewport.removeEventListener).toHaveBeenCalledTimes(2);
+        expect(virtualKeyboard.virtualKeyboard.removeEventListener).toHaveBeenCalledOnce();
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
     });
 
     it('「宛先を指定」ダイアログの入力欄では投稿エディター向けレイアウトを有効にしない', async () => {
