@@ -505,6 +505,16 @@
                             <option value="dark">dark</option>
                         </select>
                     </div>
+
+                    <div class="field">
+                        <label for="initial-accent-color">Accent Color（6桁HEX）</label>
+                        <input id="initial-accent-color" type="text" placeholder="#1dbf73">
+                    </div>
+
+                    <div class="field">
+                        <label for="initial-base-color">Base Color（6桁HEX）</label>
+                        <input id="initial-base-color" type="text" placeholder="#dcefe4">
+                    </div>
                     <div class="field">
                         <label for="initial-reply-notification">reply notification</label>
                         <select id="initial-reply-notification">
@@ -520,8 +530,8 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">`embedReplyNotification=true` は毎回強制、`defaultReplyNotification=false` は未保存時だけ適用します。常時表示
-                    iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。設定変更は親ストレージにも保存されます。</p>
+                <p class="small">Accent / Base Colorも `embedAccentColor` / `embedBaseColor` は毎回強制、`defaultAccentColor` / `defaultBaseColor` は未保存時だけの表示defaultです。常時表示
+                    iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。ユーザー設定は親ストレージへ保存されますが、runtime強制カラーは保存されません。</p>
 
                 <div class="buttons">
                     <button id="sync-runtime-settings" type="button" class="secondary button-full">現在の設定を postMessage
@@ -565,9 +575,16 @@
             <section class="panel timeline-panel">
                 <div class="timeline-header">
                     <h2>簡易タイムライン</h2>
-                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。reply / quote と本文は iframe ready 後に postMessage
-                        で同期し、未接続時だけ URL
-                        クエリ付きで再読み込みします。</p>
+                    <p class="small">指定したrelayの最新 kind 1 を表示します。現在の接続先はステータスに表示されます。reply / quote と本文は iframe ready 後に
+                        postMessage で同期し、未接続時だけ URL クエリ付きで再読み込みします。</p>
+                </div>
+
+                <div class="field">
+                    <label for="timeline-relay">タイムライン relay URL</label>
+                    <input id="timeline-relay" type="text" inputmode="url" list="timeline-relay-suggestions"
+                        spellcheck="false" autocomplete="off" value="wss://nos.lol">
+                    <datalist id="timeline-relay-suggestions"></datalist>
+                    <p class="small">ws:// または wss:// のrelayを入力して「タイムライン更新」を押してください。適用したrelayは次回入力時の候補に保存されます。</p>
                 </div>
 
                 <div class="timeline-toolbar">
