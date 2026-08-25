@@ -1,5 +1,7 @@
 # eHagaki iframe埋め込みガイド
 
+iframe / Full Web Component / Host-owned Composer Lite の方式選択から始める場合は、先に [eHagaki 埋め込み・統合ガイド](./EMBEDDING.md) を参照してください。この文書は iframe 固有のAPIリファレンスです。
+
 このドキュメントは、eHagaki を自分の Web サイトや Web アプリに iframe で埋め込みたい開発者向けの公開ガイドです。
 
 > まずは動作確認用サンプルを直接開くには、以下の URL をブラウザで開いてください。
