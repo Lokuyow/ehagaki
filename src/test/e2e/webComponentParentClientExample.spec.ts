@@ -464,6 +464,8 @@ test("boots from production site output and exercises the public sample API", as
     for (const id of [
         "style-accent",
         "style-base",
+        "style-default-accent",
+        "style-default-base",
         "style-background",
         "style-text",
         "style-border",
@@ -648,6 +650,8 @@ test("boots from production site output and exercises the public sample API", as
     for (const id of [
         "style-accent",
         "style-base",
+        "style-default-accent",
+        "style-default-base",
         "style-background",
         "style-text",
         "style-border",

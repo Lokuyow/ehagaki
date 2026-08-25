@@ -36,6 +36,15 @@ await applyUploadDestinationBootstrap(
   embedSettingsBootstrapResult.uploadEndpointPreference,
 )
 
+const { themeColorStore } = await import('./stores/themeColorStore.svelte')
+themeColorStore.setExternalLayers({
+  forcedAccentColor: embedSettingsBootstrapResult.parsedSettings.accentColor ?? null,
+  forcedBaseColor: embedSettingsBootstrapResult.parsedSettings.baseColor ?? null,
+  defaultAccentColor: embedSettingsBootstrapResult.parsedDefaultSettings.accentColor ?? null,
+  defaultBaseColor: embedSettingsBootstrapResult.parsedDefaultSettings.baseColor ?? null,
+})
+themeColorStore.reload()
+
 const { default: App } = await import('./App.svelte')
 
 const app = mount(App, {

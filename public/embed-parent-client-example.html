@@ -505,6 +505,16 @@
                             <option value="dark">dark</option>
                         </select>
                     </div>
+
+                    <div class="field">
+                        <label for="initial-accent-color">Accent Color（6桁HEX）</label>
+                        <input id="initial-accent-color" type="text" placeholder="#1dbf73">
+                    </div>
+
+                    <div class="field">
+                        <label for="initial-base-color">Base Color（6桁HEX）</label>
+                        <input id="initial-base-color" type="text" placeholder="#dcefe4">
+                    </div>
                     <div class="field">
                         <label for="initial-reply-notification">reply notification</label>
                         <select id="initial-reply-notification">
@@ -520,8 +530,8 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">`embedReplyNotification=true` は毎回強制、`defaultReplyNotification=false` は未保存時だけ適用します。常時表示
-                    iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。設定変更は親ストレージにも保存されます。</p>
+                <p class="small">Accent / Base Colorも `embedAccentColor` / `embedBaseColor` は毎回強制、`defaultAccentColor` / `defaultBaseColor` は未保存時だけの表示defaultです。常時表示
+                    iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同期できます。ユーザー設定は親ストレージへ保存されますが、runtime強制カラーは保存されません。</p>
 
                 <div class="buttons">
                     <button id="sync-runtime-settings" type="button" class="secondary button-full">現在の設定を postMessage

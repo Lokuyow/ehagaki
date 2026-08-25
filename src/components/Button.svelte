@@ -239,10 +239,6 @@
 
         :global(:root.light) &,
         :global(:host(.light)) & {
-            --btn-bg: white;
-        }
-
-        :global(:root[data-base-color-set="true"]) & {
             --btn-bg: var(--surface-editor);
         }
     }

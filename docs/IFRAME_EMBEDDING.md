@@ -71,7 +71,7 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 
 ### 初回埋め込み時の設定注入
 
-親ページは iframe URL に埋め込み用設定クエリを付けることで、eHagaki の設定を起動時に注入できます。親ページから iframe 内の localStorage は通常読めないため、毎回強制したい設定と未保存時だけ使いたい既定値をクエリ名で分けます。
+親ページは iframe URL に埋め込み用設定クエリを付けることで、eHagaki の設定を起動時に注入できます。親ページから iframe 内の localStorage は通常読めないため、毎回強制したい設定と未保存時だけ使いたい既定値をクエリ名で分けます。カラーも同じレイヤーで扱います。
 
 ```html
 <iframe
@@ -95,6 +95,8 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 - `embedMediaFreePlacement=true|false`
 - `embedShowMascot=true|false`
 - `embedShowFlavorText=true|false`
+- `embedAccentColor=#RRGGBB`
+- `embedBaseColor=#RRGGBB`
 
 未保存時だけ使う既定値クエリは次のとおりです。対応する設定が eHagaki 側 localStorage に保存済みなら上書きしません。
 
@@ -109,10 +111,14 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 - `defaultMediaFreePlacement=true|false`
 - `defaultShowMascot=true|false`
 - `defaultShowFlavorText=true|false`
+- `defaultAccentColor=#RRGGBB`
+- `defaultBaseColor=#RRGGBB`
 
 挙動は次のルールです。
 
 - `embed~` は毎回強制、`default~` は設定ごとに未保存時だけ適用されます
+- カラーの優先順位は `embedAccentColor` / `embedBaseColor`（外部強制） > iframe 内のユーザー設定 > `defaultAccentColor` / `defaultBaseColor`（外部default） > eHagaki標準です
+- カラーqueryは `accentColor` / `baseColor` のユーザー保存値を変更しません。外部強制を外すと保存済みユーザー色へ戻り、ユーザー色もなければ外部default、さらに無ければ標準色になります
 - 同じ設定に `embed~` と `default~` を両方付けた場合は `embed~` が優先されます
 - `embedUploadEndpoint` / `defaultUploadEndpoint` は localStorage ではなく `eHagakiDB.uploadDestinations` の既定アップロード先へ反映されます
 - `embedShowMascot=false` のときは、フレーバーテキストもあわせて非表示になります
@@ -143,7 +149,7 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 
 eHagaki のテーマ設定は初回起動時の既定値が `system` です。そのため、通常は `embedTheme` を省略しても iframe 内 eHagaki はシステム設定に追従します。
 
-親ページ側から毎回テーマを強制したい場合は `embedTheme=system|light|dark`、未保存時だけ既定値を渡したい場合は `defaultTheme=system|light|dark` を付けてください。`system` は iframe 内で見えている `prefers-color-scheme` の変化に追従します。iframe 内の `prefers-color-scheme` は親ページ側の `color-scheme` の影響を受けることがあります。
+親ページ側から毎回テーマを強制したい場合は `embedTheme=system|light|dark`、未保存時だけ既定値を渡したい場合は `defaultTheme=system|light|dark` を付けてください。Accent / Base Colorは `embedAccentColor` / `embedBaseColor` と `defaultAccentColor` / `defaultBaseColor` を使います。値は設定画面と同じ6桁HEXです。`system` は iframe 内で見えている `prefers-color-scheme` の変化に追従します。iframe 内の `prefers-color-scheme` は親ページ側の `color-scheme` の影響を受けることがあります。
 
 ```html
 <iframe id="ehagaki-iframe" width="600" height="400"></iframe>
@@ -154,6 +160,8 @@ eHagaki のテーマ設定は初回起動時の既定値が `system` です。�
 
   src.searchParams.set('parentOrigin', window.location.origin);
   src.searchParams.set('embedTheme', 'dark');
+  src.searchParams.set('defaultAccentColor', '#28764f');
+  src.searchParams.set('embedBaseColor', '#dcefe4');
 
   iframe.src = src.toString();
 </script>
@@ -163,6 +171,7 @@ eHagaki のテーマ設定は初回起動時の既定値が `system` です。�
 
 - `embedTheme=system` は iframe 起動ごとに system へ戻したい場合に使えます
 - `defaultTheme=light|dark` は eHagaki 側にテーマ保存がない時だけ初期値を指定したい場合に使ってください
+- `embedAccentColor` / `embedBaseColor` は外部強制、`defaultAccentColor` / `defaultBaseColor` はユーザー色が無い場合だけの外部defaultです
 - 既存の [public/embed-parent-client-example.html](../public/embed-parent-client-example.html) は、`embed~` / `default~` と実行中の `settings.set` を切り替えて試せます
 
 ## 2. リプライ / 複数引用 / パブリックチャット状態で起動する
@@ -312,14 +321,17 @@ iframe.contentWindow.postMessage({
   payload: {
     locale: 'en',
     themeMode: 'dark',
+    accentColor: '#28764f',
+    baseColor: '#dcefe4',
     showMascot: false,
   },
 }, 'https://lokuyow.github.io');
 ```
 
 - `settings.set` の `requestId` は必須です
-- payload は部分更新です。指定できるキーは `locale`, `themeMode`, `uploadEndpoint`, `imageQualityLevel`, `videoQualityLevel`, `clientTagEnabled`, `quoteNotificationEnabled`, `replyNotificationEnabled`, `mediaFreePlacement`, `showMascot`, `showFlavorText` です。旧 `imageCompressionLevel` / `videoCompressionLevel` も互換用に受け付けます
-- `uploadEndpoint` は localStorage ではなく `eHagakiDB.uploadDestinations` の既定アップロード先へ反映されます。他の設定は iframe 内 eHagaki の localStorage に保存されます
+- payload は部分更新です。指定できるキーは `locale`, `themeMode`, `accentColor`, `baseColor`, `uploadEndpoint`, `imageQualityLevel`, `videoQualityLevel`, `clientTagEnabled`, `quoteNotificationEnabled`, `replyNotificationEnabled`, `mediaFreePlacement`, `showMascot`, `showFlavorText` です。旧 `imageCompressionLevel` / `videoCompressionLevel` も互換用に受け付けます
+- `accentColor` / `baseColor` は `null` を指定するとその色のruntime強制だけを解除します。非null値は6桁HEXで検証され、ユーザー保存値へは書き込まれません。解除後はユーザー色、外部default、標準色の順に戻ります
+- `uploadEndpoint` は localStorage ではなく `eHagakiDB.uploadDestinations` の既定アップロード先へ反映されます。通常の設定と内部SettingsDialogから変更したユーザーAccent / Baseは iframe 内 eHagaki の localStorageへ保存されます
 - 成功時は `settings.applied`、失敗時は `settings.error` が同じ `requestId` で返ります
 - `settings.applied` の payload は `{ timestamp, applied }`、`settings.error` の payload は `{ timestamp, code, message? }` です
 
@@ -414,6 +426,8 @@ iframe.contentWindow.postMessage({
 - `mediaFreePlacement`
 - `showMascot`
 - `showFlavorText`
+- `accentColor`
+- `baseColor`
 - `settingsPreferenceMetadata`
 - `firstVisit`
 - `sharedMediaProcessed`
@@ -436,6 +450,8 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'mediaFreePlacement',
   'showMascot',
   'showFlavorText',
+  'accentColor',
+  'baseColor',
   'settingsPreferenceMetadata',
   'firstVisit',
   'sharedMediaProcessed',
@@ -502,7 +518,7 @@ window.addEventListener('message', (event) => {
 });
 ```
 
-初回描画のテーマや言語のちらつきを抑えたい場合は、親ページに保存済みの `themeMode` / `locale` を iframe URL の `defaultTheme` / `defaultLocale` にも反映してください。起動後に `storage.get` の結果が返ると、iframe 側の設定ストアも親保存値へ同期されます。
+初回描画のテーマ、言語、カラーのちらつきを抑えたい場合は、親ページに保存済みの `themeMode` / `locale` / `accentColor` / `baseColor` を iframe URL の `defaultTheme` / `defaultLocale` / `defaultAccentColor` / `defaultBaseColor` にも反映してください。起動後に `storage.get` の結果が返ると、iframe 側の設定ストアも親保存値へ同期されます。外部forced/default query自体は親storageへ保存されません。
 
 #### IndexedDB 設定の親保存委譲
 

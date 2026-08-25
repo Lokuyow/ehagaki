@@ -3,6 +3,7 @@ import {
     getEffectiveLocale,
     isValidUploadEndpoint,
     normalizeCompressionLevelPreference,
+    normalizeHexColor,
     normalizeLegacyCompressionLevelPreference,
     normalizeLocale,
     setClientTagEnabledPreference,
@@ -34,6 +35,8 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedMediaFreePlacement",
     "embedShowMascot",
     "embedShowFlavorText",
+    "embedAccentColor",
+    "embedBaseColor",
     "defaultLocale",
     "defaultTheme",
     "defaultUploadEndpoint",
@@ -47,6 +50,8 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "defaultMediaFreePlacement",
     "defaultShowMascot",
     "defaultShowFlavorText",
+    "defaultAccentColor",
+    "defaultBaseColor",
 ] as const;
 
 interface NavigatorLike {
@@ -91,6 +96,8 @@ export interface ParsedEmbedSettings {
     mediaFreePlacement?: boolean;
     showMascot?: boolean;
     showFlavorText?: boolean;
+    accentColor?: string;
+    baseColor?: string;
 }
 
 type ParsedSettingsKey = keyof ParsedEmbedSettings;
@@ -205,6 +212,10 @@ function parseSettingsFromParams(
         showFlavorText: parseBooleanParam(
             params.get(`${prefix}ShowFlavorText`),
         ),
+        accentColor: normalizeHexColor(params.get(`${prefix}AccentColor`))
+            ?? undefined,
+        baseColor: normalizeHexColor(params.get(`${prefix}BaseColor`))
+            ?? undefined,
     };
 }
 
@@ -286,6 +297,7 @@ function isPreferenceStored(storage: Storage, key: PersistedParsedSettingsKey): 
         case "showFlavorText":
             return storage.getItem(STORAGE_KEYS.SHOW_FLAVOR_TEXT) !== null;
     }
+    return false;
 }
 
 function applySetting(
@@ -330,6 +342,7 @@ function applySetting(
             setShowFlavorTextPreference(storage, value as boolean, source);
             return true;
     }
+    return false;
 }
 
 export function applyEmbedSettingsBootstrap({

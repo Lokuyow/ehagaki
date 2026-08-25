@@ -150,6 +150,49 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
+test("Lite applies host default and forced colors without exposing the settings dialog", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({ submit: () => undefined });
+        composer.style.setProperty("--ehagaki-default-accent-color", "#ABCDEF");
+        composer.style.setProperty("--ehagaki-default-base-color", "#CDEFAB");
+        document.body.append(composer);
+        await composer.whenReady();
+
+        const readColors = () => {
+            const style = getComputedStyle(composer);
+            return {
+                accent: style.getPropertyValue("--accent-color").trim().toLowerCase(),
+                base: style.getPropertyValue("--base-color").trim().toLowerCase(),
+                settingsButtons: composer.shadowRoot!.querySelectorAll("button.settings-btn").length,
+            };
+        };
+
+        const defaults = readColors();
+        composer.style.setProperty("--ehagaki-accent-color", "#345678");
+        composer.style.setProperty("--ehagaki-base-color", "#456789");
+        const forced = readColors();
+        composer.style.removeProperty("--ehagaki-accent-color");
+        composer.style.removeProperty("--ehagaki-base-color");
+        const released = readColors();
+        composer.style.setProperty("--ehagaki-default-accent-color", "#FEDCBA");
+        composer.style.setProperty("--ehagaki-default-base-color", "#EDCBAF");
+        const updatedDefaults = readColors();
+
+        return { defaults, forced, released, updatedDefaults };
+    }, { componentOrigin });
+
+    expect(result.defaults).toMatchObject({ accent: "#abcdef", base: "#cdefab", settingsButtons: 0 });
+    expect(result.forced).toMatchObject({ accent: "#345678", base: "#456789", settingsButtons: 0 });
+    expect(result.released).toMatchObject({ accent: "#abcdef", base: "#cdefab", settingsButtons: 0 });
+    expect(result.updatedDefaults).toMatchObject({ accent: "#fedcba", base: "#edcbaf", settingsButtons: 0 });
+});
+
 test("Lite custom emoji catalog controls the button and closes an open picker when cleared", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {

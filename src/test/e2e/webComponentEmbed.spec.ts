@@ -630,6 +630,102 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     expect(themedDark.danger).toBe(themedLight.danger);
 });
 
+test("layers Web Component user, default, and forced colors across updates and recreation", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        const storagePrefix = "ehagaki.web-component.v1:";
+        localStorage.setItem(`${storagePrefix}accentColor`, "#123456");
+        localStorage.setItem(`${storagePrefix}baseColor`, "#234567");
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+
+        const readColors = (composer: HTMLElement) => {
+            const style = getComputedStyle(composer);
+            return {
+                accent: style.getPropertyValue("--accent-color").trim().toLowerCase(),
+                base: style.getPropertyValue("--base-color").trim().toLowerCase(),
+            };
+        };
+        const create = async (defaults: { accent: string; base: string }) => {
+            const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+                whenReady(): Promise<void>;
+            };
+            composer.style.setProperty("--ehagaki-default-accent-color", defaults.accent);
+            composer.style.setProperty("--ehagaki-default-base-color", defaults.base);
+            document.body.append(composer);
+            await composer.whenReady();
+            return composer;
+        };
+
+        const first = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
+        const user = readColors(first);
+        first.style.setProperty("--ehagaki-accent-color", "#345678");
+        first.style.setProperty("--ehagaki-base-color", "#456789");
+        const forced = readColors(first);
+        first.style.removeProperty("--ehagaki-accent-color");
+        first.style.removeProperty("--ehagaki-base-color");
+        const released = readColors(first);
+
+        const settingsButton = first.shadowRoot!.querySelector<HTMLButtonElement>("button.settings-btn")!;
+        settingsButton.click();
+        await new Promise<void>((resolve) => {
+            const waitForSettings = () => {
+                if (first.shadowRoot!.querySelector("#accent-color-input")) {
+                    resolve();
+                    return;
+                }
+                setTimeout(waitForSettings, 10);
+            };
+            waitForSettings();
+        });
+        const accentInput = first.shadowRoot!.querySelector<HTMLInputElement>("#accent-color-input")!;
+        const baseInput = first.shadowRoot!.querySelector<HTMLInputElement>("#base-color-input")!;
+        accentInput.value = "#56789A";
+        accentInput.dispatchEvent(new Event("input", { bubbles: true }));
+        baseInput.value = "#6789AB";
+        baseInput.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+        const afterUserUpdate = readColors(first);
+        const storedAfterUserUpdate = {
+            accent: localStorage.getItem(`${storagePrefix}accentColor`),
+            base: localStorage.getItem(`${storagePrefix}baseColor`),
+        };
+
+        first.remove();
+        localStorage.removeItem(`${storagePrefix}accentColor`);
+        localStorage.removeItem(`${storagePrefix}baseColor`);
+        const second = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
+        const defaultColors = readColors(second);
+        second.style.setProperty("--ehagaki-default-accent-color", "#FEDCBA");
+        second.style.setProperty("--ehagaki-default-base-color", "#EDCBAF");
+        const updatedDefaults = readColors(second);
+        second.style.removeProperty("--ehagaki-default-accent-color");
+        second.style.removeProperty("--ehagaki-default-base-color");
+        const standardColors = readColors(second);
+
+        return {
+            user,
+            forced,
+            released,
+            afterUserUpdate,
+            storedAfterUserUpdate,
+            defaultColors,
+            updatedDefaults,
+            standardColors,
+        };
+    });
+
+    expect(result.user).toMatchObject({ accent: "#123456", base: "#234567" });
+    expect(result.forced).toMatchObject({ accent: "#345678", base: "#456789" });
+    expect(result.released).toMatchObject({ accent: "#123456", base: "#234567" });
+    expect(result.afterUserUpdate).toMatchObject({ accent: "#56789a", base: "#6789ab" });
+    expect(result.storedAfterUserUpdate).toEqual({ accent: "#56789a", base: "#6789ab" });
+    expect(result.defaultColors).toMatchObject({ accent: "#abcdef", base: "#cdefab" });
+    expect(result.updatedDefaults).toMatchObject({ accent: "#fedcba", base: "#edcbaf" });
+    expect(result.standardColors.accent).not.toBe("#fedcba");
+    expect(result.standardColors.base).toBe("");
+});
+
 test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async () => {

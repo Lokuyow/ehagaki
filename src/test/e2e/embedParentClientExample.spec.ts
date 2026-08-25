@@ -487,3 +487,60 @@ test("only replaces initial settings queries after the settings UI changes", asy
     expect(iframeUrl.searchParams.has("embedLocale")).toBe(false);
     expect(iframeUrl.searchParams.get("embedShowFlavorText")).toBe("false");
 });
+
+test("applies iframe color defaults, persists user colors, and releases runtime forces", async ({ page }) => {
+    await page.goto("/ehagaki/embed-parent-client-example.html");
+
+    const appUrl = new URL("/ehagaki/", page.url());
+    appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
+    appUrl.searchParams.set("defaultBaseColor", "#CDEFAB");
+    await page.getByLabel("eHagaki URL").fill(appUrl.toString());
+    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+
+    const frame = page.frameLocator("#ehagaki-iframe");
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    const readFrameColors = () => frame.locator("html").evaluate((html) => ({
+        accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
+        base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
+    }));
+
+    await expect.poll(readFrameColors).toMatchObject({ accent: "#abcdef", base: "#cdefab" });
+
+    await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(frame.locator("#accent-color-input")).toBeAttached();
+    await page.evaluate(() => {
+        localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
+        localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
+    });
+    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
+
+    await page.evaluate(() => {
+        const iframe = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe")!;
+        iframe.contentWindow!.postMessage({
+            namespace: "ehagaki.embed",
+            version: 1,
+            type: "settings.set",
+            requestId: "e2e-force-colors",
+            payload: { accentColor: "#345678", baseColor: "#456789" },
+        }, new URL(iframe.src).origin);
+    });
+    await expect.poll(readFrameColors).toMatchObject({ accent: "#345678", base: "#456789" });
+    await expect.poll(() => page.evaluate(() => ({
+        accent: localStorage.getItem("ehagaki.embed.storage.v1:accentColor"),
+        base: localStorage.getItem("ehagaki.embed.storage.v1:baseColor"),
+    }))).toEqual({ accent: "#112233", base: "#223344" });
+
+    await page.evaluate(() => {
+        const iframe = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe")!;
+        iframe.contentWindow!.postMessage({
+            namespace: "ehagaki.embed",
+            version: 1,
+            type: "settings.set",
+            requestId: "e2e-release-colors",
+            payload: { accentColor: null, baseColor: null },
+        }, new URL(iframe.src).origin);
+    });
+    await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
+});

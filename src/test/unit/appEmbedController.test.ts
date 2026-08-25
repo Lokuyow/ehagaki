@@ -887,6 +887,27 @@ describe('createAppEmbedController', () => {
         );
     });
 
+    it('settings.set の色を applied key として通知する', async () => {
+        const { controller, parentFrame } = createController({
+            settingsApply: {
+                applySettings: vi.fn().mockResolvedValue(['accentColor', 'baseColor']),
+            },
+        });
+
+        await controller.handleRemoteSettingsSet(
+            {
+                accentColor: '#123456',
+                baseColor: null,
+            },
+            'req-colors',
+        );
+
+        expect(parentFrame.notifySettingsApplied).toHaveBeenCalledWith(
+            ['accentColor', 'baseColor'],
+            'req-colors',
+        );
+    });
+
     it('parent-client transition中もcontent patchとackは保留しない', async () => {
         const {
             controller,

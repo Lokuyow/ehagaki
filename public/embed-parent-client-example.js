@@ -43,6 +43,8 @@ const appUrlInput = document.getElementById("app-url");
 const initialQueryModeSelect = document.getElementById("initial-query-mode");
 const initialLocaleSelect = document.getElementById("initial-locale");
 const initialThemeSelect = document.getElementById("initial-theme");
+const initialAccentColorInput = document.getElementById("initial-accent-color");
+const initialBaseColorInput = document.getElementById("initial-base-color");
 const initialReplyNotificationSelect = document.getElementById("initial-reply-notification");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
 const syncRuntimeSettingsButton = document.getElementById("sync-runtime-settings");
@@ -94,6 +96,8 @@ const INITIAL_SETTINGS_RESET_KEYS = [
     "showFlavorText",
     "settingsPreferenceMetadata",
     "replyNotificationEnabled",
+    "accentColor",
+    "baseColor",
 ];
 
 const EMBED_STORAGE_KEYS = new Set([
@@ -110,6 +114,8 @@ const EMBED_STORAGE_KEYS = new Set([
     "mediaFreePlacement",
     "showMascot",
     "showFlavorText",
+    "accentColor",
+    "baseColor",
     "settingsPreferenceMetadata",
     "firstVisit",
     "sharedMediaProcessed",
@@ -1350,6 +1356,12 @@ function normalizeInitialTheme(value) {
     return value === "system" || value === "light" || value === "dark" ? value : "";
 }
 
+function normalizeInitialColor(value) {
+    if (typeof value !== "string") return "";
+    const normalized = value.trim().replace(/^#/, "");
+    return /^[0-9a-f]{6}$/i.test(normalized) ? `#${normalized.toUpperCase()}` : "";
+}
+
 function resolveInitialTheme(value) {
     return normalizeInitialTheme(value);
 }
@@ -1367,11 +1379,15 @@ function syncInitialSettingsControlsFromAppUrl() {
             "defaultShowMascot",
             "defaultShowFlavorText",
             "defaultReplyNotification",
+            "defaultAccentColor",
+            "defaultBaseColor",
         ].some((key) => url.searchParams.has(key));
         initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
         const queryPrefix = hasDefaultSettings ? "default" : "embed";
         initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get(`${queryPrefix}Locale`));
         initialThemeSelect.value = normalizeInitialTheme(url.searchParams.get(`${queryPrefix}Theme`));
+        initialAccentColorInput.value = normalizeInitialColor(url.searchParams.get(`${queryPrefix}AccentColor`));
+        initialBaseColorInput.value = normalizeInitialColor(url.searchParams.get(`${queryPrefix}BaseColor`));
         initialHideMascotInput.checked = url.searchParams.get(
             `${queryPrefix}ShowMascot`,
         ) === "false";
@@ -1428,17 +1444,29 @@ function buildEmbedUrl() {
             "defaultTheme",
             "defaultShowMascot",
             "defaultReplyNotification",
+            "embedAccentColor",
+            "embedBaseColor",
+            "defaultAccentColor",
+            "defaultBaseColor",
         ].forEach((key) => url.searchParams.delete(key));
 
         const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
         const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
         const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
+        const storedAccentColor = normalizeInitialColor(getParentStoredEmbedValue("accentColor"));
+        const storedBaseColor = normalizeInitialColor(getParentStoredEmbedValue("baseColor"));
         const initialLocale =
             normalizeInitialLocale(initialLocaleSelect.value)
             || (queryPrefix === "default" ? storedLocale : "");
         const initialTheme =
             resolveInitialTheme(initialThemeSelect.value)
             || (queryPrefix === "default" ? storedTheme : "");
+        const initialAccentColor =
+            normalizeInitialColor(initialAccentColorInput.value)
+            || (queryPrefix === "default" ? storedAccentColor : "");
+        const initialBaseColor =
+            normalizeInitialColor(initialBaseColorInput.value)
+            || (queryPrefix === "default" ? storedBaseColor : "");
 
         if (initialLocale) {
             url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
@@ -1446,6 +1474,13 @@ function buildEmbedUrl() {
 
         if (initialTheme) {
             url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
+        }
+
+        if (initialAccentColor) {
+            url.searchParams.set(`${queryPrefix}AccentColor`, initialAccentColor);
+        }
+        if (initialBaseColor) {
+            url.searchParams.set(`${queryPrefix}BaseColor`, initialBaseColor);
         }
 
         if (initialHideMascotInput.checked) {
@@ -1518,6 +1553,13 @@ function buildRuntimeSettingsPayload() {
     const replyNotification = normalizeInitialReplyNotification(initialReplyNotificationSelect.value);
     if (replyNotification) {
         payload.replyNotificationEnabled = replyNotification === "true";
+    }
+
+    if (initialQueryModeSelect.value !== "default") {
+        const accentColor = normalizeInitialColor(initialAccentColorInput.value);
+        const baseColor = normalizeInitialColor(initialBaseColorInput.value);
+        if (accentColor) payload.accentColor = accentColor;
+        if (baseColor) payload.baseColor = baseColor;
     }
 
     return payload;
@@ -2475,6 +2517,8 @@ initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrlForSett
 initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
 initialReplyNotificationSelect.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
 initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
+initialAccentColorInput.addEventListener("input", updateDisplayedEmbedUrlForSettingsChange);
+initialBaseColorInput.addEventListener("input", updateDisplayedEmbedUrlForSettingsChange);
 syncRuntimeSettingsButton.addEventListener("click", () => {
     syncRuntimeSettings("手動 settings 同期");
 });
