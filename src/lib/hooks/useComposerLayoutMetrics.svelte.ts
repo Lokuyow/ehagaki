@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { resolveComposerAvailableHeight, resolveComposerSiblingHeight } from "../utils/composerLayoutUtils";
 import type { ReplyQuoteComposerState } from "../types";
 
@@ -24,7 +25,7 @@ export function useComposerLayoutMetrics({
     let customEmojiPickerHeight = $state(0);
 
     $effect(() => {
-        const cleanup = setupViewportListener();
+        const cleanup = untrack(() => setupViewportListener());
         return cleanup;
     });
 
