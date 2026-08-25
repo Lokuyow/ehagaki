@@ -25,10 +25,22 @@
   --main-content-top-spacing: 6px;
   --composer-bottom-reserved-height: 116px;
 
-  /* Theme inputs. --theme remains the compatibility name used by existing
-     components; --base-color is intentionally unset unless a host supplies it. */
+  /* Theme inputs. User and external layers are resolved only here. */
   --accent-color-default: hsl(152, 74%, 43%);
-  --accent-color: var(--accent-color-default);
+  --accent-color: var(
+    --accent-color-forced,
+    var(--accent-color-user, var(--accent-color-external-default, var(--accent-color-default)))
+  );
+  --accent-color-custom: var(
+    --accent-color-forced,
+    var(--accent-color-user, var(--accent-color-external-default))
+  );
+  --accent-color-custom-inner: color-mix(in srgb, var(--accent-color-custom) 15%, white 85%);
+  --accent-color-custom-face: color-mix(in srgb, var(--accent-color-custom) 40%, black 60%);
+  --base-color: var(
+    --base-color-forced,
+    var(--base-color-user, var(--base-color-external-default))
+  );
   --theme: var(--accent-color);
   --text-black: hsl(0, 0%, 24%);
   --nostr-bg: hsl(270, 100%, 98%);
@@ -39,26 +51,36 @@
   --light-gray: hsl(0, 0%, 83%);
 
   /* ライトモード・ダークモード用のneutral surface生成 */
+  --base-color-surface-bg-light: color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 97%));
+  --base-color-surface-bg-dark: color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 12%));
+  --base-color-surface-editor-light: color-mix(in srgb, var(--base-color) 6%, hsl(0, 0%, 100%));
+  --base-color-surface-editor-dark: color-mix(in srgb, var(--base-color) 9%, hsl(0, 0%, 22%));
+  --base-color-surface-footer-light: color-mix(in srgb, var(--base-color) 34%, hsl(0, 0%, 86%));
+  --base-color-surface-footer-dark: color-mix(in srgb, var(--base-color) 22%, hsl(0, 0%, 10%));
   --surface-bg: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 94%)) 18%, hsl(0, 0%, 94%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 12%)) 18%, hsl(0, 0%, 12%))
+    var(--base-color-surface-bg-light, color-mix(in srgb, hsl(0, 0%, 94%) 18%, hsl(0, 0%, 94%))),
+    var(--base-color-surface-bg-dark, color-mix(in srgb, hsl(0, 0%, 12%) 18%, hsl(0, 0%, 12%)))
   );
   --surface-input: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 100%)) 14%, hsl(0, 0%, 100%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 19%)) 14%, hsl(0, 0%, 19%))
   );
-  --surface-editor: var(--surface-input);
+  --surface-editor: light-dark(
+    var(--base-color-surface-editor-light, var(--surface-input)),
+    var(--base-color-surface-editor-dark, var(--surface-input))
+  );
   --surface-footer: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 82%)) 22%, hsl(0, 0%, 82%)),
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 10%)) 22%, hsl(0, 0%, 10%))
+    var(--base-color-surface-footer-light, color-mix(in srgb, hsl(0, 0%, 82%) 22%, hsl(0, 0%, 82%))),
+    var(--base-color-surface-footer-dark, color-mix(in srgb, hsl(0, 0%, 10%) 22%, hsl(0, 0%, 10%)))
   );
   --surface-buttonbar: light-dark(
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 91%)) 20%, hsl(0, 0%, 91%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 28%)) 20%, hsl(0, 0%, 28%))
   );
 
+  --base-color-surface-button: color-mix(in srgb, var(--base-color) 24%, white);
   --surface-button: light-dark(
-    color-mix(in srgb, var(--base-color, hsl(0, 0%, 92%)) 18%, hsl(0, 0%, 92%)),
+    var(--base-color-surface-button, hsl(0, 0%, 92%)),
     color-mix(in srgb, var(--base-color, hsl(0, 0%, 25%)) 18%, hsl(0, 0%, 25%))
   );
   --surface-button-border: light-dark(
@@ -97,7 +119,11 @@
   --bg-footer: var(--surface-footer);
   --bg-translucent: light-dark(#EDEDEDcc, #212121cc);
   --bg-buttonbar: var(--surface-buttonbar);
-  --footer-buttonbar-bg: var(--bg-buttonbar);
+  --base-color-footer-buttonbar-light: var(--base-color-surface-bg-light);
+  --footer-buttonbar-bg: light-dark(
+    var(--base-color-footer-buttonbar-light, var(--bg-buttonbar)),
+    var(--bg-buttonbar)
+  );
 
   --btn-bg: var(--surface-button);
   --btn-bg2: light-dark(color-mix(in srgb, var(--btn-bg), black 6%), color-mix(in srgb, var(--btn-bg), white 10%));
@@ -164,22 +190,6 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-html[data-base-color-set="true"] {
-  --surface-bg: light-dark(
-    color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 97%)),
-    color-mix(in srgb, var(--base-color) 18%, hsl(0, 0%, 12%))
-  );
-  --surface-editor: light-dark(
-    color-mix(in srgb, var(--base-color) 6%, hsl(0, 0%, 100%)),
-    color-mix(in srgb, var(--base-color) 9%, hsl(0, 0%, 22%))
-  );
-  --surface-footer: light-dark(
-    color-mix(in srgb, var(--base-color) 34%, hsl(0, 0%, 86%)),
-    color-mix(in srgb, var(--base-color) 22%, hsl(0, 0%, 10%))
-  );
-  --footer-buttonbar-bg: light-dark(var(--bg), var(--bg-buttonbar));
 }
 
 * {

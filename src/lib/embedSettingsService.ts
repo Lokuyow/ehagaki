@@ -2,12 +2,13 @@ import {
     embedMessageRequiresRequestId,
     getParentOriginFromSearch,
     isValidEmbedRequestId,
-    type EmbedSettingsSetPayload,
+    type EmbedIframeSettingsSetPayload,
 } from "./embedProtocol";
 import { getTrustedParentEmbedMessage } from "./embedMessageTrustGate";
+import { normalizeHexColor } from "./utils/settingsStorage";
 
 type RemoteSettingsSetListener = (
-    payload: EmbedSettingsSetPayload,
+    payload: EmbedIframeSettingsSetPayload,
     requestId: string,
 ) => void;
 
@@ -20,7 +21,7 @@ const COMPRESSION_LEVELS = new Set(["none", "low", "medium", "high"]);
 const THEME_MODES = new Set(["system", "light", "dark"]);
 const LOCALES = new Set(["ja", "en"]);
 
-function isSettingsSetPayload(value: unknown): value is EmbedSettingsSetPayload {
+function isSettingsSetPayload(value: unknown): value is EmbedIframeSettingsSetPayload {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
         return false;
     }
@@ -32,6 +33,16 @@ function isSettingsSetPayload(value: unknown): value is EmbedSettingsSetPayload 
 
     if (payload.themeMode !== undefined && !THEME_MODES.has(String(payload.themeMode))) {
         return false;
+    }
+
+    for (const key of ["accentColor", "baseColor"]) {
+        if (
+            payload[key] !== undefined
+            && payload[key] !== null
+            && normalizeHexColor(payload[key] as string) === null
+        ) {
+            return false;
+        }
     }
 
     if (payload.uploadEndpoint !== undefined && typeof payload.uploadEndpoint !== "string") {

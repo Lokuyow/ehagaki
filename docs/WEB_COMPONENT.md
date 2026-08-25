@@ -663,6 +663,8 @@ CSS Custom Properties を使用できます。
 | --- | --- |
 | `--ehagaki-accent-color` | 投稿ボタン、focus、選択状態などの主要アクセント |
 | `--ehagaki-base-color` | neutralな背景・入力欄・footer・button surface・borderなどへ混ぜる基準色 |
+| `--ehagaki-default-accent-color` | 内部ユーザーAccentが無い場合だけ使う弱い外部default |
+| `--ehagaki-default-base-color` | 内部ユーザーBaseが無い場合だけ使う弱い外部default |
 
 Base Colorは指定色でsurfaceを直接塗りつぶさず、light/darkそれぞれの既定neutral色へ
 少量mixします。文字、アイコン、link、visited link、hashtag、danger、success、warningなどの
@@ -686,9 +688,13 @@ Base Colorは指定色でsurfaceを直接塗りつぶさず、light/darkそれ�
 
 ```css
 ehagaki-composer {
-  /* 簡易テーマ */
+  /* 強制レイヤー */
   --ehagaki-accent-color: #28764f;
   --ehagaki-base-color: #dcefe4;
+
+  /* ユーザー設定より弱いdefaultレイヤー */
+  --ehagaki-default-accent-color: #1f7a4d;
+  --ehagaki-default-base-color: #eef8f1;
 
   /* 詳細override（必要なtokenだけ） */
   --ehagaki-text: #183028;
@@ -696,8 +702,12 @@ ehagaki-composer {
 }
 ```
 
+Accent / Baseの優先順位は、`--ehagaki-accent-color` / `--ehagaki-base-color`（外部強制） > Full Web Component内部のユーザー設定 > `--ehagaki-default-accent-color` / `--ehagaki-default-base-color`（外部default） > eHagaki標準です。外部CSS値は内部ユーザー設定へ保存されず、強制値を削除すると保存済みユーザー色へ戻ります。Full Web ComponentのSettingsDialogは内部ユーザーAccent / Baseを表示・保存でき、強制中も無効化されません。Host-owned LiteにはSettingsDialogを追加せず、これらのCSS Custom Propertiesだけを利用できます。
+
 Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定色が使われます。`themeMode` の
 `system` / `light` / `dark` とhostへ適用される `color-scheme` に応じてsurfaceが切り替わります。
+
+Accent / Baseからneutral surface・button surfaceを生成する式とmix率は、standalone・iframe・Full Web Component・Host-owned Lite Web Componentで共通です。そのため、既存の`--ehagaki-base-color`利用時に従来版と見た目が変わる場合があります。これは意図したbreaking visual changeです。`--ehagaki-background`などの詳細CSS overrideは、生成後の対象tokenを従来どおり直接上書きし、既存の派生tokenとmix率は変更しません。
 
 ## ログイン・認証
 

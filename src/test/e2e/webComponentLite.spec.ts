@@ -150,6 +150,95 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
+test("Lite applies host default and forced colors without exposing the settings dialog", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({ submit: () => undefined });
+        composer.style.setProperty("--ehagaki-default-accent-color", "#ABCDEF");
+        composer.style.setProperty("--ehagaki-default-base-color", "#CDEFAB");
+        document.body.append(composer);
+        await composer.whenReady();
+
+        const readColors = () => {
+            const style = getComputedStyle(composer);
+            const themeTarget = composer.shadowRoot!.querySelector<HTMLElement>(".ehagaki-app-root")!;
+            const colorToPixel = (color: string) => {
+                const probe = document.createElement("div");
+                probe.style.backgroundColor = color;
+                probe.style.position = "absolute";
+                probe.style.width = "1px";
+                probe.style.height = "1px";
+                themeTarget.append(probe);
+                const resolvedColor = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                const canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                const context = canvas.getContext("2d")!;
+                context.fillStyle = resolvedColor;
+                context.fillRect(0, 0, 1, 1);
+                return Array.from(context.getImageData(0, 0, 1, 1).data);
+            };
+            const tokenPixel = (token: string) => {
+                return colorToPixel(`var(${token})`);
+            };
+            return {
+                accent: style.getPropertyValue("--accent-color").trim().toLowerCase(),
+                base: style.getPropertyValue("--base-color").trim().toLowerCase(),
+                settingsButtons: composer.shadowRoot!.querySelectorAll("button.settings-btn").length,
+                buttonPixel: colorToPixel("var(--surface-button)"),
+                backgroundPixel: tokenPixel("--surface-bg"),
+                editorPixel: tokenPixel("--surface-editor"),
+                footerPixel: tokenPixel("--surface-footer"),
+                buttonbarPixel: tokenPixel("--footer-buttonbar-bg"),
+            };
+        };
+
+        const defaults = readColors();
+        composer.style.setProperty("--ehagaki-accent-color", "#345678");
+        composer.style.setProperty("--ehagaki-base-color", "#456789");
+        const forced = readColors();
+        composer.style.removeProperty("--ehagaki-accent-color");
+        composer.style.removeProperty("--ehagaki-base-color");
+        const released = readColors();
+        composer.style.setProperty("--ehagaki-default-accent-color", "#FEDCBA");
+        composer.style.setProperty("--ehagaki-default-base-color", "#EDCBAF");
+        const updatedDefaults = readColors();
+
+        return { defaults, forced, released, updatedDefaults };
+    }, { componentOrigin });
+
+    expect(result.defaults).toMatchObject({
+        accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
+        buttonPixel: [243, 251, 235, 255],
+        backgroundPixel: [240, 246, 234, 255], editorPixel: [252, 254, 250, 255],
+        footerPixel: [214, 226, 203, 255], buttonbarPixel: [240, 246, 234, 255],
+    });
+    expect(result.forced).toMatchObject({
+        accent: "#345678", base: "#456789", settingsButtons: 0,
+        buttonPixel: [210, 219, 227, 255],
+        backgroundPixel: [215, 221, 227, 255], editorPixel: [244, 246, 248, 255],
+        footerPixel: [168, 180, 191, 255], buttonbarPixel: [215, 221, 227, 255],
+    });
+    expect(result.released).toMatchObject({
+        accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
+        buttonPixel: [243, 251, 235, 255],
+        backgroundPixel: [240, 246, 234, 255], editorPixel: [252, 254, 250, 255],
+        footerPixel: [214, 226, 203, 255], buttonbarPixel: [240, 246, 234, 255],
+    });
+    expect(result.updatedDefaults).toMatchObject({
+        accent: "#fedcba", base: "#edcbaf", settingsButtons: 0,
+        buttonPixel: [251, 243, 236, 255],
+        backgroundPixel: [245, 239, 234, 255], editorPixel: [254, 252, 250, 255],
+        footerPixel: [225, 214, 204, 255], buttonbarPixel: [245, 239, 234, 255],
+    });
+});
+
 test("Lite custom emoji catalog controls the button and closes an open picker when cleared", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {

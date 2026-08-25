@@ -25,6 +25,11 @@ const THEME_STYLE_FIELDS = [
     ["--ehagaki-base-color", "style-base"],
 ];
 
+const THEME_DEFAULT_STYLE_FIELDS = [
+    ["--ehagaki-default-accent-color", "style-default-accent"],
+    ["--ehagaki-default-base-color", "style-default-base"],
+];
+
 const DETAIL_STYLE_FIELDS = [
     ["--ehagaki-background", "style-background"],
     ["--ehagaki-text", "style-text"],
@@ -36,7 +41,11 @@ const DETAIL_STYLE_FIELDS = [
     ["--ehagaki-font-family", "style-font"],
 ];
 
-const CUSTOM_STYLE_FIELDS = [...THEME_STYLE_FIELDS, ...DETAIL_STYLE_FIELDS];
+const CUSTOM_STYLE_FIELDS = [
+    ...THEME_STYLE_FIELDS,
+    ...THEME_DEFAULT_STYLE_FIELDS,
+    ...DETAIL_STYLE_FIELDS,
+];
 
 const STYLE_PRESETS = {
     azure: {

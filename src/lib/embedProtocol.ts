@@ -90,6 +90,12 @@ export interface EmbedSettingsSetPayload {
     showFlavorText?: boolean;
 }
 
+/** iframe-only runtime color overrides; these are never persisted. */
+export interface EmbedIframeSettingsSetPayload extends EmbedSettingsSetPayload {
+    accentColor?: string | null;
+    baseColor?: string | null;
+}
+
 export interface EmbedSettingsAppliedPayload {
     timestamp: number;
     applied: string[];

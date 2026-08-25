@@ -11,7 +11,7 @@ import type {
 import type { ChannelContextProvenance } from "./channelContextRuntime";
 import type {
     EmbedChannelContextPayload,
-    EmbedSettingsSetPayload,
+    EmbedIframeSettingsSetPayload,
 } from "./embedProtocol";
 import {
     applyEmbedComposerContent,
@@ -57,11 +57,13 @@ export type AppEmbedAppliedSettingKey =
     | "mediaFreePlacement"
     | "showMascot"
     | "showFlavorText"
+    | "accentColor"
+    | "baseColor"
     | "uploadEndpoint";
 
 export interface AppEmbedSettingsApplyPort {
     applySettings(
-        payload: EmbedSettingsSetPayload,
+        payload: EmbedIframeSettingsSetPayload,
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
 }
 
@@ -175,14 +177,14 @@ export interface AppEmbedController {
     applyComposerContext(payload: unknown): Promise<void>;
     /** Apply settings directly for another in-process embedding transport. */
     applySettings(
-        payload: EmbedSettingsSetPayload,
+        payload: EmbedIframeSettingsSetPayload,
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
     handleRemoteComposerSetContext(
         payload: unknown,
         requestId: string,
     ): Promise<void>;
     handleRemoteSettingsSet(
-        payload: EmbedSettingsSetPayload,
+        payload: EmbedIframeSettingsSetPayload,
         requestId: string,
     ): Promise<void>;
     queueRemoteComposerAction(
@@ -416,7 +418,7 @@ export function createAppEmbedController(
         },
 
         async applySettings(
-            payload: EmbedSettingsSetPayload,
+            payload: EmbedIframeSettingsSetPayload,
         ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
             return deps.settingsApply.applySettings(payload);
         },
@@ -442,7 +444,7 @@ export function createAppEmbedController(
         },
 
         async handleRemoteSettingsSet(
-            payload: EmbedSettingsSetPayload,
+            payload: EmbedIframeSettingsSetPayload,
             requestId: string,
         ): Promise<void> {
             try {

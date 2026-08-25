@@ -67,6 +67,35 @@ async function expectTooltip(
 }
 
 test.describe("composer target dialog fixture", () => {
+    test("standalone uses the shared Base button surface and effective Accent border", async ({ page }) => {
+        await gotoHarness(page);
+        await page.evaluate(() => {
+            document.documentElement.style.setProperty("--accent-color-user", "#123456");
+            document.documentElement.style.setProperty("--base-color-user", "#234567");
+        });
+
+        const result = await page.evaluate(() => {
+            const headerButton = document.querySelector<HTMLButtonElement>(".header-actions button")!;
+            const colorToPixel = (color: string) => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                const context = canvas.getContext("2d")!;
+                context.fillStyle = color;
+                context.fillRect(0, 0, 1, 1);
+                return Array.from(context.getImageData(0, 0, 1, 1).data);
+            };
+            return {
+                headerBorder: getComputedStyle(headerButton).borderTopColor,
+                headerBackground: getComputedStyle(headerButton).backgroundColor,
+                buttonPixel: colorToPixel(getComputedStyle(headerButton).backgroundColor),
+            };
+        });
+
+        expect(result.headerBorder).toBe("rgb(18, 52, 86)");
+        expect(result.buttonPixel).toEqual([202, 210, 219, 255]);
+    });
+
     test("ヘッダー最右からkind 1/40/42の全5操作を適用できる", async ({ page }) => {
         const harness = await gotoHarness(page);
         const headerButtons = page.locator(".header-actions button");

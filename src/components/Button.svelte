@@ -227,23 +227,23 @@
     }
 
     .header {
-        border: 1px solid var(--hagaki);
+        border: 1px solid var(--accent-color-custom, var(--hagaki));
         @media (hover: hover) and (pointer: fine) {
             :global(:root.light) &,
             :global(:host(.light)) & {
                 &:hover:not(:disabled) {
-                    border-color: color-mix(in srgb, var(--hagaki), black 3%);
+                    border-color: color-mix(
+                        in srgb,
+                        var(--accent-color-custom, var(--hagaki)),
+                        black 3%
+                    );
                 }
             }
         }
 
         :global(:root.light) &,
         :global(:host(.light)) & {
-            --btn-bg: white;
-        }
-
-        :global(:root[data-base-color-set="true"]) & {
-            --btn-bg: var(--surface-editor);
+            --btn-bg: var(--base-color-surface-button, var(--surface-editor));
         }
     }
 

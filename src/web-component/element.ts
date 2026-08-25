@@ -94,8 +94,10 @@ function transformAppCss(css: string): string {
 function getWebComponentThemeCss(): string {
     return `:host {
         display: block;
-        --accent-color: var(--ehagaki-accent-color, var(--accent-color-default));
-        --base-color: var(--ehagaki-base-color);
+        --accent-color-forced: var(--ehagaki-accent-color);
+        --base-color-forced: var(--ehagaki-base-color);
+        --accent-color-external-default: var(--ehagaki-default-accent-color);
+        --base-color-external-default: var(--ehagaki-default-base-color);
         --bg: var(--ehagaki-background, var(--surface-bg));
         --text: var(--ehagaki-text, var(--semantic-text));
         --border: var(--ehagaki-border, var(--surface-border));

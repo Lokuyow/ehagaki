@@ -100,6 +100,33 @@ describe('embedSettingsBootstrap', () => {
         expect(context.documentObj.documentElement.lang).toBe('ja');
     });
 
+    it('カラーqueryはユーザー保存値を変更せず、正規化済みのruntime layerとして返す', () => {
+        storage.setItem(STORAGE_KEYS.ACCENT_COLOR, '#112233');
+        const context = createBootstrapContext(
+            '?embedAccentColor=%23AABBCC&embedBaseColor=not-a-color&defaultAccentColor=%23DDEEFF&defaultBaseColor=%23010203',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.parsedSettings.accentColor).toBe('#aabbcc');
+        expect(result.parsedSettings.baseColor).toBeUndefined();
+        expect(result.parsedDefaultSettings).toEqual({
+            accentColor: '#ddeeff',
+            baseColor: '#010203',
+        });
+        expect(result.appliedSettings).toEqual([]);
+        expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBe('#112233');
+        expect(context.windowObj.history.replaceState).toHaveBeenCalledWith(
+            {},
+            '',
+            '/embed',
+        );
+    });
+
     it('embed~ と default~ が同時指定されたら embed~ が勝つ', () => {
         const context = createBootstrapContext(
             '?embedTheme=light&defaultTheme=dark&embedLocale=en&defaultLocale=ja',

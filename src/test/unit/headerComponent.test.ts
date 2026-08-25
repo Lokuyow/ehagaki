@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
@@ -21,7 +21,6 @@ vi.mock('svelte-i18n', () => ({
 
 import HeaderComponent from '../../components/HeaderComponent.svelte';
 import { configureAppRuntimeEnvironment } from '../../lib/appRuntimeEnvironment';
-import { themeColorStore } from '../../stores/themeColorStore.svelte';
 import { MockStorage } from '../helpers';
 
 describe('HeaderComponent', () => {
@@ -38,11 +37,9 @@ describe('HeaderComponent', () => {
             layoutMode: 'viewport',
             runtimeKind: 'standalone',
         });
-        themeColorStore.reload();
     });
 
     afterEach(() => {
-        themeColorStore.reset();
         configureAppRuntimeEnvironment({
             runtimeKind: 'standalone',
             appHomeHref: './',
@@ -63,18 +60,16 @@ describe('HeaderComponent', () => {
             mascot.querySelectorAll<SVGElement>('[data-mascot-part]'),
         ).map((part) => [part.dataset.mascotPart, part.getAttribute('fill')]);
 
-        expect(mascot.classList.contains('custom-accent')).toBe(false);
         expect(fills).toEqual([
-            ['outer', '#3FB57E'],
-            ['inner', '#EDFCF5'],
-            ['face', '#4D524F'],
-            ['face', '#4D524F'],
-            ['face', '#4D524F'],
+            ['outer', 'var(--mascot-accent-color, #3FB57E)'],
+            ['inner', 'var(--mascot-inner-color, #EDFCF5)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
         ]);
     });
 
-    it('カスタムアクセントでは3部分を役割別の色変数で即時に切り替える', async () => {
-        themeColorStore.setAccentColor('#c04444');
+    it('カスタムアクセントでも3部分を役割別の色変数で描画する', () => {
         const { container } = render(HeaderComponent, {
             props: {
                 onResetPostContent: vi.fn(),
@@ -88,27 +83,14 @@ describe('HeaderComponent', () => {
             mascot.querySelectorAll<SVGElement>('[data-mascot-part]'),
         ).map((part) => part.getAttribute('fill'));
 
-        expect(mascot.classList.contains('custom-accent')).toBe(true);
         expect(getFills()).toEqual([
-            'var(--mascot-accent-color)',
-            'var(--mascot-inner-color)',
-            'var(--mascot-face-color)',
-            'var(--mascot-face-color)',
-            'var(--mascot-face-color)',
+            'var(--mascot-accent-color, #3FB57E)',
+            'var(--mascot-inner-color, #EDFCF5)',
+            'var(--mascot-face-color, #4D524F)',
+            'var(--mascot-face-color, #4D524F)',
+            'var(--mascot-face-color, #4D524F)',
         ]);
         expect(new Set(getFills()).size).toBe(3);
-
-        themeColorStore.reset();
-        await waitFor(() => {
-            expect(mascot.classList.contains('custom-accent')).toBe(false);
-            expect(getFills()).toEqual([
-                '#3FB57E',
-                '#EDFCF5',
-                '#4D524F',
-                '#4D524F',
-                '#4D524F',
-            ]);
-        });
     });
 
     it('通常版では runtime の配信元ホームへ同じタブで戻る', () => {

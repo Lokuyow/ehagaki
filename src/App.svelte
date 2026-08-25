@@ -85,6 +85,7 @@
     settingsStore,
     consumeFirstVisitFlag,
   } from "./stores/settingsStore.svelte";
+  import { themeColorStore } from "./stores/themeColorStore.svelte";
   import { sharedMediaRepository } from "./lib/storage/sharedMediaRepository";
   import { composeSharedText } from "./lib/sharedContentUtils";
   import { acknowledgeSharedMedia } from "./lib/utils/swCommunication";
@@ -158,7 +159,10 @@
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
   import { createChannelContextApplyController } from "./lib/channelContextApplyController";
-  import type { EmbedSettingsSetPayload } from "./lib/embedProtocol";
+  import type {
+    EmbedIframeSettingsSetPayload,
+    EmbedSettingsSetPayload,
+  } from "./lib/embedProtocol";
   import { createDraftComposerController } from "./lib/draftComposerController";
   import { createPostHistoryDialogApplyController } from "./lib/postHistoryDialogApplyController";
   import {
@@ -1232,11 +1236,16 @@
       clearChannelContext: () => channelContextApplyController.clear(),
     },
     settingsApply: {
-      applySettings: async (payload: EmbedSettingsSetPayload) => {
+      applySettings: async (payload: EmbedIframeSettingsSetPayload) => {
+        const appliedColors = themeColorStore.applyExternalSettings({
+          forcedAccentColor: payload.accentColor,
+          forcedBaseColor: payload.baseColor,
+        });
         const applied = settingsStore.applyParentSettings(
           payload,
           "parentForced",
         ) as AppEmbedAppliedSettingKey[];
+        applied.push(...appliedColors as AppEmbedAppliedSettingKey[]);
         if (payload.uploadEndpoint !== undefined) {
           await uploadDestinationsRepository.applyUploadEndpointPreference({
             endpoint: payload.uploadEndpoint,
@@ -1294,6 +1303,7 @@
       }),
       applyStoredSettingsSnapshot: () => {
         settingsStore.applyStoredSnapshot();
+        themeColorStore.reload();
       },
       persistEmbedStorageKeys: () => {
         embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
@@ -1570,7 +1580,10 @@
     });
 
     void runAppInitializationBootstrap({
-      reloadSettings: () => settingsStore.reload(),
+      reloadSettings: () => {
+        settingsStore.reload();
+        themeColorStore.reload();
+      },
       locationSearch: window.location.search,
       clearSharedMediaError,
       waitForLocale: waitLocale,

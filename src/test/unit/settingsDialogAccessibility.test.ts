@@ -351,12 +351,12 @@ describe('SettingsDialog accessibility', () => {
         expect(basePicker).toBeTruthy();
 
         await fireEvent.input(accentHex, { target: { value: 'ff0000' } });
-        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(document.documentElement.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
         expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
         expect(accentPicker.value).toBe('#ff0000');
 
         await fireEvent.input(accentHex, { target: { value: '#ff000' } });
-        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(document.documentElement.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
         expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
         expect(accentPicker.value).toBe('#ff0000');
         expect(screen.queryByRole('alert')).toBeNull();
@@ -365,12 +365,12 @@ describe('SettingsDialog accessibility', () => {
         expect(screen.getByRole('alert').textContent).toMatch(/6桁のHEXカラー|6-digit HEX/);
 
         await fireEvent.input(basePicker, { target: { value: '#0000ff' } });
-        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('#0000ff');
+        expect(document.documentElement.style.getPropertyValue('--base-color-user')).toBe('#0000ff');
         expect(window.localStorage.getItem('baseColor')).toBe('#0000ff');
         expect(baseHex.value).toBe('#0000ff');
 
         await fireEvent.input(baseHex, { target: { value: '#0000f' } });
-        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('#0000ff');
+        expect(document.documentElement.style.getPropertyValue('--base-color-user')).toBe('#0000ff');
         expect(window.localStorage.getItem('baseColor')).toBe('#0000ff');
         expect(basePicker.value).toBe('#0000ff');
         await fireEvent.blur(baseHex);
@@ -381,13 +381,13 @@ describe('SettingsDialog accessibility', () => {
         await fireEvent.blur(accentHex);
         expect(screen.getAllByRole('alert')).toHaveLength(2);
         expect(screen.getAllByRole('alert')[0].textContent).toMatch(/6桁のHEXカラー|6-digit HEX/);
-        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(document.documentElement.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
         expect(window.localStorage.getItem('accentColor')).toBe('#ff0000');
         expect(accentPicker.value).toBe('#ff0000');
 
         await fireEvent.click(screen.getByRole('button', { name: /標準に戻す|Reset to default/ }));
-        expect(document.documentElement.style.getPropertyValue('--accent-color')).toBe('');
-        expect(document.documentElement.style.getPropertyValue('--base-color')).toBe('');
+        expect(document.documentElement.style.getPropertyValue('--accent-color-user')).toBe('');
+        expect(document.documentElement.style.getPropertyValue('--base-color-user')).toBe('');
         expect(window.localStorage.getItem('accentColor')).toBeNull();
         expect(window.localStorage.getItem('baseColor')).toBeNull();
         expect(baseHex.value).toBe('');

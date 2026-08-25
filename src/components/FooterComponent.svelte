@@ -195,11 +195,12 @@
 </div>
 
 <style>
-    :global(:root.light .ehagaki-app-root :where(.footer-bar button):not(.login-btn)),
-    :global(:host(.light) .ehagaki-app-root :where(.footer-bar button):not(.login-btn)) {
-        --btn-bg: white;
+    :global(:root.light .ehagaki-app-root :where(.footer-bar button):not(.login-btn):not(.profile-display)),
+    :global(:host(.light) .ehagaki-app-root :where(.footer-bar button):not(.login-btn):not(.profile-display)) {
+        --btn-bg: var(--base-color-surface-button, var(--surface-editor));
     }
-    :global(:root[data-base-color-set="true"] .ehagaki-app-root :where(.footer-bar button):not(.login-btn)) {
+    :global(:root.light .ehagaki-app-root .footer-bar button.profile-display),
+    :global(:host(.light) .ehagaki-app-root .footer-bar button.profile-display) {
         --btn-bg: var(--surface-editor);
     }
     .footer-bar {

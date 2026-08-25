@@ -1,48 +1,93 @@
 import { STORAGE_KEYS } from "../lib/constants";
 import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
 import { getAppStorage } from "../lib/appStorage";
+import { persistChangedEmbedSettingKeys } from "../lib/embedSettingsPersistence";
 import {
     clearThemeColorPreferences,
     getThemeColorPreferences,
+    normalizeHexColor,
     setThemeColorPreference,
     type ThemeColors,
 } from "../lib/utils/settingsStorage";
 
-function isStandaloneThemeColorTarget(): boolean {
-    const runtimeEnvironment = getAppRuntimeEnvironment();
-    return runtimeEnvironment.layoutMode === "viewport"
-        && runtimeEnvironment.window?.top === runtimeEnvironment.window;
+export interface ExternalThemeColorLayers {
+    forcedAccentColor?: string | null;
+    forcedBaseColor?: string | null;
+    defaultAccentColor?: string | null;
+    defaultBaseColor?: string | null;
 }
 
+let externalThemeColorLayers: Required<ExternalThemeColorLayers> = {
+    forcedAccentColor: null,
+    forcedBaseColor: null,
+    defaultAccentColor: null,
+    defaultBaseColor: null,
+};
+
+function readInitialExternalColor(property: string): string | null {
+    const value = getAppRuntimeEnvironment().themeTarget.style.getPropertyValue(property);
+    return normalizeHexColor(value) ?? null;
+}
+
+externalThemeColorLayers = {
+    forcedAccentColor: readInitialExternalColor("--accent-color-forced"),
+    forcedBaseColor: readInitialExternalColor("--base-color-forced"),
+    defaultAccentColor: readInitialExternalColor("--accent-color-external-default"),
+    defaultBaseColor: readInitialExternalColor("--base-color-external-default"),
+};
+
 function readThemeColors(): ThemeColors {
-    return isStandaloneThemeColorTarget()
-        ? getThemeColorPreferences(getAppStorage())
-        : { accentColor: null, baseColor: null };
+    return getThemeColorPreferences(getAppStorage());
+}
+
+function setOrRemoveStyleProperty(
+    style: CSSStyleDeclaration,
+    property: string,
+    value: string | null,
+): void {
+    if (value) {
+        style.setProperty(property, value);
+    } else {
+        style.removeProperty(property);
+    }
 }
 
 function applyThemeColors(colors: ThemeColors): void {
-    if (!isStandaloneThemeColorTarget()) {
-        return;
+    const style = getAppRuntimeEnvironment().themeTarget.style;
+    setOrRemoveStyleProperty(style, "--accent-color-user", colors.accentColor);
+    setOrRemoveStyleProperty(style, "--base-color-user", colors.baseColor);
+    setOrRemoveStyleProperty(
+        style,
+        "--accent-color-forced",
+        externalThemeColorLayers.forcedAccentColor,
+    );
+    setOrRemoveStyleProperty(
+        style,
+        "--base-color-forced",
+        externalThemeColorLayers.forcedBaseColor,
+    );
+    setOrRemoveStyleProperty(
+        style,
+        "--accent-color-external-default",
+        externalThemeColorLayers.defaultAccentColor,
+    );
+    setOrRemoveStyleProperty(
+        style,
+        "--base-color-external-default",
+        externalThemeColorLayers.defaultBaseColor,
+    );
+}
+
+function normalizeExternalColor(value: string | null | undefined): string | null {
+    if (value === null || value === undefined) {
+        return null;
     }
 
-    const runtimeEnvironment = getAppRuntimeEnvironment();
-    const style = runtimeEnvironment.styleTarget.style;
-    if (colors.accentColor) {
-        style.setProperty("--accent-color", colors.accentColor);
-    } else {
-        style.removeProperty("--accent-color");
+    const normalized = normalizeHexColor(value);
+    if (!normalized) {
+        throw new Error("invalid_theme_color");
     }
-
-    if (colors.baseColor) {
-        style.setProperty("--base-color", colors.baseColor);
-    } else {
-        style.removeProperty("--base-color");
-    }
-    if (colors.baseColor) {
-        runtimeEnvironment.styleTarget.setAttribute("data-base-color-set", "true");
-    } else {
-        runtimeEnvironment.styleTarget.removeAttribute("data-base-color-set");
-    }
+    return normalized;
 }
 
 const initialThemeColors = readThemeColors();
@@ -54,10 +99,6 @@ function setThemeColor(
     storageKey: typeof STORAGE_KEYS.ACCENT_COLOR | typeof STORAGE_KEYS.BASE_COLOR,
     value: string,
 ): string | null {
-    if (!isStandaloneThemeColorTarget()) {
-        return null;
-    }
-
     const normalized = setThemeColorPreference(getAppStorage(), storageKey, value);
     if (!normalized) {
         return null;
@@ -65,16 +106,14 @@ function setThemeColor(
 
     themeColors = { ...themeColors, [key]: normalized };
     applyThemeColors(themeColors);
+    persistChangedEmbedSettingKeys([storageKey]);
     return normalized;
 }
 
-/**
- * Standalone-only user color preferences. These deliberately do not use the
- * embed settings persistence path, so hosts retain control of embed colors.
- */
+/** User color preferences plus non-persistent external display layers. */
 export const themeColorStore = {
     get isAvailable(): boolean {
-        return isStandaloneThemeColorTarget();
+        return true;
     },
     get accentColor(): string | null {
         return themeColors.accentColor;
@@ -88,13 +127,43 @@ export const themeColorStore = {
     setBaseColor(value: string): string | null {
         return setThemeColor("baseColor", STORAGE_KEYS.BASE_COLOR, value);
     },
+    setExternalLayers(layers: ExternalThemeColorLayers): void {
+        externalThemeColorLayers = {
+            forcedAccentColor: normalizeExternalColor(layers.forcedAccentColor),
+            forcedBaseColor: normalizeExternalColor(layers.forcedBaseColor),
+            defaultAccentColor: normalizeExternalColor(layers.defaultAccentColor),
+            defaultBaseColor: normalizeExternalColor(layers.defaultBaseColor),
+        };
+        applyThemeColors(themeColors);
+    },
+    applyExternalSettings(
+        layers: Pick<ExternalThemeColorLayers, "forcedAccentColor" | "forcedBaseColor">,
+    ): string[] {
+        const nextForcedAccentColor = layers.forcedAccentColor === undefined
+            ? externalThemeColorLayers.forcedAccentColor
+            : normalizeExternalColor(layers.forcedAccentColor);
+        const nextForcedBaseColor = layers.forcedBaseColor === undefined
+            ? externalThemeColorLayers.forcedBaseColor
+            : normalizeExternalColor(layers.forcedBaseColor);
+        externalThemeColorLayers = {
+            ...externalThemeColorLayers,
+            forcedAccentColor: nextForcedAccentColor,
+            forcedBaseColor: nextForcedBaseColor,
+        };
+        applyThemeColors(themeColors);
+        return [
+            ...(layers.forcedAccentColor !== undefined ? ["accentColor"] : []),
+            ...(layers.forcedBaseColor !== undefined ? ["baseColor"] : []),
+        ];
+    },
     reset(): void {
-        if (!isStandaloneThemeColorTarget()) {
-            return;
-        }
         clearThemeColorPreferences(getAppStorage());
         themeColors = { accentColor: null, baseColor: null };
         applyThemeColors(themeColors);
+        persistChangedEmbedSettingKeys([
+            STORAGE_KEYS.ACCENT_COLOR,
+            STORAGE_KEYS.BASE_COLOR,
+        ]);
     },
     reload(): void {
         themeColors = readThemeColors();

@@ -20,14 +20,17 @@ describe('themeColorStore', () => {
             styleTarget,
             layoutTarget: document.body,
             overlayTarget: document.body,
-            themeTarget: document.documentElement,
+            themeTarget: styleTarget,
             layoutMode: 'viewport',
+            runtimeKind: 'standalone',
         });
+        themeColorStore.setExternalLayers({});
         themeColorStore.reset();
         themeColorStore.reload();
     });
 
     afterEach(() => {
+        themeColorStore.setExternalLayers({});
         themeColorStore.reset();
         configureAppRuntimeEnvironment({
             storage: window.localStorage,
@@ -39,18 +42,18 @@ describe('themeColorStore', () => {
             overlayTarget: document.body,
             themeTarget: document.documentElement,
             layoutMode: 'viewport',
+            runtimeKind: 'standalone',
         });
     });
 
-    it('persists valid colors and applies them immediately to the standalone style target', () => {
+    it('persists valid colors as user layers and applies them immediately', () => {
         expect(themeColorStore.setAccentColor('ff0000')).toBe('#ff0000');
         expect(themeColorStore.setBaseColor('#0000ff')).toBe('#0000ff');
 
         expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBe('#ff0000');
         expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBe('#0000ff');
-        expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('#ff0000');
-        expect(styleTarget.style.getPropertyValue('--base-color')).toBe('#0000ff');
-        expect(styleTarget.getAttribute('data-base-color-set')).toBe('true');
+        expect(styleTarget.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
+        expect(styleTarget.style.getPropertyValue('--base-color-user')).toBe('#0000ff');
     });
 
     it('keeps the last valid color when an invalid value is submitted', () => {
@@ -58,47 +61,51 @@ describe('themeColorStore', () => {
 
         expect(themeColorStore.setAccentColor('#f00')).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBe('#ff0000');
-        expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('#ff0000');
+        expect(styleTarget.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
     });
 
-    it('removes custom CSS properties and persisted values when reset', () => {
+    it('resets only user colors and preserves external layers', () => {
         themeColorStore.setAccentColor('#ff0000');
         themeColorStore.setBaseColor('#0000ff');
+        themeColorStore.setExternalLayers({
+            forcedAccentColor: '#00ff00',
+            defaultBaseColor: '#abcdef',
+        });
 
         themeColorStore.reset();
 
         expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.BASE_COLOR)).toBeNull();
-        expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('');
-        expect(styleTarget.style.getPropertyValue('--base-color')).toBe('');
-        expect(styleTarget.hasAttribute('data-base-color-set')).toBe(false);
+        expect(styleTarget.style.getPropertyValue('--accent-color-user')).toBe('');
+        expect(styleTarget.style.getPropertyValue('--base-color-user')).toBe('');
+        expect(styleTarget.style.getPropertyValue('--accent-color-forced')).toBe('#00ff00');
+        expect(styleTarget.style.getPropertyValue('--base-color-external-default')).toBe('#abcdef');
     });
 
-    it('does not write or override host styles in Web Component container mode', () => {
-        styleTarget.style.setProperty('--accent-color', '#abcdef');
-        configureAppRuntimeEnvironment({ layoutMode: 'container' });
-        themeColorStore.reload();
-
-        expect(themeColorStore.setAccentColor('#ff0000')).toBeNull();
-        expect(storage.getItem(STORAGE_KEYS.ACCENT_COLOR)).toBeNull();
-        expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('#abcdef');
-    });
-
-    it('does not apply standalone preferences from an iframe viewport runtime', () => {
-        styleTarget.style.setProperty('--accent-color', '#abcdef');
+    it('supports iframe user colors and runtime forced color changes', () => {
         configureAppRuntimeEnvironment({
             window: { top: {} } as unknown as Window,
             layoutMode: 'viewport',
+            runtimeKind: 'iframe',
         });
         themeColorStore.reload();
 
-        expect(themeColorStore.isAvailable).toBe(false);
-        expect(themeColorStore.setAccentColor('#ff0000')).toBeNull();
-        expect(styleTarget.style.getPropertyValue('--accent-color')).toBe('#abcdef');
+        expect(themeColorStore.isAvailable).toBe(true);
+        expect(themeColorStore.setAccentColor('#ff0000')).toBe('#ff0000');
+        themeColorStore.setExternalLayers({
+            forcedAccentColor: '#00ff00',
+            defaultAccentColor: '#0000ff',
+        });
+        expect(styleTarget.style.getPropertyValue('--accent-color-user')).toBe('#ff0000');
+        expect(styleTarget.style.getPropertyValue('--accent-color-forced')).toBe('#00ff00');
+
+        themeColorStore.applyExternalSettings({ forcedAccentColor: null });
+        expect(styleTarget.style.getPropertyValue('--accent-color-forced')).toBe('');
+        expect(styleTarget.style.getPropertyValue('--accent-color-external-default')).toBe('#0000ff');
     });
 
-    it('keeps color preferences outside the iframe embed settings persistence contract', () => {
-        expect(EMBED_SETTING_STORAGE_KEYS).not.toContain(STORAGE_KEYS.ACCENT_COLOR);
-        expect(EMBED_SETTING_STORAGE_KEYS).not.toContain(STORAGE_KEYS.BASE_COLOR);
+    it('includes user colors in the delegated iframe settings allowlist', () => {
+        expect(EMBED_SETTING_STORAGE_KEYS).toContain(STORAGE_KEYS.ACCENT_COLOR);
+        expect(EMBED_SETTING_STORAGE_KEYS).toContain(STORAGE_KEYS.BASE_COLOR);
     });
 });

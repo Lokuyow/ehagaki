@@ -40,6 +40,10 @@
       var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
       var THEME_QUERY_KEY = 'embedTheme';
       var DEFAULT_THEME_QUERY_KEY = 'defaultTheme';
+      var EMBED_ACCENT_COLOR_QUERY_KEY = 'embedAccentColor';
+      var EMBED_BASE_COLOR_QUERY_KEY = 'embedBaseColor';
+      var DEFAULT_ACCENT_COLOR_QUERY_KEY = 'defaultAccentColor';
+      var DEFAULT_BASE_COLOR_QUERY_KEY = 'defaultBaseColor';
 
       function readPreferenceMetadata() {
         try {
@@ -98,6 +102,14 @@
         }
       }
 
+      function readQueryColor(key) {
+        var value = new URLSearchParams(window.location.search).get(key);
+        var normalized = value && value.trim().replace(/^#/, '');
+        return normalized && /^[0-9a-f]{6}$/i.test(normalized)
+          ? '#' + normalized.toLowerCase()
+          : null;
+      }
+
       var themeMode = localStorage.getItem(THEME_MODE_KEY);
       var hasStoredThemeMode = themeMode === 'system' || themeMode === 'light' || themeMode === 'dark';
       var hasLegacyDarkMode = localStorage.getItem(DARK_MODE_KEY) !== null;
@@ -137,12 +149,18 @@
           ? false
           : window.matchMedia('(prefers-color-scheme: dark)').matches;
       var root = document.documentElement;
-      if (window.top === window) {
-        var accentColor = readCustomColor(ACCENT_COLOR_KEY);
-        var baseColor = readCustomColor(BASE_COLOR_KEY);
-        if (accentColor) root.style.setProperty('--accent-color', accentColor);
-        if (baseColor) root.style.setProperty('--base-color', baseColor);
-      }
+      var accentColor = readCustomColor(ACCENT_COLOR_KEY);
+      var baseColor = readCustomColor(BASE_COLOR_KEY);
+      var embedAccentColor = readQueryColor(EMBED_ACCENT_COLOR_QUERY_KEY);
+      var embedBaseColor = readQueryColor(EMBED_BASE_COLOR_QUERY_KEY);
+      var defaultAccentColor = readQueryColor(DEFAULT_ACCENT_COLOR_QUERY_KEY);
+      var defaultBaseColor = readQueryColor(DEFAULT_BASE_COLOR_QUERY_KEY);
+      if (accentColor) root.style.setProperty('--accent-color-user', accentColor);
+      if (baseColor) root.style.setProperty('--base-color-user', baseColor);
+      if (embedAccentColor) root.style.setProperty('--accent-color-forced', embedAccentColor);
+      if (embedBaseColor) root.style.setProperty('--base-color-forced', embedBaseColor);
+      if (defaultAccentColor) root.style.setProperty('--accent-color-external-default', defaultAccentColor);
+      if (defaultBaseColor) root.style.setProperty('--base-color-external-default', defaultBaseColor);
       if (isDark) {
         root.classList.add('dark');
         root.style.colorScheme = 'dark';

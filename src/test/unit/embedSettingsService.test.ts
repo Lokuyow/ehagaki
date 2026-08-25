@@ -44,6 +44,53 @@ describe('EmbedSettingsService', () => {
         );
     });
 
+    it('カラーの runtime forced layer は null または6桁HEXだけ受け付ける', () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedSettingsService(windowObj, mockConsole);
+        const onRemoteSetSettings = vi.fn();
+        const onRemoteSettingsError = vi.fn();
+        service.onRemoteSetSettings(onRemoteSetSettings);
+        service.onRemoteSettingsError(onRemoteSettingsError);
+        service.initialize();
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'settings.set',
+                requestId: 'settings-color-1',
+                payload: { accentColor: '#ABCDEF', baseColor: null },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteSetSettings).toHaveBeenCalledWith(
+            { accentColor: '#ABCDEF', baseColor: null },
+            'settings-color-1',
+        );
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'settings.set',
+                requestId: 'settings-color-2',
+                payload: { baseColor: '#12345' },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteSettingsError).toHaveBeenLastCalledWith(
+            {
+                code: 'settings_invalid_payload',
+                message: 'settings.set payload is invalid',
+            },
+            'settings-color-2',
+        );
+    });
+
     it('origin が一致しない settings.set は無視する', () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedSettingsService(windowObj, mockConsole);
