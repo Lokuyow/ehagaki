@@ -188,6 +188,8 @@ export default defineConfig({
           'host-owned-composer-lite-example.html',
           'web-component-parent-client-example.html',
           'web-component-parent-client-example.js',
+          'embed-parent-client-example.html',
+          'embed-parent-client-example.js',
           ...fixedLegacyBridgePaths
         ],
         additionalManifestEntries: fixedLegacyBridgePaths.map(url => ({

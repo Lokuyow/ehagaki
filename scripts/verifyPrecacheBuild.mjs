@@ -6,6 +6,8 @@ const excludedSamplePaths = [
     "host-owned-composer-lite-example.html",
     "web-component-parent-client-example.html",
     "web-component-parent-client-example.js",
+    "embed-parent-client-example.html",
+    "embed-parent-client-example.js",
 ];
 const requiredPrecachePaths = ["index.html", "manifest.webmanifest"];
 
@@ -28,7 +30,7 @@ if (precacheUrls.length === 0) {
 
 const excludedUrls = excludedSamplePaths.filter((path) => precacheUrls.includes(path));
 if (excludedUrls.length > 0) {
-    fail(`Web Component sample paths must not be precached: ${excludedUrls.join(", ")}`);
+    fail(`excluded sample paths must not be precached: ${excludedUrls.join(", ")}`);
 }
 
 const missingRequiredUrls = requiredPrecachePaths.filter((path) => !precacheUrls.includes(path));
@@ -37,5 +39,5 @@ if (missingRequiredUrls.length > 0) {
 }
 
 console.log(
-    `[precache-build] verified ${precacheUrls.length} precache entries; excluded Web Component samples and retained ${requiredPrecachePaths.join(", ")}`,
+    `[precache-build] verified ${precacheUrls.length} precache entries; excluded ${excludedSamplePaths.length} samples and retained ${requiredPrecachePaths.join(", ")}`,
 );
