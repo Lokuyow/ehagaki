@@ -30,6 +30,7 @@ interface ActiveProfileSync extends DesiredProfileSync {
     lastProfile: ProfileData | null;
     disposed: boolean;
     requestRevision: number;
+    nullRetryUsed: boolean;
 }
 
 export interface ReplyQuoteProfileSyncDependencies {
@@ -190,11 +191,19 @@ export function createReplyQuoteProfileSyncController(
             additionalRelays: active.relayHints,
         }).then((profile) => {
             if (
-                activeByPubkey.get(active.pubkey) === active
-                && active.requestRevision === requestRevision
+                activeByPubkey.get(active.pubkey) !== active
+                || active.requestRevision !== requestRevision
             ) {
-                applyProfile(active, profile);
+                return;
             }
+
+            if (profile === null && !active.nullRetryUsed) {
+                active.nullRetryUsed = true;
+                requestProfile(active);
+                return;
+            }
+
+            applyProfile(active, profile);
         }).catch((error) => {
             logger.error("返信・引用プロフィールの取得に失敗:", error);
         });
@@ -244,6 +253,7 @@ export function createReplyQuoteProfileSyncController(
                 lastProfile: null,
                 disposed: false,
                 requestRevision: 0,
+                nullRetryUsed: false,
             };
             activeByPubkey.set(pubkey, active);
             active.unsubscribe = deps.relayProfileService.subscribeProfile(

@@ -270,6 +270,107 @@ describe("replyQuoteProfileSync", () => {
         });
     });
 
+    it("retries one null profile result once and applies the recovered profile", async () => {
+        const fetchProfileRealtime = vi.fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(createProfile("Recovered"))
+            .mockResolvedValueOnce(createProfile("Unexpected third result"));
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime,
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "retry-event", { authorPubkey: "retry-author" }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+        expect(updateAuthorProfile).toHaveBeenCalledWith(
+            ownedTarget("retry-event", "reply"),
+            "retry-author",
+            {
+                displayName: "Recovered",
+                picture: "https://example.com/Recovered.png",
+            },
+        );
+    });
+
+    it("stops after at most two null profile results", async () => {
+        const fetchProfileRealtime = vi.fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null);
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime,
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile: vi.fn(),
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "null-event", { authorPubkey: "null-author" }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not retry a null result from an obsolete owner request", async () => {
+        let resolveOld!: (profile: ProfileData | null) => void;
+        const fetchProfileRealtime = vi.fn()
+            .mockReturnValueOnce(new Promise<ProfileData | null>((resolve) => {
+                resolveOld = resolve;
+            }))
+            .mockReturnValueOnce(Promise.resolve(createProfile("New")));
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime,
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile: vi.fn(),
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "obsolete-event", {
+                ownerToken: Symbol("old"),
+                authorPubkey: "obsolete-author",
+            }),
+            quotes: [],
+        });
+        controller.sync({
+            reply: createReference("reply", "obsolete-event", {
+                ownerToken: Symbol("new"),
+                authorPubkey: "obsolete-author",
+            }),
+            quotes: [],
+        });
+
+        resolveOld(null);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fetchProfileRealtime).toHaveBeenCalledTimes(2);
+    });
+
     it("applies later subscription updates and stops UI updates after dispose", async () => {
         let callback: (profile: ProfileData | null) => void = () => undefined;
         const unsubscribe = vi.fn();

@@ -96,6 +96,7 @@ interface BatchNetworkResult {
     rejectedFutureTimestamp: boolean;
     parseError: boolean;
     networkError: boolean;
+    timedOut: boolean;
 }
 
 let entriesByPubkey = $state.raw<Record<string, ProfileMetadataCacheEntry>>({});
@@ -539,6 +540,7 @@ async function fetchBatchFromNetwork(
             rejectedFutureTimestamp: false,
             parseError: false,
             networkError: false,
+            timedOut: false,
         };
     }
 
@@ -561,6 +563,12 @@ async function fetchBatchFromNetwork(
         };
 
         const timeoutId = setTimeout(() => {
+            for (const pubkey of authors) {
+                results[pubkey] = {
+                    ...results[pubkey],
+                    timedOut: true,
+                };
+            }
             done();
         }, Math.max(1, timeoutMs));
 
@@ -674,6 +682,7 @@ async function fetchBatchFromNetwork(
                         rejectedFutureTimestamp: false,
                         parseError: false,
                         networkError: false,
+                        timedOut: existing.timedOut,
                     };
                 },
                 complete: () => {
@@ -716,6 +725,7 @@ export interface ProfileTierResolution {
     parseError: boolean;
     rejectedFutureTimestamp: boolean;
     networkError: boolean;
+    transientFailure: boolean;
 }
 
 async function applyTierNetworkResult(
@@ -746,6 +756,7 @@ async function applyTierNetworkResult(
                 parseError: false,
                 rejectedFutureTimestamp: false,
                 networkError: false,
+                transientFailure: result.networkError || result.timedOut,
             };
         } catch {
             const snapshot = resolveExistingSnapshot(pubkey, requests);
@@ -757,6 +768,7 @@ async function applyTierNetworkResult(
                 parseError: false,
                 rejectedFutureTimestamp: false,
                 networkError: false,
+                transientFailure: result.networkError || result.timedOut,
             };
         }
     }
@@ -767,6 +779,7 @@ async function applyTierNetworkResult(
         parseError: result.parseError,
         rejectedFutureTimestamp: result.rejectedFutureTimestamp,
         networkError: result.networkError,
+        transientFailure: result.networkError || result.timedOut,
     };
 }
 
@@ -830,6 +843,7 @@ async function flushPendingBatch(): Promise<void> {
         const resolvedProfiles: Record<string, ProfileData | null> = {};
         const parseErrors = new Set<string>();
         const rejectedFutureTimestamps = new Set<string>();
+        const transientFailures = new Set<string>();
         const queriedPubkeys = new Set<string>();
         const tierNames = ["bootstrap", "contextual", "fallback"] as const;
 
@@ -897,6 +911,9 @@ async function flushPendingBatch(): Promise<void> {
                         if (resolution.rejectedFutureTimestamp) {
                             rejectedFutureTimestamps.add(pubkey);
                         }
+                        if (resolution.transientFailure) {
+                            transientFailures.add(pubkey);
+                        }
                         if (resolution.stopReason !== null) {
                             unresolvedPubkeys.delete(pubkey);
                         }
@@ -911,7 +928,11 @@ async function flushPendingBatch(): Promise<void> {
                     markEntryStatus(pubkey, "parse-error");
                 } else if (rejectedFutureTimestamps.has(pubkey)) {
                     markEntryStatus(pubkey, "invalid-future-ts");
-                } else if (!snapshot && queriedPubkeys.has(pubkey)) {
+                } else if (
+                    !snapshot
+                    && queriedPubkeys.has(pubkey)
+                    && !transientFailures.has(pubkey)
+                ) {
                     setNegativeEntry(pubkey);
                 }
                 resolvedProfiles[pubkey] = snapshot

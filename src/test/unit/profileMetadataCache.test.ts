@@ -1492,6 +1492,7 @@ describe("profileMetadataCache", () => {
             rejectedFutureTimestamp: false,
             parseError: false,
             networkError: false,
+            timedOut: false,
         }, []);
 
         expect(resolution.stopReason).toBe("persistence-unavailable");
@@ -1535,6 +1536,23 @@ describe("profileMetadataCache", () => {
             [pubkey],
             [pubkey],
         ]);
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+
+        const retry = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
+        });
+        await flushProfileBatch();
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+        await vi.advanceTimersByTimeAsync(
+            profileMetadataCacheInternals.PROFILE_CACHE_BATCH_TIMEOUT_MS,
+        );
+        await expect(retry).resolves.toBeNull();
+        expect(rxNostr.calls.length).toBeGreaterThan(3);
     });
 
     it("fails soft after network errors in every tier", async () => {
@@ -1553,10 +1571,14 @@ describe("profileMetadataCache", () => {
             [contextRelay],
             FALLBACK_RELAYS,
         ]);
-        expect(profileMetadataCache.getReactiveEntry(pubkey)).toMatchObject({
-            status: "negative",
-            profile: null,
+        expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+
+        const retry = profileMetadataCache.getProfile(pubkey, {
+            rxNostr: rxNostr as never,
         });
+        await flushProfileBatch();
+        await expect(retry).resolves.toBeNull();
+        expect(rxNostr.calls.length).toBeGreaterThan(3);
     });
 
     it("does not negative-cache a pubkey when no REQ could be started", async () => {
