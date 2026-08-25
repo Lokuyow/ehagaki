@@ -1,4 +1,8 @@
-import { createRxBackwardReq, type RxNostr } from "rx-nostr";
+import {
+    createRxBackwardReq,
+    type ConnectionStatePacket,
+    type RxNostr,
+} from "rx-nostr";
 import { filter } from "rxjs";
 import { addProfilePictureMarker } from "./profilePictureUrlUtils";
 import {
@@ -96,6 +100,7 @@ interface BatchNetworkResult {
     rejectedFutureTimestamp: boolean;
     parseError: boolean;
     networkError: boolean;
+    timedOut: boolean;
 }
 
 let entriesByPubkey = $state.raw<Record<string, ProfileMetadataCacheEntry>>({});
@@ -539,6 +544,7 @@ async function fetchBatchFromNetwork(
             rejectedFutureTimestamp: false,
             parseError: false,
             networkError: false,
+            timedOut: false,
         };
     }
 
@@ -550,6 +556,7 @@ async function fetchBatchFromNetwork(
         const rxReq = createRxBackwardReq();
         let settled = false;
         let subscription: { unsubscribe: () => void } | null = null;
+        let connectionStateSubscription: { unsubscribe: () => void } | null = null;
 
         const done = () => {
             if (settled) {
@@ -557,10 +564,17 @@ async function fetchBatchFromNetwork(
             }
             settled = true;
             subscription?.unsubscribe();
+            connectionStateSubscription?.unsubscribe();
             resolve();
         };
 
         const timeoutId = setTimeout(() => {
+            for (const pubkey of authors) {
+                results[pubkey] = {
+                    ...results[pubkey],
+                    timedOut: true,
+                };
+            }
             done();
         }, Math.max(1, timeoutMs));
 
@@ -572,6 +586,27 @@ async function fetchBatchFromNetwork(
                 };
             }
         };
+
+        const targetRelays = new Set(relayHints);
+        const handleConnectionState = (packet: ConnectionStatePacket) => {
+            if (
+                targetRelays.has(packet.from)
+                && (packet.state === "error" || packet.state === "rejected" || packet.state === "terminated")
+            ) {
+                markNetworkError();
+            }
+        };
+
+        for (const relay of targetRelays) {
+            const status = rxNostr.getRelayStatus?.(relay);
+            if (
+                status?.connection === "error"
+                || status?.connection === "rejected"
+                || status?.connection === "terminated"
+            ) {
+                markNetworkError();
+            }
+        }
 
         const isValidTimestampPacket = (packet: { event?: { created_at?: number; pubkey?: string } }): boolean => {
             const createdAt = packet.event?.created_at;
@@ -594,6 +629,10 @@ async function fetchBatchFromNetwork(
         };
 
         try {
+            connectionStateSubscription = rxNostr.createConnectionStateObservable?.().subscribe({
+                next: handleConnectionState,
+            }) ?? null;
+
             const source = rxNostr.use(
                 rxReq,
                 { on: { relays: relayHints } },
@@ -674,6 +713,7 @@ async function fetchBatchFromNetwork(
                         rejectedFutureTimestamp: false,
                         parseError: false,
                         networkError: false,
+                        timedOut: existing.timedOut,
                     };
                 },
                 complete: () => {
@@ -716,6 +756,7 @@ export interface ProfileTierResolution {
     parseError: boolean;
     rejectedFutureTimestamp: boolean;
     networkError: boolean;
+    transientFailure: boolean;
 }
 
 async function applyTierNetworkResult(
@@ -746,6 +787,7 @@ async function applyTierNetworkResult(
                 parseError: false,
                 rejectedFutureTimestamp: false,
                 networkError: false,
+                transientFailure: result.networkError || result.timedOut,
             };
         } catch {
             const snapshot = resolveExistingSnapshot(pubkey, requests);
@@ -757,6 +799,7 @@ async function applyTierNetworkResult(
                 parseError: false,
                 rejectedFutureTimestamp: false,
                 networkError: false,
+                transientFailure: result.networkError || result.timedOut,
             };
         }
     }
@@ -767,6 +810,7 @@ async function applyTierNetworkResult(
         parseError: result.parseError,
         rejectedFutureTimestamp: result.rejectedFutureTimestamp,
         networkError: result.networkError,
+        transientFailure: result.networkError || result.timedOut,
     };
 }
 
@@ -830,6 +874,7 @@ async function flushPendingBatch(): Promise<void> {
         const resolvedProfiles: Record<string, ProfileData | null> = {};
         const parseErrors = new Set<string>();
         const rejectedFutureTimestamps = new Set<string>();
+        const transientFailures = new Set<string>();
         const queriedPubkeys = new Set<string>();
         const tierNames = ["bootstrap", "contextual", "fallback"] as const;
 
@@ -897,6 +942,9 @@ async function flushPendingBatch(): Promise<void> {
                         if (resolution.rejectedFutureTimestamp) {
                             rejectedFutureTimestamps.add(pubkey);
                         }
+                        if (resolution.transientFailure) {
+                            transientFailures.add(pubkey);
+                        }
                         if (resolution.stopReason !== null) {
                             unresolvedPubkeys.delete(pubkey);
                         }
@@ -911,7 +959,11 @@ async function flushPendingBatch(): Promise<void> {
                     markEntryStatus(pubkey, "parse-error");
                 } else if (rejectedFutureTimestamps.has(pubkey)) {
                     markEntryStatus(pubkey, "invalid-future-ts");
-                } else if (!snapshot && queriedPubkeys.has(pubkey)) {
+                } else if (
+                    !snapshot
+                    && queriedPubkeys.has(pubkey)
+                    && !transientFailures.has(pubkey)
+                ) {
                     setNegativeEntry(pubkey);
                 }
                 resolvedProfiles[pubkey] = snapshot
