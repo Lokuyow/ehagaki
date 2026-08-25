@@ -683,7 +683,7 @@ Base Colorは指定色でsurfaceを直接塗りつぶさず、light/darkそれ�
 個別overrideのtokenだけが上書きされます。
 
 | CSS Custom Property | 用途 |
-| --- | --- | --- | --- |
+| --- | --- |
 | `--ehagaki-background` | メイン背景 |
 | `--ehagaki-text` | 文字色 |
 | `--ehagaki-border` | 境界線 |
@@ -761,7 +761,7 @@ console.log('NIP-07 available:', nip07Available);
 | parent-client auth/RPC | 利用可能 | 使用しない | 使用しない |
 | `postMessage` | 使用する | 使用しない | 使用しない |
 | 保存 | 親側の storage / IndexedDB 委譲を構成可能 | ホストオリジンに保存。専用 localStorage namespace を使用 | auth/account/session、Relay、履歴、draftを持たない |
-| 投稿所有者 | eHagaki または parent signer | eHagaki が self-publish | host が event構築・署名・publish |
+| 投稿所有者 | eHagaki が event構築・publish。parent-client利用時は署名を親へ委譲 | eHagaki が self-publish | host が event構築・署名・publish |
 | 秘密情報の隔離 | origin 境界を設計可能 | 隔離されない。信頼できるホスト向け | 隔離されない。信頼できるホスト向け |
 | ライフサイクル | iframe の生成・再読み込みなど | DOM の追加・削除・再作成 | DOM の追加・削除・再作成 |
 

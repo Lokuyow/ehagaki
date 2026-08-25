@@ -25,14 +25,14 @@ Host-owned Lite は既存 Nostr クライアントへ eHagaki の Composer UI / 
 | DOM / Window境界 | 別 document、別 Window realm | 同じ document / Window realm、Shadow DOM | 同じ document / Window realm、Shadow DOM |
 | trust boundary | origin境界を設計可能 | ホストと共有、隔離なし | ホストと共有、隔離なし |
 | account / auth | eHagaki または parent-client | eHagaki が所有。NIP-07 は host の `window.nostr`、NIP-46 も利用可能 | ホストが所有。Lite は auth/account/session を持たない |
-| event構築・署名・publish | eHagaki または parent signer 連携 | eHagaki が所有し self-publish | ホストが kind、reference tag、pubkey、timestamp、署名、publish を所有 |
-| Relay | eHagaki または parent-client 境界 | eHagaki が所有 | ホストが所有。Lite は relay 接続しない |
+| event構築・署名・publish | eHagaki が event構築・publish。通常認証で署名し、parent-client利用時は署名を親へ委譲 | eHagaki が所有し self-publish | ホストが kind、reference tag、pubkey、timestamp、署名、publish を所有 |
+| Relay | eHagaki が Relay接続・publish | eHagaki が所有 | ホストが所有。Lite は relay 接続しない |
 | storage | iframe内、parent storage / IndexedDB delegation | ホスト origin の localStorage / IndexedDB | Composer固有の内部認証・履歴等は持たず、投稿処理はホスト所有 |
 | styling / theme | iframe内設定、query、runtime `settings.set`、delegation | Shadow DOM と公開 CSS Custom Properties | Shadow DOM と公開 CSS Custom Properties。内部 SettingsDialog なし |
 | contextの渡し方 | `postMessage` の embed protocol | `setContext()` と CustomEvent | `setContext()` と Host-owned output の `context` |
 | 主な用途 | 隔離、parent-client連携、storage委譲 | eHagaki完結の直接組み込み | 既存Nostrクライアントへの Composer組み込み |
 
-iframe だけが host JavaScript との origin 境界を持ちます。Web Component は host と同じ Window realm で動くため、host JavaScript から秘密情報を隔離する用途には使わないでください。Web Component distribution は compiled ES module なので、host framework は Svelte に限定されません。plain JavaScript、Svelte、React、Vue などから Custom Element として利用できます。
+3方式のうち iframe だけが、別 origin で配信することで host JavaScript との origin 境界を設計できます。同一 origin で self-host する iframe にはこの隔離は成立しません。Web Component は host と同じ Window realm で動くため、host JavaScript から秘密情報を隔離する用途には使わないでください。Web Component distribution は compiled ES module なので、host framework は Svelte に限定されません。plain JavaScript、Svelte、React、Vue などから Custom Element として利用できます。
 
 ## Quick Start
 
