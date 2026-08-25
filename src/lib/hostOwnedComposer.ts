@@ -98,6 +98,7 @@ export async function buildHostOwnedComposerOutput(params: {
     hashtags: string[];
     contentWarningEnabled: boolean;
     contentWarningReason: string;
+    contentWarningAvailable?: boolean;
     emojiTags: string[][];
     mediaImetaMap: Record<string, {
         m: string;
@@ -118,7 +119,7 @@ export async function buildHostOwnedComposerOutput(params: {
         .map(cloneTag);
     const hasNsfwTag = tags.some((tag) => tag[0] === "t" && tag[1] === "nsfw");
 
-    if (params.contentWarningEnabled || hasNsfwTag) {
+    if (params.contentWarningAvailable !== false && (params.contentWarningEnabled || hasNsfwTag)) {
         const reason = params.contentWarningReason.trim();
         tags.push(reason ? ["content-warning", reason] : ["content-warning"]);
         if (params.contentWarningEnabled && !hasNsfwTag) {

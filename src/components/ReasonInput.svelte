@@ -6,12 +6,18 @@
     } from "../stores/tagsStore.svelte";
     import { reasonInputVisibleStore } from "../stores/uiStore.svelte";
 
+    interface Props {
+        enabled?: boolean;
+    }
+
+    let { enabled = true }: Props = $props();
+
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
     let contentWarningReason = $derived(contentWarningReasonStore.value);
 
     // 表示判定
-    let showReasonInput = $derived(contentWarningEnabled);
+    let showReasonInput = $derived(enabled && contentWarningEnabled);
 
     // 表示状態をストアに反映（CSS変数の更新をトリガー）
     $effect(() => {

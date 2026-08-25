@@ -76,6 +76,8 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         composer.configureHostOwned({
             submit: (output: unknown) => { submitted.push(output); return { eventId: "a".repeat(64) }; },
             uploadMedia: (file: File) => ({ url: `https://example.invalid/${file.name}` }),
+            contentWarningEnabled: true,
+            hashtagPinEnabled: true,
         });
         document.body.append(composer);
         await composer.whenReady();
@@ -85,6 +87,148 @@ async function mountHostOwned(page: import("@playwright/test").Page) {
         return { events, assetBase: composer.assetBase };
     }, { componentOrigin });
 }
+
+test("Lite minimal configuration exposes only text composition and preserves success/failure content", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as any[], errors: 0 };
+        (window as any).__liteMinimalState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                return { eventId: "b".repeat(64) };
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".image-button")).toHaveCount(0);
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
+    await expect(composer.locator("#content-warning-reason-input")).toHaveCount(0);
+    await expect(composer.locator(".button-group-right button")).toHaveCount(0);
+    await composer.locator(".tiptap-editor").click();
+    await composer.locator(".tiptap-editor").pressSequentially("minimal text");
+    await composer.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.outputs.length)).toBe(1);
+    await expect(composer.locator(".tiptap-editor")).toHaveText("");
+    expect(await page.evaluate(() => (window as any).__liteMinimalState.outputs[0])).toMatchObject({
+        content: "minimal text",
+        tags: [],
+    });
+
+    await page.evaluate(async () => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.remove();
+        const replacement = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        replacement.configureHostOwned({
+            submit() {
+                (window as any).__liteMinimalState.errors += 1;
+                throw new Error("expected host failure");
+            },
+        });
+        document.body.append(replacement);
+        await replacement.whenReady();
+    });
+    const replacement = page.locator("ehagaki-composer");
+    await replacement.locator(".tiptap-editor").click();
+    await replacement.locator(".tiptap-editor").pressSequentially("keep after failure");
+    await replacement.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.errors)).toBe(1);
+    await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
+});
+
+test("Lite custom emoji catalog controls the button and closes an open picker when cleared", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setCustomEmojis(value: unknown): Promise<void>;
+        };
+        composer.configureHostOwned({ submit: () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        (window as any).__liteEmojiComposer = composer;
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
+    await page.evaluate(async () => await (window as any).__liteEmojiComposer.setCustomEmojis([
+        { shortcode: "wave", url: "https://example.invalid/wave.webp" },
+    ]));
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
+    await composer.locator(".custom-emoji-button").click();
+    await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(1);
+    await page.evaluate(async () => await (window as any).__liteEmojiComposer.setCustomEmojis([]));
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
+    await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(0);
+    await page.evaluate(async () => await (window as any).__liteEmojiComposer.setCustomEmojis([
+        { shortcode: "wave", url: "https://example.invalid/wave.webp" },
+    ]));
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
+});
+
+test("Lite disabled CW and hashtag pin do not carry shared state into a new instance", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const enabled = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        enabled.configureHostOwned({ submit: () => undefined, contentWarningEnabled: true, hashtagPinEnabled: true });
+        document.body.append(enabled);
+        await enabled.whenReady();
+        (window as any).__liteEnabledComposer = enabled;
+    }, { componentOrigin });
+    const enabled = page.locator("ehagaki-composer");
+    await expect(enabled.locator(".button-group-right button")).toHaveCount(2);
+    await enabled.locator(".button-group-right button").nth(0).click();
+    await enabled.locator("#content-warning-reason-input").fill("stale reason");
+    await enabled.locator(".button-group-right button").nth(1).click();
+    await enabled.evaluate((element) => element.remove());
+
+    await page.evaluate(async () => {
+        const disabled = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        (window as any).__liteDisabledOutputs = [];
+        disabled.configureHostOwned({
+            submit(output: unknown) {
+                (window as any).__liteDisabledOutputs.push(JSON.parse(JSON.stringify(output)));
+                return undefined;
+            },
+        });
+        document.body.append(disabled);
+        await disabled.whenReady();
+    });
+    const disabled = page.locator("ehagaki-composer");
+    await expect(disabled.locator(".button-group-right button")).toHaveCount(0);
+    await expect(disabled.locator("#content-warning-reason-input")).toHaveCount(0);
+    await disabled.locator(".tiptap-editor").click();
+    await disabled.locator(".tiptap-editor").pressSequentially("#example");
+    await disabled.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteDisabledOutputs.length)).toBe(1);
+    const output = await page.evaluate(() => (window as any).__liteDisabledOutputs[0]);
+    expect(output.tags).toContainEqual(["t", "example"]);
+    expect(output.tags.some((tag: string[]) => tag[0] === "content-warning")).toBe(false);
+    await expect(disabled.locator(".tiptap-editor")).toHaveText("");
+});
 
 test("Lite requires pre-connect Host-owned configuration without making assetBase a hard error", async ({ page }) => {
     await page.goto(hostOrigin);
@@ -216,6 +360,8 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
         composer.style.width = "360px";
         composer.style.height = "640px";
         composer.configureHostOwned({
+            contentWarningEnabled: true,
+            hashtagPinEnabled: true,
             submit(output: unknown) {
                 state.outputs.push(JSON.parse(JSON.stringify(output)));
                 return { eventId: "c".repeat(64) };

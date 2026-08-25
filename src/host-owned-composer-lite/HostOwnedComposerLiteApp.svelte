@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import "../i18n";
   import { Tooltip } from "bits-ui";
   import { waitLocale } from "svelte-i18n";
@@ -30,6 +30,11 @@
     setChannelContextWithProvenance,
   } from "../stores/channelContextStore.svelte";
   import {
+    contentWarningReasonStore,
+    contentWarningStore,
+    hashtagPinStore,
+  } from "../stores/tagsStore.svelte";
+  import {
     clearReplyQuote,
     clearReplyReference,
     removeQuoteReference,
@@ -57,6 +62,19 @@
   }
 
   let { notificationPort, onInitialized, hostOwnedConfig }: Props = $props();
+
+  // Host-owned instances share the app stores with the common composer. Clear
+  // disabled feature state before the first render so a previous mount cannot
+  // affect this Lite instance's UI or output.
+  untrack(() => {
+    if (hostOwnedConfig.contentWarningEnabled !== true) {
+      contentWarningStore.reset();
+      contentWarningReasonStore.reset();
+    }
+    if (hostOwnedConfig.hashtagPinEnabled !== true) {
+      hashtagPinStore.reset();
+    }
+  });
   let postComponentRef: PostComponentType | null = $state(null);
   let customEmojiPickerOpen = $state(false);
   let HostOwnedCustomEmojiPicker: Component<any> | null = $state(null);
@@ -106,6 +124,9 @@
       sourceType: "kind10030",
       sourceAddress: null,
     }));
+    if (hostCustomEmojiItems.length === 0) {
+      customEmojiPickerOpen = false;
+    }
   }
 
   function handleCustomEmojiSelect(emoji: CustomEmojiSelection): void {
@@ -118,6 +139,10 @@
   }
 
   async function setCustomEmojiPickerOpen(open: boolean): Promise<void> {
+    if (open && hostCustomEmojiItems.length === 0) {
+      customEmojiPickerOpen = false;
+      return;
+    }
     if (open && !HostOwnedCustomEmojiPicker) {
       HostOwnedCustomEmojiPicker = (await import("./HostOwnedCustomEmojiPicker.svelte")).default;
     }
@@ -264,13 +289,16 @@
         </div>
       </div>
     </div>
-    <ReasonInput />
+    <ReasonInput enabled={hostOwnedConfig.contentWarningEnabled === true} />
     <KeyboardButtonBar
       onUploadImage={() => postComponentRef?.openFileDialog()}
       {customEmojiPickerOpen}
       hasPostingCapability={true}
       mediaEnabled={!!hostOwnedConfig.uploadMedia}
       customEmojiEnabled={true}
+      customEmojiAvailable={hostCustomEmojiItems.length > 0}
+      contentWarningAvailable={hostOwnedConfig.contentWarningEnabled === true}
+      hashtagPinAvailable={hostOwnedConfig.hashtagPinEnabled === true}
       onCustomEmojiPickerOpenChange={(open) => void setCustomEmojiPickerOpen(open)}
     />
   </main>
