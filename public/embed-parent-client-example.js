@@ -9,7 +9,9 @@ const PARENT_EMBED_STORAGE_PREFIX = "ehagaki.embed.storage.v1:";
 const PARENT_EMBED_INDEXEDDB_NAME = "ehagaki-parent-embed-storage-v1";
 const PARENT_EMBED_INDEXEDDB_VERSION = 1;
 const PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE = "snapshots";
-const TIMELINE_RELAYS = ["wss://nos.lol"];
+const DEFAULT_TIMELINE_RELAY = "wss://nos.lol";
+const TIMELINE_RELAY_HISTORY_KEY = "ehagaki.parent-client-sample.timeline-relays";
+const TIMELINE_RELAY_HISTORY_LIMIT = 10;
 const TIMELINE_EVENT_LIMIT = 24;
 const TIMELINE_QUERY_MAX_WAIT_MS = 4000;
 
@@ -54,6 +56,8 @@ const parentAuthStatus = document.getElementById("parent-auth-status");
 const authFeedback = document.getElementById("auth-feedback");
 const handshakeStatus = document.getElementById("handshake-status");
 const timelineStatus = document.getElementById("timeline-status");
+const timelineRelayInput = document.getElementById("timeline-relay");
+const timelineRelaySuggestions = document.getElementById("timeline-relay-suggestions");
 const timelineSelection = document.getElementById("timeline-selection");
 const timelineList = document.getElementById("timeline-list");
 const channelReferenceInput = document.getElementById("channel-reference");
@@ -129,6 +133,8 @@ const urlContextOverrides = {
     settings: false,
 };
 let timelineSubscription = null;
+let activeTimelineRelay = DEFAULT_TIMELINE_RELAY;
+let timelineLoadGeneration = 0;
 let composerRequestSequence = 0;
 let settingsRequestSequence = 0;
 
@@ -264,6 +270,71 @@ function parseRelayListInput(value) {
         .split(/[\n,]+/)
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0);
+}
+
+function normalizeTimelineRelay(value) {
+    const relay = trimToNull(value);
+    if (!relay) {
+        throw new Error("relay URLを入力してください");
+    }
+
+    let parsed;
+    try {
+        parsed = new URL(relay);
+    } catch {
+        throw new Error("relay URLの形式が不正です");
+    }
+
+    if ((parsed.protocol !== "wss:" && parsed.protocol !== "ws:") || !parsed.hostname) {
+        throw new Error("relay URLは ws:// または wss:// のWebSocket URLを指定してください");
+    }
+
+    return relay;
+}
+
+function readTimelineRelayHistory() {
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(TIMELINE_RELAY_HISTORY_KEY) ?? "null");
+        if (!Array.isArray(stored)) {
+            return [];
+        }
+
+        const relays = [];
+        for (const value of stored) {
+            try {
+                const relay = normalizeTimelineRelay(value);
+                if (!relays.includes(relay)) {
+                    relays.push(relay);
+                }
+            } catch {
+                // Ignore malformed entries without affecting the timeline defaults.
+            }
+        }
+        return relays.slice(0, TIMELINE_RELAY_HISTORY_LIMIT);
+    } catch {
+        return [];
+    }
+}
+
+function saveTimelineRelayToHistory(relay) {
+    const history = [relay, ...readTimelineRelayHistory().filter((item) => item !== relay)]
+        .slice(0, TIMELINE_RELAY_HISTORY_LIMIT);
+    try {
+        window.localStorage.setItem(TIMELINE_RELAY_HISTORY_KEY, JSON.stringify(history));
+    } catch {
+        // History is an optional convenience; the timeline remains usable without it.
+    }
+    renderTimelineRelaySuggestions(history);
+}
+
+function renderTimelineRelaySuggestions(history = readTimelineRelayHistory()) {
+    timelineRelaySuggestions.textContent = "";
+    const suggestions = [DEFAULT_TIMELINE_RELAY, ...history.filter((relay) => relay !== DEFAULT_TIMELINE_RELAY)];
+    suggestions.forEach((relay) => {
+        const option = document.createElement("option");
+        option.value = relay;
+        timelineRelaySuggestions.append(option);
+    });
 }
 
 function formatRelayListInput(relays) {
@@ -608,7 +679,7 @@ function createTimelineReference(event) {
         eventId: event.id,
         queryValue: neventEncode({
             id: event.id,
-            relays: TIMELINE_RELAYS,
+            relays: [activeTimelineRelay],
             author: event.pubkey,
             kind: event.kind,
         }),
@@ -1150,13 +1221,13 @@ function clearComposerContent() {
     });
 }
 
-function startTimelineSubscription() {
+function startTimelineSubscription(relay, generation) {
     const since = timelineEvents[0]?.created_at
         ? timelineEvents[0].created_at + 1
         : Math.floor(Date.now() / 1000) - 300;
 
     timelineSubscription = timelinePool.subscribeMany(
-        TIMELINE_RELAYS,
+        [relay],
         {
             kinds: [1],
             since,
@@ -1164,11 +1235,14 @@ function startTimelineSubscription() {
         {
             label: "embed sample timeline",
             onevent(event) {
+                if (generation !== timelineLoadGeneration || relay !== activeTimelineRelay) {
+                    return;
+                }
                 mergeTimelineEvents([event]);
                 renderTimeline();
                 updateStatus(
                     timelineStatus,
-                    `${TIMELINE_RELAYS[0]} 接続中 (${timelineEvents.length} 件)`,
+                    `${relay} 接続中 (${timelineEvents.length} 件)`,
                     "ok",
                 );
             },
@@ -1177,17 +1251,49 @@ function startTimelineSubscription() {
 }
 
 async function loadTimeline() {
+    let relay;
+    try {
+        relay = normalizeTimelineRelay(timelineRelayInput.value);
+    } catch (error) {
+        updateStatus(timelineStatus, error instanceof Error ? error.message : "relay URLが不正です", "error");
+        return;
+    }
+
+    const generation = ++timelineLoadGeneration;
+    activeTimelineRelay = relay;
+    timelineRelayInput.value = relay;
+    saveTimelineRelayToHistory(relay);
     refreshTimelineButton.disabled = true;
-    updateStatus(timelineStatus, "タイムライン読み込み中", "warn");
+    updateStatus(timelineStatus, `${relay} を読み込み中`, "warn");
 
     if (timelineSubscription) {
         timelineSubscription.close("timeline-refresh");
         timelineSubscription = null;
     }
+    const hadReplyQuoteSelection = selectedReplyReference !== null || selectedQuoteReferences.length > 0;
+    timelineEvents = [];
+    selectedReplyReference = null;
+    selectedQuoteReferences = [];
+    if (hadReplyQuoteSelection) {
+        urlContextOverrides.replyQuote = true;
+    }
+    renderTimeline();
+    if (hadReplyQuoteSelection) {
+        sendRuntimeComposerMessage(
+            "composer.setContext",
+            buildComposerContextPayload({ includeReplyQuote: true }),
+            {
+                actionLabel: "relay変更時の reply / quote 解除",
+                infoMessage: "relay変更に合わせて reply / quote 選択を解除しました",
+                detail: { relay },
+                failureMessage: "relay変更時の reply / quote 解除に失敗しました",
+            },
+        );
+    }
 
     try {
         const events = await timelinePool.querySync(
-            TIMELINE_RELAYS,
+            [relay],
             {
                 kinds: [1],
                 limit: TIMELINE_EVENT_LIMIT,
@@ -1198,20 +1304,26 @@ async function loadTimeline() {
             },
         );
 
+        if (generation !== timelineLoadGeneration || relay !== activeTimelineRelay) {
+            return;
+        }
         mergeTimelineEvents(events);
         renderTimeline();
-        startTimelineSubscription();
+        startTimelineSubscription(relay, generation);
         updateStatus(
             timelineStatus,
-            `${TIMELINE_RELAYS[0]} 接続中 (${timelineEvents.length} 件)`,
+            `${relay} 接続中 (${timelineEvents.length} 件)`,
             "ok",
         );
         appendLog("info", "簡易タイムラインを更新しました", {
-            relay: TIMELINE_RELAYS[0],
+            relay,
             count: timelineEvents.length,
         });
     } catch (error) {
-        updateStatus(timelineStatus, "タイムライン取得失敗", "error");
+        if (generation !== timelineLoadGeneration || relay !== activeTimelineRelay) {
+            return;
+        }
+        updateStatus(timelineStatus, `${relay} タイムライン取得失敗`, "error");
         renderTimeline();
         appendLog("error", "簡易タイムラインの取得に失敗しました", error instanceof Error ? error.message : String(error));
     } finally {
@@ -2336,6 +2448,8 @@ if (storedParentSession) {
 }
 
 renderTimeline();
+timelineRelayInput.value = DEFAULT_TIMELINE_RELAY;
+renderTimelineRelaySuggestions();
 syncChannelInputsFromSelection();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
@@ -2385,6 +2499,12 @@ announceLogoutButton.addEventListener("click", () => {
 refreshTimelineButton.addEventListener("click", () => {
     void loadTimeline();
 });
+timelineRelayInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        void loadTimeline();
+    }
+});
 clearReplyQuoteButton.addEventListener("click", clearReplyQuoteSelection);
 syncComposerContentButton.addEventListener("click", syncComposerContent);
 clearComposerContentButton.addEventListener("click", clearComposerContent);
@@ -2402,8 +2522,9 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 });
 window.addEventListener("focus", refreshSignerStatus);
 window.addEventListener("beforeunload", () => {
+    timelineLoadGeneration += 1;
     timelineSubscription?.close("page-unload");
-    timelinePool.close(TIMELINE_RELAYS);
+    timelinePool.close([activeTimelineRelay]);
     timelinePool.destroy();
 });
 

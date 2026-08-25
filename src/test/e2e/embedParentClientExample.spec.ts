@@ -3,9 +3,24 @@ import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 
 let relayServer: WebSocketServer;
+let secondRelayServer: WebSocketServer;
 let relayOrigin = "";
+let secondRelayOrigin = "";
 let relayTargetEvent: ReturnType<typeof finalizeEvent> | null = null;
 let targetRequestCount = 0;
+let timelineRequestCounts = [0, 0];
+const firstTimelineEvent = finalizeEvent({
+    kind: 1,
+    content: "timeline from first test relay",
+    tags: [],
+    created_at: 100,
+}, generateSecretKey());
+const secondTimelineEvent = finalizeEvent({
+    kind: 1,
+    content: "timeline from second test relay",
+    tags: [],
+    created_at: 200,
+}, generateSecretKey());
 
 function listenWebSocketServer(server: WebSocketServer): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -32,9 +47,8 @@ function closeWebSocketServer(server: WebSocketServer): Promise<void> {
     });
 }
 
-test.beforeAll(async () => {
-    relayServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-    relayServer.on("connection", (socket: WebSocket) => {
+function attachRelayHandler(server: WebSocketServer, timelineEvent: ReturnType<typeof finalizeEvent>, relayIndex: number) {
+    server.on("connection", (socket: WebSocket) => {
         socket.on("message", (rawMessage) => {
             try {
                 const message = JSON.parse(rawMessage.toString()) as unknown[];
@@ -43,7 +57,7 @@ test.beforeAll(async () => {
                 }
 
                 const subscriptionId = message[1];
-                const filters = message.slice(2) as Array<{ ids?: unknown }>;
+                const filters = message.slice(2) as Array<{ ids?: unknown; kinds?: unknown }>;
                 const requestsTarget = !!relayTargetEvent && filters.some((filter) =>
                     Array.isArray(filter?.ids) && filter.ids.includes(relayTargetEvent?.id),
                 );
@@ -55,25 +69,112 @@ test.beforeAll(async () => {
                         relayTargetEvent,
                     ]));
                 }
+                if (!requestsTarget && filters.some((filter) => Array.isArray(filter?.kinds) && filter.kinds.includes(1))) {
+                    timelineRequestCounts[relayIndex] += 1;
+                    socket.send(JSON.stringify(["EVENT", subscriptionId, timelineEvent]));
+                }
                 socket.send(JSON.stringify(["EOSE", subscriptionId]));
             } catch {
                 // This deterministic relay only needs REQ/EOSE for the fixture.
             }
         });
     });
+}
+
+test.beforeAll(async () => {
+    relayServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    attachRelayHandler(relayServer, firstTimelineEvent, 0);
     const relayPort = await listenWebSocketServer(relayServer);
     relayOrigin = `ws://127.0.0.1:${relayPort}`;
+    secondRelayServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    attachRelayHandler(secondRelayServer, secondTimelineEvent, 1);
+    const secondRelayPort = await listenWebSocketServer(secondRelayServer);
+    secondRelayOrigin = `ws://127.0.0.1:${secondRelayPort}`;
 });
 
 test.beforeEach(() => {
     relayTargetEvent = null;
     targetRequestCount = 0;
+    timelineRequestCounts = [0, 0];
 });
 
 test.afterAll(async () => {
     if (relayServer) {
         await closeWebSocketServer(relayServer);
     }
+    if (secondRelayServer) {
+        await closeWebSocketServer(secondRelayServer);
+    }
+});
+
+test("loads and switches the configurable timeline relay without mixing events", async ({ page }) => {
+    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    const relayInput = page.getByLabel("タイムライン relay URL");
+
+    await relayInput.fill(relayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(firstTimelineEvent.content);
+    await expect.poll(() => timelineRequestCounts[0]).toBeGreaterThanOrEqual(2);
+    await expect(page.locator("#timeline-status")).toContainText(relayOrigin);
+
+    await relayInput.fill(secondRelayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(secondTimelineEvent.content);
+    await expect(page.locator(".timeline-content")).not.toContainText(firstTimelineEvent.content);
+    await expect.poll(() => timelineRequestCounts[1]).toBeGreaterThanOrEqual(2);
+    await expect(page.locator("#timeline-status")).toContainText(secondRelayOrigin);
+});
+
+test("uses the active timeline relay in nevent hints and stores unique relay suggestions", async ({ page }) => {
+    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    const relayInput = page.getByLabel("タイムライン relay URL");
+    await relayInput.fill(secondRelayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(secondTimelineEvent.content);
+
+    await page.getByRole("button", { name: "reply テスト" }).click();
+    const log = await page.locator("#event-log").inputValue();
+    const encodedReference = log.match(/nevent1[0-9a-z]+/)?.[0];
+    expect(encodedReference).toBeTruthy();
+    expect(nip19.decode(encodedReference as string)).toMatchObject({
+        type: "nevent",
+        data: { relays: [secondRelayOrigin] },
+    });
+
+    await relayInput.fill(relayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(firstTimelineEvent.content);
+    await relayInput.fill(relayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+
+    const savedHistory = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("ehagaki.parent-client-sample.timeline-relays") ?? "null"),
+    );
+    expect(savedHistory).toEqual([relayOrigin, secondRelayOrigin, "wss://nos.lol"]);
+
+    await page.reload();
+    await expect(page.locator("#timeline-relay-suggestions option")).toHaveCount(3);
+    expect(await page.locator("#timeline-relay-suggestions option").evaluateAll((options) =>
+        options.map((option) => option.getAttribute("value")),
+    )).toEqual(["wss://nos.lol", relayOrigin, secondRelayOrigin]);
+});
+
+test("rejects invalid timeline relay URLs without falling back to nos.lol", async ({ page }) => {
+    await page.addInitScript(() => {
+        localStorage.setItem("ehagaki.parent-client-sample.timeline-relays", "not-json");
+    });
+    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    const relayInput = page.getByLabel("タイムライン relay URL");
+    await expect(relayInput).toHaveValue("wss://nos.lol");
+    expect(await page.locator("#timeline-relay-suggestions option").evaluateAll((options) =>
+        options.map((option) => option.getAttribute("value")),
+    )).toEqual(["wss://nos.lol"]);
+    await relayInput.fill("https://example.com/relay");
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+
+    await expect(page.locator("#timeline-status")).toContainText("ws:// または wss://");
+    expect(await page.locator("#timeline-relay").inputValue()).toBe("https://example.com/relay");
+    expect(timelineRequestCounts).toEqual([0, 0]);
 });
 
 test("uses an edited URL as the source of truth after an iframe context update", async ({ page }) => {
