@@ -1,4 +1,8 @@
-import { createRxBackwardReq, type RxNostr } from "rx-nostr";
+import {
+    createRxBackwardReq,
+    type ConnectionStatePacket,
+    type RxNostr,
+} from "rx-nostr";
 import { filter } from "rxjs";
 import { addProfilePictureMarker } from "./profilePictureUrlUtils";
 import {
@@ -552,6 +556,7 @@ async function fetchBatchFromNetwork(
         const rxReq = createRxBackwardReq();
         let settled = false;
         let subscription: { unsubscribe: () => void } | null = null;
+        let connectionStateSubscription: { unsubscribe: () => void } | null = null;
 
         const done = () => {
             if (settled) {
@@ -559,6 +564,7 @@ async function fetchBatchFromNetwork(
             }
             settled = true;
             subscription?.unsubscribe();
+            connectionStateSubscription?.unsubscribe();
             resolve();
         };
 
@@ -581,6 +587,27 @@ async function fetchBatchFromNetwork(
             }
         };
 
+        const targetRelays = new Set(relayHints);
+        const handleConnectionState = (packet: ConnectionStatePacket) => {
+            if (
+                targetRelays.has(packet.from)
+                && (packet.state === "error" || packet.state === "rejected" || packet.state === "terminated")
+            ) {
+                markNetworkError();
+            }
+        };
+
+        for (const relay of targetRelays) {
+            const status = rxNostr.getRelayStatus?.(relay);
+            if (
+                status?.connection === "error"
+                || status?.connection === "rejected"
+                || status?.connection === "terminated"
+            ) {
+                markNetworkError();
+            }
+        }
+
         const isValidTimestampPacket = (packet: { event?: { created_at?: number; pubkey?: string } }): boolean => {
             const createdAt = packet.event?.created_at;
             if (typeof createdAt !== "number") {
@@ -602,6 +629,10 @@ async function fetchBatchFromNetwork(
         };
 
         try {
+            connectionStateSubscription = rxNostr.createConnectionStateObservable?.().subscribe({
+                next: handleConnectionState,
+            }) ?? null;
+
             const source = rxNostr.use(
                 rxReq,
                 { on: { relays: relayHints } },

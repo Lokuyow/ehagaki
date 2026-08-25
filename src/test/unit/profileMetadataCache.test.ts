@@ -309,6 +309,41 @@ function createErroringRxNostr() {
     return { use, calls };
 }
 
+function createConnectionStateFailureRxNostr(state: "error" | "rejected") {
+    const calls: Array<{ relays: string[]; authors: string[] }> = [];
+    let emitted = false;
+    const createConnectionStateObservable = vi.fn(() => ({
+        subscribe: (observer: { next?: (packet: unknown) => void }) => {
+            if (!emitted) {
+                emitted = true;
+                observer.next?.({ from: BOOTSTRAP_RELAYS[0], state });
+            }
+            return { unsubscribe: vi.fn() };
+        },
+    }));
+    const use = vi.fn((rxReq: { emit: (filter: { authors?: string[] }) => void }, options: {
+        on: { relays: string[] };
+    }) => {
+        const call = {
+            relays: [...options.on.relays],
+            authors: [] as string[],
+        };
+        calls.push(call);
+        const originalEmit = rxReq.emit.bind(rxReq);
+        rxReq.emit = (filter) => {
+            call.authors = [...(filter.authors ?? [])];
+            originalEmit(filter);
+        };
+        return {
+            subscribe: (observer: { complete?: () => void }) => {
+                observer.complete?.();
+                return { unsubscribe: vi.fn() };
+            },
+        };
+    });
+    return { use, calls, createConnectionStateObservable };
+}
+
 function createUpsertResult(
     candidate: ProfileEventCandidate,
     decision: ProfileUpsertDecision = "replaced",
@@ -1580,6 +1615,29 @@ describe("profileMetadataCache", () => {
         await expect(retry).resolves.toBeNull();
         expect(rxNostr.calls.length).toBeGreaterThan(3);
     });
+
+    it.each(["error", "rejected"] as const)(
+        "does not negative-cache when a queried relay reaches %s while use completes",
+        async (state) => {
+            const rxNostr = createConnectionStateFailureRxNostr(state);
+            const pending = profileMetadataCache.getProfile(pubkey, {
+                rxNostr: rxNostr as never,
+                forceRefresh: true,
+            });
+            await flushProfileBatch();
+
+            await expect(pending).resolves.toBeNull();
+            expect(profileMetadataCache.getReactiveEntry(pubkey)).toBeNull();
+
+            const retry = profileMetadataCache.getProfile(pubkey, {
+                rxNostr: rxNostr as never,
+            });
+            await flushProfileBatch();
+            await expect(retry).resolves.toBeNull();
+            expect(rxNostr.use).toHaveBeenCalledTimes(4);
+            expect(rxNostr.createConnectionStateObservable).toHaveBeenCalled();
+        },
+    );
 
     it("does not negative-cache a pubkey when no REQ could be started", async () => {
         const rxNostr = {
