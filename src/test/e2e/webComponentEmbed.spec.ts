@@ -1879,7 +1879,7 @@ test("keeps the normal app Portal Button scope", async ({ page }) => {
         )!;
         return {
             inBody: document.body.contains(primary),
-            buttonBackground: getComputedStyle(primary).getPropertyValue("--btn-bg"),
+            buttonBackground: getComputedStyle(primary).getPropertyValue("--btn-bg").trim(),
             background: getComputedStyle(primary).backgroundColor,
         };
     });
