@@ -554,6 +554,9 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
         const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
         const primary = shadow.querySelector<HTMLElement>("button.primary")!;
         const settingsButton = shadow.querySelector<HTMLElement>("button.settings-btn")!;
+        const editor = shadow.querySelector<HTMLElement>(".editor-container")!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const buttonbar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
         const colorToPixel = (color: string) => {
             const canvas = document.createElement("canvas");
             canvas.width = 1;
@@ -569,6 +572,9 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
             base: style.getPropertyValue("--base-color").trim(),
             shellBackground: getComputedStyle(shell).backgroundColor,
             shellPixel: colorToPixel(getComputedStyle(shell).backgroundColor),
+            editorPixel: colorToPixel(getComputedStyle(editor).backgroundColor),
+            footerPixel: colorToPixel(getComputedStyle(footer).backgroundColor),
+            buttonbarPixel: colorToPixel(getComputedStyle(buttonbar).backgroundColor),
             primaryBackground: getComputedStyle(primary).backgroundColor,
             buttonPixel: colorToPixel(getComputedStyle(settingsButton).backgroundColor),
             textColor: getComputedStyle(appRoot).color,
@@ -602,6 +608,10 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     expect(themedLight.accent.toLowerCase()).toContain("#c04444");
     expect(themedLight.base.toLowerCase()).toContain("#d9e8f2");
     expect(themedLight.shellPixel).not.toEqual(defaultLight.shellPixel);
+    expect(themedLight.shellPixel).toEqual([242, 245, 246, 255]);
+    expect(themedLight.editorPixel).toEqual([253, 254, 254, 255]);
+    expect(themedLight.footerPixel).toEqual([219, 224, 227, 255]);
+    expect(themedLight.buttonbarPixel).toEqual([242, 245, 246, 255]);
     expect(themedLight.primaryBackground).not.toBe(defaultLight.primaryBackground);
     expect(themedLight.buttonPixel).toEqual([246, 249, 252, 255]);
     expect(themedLight.text).toBe(defaultLight.text);
@@ -644,6 +654,85 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     expect(standardLight.buttonPixel).toEqual(defaultLight.buttonPixel);
 });
 
+test("preserves Web Component detailed overrides and their existing dialog derivation", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async () => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setSettings(value: { themeMode: "light" }): Promise<string[]>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setSettings({ themeMode: "light" });
+        const overrides = {
+            "--ehagaki-background": "rgb(1, 2, 3)",
+            "--ehagaki-text": "rgb(4, 5, 6)",
+            "--ehagaki-border": "rgb(7, 8, 9)",
+            "--ehagaki-link": "rgb(10, 11, 12)",
+            "--ehagaki-input-background": "rgb(13, 14, 15)",
+            "--ehagaki-footer-background": "rgb(16, 17, 18)",
+            "--ehagaki-dialog-background": "rgb(19, 20, 21)",
+            "--ehagaki-font-family": "monospace",
+        } as const;
+        for (const [property, value] of Object.entries(overrides)) {
+            composer.style.setProperty(property, value);
+        }
+
+        const shadow = composer.shadowRoot!;
+        const shell = shadow.querySelector<HTMLElement>(".ehagaki-web-component-shell")!;
+        const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
+        const footer = shadow.querySelector<HTMLElement>(".footer-bar")!;
+        const probe = document.createElement("div");
+        const link = document.createElement("a");
+        const input = document.createElement("input");
+        const dialog = document.createElement("div");
+        const dialogDerived = document.createElement("div");
+        probe.style.cssText = "border: 1px solid var(--border); color: var(--text); font-family: inherit;";
+        link.style.color = "var(--link)";
+        input.style.background = "var(--bg-input)";
+        dialog.style.background = "var(--dialog-bg)";
+        dialogDerived.style.background = "var(--dialog-bg2)";
+        appRoot.append(probe, link, input, dialog, dialogDerived);
+        const colorToPixel = (color: string) => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+        };
+        const result = {
+            shell: colorToPixel(getComputedStyle(shell).backgroundColor),
+            text: getComputedStyle(appRoot).color,
+            border: getComputedStyle(probe).borderTopColor,
+            link: getComputedStyle(link).color,
+            input: colorToPixel(getComputedStyle(input).backgroundColor),
+            footer: colorToPixel(getComputedStyle(footer).backgroundColor),
+            dialog: colorToPixel(getComputedStyle(dialog).backgroundColor),
+            dialogDerived: colorToPixel(getComputedStyle(dialogDerived).backgroundColor),
+            font: getComputedStyle(appRoot).fontFamily,
+        };
+        probe.remove();
+        link.remove();
+        input.remove();
+        dialog.remove();
+        dialogDerived.remove();
+        return result;
+    });
+
+    expect(result.shell).toEqual([1, 2, 3, 255]);
+    expect(result.text).toBe("rgb(4, 5, 6)");
+    expect(result.border).toBe("rgb(7, 8, 9)");
+    expect(result.link).toBe("rgb(10, 11, 12)");
+    expect(result.input).toEqual([13, 14, 15, 255]);
+    expect(result.footer).toEqual([16, 17, 18, 255]);
+    expect(result.dialog).toEqual([19, 20, 21, 255]);
+    expect(result.dialogDerived).toEqual([18, 19, 20, 255]);
+    expect(result.font.toLowerCase()).toContain("monospace");
+});
+
 test("layers Web Component user, default, and forced colors across updates and recreation", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async () => {
@@ -663,7 +752,7 @@ test("layers Web Component user, default, and forced colors across updates and r
             const shadow = composer.shadowRoot!;
             const headerButton = shadow.querySelector<HTMLButtonElement>(".header-actions button")!;
             const settingsButton = shadow.querySelector<HTMLButtonElement>(".settings-btn")!;
-            const mascot = shadow.querySelector<SVGElement>(".site-icon path")!;
+            const mascotParts = Array.from(shadow.querySelectorAll<SVGElement>(".site-icon [data-mascot-part]"));
             const colorToPixel = (color: string) => {
                 const canvas = document.createElement("canvas");
                 canvas.width = 1;
@@ -676,7 +765,7 @@ test("layers Web Component user, default, and forced colors across updates and r
             const settingsBackground = getComputedStyle(settingsButton).backgroundColor;
             return {
                 headerBorder: getComputedStyle(headerButton).borderTopColor,
-                mascotFill: getComputedStyle(mascot).fill,
+                mascotPixels: mascotParts.map((part) => colorToPixel(getComputedStyle(part).fill)),
                 headerBackground: getComputedStyle(headerButton).backgroundColor,
                 settingsBackground,
                 buttonPixel: colorToPixel(settingsBackground),
@@ -770,12 +859,18 @@ test("layers Web Component user, default, and forced colors across updates and r
 
     expect(result.user).toMatchObject({ accent: "#123456", base: "#234567" });
     expect(result.userUi.headerBorder).toBe("rgb(18, 52, 86)");
-    expect(result.userUi.mascotFill).toBe("rgb(18, 52, 86)");
+    expect(result.userUi.mascotPixels).toEqual([
+        [18, 52, 86, 255], [219, 225, 230, 255],
+        [7, 21, 34, 255], [7, 21, 34, 255], [7, 21, 34, 255],
+    ]);
     expect(result.userUi.headerBackground).toBe(result.userUi.settingsBackground);
     expect(result.userUi.buttonPixel).toEqual([202, 210, 219, 255]);
     expect(result.forced).toMatchObject({ accent: "#345678", base: "#456789" });
     expect(result.forcedUi.headerBorder).toBe("rgb(52, 86, 120)");
-    expect(result.forcedUi.mascotFill).toBe("rgb(52, 86, 120)");
+    expect(result.forcedUi.mascotPixels).toEqual([
+        [52, 86, 120, 255], [225, 230, 235, 255],
+        [21, 34, 48, 255], [21, 34, 48, 255], [21, 34, 48, 255],
+    ]);
     expect(result.forcedUi.headerBackground).toBe(result.forcedUi.settingsBackground);
     expect(result.forcedUi.buttonPixel).toEqual([210, 219, 227, 255]);
     expect(result.released).toMatchObject({ accent: "#123456", base: "#234567" });
@@ -785,16 +880,25 @@ test("layers Web Component user, default, and forced colors across updates and r
     expect(result.restoredColors).toMatchObject({ accent: "#56789a", base: "#6789ab" });
     expect(result.defaultColors).toMatchObject({ accent: "#abcdef", base: "#cdefab" });
     expect(result.defaultUi.headerBorder).toBe("rgb(171, 205, 239)");
-    expect(result.defaultUi.mascotFill).toBe("rgb(171, 205, 239)");
+    expect(result.defaultUi.mascotPixels).toEqual([
+        [171, 205, 239, 255], [242, 247, 253, 255],
+        [68, 82, 96, 255], [68, 82, 96, 255], [68, 82, 96, 255],
+    ]);
     expect(result.defaultUi.buttonPixel).toEqual([243, 251, 235, 255]);
     expect(result.updatedDefaults).toMatchObject({ accent: "#fedcba", base: "#edcbaf" });
     expect(result.updatedDefaultUi.headerBorder).toBe("rgb(254, 220, 186)");
-    expect(result.updatedDefaultUi.mascotFill).toBe("rgb(254, 220, 186)");
+    expect(result.updatedDefaultUi.mascotPixels).toEqual([
+        [254, 220, 186, 255], [255, 250, 245, 255],
+        [102, 88, 74, 255], [102, 88, 74, 255], [102, 88, 74, 255],
+    ]);
     expect(result.updatedDefaultUi.buttonPixel).toEqual([251, 243, 236, 255]);
     expect(result.standardColors.accent).not.toBe("#fedcba");
     expect(result.standardColors.base).toBe("");
     expect(result.standardUi.headerBorder).toBe("rgb(229, 56, 56)");
-    expect(result.standardUi.mascotFill).toBe("rgb(63, 181, 126)");
+    expect(result.standardUi.mascotPixels).toEqual([
+        [63, 181, 126, 255], [237, 252, 245, 255],
+        [77, 82, 79, 255], [77, 82, 79, 255], [77, 82, 79, 255],
+    ]);
 });
 
 test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {

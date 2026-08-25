@@ -45,9 +45,9 @@
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
     let canResetCurrentPostContent = $derived(canResetPostContent ?? canPost);
-    const mascotOuterFill = "var(--mascot-accent-color)";
-    const mascotInnerFill = "var(--mascot-inner-color)";
-    const mascotFaceFill = "var(--mascot-face-color)";
+    const mascotOuterFill = "var(--mascot-accent-color, #3FB57E)";
+    const mascotInnerFill = "var(--mascot-inner-color, #EDFCF5)";
+    const mascotFaceFill = "var(--mascot-face-color, #4D524F)";
     let compactSuccessText = $derived(
         $_("balloonMessage.success.compact_post_success") || "投稿完了",
     );
@@ -263,16 +263,8 @@
 
     .site-icon {
         --mascot-accent-color: var(--accent-color-custom, #3FB57E);
-        --mascot-inner-color: color-mix(
-            in srgb,
-            var(--mascot-accent-color) 15%,
-            white 85%
-        );
-        --mascot-face-color: color-mix(
-            in srgb,
-            var(--mascot-accent-color) 40%,
-            black 60%
-        );
+        --mascot-inner-color: var(--accent-color-custom-inner, #EDFCF5);
+        --mascot-face-color: var(--accent-color-custom-face, #4D524F);
         width: 52px;
         height: 52px;
         margin-top: auto;

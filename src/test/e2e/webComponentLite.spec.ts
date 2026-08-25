@@ -184,11 +184,18 @@ test("Lite applies host default and forced colors without exposing the settings 
                 context.fillRect(0, 0, 1, 1);
                 return Array.from(context.getImageData(0, 0, 1, 1).data);
             };
+            const tokenPixel = (token: string) => {
+                return colorToPixel(`var(${token})`);
+            };
             return {
                 accent: style.getPropertyValue("--accent-color").trim().toLowerCase(),
                 base: style.getPropertyValue("--base-color").trim().toLowerCase(),
                 settingsButtons: composer.shadowRoot!.querySelectorAll("button.settings-btn").length,
                 buttonPixel: colorToPixel("var(--surface-button)"),
+                backgroundPixel: tokenPixel("--surface-bg"),
+                editorPixel: tokenPixel("--surface-editor"),
+                footerPixel: tokenPixel("--surface-footer"),
+                buttonbarPixel: tokenPixel("--footer-buttonbar-bg"),
             };
         };
 
@@ -209,18 +216,26 @@ test("Lite applies host default and forced colors without exposing the settings 
     expect(result.defaults).toMatchObject({
         accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
         buttonPixel: [243, 251, 235, 255],
+        backgroundPixel: [240, 246, 234, 255], editorPixel: [252, 254, 250, 255],
+        footerPixel: [214, 226, 203, 255], buttonbarPixel: [240, 246, 234, 255],
     });
     expect(result.forced).toMatchObject({
         accent: "#345678", base: "#456789", settingsButtons: 0,
         buttonPixel: [210, 219, 227, 255],
+        backgroundPixel: [215, 221, 227, 255], editorPixel: [244, 246, 248, 255],
+        footerPixel: [168, 180, 191, 255], buttonbarPixel: [215, 221, 227, 255],
     });
     expect(result.released).toMatchObject({
         accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
         buttonPixel: [243, 251, 235, 255],
+        backgroundPixel: [240, 246, 234, 255], editorPixel: [252, 254, 250, 255],
+        footerPixel: [214, 226, 203, 255], buttonbarPixel: [240, 246, 234, 255],
     });
     expect(result.updatedDefaults).toMatchObject({
         accent: "#fedcba", base: "#edcbaf", settingsButtons: 0,
         buttonPixel: [251, 243, 236, 255],
+        backgroundPixel: [245, 239, 234, 255], editorPixel: [254, 252, 250, 255],
+        footerPixel: [225, 214, 204, 255], buttonbarPixel: [245, 239, 234, 255],
     });
 });
 

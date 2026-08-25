@@ -61,11 +61,11 @@ describe('HeaderComponent', () => {
         ).map((part) => [part.dataset.mascotPart, part.getAttribute('fill')]);
 
         expect(fills).toEqual([
-            ['outer', 'var(--mascot-accent-color)'],
-            ['inner', 'var(--mascot-inner-color)'],
-            ['face', 'var(--mascot-face-color)'],
-            ['face', 'var(--mascot-face-color)'],
-            ['face', 'var(--mascot-face-color)'],
+            ['outer', 'var(--mascot-accent-color, #3FB57E)'],
+            ['inner', 'var(--mascot-inner-color, #EDFCF5)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
+            ['face', 'var(--mascot-face-color, #4D524F)'],
         ]);
     });
 
@@ -84,11 +84,11 @@ describe('HeaderComponent', () => {
         ).map((part) => part.getAttribute('fill'));
 
         expect(getFills()).toEqual([
-            'var(--mascot-accent-color)',
-            'var(--mascot-inner-color)',
-            'var(--mascot-face-color)',
-            'var(--mascot-face-color)',
-            'var(--mascot-face-color)',
+            'var(--mascot-accent-color, #3FB57E)',
+            'var(--mascot-inner-color, #EDFCF5)',
+            'var(--mascot-face-color, #4D524F)',
+            'var(--mascot-face-color, #4D524F)',
+            'var(--mascot-face-color, #4D524F)',
         ]);
         expect(new Set(getFills()).size).toBe(3);
     });

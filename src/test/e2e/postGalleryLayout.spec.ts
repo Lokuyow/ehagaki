@@ -54,6 +54,49 @@ async function waitForFrames(page: Page, count: number): Promise<void> {
 }
 
 test.describe('post gallery layout', () => {
+    test('normal app uses the shared Base non-button surfaces', async ({ page }) => {
+        await page.setViewportSize({ width: 900, height: 1600 });
+        await page.emulateMedia({ colorScheme: 'light' });
+        await page.goto('/ehagaki/');
+        await expect(page.getByRole('textbox', { name: '投稿エディター' })).toBeVisible();
+
+        const welcomeDialog = page.locator('.welcome-dialog');
+        if (await welcomeDialog.isVisible().catch(() => false)) {
+            await welcomeDialog.getByRole('button', { name: 'はじめる' }).click();
+        }
+
+        const result = await page.evaluate(() => {
+            document.documentElement.style.setProperty('--base-color-user', '#d9e8f2');
+            const colorToPixel = (color: string) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                const context = canvas.getContext('2d')!;
+                context.fillStyle = color;
+                context.fillRect(0, 0, 1, 1);
+                return Array.from(context.getImageData(0, 0, 1, 1).data);
+            };
+            const pixel = (selector: string) => {
+                const element = document.querySelector<HTMLElement>(selector);
+                if (!element) throw new Error(`Missing ${selector}`);
+                return colorToPixel(getComputedStyle(element).backgroundColor);
+            };
+            return {
+                background: pixel('.ehagaki-app-root'),
+                editor: pixel('.editor-container'),
+                footer: pixel('.footer-bar'),
+                buttonbar: pixel('.footer-button-bar'),
+            };
+        });
+
+        expect(result).toEqual({
+            background: [242, 245, 246, 255],
+            editor: [253, 254, 254, 255],
+            footer: [219, 224, 227, 255],
+            buttonbar: [242, 245, 246, 255],
+        });
+    });
+
     test('restores editor height immediately after gallery clear in the normal app', async ({ page }) => {
         await page.setViewportSize({ width: 900, height: 1600 });
         await page.goto('/ehagaki/');

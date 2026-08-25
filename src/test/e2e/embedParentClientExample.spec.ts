@@ -506,6 +506,10 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     const readFrameThemeUi = () => frame.locator("html").evaluate((html) => {
         const headerButton = html.querySelector<HTMLButtonElement>(".header-actions button")!;
         const settingsButton = html.querySelector<HTMLButtonElement>(".settings-btn")!;
+        const appRoot = html.querySelector<HTMLElement>(".ehagaki-app-root")!;
+        const editor = html.querySelector<HTMLElement>(".editor-container")!;
+        const footer = html.querySelector<HTMLElement>(".footer-bar")!;
+        const buttonbar = html.querySelector<HTMLElement>(".footer-button-bar")!;
         const mascot = html.querySelector<SVGElement>(".site-icon path")!;
         const colorToPixel = (color: string) => {
             const canvas = document.createElement("canvas");
@@ -523,6 +527,10 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
             headerBackground: getComputedStyle(headerButton).backgroundColor,
             settingsBackground,
             buttonPixel: colorToPixel(settingsBackground),
+            backgroundPixel: colorToPixel(getComputedStyle(appRoot).backgroundColor),
+            editorPixel: colorToPixel(getComputedStyle(editor).backgroundColor),
+            footerPixel: colorToPixel(getComputedStyle(footer).backgroundColor),
+            buttonbarPixel: colorToPixel(getComputedStyle(buttonbar).backgroundColor),
         };
     });
 
@@ -532,6 +540,10 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     expect(defaultUi.mascotFill).toBe("rgb(171, 205, 239)");
     expect(defaultUi.headerBackground).toBe(defaultUi.settingsBackground);
     expect(defaultUi.buttonPixel).toEqual([243, 251, 235, 255]);
+    expect(defaultUi.backgroundPixel).toEqual([240, 246, 234, 255]);
+    expect(defaultUi.editorPixel).toEqual([252, 254, 250, 255]);
+    expect(defaultUi.footerPixel).toEqual([214, 226, 203, 255]);
+    expect(defaultUi.buttonbarPixel).toEqual([240, 246, 234, 255]);
 
     await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
     await expect(frame.locator("#accent-color-input")).toBeAttached();
@@ -547,6 +559,10 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     expect(userUi.mascotFill).toBe("rgb(17, 34, 51)");
     expect(userUi.headerBackground).toBe(userUi.settingsBackground);
     expect(userUi.buttonPixel).toEqual([202, 206, 210, 255]);
+    expect(userUi.backgroundPixel).toEqual([209, 212, 215, 255]);
+    expect(userUi.editorPixel).toEqual([242, 243, 244, 255]);
+    expect(userUi.footerPixel).toEqual([156, 162, 168, 255]);
+    expect(userUi.buttonbarPixel).toEqual([209, 212, 215, 255]);
 
     await page.evaluate(() => {
         const iframe = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe")!;
@@ -564,6 +580,10 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     expect(forcedUi.mascotFill).toBe("rgb(52, 86, 120)");
     expect(forcedUi.headerBackground).toBe(forcedUi.settingsBackground);
     expect(forcedUi.buttonPixel).toEqual([210, 219, 227, 255]);
+    expect(forcedUi.backgroundPixel).toEqual([215, 221, 227, 255]);
+    expect(forcedUi.editorPixel).toEqual([244, 246, 248, 255]);
+    expect(forcedUi.footerPixel).toEqual([168, 180, 191, 255]);
+    expect(forcedUi.buttonbarPixel).toEqual([215, 221, 227, 255]);
     await expect.poll(() => page.evaluate(() => ({
         accent: localStorage.getItem("ehagaki.embed.storage.v1:accentColor"),
         base: localStorage.getItem("ehagaki.embed.storage.v1:baseColor"),
