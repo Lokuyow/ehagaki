@@ -381,20 +381,45 @@ describe('RelayNetworkFetcher', () => {
             expect(mockSubscription.unsubscribe).toHaveBeenCalled();
         });
 
-        it('タイムアウト時に適切に処理する', async () => {
-            // Backward Strategy: イベントなしでcompleteを呼ぶ
-            subscribeFn.mockImplementation((observer: any) => {
-                queueMicrotask(() => {
-                    observer.complete();
-                });
+        it('イベント終端がない場合は注入timerでtimeoutする', async () => {
+            let timeoutCallback: (() => void) | undefined;
+            mockSetTimeout.mockImplementation((callback: () => void) => {
+                timeoutCallback = callback;
+                return 'timeout-id';
+            });
+            subscribeFn.mockImplementation(() => mockSubscription);
+
+            const pending = fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com'], 1);
+            timeoutCallback?.();
+            const result = await pending;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('timeout');
+            expect(mockSubscription.unsubscribe).toHaveBeenCalled();
+            expect(mockClearTimeout).toHaveBeenCalledWith('timeout-id');
+        });
+
+        it('timeout後の遅延packetは結果とcleanupを変更しない', async () => {
+            let observer: any;
+            let timeoutCallback: (() => void) | undefined;
+            mockSetTimeout.mockImplementation((callback: () => void) => {
+                timeoutCallback = callback;
+                return 'timeout-id';
+            });
+            subscribeFn.mockImplementation((nextObserver: any) => {
+                observer = nextObserver;
                 return mockSubscription;
             });
 
-            const result = await fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com'], 1);
+            const pending = fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com']);
+            timeoutCallback?.();
+            await expect(pending).resolves.toMatchObject({ success: false, error: 'timeout' });
+            observer.next({ event: { kind: 10002, pubkey: 'testpubkey', tags: [['r', 'wss://late.example.com']] } });
+            observer.complete();
+            observer.error(new Error('late'));
 
-            expect(result.success).toBe(false);
-            expect(result.error).toBe('not_found');
-            expect(mockSubscription.unsubscribe).toHaveBeenCalled();
+            expect(mockSubscription.unsubscribe).toHaveBeenCalledOnce();
+            expect(mockClearTimeout).toHaveBeenCalledOnce();
         });
 
         it('終了済み relay だけの Kind 10002 を未取得として扱う', async () => {
@@ -432,6 +457,22 @@ describe('RelayNetworkFetcher', () => {
                 'Kind 10002取得エラー:',
                 expect.any(Error)
             );
+        });
+
+        it('正常終了時はtimeout timerをclearする', async () => {
+            let timeoutId: any;
+            mockSetTimeout.mockImplementation((callback: () => void) => {
+                timeoutId = 'timeout-id';
+                return timeoutId;
+            });
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => observer.complete());
+                return mockSubscription;
+            });
+
+            await expect(fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com']))
+                .resolves.toMatchObject({ success: false, error: 'not_found' });
+            expect(mockClearTimeout).toHaveBeenCalledWith(timeoutId);
         });
     });
 
@@ -482,6 +523,29 @@ describe('RelayNetworkFetcher', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('not_found');
+        });
+
+        it('イベント終端がない場合は注入timerでtimeoutし、遅延packetを無視する', async () => {
+            let observer: any;
+            let timeoutCallback: (() => void) | undefined;
+            mockSetTimeout.mockImplementation((callback: () => void) => {
+                timeoutCallback = callback;
+                return 'timeout-id';
+            });
+            subscribeFn.mockImplementation((nextObserver: any) => {
+                observer = nextObserver;
+                return mockSubscription;
+            });
+
+            const pending = fetcher.fetchKind3('testpubkey', ['wss://bootstrap.example.com']);
+            timeoutCallback?.();
+            await expect(pending).resolves.toMatchObject({ success: false, error: 'timeout' });
+            observer.next({ event: { kind: 3, pubkey: 'testpubkey', content: '{}' } });
+            observer.complete();
+            observer.error(new Error('late'));
+
+            expect(mockSubscription.unsubscribe).toHaveBeenCalledOnce();
+            expect(mockClearTimeout).toHaveBeenCalledOnce();
         });
 
         it('終了済み relay だけの Kind 3 を未取得として扱う', async () => {
@@ -704,6 +768,48 @@ describe('RelayManager統合テスト', () => {
             expect((mockDeps.console?.log as any).mock.calls.some(
                 (call: any[]) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
             )).toBe(true);
+        });
+
+        it('Kind 10002とKind 3のtimeout後にフォールバックへ進み、pendingにならない', async () => {
+            const timers: Array<() => void> = [];
+            const observers: any[] = [];
+            mockSetTimeout = vi.fn((callback: () => void) => {
+                timers.push(callback);
+                return timers.length;
+            });
+            mockClearTimeout = vi.fn();
+            mockRxNostr.use = vi.fn(() => ({
+                subscribe: (observer: any) => {
+                    observers.push(observer);
+                    return { unsubscribe: vi.fn() };
+                },
+            })) as any;
+            manager = new RelayManager(mockRxNostr, {
+                ...mockDeps,
+                setTimeoutFn: mockSetTimeout,
+                clearTimeoutFn: mockClearTimeout,
+            });
+
+            const pending = manager.fetchUserRelays('timeout-fallback-pubkey', {
+                forceRemote: true,
+                timeoutMs: 1,
+            });
+            await Promise.resolve();
+            expect(timers).toHaveLength(1);
+            timers[0]();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(timers).toHaveLength(2);
+            timers[1]();
+
+            await expect(pending).resolves.toMatchObject({
+                success: false,
+                source: 'fallback',
+                relayConfig: FALLBACK_RELAYS,
+            });
+            expect(mockRxNostr.use).toHaveBeenCalledTimes(2);
+            expect(observers).toHaveLength(2);
+            expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(FALLBACK_RELAYS);
         });
 
         it('終了済み relay だけの保存済み設定をキャッシュとして復元せず既存フォールバックへ進む', async () => {

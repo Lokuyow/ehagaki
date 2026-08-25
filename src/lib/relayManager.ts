@@ -135,8 +135,13 @@ export class RelayNetworkFetcher {
             let found = false;
             let resolved = false;
             let subscription: any = undefined;
+            let timeoutId: any = undefined;
 
             const cleanup = () => {
+                if (timeoutId !== undefined) {
+                    this.clearTimeoutFn(timeoutId);
+                    timeoutId = undefined;
+                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -152,6 +157,10 @@ export class RelayNetworkFetcher {
             };
 
             try {
+                timeoutId = this.setTimeoutFn(() => {
+                    safeResolve({ success: false, error: 'timeout' });
+                }, Math.max(1, timeoutMs));
+
                 subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
                     next: (packet: any) => {
                         if (resolved) return;
@@ -192,7 +201,13 @@ export class RelayNetworkFetcher {
                     }
                 });
 
+                if (resolved) {
+                    cleanup();
+                    return;
+                }
+
                 // リクエスト送信（untilパラメータで未来のイベントをキャプチャしない）
+                if (resolved) return;
                 rxReq.emit({
                     authors: [pubkeyHex],
                     kinds: [10002],
@@ -220,8 +235,13 @@ export class RelayNetworkFetcher {
             let found = false;
             let resolved = false;
             let subscription: any = undefined;
+            let timeoutId: any = undefined;
 
             const cleanup = () => {
+                if (timeoutId !== undefined) {
+                    this.clearTimeoutFn(timeoutId);
+                    timeoutId = undefined;
+                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -237,6 +257,10 @@ export class RelayNetworkFetcher {
             };
 
             try {
+                timeoutId = this.setTimeoutFn(() => {
+                    safeResolve({ success: false, error: 'timeout' });
+                }, Math.max(1, timeoutMs));
+
                 subscription = this.rxNostr.use(rxReq, { on: { relays } }).subscribe({
                     next: (packet: any) => {
                         if (resolved) return;
@@ -274,7 +298,13 @@ export class RelayNetworkFetcher {
                     }
                 });
 
+                if (resolved) {
+                    cleanup();
+                    return;
+                }
+
                 // リクエスト送信（untilパラメータで未来のイベントをキャプチャしない）
+                if (resolved) return;
                 rxReq.emit({
                     authors: [pubkeyHex],
                     kinds: [3],
