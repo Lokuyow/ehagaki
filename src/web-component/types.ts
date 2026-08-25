@@ -71,6 +71,8 @@ export interface EHagakiHostOwnedComposerOptions {
         metadata: Readonly<EHagakiHostMediaMetadata>,
         options: { signal: AbortSignal },
     ) => Promise<EHagakiHostMediaUploadResult> | EHagakiHostMediaUploadResult;
+    contentWarningEnabled?: boolean;
+    hashtagPinEnabled?: boolean;
 }
 
 export interface EHagakiCustomEmojiCatalogItem {

@@ -770,8 +770,11 @@
       content,
       hashtagTags: hashtagSnapshot.tags.map((tag) => [...tag]),
       hashtags: [...hashtagSnapshot.hashtags],
-      contentWarningEnabled: contentWarningStore.value,
-      contentWarningReason: contentWarningReasonStore.value,
+      contentWarningAvailable: hostOwnedConfig.contentWarningEnabled === true,
+      contentWarningEnabled: hostOwnedConfig.contentWarningEnabled === true && contentWarningStore.value,
+      contentWarningReason: hostOwnedConfig.contentWarningEnabled === true
+        ? contentWarningReasonStore.value
+        : "",
       emojiTags: extraction.emojiTags.map((tag) => [...tag]),
       mediaImetaMap: createHostOwnedMediaImetaMap(editorInstance),
       replyQuote: $state.snapshot(replyQuoteState.value),
@@ -836,7 +839,7 @@
       return;
     }
     if (currentEditor) {
-      const pinnedHashtags = hashtagPinStore.value
+      const pinnedHashtags = hostOwnedConfig?.hashtagPinEnabled === true && hashtagPinStore.value
         ? [...getHashtagDataSnapshot().hashtags]
         : [];
       currentEditor.chain().clearContent().run();

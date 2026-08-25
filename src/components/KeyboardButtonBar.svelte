@@ -25,6 +25,9 @@
         hasPostingCapability?: boolean;
         mediaEnabled?: boolean;
         customEmojiEnabled?: boolean;
+        customEmojiAvailable?: boolean;
+        contentWarningAvailable?: boolean;
+        hashtagPinAvailable?: boolean;
     }
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
 
@@ -36,6 +39,9 @@
         hasPostingCapability = false,
         mediaEnabled = true,
         customEmojiEnabled = true,
+        customEmojiAvailable = true,
+        contentWarningAvailable = true,
+        hashtagPinAvailable = true,
     }: Props = $props();
 
     // エディタ状態を取得
@@ -59,7 +65,7 @@
     });
 
     // Content Warning状態を取得
-    let contentWarningEnabled = $derived(contentWarningStore.value);
+    let contentWarningActive = $derived(contentWarningStore.value);
 
     // Content Warningトグル
     function toggleContentWarning() {
@@ -71,7 +77,7 @@
     }
 
     // ハッシュタグピン留め状態を取得
-    let hashtagPinEnabled = $derived(hashtagPinStore.value);
+    let hashtagPinActive = $derived(hashtagPinStore.value);
 
     // ハッシュタグピン留めトグル
     function toggleHashtagPin() {
@@ -251,22 +257,24 @@
                     </Tooltip.Portal>
                 </Tooltip.Root>
             {/if}
-            <Button
-                variant="footer"
-                contentLayout="icon"
-                className="custom-emoji-button"
-                selected={customEmojiPickerOpen}
-                disabled={!customEmojiEnabled || postStatus.sending}
-                onClick={() => {
-                    setCustomEmojiPickerOpen(!customEmojiPickerOpen);
-                }}
-                ariaLabel={$_("keyboardButtonBar.custom_emoji")}
-            >
-                <div
-                    class="custom-emoji-icon svg-icon"
-                    class:active={customEmojiPickerOpen}
-                ></div>
-            </Button>
+            {#if customEmojiAvailable}
+                <Button
+                    variant="footer"
+                    contentLayout="icon"
+                    className="custom-emoji-button"
+                    selected={customEmojiPickerOpen}
+                    disabled={!customEmojiEnabled || postStatus.sending}
+                    onClick={() => {
+                        setCustomEmojiPickerOpen(!customEmojiPickerOpen);
+                    }}
+                    ariaLabel={$_("keyboardButtonBar.custom_emoji")}
+                >
+                    <div
+                        class="custom-emoji-icon svg-icon"
+                        class:active={customEmojiPickerOpen}
+                    ></div>
+                </Button>
+            {/if}
         </div>
         <div class="button-group-center">
             {#if showProgressRing}
@@ -378,14 +386,15 @@
             </Tooltip.Root>
         </div>
         <div class="button-group-right">
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
+            {#if contentWarningAvailable}
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
                     {#snippet child({ props })}
                         {@const { onclick: tooltipOnclick, ...restProps } =
                             props}
                         <Button
                             variant="footer"
-                            selected={contentWarningEnabled}
+                            selected={contentWarningActive}
                             contentLayout="icon"
                             onClick={(e) => {
                                 toggleContentWarning();
@@ -401,22 +410,24 @@
                             <div class="content-warning-icon svg-icon"></div>
                         </Button>
                     {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal to={overlayTarget}>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("keyboardButtonBar.content_warning_tooltip")}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal to={overlayTarget}>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("keyboardButtonBar.content_warning_tooltip")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            {/if}
+            {#if hashtagPinAvailable}
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
                     {#snippet child({ props })}
                         {@const { onclick: tooltipOnclick, ...restProps } =
                             props}
                         <Button
                             variant="footer"
                             contentLayout="icon"
-                            selected={hashtagPinEnabled}
+                            selected={hashtagPinActive}
                             onClick={(e) => {
                                 toggleHashtagPin();
                                 if (typeof tooltipOnclick === "function") {
@@ -430,7 +441,7 @@
                         >
                             <div class="hashtag-pin-group">
                                 <div class="hashtag-icon svg-icon"></div>
-                                {#if hashtagPinEnabled}
+                                    {#if hashtagPinActive}
                                     <div class="thumbtack-icon svg-icon"></div>
                                 {:else}
                                     <div
@@ -440,13 +451,14 @@
                             </div>
                         </Button>
                     {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal to={overlayTarget}>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("keyboardButtonBar.hashtag_pin_tooltip")}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal to={overlayTarget}>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("keyboardButtonBar.hashtag_pin_tooltip")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            {/if}
         </div>
     </div>
 </div>

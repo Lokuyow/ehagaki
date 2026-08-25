@@ -27,9 +27,21 @@ function validateHostOwnedOptions(
     if (value.uploadMedia !== undefined && typeof value.uploadMedia !== "function") {
         throw new TypeError("uploadMedia must be a function when provided.");
     }
+    if (value.contentWarningEnabled !== undefined && typeof value.contentWarningEnabled !== "boolean") {
+        throw new TypeError("contentWarningEnabled must be a boolean when provided.");
+    }
+    if (value.hashtagPinEnabled !== undefined && typeof value.hashtagPinEnabled !== "boolean") {
+        throw new TypeError("hashtagPinEnabled must be a boolean when provided.");
+    }
     return {
         submit: value.submit,
         ...(value.uploadMedia ? { uploadMedia: value.uploadMedia } : {}),
+        ...(value.contentWarningEnabled !== undefined
+            ? { contentWarningEnabled: value.contentWarningEnabled }
+            : {}),
+        ...(value.hashtagPinEnabled !== undefined
+            ? { hashtagPinEnabled: value.hashtagPinEnabled }
+            : {}),
     };
 }
 

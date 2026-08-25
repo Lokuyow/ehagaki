@@ -269,6 +269,8 @@ composer.configureHostOwned({
     const result = await uploadFromHost(file, metadata, { signal });
     return { url: result.url, imeta: { alt: metadata.originalName } };
   },
+  contentWarningEnabled: true,
+  hashtagPinEnabled: true,
 });
 const customEmojisReady = composer.setCustomEmojis([
   { shortcode: 'wave', url: 'https://cdn.example/emoji/wave.webp' },
@@ -299,6 +301,14 @@ reject されます。`ehagaki-composer-context-updated`、clear、`whenReady()`
 Lite の `setCustomEmojis(catalog)` は Host-owned instance 専用のメモリ内 catalog を置換します。全 item を
 検証してから atomic に反映し、空配列は clear です。catalog は reconnect では保持し、別 element や
 self-publish mode の account-scoped catalog へは漏れません。
+
+Host-owned Lite は host が提供した optional feature だけを表示します。`uploadMedia` を省略すると media
+操作は表示されず、空または未設定の custom emoji catalog では custom emoji ボタンと picker は表示されません。
+`setCustomEmojis([])` は開いている picker も閉じ、後から non-empty catalog を設定すると再び利用できます。
+`contentWarningEnabled: true` と `hashtagPinEnabled: true` はそれぞれ Content Warning と hashtag pin の
+UI・状態・出力後処理を有効にします。未指定または `false` の場合は無効で、以前の mount から共有 store に
+残った状態も Lite の出力へ持ち越しません。hashtag pin が無効でも、本文の通常 hashtag 解析と
+composer-owned `t` tag は維持されます。
 
 ## 設定を変更する `setSettings()`
 

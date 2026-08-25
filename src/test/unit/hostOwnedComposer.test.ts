@@ -122,6 +122,23 @@ describe("Host-owned Composer output", () => {
         ]));
     });
 
+    it("does not add Content Warning output when the Lite feature is unavailable", async () => {
+        const output = await buildHostOwnedComposerOutput({
+            content: "#nsfw without CW UI",
+            hashtagTags: [["t", "nsfw"]],
+            hashtags: [],
+            contentWarningAvailable: false,
+            contentWarningEnabled: false,
+            contentWarningReason: "stale reason",
+            emojiTags: [],
+            mediaImetaMap: {},
+            replyQuote: { reply: null, quotes: [] },
+            channel: null,
+        });
+
+        expect(output.tags).toEqual([["t", "nsfw"]]);
+    });
+
     it("copies reference-only context even when no referenced event was hydrated", () => {
         const snapshot = createHostOwnedContextSnapshot({
             replyQuote: { reply, quotes: [] },

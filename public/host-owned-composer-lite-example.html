@@ -48,6 +48,8 @@
             return { eventId: 'a'.repeat(64) };
           },
           ...(mediaEnabled ? {
+            contentWarningEnabled: true,
+            hashtagPinEnabled: true,
             async uploadMedia(file, metadata, { signal }) {
               write('upload metadata:', metadata);
               if (signal.aborted || file.name.includes('fail')) {
@@ -57,9 +59,11 @@
             },
           } : {}),
         });
-        const emojisReady = composer.setCustomEmojis([
-          { shortcode: 'wave', url: 'https://example.invalid/emoji/wave.webp' },
-        ]);
+        const emojisReady = mediaEnabled
+          ? composer.setCustomEmojis([
+              { shortcode: 'wave', url: 'https://example.invalid/emoji/wave.webp' },
+            ])
+          : Promise.resolve();
         for (const name of ['ehagaki-ready', 'ehagaki-post-success', 'ehagaki-post-error', 'ehagaki-composer-context-updated']) {
           composer.addEventListener(name, (event) => write(name, event.detail));
         }

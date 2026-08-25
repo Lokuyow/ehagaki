@@ -148,6 +148,12 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(closedHostOwnedGeometry.buttonBarHeight).toBe(50);
         expect(Math.abs(closedHostOwnedGeometry.buttonBarBottom - closedHostOwnedGeometry.componentBottom)).toBeLessThanOrEqual(1);
         expect(closedHostOwnedGeometry.footerPresent).toBe(false);
+        await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .content-warning-icon")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .hashtag-icon")).toHaveCount(0);
+        await page.locator("#media").click();
+        await expect(page.locator("#status")).toHaveText("ready (media-enabled)");
         await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
             const icons = [
@@ -195,9 +201,6 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("#log")).toContainText("ehagaki-composer-context-updated");
         await page.locator("ehagaki-composer button.post-button").click();
         await expect(page.locator("#log")).toContainText("submit output:");
-        await page.locator("#media").click();
-        await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":true}");
-        await expect(page.locator("#status")).toHaveText("ready (media-enabled)");
         const iconStatuses = await page.evaluate(async () => Promise.all([
             "paper-plane-solid-full.svg",
             "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
