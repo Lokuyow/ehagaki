@@ -1,6 +1,8 @@
 # eHagaki Composer Web Component ガイド
 
-Web Component 版では、`<ehagaki-composer>` を一般の Web ページへ直接配置できます。
+Web Component 版には、eHagaki が account/auth、Relay、署名、publish を所有する **Full self-publish** と、既存クライアントが投稿処理を所有する **Host-owned Composer Lite** の2 distributionがあります。方式選択から始める場合は先に [eHagaki 埋め込み・統合ガイド](./EMBEDDING.md) を参照してください。Lite はこの文書の [Full self-publish と Lite Host-owned](#full-self-publish-と-lite-host-owned) 節から利用します。
+
+どちらも `<ehagaki-composer>` を一般の Web ページへ直接配置できます。
 iframe 版のように別 document と `postMessage` で通信するのではなく、ホストページと同じ
 Window realm で動作し、ホストの JavaScript からは通常の要素・メソッド・CustomEvent として
 扱います。iframe の parent-client auth/RPC や `postMessage` は使用しません。
@@ -16,9 +18,12 @@ DOM へ直接組み込みたい場合に適しています。
 作成・破棄・再作成、設定、投稿コンテキスト、各種イベント、2 個目のインスタンスの拒否、
 CSS Custom Properties を確認できます。
 
-## 最小構成で埋め込む
+## 最小構成で埋め込む（Full self-publish）
 
-最初に Web Component のモジュールを読み込み、`asset-base` を指定した
+以下は Full self-publish distribution の最小例です。Host-owned Lite の最小例と責務は
+[Full self-publish と Lite Host-owned](#full-self-publish-と-lite-host-owned) を参照してください。
+
+最初に Full Web Component のモジュールを読み込み、`asset-base` を指定した
 `<ehagaki-composer>` をページへ追加します。その後、要素を取得して `whenReady()` を待ちます。
 以下は GitHub Pages で公開されている実際の配布物を使う最小例です。
 
@@ -89,9 +94,11 @@ Web Component の配布物には、PWA の manifest、共有ターゲット、eH
 iframe 連携は含まれません。
 
 - `npm run build:web-component` は、単独配布物を
-  `dist-web-component/ehagaki-composer.js` とその関連アセットとして生成します。
+  `dist-web-component/ehagaki-composer.js` とその関連アセットとして生成します。Host-owned Lite は
+  `dist-web-component/host-owned/ehagaki-composer.js` と `host-owned/` 配下の関連アセットとして生成します。
 - `npm run build` は通常の PWA build に加えて Web Component build を実行し、
-  `dist-web-component/` の内容を `dist/web-component/` に組み立てます。
+  Full の `dist-web-component/` を `dist/web-component/` に、Lite の
+  `dist-web-component/host-owned/` を `dist/web-component/host-owned/` に組み立てます。
 - eHagaki サイトと一緒に配信する場合は、`dist/web-component/` のディレクトリ構成を保ったまま
   サイトの出力として配信し、上記の GitHub Pages 例のように `/web-component/` を
   `asset-base` に指定します。
@@ -676,7 +683,7 @@ Base Colorは指定色でsurfaceを直接塗りつぶさず、light/darkそれ�
 個別overrideのtokenだけが上書きされます。
 
 | CSS Custom Property | 用途 |
-| --- | --- |
+| --- | --- | --- | --- |
 | `--ehagaki-background` | メイン背景 |
 | `--ehagaki-text` | 文字色 |
 | `--ehagaki-border` | 境界線 |
@@ -744,18 +751,19 @@ console.log('NIP-07 available:', nip07Available);
 
 ## iframe 版との使い分け
 
-| 項目 | iframe | Web Component |
-| --- | --- | --- |
-| DOM 統合 | 別 document。`postMessage` で連携 | 同じ document の要素として配置 |
-| スタイル | iframe 内 document の CSS 境界 | ShadowRoot。CSS Custom Properties を公開 |
-| Window realm | ホストとは分離 | ホストと共有 |
-| NIP-07 | iframe の認証経路または parent-client 連携 | ホストの `window.nostr` を直接利用 |
-| ローカル nsec | 利用可能 | 利用不可 |
-| parent-client auth/RPC | 利用可能 | 使用しない |
-| `postMessage` | 使用する | 使用しない |
-| 保存 | 親側の storage / IndexedDB 委譲を構成可能 | ホストオリジンに保存。専用 localStorage namespace を使用 |
-| 秘密情報の隔離 | origin 境界を設計可能 | 隔離されない。信頼できるホスト向け |
-| ライフサイクル | iframe の生成・再読み込みなど | DOM の追加・削除・再作成 |
+| 項目 | iframe | Full Web Component | Host-owned Composer Lite |
+| --- | --- | --- | --- |
+| DOM 統合 | 別 document。`postMessage` で連携 | 同じ document の要素として配置 | 同じ document の要素として配置 |
+| スタイル | iframe 内 document の CSS 境界 | ShadowRoot。CSS Custom Properties を公開 | ShadowRoot。CSS Custom Properties を公開 |
+| Window realm | ホストとは分離 | ホストと共有 | ホストと共有 |
+| NIP-07 | iframe の認証経路または parent-client 連携 | ホストの `window.nostr` を直接利用 | Lite は認証しない |
+| ローカル nsec | 利用可能 | 利用不可 | 利用しない |
+| parent-client auth/RPC | 利用可能 | 使用しない | 使用しない |
+| `postMessage` | 使用する | 使用しない | 使用しない |
+| 保存 | 親側の storage / IndexedDB 委譲を構成可能 | ホストオリジンに保存。専用 localStorage namespace を使用 | auth/account/session、Relay、履歴、draftを持たない |
+| 投稿所有者 | eHagaki または parent signer | eHagaki が self-publish | host が event構築・署名・publish |
+| 秘密情報の隔離 | origin 境界を設計可能 | 隔離されない。信頼できるホスト向け | 隔離されない。信頼できるホスト向け |
+| ライフサイクル | iframe の生成・再読み込みなど | DOM の追加・削除・再作成 | DOM の追加・削除・再作成 |
 
 iframe の通信、parent storage、parent-client auth/RPC が必要な場合は、[iframe 埋め込みガイド](./IFRAME_EMBEDDING.md)
 を参照してください。
@@ -785,16 +793,11 @@ Web Component 自身は eHagaki Service Worker を登録せず、Service Worker 
 ホストページに別の Service Worker が登録されている場合、その Service Worker は通常の HTTP fetch、
 画像、アップロードなどを観測できます。
 
-ただし、Service Worker の `fetch` イベントだけでは Nostr WebSocket のリレー通信の傍受を
-証明できません。Web Component はホストの Window realm を共有し、現在の
-`initializeNostrSession()` 経路は `websocketCtor` なしで rx-nostr を生成します。そのため、
-rx-nostr は relay を開くとき `globalThis.WebSocket` を使います。モジュールの import 前にホストが
-`globalThis.WebSocket` の wrapper を導入した場合、その wrapper が適用される境界になります。
-
-このリリースはブラウザレベルの relay-interceptor 保証をうたいません。通常のアプリのリレー経路
-には認証済みセッションが必要で、既存アプリケーションには認証情報不要で決定的な
-ローカルリレー経路が見つかっていません。専用の relay-interceptor API は提供せず、Issue #89 の
-relay-interceptor proof も未完了です。
+Service Worker の `fetch` イベントだけでは WebSocket を傍受しません。Web Component はホストの
+Window realm を共有するため、ホストが Web Component module import 前に
+`globalThis.WebSocket` の wrapper / interceptor を設置した場合は、その境界を実際の relay connection
+が通ります。これは NIP-07 の復元、relay 初期化、rx-nostr、browser WebSocket 経路を通る E2E で確認済みです。
+専用の relay-interceptor API 自体を公開しているわけではありません。
 
 ## CORS / CSP / 動的chunk / Worker
 
@@ -819,7 +822,7 @@ CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがあ�
 
 ## 実動サンプル
 
-公開サンプルは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
+Full の公開サンプルは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
 です。通常モードではページを開くと、既定の同梱モジュールとコンポーネントが自動的に接続されます。
 任意のモジュールを試す場合は URL に `?manual=1` を付けて manual mode に入り、module URL を編集してから
 `Create / Mount` を押してください。manual mode では明示的な操作までモジュールを読み込みません。
@@ -838,5 +841,5 @@ CSP の `worker-src` では、動画圧縮が遅延ロードするworkerがあ�
 だけを記録します。外部モジュールはホストページと同じ JavaScript 権限で実行されるため、
 module URL と `asset-base` には信頼できる URL だけを指定してください。
 
-Lite の Host-owned sample では text-only / media-enabled の切替、catalog、context、host submit/upload
+Host-owned Lite の公開サンプルは [https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html) です。Lite の sample では text-only / media-enabled の切替、catalog、context、host submit/upload
 の成功・失敗を、既存の Parent Client sample とは独立して確認できます。

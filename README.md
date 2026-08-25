@@ -20,8 +20,7 @@ eHagaki（えはがき）は、画像・動画圧縮機能付きの投稿専用N
 - **ドラフト機能**: 投稿内容を下書きとして保存し、後から編集・投稿が可能
 - **リプライ・引用・チャンネル投稿**: 各種URLクエリや`nostr:` URIを通じたリプライ・引用投稿（NIP-10, NIP-18）に対応。パブリックチャット（NIP-28）のチャンネルへの投稿もサポート
 - **Content Warning (CW)**: センシティブなコンテンツ（NIP-36）に対する警告の設定が可能
-- **iframe埋め込み**: 他アプリの投稿フォームとして組み込んで利用するためのAPIを提供
-- **Web Component埋め込み**: 同一Window realmで利用できる `ehagaki-composer` と公開method/event/style APIを提供
+- **埋め込み**: iframe、Full Web Component、Host-owned Composer Lite Web Componentの3方式を提供
 - **多言語対応**: 日本語・英語に対応（ブラウザ設定から自動判定）
 
 ## URLクエリ
@@ -58,27 +57,17 @@ https://lokuyow.github.io/ehagaki/?quote=note1...
 - 本文中の `nostr:` URI からの引用ではプレビューは表示されません
 - ×ボタンでリプライ/引用をキャンセルし、通常投稿に戻れます
 
-## iframe埋め込み
+## 埋め込み
 
-eHagaki の iframe 埋め込み方法、親クライアント連携ログイン、`postMessage` 仕様は公開ガイドに分離しました。
+iframe、Full Web Component、Host-owned Composer Lite Web Componentの方式選択と最小例は、公式入口の [docs/EMBEDDING.md](docs/EMBEDDING.md) を参照してください。
 
-[docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md) を参照してください。
+- iframeの詳細仕様: [docs/IFRAME_EMBEDDING.md](docs/IFRAME_EMBEDDING.md)
+- Web Component API詳細: [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md)
+- iframe live sample: [embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html)
+- Full Web Component live sample: [web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html)
+- Host-owned Lite live sample: [host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html)
 
-親ページ連携の動作確認用サンプルは [https://lokuyow.github.io/ehagaki/embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html) からも直接アクセスできます。
-
-このガイドには次の内容をまとめています。
-
-- 基本の iframe 埋め込み
-- リプライ / 複数引用状態での起動
-- 親クライアント連携ログイン
-- `ehagaki.embed` envelope と `post.success` / `post.error` の受信方法
-- `auth.login` / `auth.request` / `auth.result` / `auth.error` / `rpc.request` の流れ
-
-## Web Component埋め込み
-
-Web Component版の公開API、lifecycle、context/settings、CustomEvent、CSS Custom Properties、storageとtrust boundaryは [docs/WEB_COMPONENT.md](docs/WEB_COMPONENT.md) にまとめています。
-
-実際に `Create / Mount`、`Destroy / Unmount`、再生成、設定・context更新、2個目instanceの拒否、event log、host側styleを操作するlive sampleは [https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html](https://lokuyow.github.io/ehagaki/web-component-parent-client-example.html) から確認できます。
+既存のNostrクライアントがaccount、signer、event構築、publishを所有している場合はHost-owned Lite、eHagakiにself-publishまで所有させる場合はFull、origin境界やparent-client連携が必要な場合はiframeが候補です。iframe/Web Componentともhost側からAccent/Base themeを指定できます。優先順位とAPIの詳細は各ガイドを参照してください。
 
 Web Componentではiframeのparent-client auth/RPCや `postMessage` を使いません。ホストと同じWindow realm / originで動作するためローカルnsec認証には対応せず、NIP-07はhostの `window.nostr` を直接利用し、NIP-46は埋め込まれたeHagakiのUIから利用します。通常版/PWAとiframe版では従来どおりnsec認証を利用できます。
 
