@@ -565,9 +565,16 @@
             <section class="panel timeline-panel">
                 <div class="timeline-header">
                     <h2>簡易タイムライン</h2>
-                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。reply / quote と本文は iframe ready 後に postMessage
-                        で同期し、未接続時だけ URL
-                        クエリ付きで再読み込みします。</p>
+                    <p class="small">指定したrelayの最新 kind 1 を表示します。現在の接続先はステータスに表示されます。reply / quote と本文は iframe ready 後に
+                        postMessage で同期し、未接続時だけ URL クエリ付きで再読み込みします。</p>
+                </div>
+
+                <div class="field">
+                    <label for="timeline-relay">タイムライン relay URL</label>
+                    <input id="timeline-relay" type="text" inputmode="url" list="timeline-relay-suggestions"
+                        spellcheck="false" autocomplete="off" value="wss://nos.lol">
+                    <datalist id="timeline-relay-suggestions"></datalist>
+                    <p class="small">ws:// または wss:// のrelayを入力して「タイムライン更新」を押してください。適用したrelayは次回入力時の候補に保存されます。</p>
                 </div>
 
                 <div class="timeline-toolbar">
