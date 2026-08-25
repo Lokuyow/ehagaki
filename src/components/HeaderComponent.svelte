@@ -8,7 +8,6 @@
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { getAppRuntimeEnvironment } from "../lib/appRuntimeEnvironment";
-    import { themeColorStore } from "../stores/themeColorStore.svelte";
 
     const OFFICIAL_EHAGAKI_URL = "https://lokuyow.github.io/ehagaki/";
 
@@ -46,18 +45,9 @@
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
     let canResetCurrentPostContent = $derived(canResetPostContent ?? canPost);
-    let hasCustomAccent = $derived(
-        themeColorStore.isAvailable && themeColorStore.accentColor !== null,
-    );
-    let mascotOuterFill = $derived(
-        hasCustomAccent ? "var(--mascot-accent-color)" : "#3FB57E",
-    );
-    let mascotInnerFill = $derived(
-        hasCustomAccent ? "var(--mascot-inner-color)" : "#EDFCF5",
-    );
-    let mascotFaceFill = $derived(
-        hasCustomAccent ? "var(--mascot-face-color)" : "#4D524F",
-    );
+    const mascotOuterFill = "var(--mascot-accent-color)";
+    const mascotInnerFill = "var(--mascot-inner-color)";
+    const mascotFaceFill = "var(--mascot-face-color)";
     let compactSuccessText = $derived(
         $_("balloonMessage.success.compact_post_success") || "投稿完了",
     );
@@ -81,7 +71,6 @@
             >
                 <svg
                     class="site-icon"
-                    class:custom-accent={hasCustomAccent}
                     viewBox="0 0 700 700"
                     aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
@@ -273,26 +262,20 @@
     }
 
     .site-icon {
-        --mascot-accent-color: var(--accent-color);
+        --mascot-accent-color: var(--accent-color-custom, #3FB57E);
         --mascot-inner-color: color-mix(
             in srgb,
-            var(--accent-color) 15%,
+            var(--mascot-accent-color) 15%,
             white 85%
         );
         --mascot-face-color: color-mix(
             in srgb,
-            var(--accent-color) 40%,
+            var(--mascot-accent-color) 40%,
             black 60%
         );
         width: 52px;
         height: 52px;
         margin-top: auto;
-    }
-
-    .site-icon:not(.custom-accent) {
-        --mascot-accent-color: #3FB57E;
-        --mascot-inner-color: #EDFCF5;
-        --mascot-face-color: #4D524F;
     }
 
     .compact-message {

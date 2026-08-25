@@ -503,8 +503,35 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
         accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
     }));
+    const readFrameThemeUi = () => frame.locator("html").evaluate((html) => {
+        const headerButton = html.querySelector<HTMLButtonElement>(".header-actions button")!;
+        const settingsButton = html.querySelector<HTMLButtonElement>(".settings-btn")!;
+        const mascot = html.querySelector<SVGElement>(".site-icon path")!;
+        const colorToPixel = (color: string) => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return Array.from(context.getImageData(0, 0, 1, 1).data);
+        };
+        const settingsBackground = getComputedStyle(settingsButton).backgroundColor;
+        return {
+            headerBorder: getComputedStyle(headerButton).borderTopColor,
+            mascotFill: getComputedStyle(mascot).fill,
+            headerBackground: getComputedStyle(headerButton).backgroundColor,
+            settingsBackground,
+            buttonPixel: colorToPixel(settingsBackground),
+        };
+    });
 
     await expect.poll(readFrameColors).toMatchObject({ accent: "#abcdef", base: "#cdefab" });
+    const defaultUi = await readFrameThemeUi();
+    expect(defaultUi.headerBorder).toBe("rgb(171, 205, 239)");
+    expect(defaultUi.mascotFill).toBe("rgb(171, 205, 239)");
+    expect(defaultUi.headerBackground).toBe(defaultUi.settingsBackground);
+    expect(defaultUi.buttonPixel).toEqual([243, 251, 235, 255]);
 
     await frame.locator("button.settings-btn").evaluate((button) => (button as HTMLButtonElement).click());
     await expect(frame.locator("#accent-color-input")).toBeAttached();
@@ -515,6 +542,11 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     await page.getByRole("button", { name: "iframe を再読み込み" }).click();
     await expect(frame.locator(".tiptap-editor")).toBeVisible();
     await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
+    const userUi = await readFrameThemeUi();
+    expect(userUi.headerBorder).toBe("rgb(17, 34, 51)");
+    expect(userUi.mascotFill).toBe("rgb(17, 34, 51)");
+    expect(userUi.headerBackground).toBe(userUi.settingsBackground);
+    expect(userUi.buttonPixel).toEqual([202, 206, 210, 255]);
 
     await page.evaluate(() => {
         const iframe = document.querySelector<HTMLIFrameElement>("#ehagaki-iframe")!;
@@ -527,6 +559,11 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
         }, new URL(iframe.src).origin);
     });
     await expect.poll(readFrameColors).toMatchObject({ accent: "#345678", base: "#456789" });
+    const forcedUi = await readFrameThemeUi();
+    expect(forcedUi.headerBorder).toBe("rgb(52, 86, 120)");
+    expect(forcedUi.mascotFill).toBe("rgb(52, 86, 120)");
+    expect(forcedUi.headerBackground).toBe(forcedUi.settingsBackground);
+    expect(forcedUi.buttonPixel).toEqual([210, 219, 227, 255]);
     await expect.poll(() => page.evaluate(() => ({
         accent: localStorage.getItem("ehagaki.embed.storage.v1:accentColor"),
         base: localStorage.getItem("ehagaki.embed.storage.v1:baseColor"),
@@ -543,4 +580,5 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
         }, new URL(iframe.src).origin);
     });
     await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
+    await expect.poll(readFrameThemeUi).toEqual(userUi);
 });

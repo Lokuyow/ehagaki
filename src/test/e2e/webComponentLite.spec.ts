@@ -166,10 +166,29 @@ test("Lite applies host default and forced colors without exposing the settings 
 
         const readColors = () => {
             const style = getComputedStyle(composer);
+            const themeTarget = composer.shadowRoot!.querySelector<HTMLElement>(".ehagaki-app-root")!;
+            const colorToPixel = (color: string) => {
+                const probe = document.createElement("div");
+                probe.style.backgroundColor = color;
+                probe.style.position = "absolute";
+                probe.style.width = "1px";
+                probe.style.height = "1px";
+                themeTarget.append(probe);
+                const resolvedColor = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                const canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                const context = canvas.getContext("2d")!;
+                context.fillStyle = resolvedColor;
+                context.fillRect(0, 0, 1, 1);
+                return Array.from(context.getImageData(0, 0, 1, 1).data);
+            };
             return {
                 accent: style.getPropertyValue("--accent-color").trim().toLowerCase(),
                 base: style.getPropertyValue("--base-color").trim().toLowerCase(),
                 settingsButtons: composer.shadowRoot!.querySelectorAll("button.settings-btn").length,
+                buttonPixel: colorToPixel("var(--surface-button)"),
             };
         };
 
@@ -187,10 +206,22 @@ test("Lite applies host default and forced colors without exposing the settings 
         return { defaults, forced, released, updatedDefaults };
     }, { componentOrigin });
 
-    expect(result.defaults).toMatchObject({ accent: "#abcdef", base: "#cdefab", settingsButtons: 0 });
-    expect(result.forced).toMatchObject({ accent: "#345678", base: "#456789", settingsButtons: 0 });
-    expect(result.released).toMatchObject({ accent: "#abcdef", base: "#cdefab", settingsButtons: 0 });
-    expect(result.updatedDefaults).toMatchObject({ accent: "#fedcba", base: "#edcbaf", settingsButtons: 0 });
+    expect(result.defaults).toMatchObject({
+        accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
+        buttonPixel: [243, 251, 235, 255],
+    });
+    expect(result.forced).toMatchObject({
+        accent: "#345678", base: "#456789", settingsButtons: 0,
+        buttonPixel: [210, 219, 227, 255],
+    });
+    expect(result.released).toMatchObject({
+        accent: "#abcdef", base: "#cdefab", settingsButtons: 0,
+        buttonPixel: [243, 251, 235, 255],
+    });
+    expect(result.updatedDefaults).toMatchObject({
+        accent: "#fedcba", base: "#edcbaf", settingsButtons: 0,
+        buttonPixel: [251, 243, 236, 255],
+    });
 });
 
 test("Lite custom emoji catalog controls the button and closes an open picker when cleared", async ({ page }) => {

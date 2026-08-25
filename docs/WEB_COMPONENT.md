@@ -707,6 +707,8 @@ Accent / Baseの優先順位は、`--ehagaki-accent-color` / `--ehagaki-base-col
 Accent / Baseをどちらも指定しない場合は、現在のeHagakiの既定色が使われます。`themeMode` の
 `system` / `light` / `dark` とhostへ適用される `color-scheme` に応じてsurfaceが切り替わります。
 
+Accent / Baseからneutral surface・button surfaceを生成する式とmix率は、standalone・iframe・Full Web Component・Host-owned Lite Web Componentで共通です。そのため、既存の`--ehagaki-base-color`利用時に従来版と見た目が変わる場合があります。これは意図したbreaking visual changeです。`--ehagaki-background`などの詳細CSS overrideは、生成後の対象tokenを従来どおり直接上書きします。
+
 ## ログイン・認証
 
 Web Component 専用の signer callback/provider API はありません。

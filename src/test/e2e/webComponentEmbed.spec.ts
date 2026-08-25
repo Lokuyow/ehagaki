@@ -553,6 +553,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
         const shell = shadow.querySelector<HTMLElement>('.ehagaki-web-component-shell')!;
         const appRoot = shadow.querySelector<HTMLElement>(".ehagaki-app-root")!;
         const primary = shadow.querySelector<HTMLElement>("button.primary")!;
+        const settingsButton = shadow.querySelector<HTMLElement>("button.settings-btn")!;
         const colorToPixel = (color: string) => {
             const canvas = document.createElement("canvas");
             canvas.width = 1;
@@ -569,6 +570,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
             shellBackground: getComputedStyle(shell).backgroundColor,
             shellPixel: colorToPixel(getComputedStyle(shell).backgroundColor),
             primaryBackground: getComputedStyle(primary).backgroundColor,
+            buttonPixel: colorToPixel(getComputedStyle(settingsButton).backgroundColor),
             textColor: getComputedStyle(appRoot).color,
             text: style.getPropertyValue("--text").trim(),
             link: style.getPropertyValue("--link").trim(),
@@ -578,6 +580,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
 
     const defaultLight = await readTheme();
     expect(defaultLight.shellPixel).toEqual([240, 240, 240, 255]);
+    expect(defaultLight.buttonPixel).toEqual([255, 255, 255, 255]);
     expect(defaultLight.primaryBackground).not.toBe("rgba(0, 0, 0, 0)");
 
     await page.locator("ehagaki-composer").evaluate(async (element) => {
@@ -600,6 +603,7 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     expect(themedLight.base.toLowerCase()).toContain("#d9e8f2");
     expect(themedLight.shellPixel).not.toEqual(defaultLight.shellPixel);
     expect(themedLight.primaryBackground).not.toBe(defaultLight.primaryBackground);
+    expect(themedLight.buttonPixel).toEqual([246, 249, 252, 255]);
     expect(themedLight.text).toBe(defaultLight.text);
     expect(themedLight.link).toBe(defaultLight.link);
     expect(themedLight.danger).toBe(defaultLight.danger);
@@ -627,7 +631,17 @@ test("applies Accent/Base themes while preserving default and meaning colors", a
     const themedDark = await readTheme();
     expect(themedDark.shellPixel).not.toEqual(themedLight.shellPixel);
     expect(themedDark.textColor).not.toBe(themedLight.textColor);
+    expect(themedDark.buttonPixel).toEqual([91, 94, 96, 255]);
     expect(themedDark.danger).toBe(themedLight.danger);
+
+    await composer.evaluate(async (element) => {
+        element.style.removeProperty("--ehagaki-accent-color");
+        element.style.removeProperty("--ehagaki-base-color");
+        await (element as HTMLElement & { setSettings(value: { themeMode: "light" }): Promise<string[]> })
+            .setSettings({ themeMode: "light" });
+    });
+    const standardLight = await readTheme();
+    expect(standardLight.buttonPixel).toEqual(defaultLight.buttonPixel);
 });
 
 test("layers Web Component user, default, and forced colors across updates and recreation", async ({ page }) => {
@@ -645,6 +659,29 @@ test("layers Web Component user, default, and forced colors across updates and r
                 base: style.getPropertyValue("--base-color").trim().toLowerCase(),
             };
         };
+        const readThemeUi = (composer: HTMLElement) => {
+            const shadow = composer.shadowRoot!;
+            const headerButton = shadow.querySelector<HTMLButtonElement>(".header-actions button")!;
+            const settingsButton = shadow.querySelector<HTMLButtonElement>(".settings-btn")!;
+            const mascot = shadow.querySelector<SVGElement>(".site-icon path")!;
+            const colorToPixel = (color: string) => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 1;
+                canvas.height = 1;
+                const context = canvas.getContext("2d")!;
+                context.fillStyle = color;
+                context.fillRect(0, 0, 1, 1);
+                return Array.from(context.getImageData(0, 0, 1, 1).data);
+            };
+            const settingsBackground = getComputedStyle(settingsButton).backgroundColor;
+            return {
+                headerBorder: getComputedStyle(headerButton).borderTopColor,
+                mascotFill: getComputedStyle(mascot).fill,
+                headerBackground: getComputedStyle(headerButton).backgroundColor,
+                settingsBackground,
+                buttonPixel: colorToPixel(settingsBackground),
+            };
+        };
         const create = async (defaults: { accent: string; base: string }) => {
             const composer = document.createElement("ehagaki-composer") as HTMLElement & {
                 whenReady(): Promise<void>;
@@ -658,12 +695,15 @@ test("layers Web Component user, default, and forced colors across updates and r
 
         const first = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
         const user = readColors(first);
+        const userUi = readThemeUi(first);
         first.style.setProperty("--ehagaki-accent-color", "#345678");
         first.style.setProperty("--ehagaki-base-color", "#456789");
         const forced = readColors(first);
+        const forcedUi = readThemeUi(first);
         first.style.removeProperty("--ehagaki-accent-color");
         first.style.removeProperty("--ehagaki-base-color");
         const released = readColors(first);
+        const releasedUi = readThemeUi(first);
 
         const settingsButton = first.shadowRoot!.querySelector<HTMLButtonElement>("button.settings-btn")!;
         settingsButton.click();
@@ -692,38 +732,69 @@ test("layers Web Component user, default, and forced colors across updates and r
         };
 
         first.remove();
+        const second = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
+        const restoredColors = readColors(second);
+        second.remove();
         localStorage.removeItem(`${storagePrefix}accentColor`);
         localStorage.removeItem(`${storagePrefix}baseColor`);
-        const second = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
-        const defaultColors = readColors(second);
-        second.style.setProperty("--ehagaki-default-accent-color", "#FEDCBA");
-        second.style.setProperty("--ehagaki-default-base-color", "#EDCBAF");
-        const updatedDefaults = readColors(second);
-        second.style.removeProperty("--ehagaki-default-accent-color");
-        second.style.removeProperty("--ehagaki-default-base-color");
-        const standardColors = readColors(second);
+        const third = await create({ accent: "#ABCDEF", base: "#CDEFAB" });
+        const defaultColors = readColors(third);
+        const defaultUi = readThemeUi(third);
+        third.style.setProperty("--ehagaki-default-accent-color", "#FEDCBA");
+        third.style.setProperty("--ehagaki-default-base-color", "#EDCBAF");
+        const updatedDefaults = readColors(third);
+        const updatedDefaultUi = readThemeUi(third);
+        third.style.removeProperty("--ehagaki-default-accent-color");
+        third.style.removeProperty("--ehagaki-default-base-color");
+        const standardColors = readColors(third);
+        const standardUi = readThemeUi(third);
 
         return {
             user,
+            userUi,
             forced,
+            forcedUi,
             released,
+            releasedUi,
             afterUserUpdate,
             storedAfterUserUpdate,
+            restoredColors,
             defaultColors,
+            defaultUi,
             updatedDefaults,
+            updatedDefaultUi,
             standardColors,
+            standardUi,
         };
     });
 
     expect(result.user).toMatchObject({ accent: "#123456", base: "#234567" });
+    expect(result.userUi.headerBorder).toBe("rgb(18, 52, 86)");
+    expect(result.userUi.mascotFill).toBe("rgb(18, 52, 86)");
+    expect(result.userUi.headerBackground).toBe(result.userUi.settingsBackground);
+    expect(result.userUi.buttonPixel).toEqual([202, 210, 219, 255]);
     expect(result.forced).toMatchObject({ accent: "#345678", base: "#456789" });
+    expect(result.forcedUi.headerBorder).toBe("rgb(52, 86, 120)");
+    expect(result.forcedUi.mascotFill).toBe("rgb(52, 86, 120)");
+    expect(result.forcedUi.headerBackground).toBe(result.forcedUi.settingsBackground);
+    expect(result.forcedUi.buttonPixel).toEqual([210, 219, 227, 255]);
     expect(result.released).toMatchObject({ accent: "#123456", base: "#234567" });
+    expect(result.releasedUi).toEqual(result.userUi);
     expect(result.afterUserUpdate).toMatchObject({ accent: "#56789a", base: "#6789ab" });
     expect(result.storedAfterUserUpdate).toEqual({ accent: "#56789a", base: "#6789ab" });
+    expect(result.restoredColors).toMatchObject({ accent: "#56789a", base: "#6789ab" });
     expect(result.defaultColors).toMatchObject({ accent: "#abcdef", base: "#cdefab" });
+    expect(result.defaultUi.headerBorder).toBe("rgb(171, 205, 239)");
+    expect(result.defaultUi.mascotFill).toBe("rgb(171, 205, 239)");
+    expect(result.defaultUi.buttonPixel).toEqual([243, 251, 235, 255]);
     expect(result.updatedDefaults).toMatchObject({ accent: "#fedcba", base: "#edcbaf" });
+    expect(result.updatedDefaultUi.headerBorder).toBe("rgb(254, 220, 186)");
+    expect(result.updatedDefaultUi.mascotFill).toBe("rgb(254, 220, 186)");
+    expect(result.updatedDefaultUi.buttonPixel).toEqual([251, 243, 236, 255]);
     expect(result.standardColors.accent).not.toBe("#fedcba");
     expect(result.standardColors.base).toBe("");
+    expect(result.standardUi.headerBorder).toBe("rgb(229, 56, 56)");
+    expect(result.standardUi.mascotFill).toBe("rgb(63, 181, 126)");
 });
 
 test("keeps bounded container layout inside the component while host page scrolls", async ({ page }) => {
@@ -1560,14 +1631,33 @@ test("keeps a large Web Component post history list scrolling above its footer",
         await import(`${window.__componentOrigin}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             whenReady(): Promise<void>;
+            setSettings(value: { themeMode: "light" }): Promise<string[]>;
         };
         composer.style.width = "360px";
         composer.style.height = "520px";
         document.body.append(composer);
         await composer.whenReady();
+        await composer.setSettings({ themeMode: "light" });
         const shadow = composer.shadowRoot!;
         const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         for (let frame = 0; frame < 8; frame += 1) await nextFrame();
+        const postHistoryButton = shadow.querySelector<HTMLButtonElement>(".post-history-btn");
+        const settingsButton = shadow.querySelector<HTMLButtonElement>(".settings-btn")!;
+        const profileButton = shadow.querySelector<HTMLButtonElement>(".profile-display");
+        if (!postHistoryButton || !profileButton) {
+            throw new Error("authenticated footer buttons did not render");
+        }
+        composer.style.setProperty("--ehagaki-base-color", "#d9e8f2");
+        await nextFrame();
+        const profileStyle = getComputedStyle(profileButton);
+        const buttonColors = {
+            postHistory: getComputedStyle(postHistoryButton).backgroundColor,
+            settings: getComputedStyle(settingsButton).backgroundColor,
+            profile: profileStyle.backgroundColor,
+            profileToken: profileStyle.getPropertyValue("--btn-bg").trim(),
+            profileEditorToken: profileStyle.getPropertyValue("--surface-editor").trim(),
+            postHistoryToken: getComputedStyle(postHistoryButton).getPropertyValue("--btn-bg").trim(),
+        };
 
         const now = Date.now();
         const records = Array.from({ length: 70 }, (_, index) => {
@@ -1646,6 +1736,7 @@ test("keeps a large Web Component post history list scrolling above its footer",
                 footerTop: footer.getBoundingClientRect().top,
             },
             componentRect,
+            buttonColors,
         };
     }, { componentStoragePrefix, testPubkeyHex });
 
@@ -1665,6 +1756,10 @@ test("keeps a large Web Component post history list scrolling above its footer",
     expect(result.afterScroll.list.bottom).toBeCloseTo(result.beforeScroll.list.bottom, 0);
     expect(result.afterScroll.footer.bottom).toBeCloseTo(component.bottom, 0);
     expect(result.afterScroll.footerTop).toBeCloseTo(result.beforeScroll.footerTop, 0);
+    expect(result.buttonColors.postHistory).toBe(result.buttonColors.settings);
+    expect(result.buttonColors.profileToken).toBe(result.buttonColors.profileEditorToken);
+    expect(result.buttonColors.profileToken).not.toBe(result.buttonColors.postHistoryToken);
+    expect(result.buttonColors.postHistory).not.toBe(result.buttonColors.profile);
 });
 
 test("keeps the normal app Portal Button scope", async ({ page }) => {
