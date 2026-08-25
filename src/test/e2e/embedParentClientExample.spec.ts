@@ -125,6 +125,27 @@ test("loads and switches the configurable timeline relay without mixing events",
     await expect(page.locator("#timeline-status")).toContainText(secondRelayOrigin);
 });
 
+test("preserves reply selection and iframe preview when refreshing the same relay", async ({ page }) => {
+    await page.goto("/ehagaki/public/embed-parent-client-example.html");
+    const frame = page.frameLocator("#ehagaki-iframe");
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+
+    const relayInput = page.getByLabel("タイムライン relay URL");
+    await relayInput.fill(relayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(firstTimelineEvent.content);
+
+    await page.getByRole("button", { name: "reply テスト" }).click();
+    await expect(page.locator("#timeline-selection")).not.toContainText("reply: なし");
+    await expect(frame.locator(".reply-quote-preview")).toHaveCount(1);
+
+    await relayInput.fill(relayOrigin);
+    await page.getByRole("button", { name: "タイムライン更新" }).click();
+    await expect(page.locator(".timeline-content")).toContainText(firstTimelineEvent.content);
+    await expect(page.locator("#timeline-selection")).not.toContainText("reply: なし");
+    await expect(frame.locator(".reply-quote-preview")).toHaveCount(1);
+});
+
 test("uses the active timeline relay in nevent hints and stores unique relay suggestions", async ({ page }) => {
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const relayInput = page.getByLabel("タイムライン relay URL");

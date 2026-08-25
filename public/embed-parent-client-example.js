@@ -1259,6 +1259,7 @@ async function loadTimeline() {
         return;
     }
 
+    const relayChanged = relay !== activeTimelineRelay;
     const generation = ++timelineLoadGeneration;
     activeTimelineRelay = relay;
     timelineRelayInput.value = relay;
@@ -1270,25 +1271,27 @@ async function loadTimeline() {
         timelineSubscription.close("timeline-refresh");
         timelineSubscription = null;
     }
-    const hadReplyQuoteSelection = selectedReplyReference !== null || selectedQuoteReferences.length > 0;
-    timelineEvents = [];
-    selectedReplyReference = null;
-    selectedQuoteReferences = [];
-    if (hadReplyQuoteSelection) {
-        urlContextOverrides.replyQuote = true;
-    }
-    renderTimeline();
-    if (hadReplyQuoteSelection) {
-        sendRuntimeComposerMessage(
-            "composer.setContext",
-            buildComposerContextPayload({ includeReplyQuote: true }),
-            {
-                actionLabel: "relay変更時の reply / quote 解除",
-                infoMessage: "relay変更に合わせて reply / quote 選択を解除しました",
-                detail: { relay },
-                failureMessage: "relay変更時の reply / quote 解除に失敗しました",
-            },
-        );
+    if (relayChanged) {
+        const hadReplyQuoteSelection = selectedReplyReference !== null || selectedQuoteReferences.length > 0;
+        timelineEvents = [];
+        selectedReplyReference = null;
+        selectedQuoteReferences = [];
+        if (hadReplyQuoteSelection) {
+            urlContextOverrides.replyQuote = true;
+        }
+        renderTimeline();
+        if (hadReplyQuoteSelection) {
+            sendRuntimeComposerMessage(
+                "composer.setContext",
+                buildComposerContextPayload({ includeReplyQuote: true }),
+                {
+                    actionLabel: "relay変更時の reply / quote 解除",
+                    infoMessage: "relay変更に合わせて reply / quote 選択を解除しました",
+                    detail: { relay },
+                    failureMessage: "relay変更時の reply / quote 解除に失敗しました",
+                },
+            );
+        }
     }
 
     try {
