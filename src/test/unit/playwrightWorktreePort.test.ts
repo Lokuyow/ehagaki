@@ -135,6 +135,7 @@ describe('Playwright config connection values', () => {
                 '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
+                '**/postHistoryDialog.spec.ts',
             ]);
         } finally {
             if (originalPortOverride === undefined) {

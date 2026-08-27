@@ -2562,6 +2562,9 @@ export function usePostHistoryListing({
         const hasReachedVisibleEnd = !!contiguousProgress
             && contiguousProgress.reachedVisibleCount >=
                 contiguousProgress.totalVisibleCount;
+        if (hasReachedVisibleEnd) {
+            state.hasOlderLocal = false;
+        }
         if (metrics) {
             metrics.loadedPostsAfterLength = mergedResult.posts.length;
             metrics.visibleOldestAfter =
