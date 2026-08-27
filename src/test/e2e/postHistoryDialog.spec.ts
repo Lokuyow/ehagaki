@@ -23,6 +23,7 @@ type HarnessState = {
     importEventJsonl: string;
     sparseVisiblePostContent: string;
     sparseStoredPostContent: string;
+    sparseStoredPostEventId: string;
     absoluteOldestPostContent: string;
 };
 
@@ -412,6 +413,32 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByText(harness.sparseStoredPostContent, { exact: true })).toBeVisible();
         await page.getByRole('button', { name: '最新へ戻る' }).click();
         await expect(page.getByText(harness.sparseVisiblePostContent, { exact: true })).toBeVisible();
+    });
+
+    test('search result jumps to the exact saved post and aligns it to the viewport top', async ({ page }) => {
+        const harness = await gotoSparseHarness(page);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
+        await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
+
+        const targetItem = page.locator(
+            `.post-history-item[data-post-history-event-id="${harness.sparseStoredPostEventId}"]`,
+        );
+        await expect(targetItem).toBeVisible();
+        await targetItem.getByRole('button', { name: 'アクションを表示' }).click();
+        await page.getByRole('menuitem', { name: '前後の投稿を表示' }).click();
+
+        await expect(page.getByRole('searchbox', { name: '検索' })).toHaveCount(0);
+        await expect(targetItem).toBeVisible();
+        await expect.poll(async () => {
+            const snapshot = await getPostSnapshotByEventId(
+                page,
+                harness.sparseStoredPostEventId,
+            );
+            return snapshot?.offsetTop ?? Number.POSITIVE_INFINITY;
+        }).toBeLessThanOrEqual(1);
+        await expect(page.getByRole('button', { name: '最新へ戻る' })).toBeVisible();
     });
 
     test('saved sparse pages can jump to the absolute local oldest and scroll to the bottom', async ({

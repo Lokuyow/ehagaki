@@ -61,6 +61,7 @@
         importEventJsonl: string;
         sparseVisiblePostContent: string;
         sparseStoredPostContent: string;
+        sparseStoredPostEventId: string;
         absoluteOldestPostContent: string;
     };
 
@@ -80,10 +81,11 @@
         const timestampMs = STARTED_AT_MS - index * 24 * 60 * 60 * 1000;
         const timestampSeconds = Math.floor(timestampMs / 1000);
         const label = index < SEARCH_MATCHING_POSTS ? "alpha" : "beta";
+        const eventId = buildHexId(index, "aa");
 
         return {
-            id: `playwright-post-${index}`,
-            eventId: buildHexId(index, "aa"),
+            id: eventId,
+            eventId,
             pubkeyHex: HARNESS_PUBKEY,
             kind: 1,
             content: `${label} post ${index + 1}`,
@@ -339,6 +341,7 @@
         importEventJsonl: IMPORT_EVENT_JSONL,
         sparseVisiblePostContent: sparseVisiblePost.content,
         sparseStoredPostContent: sparseStoredPost.content,
+        sparseStoredPostEventId: sparseStoredPost.eventId,
         absoluteOldestPostContent: absoluteOldestPost.content,
     };
 
@@ -407,6 +410,7 @@
             importEventJsonl: IMPORT_EVENT_JSONL,
             sparseVisiblePostContent: sparseVisiblePost.content,
             sparseStoredPostContent: sparseStoredPost.content,
+            sparseStoredPostEventId: sparseStoredPost.eventId,
             absoluteOldestPostContent: absoluteOldestPost.content,
         };
     });

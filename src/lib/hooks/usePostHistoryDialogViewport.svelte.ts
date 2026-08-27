@@ -271,6 +271,19 @@ export function usePostHistoryDialogViewport({
         });
     }
 
+    function scrollHistoryEventToTopSoon(eventId: string): void {
+        void tick().then(() => {
+            if (!getShow()) {
+                return;
+            }
+
+            restoreHistoryScrollAnchor({
+                eventId,
+                offsetTop: 0,
+            });
+        });
+    }
+
     function captureHistoryScrollAnchor(): PostHistoryDialogScrollAnchor | null {
         const container = getContainer();
         if (!container) {
@@ -508,6 +521,7 @@ export function usePostHistoryDialogViewport({
         handleHistoryScroll,
         resetHistoryScrollSoon,
         resetHistoryScrollToBottomSoon,
+        scrollHistoryEventToTopSoon,
         captureHistoryScrollAnchor,
         restoreHistoryScrollAnchor,
         preserveThreadParentToggleScroll,

@@ -1333,17 +1333,18 @@
         history.resetSearchState();
     }
 
-    async function handleJumpToPostDate(
+    async function handleShowSurroundingPosts(
         post: PostHistoryRecord,
     ): Promise<void> {
+        const changed = await history.jumpToEventId(post.eventId);
+        if (!changed) {
+            return;
+        }
+
         historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
         activeUtilityPanel = "none";
         history.resetSearchState();
-
-        const changed = await history.jumpToCreatedAt(post.createdAt);
-        if (changed) {
-            historyViewport.resetHistoryScrollSoon();
-        }
+        historyViewport.scrollHistoryEventToTopSoon(post.eventId);
     }
 
     function toggleJumpDate(): void {
@@ -2141,7 +2142,7 @@
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
                                                                         onSelect={() =>
-                                                                            void handleJumpToPostDate(
+                                                                            void handleShowSurroundingPosts(
                                                                                 post,
                                                                             )}
                                                                     >
@@ -2151,7 +2152,7 @@
                                                                         ></div>
                                                                         <span>
                                                                             {$_(
-                                                                                "postHistory.jumpToPostDate",
+                                                                                "postHistory.showSurroundingPosts",
                                                                             )}
                                                                         </span>
                                                                     </DropdownMenu.Item>
@@ -2616,7 +2617,7 @@
                                                             <DropdownMenu.Item
                                                                 class="menu-action-button"
                                                                 onSelect={() =>
-                                                                    void handleJumpToPostDate(
+                                                                    void handleShowSurroundingPosts(
                                                                         post,
                                                                     )}
                                                             >
@@ -2626,7 +2627,7 @@
                                                                 ></div>
                                                                 <span>
                                                                     {$_(
-                                                                        "postHistory.jumpToPostDate",
+                                                                        "postHistory.showSurroundingPosts",
                                                                     )}
                                                                 </span>
                                                             </DropdownMenu.Item>

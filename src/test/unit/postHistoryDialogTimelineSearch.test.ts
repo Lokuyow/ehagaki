@@ -15,6 +15,7 @@ import {
     repositoryMock,
     replyRepairServiceMock,
     resetPostHistoryDialogHarness,
+    visibleRangeRepositoryMock,
     waitForSearchDebounce,
 } from './postHistoryDialogTestHarness';
 import { readPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
@@ -929,9 +930,15 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
-    it('検索結果投稿のメニューから投稿の日付へ飛ぶと検索を閉じて通常履歴へ移動する', async () => {
+    it('検索結果投稿のメニューから前後の投稿を表示すると対象eventIdの履歴へ移動する', async () => {
         const jumpCreatedAt = 1_690_100_000;
 
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: 1_690_000_000,
+            updatedAt: 1,
+        });
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'normal-timeline', content: '通常履歴' }),
@@ -949,11 +956,21 @@ describe('PostHistoryDialog timeline search', () => {
             total: 1,
             hasNext: false,
         });
-        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValueOnce([
             createRecord({
-                eventId: 'jumped-timeline',
-                content: '日付ジャンプ後',
+                eventId: 'jumped-timeline-newer',
+                content: '対象より新しい投稿',
                 createdAt: jumpCreatedAt,
+            }),
+            createRecord({
+                eventId: 'search-hit',
+                content: '検索ヒット',
+                createdAt: jumpCreatedAt,
+            }),
+            createRecord({
+                eventId: 'jumped-timeline-older',
+                content: '対象より古い投稿',
+                createdAt: jumpCreatedAt - 1,
             }),
         ]);
 
@@ -975,18 +992,126 @@ describe('PostHistoryDialog timeline search', () => {
 
         const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
         await fireEvent.click(actionTrigger);
-        await fireEvent.click(await screen.findByRole('menuitem', { name: '投稿の日付へ飛ぶ' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
 
         await waitFor(() => {
-            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith({
+            expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledWith({
+                pubkeyHex: PUBKEY_HEX,
+                visibleUntil: 1_690_000_000,
+                eventId: 'search-hit',
+                limit: 150,
+                keepAbove: 50,
+            });
+            expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledTimes(1);
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+            expect(screen.getByText('対象より新しい投稿')).toBeTruthy();
+            expect(screen.getByText('対象より古い投稿')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
+
+    it('検索結果が現在のvisible range外でもeventId周辺のsparse jumpへ移動する', async () => {
+        const target = createRecord({
+            eventId: 'saved-outside-range-target',
+            content: '表示範囲外の検索対象',
+            createdAt: 1_690_100_000,
+        });
+        visibleRangeRepositoryMock.get.mockResolvedValue({
+            pubkeyHex: PUBKEY_HEX,
+            kindsKey: '1,42',
+            visibleUntil: target.createdAt + 1,
+            updatedAt: 1,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'range-newest', content: '現在の履歴' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [target],
+            total: 1,
+            hasNext: false,
+        });
+        repositoryMock.getVisibleChunkAroundEventId
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                createRecord({ eventId: 'outside-newer', content: '周辺の新しい投稿' }),
+                target,
+                createRecord({ eventId: 'outside-older', content: '周辺の古い投稿' }),
+            ]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'target' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
+
+        await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
+
+        await waitFor(() => {
+            expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenNthCalledWith(1, {
+                pubkeyHex: PUBKEY_HEX,
+                visibleUntil: target.createdAt + 1,
+                eventId: target.eventId,
+                limit: 150,
+                keepAbove: 50,
+            });
+            expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenNthCalledWith(2, {
                 pubkeyHex: PUBKEY_HEX,
                 visibleUntil: null,
-                createdAt: jumpCreatedAt,
-                limit: 50,
+                eventId: target.eventId,
+                limit: 150,
+                keepAbove: 50,
             });
             expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('日付ジャンプ後')).toBeTruthy();
+            expect(screen.getByText(target.content)).toBeTruthy();
         });
+
+        view.unmount();
+    });
+
+    it('検索対象eventIdを取得できない場合は検索状態を維持して日付fallbackしない', async () => {
+        const target = createRecord({
+            eventId: 'missing-search-target',
+            content: '取得不能な検索対象',
+            createdAt: 1_690_100_000,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'failure-normal', content: '通常履歴' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [target],
+            total: 1,
+            hasNext: false,
+        });
+        repositoryMock.getVisibleChunkAroundEventId.mockResolvedValue([]);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose: vi.fn(), pubkeyHex: PUBKEY_HEX },
+        });
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'missing' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
+
+        await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
+            expect(screen.getByText(target.content)).toBeTruthy();
+        });
+        expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
+        expect(screen.queryByText('通常履歴')).toBeNull();
 
         view.unmount();
     });
