@@ -18,8 +18,13 @@
 
     const HARNESS_SECRET_KEY = generateSecretKey();
     const HARNESS_PUBKEY = getPublicKey(HARNESS_SECRET_KEY);
+    const isInfiniteScrollScenario = new URLSearchParams(window.location.search).has("infinite-scroll");
     const isSparseOldestScenario = new URLSearchParams(window.location.search).has("sparse-oldest");
-    const TOTAL_POSTS = isSparseOldestScenario ? 120 : 70;
+    const TOTAL_POSTS = isInfiniteScrollScenario
+        ? 251
+        : isSparseOldestScenario
+          ? 120
+          : 70;
     const SEARCH_MATCHING_POSTS = 55;
     const isSparseScenario = new URLSearchParams(window.location.search).has("sparse")
         || isSparseOldestScenario;
@@ -63,6 +68,8 @@
         sparseStoredPostContent: string;
         sparseStoredPostEventId: string;
         absoluteOldestPostContent: string;
+        infiniteScrollEventIds: string[];
+        infiniteScrollOldestPostContent: string;
     };
 
     type HarnessWindow = Window &
@@ -343,6 +350,8 @@
         sparseStoredPostContent: sparseStoredPost.content,
         sparseStoredPostEventId: sparseStoredPost.eventId,
         absoluteOldestPostContent: absoluteOldestPost.content,
+        infiniteScrollEventIds: posts.map((post) => post.eventId),
+        infiniteScrollOldestPostContent: absoluteOldestPost.content,
     };
 
     onMount(async () => {
@@ -412,6 +421,8 @@
             sparseStoredPostContent: sparseStoredPost.content,
             sparseStoredPostEventId: sparseStoredPost.eventId,
             absoluteOldestPostContent: absoluteOldestPost.content,
+            infiniteScrollEventIds: posts.map((post) => post.eventId),
+            infiniteScrollOldestPostContent: absoluteOldestPost.content,
         };
     });
 </script>

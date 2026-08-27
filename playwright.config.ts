@@ -50,6 +50,7 @@ export default defineConfig({
                 '**/webComponentLite.spec.ts',
                 '**/webComponentParentClientExample.spec.ts',
                 '**/postEditorSending.spec.ts',
+                '**/postHistoryDialog.spec.ts',
             ],
             use: {
                 ...devices['iPhone 13'],

@@ -307,6 +307,11 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
+    let isAutoLoadingOlder = $state(false);
+    let autoLoadOlderAwaitingExit = false;
+    let autoLoadOlderSentinelIsIntersecting = false;
+    const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
     const previewCollapse = usePostHistoryPreviewCollapse({
@@ -627,6 +632,57 @@
         };
     });
 
+    $effect(() => {
+        const sentinel = autoLoadOlderSentinel;
+        const root = historyContainer;
+        const enabled =
+            show
+            && !!sentinel
+            && !!root
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && history.state.hasOlderLocal
+            && !history.isRefetchingAroundCurrentView;
+
+        if (!enabled || !supportsAutoLoadOlder) {
+            autoLoadOlderAwaitingExit = false;
+            autoLoadOlderSentinelIsIntersecting = false;
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const isIntersecting = entries.some(
+                    (entry) => entry.isIntersecting,
+                );
+                autoLoadOlderSentinelIsIntersecting = isIntersecting;
+
+                if (!isIntersecting) {
+                    if (
+                        autoLoadOlderAwaitingExit
+                        && !isAutoLoadingOlder
+                    ) {
+                        autoLoadOlderAwaitingExit = false;
+                    }
+                    return;
+                }
+
+                void handleAutoLoadOlder();
+            },
+            {
+                root,
+                threshold: 0,
+            },
+        );
+        observer.observe(sentinel);
+
+        return () => {
+            observer.disconnect();
+            autoLoadOlderAwaitingExit = false;
+            autoLoadOlderSentinelIsIntersecting = false;
+        };
+    });
+
     onDestroy(() => {
         cancelExport();
         resetPendingDeletionRequests();
@@ -800,6 +856,41 @@
 
         if (changed && isSearchMode) {
             historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+        }
+    }
+
+    function canAutoLoadOlderPosts(): boolean {
+        return show
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && history.state.hasOlderLocal
+            && !history.isRefetchingAroundCurrentView;
+    }
+
+    async function handleAutoLoadOlder(): Promise<void> {
+        if (
+            isAutoLoadingOlder
+            || autoLoadOlderAwaitingExit
+            || !canAutoLoadOlderPosts()
+        ) {
+            return;
+        }
+
+        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+        isAutoLoadingOlder = true;
+        autoLoadOlderAwaitingExit = true;
+
+        try {
+            const changed = await history.loadOlder();
+            if (changed && show) {
+                await tick();
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+            }
+        } finally {
+            isAutoLoadingOlder = false;
+            if (!autoLoadOlderSentinelIsIntersecting) {
+                autoLoadOlderAwaitingExit = false;
+            }
         }
     }
 
@@ -1992,7 +2083,7 @@
         class="post-history-container"
         bind:this={historyContainer}
         onscroll={historyViewport.handleHistoryScroll}
-        aria-busy={isHistoryListLoading ? "true" : "false"}
+        aria-busy={isHistoryListLoading || isAutoLoadingOlder ? "true" : "false"}
     >
         {#if history.posts.length === 0 && showDelayedListLoading}
             <div class="post-history-list-loading" aria-hidden="true">
@@ -2843,6 +2934,23 @@
                 {/each}
             </ul>
 
+            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && history.state.hasOlderLocal && !history.showSavedPostsBoundary}
+                <div
+                    bind:this={autoLoadOlderSentinel}
+                    class="post-history-auto-load-sentinel"
+                    aria-hidden="true"
+                >
+                    {#if isAutoLoadingOlder}
+                        <LoadingPlaceholder
+                            variant="spinner"
+                            showLoader={true}
+                            loaderSize={24}
+                            ariaHidden={true}
+                        />
+                    {/if}
+                </div>
+            {/if}
+
             {#if history.isShowingSavedOlderPosts}
                 <div class="post-history-sparse-state" role="status">
                     <p>{$_("postHistory.savedOlderPostsShowing")}</p>
@@ -2885,7 +2993,24 @@
                         </Button>
                     </div>
                 </div>
-            {:else if history.isSearchMode ? history.canLoadOlder : history.state.hasOlderLocal}
+            {:else if history.isSearchMode && history.canLoadOlder}
+                <div class="post-history-nav-row post-history-nav-row-bottom">
+                    <Button
+                        type="button"
+                        variant="default"
+                        className="post-history-nav-button"
+                        contentLayout="iconText"
+                        disabled={!history.canLoadOlder}
+                        onClick={() => void handleLoadOlder()}
+                    >
+                        <div
+                            class="keyboard-arrow-down-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
+                        {getLoadOlderLabel()}
+                    </Button>
+                </div>
+            {:else if !history.isSearchMode && history.state.hasOlderLocal && (history.state.listingMode === "sparse" || !supportsAutoLoadOlder)}
                 <div class="post-history-nav-row post-history-nav-row-bottom">
                     <Button
                         type="button"
@@ -3455,6 +3580,12 @@
         padding-top: 0;
     }
 
+    .post-history-auto-load-sentinel {
+        display: grid;
+        min-height: 1px;
+        place-items: center;
+    }
+
     :global(.post-history-nav-button.primary) {
         opacity: 1;
     }
@@ -3503,6 +3634,7 @@
         min-height: 0;
         width: 100%;
         overflow-y: auto;
+        overflow-anchor: none;
     }
 
     .empty-state {
