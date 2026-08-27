@@ -309,6 +309,25 @@ describe("post history child prefetch reveal intent", () => {
         harness.dispose();
     });
 
+    it("metadata batch read失敗時もcached direct replyを表示しつつ再検証する", async () => {
+        const harness = createGraph(Date.now());
+        harness.getFetchMetadataForParents.mockRejectedValueOnce(
+            new Error("metadata batch read failed"),
+        );
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+
+        harness.graph.toggleChildren(harness.post);
+
+        await vi.waitFor(() => {
+            expect(harness.graph.getAnchorState(harness.post).replyNodeStates[0]?.node.eventId)
+                .toBe(childId);
+            expect(countFetchCallsForParent(harness, anchorId)).toBe(1);
+        });
+        harness.resolvePrefetch({ events: [] });
+        harness.dispose();
+    });
+
     it("prefetch中の手動展開を保持し、重複REQなしで取得後に表示する", async () => {
         const harness = createGraph();
         await startChildPrefetch(harness);

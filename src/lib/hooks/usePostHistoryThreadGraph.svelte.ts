@@ -2152,6 +2152,7 @@ export function usePostHistoryThreadGraph({
         reactionRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
         directReplyRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
         metadataByParentId: Map<string, PostHistoryDirectReplyFetchMetadata>;
+        metadataReadFailedParentIds: Set<string>;
         cachedReactionProfilesByPubkey: Record<string, ProfileData | null>;
         knownNodeProfilesByPubkey: Map<string, ProfileData | null>;
     }): void {
@@ -2239,6 +2240,7 @@ export function usePostHistoryThreadGraph({
             childIdsByParentId.set(parentEventId, childEventIds);
 
             const metadata = input.metadataByParentId.get(parentEventId) ?? null;
+            const metadataReadFailed = input.metadataReadFailedParentIds.has(parentEventId);
             if (acceptedRecords.length === 0 && !metadata) {
                 continue;
             }
@@ -2260,9 +2262,11 @@ export function usePostHistoryThreadGraph({
                         lastFetchedChildrenAt: null,
                     }
                     : buildChildrenLoadedExpansionState(currentExpansion, {
-                        lastFetchedChildrenAt: metadata
-                            ? resolveEffectiveDirectReplyFetchedAt(metadata)
-                            : resolveCachedReplyFetchedAt(acceptedRecords),
+                        lastFetchedChildrenAt: metadataReadFailed
+                            ? null
+                            : metadata
+                                ? resolveEffectiveDirectReplyFetchedAt(metadata)
+                                : resolveCachedReplyFetchedAt(acceptedRecords),
                     });
             expansionsChanged = true;
         }
@@ -2394,20 +2398,27 @@ export function usePostHistoryThreadGraph({
                 }
 
                 let metadataRecords: PostHistoryDirectReplyFetchMetadata[] = [];
+                const metadataReadFailedParentIds = new Set<string>();
                 try {
-                    metadataRecords = directReplyFetchMetadataRepositoryImpl
-                        .getForParentEventIds
-                        ? await directReplyFetchMetadataRepositoryImpl
-                            .getForParentEventIds(preloadParentIds)
-                        : (
-                            await Promise.all(preloadParentIds.map((parentEventId) =>
-                                readDirectReplyFetchMetadata(parentEventId),
-                            ))
-                        ).flatMap(({ metadata, readFailed }) =>
-                            !readFailed && metadata ? [metadata] : [],
-                        );
+                    if (directReplyFetchMetadataRepositoryImpl.getForParentEventIds) {
+                        metadataRecords = await directReplyFetchMetadataRepositoryImpl
+                            .getForParentEventIds(preloadParentIds);
+                    } else {
+                        const metadataResults = await Promise.all(preloadParentIds.map(
+                            (parentEventId) => readDirectReplyFetchMetadata(parentEventId),
+                        ));
+                        metadataRecords = metadataResults.flatMap(({ metadata, readFailed }, index) => {
+                            if (readFailed) {
+                                metadataReadFailedParentIds.add(preloadParentIds[index]!);
+                                return [];
+                            }
+                            return metadata ? [metadata] : [];
+                        });
+                    }
                 } catch {
-                    metadataRecords = [];
+                    for (const parentEventId of preloadParentIds) {
+                        metadataReadFailedParentIds.add(parentEventId);
+                    }
                 }
                 if (!ensureActive()) {
                     return;
@@ -2512,6 +2523,7 @@ export function usePostHistoryThreadGraph({
                     metadataByParentId: new Map(
                         metadataRecords.map((metadata) => [metadata.parentEventId, metadata]),
                     ),
+                    metadataReadFailedParentIds,
                     cachedReactionProfilesByPubkey,
                     knownNodeProfilesByPubkey,
                 });
