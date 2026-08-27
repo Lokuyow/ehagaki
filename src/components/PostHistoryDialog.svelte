@@ -1333,7 +1333,7 @@
         history.resetSearchState();
     }
 
-    async function handleJumpToPost(
+    async function handleShowSurroundingPosts(
         post: PostHistoryRecord,
     ): Promise<void> {
         const changed = await history.jumpToEventId(post.eventId);
@@ -2142,7 +2142,7 @@
                                                                     <DropdownMenu.Item
                                                                         class="menu-action-button"
                                                                         onSelect={() =>
-                                                                            void handleJumpToPost(
+                                                                            void handleShowSurroundingPosts(
                                                                                 post,
                                                                             )}
                                                                     >
@@ -2152,7 +2152,7 @@
                                                                         ></div>
                                                                         <span>
                                                                             {$_(
-                                                                                "postHistory.jumpToPost",
+                                                                                "postHistory.showSurroundingPosts",
                                                                             )}
                                                                         </span>
                                                                     </DropdownMenu.Item>
@@ -2617,7 +2617,7 @@
                                                             <DropdownMenu.Item
                                                                 class="menu-action-button"
                                                                 onSelect={() =>
-                                                                    void handleJumpToPost(
+                                                                    void handleShowSurroundingPosts(
                                                                         post,
                                                                     )}
                                                             >
@@ -2627,7 +2627,7 @@
                                                                 ></div>
                                                                 <span>
                                                                     {$_(
-                                                                        "postHistory.jumpToPost",
+                                                                        "postHistory.showSurroundingPosts",
                                                                     )}
                                                                 </span>
                                                             </DropdownMenu.Item>

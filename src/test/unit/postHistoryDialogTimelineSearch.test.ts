@@ -930,7 +930,7 @@ describe('PostHistoryDialog timeline search', () => {
         view.unmount();
     });
 
-    it('検索結果投稿のメニューからこの投稿へ移動すると対象eventIdの履歴へ移動する', async () => {
+    it('検索結果投稿のメニューから前後の投稿を表示すると対象eventIdの履歴へ移動する', async () => {
         const jumpCreatedAt = 1_690_100_000;
 
         visibleRangeRepositoryMock.get.mockResolvedValue({
@@ -992,7 +992,7 @@ describe('PostHistoryDialog timeline search', () => {
 
         const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
         await fireEvent.click(actionTrigger);
-        await fireEvent.click(await screen.findByRole('menuitem', { name: 'この投稿へ移動' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
 
         await waitFor(() => {
             expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledWith({
@@ -1052,7 +1052,7 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
 
         await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
-        await fireEvent.click(await screen.findByRole('menuitem', { name: 'この投稿へ移動' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
 
         await waitFor(() => {
             expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenNthCalledWith(1, {
@@ -1104,7 +1104,7 @@ describe('PostHistoryDialog timeline search', () => {
         await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
 
         await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
-        await fireEvent.click(await screen.findByRole('menuitem', { name: 'この投稿へ移動' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
 
         await waitFor(() => {
             expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();

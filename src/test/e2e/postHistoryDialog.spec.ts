@@ -427,7 +427,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         );
         await expect(targetItem).toBeVisible();
         await targetItem.getByRole('button', { name: 'アクションを表示' }).click();
-        await page.getByRole('menuitem', { name: 'この投稿へ移動' }).click();
+        await page.getByRole('menuitem', { name: '前後の投稿を表示' }).click();
 
         await expect(page.getByRole('searchbox', { name: '検索' })).toHaveCount(0);
         await expect(targetItem).toBeVisible();

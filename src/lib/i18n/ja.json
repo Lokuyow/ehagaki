@@ -148,7 +148,7 @@
     "returnToLatest": "最新へ戻る",
     "jumpToOldest": "最古へ移動",
     "jumpToDate": "日付へ移動",
-    "jumpToPost": "この投稿へ移動",
+    "showSurroundingPosts": "前後の投稿を表示",
     "jumpToDateLabel": "日付",
     "jumpToDateSubmit": "この日付付近を表示",
     "hideJumpToDate": "日付へ移動を閉じる",

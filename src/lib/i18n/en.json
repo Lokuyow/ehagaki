@@ -148,7 +148,7 @@
     "returnToLatest": "Back to latest",
     "jumpToOldest": "Jump to oldest",
     "jumpToDate": "Jump to date",
-    "jumpToPost": "Jump to this post",
+    "showSurroundingPosts": "Show surrounding posts",
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",
     "hideJumpToDate": "Close jump to date",
