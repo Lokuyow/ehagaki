@@ -35,6 +35,7 @@ export interface UpsertPostHistoryChildInteractionsResult {
 
 export interface PostHistoryChildInteractionsRepository {
     getChildInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
+    getChildInteractionsForParents(parentEventIds: string[]): Promise<PostHistoryChildInteractionRecord[]>;
     getDirectReplyInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
     getReactionInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]>;
     upsertChildInteractions(input: UpsertPostHistoryChildInteractionsInput): Promise<UpsertPostHistoryChildInteractionsResult>;
@@ -143,6 +144,22 @@ export class DexiePostHistoryChildInteractionsRepository
             .toArray();
 
         return sortRelatedEvents(records);
+    }
+
+    async getChildInteractionsForParents(
+        parentEventIds: string[],
+    ): Promise<PostHistoryChildInteractionRecord[]> {
+        const uniqueParentEventIds = Array.from(
+            new Set(parentEventIds.filter((eventId) => !!eventId)),
+        );
+        if (uniqueParentEventIds.length === 0) {
+            return [];
+        }
+
+        return this.db.postHistoryChildInteractions
+            .where("parentEventId")
+            .anyOf(uniqueParentEventIds)
+            .toArray();
     }
 
     async getDirectReplyInteractions(parentEventId: string): Promise<PostHistoryChildInteractionRecord[]> {

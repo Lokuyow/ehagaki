@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import {
     DexiePostHistoryDirectReplyFetchMetadataRepository,
@@ -126,6 +126,40 @@ describe("DexiePostHistoryDirectReplyFetchMetadataRepository", () => {
             completeness: "complete",
             fetchedAt: 4000,
         });
+        db.close();
+    });
+
+    it("複数 parent の metadata を bulkGet 一回で読み、無効な値を除外する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryDirectReplyFetchMetadataRepository(db);
+        const firstParentEventId = "5".repeat(64);
+        const secondParentEventId = "6".repeat(64);
+        const missingParentEventId = "7".repeat(64);
+        await repository.save({
+            parentEventId: firstParentEventId,
+            completeness: "complete",
+            fetchedAt: 1000,
+            requestStartedAt: 900,
+        });
+        await repository.save({
+            parentEventId: secondParentEventId,
+            completeness: "partial",
+            fetchedAt: 1100,
+            requestStartedAt: 1000,
+        });
+
+        const bulkGetSpy = vi.spyOn(db.meta, "bulkGet");
+        await expect(repository.getForParentEventIds([
+            firstParentEventId,
+            secondParentEventId,
+            missingParentEventId,
+            firstParentEventId,
+        ])).resolves.toMatchObject([
+            { parentEventId: firstParentEventId, completeness: "complete" },
+            { parentEventId: secondParentEventId, completeness: "partial" },
+        ]);
+        expect(bulkGetSpy).toHaveBeenCalledTimes(1);
+
         db.close();
     });
 });

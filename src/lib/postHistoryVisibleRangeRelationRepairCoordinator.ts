@@ -375,7 +375,6 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
         }
 
         const visibleParentEventIds = visibleParentPosts.map((post) => post.eventId);
-        requestChildInteractionBadgeRefresh(visibleParentEventIds);
 
         if (!rxNostr) {
             return;

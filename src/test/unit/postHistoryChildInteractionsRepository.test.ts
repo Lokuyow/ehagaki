@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryChildInteractionsRepository } from "../../lib/storage/postHistoryChildInteractionsRepository";
 
@@ -153,6 +153,69 @@ describe("DexiePostHistoryChildInteractionsRepository", () => {
                 discoveredAs: ["reaction"],
             },
         ]);
+
+        db.close();
+    });
+
+    it("複数 parent の child interaction を parentEventId index の一回の read で取得する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryChildInteractionsRepository(db, () => 1000);
+        const firstParentEventId = "1".repeat(64);
+        const secondParentEventId = "2".repeat(64);
+        await repository.upsertChildInteractions({
+            parentEventId: firstParentEventId,
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: "3".repeat(64),
+                        created_at: 200,
+                        tags: [["e", firstParentEventId, "", "reply"]],
+                    }),
+                },
+                {
+                    event: createSignedEvent({
+                        id: "4".repeat(64),
+                        kind: 7,
+                        created_at: 100,
+                        tags: [["e", firstParentEventId]],
+                    }),
+                },
+            ],
+        });
+        await repository.upsertChildInteractions({
+            parentEventId: secondParentEventId,
+            events: [{
+                event: createSignedEvent({
+                    id: "5".repeat(64),
+                    created_at: 150,
+                    tags: [["e", secondParentEventId, "", "reply"]],
+                }),
+            }],
+        });
+
+        const whereSpy = vi.spyOn(db.postHistoryChildInteractions, "where");
+        const records = await repository.getChildInteractionsForParents([
+            firstParentEventId,
+            secondParentEventId,
+            firstParentEventId,
+        ]);
+
+        expect(whereSpy).toHaveBeenCalledTimes(1);
+        expect(whereSpy).toHaveBeenCalledWith("parentEventId");
+        expect(records).toHaveLength(3);
+        const recordsByParent = new Map<string, typeof records>();
+        for (const record of records) {
+            const parentRecords = recordsByParent.get(record.parentEventId) ?? [];
+            parentRecords.push(record);
+            recordsByParent.set(record.parentEventId, parentRecords);
+        }
+        expect(
+            Array.from(recordsByParent.get(firstParentEventId) ?? [])
+                .sort((left, right) => left.createdAt - right.createdAt)
+                .map((record) => record.eventId),
+        ).toEqual(["4".repeat(64), "3".repeat(64)]);
+        expect(recordsByParent.get(secondParentEventId)?.map((record) => record.eventId))
+            .toEqual(["5".repeat(64)]);
 
         db.close();
     });

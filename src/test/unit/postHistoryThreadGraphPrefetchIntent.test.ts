@@ -136,6 +136,11 @@ function createGraph(
     });
     const getFetchMetadata = vi.fn(async (parentEventId: string) =>
         metadataByParent.get(parentEventId) ?? null);
+    const getFetchMetadataForParents = vi.fn(async (parentEventIds: string[]) =>
+        parentEventIds.flatMap((parentEventId) => {
+            const metadata = metadataByParent.get(parentEventId);
+            return metadata ? [metadata] : [];
+        }));
     let childCacheProbePending = !!childCacheProbe;
     const getDirectReplyRecords = vi.fn(async (parentEventId: string) => {
         if (parentEventId === childId && childCacheProbe && childCacheProbePending) {
@@ -144,6 +149,11 @@ function createGraph(
         }
         return recordsByParent.get(parentEventId) ?? [];
     });
+    const getChildInteractionsForParents = vi.fn(async (parentEventIds: string[]) =>
+        parentEventIds.flatMap((parentEventId) =>
+            recordsByParent.get(parentEventId) ?? [],
+        ));
+    const getReactionRecords = vi.fn().mockResolvedValue([]);
 
     const deferred = createDeferred<{
         status: "success" | "partial" | "failed" | "cancelled";
@@ -187,15 +197,17 @@ function createGraph(
             getDirectReplyRecords,
         },
         reactionRecordsAdapterImpl: {
-            getReactionRecords: vi.fn().mockResolvedValue([]),
+            getReactionRecords,
         },
         childInteractionsRepositoryImpl: {
             upsertChildInteractions,
             deleteChildInteractionByEventId: vi.fn().mockResolvedValue(undefined),
+            getChildInteractionsForParents,
         },
         directReplyFetchMetadataRepositoryImpl: {
             get: getFetchMetadata,
             save: saveFetchMetadata,
+            getForParentEventIds: getFetchMetadataForParents,
         },
         deletionRequestsRepositoryImpl: {
             getDeletedTargets: vi.fn().mockResolvedValue(new Map()),
@@ -252,6 +264,9 @@ function createGraph(
         post,
         fetchDirectReplies,
         getDirectReplyRecords,
+        getReactionRecords,
+        getChildInteractionsForParents,
+        getFetchMetadataForParents,
         resolvePrefetch,
         getFetchMetadata,
         saveFetchMetadata,
@@ -278,6 +293,22 @@ async function startChildPrefetch(input: ReturnType<typeof createGraph>): Promis
 }
 
 describe("post history child prefetch reveal intent", () => {
+    it("visible cache preload は child interaction と metadata を各一回だけ batch read する", async () => {
+        const harness = createGraph();
+
+        await harness.graph.loadCachedChildInteractionStateForPosts([harness.post]);
+
+        expect(harness.getChildInteractionsForParents).toHaveBeenCalledTimes(1);
+        expect(harness.getChildInteractionsForParents).toHaveBeenCalledWith([anchorId]);
+        expect(harness.getFetchMetadataForParents).toHaveBeenCalledTimes(1);
+        expect(harness.getDirectReplyRecords).not.toHaveBeenCalled();
+        expect(harness.getReactionRecords).not.toHaveBeenCalled();
+        harness.graph.toggleChildren(harness.post);
+        expect(harness.graph.getAnchorState(harness.post).replyNodeStates[0]?.node.eventId)
+            .toBe(childId);
+        harness.dispose();
+    });
+
     it("prefetch中の手動展開を保持し、重複REQなしで取得後に表示する", async () => {
         const harness = createGraph();
         await startChildPrefetch(harness);
