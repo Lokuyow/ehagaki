@@ -2080,7 +2080,7 @@
     {/if}
 
     <div
-        class="post-history-container"
+        class={`post-history-container${supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" ? " post-history-auto-load-enabled" : ""}`}
         bind:this={historyContainer}
         onscroll={historyViewport.handleHistoryScroll}
         aria-busy={isHistoryListLoading || isAutoLoadingOlder ? "true" : "false"}
@@ -3634,6 +3634,9 @@
         min-height: 0;
         width: 100%;
         overflow-y: auto;
+    }
+
+    .post-history-container.post-history-auto-load-enabled {
         overflow-anchor: none;
     }
 

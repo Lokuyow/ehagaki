@@ -572,10 +572,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         }
 
         const anchorAfterLoad = await getPostSnapshotByEventId(page, anchorBeforeLoad!.eventId);
-        if (anchorAfterLoad) {
-            expect(anchorAfterLoad.eventId).toBe(anchorBeforeLoad!.eventId);
-            expect(Math.abs(anchorAfterLoad.offsetTop - anchorBeforeLoad!.offsetTop)).toBeLessThanOrEqual(1);
-        }
+        expect(anchorAfterLoad).not.toBeNull();
+        expect(anchorAfterLoad!.eventId).toBe(anchorBeforeLoad!.eventId);
+        expect(Math.abs(anchorAfterLoad!.offsetTop - anchorBeforeLoad!.offsetTop)).toBeLessThanOrEqual(1);
         await expectHistoryIsNotAtBottom(page);
 
         await waitForIntersectionObserverSettle(page);
