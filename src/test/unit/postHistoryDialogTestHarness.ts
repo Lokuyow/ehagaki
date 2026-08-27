@@ -42,7 +42,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.returnToLatest': '最新へ戻る',
             'postHistory.jumpToOldest': '最古へ移動',
             'postHistory.jumpToDate': '日付へ移動',
-            'postHistory.jumpToPostDate': '投稿の日付へ飛ぶ',
+            'postHistory.jumpToPost': 'この投稿へ移動',
             'postHistory.jumpToDateLabel': '日付',
             'postHistory.jumpToDateSubmit': 'この日付付近を表示',
             'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',

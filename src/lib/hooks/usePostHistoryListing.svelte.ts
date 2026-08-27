@@ -2935,6 +2935,54 @@ export function usePostHistoryListing({
         return true;
     }
 
+    async function jumpToEventId(eventId: string): Promise<boolean> {
+        clearContiguousProgress();
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !eventId) {
+            return false;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex, requestId);
+        const getPostsAroundEvent = (range: number | null) =>
+            postHistoryRepository.getVisibleChunkAroundEventId({
+                pubkeyHex,
+                visibleUntil: range,
+                eventId,
+                limit: maxVisiblePosts,
+                keepAbove: pageSize,
+            });
+
+        let targetPosts = await getPostsAroundEvent(visibleUntil);
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        const targetWasInVisibleRange = targetPosts.some(
+            (post) => post.eventId === eventId,
+        );
+        let isSparseJump = false;
+        if (!targetWasInVisibleRange && typeof visibleUntil === "number") {
+            targetPosts = await getPostsAroundEvent(null);
+            isSparseJump = true;
+            if (!getShow() || requestId !== loadRequestId) {
+                return false;
+            }
+        }
+
+        if (!targetPosts.some((post) => post.eventId === eventId)) {
+            return false;
+        }
+
+        refreshTotalCountFromRepository();
+        state.listingMode = isSparseJump ? "sparse" : "contiguous";
+        state.sparseSource = isSparseJump ? "jump" : null;
+        state.loadedPosts = targetPosts;
+        resetOlderBackfillSearchState();
+        await refreshTimelineAvailability(pubkeyHex, targetPosts, requestId);
+        return true;
+    }
+
     function mergeSearchPageResults(
         currentPosts: PostHistoryRecord[],
         nextPosts: PostHistoryRecord[],
@@ -4690,6 +4738,7 @@ export function usePostHistoryListing({
         showSavedOlderPosts,
         jumpToOldest,
         jumpToCreatedAt,
+        jumpToEventId,
         fetchOlderFromRelays,
         goFirstPage,
         goPreviousPage,
