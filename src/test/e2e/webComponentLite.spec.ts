@@ -92,7 +92,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
-        const state = { outputs: [] as any[], errors: 0 };
+        const state = { outputs: [] as any[], errors: 0, successEvents: 0 };
         (window as any).__liteMinimalState = state;
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             configureHostOwned(value: unknown): void;
@@ -104,6 +104,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
                 return { eventId: "b".repeat(64) };
             },
         });
+        composer.addEventListener("ehagaki-post-success", () => state.successEvents += 1);
         document.body.append(composer);
         await composer.whenReady();
     }, { componentOrigin });
@@ -120,6 +121,19 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(composer.locator(".tiptap-editor")).toHaveText("");
     expect(await page.evaluate(() => (window as any).__liteMinimalState.outputs[0])).toMatchObject({
         content: "minimal text",
+        tags: [],
+    });
+
+    await composer.locator(".tiptap-editor").click();
+    await composer.locator(".tiptap-editor").pressSequentially("second text");
+    await expect(composer.locator("button.post-button")).toBeEnabled();
+    await composer.locator("button.post-button").click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.outputs.length)).toBe(2);
+    await expect(composer.locator(".tiptap-editor")).toHaveText("");
+    const repeatedSubmit = await page.evaluate(() => (window as any).__liteMinimalState);
+    expect(repeatedSubmit.successEvents).toBe(2);
+    expect(repeatedSubmit.outputs[1]).toMatchObject({
+        content: "second text",
         tags: [],
     });
 

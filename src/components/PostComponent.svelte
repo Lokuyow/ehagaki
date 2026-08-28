@@ -795,6 +795,15 @@
           : {}),
       });
       postStatusHandlers.markSuccess({ success: true, ...(eventId ? { eventId } : {}) });
+      if (isHostOwnedLiteBuild) {
+        updatePostStatus({
+          sending: false,
+          success: false,
+          error: false,
+          message: "",
+          completed: false,
+        });
+      }
     } catch {
       if (config.signal.aborted) return;
       notificationPort?.notifyPostError("post_error");
