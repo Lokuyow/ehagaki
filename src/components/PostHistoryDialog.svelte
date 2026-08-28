@@ -768,7 +768,7 @@
             },
             {
                 root,
-                rootMargin: `0px 0px ${rootHeight}px 0px`,
+                rootMargin: `0px 0px ${rootHeight * 2}px 0px`,
                 threshold: 0,
             },
         );
@@ -843,7 +843,7 @@
             },
             {
                 root,
-                rootMargin: `${rootHeight}px 0px 0px 0px`,
+                rootMargin: `${rootHeight * 2}px 0px 0px 0px`,
                 threshold: 0,
             },
         );

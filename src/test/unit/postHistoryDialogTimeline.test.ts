@@ -355,7 +355,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         const initialObserver = MockIntersectionObserver.instances.find(
             (observer) => observer.observedTargets.has(olderSentinel),
         );
-        expect(initialObserver?.rootMargin).toBe('0px 0px 320px 0px');
+        expect(initialObserver?.rootMargin).toBe('0px 0px 640px 0px');
 
         initialObserver?.trigger(olderSentinel, true);
         await waitFor(() => expect(pageChunkRequestCount).toBe(1));
@@ -370,7 +370,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(MockIntersectionObserver.instances).toHaveLength(2);
         });
         const resizeObserver = MockIntersectionObserver.instances.at(-1);
-        expect(resizeObserver?.rootMargin).toBe('0px 0px 400px 0px');
+        expect(resizeObserver?.rootMargin).toBe('0px 0px 800px 0px');
 
         resizeObserver?.trigger(olderSentinel, true);
         await Promise.resolve();

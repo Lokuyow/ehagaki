@@ -180,7 +180,7 @@ async function scrollHistoryNearBottom(page: Page) {
         const remaining = Math.max(
             1,
             Math.min(
-                container.clientHeight - 24,
+                container.clientHeight * 2 - 24,
                 container.scrollHeight - container.clientHeight,
             ),
         );
@@ -195,7 +195,7 @@ async function scrollHistoryNearTopAndCaptureAnchor(page: Page) {
     return page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         container.scrollTop = Math.min(
-            container.clientHeight - 24,
+            container.clientHeight * 2 - 24,
             container.scrollHeight - container.clientHeight,
         );
         container.dispatchEvent(new Event('scroll', { bubbles: true }));
@@ -225,7 +225,7 @@ async function scrollHistoryAwayFromTop(page: Page) {
     await page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         container.scrollTop = Math.min(
-            container.clientHeight + 2,
+            container.clientHeight * 2 + 2,
             container.scrollHeight - container.clientHeight,
         );
         container.dispatchEvent(new Event('scroll', { bubbles: true }));
@@ -236,7 +236,7 @@ async function scrollHistoryAwayFromBottom(page: Page) {
     await page.locator('.post-history-container').evaluate((element) => {
         const container = element as HTMLDivElement;
         const remaining = Math.min(
-            container.clientHeight + 2,
+            container.clientHeight * 2 + 2,
             container.scrollHeight - container.clientHeight,
         );
         container.scrollTop = container.scrollHeight - container.clientHeight - remaining;
@@ -739,7 +739,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await waitForHistoryContainerHeightToSettle(page);
         const olderApproach = await scrollHistoryNearBottom(page);
         expect(olderApproach.remaining).toBeGreaterThan(1);
-        expect(olderApproach.remaining).toBeLessThan(olderApproach.clientHeight);
+        expect(olderApproach.remaining).toBeLessThan(olderApproach.clientHeight * 2);
+        expect(olderApproach.remaining).toBeGreaterThan(olderApproach.clientHeight);
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(0, 100));
@@ -762,7 +763,8 @@ test.describe('PostHistoryDialog Playwright', () => {
         await waitForIntersectionObserverSettle(page);
         const newerApproach = await scrollHistoryNearTopAndCaptureAnchor(page);
         expect(newerApproach.topOffset).toBeGreaterThan(1);
-        expect(newerApproach.topOffset).toBeLessThan(newerApproach.clientHeight);
+        expect(newerApproach.topOffset).toBeLessThan(newerApproach.clientHeight * 2);
+        expect(newerApproach.topOffset).toBeGreaterThan(newerApproach.clientHeight);
         expect(newerApproach.anchor).not.toBeNull();
         await expect.poll(() => historyEventIds(page)).toEqual(expectedEventIds.slice(51, 201));
         const restoredAnchor = await getPostSnapshotByEventId(
