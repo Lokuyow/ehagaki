@@ -884,6 +884,7 @@
             const changed = await history.loadOlder();
             if (changed && show) {
                 await tick();
+                await previewCollapse.flushPendingMeasurements();
                 historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             }
         } finally {

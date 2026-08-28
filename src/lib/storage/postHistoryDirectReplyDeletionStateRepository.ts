@@ -163,20 +163,20 @@ implements PostHistoryDirectReplyDeletionStateRepository {
             return [];
         }
 
-        const allRecords: PostHistoryDirectReplyLifecycleStateRecord[] = [];
-        for (const parentEventId of uniqueParentEventIds) {
-            const records = await this.db.meta
-                .where("key")
-                .startsWith(buildParentPrefix(parentEventId))
-                .toArray();
-            allRecords.push(
-                ...records
-                    .map((record) => toStateRecord(record))
-                    .filter((record): record is PostHistoryDirectReplyLifecycleStateRecord => !!record),
-            );
-        }
+        const records = await this.db.meta
+            .where("key")
+            .startsWithAnyOf(
+                uniqueParentEventIds.map((parentEventId) =>
+                    buildParentPrefix(parentEventId),
+                ),
+            )
+            .toArray();
 
-        return dedupeStateRecords(allRecords);
+        return dedupeStateRecords(
+            records
+                .map((record) => toStateRecord(record))
+                .filter((record): record is PostHistoryDirectReplyLifecycleStateRecord => !!record),
+        );
     }
 
     async deleteMany(requestKeys: string[]): Promise<void> {

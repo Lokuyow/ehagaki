@@ -27,6 +27,13 @@ export function usePostHistoryPreviewCollapse<
     let expandedPosts = $state<Record<string, boolean>>({});
     let postPreviewElements: Record<string, HTMLElement | null> = {};
     let resizeObserver: ResizeObserver | null = null;
+    let observedPostInputs = new Map<
+        string,
+        Pick<PreviewCollapseItem, "content" | "forceCollapsible">
+    >();
+    let dirtyPostEventIds = new Set<string>();
+    let measureAllVisiblePreviews = false;
+    let scheduledMeasurement: Promise<void> | null = null;
 
     function getLineHeight(element: HTMLElement): number {
         const style = getComputedStyle(element);
@@ -42,7 +49,7 @@ export function usePostHistoryPreviewCollapse<
 
     function previewRef(node: HTMLElement, eventId: string) {
         postPreviewElements[eventId] = node;
-        void measureCollapsiblePosts();
+        void requestMeasurement(eventId);
 
         return {
             destroy() {
@@ -53,18 +60,50 @@ export function usePostHistoryPreviewCollapse<
         };
     }
 
-    async function measureCollapsiblePosts(): Promise<void> {
-        await tick();
-
-        if (!getShow()) {
-            collapsiblePosts = {};
+    function replaceCollapsiblePosts(
+        nextCollapsiblePosts: Record<string, boolean>,
+    ): void {
+        const currentEventIds = Object.keys(collapsiblePosts);
+        const nextEventIds = Object.keys(nextCollapsiblePosts);
+        if (
+            currentEventIds.length === nextEventIds.length
+            && currentEventIds.every(
+                (eventId) =>
+                    collapsiblePosts[eventId]
+                    === nextCollapsiblePosts[eventId],
+            )
+        ) {
             return;
         }
 
+        collapsiblePosts = nextCollapsiblePosts;
+    }
+
+    function measureRequestedPreviews(): void {
+        if (!getShow()) {
+            dirtyPostEventIds.clear();
+            measureAllVisiblePreviews = false;
+            replaceCollapsiblePosts({});
+            return;
+        }
+
+        const posts = getPosts();
+        const dirtyEventIds = dirtyPostEventIds;
+        const measureAll = measureAllVisiblePreviews;
+        dirtyPostEventIds = new Set();
+        measureAllVisiblePreviews = false;
         const nextCollapsiblePosts: Record<string, boolean> = {};
 
-        for (const post of getPosts()) {
+        for (const post of posts) {
             if (post.forceCollapsible) {
+                continue;
+            }
+
+            if (!measureAll && !dirtyEventIds.has(post.eventId)) {
+                const existingResult = collapsiblePosts[post.eventId];
+                if (existingResult !== undefined) {
+                    nextCollapsiblePosts[post.eventId] = existingResult;
+                }
                 continue;
             }
 
@@ -81,7 +120,39 @@ export function usePostHistoryPreviewCollapse<
                 : post.content.split("\n").length > maxLines;
         }
 
-        collapsiblePosts = nextCollapsiblePosts;
+        replaceCollapsiblePosts(nextCollapsiblePosts);
+    }
+
+    function scheduleMeasurement(): Promise<void> {
+        if (scheduledMeasurement) {
+            return scheduledMeasurement;
+        }
+
+        scheduledMeasurement = tick().then(() => {
+            scheduledMeasurement = null;
+            measureRequestedPreviews();
+        });
+        return scheduledMeasurement;
+    }
+
+    function requestMeasurement(eventId?: string): Promise<void> {
+        if (eventId) {
+            dirtyPostEventIds.add(eventId);
+        } else {
+            measureAllVisiblePreviews = true;
+        }
+
+        return scheduleMeasurement();
+    }
+
+    async function flushPendingMeasurements(): Promise<void> {
+        const pendingMeasurement = scheduledMeasurement;
+        if (!pendingMeasurement) {
+            return;
+        }
+
+        await pendingMeasurement;
+        await tick();
     }
 
     function setupResizeObserver(): void {
@@ -95,7 +166,7 @@ export function usePostHistoryPreviewCollapse<
         }
 
         resizeObserver = new ResizeObserver(() => {
-            void measureCollapsiblePosts();
+            void requestMeasurement();
         });
         resizeObserver.observe(historyContainer);
     }
@@ -106,9 +177,12 @@ export function usePostHistoryPreviewCollapse<
     }
 
     function resetState(): void {
-        collapsiblePosts = {};
+        replaceCollapsiblePosts({});
         expandedPosts = {};
         postPreviewElements = {};
+        observedPostInputs.clear();
+        dirtyPostEventIds.clear();
+        measureAllVisiblePreviews = false;
         disposeResizeObserver();
     }
 
@@ -141,8 +215,28 @@ export function usePostHistoryPreviewCollapse<
             return;
         }
 
-        getPosts();
-        void measureCollapsiblePosts();
+        const posts = getPosts();
+        const nextObservedPostInputs = new Map<
+            string,
+            Pick<PreviewCollapseItem, "content" | "forceCollapsible">
+        >();
+        for (const post of posts) {
+            const nextInput = {
+                content: post.content,
+                forceCollapsible: post.forceCollapsible,
+            };
+            const previousInput = observedPostInputs.get(post.eventId);
+            if (
+                previousInput?.content !== nextInput.content
+                || previousInput.forceCollapsible !== nextInput.forceCollapsible
+            ) {
+                dirtyPostEventIds.add(post.eventId);
+            }
+            nextObservedPostInputs.set(post.eventId, nextInput);
+        }
+        observedPostInputs = nextObservedPostInputs;
+
+        void scheduleMeasurement();
     });
 
     $effect(() => {
@@ -162,8 +256,9 @@ export function usePostHistoryPreviewCollapse<
 
     return {
         previewRef,
+        flushPendingMeasurements,
         isPostExpanded,
-        remeasure: measureCollapsiblePosts,
+        remeasure: () => requestMeasurement(),
         togglePostExpanded,
         shouldCollapsePost,
     };

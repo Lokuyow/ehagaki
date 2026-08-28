@@ -1,52 +1,70 @@
 <script lang="ts">
     import { usePostHistoryPreviewCollapse } from "../../../lib/hooks/usePostHistoryPreviewCollapse.svelte";
 
-    interface Props {
+    interface PreviewItem {
+        eventId: string;
         content: string;
         forceCollapsible?: boolean;
     }
 
-    let { content, forceCollapsible = false }: Props = $props();
+    interface Props {
+        content?: string;
+        forceCollapsible?: boolean;
+        items?: PreviewItem[];
+    }
+
+    let { content = "", forceCollapsible = false, items: inputItems }: Props = $props();
     let container = $state<HTMLElement | null>(null);
-    let item = $derived({
-        eventId: "preview-collapse-harness-event",
-        content,
-        forceCollapsible,
-    });
-    let items = $derived([item]);
+    let items = $derived(
+        inputItems ?? [
+            {
+                eventId: "preview-collapse-harness-event",
+                content,
+                forceCollapsible,
+            },
+        ],
+    );
     const collapse = usePostHistoryPreviewCollapse({
         getShow: () => true,
         getPosts: () => items,
         getContainer: () => container,
     });
     const previewRef = collapse.previewRef;
-    let expanded = $derived(collapse.isPostExpanded(item));
-    let shouldCollapse = $derived(collapse.shouldCollapsePost(item));
-    const contentId = "preview-collapse-harness-content";
+    const getContentId = (eventId: string) =>
+        `preview-collapse-harness-content-${eventId}`;
 </script>
 
 <div bind:this={container}>
-    <p
-        id={contentId}
-        class="event-content"
-        class:event-content-collapsed={shouldCollapse && !expanded}
-        style={shouldCollapse && !expanded
-            ? "max-height: calc(7.25em); overflow: hidden;"
-            : undefined}
-        use:previewRef={item.eventId}
-    >
-        {content}
-    </p>
-    {#if shouldCollapse}
-        <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={contentId}
-            onclick={() => collapse.togglePostExpanded(item.eventId)}
+    <button type="button" data-testid="remeasure" onclick={() => collapse.remeasure()}>
+        再測定
+    </button>
+    {#each items as item (item.eventId)}
+        {@const expanded = collapse.isPostExpanded(item)}
+        {@const shouldCollapse = collapse.shouldCollapsePost(item)}
+        {@const contentId = getContentId(item.eventId)}
+        <p
+            id={contentId}
+            class="event-content"
+            data-testid={`preview-${item.eventId}`}
+            class:event-content-collapsed={shouldCollapse && !expanded}
+            style={shouldCollapse && !expanded
+                ? "max-height: calc(7.25em); overflow: hidden;"
+                : undefined}
+            use:previewRef={item.eventId}
         >
-            {expanded ? "折りたたむ" : "もっと見る"}
-        </button>
-    {/if}
+            {item.content}
+        </p>
+        {#if shouldCollapse}
+            <button
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={contentId}
+                onclick={() => collapse.togglePostExpanded(item.eventId)}
+            >
+                {expanded ? "折りたたむ" : "もっと見る"}
+            </button>
+        {/if}
+    {/each}
 </div>
 
 <style>

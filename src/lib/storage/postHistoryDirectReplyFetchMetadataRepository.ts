@@ -26,6 +26,9 @@ export interface SavePostHistoryDirectReplyFetchMetadataInput {
 
 export interface PostHistoryDirectReplyFetchMetadataRepository {
     get(parentEventId: string): Promise<PostHistoryDirectReplyFetchMetadata | null>;
+    getForParentEventIds(
+        parentEventIds: string[],
+    ): Promise<PostHistoryDirectReplyFetchMetadata[]>;
     save(
         input: SavePostHistoryDirectReplyFetchMetadataInput,
     ): Promise<PostHistoryDirectReplyFetchMetadata | null>;
@@ -98,6 +101,32 @@ implements PostHistoryDirectReplyFetchMetadataRepository {
             ...record.value,
             updatedAt: record.updatedAt,
         };
+    }
+
+    async getForParentEventIds(
+        parentEventIds: string[],
+    ): Promise<PostHistoryDirectReplyFetchMetadata[]> {
+        const uniqueParentEventIds = Array.from(
+            new Set(parentEventIds.filter((eventId) => !!eventId)),
+        );
+        if (uniqueParentEventIds.length === 0) {
+            return [];
+        }
+
+        const records = await this.db.meta.bulkGet(
+            uniqueParentEventIds.map((parentEventId) =>
+                buildMetadataKey(parentEventId),
+            ),
+        );
+        return records.flatMap((record) => {
+            if (!record || !isValidMetadataValue(record.value)) {
+                return [];
+            }
+            return [{
+                ...record.value,
+                updatedAt: record.updatedAt,
+            }];
+        });
     }
 
     async save(

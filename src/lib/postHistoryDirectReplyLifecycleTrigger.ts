@@ -36,6 +36,7 @@ import {
     type SavePostHistoryDirectReplyLifecycleStateInput,
     type PostHistoryDirectReplyDeletionStateRepository,
 } from "./storage/postHistoryDirectReplyDeletionStateRepository";
+import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import type { RelayConfig } from "./types";
 
 export interface PostHistoryDirectReplyLifecycleTriggerRequest {
@@ -60,12 +61,30 @@ function normalizeParentEventIds(parentEventIds: string[]): string[] {
 
 async function loadDirectReplyLifecycleCandidates(
     parentEventIds: string[],
-    directReplyRecordsAdapter: Pick<PostHistoryDirectReplyRecordsAdapter, "getDirectReplyRecords">,
+    directReplyRecordsAdapter: Pick<
+        PostHistoryDirectReplyRecordsAdapter,
+        "getDirectReplyRecords"
+    > & Partial<Pick<
+        PostHistoryDirectReplyRecordsAdapter,
+        "getDirectReplyRecordsForParents"
+    >>,
 ): Promise<PostHistoryDirectReplyLifecycleCandidate[]> {
     const candidates: PostHistoryDirectReplyLifecycleCandidate[] = [];
+    const recordsByParentEventId = new Map<string, PostHistoryChildInteractionRecord[]>();
+
+    if (directReplyRecordsAdapter.getDirectReplyRecordsForParents) {
+        const records = await directReplyRecordsAdapter.getDirectReplyRecordsForParents(parentEventIds);
+        for (const record of records) {
+            const parentRecords = recordsByParentEventId.get(record.parentEventId) ?? [];
+            parentRecords.push(record);
+            recordsByParentEventId.set(record.parentEventId, parentRecords);
+        }
+    }
 
     for (const parentEventId of parentEventIds) {
-        const records = await directReplyRecordsAdapter.getDirectReplyRecords(parentEventId);
+        const records = directReplyRecordsAdapter.getDirectReplyRecordsForParents
+            ? recordsByParentEventId.get(parentEventId) ?? []
+            : await directReplyRecordsAdapter.getDirectReplyRecords(parentEventId);
         for (const record of records) {
             candidates.push({
                 requestKey: buildPostHistoryDirectReplyLifecycleRequestKey(

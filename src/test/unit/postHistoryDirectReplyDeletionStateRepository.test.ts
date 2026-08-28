@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryDirectReplyDeletionStateRepository } from "../../lib/storage/postHistoryDirectReplyDeletionStateRepository";
 
@@ -62,6 +62,40 @@ describe("DexiePostHistoryDirectReplyDeletionStateRepository", () => {
             parentEventId,
             replyEventId,
         }])).resolves.toMatchObject([{ requestKey, kind: 1 }]);
+
+        db.close();
+    });
+
+    it("複数 parent の deletion state を prefix query 一回で取得する", async () => {
+        const { db, repository } = createRepository();
+        const firstParentEventId = "5".repeat(64);
+        const secondParentEventId = "6".repeat(64);
+        const firstReplyEventId = "7".repeat(64);
+        const secondReplyEventId = "8".repeat(64);
+        await repository.saveMany([
+            {
+                requestKey: `${firstParentEventId}:${firstReplyEventId}:1`,
+                parentEventId: firstParentEventId,
+                replyEventId: firstReplyEventId,
+            },
+            {
+                requestKey: `${secondParentEventId}:${secondReplyEventId}:42`,
+                parentEventId: secondParentEventId,
+                replyEventId: secondReplyEventId,
+                kind: 42,
+            },
+        ]);
+
+        const whereSpy = vi.spyOn(db.meta, "where");
+        await expect(repository.getForParentEventIds([
+            firstParentEventId,
+            secondParentEventId,
+            firstParentEventId,
+        ])).resolves.toMatchObject([
+            { parentEventId: firstParentEventId, replyEventId: firstReplyEventId },
+            { parentEventId: secondParentEventId, replyEventId: secondReplyEventId },
+        ]);
+        expect(whereSpy).toHaveBeenCalledTimes(1);
 
         db.close();
     });

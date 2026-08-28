@@ -43,6 +43,7 @@ import {
 } from "../storage/postHistoryDeletionRequestsRepository";
 import {
     postHistoryDirectReplyFetchMetadataRepository,
+    type PostHistoryDirectReplyFetchMetadata,
     type PostHistoryDirectReplyFetchMetadataRepository,
 } from "../storage/postHistoryDirectReplyFetchMetadataRepository";
 import { parsePostHistoryThreadReferences } from "../postHistoryNip10Utils";
@@ -165,7 +166,7 @@ interface UsePostHistoryThreadGraphParams {
     childInteractionsRepositoryImpl?: Pick<
         PostHistoryChildInteractionsRepository,
         "upsertChildInteractions" | "deleteChildInteractionByEventId"
-    >;
+    > & Partial<Pick<PostHistoryChildInteractionsRepository, "getChildInteractionsForParents">>;
     deletionRequestsRepositoryImpl?: Pick<
         PostHistoryDeletionRequestsRepository,
         "getDeletedTargets" | "upsertValidDeletionRequests"
@@ -173,7 +174,7 @@ interface UsePostHistoryThreadGraphParams {
     directReplyFetchMetadataRepositoryImpl?: Pick<
         PostHistoryDirectReplyFetchMetadataRepository,
         "get" | "save"
-    >;
+    > & Partial<Pick<PostHistoryDirectReplyFetchMetadataRepository, "getForParentEventIds">>;
     profileSyncCoordinator?: PostHistoryProfileSyncCoordinator;
     contextFetchService?: Pick<PostHistoryContextFetchService, "fetchEventById">;
     replyFetchService?: Pick<PostHistoryReplyFetchService, "fetchDirectReplies">;
@@ -2099,12 +2100,29 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
-    function preloadCachedReactionSummaryForParent(
-        parentEventId: string,
-        cachedRecords: PostHistoryChildInteractionRecord[],
-    ): void {
-        setReactionSummary(parentEventId, cachedRecords);
-        setReactionRecords(parentEventId, cachedRecords);
+    function groupCachedChildInteractionRecords(
+        records: PostHistoryChildInteractionRecord[],
+        parentEventIds: string[],
+    ): Map<string, PostHistoryChildInteractionRecord[]> {
+        const targetParentIds = new Set(parentEventIds);
+        const recordsByParentId = new Map<string, PostHistoryChildInteractionRecord[]>();
+        for (const record of records) {
+            if (!targetParentIds.has(record.parentEventId)) {
+                continue;
+            }
+            const parentRecords = recordsByParentId.get(record.parentEventId) ?? [];
+            parentRecords.push(record);
+            recordsByParentId.set(record.parentEventId, parentRecords);
+        }
+        for (const parentRecords of recordsByParentId.values()) {
+            parentRecords.sort((left, right) => {
+                if (left.createdAt !== right.createdAt) {
+                    return left.createdAt - right.createdAt;
+                }
+                return left.eventId.localeCompare(right.eventId);
+            });
+        }
+        return recordsByParentId;
     }
 
     function markEmptyChildrenIncompleteIfNeeded(input: {
@@ -2127,58 +2145,184 @@ export function usePostHistoryThreadGraph({
         return true;
     }
 
-    async function preloadCachedDirectReplyStateForParent(input: {
-        post: PostHistoryRecord;
-        parentEventId: string;
-        cachedRecords: PostHistoryChildInteractionRecord[];
-        anchorNode: PostHistoryThreadGraphNode;
-        ensureActive: () => boolean;
-    }): Promise<void> {
-        const { metadata, readFailed } = await readDirectReplyFetchMetadata(
-            input.parentEventId,
-        );
+    function applyCachedChildInteractionStateBatch(input: {
+        postsByParentId: Map<string, PostHistoryRecord>;
+        targetParentIds: string[];
+        anchorNodesByParentId: Map<string, PostHistoryThreadGraphNode>;
+        reactionRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
+        directReplyRecordsByParentId: Map<string, PostHistoryChildInteractionRecord[]>;
+        metadataByParentId: Map<string, PostHistoryDirectReplyFetchMetadata>;
+        metadataReadFailedParentIds: Set<string>;
+        cachedReactionProfilesByPubkey: Record<string, ProfileData | null>;
+        knownNodeProfilesByPubkey: Map<string, ProfileData | null>;
+    }): void {
+        const nextNodesById = { ...nodesById };
+        const nextParentByChildId = { ...parentByChildId };
+        const nextChildrenByParentId = { ...childrenByParentId };
+        const nextExpansionByAnchorNodeKey = { ...expansionByAnchorNodeKey };
+        const nextReactionSummaryByParentId = { ...reactionSummaryByParentId };
+        const nextReactionRecordsByParentId = { ...reactionRecordsByParentId };
+        const nextReactionProfilesByPubkey = { ...reactionProfilesByPubkey };
+        const nextReactionReadModelByParentId = { ...reactionReadModelByParentId };
+        let nodesChanged = false;
+        let parentEdgesChanged = false;
+        let childrenChanged = false;
+        let expansionsChanged = false;
+        const childIdsByParentId = new Map<string, string[]>();
 
-        const cachedDirectReplies = input.cachedRecords.filter(
-            (record) => record.kind === 1 || record.kind === 42,
-        );
-        if (cachedDirectReplies.length === 0 && !metadata) {
-            return;
+        const upsertDraftNode = (nextNode: PostHistoryThreadGraphNode) => {
+            const mergedNode = mergeThreadGraphNode(
+                nextNodesById[nextNode.eventId],
+                nextNode,
+            );
+            nextNodesById[mergedNode.eventId] = mergedNode;
+            nodesChanged = true;
+            return mergedNode;
+        };
+        const upsertDraftParentEdge = (
+            childEventId: string,
+            parentEventId: string | null,
+        ) => {
+            if (!parentEventId) {
+                return;
+            }
+            nextParentByChildId[childEventId] = parentEventId;
+            parentEdgesChanged = true;
+        };
+
+        for (const parentEventId of input.targetParentIds) {
+            const anchorNode = input.anchorNodesByParentId.get(parentEventId);
+            if (!anchorNode) {
+                continue;
+            }
+            const mergedAnchorNode = upsertDraftNode(anchorNode);
+            upsertDraftParentEdge(
+                mergedAnchorNode.eventId,
+                mergedAnchorNode.parentEventId,
+            );
+
+            const reactionRecords = input.reactionRecordsByParentId.get(parentEventId) ?? [];
+            nextReactionSummaryByParentId[parentEventId] =
+                summarizePostHistoryReactionRecords(reactionRecords);
+            nextReactionRecordsByParentId[parentEventId] = reactionRecords;
         }
 
-        const acceptedRecords = await upsertReplyRecords(
-            input.anchorNode,
-            cachedDirectReplies,
-            ["reply-db", "inbound-sync"],
-            {
-                resolveProfiles: false,
-            },
-        );
-        if (!input.ensureActive() || (acceptedRecords.length === 0 && !metadata)) {
-            return;
-        }
-        if (
-            metadata?.completeness === "partial"
-            && markEmptyChildrenIncompleteIfNeeded({
-                anchorEventId: input.post.eventId,
-                nodeEventId: input.parentEventId,
-                effectiveFetchedAt: null,
-                replyCount: acceptedRecords.length,
-            })
-        ) {
-            return;
+        for (const [pubkey, profile] of Object.entries(
+            input.cachedReactionProfilesByPubkey,
+        )) {
+            nextReactionProfilesByPubkey[pubkey] = profile;
         }
 
-        const cachedFetchedAt = readFailed
-            ? null
-            : metadata
-                ? resolveEffectiveDirectReplyFetchedAt(metadata)
-                : resolveCachedReplyFetchedAt(acceptedRecords);
-        updateExpansion(input.post.eventId, input.parentEventId, (state) => ({
-            ...buildChildrenLoadedExpansionState(state, {
-                lastFetchedChildrenAt: cachedFetchedAt,
-            }),
-        }));
-        refreshProfileForPubkeyInBackground(input.anchorNode.authorPubkey, input.anchorNode.relayUrls);
+        for (const parentEventId of input.targetParentIds) {
+            const anchorNode = input.anchorNodesByParentId.get(parentEventId);
+            if (!anchorNode) {
+                continue;
+            }
+            const acceptedRecords: PostHistoryChildInteractionRecord[] = [];
+            const childEventIds: string[] = [];
+            for (const record of input.directReplyRecordsByParentId.get(parentEventId) ?? []) {
+                const event = toEventFromReplyRecord(record);
+                if (isDeletedEvent(event.pubkey, event.id)) {
+                    continue;
+                }
+                const childNode = upsertDraftNode(buildThreadGraphNode({
+                    event,
+                    relayUrls: sanitizeRelayUrls(record.relayUrls),
+                    sources: ["reply-db", "inbound-sync"],
+                }));
+                if (childNode.eventId === parentEventId) {
+                    continue;
+                }
+                upsertDraftParentEdge(childNode.eventId, parentEventId);
+                childEventIds.push(childNode.eventId);
+                acceptedRecords.push(record);
+            }
+            childIdsByParentId.set(parentEventId, childEventIds);
+
+            const metadata = input.metadataByParentId.get(parentEventId) ?? null;
+            const metadataReadFailed = input.metadataReadFailedParentIds.has(parentEventId);
+            if (acceptedRecords.length === 0 && !metadata) {
+                continue;
+            }
+            const post = input.postsByParentId.get(parentEventId);
+            if (!post) {
+                continue;
+            }
+            const expansionKey = buildAnchorNodeKey(post.eventId, parentEventId);
+            const currentExpansion = nextExpansionByAnchorNodeKey[expansionKey]
+                ?? buildInitialExpansionState();
+            nextExpansionByAnchorNodeKey[expansionKey] =
+                metadata?.completeness === "partial" && acceptedRecords.length === 0
+                    ? {
+                        ...currentExpansion,
+                        loadedChildren: false,
+                        loadingChildren: false,
+                        revalidatingChildren: false,
+                        childrenError: null,
+                        lastFetchedChildrenAt: null,
+                    }
+                    : buildChildrenLoadedExpansionState(currentExpansion, {
+                        lastFetchedChildrenAt: metadataReadFailed
+                            ? null
+                            : metadata
+                                ? resolveEffectiveDirectReplyFetchedAt(metadata)
+                                : resolveCachedReplyFetchedAt(acceptedRecords),
+                    });
+            expansionsChanged = true;
+        }
+
+        for (const [parentEventId, childEventIds] of childIdsByParentId) {
+            const currentChildEventIds = nextChildrenByParentId[parentEventId] ?? [];
+            nextChildrenByParentId[parentEventId] = sortEventIdsByEvent(
+                uniqueEventIds([...currentChildEventIds, ...childEventIds]).filter(
+                    (eventId) =>
+                        eventId !== parentEventId
+                        && !isDeletedNodeEventId(eventId),
+                ),
+                nextNodesById,
+            );
+            childrenChanged = true;
+        }
+
+        for (const [pubkey, profile] of input.knownNodeProfilesByPubkey) {
+            if (!profile) {
+                continue;
+            }
+            for (const [eventId, node] of Object.entries(nextNodesById)) {
+                if (node.authorPubkey === pubkey) {
+                    nextNodesById[eventId] = mergeThreadGraphNode(node, {
+                        ...node,
+                        profile,
+                    });
+                    nodesChanged = true;
+                }
+            }
+        }
+
+        for (const parentEventId of input.targetParentIds) {
+            nextReactionReadModelByParentId[parentEventId] =
+                buildPostHistoryReactionReadModel(
+                    nextReactionRecordsByParentId[parentEventId] ?? [],
+                    nextReactionProfilesByPubkey,
+                );
+        }
+
+        if (nodesChanged) {
+            nodesById = nextNodesById;
+        }
+        if (parentEdgesChanged) {
+            parentByChildId = nextParentByChildId;
+        }
+        if (childrenChanged) {
+            childrenByParentId = nextChildrenByParentId;
+        }
+        if (expansionsChanged) {
+            expansionByAnchorNodeKey = nextExpansionByAnchorNodeKey;
+        }
+        reactionSummaryByParentId = nextReactionSummaryByParentId;
+        reactionRecordsByParentId = nextReactionRecordsByParentId;
+        reactionProfilesByPubkey = nextReactionProfilesByPubkey;
+        reactionReadModelByParentId = nextReactionReadModelByParentId;
     }
 
     async function loadCachedChildInteractionStateForPosts(
@@ -2202,10 +2346,10 @@ export function usePostHistoryThreadGraph({
             items: targetParentIds,
             isActive: () => activeRequestId === taskTracker.getRequestId() && getShow(),
             run: async ({ ensureActive }) => {
-                for (const parentEventId of targetParentIds) {
+                const preloadTargets = targetParentIds.flatMap((parentEventId) => {
                     const post = postByEventId.get(parentEventId);
                     if (!post || !ensureActive()) {
-                        continue;
+                        return [];
                     }
 
                     const preloadKey = buildAnchorNodeKey(post.eventId, parentEventId);
@@ -2220,64 +2364,169 @@ export function usePostHistoryThreadGraph({
                         )
                     ) {
                         replyBadgePreloadKeys.add(preloadKey);
-                        continue;
+                        return [];
                     }
 
                     replyBadgePreloadKeys.add(preloadKey);
-
-                    const anchorNode = ensureAnchorNode(post);
-                    const [rawCachedReactionRecords, rawCachedDirectReplyRecords] = await Promise.all([
-                        selectPostHistoryReactionRecords(parentEventId, reactionRecordsAdapterImpl),
-                        directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
-                    ]);
-                    if (!ensureActive()) {
-                        continue;
-                    }
-
-                    const [cachedReactionRecords, cachedDirectReplyRecords] = await Promise.all([
-                        filterVisibleReplyRecords(rawCachedReactionRecords),
-                        filterVisibleReplyRecords(rawCachedDirectReplyRecords),
-                    ]);
-                    if (!ensureActive()) {
-                        continue;
-                    }
-
-                    preloadCachedReactionSummaryForParent(parentEventId, cachedReactionRecords);
-
-                    const reactionAuthorPubkeys = Array.from(new Set(
-                        cachedReactionRecords
-                            .map((record) => record.authorPubkey)
-                            .filter((pubkey): pubkey is string => !!pubkey),
-                    ));
-                    if (reactionAuthorPubkeys.length > 0) {
-                        const cachedProfilesByPubkey = await profileMetadataCache.getProfiles(
-                            reactionAuthorPubkeys,
-                            {
-                                allowBackgroundRefresh: false,
-                            },
-                        );
-                        if (!ensureActive()) {
-                            continue;
-                        }
-
-                        for (const pubkey of reactionAuthorPubkeys) {
-                            const profile = cachedProfilesByPubkey[pubkey] ?? null;
-                            setReactionProfile(pubkey, profile);
-                            refreshProfileForPubkeyInBackground(
-                                pubkey,
-                                anchorNode.relayUrls,
-                            );
-                        }
-                    }
-
-                    await preloadCachedDirectReplyStateForParent({
-                        post,
-                        parentEventId,
-                        cachedRecords: cachedDirectReplyRecords,
-                        anchorNode,
-                        ensureActive,
-                    });
+                    return [{ parentEventId, post }];
+                });
+                if (preloadTargets.length === 0 || !ensureActive()) {
+                    return;
                 }
+
+                const preloadParentIds = preloadTargets.map(
+                    ({ parentEventId }) => parentEventId,
+                );
+                const rawCachedRecords = childInteractionsRepositoryImpl
+                    .getChildInteractionsForParents
+                    ? await childInteractionsRepositoryImpl
+                        .getChildInteractionsForParents(preloadParentIds)
+                    : (
+                        await Promise.all(preloadParentIds.map(async (parentEventId) => {
+                            const [reactionRecords, directReplyRecords] = await Promise.all([
+                                selectPostHistoryReactionRecords(
+                                    parentEventId,
+                                    reactionRecordsAdapterImpl,
+                                ),
+                                directReplyRecordsAdapterImpl.getDirectReplyRecords(parentEventId),
+                            ]);
+                            return [...reactionRecords, ...directReplyRecords];
+                        }))
+                    ).flat();
+                if (!ensureActive()) {
+                    return;
+                }
+
+                let metadataRecords: PostHistoryDirectReplyFetchMetadata[] = [];
+                const metadataReadFailedParentIds = new Set<string>();
+                try {
+                    if (directReplyFetchMetadataRepositoryImpl.getForParentEventIds) {
+                        metadataRecords = await directReplyFetchMetadataRepositoryImpl
+                            .getForParentEventIds(preloadParentIds);
+                    } else {
+                        const metadataResults = await Promise.all(preloadParentIds.map(
+                            (parentEventId) => readDirectReplyFetchMetadata(parentEventId),
+                        ));
+                        metadataRecords = metadataResults.flatMap(({ metadata, readFailed }, index) => {
+                            if (readFailed) {
+                                metadataReadFailedParentIds.add(preloadParentIds[index]!);
+                                return [];
+                            }
+                            return metadata ? [metadata] : [];
+                        });
+                    }
+                } catch {
+                    for (const parentEventId of preloadParentIds) {
+                        metadataReadFailedParentIds.add(parentEventId);
+                    }
+                }
+                if (!ensureActive()) {
+                    return;
+                }
+
+                const visibleRecordsByParentId = groupCachedChildInteractionRecords(
+                    await filterVisibleReplyRecords(rawCachedRecords),
+                    preloadParentIds,
+                );
+                if (!ensureActive()) {
+                    return;
+                }
+
+                const anchorNodesByParentId = new Map(
+                    preloadTargets.map(({ parentEventId, post }) => [
+                        parentEventId,
+                        buildAnchorNodeFromPost(post),
+                    ]),
+                );
+                const reactionRecordsByParentId = new Map<
+                    string,
+                    PostHistoryChildInteractionRecord[]
+                >();
+                const directReplyRecordsByParentId = new Map<
+                    string,
+                    PostHistoryChildInteractionRecord[]
+                >();
+                const invalidDirectReplyRecordIds: string[] = [];
+                const reactionAuthorPubkeys = new Set<string>();
+                const profileRelayUrlsByPubkey = new Map<string, string[]>();
+                const rememberProfileRelayUrls = (pubkey: string, relayUrls: string[]) => {
+                    profileRelayUrlsByPubkey.set(pubkey, sanitizeRelayUrls([
+                        ...(profileRelayUrlsByPubkey.get(pubkey) ?? []),
+                        ...relayUrls,
+                    ]));
+                };
+
+                for (const parentEventId of preloadParentIds) {
+                    const anchorNode = anchorNodesByParentId.get(parentEventId);
+                    if (!anchorNode) {
+                        continue;
+                    }
+                    rememberProfileRelayUrls(anchorNode.authorPubkey, anchorNode.relayUrls);
+                    const reactionRecords: PostHistoryChildInteractionRecord[] = [];
+                    const directReplyRecords: PostHistoryChildInteractionRecord[] = [];
+                    for (const record of visibleRecordsByParentId.get(parentEventId) ?? []) {
+                        if (record.kind === 7) {
+                            reactionRecords.push(record);
+                            if (record.authorPubkey) {
+                                reactionAuthorPubkeys.add(record.authorPubkey);
+                                rememberProfileRelayUrls(record.authorPubkey, anchorNode.relayUrls);
+                            }
+                        } else if (record.kind === 1 || record.kind === 42) {
+                            if (!isValidPostHistoryCachedDirectReply({
+                                parentNode: anchorNode,
+                                record,
+                            })) {
+                                invalidDirectReplyRecordIds.push(record.eventId);
+                            } else {
+                                directReplyRecords.push(record);
+                                rememberProfileRelayUrls(record.authorPubkey, record.relayUrls);
+                            }
+                        }
+                    }
+                    reactionRecordsByParentId.set(parentEventId, reactionRecords);
+                    directReplyRecordsByParentId.set(parentEventId, directReplyRecords);
+                }
+
+                if (invalidDirectReplyRecordIds.length > 0) {
+                    await Promise.all(invalidDirectReplyRecordIds.map((eventId) =>
+                        childInteractionsRepositoryImpl.deleteChildInteractionByEventId(eventId),
+                    ));
+                    if (!ensureActive()) {
+                        return;
+                    }
+                }
+
+                const cachedReactionProfilesByPubkey = reactionAuthorPubkeys.size > 0
+                    ? await profileMetadataCache.getProfiles(
+                        Array.from(reactionAuthorPubkeys),
+                        { allowBackgroundRefresh: false },
+                    )
+                    : {};
+                if (!ensureActive()) {
+                    return;
+                }
+
+                const knownNodeProfilesByPubkey = new Map<string, ProfileData | null>();
+                for (const [pubkey, relayUrls] of profileRelayUrlsByPubkey) {
+                    knownNodeProfilesByPubkey.set(
+                        pubkey,
+                        profileSync.ensureProfile(pubkey, relayUrls),
+                    );
+                }
+
+                applyCachedChildInteractionStateBatch({
+                    postsByParentId: postByEventId,
+                    targetParentIds: preloadParentIds,
+                    anchorNodesByParentId,
+                    reactionRecordsByParentId,
+                    directReplyRecordsByParentId,
+                    metadataByParentId: new Map(
+                        metadataRecords.map((metadata) => [metadata.parentEventId, metadata]),
+                    ),
+                    metadataReadFailedParentIds,
+                    cachedReactionProfilesByPubkey,
+                    knownNodeProfilesByPubkey,
+                });
             },
         });
     }

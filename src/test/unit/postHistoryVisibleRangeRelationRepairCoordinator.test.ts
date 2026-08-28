@@ -175,6 +175,33 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         )).toEqual(["stale-parent", "unchecked-parent"]);
     });
 
+    it("does not refresh badges before an older reveal repair or deletion changes cached data", async () => {
+        const deferred = createDeferred<PostHistoryVisibleRangeRelationRepairResult>();
+        const task = createRepairTask(deferred.promise);
+        const {
+            coordinator,
+            onChildInteractionBadgeRefreshRequested,
+        } = createCoordinator({
+            loadedPosts: [createPost("parent")],
+            repairTask: task,
+        });
+
+        coordinator.scheduleOlderRevealRepair([createPost("parent")]);
+        await Promise.resolve();
+        expect(onChildInteractionBadgeRefreshRequested).not.toHaveBeenCalled();
+
+        deferred.resolve(createRelationRepairResult({
+            checkedParentEventIds: ["parent"],
+            savedParentEventIds: ["parent"],
+        }));
+        await vi.waitFor(() => {
+            expect(onChildInteractionBadgeRefreshRequested).toHaveBeenCalledWith(
+                [expect.objectContaining({ eventId: "parent" })],
+                ["parent"],
+            );
+        });
+    });
+
     it("cancels the tracked current-view relation repair and rejects its late callback", async () => {
         const deferred = createDeferred<PostHistoryVisibleRangeRelationRepairResult>();
         const task = createRepairTask(deferred.promise);

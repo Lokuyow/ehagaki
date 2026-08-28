@@ -37,6 +37,7 @@ import {
     type SavePostHistoryReactionLifecycleStateInput,
     type PostHistoryReactionDeletionStateRepository,
 } from "./storage/postHistoryReactionDeletionStateRepository";
+import type { PostHistoryChildInteractionRecord } from "./storage/ehagakiDb";
 import type { RelayConfig } from "./types";
 
 export interface PostHistoryReactionLifecycleTriggerRequest {
@@ -61,12 +62,30 @@ function normalizeParentEventIds(parentEventIds: string[]): string[] {
 
 async function loadReactionLifecycleCandidates(
     parentEventIds: string[],
-    reactionRecordsAdapter: Pick<PostHistoryReactionRecordsAdapter, "getReactionRecords">,
+    reactionRecordsAdapter: Pick<
+        PostHistoryReactionRecordsAdapter,
+        "getReactionRecords"
+    > & Partial<Pick<
+        PostHistoryReactionRecordsAdapter,
+        "getReactionRecordsForParents"
+    >>,
 ): Promise<PostHistoryReactionLifecycleCandidate[]> {
     const candidates: PostHistoryReactionLifecycleCandidate[] = [];
+    const recordsByParentEventId = new Map<string, PostHistoryChildInteractionRecord[]>();
+
+    if (reactionRecordsAdapter.getReactionRecordsForParents) {
+        const records = await reactionRecordsAdapter.getReactionRecordsForParents(parentEventIds);
+        for (const record of records) {
+            const parentRecords = recordsByParentEventId.get(record.parentEventId) ?? [];
+            parentRecords.push(record);
+            recordsByParentEventId.set(record.parentEventId, parentRecords);
+        }
+    }
 
     for (const parentEventId of parentEventIds) {
-        const records = await reactionRecordsAdapter.getReactionRecords(parentEventId);
+        const records = reactionRecordsAdapter.getReactionRecordsForParents
+            ? recordsByParentEventId.get(parentEventId) ?? []
+            : await reactionRecordsAdapter.getReactionRecords(parentEventId);
         for (const record of records) {
             candidates.push({
                 requestKey: buildPostHistoryReactionLifecycleRequestKey(

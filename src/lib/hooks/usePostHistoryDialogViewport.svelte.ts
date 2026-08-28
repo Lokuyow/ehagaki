@@ -224,6 +224,15 @@ export function usePostHistoryDialogViewport({
                 : formatPostHistoryMonthLabel(postedAt, getLocale());
     }
 
+    function updateCurrentMonthLabelImmediately(): void {
+        // A scroll anchor is meaningful only after the heading has its final
+        // scroll-dependent height. Cancel the already-scheduled frame rather
+        // than letting it change the heading after the anchor is restored.
+        cancelCurrentMonthLabelFrame();
+        updateCurrentMonthLabel();
+        flushSync();
+    }
+
     function cancelCurrentMonthLabelFrame(): void {
         if (historyMonthLabelFrameId === null) {
             return;
@@ -248,6 +257,14 @@ export function usePostHistoryDialogViewport({
     function handleHistoryScroll(): void {
         updateHistoryScrolledToTop();
         updateHistoryScrolledToBottom();
+        if (isHistoryScrolledToBottom) {
+            // The auto-load path captures its anchor immediately after the
+            // bottom sentinel becomes visible. Settle the heading geometry in
+            // the same scroll turn, rather than changing it after that anchor
+            // has been captured.
+            updateCurrentMonthLabelImmediately();
+            return;
+        }
         scheduleCurrentMonthLabelUpdate();
     }
 

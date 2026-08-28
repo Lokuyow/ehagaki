@@ -2527,6 +2527,13 @@ export function usePostHistoryListing({
         if (mergedResult.didDeferOlderPosts) {
             state.hasOlderLocal = true;
         }
+        if (mergedResult.didTrimForOlderAppend) {
+            // The bounded window just discarded known local posts from its
+            // newer side. Publish that availability before the caller restores
+            // the scroll anchor; the background confirmation must not insert
+            // the newer-navigation control afterwards and move the anchor.
+            state.hasNewerLocal = true;
+        }
         const newlyVisibleCount = newlyVisibleOlderPosts.length;
         if (progressAfterQuery) {
             contiguousProgress = {
@@ -2559,11 +2566,16 @@ export function usePostHistoryListing({
                 clearContiguousProgress();
             }
         }
+        const canDeriveOlderAvailability = useContiguousProgress
+            && progressAfterQuery !== null
+            && contiguousProgress !== null;
         const hasReachedVisibleEnd = !!contiguousProgress
             && contiguousProgress.reachedVisibleCount >=
                 contiguousProgress.totalVisibleCount;
-        if (hasReachedVisibleEnd) {
-            state.hasOlderLocal = false;
+        if (canDeriveOlderAvailability && contiguousProgress) {
+            state.hasOlderLocal =
+                contiguousProgress.totalVisibleCount
+                > contiguousProgress.reachedVisibleCount;
         }
         if (metrics) {
             metrics.loadedPostsAfterLength = mergedResult.posts.length;
@@ -2574,6 +2586,16 @@ export function usePostHistoryListing({
             metrics.didTrimForOlderAppend = mergedResult.didTrimForOlderAppend;
             metrics.didDeferOlderPosts = mergedResult.didDeferOlderPosts;
         }
+        if (canDeriveOlderAvailability) {
+            void refreshTimelineAvailability(
+                pubkeyHex,
+                mergedResult.posts,
+                requestId,
+                { skipOlderCheck: true },
+            ).catch(() => undefined);
+            return true;
+        }
+
         await refreshTimelineAvailability(
             pubkeyHex,
             mergedResult.posts,
