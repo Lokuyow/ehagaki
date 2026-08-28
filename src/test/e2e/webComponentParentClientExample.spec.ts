@@ -886,3 +886,18 @@ test("keeps arbitrary module loading explicit in manual mode", async ({ page }) 
     expect(requests).toContain(securityFixturePath);
     expect(await page.evaluate(() => window.__securityFixtureLoaded === true)).toBe(true);
 });
+
+test("passes non-empty Host Relay Config to the Full element before mounting", async ({ page }) => {
+    await page.goto(`${origin}/ehagaki/web-component-parent-client-example.html?manual=1`);
+    const relays = [
+        { url: "wss://relay.example", read: true, write: true },
+        { url: "wss://read.example", read: true, write: false },
+    ];
+    await page.locator("#host-relays").fill(JSON.stringify(relays));
+    await page.getByRole("button", { name: "作成して表示" }).click();
+    await expect(page.locator("#ready-status")).toHaveText("準備完了（whenReady(): resolved）");
+    await expect(page.locator("ehagaki-composer")).toHaveCount(1);
+    await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) =>
+        (element as HTMLElement & { relays?: unknown }).relays,
+    )).toEqual(relays.map((relay) => ({ ...relay, url: `${relay.url}/` })));
+});
