@@ -5,7 +5,7 @@
 ## Runtime environment と document entry
 
 - **責務:** `src/main.ts` は document entry で `configureAppRuntimeEnvironment()` を行ってから `App.svelte` を dynamic import/mount する。`runtimeKind` は `window.top === window` なら `standalone`、それ以外は `iframe`。viewport layout、document/body targets、`import.meta.env.BASE_URL` からの `appHomeHref` / `assetBase`、service worker、external input、history、local nsec auth を有効にする。
-- **flow:** `main.ts` は `configureAppRuntimeEnvironment()` の直後、iframe の `hostRelayConfig=1` なら `bootstrapIframeHostRelayConfig()` を行う。成功または marker なしだけが `applyEmbedSettingsBootstrap()` / `applyUploadDestinationBootstrap()` → `App.svelte` → `runAppInitializationBootstrap()` へ進む。marker bootstrap が失敗した document は terminal/inert error view を描画して App を import/mount しない。iframe は別 entrypoint ではなく、この document entry と URL を使う。
+- **flow:** `main.ts` は `configureAppRuntimeEnvironment()` の後に service worker 登録、`applyEmbedSettingsBootstrap()`、`applyUploadDestinationBootstrap()`、theme 初期化を行い、その後 iframe の `hostRelayConfig=1` の場合だけ `bootstrapIframeHostRelayConfig()` を実行する。成功または marker なしだけが `App.svelte` → `runAppInitializationBootstrap()` へ進む。marker bootstrap が失敗した document は terminal/inert error view を描画して App を import/mount しない。iframe は別 entrypoint ではなく、この document entry と URL を使う。
 - **ownership:** document と service worker は app-owned。iframe host は `parentOrigin` と Parent Client message の consumer であり、child document を直接操作する contract ではない。
 - **注意点:** `AppRuntimeEnvironment` は process/module-level configuration。Web Component は `App.svelte` を import する前にこれを明示的に置き換えるため、entrypoint の import順が contract になる。
 - **関連 test:** `src/test/unit/appAssetUrl.test.ts`、`src/test/unit/appRuntimeBindings.test.ts`、`src/test/unit/headerComponent.test.ts`、`src/test/unit/uiStore.test.ts`。
