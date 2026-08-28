@@ -308,7 +308,7 @@ function removeCustomStyles(element) {
 function configureElement(element) {
     element.setAttribute("asset-base", normalizeDirectoryUrl(assetBaseInput.value));
     const relayText = getElement("host-relays").value.trim();
-    if (relayText) {
+    if (selectedDistribution === "full" && relayText) {
         element.relays = JSON.parse(relayText);
     }
 }

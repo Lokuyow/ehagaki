@@ -1,6 +1,9 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
-import { isHostRelayConfigActive } from "./hostRelayRuntime";
+import {
+    getHostReadRelayDefaults,
+    isHostRelayConfigActive,
+} from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
@@ -141,19 +144,20 @@ export class PostHistorySelfParentFetchService {
     }
 
     private resolveRelayUrls(relayConfig: RelayConfig | null | undefined): string[] {
+        if (isHostRelayConfigActive()) {
+            return getHostReadRelayDefaults();
+        }
         const configuredRelays = relayConfig
-            ? isHostRelayConfigActive()
-                ? RelayConfigUtils.extractReadRelays(relayConfig)
-                : [
-                    ...RelayConfigUtils.extractReadRelays(relayConfig),
-                    ...RelayConfigUtils.extractWriteRelays(relayConfig),
-                ]
+            ? [
+                ...RelayConfigUtils.extractReadRelays(relayConfig),
+                ...RelayConfigUtils.extractWriteRelays(relayConfig),
+            ]
             : [];
         const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(configuredRelays, {
             limit: POST_HISTORY_SELF_PARENT_FETCH_RELAY_LIMIT,
         });
 
-        return relayUrls.length > 0 || isHostRelayConfigActive()
+        return relayUrls.length > 0
             ? relayUrls
             : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS, {
                 limit: POST_HISTORY_SELF_PARENT_FETCH_RELAY_LIMIT,

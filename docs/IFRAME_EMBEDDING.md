@@ -171,8 +171,11 @@ entry は `url`、`read`、`write` だけを持ち、URL は `ws:` / `wss:`、cr
 
 `hostRelayConfig=1` は **fail-close** です。trusted source/origin 不一致、envelope/request ID/payload の
 検証失敗、親の `relays.error`、10 秒 timeout、その他の bootstrap 失敗では child は `relays.error` を送って
-relay bootstrap を開始しません。この場合、保存済み Relay Config、kind:10002、kind:3、bootstrap relay、
-built-in fallback へ移行しません。特に timeout 後に通常 relay 解決へ fallback することはありません。
+relay bootstrap を開始しません。この失敗は iframe document lifetime における terminal state です。通常の
+`App.svelte` runtime、auth/account/guest session を開始しないため、後から login、account restore/switch、
+NIP-07、NIP-46、guest session の入力を受けても relay を解決・接続しません。この場合、保存済み Relay Config、
+kind:10002、kind:3、bootstrap relay、built-in fallback へ移行しません。特に timeout 後に通常 relay 解決へ
+fallback することはありません。
 
 受理済み Config は mount-scoped で非永続です。Host Config の read relay は read の default、write relay は
 publish の default です。write relay がない read-only Config では投稿は `no_write_relays` で fail-close します。

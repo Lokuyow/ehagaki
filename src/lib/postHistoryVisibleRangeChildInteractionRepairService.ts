@@ -3,7 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
-import { isHostRelayConfigActive } from "./hostRelayRuntime";
+import { mergeHostReadDefaultsWithHints } from "./hostRelayRuntime";
 import {
     postHistoryDirectReplyRepairSaveService,
     type PostHistoryDirectReplyRepairItem,
@@ -743,20 +743,25 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         posts: PostHistoryRecord[],
         relayConfig: RelayConfig | null | undefined,
     ): string[] {
+        const hostRelays = mergeHostReadDefaultsWithHints(
+            this.collectParentRelayHints(posts),
+            POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT,
+        );
+        if (hostRelays) {
+            return hostRelays;
+        }
         const configuredRelays = relayConfig
-            ? isHostRelayConfigActive()
-                ? RelayConfigUtils.extractReadRelays(relayConfig)
-                : [
-                    ...RelayConfigUtils.extractReadRelays(relayConfig),
-                    ...RelayConfigUtils.extractWriteRelays(relayConfig),
-                ]
+            ? [
+                ...RelayConfigUtils.extractReadRelays(relayConfig),
+                ...RelayConfigUtils.extractWriteRelays(relayConfig),
+            ]
             : [];
         const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...this.collectParentRelayHints(posts),
             ...configuredRelays,
         ], { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT });
 
-        return relayUrls.length > 0 || isHostRelayConfigActive()
+        return relayUrls.length > 0
             ? relayUrls
             : RelayConfigUtils.sanitizeExternalRelayUrls(
                 FALLBACK_RELAYS,

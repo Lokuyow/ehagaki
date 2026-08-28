@@ -268,7 +268,7 @@
                     <div class="card stack">
                         <h2>Full self-publish の一時 Relay Config</h2>
                         <div class="field"><label for="host-relays">relays property（JSON）</label><textarea id="host-relays" spellcheck="false" placeholder='[{"url":"wss://relay.example","read":true,"write":true}]'></textarea></div>
-                        <p class="small">Full distribution だけの connection 前 property です。空欄なら通常の relay 解決を使います。設定を変えたら「作り直す」で新しい mount に反映してください。Lite distribution にはこの API はありません。</p>
+                        <p class="small">Full distribution 選択時だけに代入する connection 前 property です。空欄なら通常の relay 解決を使います。設定を変えたら「作り直す」で新しい mount に反映してください。Lite distribution にはこの API はなく、sample も expando property を設定しません。</p>
                     </div>
 
                     <div class="card stack">

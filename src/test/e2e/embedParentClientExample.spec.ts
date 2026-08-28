@@ -125,6 +125,169 @@ test("loads and switches the configurable timeline relay without mixing events",
     await expect(page.locator("#timeline-status")).toContainText(secondRelayOrigin);
 });
 
+test("routes an opted-in iframe session through the trusted Host Relay Config", async ({ page }) => {
+    const hostRelay = "wss://iframe-host-read-relay.example";
+    const parentPubkeyHex = "ab".repeat(32);
+
+    await page.addInitScript(({ relayOrigin }) => {
+        const root = window.top as Window & {
+            __iframeHostRelayRoutingState?: { originalUrls: string[] };
+        };
+        const state = root.__iframeHostRelayRoutingState ??= { originalUrls: [] };
+        const NativeWebSocket = window.WebSocket;
+        class RoutedWebSocket extends NativeWebSocket {
+            constructor(url: string | URL, protocols?: string | string[]) {
+                state.originalUrls.push(String(url));
+                super(relayOrigin, protocols as string | string[]);
+            }
+        }
+        window.WebSocket = RoutedWebSocket as typeof window.WebSocket;
+    }, { relayOrigin });
+
+    await page.route("**/e2e-host-relay-parent.html", async (route) => {
+        const childUrl = new URL("/ehagaki/", route.request().url());
+        childUrl.searchParams.set("parentOrigin", childUrl.origin);
+        childUrl.searchParams.set("hostRelayConfig", "1");
+        await route.fulfill({
+            contentType: "text/html",
+            body: `<!doctype html><body>
+<iframe id="child" src="${childUrl.toString()}" style="width:100%;height:640px"></iframe>
+<script>
+const iframe = document.querySelector("#child");
+const state = window.__iframeHostRelayState = { requestIds: [], applied: 0, ready: 0, authRequests: 0 };
+const post = (type, payload, requestId) => iframe.contentWindow.postMessage({
+  namespace: "ehagaki.embed", version: 1, type,
+  ...(requestId ? { requestId } : {}),
+  ...(payload === undefined ? {} : { payload }),
+}, location.origin);
+window.addEventListener("message", (event) => {
+  if (event.source !== iframe.contentWindow || event.origin !== location.origin) return;
+  const message = event.data;
+  if (message?.namespace !== "ehagaki.embed" || message?.version !== 1) return;
+  if (message.type === "relays.request") {
+    state.requestIds.push(message.requestId);
+    post("relays.set", [{ url: ${JSON.stringify(hostRelay)}, read: true, write: false }], message.requestId);
+    return;
+  }
+  if (message.type === "relays.applied") { state.applied += 1; return; }
+  if (message.type === "ready") {
+    state.ready += 1;
+    post("auth.login", { pubkeyHex: ${JSON.stringify(parentPubkeyHex)} });
+    return;
+  }
+  if (message.type === "auth.request") {
+    state.authRequests += 1;
+    post("auth.result", { pubkeyHex: ${JSON.stringify(parentPubkeyHex)}, capabilities: ["signEvent"] }, message.requestId);
+    return;
+  }
+  if (message.type === "storage.get") {
+    post("storage.result", { timestamp: Date.now(), values: Object.fromEntries(message.payload.keys.map((key) => [key, null])) }, message.requestId);
+    return;
+  }
+  if (message.type === "storage.set") {
+    post("storage.result", { timestamp: Date.now(), applied: Object.keys(message.payload.values) }, message.requestId);
+    return;
+  }
+  if (message.type === "storage.remove") {
+    post("storage.result", { timestamp: Date.now(), removed: message.payload.keys }, message.requestId);
+    return;
+  }
+  if (message.type === "idb.getSnapshot") {
+    post("idb.result", { timestamp: Date.now(), store: message.payload.store, scopeKey: message.payload.scopeKey, records: [] }, message.requestId);
+  }
+});
+</script>`,
+        });
+    });
+
+    await page.goto("/ehagaki/e2e-host-relay-parent.html");
+    const frame = page.frameLocator("#child");
+    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).__iframeHostRelayState))
+        .toMatchObject({ requestIds: [expect.any(String)], applied: 1, ready: expect.any(Number) });
+    await expect.poll(() => page.evaluate(() =>
+        (window as any).__iframeHostRelayRoutingState?.originalUrls ?? [],
+    )).toContain(hostRelay);
+});
+
+test("keeps a failed Host Relay iframe terminal after later auth messages", async ({ page }) => {
+    await page.addInitScript(() => {
+        const root = window.top as Window & {
+            __terminalHostRelayConnectionUrls?: string[];
+        };
+        root.__terminalHostRelayConnectionUrls ??= [];
+        const NativeWebSocket = window.WebSocket;
+        class ObservedWebSocket extends NativeWebSocket {
+            constructor(url: string | URL, protocols?: string | string[]) {
+                const parsed = new URL(String(url), location.href);
+                if (parsed.host !== location.host) {
+                    root.__terminalHostRelayConnectionUrls!.push(String(url));
+                }
+                super(url, protocols as string | string[]);
+            }
+        }
+        window.WebSocket = ObservedWebSocket as typeof window.WebSocket;
+    });
+    await page.route("**/e2e-host-relay-failure-parent.html", async (route) => {
+        const childUrl = new URL("/ehagaki/", route.request().url());
+        childUrl.searchParams.set("parentOrigin", childUrl.origin);
+        childUrl.searchParams.set("hostRelayConfig", "1");
+        await route.fulfill({
+            contentType: "text/html",
+            body: `<!doctype html><body>
+<iframe id="child" src="${childUrl.toString()}" style="width:100%;height:640px"></iframe>
+<script>
+const iframe = document.querySelector("#child");
+const state = window.__iframeHostRelayFailureState = { requests: 0, errors: 0, ready: 0, authRequests: 0 };
+const post = (type, payload, requestId) => iframe.contentWindow.postMessage({
+  namespace: "ehagaki.embed", version: 1, type,
+  ...(requestId ? { requestId } : {}),
+  ...(payload === undefined ? {} : { payload }),
+}, location.origin);
+window.__sendLateAuthLogin = () => post("auth.login", { pubkeyHex: "cd".repeat(32) });
+window.addEventListener("message", (event) => {
+  if (event.source !== iframe.contentWindow || event.origin !== location.origin) return;
+  const message = event.data;
+  if (message?.namespace !== "ehagaki.embed" || message?.version !== 1) return;
+  if (message.type === "relays.request") state.requests += 1;
+  if (message.type === "relays.error") state.errors += 1;
+  if (message.type === "ready") state.ready += 1;
+  if (message.type === "auth.request") state.authRequests += 1;
+});
+</script>`,
+        });
+    });
+
+    await page.goto("/ehagaki/e2e-host-relay-failure-parent.html");
+    await expect.poll(() => page.evaluate(() => ({
+        state: (window as any).__iframeHostRelayFailureState,
+        normalRelayConnectionUrls: (window as any).__terminalHostRelayConnectionUrls,
+        terminal: document.querySelector<HTMLIFrameElement>("#child")?.contentDocument
+            ?.getElementById("app")?.dataset.hostRelayBootstrap,
+    })), { timeout: 15_000 }).toMatchObject({
+        state: { requests: 1, errors: 1, ready: 0, authRequests: 0 },
+        normalRelayConnectionUrls: [],
+        terminal: "failed",
+    });
+
+    await page.evaluate(() => (window as any).__sendLateAuthLogin());
+    await page.waitForTimeout(250);
+    const result = await page.evaluate(() => ({
+        state: (window as any).__iframeHostRelayFailureState,
+        normalRelayConnectionUrls: (window as any).__terminalHostRelayConnectionUrls,
+        editorPresent: !!document.querySelector<HTMLIFrameElement>("#child")?.contentDocument
+            ?.querySelector(".tiptap-editor"),
+        terminal: document.querySelector<HTMLIFrameElement>("#child")?.contentDocument
+            ?.getElementById("app")?.dataset.hostRelayBootstrap,
+    }));
+    expect(result).toEqual({
+        state: { requests: 1, errors: 1, ready: 0, authRequests: 0 },
+        normalRelayConnectionUrls: [],
+        editorPresent: false,
+        terminal: "failed",
+    });
+});
+
 test("preserves reply selection and iframe preview when refreshing the same relay", async ({ page }) => {
     await page.goto("/ehagaki/public/embed-parent-client-example.html");
     const frame = page.frameLocator("#ehagaki-iframe");
@@ -455,7 +618,13 @@ window.addEventListener("message", (event) => {
     await expect.poll(() => page.evaluate(() =>
         (window as any).__readyRaceState.readyCount,
     )).toBeGreaterThanOrEqual(2);
-    await expect.poll(() => targetRequestCount).toBeGreaterThanOrEqual(1);
+    await expect.poll(
+        () => targetRequestCount,
+        // The normal relay resolver makes two bounded NIP-65 attempts before
+        // it reaches the contextual relay hint. Keep this race regression
+        // deterministic without changing that marker-less compatibility path.
+        { timeout: 12_000 },
+    ).toBeGreaterThanOrEqual(1);
 
     const preview = frame.locator(".reply-quote-preview");
     await expect(preview).toHaveCount(1);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrEvent } from "../../lib/types";
 import { createEvent as createBaseEvent } from "../postHistoryEventTestUtils";
 
@@ -26,6 +26,10 @@ vi.mock("../../lib/postHistoryRawEventVerification", () => ({
 }));
 
 import { PostHistoryReplyFetchService } from "../../lib/postHistoryReplyFetchService";
+import {
+    activateHostRelayConfig,
+    deactivateHostRelayConfig,
+} from "../../lib/hostRelayRuntime";
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     return createBaseEvent({
@@ -39,6 +43,8 @@ describe("PostHistoryReplyFetchService", () => {
         vi.clearAllMocks();
         rxNostrMock.emittedFilters = [];
     });
+
+    afterEach(() => deactivateHostRelayConfig());
 
     it("#e で広めに取得し、kind:1 / since / limit を指定する", async () => {
         const service = new PostHistoryReplyFetchService({
@@ -149,6 +155,43 @@ describe("PostHistoryReplyFetchService", () => {
                 limit: 100,
             },
         ]);
+    });
+
+    it("keeps every Host read default after contextual hints fill the old limit", async () => {
+        const hostConfig = Object.fromEntries(Array.from({ length: 5 }, (_, index) => [
+            `wss://host-read-${index + 1}.example`,
+            { read: true, write: false },
+        ]));
+        activateHostRelayConfig(hostConfig);
+        const service = new PostHistoryReplyFetchService({
+            now: () => 2000,
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        rxNostrMock.use.mockReturnValue({
+            subscribe: ({ complete }: Record<string, any>) => {
+                complete();
+                return { unsubscribe: vi.fn() };
+            },
+        });
+
+        await service.fetchDirectReplies(rxNostrMock as any, {
+            eventId: "2".repeat(64),
+            createdAt: 1_700_000_000,
+            relayHints: Array.from({ length: 8 }, (_, index) => `wss://hint-${index + 1}.example`),
+            relayConfig: hostConfig,
+            relayLimit: 2,
+        }).promise;
+
+        expect(rxNostrMock.use).toHaveBeenCalledWith(rxReqMock, {
+            on: {
+                relays: [
+                    ...Array.from({ length: 5 }, (_, index) => `wss://host-read-${index + 1}.example/`),
+                    "wss://hint-1.example/",
+                    "wss://hint-2.example/",
+                ],
+            },
+        });
     });
 
     it("kind 42 は要求した親ID・kind・channelが一致する返信だけを返す", async () => {

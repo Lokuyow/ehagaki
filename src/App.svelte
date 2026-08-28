@@ -231,7 +231,6 @@
     onInitialized?: () => void;
     /** Full embed or iframe bootstrap input; never persisted as user state. */
     hostRelayConfig?: RelayConfig;
-    hostRelayBootstrapError?: { code: string; message?: string };
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -252,7 +251,6 @@
     notificationPort = iframeNotificationPort,
     onInitialized = () => undefined,
     hostRelayConfig = undefined,
-    hostRelayBootstrapError = undefined,
   }: Props = $props();
 
   type PostComponent =
@@ -1493,19 +1491,6 @@
 
     if (hostRelayConfig) {
       applyHostRelayConfig(hostRelayConfig);
-    }
-
-    if (hostRelayBootstrapError) {
-      void waitLocale().then(() => {
-        localeInitialized = true;
-        isBootstrappingApp = false;
-      });
-      return () => {
-        overlayScopeTarget.classList.remove("ehagaki-app-root");
-        if (hostRelayConfig) {
-          clearHostRelayConfig();
-        }
-      };
     }
 
     if (appRuntimeEnvironment.externalInputEnabled) {

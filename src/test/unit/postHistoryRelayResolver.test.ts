@@ -57,6 +57,18 @@ describe("resolvePostHistoryRelayUrls", () => {
         }, 2)).toEqual([]);
     });
 
+    it("does not apply realtime or historical relay limits to Host read defaults", () => {
+        const hostConfig = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
+            `wss://host-read-${index + 1}.example`,
+            { read: true, write: false },
+        ]));
+        activateHostRelayConfig(hostConfig);
+
+        expect(resolvePostHistoryRelayUrls(hostConfig, 2)).toEqual(
+            Array.from({ length: 9 }, (_, index) => `wss://host-read-${index + 1}.example/`),
+        );
+    });
+
     it.each([
         [null, "null"],
         [undefined, "undefined"],
