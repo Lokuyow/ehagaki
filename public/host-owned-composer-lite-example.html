@@ -3,91 +3,392 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Host-owned Composer Lite example</title>
+    <title>Host-owned Composer Lite Playground</title>
     <style>
-      body { font: 16px system-ui, sans-serif; margin: 2rem auto; max-width: 760px; padding: 0 1rem; }
-      #mount { height: 460px; border: 1px solid #bbb; margin: 1rem 0; }
+      :root { color-scheme: light dark; }
+      body {
+        font: 16px/1.45 system-ui, sans-serif;
+        margin: 0 auto;
+        max-width: 900px;
+        padding: 1rem;
+      }
+      h1 { margin-top: 0; }
+      fieldset { margin: 1rem 0; padding: .75rem 1rem 1rem; }
+      legend { font-weight: 700; padding: 0 .35rem; }
+      label { display: inline-flex; align-items: center; gap: .4rem; margin: .25rem .8rem .25rem 0; }
+      input, select, textarea, button { font: inherit; }
+      input, select, textarea { box-sizing: border-box; max-width: 100%; padding: .35rem; }
+      input[type="text"], input[type="url"], textarea { width: min(100%, 620px); }
+      textarea { display: block; min-height: 4.5rem; resize: vertical; }
+      button { margin: .25rem .35rem .25rem 0; padding: .35rem .6rem; }
+      .control-row { margin: .45rem 0; }
+      .control-row > label:first-child { min-width: 9rem; }
+      .hint { color: #666; font-size: .9rem; margin: .25rem 0 .5rem; }
+      @media (prefers-color-scheme: dark) { .hint { color: #aaa; } }
+      #mount { min-height: 460px; border: 1px solid #999; margin: 1rem 0; }
       ehagaki-composer { display: block; height: 100%; }
-      button { margin: .25rem; }
-      pre { min-height: 8rem; padding: .75rem; background: #f4f4f4; overflow: auto; }
+      output { display: block; margin: .5rem 0; overflow-wrap: anywhere; }
+      pre {
+        min-height: 5rem;
+        max-height: 24rem;
+        margin: .5rem 0;
+        padding: .75rem;
+        background: color-mix(in srgb, CanvasText 8%, Canvas);
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      details { margin-top: .6rem; }
+      .two-column { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem 1rem; }
+      @media (max-width: 600px) { .two-column { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
-    <h1>Host-owned Composer Lite</h1>
-    <p>This is the only Host-owned manual sample. It imports the Lite distribution and keeps submit, upload, context, and emoji ownership in the host page.</p>
-    <button id="text">Create text-only</button>
-    <button id="media">Create media-enabled</button>
-    <button id="keyboard">Create keyboard-options</button>
-    <button id="context">Set reply / quote context</button>
-    <button id="fail">Make next submit fail</button>
+    <h1>Host-owned Composer Lite Playground</h1>
+    <p>Try the public Host-owned Composer Lite API from a single browser page. The host page owns submit and media upload callbacks.</p>
+
+    <fieldset id="mount-configuration">
+      <legend>Create / Mount configuration</legend>
+      <div class="two-column">
+        <label><input id="upload-media" type="checkbox" /> Enable uploadMedia</label>
+        <label><input id="content-warning" type="checkbox" /> Enable Content Warning</label>
+        <label><input id="hashtag-pin" type="checkbox" /> Enable hashtag pin</label>
+        <label><input id="keyboard-bar" type="checkbox" checked /> Show KeyboardButtonBar</label>
+      </div>
+      <div class="control-row">
+        <label for="enter-behavior">Enter behavior</label>
+        <select id="enter-behavior">
+          <option value="newline" selected>Enter: newline</option>
+          <option value="submit">Enter: submit</option>
+        </select>
+      </div>
+      <button id="create-composer" type="button">Create / Recreate Composer</button>
+      <output id="mount-config-status" role="status">not mounted</output>
+    </fieldset>
+
+    <fieldset>
+      <legend>Runtime controls</legend>
+      <button id="set-custom-emojis" type="button">Set custom emojis</button>
+      <button id="clear-custom-emojis" type="button">Clear custom emojis</button>
+      <button id="remove-composer" type="button">Remove Composer</button>
+      <button id="reconnect-composer" type="button">Reconnect same instance</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Context</legend>
+      <div class="control-row">
+        <label for="context-content">Initial / replacement content</label>
+        <textarea id="context-content" placeholder="Text applied with setContext({ content })"></textarea>
+        <button id="set-content" type="button">Set content</button>
+        <button id="clear-content" type="button">Clear content</button>
+      </div>
+      <div class="control-row">
+        <label for="reply-reference">Reply reference</label>
+        <input id="reply-reference" type="text" value="note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl" />
+        <button id="set-reply" type="button">Set reply</button>
+        <button id="clear-reply" type="button">Clear reply</button>
+      </div>
+      <div class="control-row">
+        <label for="quotes-references">Quote references (one per line)</label>
+        <textarea id="quotes-references">note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl
+note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
+        <button id="set-single-quote" type="button">Set single quote</button>
+        <button id="set-multiple-quotes" type="button">Set multiple quotes</button>
+        <button id="clear-quotes" type="button">Clear quotes</button>
+      </div>
+      <button id="apply-reply-quotes" type="button">Apply reply + quotes</button>
+      <hr />
+      <p class="hint">Channel reference must be a valid note/nevent reference supplied by the host. No repository channel event is presented as a fake valid example.</p>
+      <div class="control-row"><label for="channel-reference">Channel reference</label><input id="channel-reference" type="text" placeholder="paste a valid channel event reference" /></div>
+      <div class="control-row"><label for="channel-name">Channel name</label><input id="channel-name" type="text" placeholder="optional" /></div>
+      <div class="control-row"><label for="channel-about">Channel about</label><input id="channel-about" type="text" placeholder="optional" /></div>
+      <div class="control-row"><label for="channel-relay">Relay URL</label><input id="channel-relay" type="url" placeholder="wss://relay.example.com" /></div>
+      <button id="set-channel" type="button">Set channel</button>
+      <button id="clear-channel" type="button">Clear channel</button>
+      <button id="clear-all-context" type="button">Clear all context</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Settings</legend>
+      <div class="two-column">
+        <div class="control-row"><label for="locale">Locale</label><select id="locale"><option value="ja">ja</option><option value="en" selected>en</option></select></div>
+        <div class="control-row"><label for="theme-mode">Theme mode</label><select id="theme-mode"><option value="system" selected>system</option><option value="light">light</option><option value="dark">dark</option></select></div>
+        <label><input id="media-free-placement" type="checkbox" /> mediaFreePlacement</label>
+        <div class="control-row"><label for="image-quality">Image quality</label><select id="image-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+        <div class="control-row"><label for="video-quality">Video quality</label><select id="video-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+      </div>
+      <details>
+        <summary>Other public setSettings keys</summary>
+        <p class="hint">API acceptance / may have no visible effect in Lite.</p>
+        <div class="two-column">
+          <label><input id="client-tag" type="checkbox" checked /> clientTagEnabled</label>
+          <label><input id="quote-notification" type="checkbox" /> quoteNotificationEnabled</label>
+          <label><input id="reply-notification" type="checkbox" /> replyNotificationEnabled</label>
+          <label><input id="show-mascot" type="checkbox" checked /> showMascot</label>
+          <label><input id="show-flavor-text" type="checkbox" checked /> showFlavorText</label>
+        </div>
+      </details>
+      <details>
+        <summary>Advanced: legacy compression keys</summary>
+        <p class="hint">Compatibility-only aliases; prefer Image quality and Video quality above.</p>
+        <div class="two-column">
+          <div class="control-row"><label for="legacy-image-quality">imageCompressionLevel</label><select id="legacy-image-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+          <div class="control-row"><label for="legacy-video-quality">videoCompressionLevel</label><select id="legacy-video-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
+        </div>
+      </details>
+      <button id="apply-settings" type="button">Apply settings</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Host simulation</legend>
+      <div class="control-row"><label for="submit-behavior">Submit behavior</label><select id="submit-behavior"><option value="success" selected>success</option><option value="fail-once">fail once</option></select><button id="fail-submit" type="button">Fail next submit</button></div>
+      <div class="control-row"><label for="submit-delay">Submit delay</label><select id="submit-delay"><option value="0" selected>0ms</option><option value="1000">1000ms</option><option value="3000">3000ms</option></select></div>
+      <div class="control-row"><label for="upload-delay">Upload delay</label><select id="upload-delay"><option value="0" selected>0ms</option><option value="1000">1000ms</option><option value="3000">3000ms</option></select><button id="fail-upload" type="button">Fail next upload</button></div>
+      <p class="hint">Upload controls require Enable uploadMedia. The existing filename rule also remains: a filename containing “fail” fails.</p>
+    </fieldset>
+
+    <h2>Composer</h2>
     <div id="mount"></div>
-    <p id="status" role="status">loading</p>
-    <pre id="log" aria-live="polite"></pre>
+
+    <fieldset>
+      <legend>Status / Event log</legend>
+      <output id="status" role="status">loading</output>
+      <button id="clear-log" type="button">Clear log</button>
+      <pre id="log" aria-live="polite"></pre>
+    </fieldset>
+
+    <fieldset>
+      <legend>Last submit output</legend>
+      <pre id="last-submit-output">No submit output yet.</pre>
+    </fieldset>
+
     <script type="module">
       await import('./web-component/host-owned/ehagaki-composer.js');
-      const mount = document.querySelector('#mount');
-      const status = document.querySelector('#status');
-      const log = document.querySelector('#log');
-      let composer;
-      let failNext = false;
-      const note = 'note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl';
-      const write = (label, value) => { log.textContent += `${label} ${JSON.stringify(value)}\n`; };
 
-      async function create(mediaEnabled, keyboardOptions = {}) {
+      const mount = document.querySelector('#mount');
+      const log = document.querySelector('#log');
+      const status = document.querySelector('#status');
+      const mountConfigStatus = document.querySelector('#mount-config-status');
+      const lastSubmitOutput = document.querySelector('#last-submit-output');
+      let composer;
+      let mountedConfig;
+      let creationGeneration = 0;
+      let failNextSubmit = false;
+      let failNextUpload = false;
+
+      const get = (id) => document.querySelector(`#${id}`);
+      const checked = (id) => get(id).checked;
+      const value = (id) => get(id).value;
+      const safeError = (error) => ({ name: error?.name ?? 'Error', message: error?.message ?? String(error) });
+      const stringify = (input, pretty = false) => {
+        try { return JSON.stringify(input, null, pretty ? 2 : 0); } catch { return '[unserializable]'; }
+      };
+      const write = (label, input) => {
+        log.textContent += `${label} ${stringify(input)}\n`;
+        log.scrollTop = log.scrollHeight;
+      };
+      const currentMountConfig = () => ({
+        upload: checked('upload-media') ? 'on' : 'off',
+        contentWarning: checked('content-warning') ? 'on' : 'off',
+        hashtagPin: checked('hashtag-pin') ? 'on' : 'off',
+        keyboardButtonBar: checked('keyboard-bar') ? 'on' : 'off',
+        enterKeyBehavior: value('enter-behavior'),
+      });
+      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | enter: ${config.enterKeyBehavior}`;
+      const setReadyStatus = (config) => {
+        const text = readyText(config);
+        status.textContent = text;
+        mountConfigStatus.textContent = text;
+      };
+      const ensureComposer = () => {
+        if (!composer || !composer.isConnected) throw new Error('Composer is not mounted.');
+        return composer;
+      };
+      const run = async (label, action) => {
+        try {
+          const result = await action();
+          write(label, result === undefined ? 'ok' : result);
+        } catch (error) {
+          write(`${label} error:`, safeError(error));
+        }
+      };
+      const delayWithAbort = (delay, signal, operation) => new Promise((resolve, reject) => {
+        if (signal.aborted) {
+          write(`${operation} signal:`, { aborted: true });
+          reject(new Error(`${operation} aborted`));
+          return;
+        }
+        if (delay === 0) { resolve(); return; }
+        let settled = false;
+        const timer = setTimeout(() => {
+          settled = true;
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, delay);
+        const onAbort = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          write(`${operation} signal:`, { aborted: signal.aborted });
+          reject(new Error(`${operation} aborted`));
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      const customEmojiCatalog = [
+        { shortcode: 'wave', url: 'https://example.invalid/emoji/wave.webp' },
+        { shortcode: 'sparkles', url: 'https://example.invalid/emoji/sparkles.webp' },
+        { shortcode: 'coffee', url: 'https://example.invalid/emoji/coffee.webp' },
+      ];
+      const quoteValues = () => value('quotes-references').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+      const contextChannel = () => {
+        const reference = value('channel-reference').trim();
+        if (!reference) throw new Error('Enter a valid channel reference first.');
+        const relay = value('channel-relay').trim();
+        return {
+          reference,
+          ...(relay ? { relays: [relay] } : {}),
+          name: value('channel-name').trim() || null,
+          about: value('channel-about').trim() || null,
+        };
+      };
+
+      async function createComposer() {
+        const generation = ++creationGeneration;
+        const config = currentMountConfig();
         composer?.remove();
         composer = document.createElement('ehagaki-composer');
         composer.id = 'composer';
         composer.assetBase = new URL('./web-component/host-owned/', import.meta.url).href;
-        composer.configureHostOwned({
+        const hostOptions = {
           async submit(output, { signal }) {
             write('submit output:', output);
-            if (signal.aborted || failNext) {
-              failNext = false;
+            lastSubmitOutput.textContent = stringify(output, true);
+            await delayWithAbort(Number(value('submit-delay')), signal, 'submit');
+            if (signal.aborted) {
+              write('submit signal:', { aborted: true });
+              throw new Error('example host submit aborted');
+            }
+            const shouldFail = failNextSubmit || value('submit-behavior') === 'fail-once';
+            failNextSubmit = false;
+            if (value('submit-behavior') === 'fail-once') get('submit-behavior').value = 'success';
+            if (shouldFail) {
+              write('simulated submit failure:', { signalAborted: signal.aborted });
               throw new Error('example host submit failure');
             }
-            status.textContent = `submit: ${output.content}`;
+            status.textContent = `submit succeeded: ${output.content}`;
             return { eventId: 'a'.repeat(64) };
           },
-          ...(mediaEnabled ? {
-            contentWarningEnabled: true,
-            hashtagPinEnabled: true,
+          contentWarningEnabled: config.contentWarning === 'on',
+          hashtagPinEnabled: config.hashtagPin === 'on',
+          keyboardButtonBarEnabled: config.keyboardButtonBar === 'on',
+          enterKeyBehavior: config.enterKeyBehavior,
+          ...(config.upload === 'on' ? {
             async uploadMedia(file, metadata, { signal }) {
               write('upload metadata:', metadata);
-              if (signal.aborted || file.name.includes('fail')) {
+              await delayWithAbort(Number(value('upload-delay')), signal, 'upload');
+              if (signal.aborted) {
+                write('upload signal:', { aborted: true });
+                throw new Error('example host upload aborted');
+              }
+              const shouldFail = failNextUpload || file.name.includes('fail');
+              failNextUpload = false;
+              if (shouldFail) {
+                write('simulated upload failure:', { fileName: file.name, signalAborted: signal.aborted });
                 throw new Error('example host upload failure');
               }
-              return { url: `https://example.invalid/media/${encodeURIComponent(file.name)}` };
+              return {
+                url: `https://example.invalid/media/${encodeURIComponent(file.name)}`,
+                imeta: { m: metadata.processedType, alt: file.name },
+              };
             },
           } : {}),
-          ...keyboardOptions,
-        });
-        const emojisReady = mediaEnabled
-          ? composer.setCustomEmojis([
-              { shortcode: 'wave', url: 'https://example.invalid/emoji/wave.webp' },
-            ])
-          : Promise.resolve();
-        for (const name of ['ehagaki-ready', 'ehagaki-post-success', 'ehagaki-post-error', 'ehagaki-composer-context-updated']) {
-          composer.addEventListener(name, (event) => write(name, event.detail));
+        };
+        composer.configureHostOwned(hostOptions);
+        for (const name of ['ehagaki-ready', 'ehagaki-post-success', 'ehagaki-post-error', 'ehagaki-composer-context-updated', 'ehagaki-initialization-error']) {
+          composer.addEventListener(name, (event) => {
+            write(name, event.detail);
+            if (name === 'ehagaki-post-success') status.textContent = `post success: ${event.detail.eventId ?? 'host acknowledged'}`;
+            if (name === 'ehagaki-post-error') status.textContent = `post error: ${event.detail.code}`;
+          });
         }
         mount.append(composer);
+        status.textContent = 'mounting';
+        mountConfigStatus.textContent = `mounting | ${readyText(config).replace(/^ready \| /, '')}`;
         await composer.whenReady();
-        await emojisReady;
-        status.textContent = `ready (${mediaEnabled ? 'media-enabled' : 'text-only'})`;
-        write('ready:', { mediaEnabled });
+        if (generation !== creationGeneration) return;
+        mountedConfig = config;
+        setReadyStatus(config);
+        write('create configuration:', config);
       }
 
-      document.querySelector('#text').onclick = () => create(false);
-      document.querySelector('#media').onclick = () => create(true);
-      document.querySelector('#keyboard').onclick = () => create(false, {
-        keyboardButtonBarEnabled: false,
-        enterKeyBehavior: 'submit',
+      get('create-composer').onclick = () => void createComposer().catch((error) => write('create error:', safeError(error)));
+      get('set-custom-emojis').onclick = () => void run('setCustomEmojis:', async () => {
+        await ensureComposer().setCustomEmojis(customEmojiCatalog);
+        return customEmojiCatalog;
       });
-      document.querySelector('#fail').onclick = () => { failNext = true; write('next submit:', 'failure'); };
-      document.querySelector('#context').onclick = async () => {
+      get('clear-custom-emojis').onclick = () => void run('clear custom emojis:', async () => {
+        await ensureComposer().setCustomEmojis([]);
+        return [];
+      });
+      get('remove-composer').onclick = () => {
         if (!composer) return;
-        await composer.setContext({ reply: note, quotes: [note] });
+        composer.remove();
+        status.textContent = 'removed (reconnect is available)';
+        mountConfigStatus.textContent = 'removed (mount configuration is retained by the same instance)';
+        write('remove composer:', { reconnectable: true });
       };
-      create(false);
+      get('reconnect-composer').onclick = () => void run('reconnect same instance:', async () => {
+        if (!composer) throw new Error('No composer instance to reconnect.');
+        if (!composer.isConnected) mount.append(composer);
+        await composer.whenReady();
+        setReadyStatus(mountedConfig ?? currentMountConfig());
+        return { sameInstance: true };
+      });
+      const applyContext = (label, payload) => run(label, async () => {
+        await ensureComposer().setContext(payload);
+        return payload;
+      });
+      get('set-content').onclick = () => void applyContext('setContext content:', { content: value('context-content') });
+      get('clear-content').onclick = () => void applyContext('clear content:', { content: null });
+      get('set-reply').onclick = () => void applyContext('setContext reply:', { reply: value('reply-reference').trim() });
+      get('clear-reply').onclick = () => void applyContext('clear reply:', { reply: null });
+      get('set-single-quote').onclick = () => void applyContext('setContext single quote:', { quotes: quoteValues().slice(0, 1) });
+      get('set-multiple-quotes').onclick = () => void applyContext('setContext multiple quotes:', { quotes: quoteValues() });
+      get('clear-quotes').onclick = () => void applyContext('clear quotes:', { quotes: null });
+      get('apply-reply-quotes').onclick = () => void applyContext('setContext reply + quotes:', { reply: value('reply-reference').trim(), quotes: quoteValues() });
+      get('set-channel').onclick = () => void run('setContext channel:', async () => {
+        const payload = { channel: contextChannel() };
+        await ensureComposer().setContext(payload);
+        return payload;
+      });
+      get('clear-channel').onclick = () => void applyContext('clear channel:', { channel: null });
+      get('clear-all-context').onclick = () => void applyContext('clear all context:', { content: null, reply: null, quotes: null, channel: null });
+      get('apply-settings').onclick = () => void run('setSettings applied:', async () => {
+        const payload = {
+          locale: value('locale'),
+          themeMode: value('theme-mode'),
+          mediaFreePlacement: checked('media-free-placement'),
+          imageQualityLevel: value('image-quality'),
+          videoQualityLevel: value('video-quality'),
+          clientTagEnabled: checked('client-tag'),
+          quoteNotificationEnabled: checked('quote-notification'),
+          replyNotificationEnabled: checked('reply-notification'),
+          showMascot: checked('show-mascot'),
+          showFlavorText: checked('show-flavor-text'),
+          imageCompressionLevel: value('legacy-image-quality'),
+          videoCompressionLevel: value('legacy-video-quality'),
+        };
+        write('setSettings payload:', payload);
+        const applied = await ensureComposer().setSettings(payload);
+        return [...applied];
+      });
+      get('fail-submit').onclick = () => { failNextSubmit = true; write('simulated failure:', { operation: 'submit', next: true }); };
+      get('fail-upload').onclick = () => { failNextUpload = true; write('simulated failure:', { operation: 'upload', next: true }); };
+      get('clear-log').onclick = () => { log.textContent = ''; };
+
+      get('context-content').value = 'Host-owned Lite playground content';
+      void createComposer().catch((error) => write('create error:', safeError(error)));
     </script>
   </body>
 </html>

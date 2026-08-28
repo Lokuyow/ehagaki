@@ -127,8 +127,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         failedWebComponentRequests.length = 0;
         consoleErrors.length = 0;
         await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
-        await expect(page.locator("#log")).toContainText("ready: {\"mediaEnabled\":false}");
-        await expect(page.locator("#status")).toHaveText("ready (text-only)");
+        await expect(page.locator("#log")).toContainText("create configuration:");
+        await expect(page.locator("#status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | enter: newline");
+        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | enter: newline");
         await expect(page.locator("ehagaki-composer")).toBeVisible();
         const closedHostOwnedGeometry = await page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
@@ -152,8 +153,51 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
         await expect(page.locator("ehagaki-composer .content-warning-icon")).toHaveCount(0);
         await expect(page.locator("ehagaki-composer .hashtag-icon")).toHaveCount(0);
-        await page.locator("#media").click();
-        await expect(page.locator("#status")).toHaveText("ready (media-enabled)");
+        await page.locator("#upload-media").check();
+        await page.locator("#content-warning").check();
+        await page.locator("#hashtag-pin").check();
+        await page.locator("#keyboard-bar").uncheck();
+        await page.locator("#enter-behavior").selectOption("submit");
+        await page.locator("#create-composer").click();
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | enter: submit");
+        await expect(page.locator("#log")).toContainText("\"upload\":\"on\"");
+        await expect(page.locator("ehagaki-composer .footer-button-bar")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .content-warning-icon")).toHaveCount(0);
+        await expect(page.locator("ehagaki-composer .hashtag-icon")).toHaveCount(0);
+        await page.locator("#set-custom-emojis").click();
+        await expect(page.locator("#log")).toContainText("setCustomEmojis:");
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
+        await page.locator("#keyboard-bar").check();
+        await page.locator("#create-composer").click();
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | enter: submit");
+        await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(1);
+        await page.locator("#set-custom-emojis").click();
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
+        await page.locator("#remove-composer").click();
+        await expect(page.locator("ehagaki-composer")).toHaveCount(0);
+        await page.locator("#reconnect-composer").click();
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | enter: submit");
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
+        await expect(page.locator("#log")).toContainText("\"sameInstance\":true");
+        await page.locator("#clear-custom-emojis").click();
+        await expect(page.locator("#log")).toContainText("clear custom emojis:");
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
+        await page.locator("#set-custom-emojis").click();
+        await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
+        await page.locator("#locale").selectOption("ja");
+        await page.locator("#theme-mode").selectOption("dark");
+        await page.locator("#apply-settings").click();
+        await expect(page.locator("#log")).toContainText("setSettings applied:");
+        await expect(page.locator("#log")).toContainText("locale");
+        await page.locator("#context-content").fill("sample context body");
+        await page.locator("#set-content").click();
+        await page.locator("#set-reply").click();
+        await page.locator("#set-single-quote").click();
+        await expect(page.locator("#log")).toContainText("setContext content:");
+        await expect(page.locator("#log")).toContainText("setContext reply:");
+        await expect(page.locator("#log")).toContainText("setContext single quote:");
         await expect.poll(() => page.locator("ehagaki-composer").evaluate((element) => {
             const shadow = element.shadowRoot!;
             const icons = [
@@ -197,10 +241,13 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         const sampleEditor = page.locator("ehagaki-composer .tiptap-editor");
         await sampleEditor.click();
         await sampleEditor.pressSequentially("host-owned sample body");
-        await page.locator("#context").click();
+        await page.locator("#apply-reply-quotes").click();
         await expect(page.locator("#log")).toContainText("ehagaki-composer-context-updated");
         await page.locator("ehagaki-composer button.post-button").click();
         await expect(page.locator("#log")).toContainText("submit output:");
+        await expect(page.locator("#last-submit-output")).toContainText("sample context body");
+        await page.locator("#clear-log").click();
+        await expect(page.locator("#log")).toHaveText("");
         const iconStatuses = await page.evaluate(async () => Promise.all([
             "paper-plane-solid-full.svg",
             "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
