@@ -256,6 +256,7 @@
 
     let localHistoryDeleteConfirmOpen = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
+    let isExplicitNavigation = $state(false);
     let jumpDateValue = $state<DateValue | undefined>(createTodayDateValue());
     let jumpDatePlaceholder = $state<DateValue | undefined>(
         createTodayDateValue(),
@@ -308,9 +309,13 @@
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let autoLoadOlderSentinel = $state<HTMLDivElement | null>(null);
+    let autoLoadNewerSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
+    let isAutoLoadingNewer = $state(false);
     let autoLoadOlderAwaitingExit = false;
+    let autoLoadNewerAwaitingExit = false;
     let autoLoadOlderSentinelIsIntersecting = false;
+    let autoLoadNewerSentinelIsIntersecting = false;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
@@ -529,6 +534,7 @@
         selectedRawEvent = null;
         localHistoryDeleteConfirmOpen = false;
         activeUtilityPanel = "none";
+        isExplicitNavigation = false;
         jumpDateValue = createTodayDateValue();
         jumpDatePlaceholder = createTodayDateValue();
         jumpDatePickerOpen = false;
@@ -680,6 +686,58 @@
             observer.disconnect();
             autoLoadOlderAwaitingExit = false;
             autoLoadOlderSentinelIsIntersecting = false;
+        };
+    });
+
+    $effect(() => {
+        const sentinel = autoLoadNewerSentinel;
+        const root = historyContainer;
+        const enabled =
+            show
+            && !!sentinel
+            && !!root
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && history.state.hasNewerLocal
+            && !isExplicitNavigation
+            && !history.isRefetchingAroundCurrentView;
+
+        if (!enabled || !supportsAutoLoadOlder) {
+            autoLoadNewerAwaitingExit = false;
+            autoLoadNewerSentinelIsIntersecting = false;
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const isIntersecting = entries.some(
+                    (entry) => entry.isIntersecting,
+                );
+                autoLoadNewerSentinelIsIntersecting = isIntersecting;
+
+                if (!isIntersecting) {
+                    if (
+                        autoLoadNewerAwaitingExit
+                        && !isAutoLoadingNewer
+                    ) {
+                        autoLoadNewerAwaitingExit = false;
+                    }
+                    return;
+                }
+
+                void handleAutoLoadNewer();
+            },
+            {
+                root,
+                threshold: 0,
+            },
+        );
+        observer.observe(sentinel);
+
+        return () => {
+            observer.disconnect();
+            autoLoadNewerAwaitingExit = false;
+            autoLoadNewerSentinelIsIntersecting = false;
         };
     });
 
@@ -895,6 +953,43 @@
         }
     }
 
+    function canAutoLoadNewerPosts(): boolean {
+        return show
+            && !history.isSearchMode
+            && history.state.listingMode === "contiguous"
+            && history.state.hasNewerLocal
+            && !isExplicitNavigation
+            && !history.isRefetchingAroundCurrentView;
+    }
+
+    async function handleAutoLoadNewer(): Promise<void> {
+        if (
+            isAutoLoadingNewer
+            || autoLoadNewerAwaitingExit
+            || !canAutoLoadNewerPosts()
+        ) {
+            return;
+        }
+
+        const scrollAnchor = historyViewport.captureHistoryScrollAnchor();
+        isAutoLoadingNewer = true;
+        autoLoadNewerAwaitingExit = true;
+
+        try {
+            const changed = await history.loadNewer();
+            if (changed && show) {
+                await tick();
+                await previewCollapse.flushPendingMeasurements();
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+            }
+        } finally {
+            isAutoLoadingNewer = false;
+            if (!autoLoadNewerSentinelIsIntersecting) {
+                autoLoadNewerAwaitingExit = false;
+            }
+        }
+    }
+
     async function handleShowSavedOlderPosts(): Promise<void> {
         const changed = await history.showSavedOlderPosts();
         if (changed) {
@@ -972,6 +1067,7 @@
         const changed = history.canReturnToLatest
             ? await history.returnToLatest()
             : false;
+        isExplicitNavigation = false;
         if (changed || !historyViewport.isHistoryScrolledToTop) {
             historyViewport.resetHistoryScrollSoon();
         }
@@ -984,7 +1080,11 @@
         }
 
         historyViewport.clearAllSessionScrollAnchorsForCurrentPubkey();
+        isExplicitNavigation = true;
         const changed = await history.jumpToCreatedAt(createdAt);
+        if (!changed) {
+            isExplicitNavigation = false;
+        }
         if (changed) {
             activeUtilityPanel = "none";
             jumpDatePickerOpen = false;
@@ -1428,8 +1528,10 @@
     async function handleShowSurroundingPosts(
         post: PostHistoryRecord,
     ): Promise<void> {
+        isExplicitNavigation = true;
         const changed = await history.jumpToEventId(post.eventId);
         if (!changed) {
+            isExplicitNavigation = false;
             return;
         }
 
@@ -2103,7 +2205,12 @@
                 </div>
             </div>
         {:else}
-            {#if history.isSearchMode ? history.canLoadNewer : history.state.hasNewerLocal}
+            {#if history.isSearchMode
+                ? history.canLoadNewer
+                : history.state.hasNewerLocal &&
+                    (isExplicitNavigation ||
+                        !supportsAutoLoadOlder ||
+                        history.state.listingMode !== "contiguous")}
                 <div class="post-history-nav-row post-history-nav-row-top">
                     <Button
                         type="button"
@@ -2119,6 +2226,22 @@
                         ></div>
                         {getLoadNewerLabel()}
                     </Button>
+                </div>
+            {/if}
+            {#if supportsAutoLoadOlder && !history.isSearchMode && history.state.listingMode === "contiguous" && history.state.hasNewerLocal && !isExplicitNavigation}
+                <div
+                    bind:this={autoLoadNewerSentinel}
+                    class="post-history-auto-load-sentinel post-history-auto-load-newer-sentinel"
+                    aria-hidden="true"
+                >
+                    {#if isAutoLoadingNewer}
+                        <LoadingPlaceholder
+                            variant="spinner"
+                            showLoader={true}
+                            loaderSize={24}
+                            ariaHidden={true}
+                        />
+                    {/if}
                 </div>
             {/if}
             <ul class="post-history-list">

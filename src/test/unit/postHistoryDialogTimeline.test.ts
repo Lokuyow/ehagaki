@@ -169,6 +169,57 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('IntersectionObserver 非対応時は通常 contiguous の新しい投稿ボタンを維持する', async () => {
+        const posts = Array.from({ length: 200 }, (_, index) =>
+            createRecord({
+                eventId: index.toString(16).padStart(64, '0'),
+                id: index.toString(16).padStart(64, '0'),
+                content: `fallback post ${index}`,
+                createdAt: 1_700_000_000 - index,
+                postedAt: Date.UTC(2024, 0, 2) - index * 1_000,
+            }),
+        );
+        let olderChunkCall = 0;
+
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getNewerVisibleChunk.mockImplementation(async ({ cursor }: { cursor: { eventId: string } }) =>
+            cursor.eventId === posts[0].eventId ? [] : [posts[0]],
+        );
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (limit === 1) {
+                return olderChunkCall < 3 ? [posts[50 + olderChunkCall * 50]] : [];
+            }
+
+            const chunk = posts.slice(50 + olderChunkCall * 50, 100 + olderChunkCall * 50);
+            olderChunkCall += 1;
+            return chunk;
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await screen.findByText('fallback post 0');
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
+        });
+        for (const expectedLastIndex of [99, 149, 199]) {
+            await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
+            await waitFor(() => expect(screen.getByText(`fallback post ${expectedLastIndex}`)).toBeTruthy());
+        }
+
+        expect(screen.queryByText('fallback post 0')).toBeNull();
+        expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
+        expect(document.querySelector('.post-history-auto-load-newer-sentinel')).toBeNull();
+
+        view.unmount();
+    });
+
     it('連続範囲の末尾で保存済みの古い投稿を明示的に表示し、relay を呼ばない', async () => {
         const newest = createRecord({
             eventId: 'boundary-newest',
