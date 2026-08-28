@@ -161,6 +161,25 @@ async function scrollHistoryToBottom(page: Page) {
     });
 }
 
+async function scrollHistoryToTop(page: Page) {
+    await page.locator('.post-history-container').evaluate((element) => {
+        const container = element as HTMLDivElement;
+        container.scrollTop = 0;
+        container.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+}
+
+async function scrollHistoryAwayFromTop(page: Page) {
+    await page.locator('.post-history-container').evaluate((element) => {
+        const container = element as HTMLDivElement;
+        container.scrollTop = Math.min(
+            container.clientHeight,
+            container.scrollHeight - container.clientHeight,
+        );
+        container.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+}
+
 async function historyEventIds(page: Page): Promise<string[]> {
     return page.locator('.post-history-list').evaluate((list) =>
         Array.from(list.querySelectorAll<HTMLElement>('.post-history-item'))
@@ -517,7 +536,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await expectVisiblePostCount(page, 50);
         await expect(page.getByRole('button', { name: 'さらに古い投稿を表示' })).toHaveCount(0);
-        await expect(page.locator('.post-history-auto-load-sentinel')).toBeVisible();
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toBeVisible();
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(0, 50));
 
         const observedEventIds = new Set(await historyEventIds(page));
@@ -586,7 +605,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
         }
-        await expect(page.locator('.post-history-auto-load-sentinel')).toBeVisible();
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toBeVisible();
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(100, 250));
 
@@ -596,13 +615,40 @@ test.describe('PostHistoryDialog Playwright', () => {
         for (const eventId of await historyEventIds(page)) {
             observedEventIds.add(eventId);
         }
-        await expect(page.locator('.post-history-auto-load-sentinel')).toHaveCount(0);
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toHaveCount(0);
 
         expect(observedEventIds).toEqual(new Set(expectedEventIds));
         await scrollHistoryToBottom(page);
         await waitForIntersectionObserverSettle(page);
         expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(101));
         await expect(page.getByText(harness.infiniteScrollOldestPostContent, { exact: true })).toBeVisible();
+
+        await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toHaveCount(0);
+        const upwardWindows = [
+            expectedEventIds.slice(51, 201),
+            expectedEventIds.slice(1, 151),
+            expectedEventIds.slice(0, 150),
+        ];
+        for (const [index, expectedWindow] of upwardWindows.entries()) {
+            await scrollHistoryToTop(page);
+            await expect.poll(() => historyEventIds(page)).toEqual(expectedWindow);
+            await expectVisiblePostCount(page, 150);
+            await waitForIntersectionObserverSettle(page);
+            expect(await historyEventIds(page)).toEqual(expectedWindow);
+            await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toHaveCount(0);
+
+            if (index < upwardWindows.length - 1) {
+                await scrollHistoryAwayFromTop(page);
+                await waitForIntersectionObserverSettle(page);
+            }
+        }
+
+        await expect(
+            page.locator(`.post-history-item[data-post-history-event-id="${expectedEventIds[0]}"]`),
+        ).toBeVisible();
+        await scrollHistoryToTop(page);
+        await waitForIntersectionObserverSettle(page);
+        expect(await historyEventIds(page)).toEqual(expectedEventIds.slice(0, 150));
     });
 
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
@@ -668,7 +714,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, 50);
         await expect(page.getByRole('button', { name: 'さらに古い投稿を表示' })).toHaveCount(0);
-        await expect(page.locator('.post-history-auto-load-sentinel')).toBeVisible();
+        await expect(page.locator('.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)')).toBeVisible();
         await expect(page.getByRole('button', { name: 'さらに古い検索結果を表示' })).toHaveCount(0);
     });
 
