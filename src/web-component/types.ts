@@ -75,6 +75,8 @@ export interface EHagakiHostOwnedComposerOptions {
     ) => Promise<EHagakiHostMediaUploadResult> | EHagakiHostMediaUploadResult;
     contentWarningEnabled?: boolean;
     hashtagPinEnabled?: boolean;
+    keyboardButtonBarEnabled?: boolean;
+    enterKeyBehavior?: "newline" | "submit";
 }
 
 export interface EHagakiCustomEmojiCatalogItem {

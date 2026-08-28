@@ -32,6 +32,7 @@
     touchAction,
     keydownAction,
     fileDropActionWithDragState,
+    hasMediaInDoc,
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import type { CustomEmojiAttrs } from "../lib/editor";
@@ -436,6 +437,7 @@
       getCustomEmojiItems: isHostOwned
         ? () => hostCustomEmojiItems
         : undefined,
+      enterKeyBehavior: isHostOwned ? hostOwnedConfig?.enterKeyBehavior : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
           void uploadHandlers.performUpload(files);
@@ -729,6 +731,19 @@
       (hasPostingCapability || !!postManager);
   }
 
+  function canStartHostOwnedSubmit(editorInstance: TipTapEditor): boolean {
+    const extraction = extractPostContentWithEmojiTags(editorInstance);
+    const hasLivePostableContent = !!extraction.content.trim() ||
+      hasMediaInDoc(editorInstance.state.doc) ||
+      mediaGalleryStore.hasNonPlaceholderItems();
+
+    return hasLivePostableContent &&
+      !postStatus.sending &&
+      !editorState.isUploading &&
+      !postStatus.completed &&
+      (hasPostingCapability || !!postManager);
+  }
+
   function createHostOwnedMediaImetaMap(editorInstance: TipTapEditor): Record<string, any> {
     if (!mediaFreePlacement) {
       return mediaGalleryStore.getMediaImetaMap();
@@ -755,7 +770,7 @@
 
   async function submitHostOwned(editorInstance: TipTapEditor): Promise<void> {
     const config = hostOwnedConfig;
-    if (!config || !canStartSubmit()) return;
+    if (!config || !canStartHostOwnedSubmit(editorInstance)) return;
 
     // Capture every mutable input before entering the host handler. The handler
     // is then free to await without observing later editor/context mutations.
@@ -812,11 +827,12 @@
   }
 
   export async function submitPost() {
-    if (!currentEditor || !canStartSubmit()) return;
+    if (!currentEditor) return;
     if (isHostOwned) {
       await submitHostOwned(currentEditor);
       return;
     }
+    if (!canStartSubmit()) return;
     if (isHostOwnedLiteBuild) return;
     if (!postManager) return;
     const postPayload = postManager.preparePostPayload(currentEditor);

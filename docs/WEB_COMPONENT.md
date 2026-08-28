@@ -309,6 +309,8 @@ composer.configureHostOwned({
   },
   contentWarningEnabled: true,
   hashtagPinEnabled: true,
+  keyboardButtonBarEnabled: true,
+  enterKeyBehavior: 'newline',
 });
 const customEmojisReady = composer.setCustomEmojis([
   { shortcode: 'wave', url: 'https://cdn.example/emoji/wave.webp' },
@@ -347,6 +349,15 @@ Host-owned Lite は host が提供した optional feature だけを表示しま�
 UI・状態・出力後処理を有効にします。未指定または `false` の場合は無効で、以前の mount から共有 store に
 残った状態も Lite の出力へ持ち越しません。hashtag pin が無効でも、本文の通常 hashtag 解析と
 composer-owned `t` tag は維持されます。
+
+`keyboardButtonBarEnabled` は Host-owned Lite の KeyboardButtonBar 全体を表示するかどうかを指定します。
+既定値は `true` で、`false` にすると投稿、画像選択、custom emoji、Content Warning、hashtag pin のバー内
+ボタンとバー自体が表示されません。この設定は表示 surface だけを制御し、`uploadMedia` や custom emoji
+catalog などの capability 自体を自動的に無効化しません。paste/drop や editor suggestion など、バー外の
+経路は維持されます。`enterKeyBehavior` の既定値は `'newline'` です。`'submit'` にすると plain Enter
+で投稿し、Shift+Enter は改行、Ctrl/Cmd+Enter は従来どおり投稿します。IME の変換確定 Enter は投稿に
+使用されません。これら2つは `configureHostOwned()` の mount-time 設定であり、HTML attribute や
+`setSettings()` ではありません。
 
 ## 設定を変更する `setSettings()`
 

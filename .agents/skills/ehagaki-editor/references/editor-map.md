@@ -12,7 +12,7 @@
 ## Creation, configuration, and document schema
 
 - `src/lib/editor/editorConfig.ts:createEditorStore()` は `svelte-tiptap` の `createEditor()` で初期 document を JSON の空 paragraph として作成する。`onCreate` は placeholder state と `window.__currentEditor` を設定し、`onDestroy` は後者を消す。
-- StarterKit は paragraph class、UndoRedo (`depth: 100`, `newGroupDelay: 500`) と Dropcursor を設定し、heading、blockquote、style marks、list、horizontal rule、hard break、既定 Link を無効にする。`ShiftEnterToParagraph` は Shift+Enter を `splitBlock()` にする。投稿 content に Markdown / rich-text semantics を追加しない。
+- StarterKit は paragraph class、UndoRedo (`depth: 100`, `newGroupDelay: 500`) と Dropcursor を設定し、heading、blockquote、style marks、list、horizontal rule、hard break、既定 Link を無効にする。`ShiftEnterToParagraph` は Shift+Enter を `splitBlock()` にする。Host-owned Lite の `enterKeyBehavior: "submit"` のみ、`SubmitOnPlainEnter` が高優先度の editor-local plugin として modifierなしの Enter を投稿へ委譲する。Shift+Enter、Ctrl/Cmd+Enter、Alt+Enter、IME composition中の Enter はこの plugin が処理せず既存経路へ委譲する。投稿 content に Markdown / rich-text semantics を追加しない。
 - Link は独自に登録され、`autolink` と `linkOnPaste` は無効である。HTTP(S) validation と rendering はここ、動的な link conversion は ContentTracking が担当する。
 - Image は block node view (`SvelteImageNode.svelte`) で、`src`、`blurhash`、`isPlaceholder`、`dim`、`size`、`uploadProtocol`、`alt` attrs を持つ。custom emoji に該当する HTML は Image parser から除外される。`Video` (`videoExtension.ts`) は block node、`src` と `isPlaceholder` attrs、`SvelteVideoNode.svelte` node view を持つ。
 - `CustomEmoji` (`customEmojiExtension.ts`) は `inline` / `atom` / `selectable` / `draggable` node で、`identityKey`、`shortcode`、`src`、`setAddress` attrs を持つ。modern `img[data-custom-emoji]` と legacy `img.custom-emoji-inline[alt]` を parse し、`SvelteCustomEmojiNode.svelte` が node view を描画する。input rule と paste rule は known shortcode だけを atom に変換する。
@@ -20,7 +20,7 @@
 
 ## Extension order and interaction boundaries
 
-`editorConfig.ts` の registration 順は実際の ordering dependency である。StarterKit、Link、Image、UniqueID、Focus、`GapCursorFocusReset`、`ShiftEnterToParagraph`、`ContentTrackingExtension`、`HashtagSuggestion`、Video、CustomEmoji、`CustomEmojiSuggestion`、`ToolbarCaretExtension`、`ClipboardExtension`、`MediaPasteExtension`、`ImageDragDropExtension`、`CustomEmojiDragDropExtension`、`SmartBackspaceExtension`、`AndroidCompositionFix`、Placeholder の順である。
+`editorConfig.ts` の registration 順は実際の ordering dependency である。submit-on-Enter時のみ `SubmitOnPlainEnter` を先頭に追加し、StarterKit、Link、Image、UniqueID、Focus、`GapCursorFocusReset`、`ShiftEnterToParagraph`、`ContentTrackingExtension`、`HashtagSuggestion`、Video、CustomEmoji、`CustomEmojiSuggestion`、`ToolbarCaretExtension`、`ClipboardExtension`、`MediaPasteExtension`、`ImageDragDropExtension`、`CustomEmojiDragDropExtension`、`SmartBackspaceExtension`、`AndroidCompositionFix`、Placeholder の順へ続く。
 
 - `ClipboardExtension` は MediaPaste より先に登録され、`enablePasteRules` は `clipboardExtension` と `customEmoji` のみである。順序を変更する前に text / file / URL / emoji paste の consumer を確認する。
 - `GapCursorFocusReset` は media NodeSelection の visual focus と editor 外クリック / touch の selection reset を管理する。document listener を `onDestroy` で外す。

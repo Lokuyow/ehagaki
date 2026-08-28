@@ -148,7 +148,10 @@ function syncLayoutCssVariables(
 
     const closedLayoutBottom = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
     const keyboardButtonBarBottom = `${isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom}px`;
-    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom) + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
+    const keyboardButtonBarHeight = layoutCapabilities.hasKeyboardButtonBar
+        ? KEYBOARD_BUTTON_BAR_HEIGHT
+        : 0;
+    const reasonInputBottom = `${(isComposerKeyboardActive ? effectiveKeyboardInset : closedLayoutBottom) + keyboardButtonBarHeight}px`;
     const footerBottom = !layoutCapabilities.hasFooter || isComposerKeyboardActive
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
@@ -200,7 +203,7 @@ function syncLayoutCssVariables(
     setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
     setRootStyleProperty(
         "--keyboard-button-bar-height",
-        `${KEYBOARD_BUTTON_BAR_HEIGHT}px`,
+        `${keyboardButtonBarHeight}px`,
     );
     setRootStyleProperty(
         "--reason-input-base-height",
@@ -212,7 +215,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--composer-bottom-reserved-height",
-        `${footerReservedHeight + KEYBOARD_BUTTON_BAR_HEIGHT}px`,
+        `${footerReservedHeight + keyboardButtonBarHeight}px`,
     );
     setRootStyleProperty(
         "--main-content-keyboard-adjustment",
@@ -289,6 +292,7 @@ export const reasonInputVisibleStore = {
 const layoutCapabilities = $state({
     hasHeader: true,
     hasFooter: true,
+    hasKeyboardButtonBar: true,
 });
 
 let bottomPosition = $state(FOOTER_HEIGHT);
@@ -342,6 +346,7 @@ export function setupViewportListener(
 ): (() => void) | undefined {
     layoutCapabilities.hasHeader = capabilities.hasHeader ?? true;
     layoutCapabilities.hasFooter = capabilities.hasFooter ?? true;
+    layoutCapabilities.hasKeyboardButtonBar = capabilities.hasKeyboardButtonBar ?? true;
     bottomPosition = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
     syncLayoutCssVariables(false);
 

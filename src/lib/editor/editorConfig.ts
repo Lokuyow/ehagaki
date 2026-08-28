@@ -5,7 +5,7 @@ import Image from '@tiptap/extension-image';
 import { Placeholder, Focus } from '@tiptap/extensions';
 import { Extension, Editor, AnyExtension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
@@ -34,6 +34,38 @@ const ShiftEnterToParagraph = Extension.create({
         return {
             'Shift-Enter': () => this.editor.commands.splitBlock(),
         };
+    },
+});
+
+const SubmitOnPlainEnter = Extension.create<{ onSubmitPost: () => Promise<void> }>({
+    name: 'submitOnPlainEnter',
+    priority: 1000,
+    addProseMirrorPlugins() {
+        return [new Plugin({
+            props: {
+                handleKeyDown: (view, event) => {
+                    if (
+                        (event.key !== 'Enter' && event.key !== 'NumpadEnter') ||
+                        event.shiftKey ||
+                        event.ctrlKey ||
+                        event.metaKey ||
+                        event.altKey
+                    ) {
+                        return false;
+                    }
+
+                    // Composition-confirming Enter must remain with the native
+                    // editor/composition path instead of submitting the post.
+                    if (event.isComposing || event.keyCode === 229 || view.composing) {
+                        return false;
+                    }
+
+                    event.preventDefault();
+                    void this.options.onSubmitPost();
+                    return true;
+                },
+            },
+        })];
     },
 });
 
@@ -132,6 +164,7 @@ export interface EditorConfigOptions {
     onSubmitPost: () => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
+    enterKeyBehavior?: 'newline' | 'submit';
     onUpdate?: () => void;
     onCreate?: (editor: Editor) => void;
     onDestroy?: () => void;
@@ -141,11 +174,23 @@ export interface EditorConfigOptions {
  * Tiptap v3のエディターストアを作成
  */
 export function createEditorStore(options: EditorConfigOptions) {
-    const { placeholderText, onSubmitPost, onCustomEmojiSelect, getCustomEmojiItems, onUpdate, onCreate, onDestroy } = options;
+    const {
+        placeholderText,
+        onSubmitPost,
+        onCustomEmojiSelect,
+        getCustomEmojiItems,
+        enterKeyBehavior = 'newline',
+        onUpdate,
+        onCreate,
+        onDestroy,
+    } = options;
     const placeholderState: PlaceholderState = { text: placeholderText };
 
     const editorStore = createEditor({
         extensions: [
+            ...(enterKeyBehavior === 'submit'
+                ? [SubmitOnPlainEnter.configure({ onSubmitPost })]
+                : []),
             StarterKit.configure({
                 paragraph: {
                     HTMLAttributes: {
@@ -321,6 +366,7 @@ export function createEditorStore(options: EditorConfigOptions) {
         editorProps: {
             attributes: {
                 class: 'tiptap-editor',
+                ...(enterKeyBehavior === 'submit' ? { enterkeyhint: 'send' } : {}),
             },
             // リンクのクリック動作を制御
             handleClickOn(view, _pos, _node, _nodePos, event, _direct) {
