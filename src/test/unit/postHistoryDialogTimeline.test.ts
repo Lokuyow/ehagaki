@@ -30,6 +30,74 @@ import { readPersistedPostHistoryListingSnapshotForPubkey } from '../../lib/hook
 import { markPostHistoryShouldReturnToLatestAfterLocalPost } from '../../lib/postHistoryLatestRequest';
 import { bumpPostHistorySearchRevision } from '../../lib/postHistoryLocalSearchRevision';
 
+class MockIntersectionObserver {
+    static instances: MockIntersectionObserver[] = [];
+
+    readonly observedTargets = new Set<Element>();
+    readonly root: Element | Document | null;
+    readonly rootMargin: string;
+    readonly thresholds: readonly number[];
+    readonly disconnect = vi.fn();
+    readonly observe = vi.fn((target: Element) => {
+        this.observedTargets.add(target);
+    });
+    readonly unobserve = vi.fn((target: Element) => {
+        this.observedTargets.delete(target);
+    });
+    readonly takeRecords = vi.fn(() => []);
+
+    constructor(
+        private readonly callback: IntersectionObserverCallback,
+        options: IntersectionObserverInit = {},
+    ) {
+        this.root = options.root ?? null;
+        this.rootMargin = options.rootMargin ?? '0px';
+        this.thresholds = Array.isArray(options.threshold)
+            ? options.threshold
+            : [options.threshold ?? 0];
+        MockIntersectionObserver.instances.push(this);
+    }
+
+    trigger(target: Element, isIntersecting: boolean): void {
+        this.callback(
+            [{ target, isIntersecting } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+        );
+    }
+
+    static reset(): void {
+        MockIntersectionObserver.instances = [];
+    }
+}
+
+class MockResizeObserver {
+    static instances: MockResizeObserver[] = [];
+
+    readonly observedTargets = new Set<Element>();
+    readonly disconnect = vi.fn();
+    readonly observe = vi.fn((target: Element) => {
+        this.observedTargets.add(target);
+    });
+    readonly unobserve = vi.fn((target: Element) => {
+        this.observedTargets.delete(target);
+    });
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+        MockResizeObserver.instances.push(this);
+    }
+
+    trigger(target: Element): void {
+        this.callback(
+            [{ target } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+        );
+    }
+
+    static reset(): void {
+        MockResizeObserver.instances = [];
+    }
+}
+
 function createMockRect(top: number, height: number) {
     return {
         top,
@@ -216,6 +284,132 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(screen.queryByText('fallback post 0')).toBeNull();
         expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
         expect(document.querySelector('.post-history-auto-load-newer-sentinel')).toBeNull();
+
+        view.unmount();
+    });
+
+    it('先読みobserverは初回交差で読み込み、resize再構成ではlatch中に追加読み込みしない', async () => {
+        let containerHeight = 320;
+        const firstChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const posts = Array.from({ length: 200 }, (_, index) =>
+            createRecord({
+                eventId: index.toString(16).padStart(64, '0'),
+                id: index.toString(16).padStart(64, '0'),
+                content: `prefetch post ${index}`,
+                createdAt: 1_700_000_000 - index,
+                postedAt: Date.UTC(2024, 0, 2) - index * 1_000,
+            }),
+        );
+        let pageChunkRequestCount = 0;
+
+        MockIntersectionObserver.reset();
+        MockResizeObserver.reset();
+        vi.stubGlobal(
+            'IntersectionObserver',
+            MockIntersectionObserver as unknown as typeof IntersectionObserver,
+        );
+        vi.stubGlobal(
+            'ResizeObserver',
+            MockResizeObserver as unknown as typeof ResizeObserver,
+        );
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+            return this.classList.contains('post-history-container')
+                ? containerHeight
+                : 0;
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(posts.length);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(posts.slice(0, 50));
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async ({ limit }: { limit: number }) => {
+            if (limit === 1) {
+                return [posts[50]];
+            }
+
+            pageChunkRequestCount += 1;
+            return pageChunkRequestCount === 1
+                ? firstChunk.promise
+                : posts.slice(
+                      pageChunkRequestCount * 50,
+                      pageChunkRequestCount * 50 + 50,
+                  );
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await screen.findByText('prefetch post 0');
+        const container = getHistoryContainer();
+        await waitFor(() => {
+            expect(document.querySelector(
+                '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)',
+            )).toBeInstanceOf(HTMLElement);
+        });
+        const olderSentinel = document.querySelector(
+            '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)',
+        ) as HTMLElement;
+        const initialObserver = MockIntersectionObserver.instances.find(
+            (observer) => observer.observedTargets.has(olderSentinel),
+        );
+        expect(initialObserver?.rootMargin).toBe('0px 0px 320px 0px');
+
+        initialObserver?.trigger(olderSentinel, true);
+        await waitFor(() => expect(pageChunkRequestCount).toBe(1));
+
+        containerHeight = 400;
+        for (const observer of MockResizeObserver.instances) {
+            if (observer.observedTargets.has(container)) {
+                observer.trigger(container);
+            }
+        }
+        await waitFor(() => {
+            expect(MockIntersectionObserver.instances).toHaveLength(2);
+        });
+        const resizeObserver = MockIntersectionObserver.instances.at(-1);
+        expect(resizeObserver?.rootMargin).toBe('0px 0px 400px 0px');
+
+        resizeObserver?.trigger(olderSentinel, true);
+        await Promise.resolve();
+        expect(pageChunkRequestCount).toBe(1);
+
+        firstChunk.resolve(posts.slice(50, 100));
+        await screen.findByText('prefetch post 99');
+        await waitFor(() => {
+            expect(container.getAttribute('aria-busy')).toBe('false');
+        });
+
+        const rearmedObserver = MockIntersectionObserver.instances
+            .filter((observer) => observer.observedTargets.has(olderSentinel))
+            .at(-1);
+        rearmedObserver?.trigger(olderSentinel, false);
+        rearmedObserver?.trigger(olderSentinel, true);
+        await waitFor(() => expect(pageChunkRequestCount).toBe(2));
+        await screen.findByText('prefetch post 149');
+
+        await view.rerender({
+            show: false,
+            onClose: vi.fn(),
+            pubkeyHex: PUBKEY_HEX,
+        });
+        await view.rerender({
+            show: true,
+            onClose: vi.fn(),
+            pubkeyHex: PUBKEY_HEX,
+        });
+
+        await screen.findByText('prefetch post 0');
+        const reopenedOlderSentinel = document.querySelector(
+            '.post-history-auto-load-sentinel:not(.post-history-auto-load-newer-sentinel)',
+        ) as HTMLElement;
+        const reopenedObserver = MockIntersectionObserver.instances
+            .filter((observer) => observer.observedTargets.has(reopenedOlderSentinel))
+            .at(-1);
+        reopenedObserver?.trigger(reopenedOlderSentinel, true);
+        await waitFor(() => expect(pageChunkRequestCount).toBe(3));
 
         view.unmount();
     });

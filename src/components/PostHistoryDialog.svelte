@@ -312,10 +312,31 @@
     let autoLoadNewerSentinel = $state<HTMLDivElement | null>(null);
     let isAutoLoadingOlder = $state(false);
     let isAutoLoadingNewer = $state(false);
+    let autoLoadRootHeight = $state<number | null>(null);
+    let autoLoadRootResizeGeneration = $state(0);
     let autoLoadOlderAwaitingExit = false;
     let autoLoadNewerAwaitingExit = false;
     let autoLoadOlderSentinelIsIntersecting = false;
     let autoLoadNewerSentinelIsIntersecting = false;
+    let autoLoadRootForHeight: HTMLDivElement | null = null;
+    let observedAutoLoadRootHeight: number | null = null;
+    let nextAutoLoadRootResizeGeneration = 0;
+    let autoLoadOlderObserverContext:
+        | {
+              root: HTMLDivElement;
+              sentinel: HTMLDivElement;
+              resizeGeneration: number;
+              scrollTop: number;
+          }
+        | null = null;
+    let autoLoadNewerObserverContext:
+        | {
+              root: HTMLDivElement;
+              sentinel: HTMLDivElement;
+              resizeGeneration: number;
+              scrollTop: number;
+          }
+        | null = null;
     const supportsAutoLoadOlder = typeof IntersectionObserver !== "undefined";
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let showDelayedListLoading = $state(false);
@@ -639,12 +660,62 @@
     });
 
     $effect(() => {
+        const root = historyContainer;
+        if (!root) {
+            autoLoadRootForHeight = null;
+            observedAutoLoadRootHeight = null;
+            autoLoadRootHeight = null;
+            return;
+        }
+
+        const syncAutoLoadRootHeight = () => {
+            const nextHeight = Math.max(0, root.clientHeight);
+            if (autoLoadRootForHeight !== root) {
+                autoLoadRootForHeight = root;
+                observedAutoLoadRootHeight = nextHeight;
+                autoLoadRootHeight = nextHeight;
+                return;
+            }
+
+            if (observedAutoLoadRootHeight === nextHeight) {
+                return;
+            }
+
+            observedAutoLoadRootHeight = nextHeight;
+            autoLoadRootHeight = nextHeight;
+            nextAutoLoadRootResizeGeneration += 1;
+            autoLoadRootResizeGeneration = nextAutoLoadRootResizeGeneration;
+        };
+
+        syncAutoLoadRootHeight();
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+
+        const resizeObserver = new ResizeObserver(syncAutoLoadRootHeight);
+        resizeObserver.observe(root);
+
+        return () => {
+            resizeObserver.disconnect();
+            if (autoLoadRootForHeight === root) {
+                autoLoadRootForHeight = null;
+                observedAutoLoadRootHeight = null;
+                autoLoadRootHeight = null;
+            }
+        };
+    });
+
+    $effect(() => {
         const sentinel = autoLoadOlderSentinel;
         const root = historyContainer;
+        const rootHeight = autoLoadRootHeight;
+        const resizeGeneration = autoLoadRootResizeGeneration;
         const enabled =
             show
             && !!sentinel
             && !!root
+            && rootHeight !== null
+            && rootHeight > 0
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasOlderLocal
@@ -653,14 +724,30 @@
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadOlderAwaitingExit = false;
             autoLoadOlderSentinelIsIntersecting = false;
+            autoLoadOlderObserverContext = null;
             return;
         }
+
+        const suppressInitialIntersectionForResize =
+            autoLoadOlderObserverContext?.root === root
+            && autoLoadOlderObserverContext.sentinel === sentinel
+            && autoLoadOlderObserverContext.resizeGeneration !== resizeGeneration
+            && root.scrollTop <= autoLoadOlderObserverContext.scrollTop;
+        autoLoadOlderObserverContext = {
+            root,
+            sentinel,
+            resizeGeneration,
+            scrollTop: root.scrollTop,
+        };
+        let receivedInitialEntry = false;
 
         const observer = new IntersectionObserver(
             (entries) => {
                 const isIntersecting = entries.some(
                     (entry) => entry.isIntersecting,
                 );
+                const isInitialEntry = !receivedInitialEntry;
+                receivedInitialEntry = true;
                 autoLoadOlderSentinelIsIntersecting = isIntersecting;
 
                 if (!isIntersecting) {
@@ -673,10 +760,15 @@
                     return;
                 }
 
+                if (isInitialEntry && suppressInitialIntersectionForResize) {
+                    return;
+                }
+
                 void handleAutoLoadOlder();
             },
             {
                 root,
+                rootMargin: `0px 0px ${rootHeight}px 0px`,
                 threshold: 0,
             },
         );
@@ -684,18 +776,20 @@
 
         return () => {
             observer.disconnect();
-            autoLoadOlderAwaitingExit = false;
-            autoLoadOlderSentinelIsIntersecting = false;
         };
     });
 
     $effect(() => {
         const sentinel = autoLoadNewerSentinel;
         const root = historyContainer;
+        const rootHeight = autoLoadRootHeight;
+        const resizeGeneration = autoLoadRootResizeGeneration;
         const enabled =
             show
             && !!sentinel
             && !!root
+            && rootHeight !== null
+            && rootHeight > 0
             && !history.isSearchMode
             && history.state.listingMode === "contiguous"
             && history.state.hasNewerLocal
@@ -705,14 +799,30 @@
         if (!enabled || !supportsAutoLoadOlder) {
             autoLoadNewerAwaitingExit = false;
             autoLoadNewerSentinelIsIntersecting = false;
+            autoLoadNewerObserverContext = null;
             return;
         }
+
+        const suppressInitialIntersectionForResize =
+            autoLoadNewerObserverContext?.root === root
+            && autoLoadNewerObserverContext.sentinel === sentinel
+            && autoLoadNewerObserverContext.resizeGeneration !== resizeGeneration
+            && root.scrollTop >= autoLoadNewerObserverContext.scrollTop;
+        autoLoadNewerObserverContext = {
+            root,
+            sentinel,
+            resizeGeneration,
+            scrollTop: root.scrollTop,
+        };
+        let receivedInitialEntry = false;
 
         const observer = new IntersectionObserver(
             (entries) => {
                 const isIntersecting = entries.some(
                     (entry) => entry.isIntersecting,
                 );
+                const isInitialEntry = !receivedInitialEntry;
+                receivedInitialEntry = true;
                 autoLoadNewerSentinelIsIntersecting = isIntersecting;
 
                 if (!isIntersecting) {
@@ -725,10 +835,15 @@
                     return;
                 }
 
+                if (isInitialEntry && suppressInitialIntersectionForResize) {
+                    return;
+                }
+
                 void handleAutoLoadNewer();
             },
             {
                 root,
+                rootMargin: `${rootHeight}px 0px 0px 0px`,
                 threshold: 0,
             },
         );
@@ -736,8 +851,6 @@
 
         return () => {
             observer.disconnect();
-            autoLoadNewerAwaitingExit = false;
-            autoLoadNewerSentinelIsIntersecting = false;
         };
     });
 
@@ -975,15 +1088,20 @@
         isAutoLoadingNewer = true;
         autoLoadNewerAwaitingExit = true;
 
+        let changed = false;
+
         try {
-            const changed = await history.loadNewer();
+            changed = await history.loadNewer();
             if (changed && show) {
                 await tick();
                 await previewCollapse.flushPendingMeasurements();
-                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
             }
         } finally {
             isAutoLoadingNewer = false;
+            if (changed && show) {
+                await tick();
+                historyViewport.restoreHistoryScrollAnchor(scrollAnchor);
+            }
             if (!autoLoadNewerSentinelIsIntersecting) {
                 autoLoadNewerAwaitingExit = false;
             }
