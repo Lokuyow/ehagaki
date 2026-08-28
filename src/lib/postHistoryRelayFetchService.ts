@@ -6,6 +6,10 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import {
+    getHostReadRelayDefaults,
+    isHostRelayConfigActive,
+} from "./hostRelayRuntime";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
@@ -423,11 +427,16 @@ export class PostHistoryRelayFetchService {
         relayConfig?: RelayConfig | null,
         reason?: PostHistoryFetchReason,
     ): string[] {
+        if (isHostRelayConfigActive()) {
+            return getHostReadRelayDefaults();
+        }
         const historyRelays = relayConfig
-            ? RelayConfigUtils.sanitizeExternalRelayUrls([
-                ...RelayConfigUtils.extractWriteRelays(relayConfig),
-                ...RelayConfigUtils.extractReadRelays(relayConfig),
-            ])
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                [
+                    ...RelayConfigUtils.extractWriteRelays(relayConfig),
+                    ...RelayConfigUtils.extractReadRelays(relayConfig),
+                ],
+            )
             : [];
 
         const relayUrls = historyRelays.length > 0

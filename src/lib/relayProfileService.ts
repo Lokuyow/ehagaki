@@ -36,6 +36,9 @@ export class RelayProfileService {
      * 保存済みリレー情報があれば使用、なければBOOTSTRAP_RELAYSを設定
      */
     async initializeRelays(pubkeyHex?: string): Promise<void> {
+        if (this.relayManager.useHostRelayConfig?.()) {
+            return;
+        }
         if (pubkeyHex) {
             if (!await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
                 this.relayManager.setBootstrapRelays();
@@ -54,8 +57,11 @@ export class RelayProfileService {
     async fetchRelays(pubkeyHex: string, forceRemote: boolean = false): Promise<{
         success: boolean;
         relayConfig: RelayConfig;
-        source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
+        source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback' | 'host';
     }> {
+        if (this.relayManager.hasHostRelayConfig?.()) {
+            return this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote });
+        }
         if (!forceRemote) {
             const cachedRelays = await this.relayManager.getFromLocalStorage(pubkeyHex);
             if (cachedRelays) {
@@ -208,7 +214,9 @@ export class RelayProfileService {
         console.log(`ログイン初期化開始: ${pubkeyHex}`);
 
         // 1. リレーリスト取得（キャッシュがない場合のみリモート取得）
-        await this.fetchRelays(pubkeyHex, false);
+        if (!this.relayManager.hasHostRelayConfig?.()) {
+            await this.fetchRelays(pubkeyHex, false);
+        }
 
         // 2. プロフィール取得
         const profile = await this.fetchProfile(pubkeyHex, false);
@@ -228,7 +236,9 @@ export class RelayProfileService {
         console.log(`リレー・プロフィール再取得開始: ${pubkeyHex}`);
 
         // 1. リレーリストを強制的にリモート取得
-        await this.fetchRelays(pubkeyHex, true);
+        if (!this.relayManager.hasHostRelayConfig?.()) {
+            await this.fetchRelays(pubkeyHex, true);
+        }
 
         // 2. プロフィールを強制的にリモート取得
         const profile = await this.fetchProfile(pubkeyHex, true);

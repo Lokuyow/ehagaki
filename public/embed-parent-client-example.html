@@ -476,6 +476,19 @@
             </div>
 
             <div class="card">
+                <strong>Host-provided temporary Relay Config</strong>
+                <label class="checkbox-field" for="host-relay-config-enabled">
+                    <input id="host-relay-config-enabled" type="checkbox">
+                    <span>`hostRelayConfig=1` で起動時にこの親から relay を渡す</span>
+                </label>
+                <div class="field">
+                    <label for="host-relay-config">Relay Config JSON</label>
+                    <textarea id="host-relay-config" spellcheck="false">[{"url":"wss://nos.lol","read":true,"write":true}]</textarea>
+                </div>
+                <p class="small">marker を有効にすると child は ready 前に `relays.request` を送り、親は同じ requestId の `relays.set` を返します。値を変えた場合は iframe を再読み込みしてください。</p>
+            </div>
+
+            <div class="card">
                 <strong>初回設定テスト</strong>
 
                 <div class="setting-grid">

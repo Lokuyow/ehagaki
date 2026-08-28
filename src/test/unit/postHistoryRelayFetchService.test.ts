@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_RELAYS } from "../../lib/relayLists";
 import type { NostrEvent } from "../../lib/types";
 import { createEvent as createPostHistoryEvent } from "../postHistoryEventTestUtils";
@@ -30,6 +30,10 @@ import {
 } from "../../lib/postHistoryRelayFetchService";
 import { createMockConsole } from "../helpers";
 import type { MockConsole } from "../helpers";
+import {
+    activateHostRelayConfig,
+    deactivateHostRelayConfig,
+} from "../../lib/hostRelayRuntime";
 
 function createEvent(overrides: Partial<NostrEvent> = {}): NostrEvent {
     return createPostHistoryEvent({
@@ -58,6 +62,8 @@ describe("PostHistoryRelayFetchService", () => {
             clearTimeoutFn: vi.fn(),
         });
     });
+
+    afterEach(() => deactivateHostRelayConfig());
 
     it("write relay と read relay を購読し、同一 eventId を relay ごとに集約する", async () => {
         const unsubscribe = vi.fn();
@@ -146,6 +152,35 @@ describe("PostHistoryRelayFetchService", () => {
 
         expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: FALLBACK_RELAYS },
+        });
+    });
+
+    it("Host read defaults are not truncated by dialog refresh limits", async () => {
+        const hostConfig = Object.fromEntries(Array.from({ length: 6 }, (_, index) => [
+            `wss://host-read-${index + 1}.example`,
+            { read: true, write: false },
+        ]));
+        activateHostRelayConfig(hostConfig);
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            relayConfig: hostConfig,
+            reason: "dialog-open-refresh",
+        }).promise;
+
+        expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
+            on: {
+                relays: Array.from({ length: 6 }, (_, index) =>
+                    `wss://host-read-${index + 1}.example/`),
+            },
         });
     });
 

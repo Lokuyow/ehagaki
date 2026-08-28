@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { FALLBACK_RELAYS } from "../../lib/relayLists";
 import { resolvePostHistoryRelayUrls } from "../../lib/postHistoryRelayResolver";
+import {
+    activateHostRelayConfig,
+    deactivateHostRelayConfig,
+} from "../../lib/hostRelayRuntime";
+
+afterEach(() => deactivateHostRelayConfig());
 
 describe("resolvePostHistoryRelayUrls", () => {
     it("keeps read relays first, preserves first duplicate position, and appends write-only relays", () => {
@@ -39,6 +45,28 @@ describe("resolvePostHistoryRelayUrls", () => {
             "not a url",
             "wss://valid.example",
         ], 10)).toEqual(["wss://valid.example/"]);
+    });
+
+    it("uses Host Config read relays only and does not inject fallback for a write-only config", () => {
+        activateHostRelayConfig({
+            "wss://host-write.example/": { read: false, write: true },
+        });
+
+        expect(resolvePostHistoryRelayUrls({
+            "wss://host-write.example/": { read: false, write: true },
+        }, 2)).toEqual([]);
+    });
+
+    it("does not apply realtime or historical relay limits to Host read defaults", () => {
+        const hostConfig = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
+            `wss://host-read-${index + 1}.example`,
+            { read: true, write: false },
+        ]));
+        activateHostRelayConfig(hostConfig);
+
+        expect(resolvePostHistoryRelayUrls(hostConfig, 2)).toEqual(
+            Array.from({ length: 9 }, (_, index) => `wss://host-read-${index + 1}.example/`),
+        );
     });
 
     it.each([

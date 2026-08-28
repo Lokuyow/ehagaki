@@ -13,6 +13,10 @@ export type EmbedMessageType =
     | "settings.set"
     | "settings.applied"
     | "settings.error"
+    | "relays.request"
+    | "relays.set"
+    | "relays.applied"
+    | "relays.error"
     | "storage.get"
     | "storage.set"
     | "storage.remove"
@@ -105,6 +109,18 @@ export interface EmbedSettingsErrorPayload extends EmbedErrorPayload {
     timestamp: number;
 }
 
+export interface EmbedRelaysRequestPayload {
+    timestamp: number;
+}
+
+export interface EmbedRelaysAppliedPayload {
+    timestamp: number;
+}
+
+export interface EmbedRelaysErrorPayload extends EmbedErrorPayload {
+    timestamp: number;
+}
+
 export interface EmbedStorageGetPayload {
     keys: string[];
 }
@@ -192,6 +208,10 @@ const EMBED_REQUEST_ID_REQUIRED_TYPES = new Set<EmbedMessageType>([
     "settings.set",
     "settings.applied",
     "settings.error",
+    "relays.request",
+    "relays.set",
+    "relays.applied",
+    "relays.error",
     "storage.get",
     "storage.set",
     "storage.remove",

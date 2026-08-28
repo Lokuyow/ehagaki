@@ -938,6 +938,22 @@ describe('PostEventSender', () => {
         expect(mockRxNostr.send).not.toHaveBeenCalled();
     });
 
+    it('read-only default Relay Configではpublishをno_write_relaysで閉じる', async () => {
+        mockRxNostr.getDefaultRelays = vi.fn(() => ({
+            "wss://read-only.example/": {
+                url: "wss://read-only.example/",
+                read: true,
+                write: false,
+            },
+        }));
+
+        await expect(sender.sendEvent({ kind: 1, content: "test" })).resolves.toEqual({
+            success: false,
+            error: "no_write_relays",
+        });
+        expect(mockRxNostr.send).not.toHaveBeenCalled();
+    });
+
     it('AUTH後に成功したリレーを拒否一覧へ残さない', async () => {
         const event = { id: 'event-id', kind: 1, content: 'test' };
         const authAwareSender = new PostEventSender(mockRxNostr, mockConsole, {

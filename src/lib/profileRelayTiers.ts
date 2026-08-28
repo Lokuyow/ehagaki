@@ -1,5 +1,6 @@
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./relayLists";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 
 export interface ProfileRelayTiers {
     bootstrap: string[];
@@ -21,16 +22,21 @@ export interface ProfileRelayRequestGroup {
 export function buildProfileRelayTiers(
     input: ProfileRelayTierInput,
 ): ProfileRelayTiers {
-    const bootstrap = RelayConfigUtils.sanitizeExternalRelayUrls(BOOTSTRAP_RELAYS);
+    const hostRelayConfigActive = isHostRelayConfigActive();
+    const bootstrap = hostRelayConfigActive
+        ? []
+        : RelayConfigUtils.sanitizeExternalRelayUrls(BOOTSTRAP_RELAYS);
     const bootstrapSet = new Set(bootstrap);
     const contextual = RelayConfigUtils.sanitizeExternalRelayUrls(input.contextualRelays)
         .filter((relay) => !bootstrapSet.has(relay))
-        .slice(0, input.contextualRelayLimit);
+        .slice(0, hostRelayConfigActive ? undefined : input.contextualRelayLimit);
     const contextualSet = new Set(contextual);
-    const fallback = RelayConfigUtils.sanitizeExternalRelayUrls([
-        ...FALLBACK_RELAYS,
-        ...(input.fallbackRelays ?? []),
-    ]).filter((relay) => !bootstrapSet.has(relay) && !contextualSet.has(relay));
+    const fallback = hostRelayConfigActive
+        ? []
+        : RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...FALLBACK_RELAYS,
+            ...(input.fallbackRelays ?? []),
+        ]).filter((relay) => !bootstrapSet.has(relay) && !contextualSet.has(relay));
 
     return { bootstrap, contextual, fallback };
 }

@@ -6,6 +6,7 @@ import { applyUploadDestinationBootstrap } from './lib/bootstrap/uploadDestinati
 import { handleStaleAssetPreloadError } from './lib/staleAssetPreloadError'
 import { configureAppRuntimeEnvironment } from './lib/appRuntimeEnvironment'
 import { startServiceWorkerRegistration } from './lib/bootstrap/serviceWorkerBootstrap'
+import { bootstrapIframeHostRelayConfig } from './lib/iframeHostRelayConfigBootstrap'
 
 configureAppRuntimeEnvironment({
   storage: window.localStorage,
@@ -25,6 +26,18 @@ configureAppRuntimeEnvironment({
   historyEnabled: true,
   localNsecAuthEnabled: true,
 })
+
+function renderTerminalHostRelayBootstrapFailure(code: string): void {
+  const target = document.getElementById('app')!
+  target.replaceChildren()
+  target.dataset.hostRelayBootstrap = 'failed'
+  target.dataset.hostRelayBootstrapError = code
+  const alert = document.createElement('div')
+  alert.setAttribute('role', 'alert')
+  alert.textContent = 'Host Relay Config bootstrap failed.'
+  target.append(alert)
+}
+
 startServiceWorkerRegistration()
 
 window.addEventListener('vite:preloadError', (event) => {
@@ -45,10 +58,24 @@ themeColorStore.setExternalLayers({
 })
 themeColorStore.reload()
 
-const { default: App } = await import('./App.svelte')
+const hostRelayBootstrap = await bootstrapIframeHostRelayConfig()
 
-const app = mount(App, {
-  target: document.getElementById('app')!,
-})
+const app = hostRelayBootstrap.enabled && 'error' in hostRelayBootstrap
+  ? (() => {
+      // An opted-in iframe never starts the normal application graph after a
+      // Host Relay bootstrap failure. This terminal document state prevents
+      // later auth, account, or guest flows from reaching normal relay paths.
+      renderTerminalHostRelayBootstrapFailure(hostRelayBootstrap.error.code)
+      return null
+    })()
+  : await (async () => {
+      const { default: App } = await import('./App.svelte')
+      return mount(App, {
+        target: document.getElementById('app')!,
+        props: hostRelayBootstrap.enabled
+          ? { hostRelayConfig: hostRelayBootstrap.relayConfig }
+          : undefined,
+      })
+    })()
 
 export default app

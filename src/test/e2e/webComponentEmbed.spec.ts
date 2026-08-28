@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 
@@ -25,6 +25,7 @@ let hostOrigin = "";
 let relayServer: WebSocketServer;
 let relayOrigin = "";
 let relayConnectionCount = 0;
+let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
 let relayRequestsPaused = false;
 let pendingRelayResponses: Array<() => void> = [];
 const componentRequests = new Set<string>();
@@ -111,6 +112,21 @@ test.beforeAll(async () => {
                     if (relayRequestsPaused) pendingRelayResponses.push(sendEose);
                     else sendEose();
                 }
+                if (
+                    message[0] === "EVENT"
+                    && typeof message[1] === "object"
+                    && message[1] !== null
+                    && !Array.isArray(message[1])
+                ) {
+                    const event = message[1] as Record<string, unknown>;
+                    relayPublishedEvents.push({ event });
+                    socket.send(JSON.stringify([
+                        "OK",
+                        typeof event.id === "string" ? event.id : "",
+                        true,
+                        "accepted",
+                    ]));
+                }
             } catch {
                 // The relay only needs to accept the browser connection for this proof.
             }
@@ -166,6 +182,7 @@ test.beforeEach(() => {
     componentRequests.clear();
     hostRequests.clear();
     relayConnectionCount = 0;
+    relayPublishedEvents = [];
     relayRequestsPaused = false;
     pendingRelayResponses = [];
 });
@@ -266,7 +283,12 @@ test("auto-login persists NIP-07 and delays ready through authenticated bootstra
     expect(await page.evaluate(() => (window as any).__autoLoginState.ready)).toBe(false);
 
     releasePausedRelayRequests();
-    await expect.poll(() => page.evaluate(() => (window as any).__autoLoginState.ready)).toBe(true);
+    await expect.poll(
+        () => page.evaluate(() => (window as any).__autoLoginState.ready),
+        // The authenticated normal-relay resolver makes bounded kind:10002 and
+        // kind:3 attempts before it completes the delayed-ready contract.
+        { timeout: 12_000 },
+    ).toBe(true);
     const result = await page.evaluate(({ componentStoragePrefix }) => {
         const state = (window as any).__autoLoginState;
         const pubkeyHex = "23".repeat(32);
@@ -477,6 +499,210 @@ test("routes the real authenticated relay connection through the host WebSocket 
     expect(relayConnectionCount).toBeGreaterThan(0);
     expect(result.sameWindowRealm).toBe(true);
     expect(result.iframeCount).toBe(0);
+});
+
+test("uses a preconnection Full relays property instead of saved user relays", async ({ page }) => {
+    const savedUserRelay = "wss://saved-user-relay.example";
+    const firstHostRelay = "wss://host-relay-one.example";
+    const secondHostRelay = "wss://host-relay-two.example";
+
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({
+        componentOrigin,
+        componentStoragePrefix,
+        relayOrigin,
+        pubkeyHex,
+        savedUserRelay,
+        firstHostRelay,
+        secondHostRelay,
+    }) => {
+        const state = { originalUrls: [] as string[] };
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [url, protocols] = args as [string | URL, string | string[] | undefined];
+                const originalUrl = String(url);
+                if (/^wss?:\/\//.test(originalUrl)) {
+                    state.originalUrls.push(originalUrl);
+                    return Reflect.construct(
+                        target,
+                        [relayOrigin, protocols].filter((value) => value !== undefined),
+                        newTarget,
+                    );
+                }
+                return Reflect.construct(target, args, newTarget);
+            },
+        });
+        window.nostr = {
+            getPublicKey: async () => pubkeyHex,
+            signEvent: async (event: unknown) => event,
+        } as any;
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([{ pubkeyHex, type: "nip07", addedAt: 1 }]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, pubkeyHex);
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-relays-${pubkeyHex}`,
+            JSON.stringify({ [savedUserRelay]: { read: true, write: true } }),
+        );
+
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            relays?: ReadonlyArray<{ url: string; read: boolean; write: boolean }>;
+            whenReady(): Promise<void>;
+        };
+        composer.relays = [{ url: firstHostRelay, read: true, write: true }];
+        document.body.append(composer);
+        await composer.whenReady();
+        (window as any).__hostRelayPropertyState = { state, composer };
+    }, {
+        componentOrigin,
+        componentStoragePrefix,
+        relayOrigin,
+        pubkeyHex: testPubkeyHex,
+        savedUserRelay,
+        firstHostRelay,
+        secondHostRelay,
+    });
+
+    await expect.poll(() => page.evaluate(() =>
+        (window as any).__hostRelayPropertyState.state.originalUrls,
+    )).toContain(firstHostRelay);
+    await page.evaluate(async (secondHostRelay) => {
+        const runtime = (window as any).__hostRelayPropertyState;
+        const composer = runtime.composer as HTMLElement & {
+            relays?: ReadonlyArray<{ url: string; read: boolean; write: boolean }>;
+            whenReady(): Promise<void>;
+        };
+        // This assignment deliberately leaves the active session intact.
+        composer.relays = [{ url: secondHostRelay, read: true, write: true }];
+        runtime.beforeRecreate = [...runtime.state.originalUrls];
+        composer.remove();
+        document.body.append(composer);
+        await composer.whenReady();
+        runtime.afterRecreate = runtime.state.originalUrls;
+        runtime.publicRelays = composer.relays;
+    }, secondHostRelay);
+    await expect.poll(() => page.evaluate(() =>
+        (window as any).__hostRelayPropertyState.afterRecreate,
+    )).toContain(secondHostRelay);
+    const result = await page.evaluate(() => {
+        const runtime = (window as any).__hostRelayPropertyState;
+        return {
+            beforeRecreate: runtime.beforeRecreate,
+            afterRecreate: runtime.afterRecreate,
+            publicRelays: runtime.publicRelays,
+        };
+    });
+    expect(result.beforeRecreate).toContain(firstHostRelay);
+    expect(result.beforeRecreate).not.toContain(secondHostRelay);
+    expect(result.afterRecreate).toContain(secondHostRelay);
+    expect(result.afterRecreate).not.toContain(savedUserRelay);
+    expect(result.publicRelays).toEqual([
+        { url: `${secondHostRelay}/`, read: true, write: true },
+    ]);
+});
+
+test("publishes EVENT only through the configured Host write relay", async ({ page }) => {
+    const savedUserRelay = "wss://saved-user-relay.example";
+    const hostReadRelay = "wss://host-read-relay.example";
+    const hostWriteRelay = "wss://host-write-relay.example";
+    const content = "Host write relay e2e";
+    const signingSecret = generateSecretKey();
+    const pubkeyHex = getPublicKey(signingSecret);
+
+    await page.goto(hostOrigin);
+    await page.exposeFunction("__signHostRelayEvent", (event: Record<string, unknown>) =>
+        finalizeEvent(event as any, signingSecret));
+    await page.evaluate(async ({
+        componentOrigin,
+        componentStoragePrefix,
+        relayOrigin,
+        pubkeyHex,
+        savedUserRelay,
+        hostReadRelay,
+        hostWriteRelay,
+    }) => {
+        const state = {
+            originalUrls: [] as string[],
+            eventDestinations: [] as string[],
+        };
+        const nativeWebSocket = window.WebSocket;
+        window.WebSocket = new Proxy(nativeWebSocket, {
+            construct(target, args, newTarget) {
+                const [url, protocols] = args as [string | URL, string | string[] | undefined];
+                const originalUrl = String(url);
+                if (!/^wss?:\/\//.test(originalUrl)) {
+                    return Reflect.construct(target, args, newTarget);
+                }
+                state.originalUrls.push(originalUrl);
+                const socket = Reflect.construct(
+                    target,
+                    [relayOrigin, protocols].filter((value) => value !== undefined),
+                    newTarget,
+                ) as WebSocket;
+                const send = socket.send.bind(socket);
+                socket.send = ((data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+                    if (typeof data === "string" && data.startsWith('["EVENT",')) {
+                        state.eventDestinations.push(originalUrl);
+                    }
+                    send(data);
+                }) as typeof socket.send;
+                return socket;
+            },
+        });
+        window.nostr = {
+            getPublicKey: async () => pubkeyHex,
+            signEvent: async (event: Record<string, unknown>) =>
+                (window as any).__signHostRelayEvent(event),
+        } as any;
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-accounts`,
+            JSON.stringify([{ pubkeyHex, type: "nip07", addedAt: 1 }]),
+        );
+        localStorage.setItem(`${componentStoragePrefix}nostr-active-account`, pubkeyHex);
+        localStorage.setItem(
+            `${componentStoragePrefix}nostr-relays-${pubkeyHex}`,
+            JSON.stringify({ [savedUserRelay]: { read: true, write: true } }),
+        );
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            relays?: ReadonlyArray<{ url: string; read: boolean; write: boolean }>;
+            whenReady(): Promise<void>;
+        };
+        composer.relays = [
+            { url: hostReadRelay, read: true, write: false },
+            { url: hostWriteRelay, read: false, write: true },
+        ];
+        document.body.append(composer);
+        await composer.whenReady();
+        (window as any).__hostRelayPublishState = state;
+    }, {
+        componentOrigin,
+        componentStoragePrefix,
+        relayOrigin,
+        pubkeyHex,
+        savedUserRelay,
+        hostReadRelay,
+        hostWriteRelay,
+    });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await expect(editor).toBeVisible();
+    await editor.click();
+    await editor.pressSequentially(content);
+    await composer.locator("button.post-button").click();
+
+    await expect.poll(() => relayPublishedEvents.length).toBe(1);
+    const result = await page.evaluate(() => (window as any).__hostRelayPublishState);
+    expect(relayPublishedEvents[0]?.event.content).toBe(content);
+    expect(result.eventDestinations).toEqual([hostWriteRelay]);
+    expect(result.eventDestinations).not.toContain(hostReadRelay);
+    expect(result.eventDestinations).not.toContain(savedUserRelay);
+    expect(result.originalUrls).toContain(hostReadRelay);
+    expect(result.originalUrls).not.toContain(savedUserRelay);
 });
 
 test("mounts across origins without touching host storage or registering an eHagaki Service Worker", async ({ page }) => {

@@ -1,5 +1,9 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import {
+    getHostReadRelayDefaults,
+    isHostRelayConfigActive,
+} from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
@@ -140,6 +144,9 @@ export class PostHistorySelfParentFetchService {
     }
 
     private resolveRelayUrls(relayConfig: RelayConfig | null | undefined): string[] {
+        if (isHostRelayConfigActive()) {
+            return getHostReadRelayDefaults();
+        }
         const configuredRelays = relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(relayConfig),

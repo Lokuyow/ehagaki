@@ -88,6 +88,37 @@ await composer.whenReady();
 値を変更してから要素をいったん削除し、再作成してください。すでに読み込んだモジュールを
 別実装へ切り替える場合は、Custom Elements Registry の制約があるためページを再読み込みします。
 
+## Full の一時 Relay Config: `relays`
+
+Full self-publish distribution だけは、connection 前に `relays` property でこの mount 専用の
+default Relay Config を渡せます。HTML attribute や `setSettings()` の項目ではありません。
+
+```js
+const composer = document.createElement('ehagaki-composer');
+composer.assetBase = 'https://cdn.example/ehagaki/web-component/';
+composer.relays = [
+  { url: 'wss://relay.example', read: true, write: true },
+  { url: 'wss://read.example', read: true, write: false },
+];
+document.querySelector('#composer-mount').append(composer);
+await composer.whenReady();
+```
+
+型は `ReadonlyArray<{ url: string; read: boolean; write: boolean }>` です。各 URL は通常の
+external relay URL と同じく正規化され、`ws:` / `wss:` だけを受理します。credential 付き URL、
+廃止済み relay、重複 URL、空配列、未知の field、read/write が両方 `false` の entry は全体を
+reject します。部分的に採用したり、通常の relay 解決へ fallback したりしません。
+
+この設定は IndexedDB、relay cache、kind:10002、kind:3、次の standalone/PWA、または `relays`
+未指定の次回 embed へ保存されません。read relay は profile、reply/quote、channel、post history、
+realtime read の default です。write relay は投稿、再送、削除の default です。read-only config は
+閲覧できますが、write relay がなければ投稿は `no_write_relays` で失敗します。contextual relay hint は
+従来どおり補助 destination として扱われ、この Config は hint の件数上限では切り詰めません。
+
+現在接続中の session を途中で切り替えないため、`composer.relays` の変更は次回 mount 用に保持されます。
+変更を反映するには element を remove して新しい element を作成してください。Lite Host-owned
+distribution は `relays` property を公開せず、この API をサポートしません。
+
 ## 配布物と読み込み方法
 
 Web Component の配布物には、PWA の manifest、共有ターゲット、eHagaki Service Worker の登録、

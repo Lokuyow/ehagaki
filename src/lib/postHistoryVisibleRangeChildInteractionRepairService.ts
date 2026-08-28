@@ -3,6 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { mergeHostReadDefaultsWithHints } from "./hostRelayRuntime";
 import {
     postHistoryDirectReplyRepairSaveService,
     type PostHistoryDirectReplyRepairItem,
@@ -742,6 +743,13 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         posts: PostHistoryRecord[],
         relayConfig: RelayConfig | null | undefined,
     ): string[] {
+        const hostRelays = mergeHostReadDefaultsWithHints(
+            this.collectParentRelayHints(posts),
+            POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT,
+        );
+        if (hostRelays) {
+            return hostRelays;
+        }
         const configuredRelays = relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(relayConfig),

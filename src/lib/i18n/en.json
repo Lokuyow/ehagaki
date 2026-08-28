@@ -387,6 +387,8 @@
     "hide_flavor_text_note_included": "While the mascot is hidden, this setting is forced on automatically.",
     "media_bottom_mode": "Free media placement",
     "refresh_relays_and_profile": "Refresh\nrelay list & profile",
+    "refresh_profile": "Refresh profile",
+    "host_relay_config": "Temporarily provided by the host",
     "refresh": "Refresh",
     "sw_update_available": "A new update is available",
     "sw_update_installing_short": "Installing...",

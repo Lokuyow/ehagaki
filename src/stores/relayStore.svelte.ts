@@ -2,12 +2,17 @@ import type { RelayManager } from '../lib/relayManager';
 import { RelayConfigUtils } from '../lib/relayConfigUtils';
 import type { RelayConfig } from '../lib/types';
 import { authState } from './authStore.svelte';
+import {
+    activateHostRelayConfig,
+    deactivateHostRelayConfig,
+} from '../lib/hostRelayRuntime';
 
 // --- リレー設定管理 ---
 let relayManagerInstance: RelayManager | null = null;
 
 let writeRelays = $state<string[]>([]);
 let relayConfig = $state<RelayConfig | null>(null);
+let relayConfigSource = $state<'user' | 'host' | null>(null);
 let showRelays = $state(false);
 let isSwUpdating = $state(false);
 let relayListUpdated = $state<number>(0);
@@ -42,6 +47,11 @@ export const writeRelaysStore = {
 export const relayConfigStore = {
     get value() { return relayConfig; },
     set: (value: RelayConfig | null) => { relayConfig = value; }
+};
+
+export const relayConfigSourceStore = {
+    get value() { return relayConfigSource; },
+    set: (value: 'user' | 'host' | null) => { relayConfigSource = value; },
 };
 
 export const showRelaysStore = {
@@ -79,14 +89,39 @@ export function resetRelayConfigStore(): void {
         pubkeyHex: null,
         generation: activeRelayConfigScope.generation,
     };
+    if (relayConfigSource !== 'host') {
+        relayConfigStore.set(null);
+        writeRelaysStore.set([]);
+        relayConfigSourceStore.set(null);
+    }
+}
+
+/** Applies a mount-scoped effective configuration without persistence. */
+export function applyHostRelayConfig(config: RelayConfig): void {
+    invalidatePendingRelayConfigOperations();
+    activateHostRelayConfig(config);
+    relayConfigStore.set(config);
+    writeRelaysStore.set(RelayConfigUtils.extractWriteRelays(config));
+    relayConfigSourceStore.set('host');
+}
+
+/** Releases Host-owned runtime state when its App instance is destroyed. */
+export function clearHostRelayConfig(): void {
+    deactivateHostRelayConfig();
+    if (relayConfigSource !== 'host') return;
+    invalidatePendingRelayConfigOperations();
     relayConfigStore.set(null);
     writeRelaysStore.set([]);
+    relayConfigSourceStore.set(null);
 }
 
 /**
  * 保存済みリレー設定を読み込んでストアに設定
  */
 export async function loadRelayConfigFromStorage(pubkeyHex: string): Promise<void> {
+    if (relayConfigSource === 'host') {
+        return;
+    }
     if (!relayManagerInstance || !pubkeyHex) {
         resetRelayConfigStore();
         return;
@@ -105,6 +140,7 @@ export async function loadRelayConfigFromStorage(pubkeyHex: string): Promise<voi
 
         relayConfigStore.set(result.relayConfig);
         writeRelaysStore.set(result.writeRelays);
+        relayConfigSourceStore.set('user');
     } catch (error) {
         if (!isCurrentRelayConfigOperation(scope)) return;
         throw error;
@@ -115,6 +151,9 @@ export async function loadRelayConfigFromStorage(pubkeyHex: string): Promise<voi
  * リレー設定をストアに反映
  */
 export async function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig): Promise<void> {
+    if (relayConfigSource === 'host') {
+        return;
+    }
     if (!pubkeyHex) return;
 
     if (!authState.value.isAuthenticated || authState.value.pubkey !== pubkeyHex) {
@@ -127,6 +166,7 @@ export async function saveRelayConfigToStorage(pubkeyHex: string, config: RelayC
         if (!isCurrentRelayConfigOperation(scope)) return;
 
         relayConfigStore.set(config);
+        relayConfigSourceStore.set('user');
 
         const writeRelaysList = RelayConfigUtils.extractWriteRelays(config);
         writeRelaysStore.set(writeRelaysList);

@@ -1,4 +1,8 @@
 import { FALLBACK_RELAYS } from "./relayLists";
+import {
+    getHostReadRelayDefaults,
+    isHostRelayConfigActive,
+} from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { RelayConfig } from "./types";
 
@@ -6,6 +10,10 @@ export function resolvePostHistoryRelayUrls(
     relayConfig: RelayConfig | null | undefined,
     relayLimit: number,
 ): string[] {
+    if (isHostRelayConfigActive()) {
+        return getHostReadRelayDefaults();
+    }
+
     const configuredRelays = relayConfig
         ? [
             ...RelayConfigUtils.extractReadRelays(relayConfig),

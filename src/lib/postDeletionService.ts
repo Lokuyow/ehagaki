@@ -2,6 +2,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import type { RxNostr } from "rx-nostr";
 import { authState } from "../stores/authStore.svelte";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
@@ -187,6 +188,15 @@ export class PostDeletionService {
 
         if (!auth.isAuthenticated || !currentPubkey) {
             return { success: false, error: "pubkey_not_found" };
+        }
+
+        if (
+            isHostRelayConfigActive()
+            && RelayConfigUtils.sanitizeExternalRelayUrls(
+                this.deps.writeRelaysStore.value,
+            ).length === 0
+        ) {
+            return { success: false, error: "no_write_relays" };
         }
 
         const assertSession = () => assertActiveSession(

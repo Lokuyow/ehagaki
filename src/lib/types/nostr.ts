@@ -123,6 +123,8 @@ export interface RelayManagerDeps {
         value: number;
         set: (value: number) => void;
     };
+    /** Mount-scoped Full embed input. Never persisted by RelayManager. */
+    hostRelayConfig?: RelayConfig;
 }
 
 export interface RelayFetchOptions {
@@ -141,7 +143,7 @@ export interface RelayFetchResult {
 export interface UserRelaysFetchResult {
     success: boolean;
     relayConfig: RelayConfig;
-    source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
+    source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback' | 'host';
 }
 
 // Post Manager types

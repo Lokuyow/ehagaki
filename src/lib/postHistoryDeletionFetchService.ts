@@ -3,6 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { mergeHostReadDefaultsWithHints } from "./hostRelayRuntime";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
@@ -243,13 +244,20 @@ export class PostHistoryDeletionFetchService {
     }
 
     private resolveRelayUrls(params: PostHistoryDeletionFetchRequest): string[] {
+        const targetRelays = params.targets.flatMap((target) => target.relayUrls ?? []);
+        const hostRelays = mergeHostReadDefaultsWithHints([
+            ...targetRelays,
+            ...(params.relayHints ?? []),
+        ], POST_HISTORY_DELETION_FETCH_RELAY_LIMIT);
+        if (hostRelays) {
+            return hostRelays;
+        }
         const configuredRelays = params.relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(params.relayConfig),
                 ...RelayConfigUtils.extractWriteRelays(params.relayConfig),
             ]
             : [];
-        const targetRelays = params.targets.flatMap((target) => target.relayUrls ?? []);
         const relays = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...targetRelays,
             ...(params.relayHints ?? []),

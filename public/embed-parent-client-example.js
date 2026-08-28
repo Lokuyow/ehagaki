@@ -24,6 +24,9 @@ const INBOUND_TYPES = new Set([
     "composer.contextUpdated",
     "settings.applied",
     "settings.error",
+    "relays.request",
+    "relays.applied",
+    "relays.error",
     "storage.get",
     "storage.set",
     "storage.remove",
@@ -47,6 +50,8 @@ const initialAccentColorInput = document.getElementById("initial-accent-color");
 const initialBaseColorInput = document.getElementById("initial-base-color");
 const initialReplyNotificationSelect = document.getElementById("initial-reply-notification");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
+const hostRelayConfigEnabledInput = document.getElementById("host-relay-config-enabled");
+const hostRelayConfigInput = document.getElementById("host-relay-config");
 const syncRuntimeSettingsButton = document.getElementById("sync-runtime-settings");
 const resetInitialSettingsButton = document.getElementById("reset-initial-settings");
 const initialSettingsFeedback = document.getElementById("initial-settings-feedback");
@@ -1417,6 +1422,11 @@ function getConfiguredAppOrigin() {
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
+    if (hostRelayConfigEnabledInput.checked) {
+        url.searchParams.set("hostRelayConfig", "1");
+    } else {
+        url.searchParams.delete("hostRelayConfig");
+    }
 
     if (urlContextOverrides.content) {
         url.searchParams.delete("content");
@@ -1684,6 +1694,10 @@ function requiresRequestId(type) {
         "settings.set",
         "settings.applied",
         "settings.error",
+        "relays.request",
+        "relays.set",
+        "relays.applied",
+        "relays.error",
         "storage.get",
         "storage.set",
         "storage.remove",
@@ -1722,6 +1736,32 @@ function validateReadyPayload(payload) {
         }
     }
     return null;
+}
+
+function validateRelaysRequestPayload(payload) {
+    return isRecord(payload) && typeof payload.timestamp === "number"
+        ? null
+        : "relays.request payload must include timestamp";
+}
+
+function getHostRelayConfigPayload() {
+    const payload = JSON.parse(hostRelayConfigInput.value);
+    if (!Array.isArray(payload)) {
+        throw new Error("relay config must be an array");
+    }
+    return payload;
+}
+
+function handleRelaysRequest(message) {
+    try {
+        postToIframe("relays.set", getHostRelayConfigPayload(), message.requestId);
+    } catch (error) {
+        postToIframe("relays.error", {
+            timestamp: Date.now(),
+            code: "relay_config_parent_invalid",
+            message: error instanceof Error ? error.message : "invalid relay config",
+        }, message.requestId);
+    }
 }
 
 function validateAuthRequestPayload(payload) {
@@ -2062,6 +2102,8 @@ function validateEnvelope(data) {
             return validateReadyPayload(data.payload);
         case "auth.request":
             return validateAuthRequestPayload(data.payload);
+        case "relays.request":
+            return validateRelaysRequestPayload(data.payload);
         case "rpc.request":
             return validateRpcRequestPayload(data.payload);
         case "composer.contextApplied":
@@ -2366,6 +2408,15 @@ async function handleEmbedMessage(event) {
         case "auth.request":
             await handleAuthRequest(message);
             break;
+        case "relays.request":
+            handleRelaysRequest(message);
+            break;
+        case "relays.applied":
+            updateStatus(handshakeStatus, "Host Relay Config を適用しました", "ok");
+            break;
+        case "relays.error":
+            updateStatus(handshakeStatus, `Host Relay Config に失敗: ${message.payload.code}`, "error");
+            break;
         case "rpc.request":
             await handleRpcRequest(message);
             break;
@@ -2519,6 +2570,8 @@ initialReplyNotificationSelect.addEventListener("change", updateDisplayedEmbedUr
 initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrlForSettingsChange);
 initialAccentColorInput.addEventListener("input", updateDisplayedEmbedUrlForSettingsChange);
 initialBaseColorInput.addEventListener("input", updateDisplayedEmbedUrlForSettingsChange);
+hostRelayConfigEnabledInput.addEventListener("change", updateDisplayedEmbedUrl);
+hostRelayConfigInput.addEventListener("input", updateDisplayedEmbedUrl);
 syncRuntimeSettingsButton.addEventListener("click", () => {
     syncRuntimeSettings("手動 settings 同期");
 });

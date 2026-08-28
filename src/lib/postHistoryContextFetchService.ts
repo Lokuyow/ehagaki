@@ -3,6 +3,10 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import {
+    isHostRelayConfigActive,
+    mergeHostReadDefaultsWithHints,
+} from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
@@ -133,6 +137,13 @@ export class PostHistoryContextFetchService {
         relayHints: string[] | undefined,
         relayConfig: RelayConfig | null | undefined,
     ): string[] {
+        const hostRelays = mergeHostReadDefaultsWithHints(
+            relayHints,
+            POST_HISTORY_CONTEXT_RELAY_LIMIT,
+        );
+        if (hostRelays) {
+            return hostRelays;
+        }
         const configuredRelays = relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(relayConfig),

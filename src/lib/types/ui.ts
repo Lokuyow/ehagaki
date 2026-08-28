@@ -6,6 +6,7 @@ export interface SettingsDialogProps {
     show?: boolean;
     onClose: () => void;
     onRefreshRelaysAndProfile?: () => void;
+    hostRelayConfigActive?: boolean;
     onOpenWelcomeDialog?: () => void;
     rxNostr?: RxNostr | null;
 }

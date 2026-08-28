@@ -44,6 +44,7 @@ interface InitializeNostrSessionParams {
     relayListUpdatedStore: RelayListUpdatedStoreLike;
     setRelayManager: (relayManager: RelayManager) => void;
     onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
+    hostRelayConfig?: RelayConfig;
 }
 
 interface RunInitializeNostrSessionParams extends InitializeNostrSessionParams {
@@ -85,6 +86,7 @@ export async function initializeNostrSession({
     relayListUpdatedStore,
     setRelayManager,
     onRelayConfigSaved,
+    hostRelayConfig,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
     const rxNostr = createRxNostr({
         verifier,
@@ -100,6 +102,7 @@ export async function initializeNostrSession({
             set: (value: number) => relayListUpdatedStore.set(value),
         },
         onRelayConfigSaved,
+        hostRelayConfig,
     });
     const relayProfileService = new RelayProfileService(
         rxNostr,
@@ -203,6 +206,7 @@ export async function completePostAuthBootstrap({
     accountListStore,
     accountProfileCacheStore,
     onRelayConfigSaved,
+    hostRelayConfig,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
     isLoadingProfileStore.set(true);
     closeAuthDialogs();
@@ -213,6 +217,7 @@ export async function completePostAuthBootstrap({
             relayListUpdatedStore,
             setRelayManager,
             onRelayConfigSaved,
+            hostRelayConfig,
         });
         const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex);
         const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);

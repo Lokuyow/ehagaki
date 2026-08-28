@@ -3,6 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { mergeHostReadDefaultsWithHints } from "./hostRelayRuntime";
 import {
     validatePostHistoryDirectReplyRelation,
     type PostHistoryDirectReplyParentContext,
@@ -314,6 +315,10 @@ export class PostHistoryReplyFetchService {
         const limit = Number.isFinite(relayLimit)
             ? Math.max(1, Math.trunc(relayLimit ?? POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT))
             : POST_HISTORY_DIRECT_REPLY_RELAY_LIMIT;
+        const hostRelays = mergeHostReadDefaultsWithHints(relayHints, limit);
+        if (hostRelays) {
+            return hostRelays;
+        }
         const configuredRelays = relayConfig
             ? [
                 ...RelayConfigUtils.extractReadRelays(relayConfig),

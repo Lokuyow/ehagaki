@@ -160,6 +160,13 @@ export class PostEventSender {
         ) {
             return Promise.resolve({ success: false, error: "no_write_relays" });
         }
+        const targetRelays = resolveTargetRelays(this.rxNostr, options);
+        if (
+            targetRelays.length === 0
+            && typeof this.rxNostr.getDefaultRelays === "function"
+        ) {
+            return Promise.resolve({ success: false, error: "no_write_relays" });
+        }
 
         return new Promise((resolve) => {
             let resolved = false;
@@ -171,8 +178,6 @@ export class PostEventSender {
             const rejectedByRelay = new Map<string, RelayRejection>();
             const authRequiredRelays = new Set<string>();
             const pendingAuthRelays = new Set<string>();
-
-            const targetRelays = resolveTargetRelays(this.rxNostr, options);
 
             const safeUnsubscribe = () => {
                 try {
