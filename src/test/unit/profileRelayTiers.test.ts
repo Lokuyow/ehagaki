@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "../../lib/relayLists";
 import {
     buildProfileRelayTiers,
     groupPubkeysByRelaySet,
 } from "../../lib/profileRelayTiers";
+import {
+    activateHostRelayConfig,
+    deactivateHostRelayConfig,
+} from "../../lib/hostRelayRuntime";
+
+afterEach(() => deactivateHostRelayConfig());
 
 describe("buildProfileRelayTiers", () => {
     it("keeps bootstrap and fallback in dedicated tiers", () => {
@@ -69,6 +75,25 @@ describe("buildProfileRelayTiers", () => {
 
         expect(tiers.contextual).toEqual([]);
         expect(tiers.fallback).toContain("wss://custom-fallback.example.com/");
+    });
+
+    it("uses host read relays without bootstrap, fallback, or the contextual hint limit", () => {
+        activateHostRelayConfig({
+            "wss://host.example/": { read: true, write: false },
+        });
+        const hostRelays = Array.from(
+            { length: 13 },
+            (_, index) => `wss://host-${index}.example.com/`,
+        );
+
+        const tiers = buildProfileRelayTiers({
+            contextualRelays: hostRelays,
+            contextualRelayLimit: 3,
+        });
+
+        expect(tiers.bootstrap).toEqual([]);
+        expect(tiers.contextual).toEqual(hostRelays);
+        expect(tiers.fallback).toEqual([]);
     });
 
     it("applies bootstrap then contextual then fallback precedence", () => {

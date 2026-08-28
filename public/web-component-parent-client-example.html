@@ -266,6 +266,12 @@
                     </div>
 
                     <div class="card stack">
+                        <h2>Full self-publish の一時 Relay Config</h2>
+                        <div class="field"><label for="host-relays">relays property（JSON）</label><textarea id="host-relays" spellcheck="false" placeholder='[{"url":"wss://relay.example","read":true,"write":true}]'></textarea></div>
+                        <p class="small">Full distribution だけの connection 前 property です。空欄なら通常の relay 解決を使います。設定を変えたら「作り直す」で新しい mount に反映してください。Lite distribution にはこの API はありません。</p>
+                    </div>
+
+                    <div class="card stack">
                         <h2>初期設定と作成後の設定変更</h2>
                         <p class="small">Create / Mount時は、ここで指定した値を初期設定として適用します。作成後に値を変更した場合は、「設定を適用」を押すと、Componentを再作成せずに反映できます。</p>
                         <div class="grid-2">

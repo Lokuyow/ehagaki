@@ -1,4 +1,5 @@
 import { FALLBACK_RELAYS } from "./relayLists";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { RelayConfig } from "./types";
 
@@ -7,16 +8,18 @@ export function resolvePostHistoryRelayUrls(
     relayLimit: number,
 ): string[] {
     const configuredRelays = relayConfig
-        ? [
-            ...RelayConfigUtils.extractReadRelays(relayConfig),
-            ...RelayConfigUtils.extractWriteRelays(relayConfig),
-        ]
+        ? isHostRelayConfigActive()
+            ? RelayConfigUtils.extractReadRelays(relayConfig)
+            : [
+                ...RelayConfigUtils.extractReadRelays(relayConfig),
+                ...RelayConfigUtils.extractWriteRelays(relayConfig),
+            ]
         : [];
     const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(configuredRelays, {
         limit: relayLimit,
     });
 
-    return relayUrls.length > 0
+    return relayUrls.length > 0 || isHostRelayConfigActive()
         ? relayUrls
         : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS, { limit: relayLimit });
 }

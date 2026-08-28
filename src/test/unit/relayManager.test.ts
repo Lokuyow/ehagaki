@@ -131,6 +131,39 @@ describe('RelayConfigParser', () => {
     });
 });
 
+describe("RelayManager Host Relay Config", () => {
+    it("uses only the mount-scoped config and never reads storage or relay discovery", async () => {
+        const rxNostr = createMockRxNostr();
+        const storage = new MockStorage();
+        const getItemSpy = vi.spyOn(storage, "getItem");
+        const hostRelayConfig: RelayConfig = {
+            "wss://host-read.example/": { read: true, write: false },
+            "wss://host-write.example/": { read: false, write: true },
+        };
+        const manager = new RelayManager(rxNostr as unknown as RxNostr, {
+            localStorage: storage,
+            hostRelayConfig,
+        });
+
+        const result = await manager.fetchUserRelays("pubkey", { forceRemote: true });
+        const profileRelays = await manager.getRelayListsForProfile("pubkey");
+
+        expect(result).toEqual({
+            success: true,
+            relayConfig: hostRelayConfig,
+            source: "host",
+        });
+        expect(rxNostr.setDefaultRelays).toHaveBeenCalledWith(hostRelayConfig);
+        expect(rxNostr.use).not.toHaveBeenCalled();
+        expect(getItemSpy).not.toHaveBeenCalled();
+        expect(profileRelays).toEqual({
+            writeRelays: ["wss://host-write.example/"],
+            additionalRelays: ["wss://host-read.example/"],
+            contextualRelays: ["wss://host-read.example/"],
+        });
+    });
+});
+
 describe('RelayStorage', () => {
     let storage: RelayStorage;
     let mockLocalStorage: MockStorage;

@@ -19,7 +19,10 @@ vi.mock("../../stores/authStore.svelte", () => ({
 
 import {
     loadRelayConfigFromStorage,
+    applyHostRelayConfig,
+    clearHostRelayConfig,
     relayConfigStore,
+    relayConfigSourceStore,
     relayListUpdatedStore,
     invalidatePendingRelayConfigOperations,
     resetRelayConfigStore,
@@ -30,6 +33,7 @@ import {
 
 describe("relayStore", () => {
     beforeEach(() => {
+        clearHostRelayConfig();
         authStateValue.isAuthenticated = true;
         authStateValue.pubkey = "account-a";
         resetRelayConfigStore();
@@ -55,6 +59,24 @@ describe("relayStore", () => {
 
         expect(relayConfigStore.value).toEqual(["wss://b.example.com/"]);
         expect(writeRelaysStore.value).toEqual(["wss://b.example.com/"]);
+    });
+
+    it("keeps the Host Config effective value when persistent UI loads or saves run", async () => {
+        const hostConfig = {
+            "wss://host-read.example/": { read: true, write: false },
+        };
+        const loadRelayConfigForUI = vi.fn();
+        setRelayManager({ loadRelayConfigForUI } as never);
+        applyHostRelayConfig(hostConfig);
+
+        await loadRelayConfigFromStorage("account-a");
+        await saveRelayConfigToStorage("account-a", ["wss://user.example/"]);
+        resetRelayConfigStore();
+
+        expect(loadRelayConfigForUI).not.toHaveBeenCalled();
+        expect(relayConfigSourceStore.value).toBe("host");
+        expect(relayConfigStore.value).toEqual(hostConfig);
+        expect(writeRelaysStore.value).toEqual([]);
     });
 
     it("does not let an older A failure alter B relay state", async () => {

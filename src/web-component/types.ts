@@ -2,12 +2,14 @@ import type {
     EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
 } from "../lib/embedProtocol";
+import type { HostRelayConfig, HostRelayConfigEntry } from "../lib/hostRelayConfig";
 
 export const EHAGAKI_COMPOSER_TAG_NAME = "ehagaki-composer";
 export const EHAGAKI_COMPOSER_API_VERSION = 1;
 
 export type EHagakiComposerContext = EmbedComposerSetContextPayload;
 export type EHagakiComposerSettings = EmbedSettingsSetPayload;
+export type { HostRelayConfig, HostRelayConfigEntry };
 
 /** A reply, quote, or channel value captured with Host-owned submission. */
 export interface EHagakiComposerContextReference {

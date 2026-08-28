@@ -326,6 +326,7 @@ export class RelayManager {
     private storage: RelayStorage;
     private networkFetcher: RelayNetworkFetcher;
     private readonly console: Console;
+    private readonly hostRelayConfig: RelayConfig | null;
 
     constructor(
         private rxNostr: RxNostr,
@@ -342,6 +343,7 @@ export class RelayManager {
 
         // 依存関係の構築
         this.console = consoleImpl;
+        this.hostRelayConfig = deps.hostRelayConfig ?? null;
         const repository = localStorage
             ? new DexieRelayConfigsRepository(undefined, Date.now, () => localStorage)
             : relayConfigsRepository;
@@ -353,6 +355,20 @@ export class RelayManager {
             onRelayConfigSaved,
         );
         this.networkFetcher = new RelayNetworkFetcher(rxNostr, consoleImpl, setTimeoutFn, clearTimeoutFn);
+    }
+
+    hasHostRelayConfig(): boolean {
+        return this.hostRelayConfig !== null;
+    }
+
+    getHostRelayConfig(): RelayConfig | null {
+        return this.hostRelayConfig;
+    }
+
+    useHostRelayConfig(): boolean {
+        if (!this.hostRelayConfig) return false;
+        this.rxNostr.setDefaultRelays(this.hostRelayConfig);
+        return true;
     }
 
     // 外部APIは変更なし（後方互換性のため）
@@ -397,6 +413,14 @@ export class RelayManager {
         pubkeyHex: string,
         opts: RelayFetchOptions = {}
     ): Promise<UserRelaysFetchResult> {
+        if (this.hostRelayConfig) {
+            this.rxNostr.setDefaultRelays(this.hostRelayConfig);
+            return {
+                success: true,
+                relayConfig: this.hostRelayConfig,
+                source: 'host',
+            };
+        }
         const timeoutMs = opts.timeoutMs || 3000;
 
         this.console.log(`リレー取得開始: ${pubkeyHex}`);
@@ -486,6 +510,13 @@ export class RelayManager {
         contextualRelays?: string[];
         fallbackRelays?: string[];
     }> {
+        if (this.hostRelayConfig) {
+            return {
+                writeRelays: RelayConfigUtils.extractWriteRelays(this.hostRelayConfig),
+                additionalRelays: RelayConfigUtils.extractReadRelays(this.hostRelayConfig),
+                contextualRelays: RelayConfigUtils.extractReadRelays(this.hostRelayConfig),
+            };
+        }
         const relayCache = await this.storage.getCache(pubkeyHex);
         const relayConfig = relayCache?.config ?? null;
         let writeRelays: string[] = [];

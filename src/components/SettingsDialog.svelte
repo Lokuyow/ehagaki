@@ -55,6 +55,7 @@
         show = $bindable(false),
         onClose,
         onRefreshRelaysAndProfile = () => {},
+        hostRelayConfigActive = false,
         onOpenWelcomeDialog = undefined,
         rxNostr = null,
     }: SettingsDialogProps = $props();
@@ -147,7 +148,7 @@
         hideMascot = !settingsStore.showMascot;
         hideFlavorText = !settingsStore.showFlavorText;
         fetchSwVersion();
-        if (authState.value?.pubkey && authState.value?.isAuthenticated) {
+        if (!hostRelayConfigActive && authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
     });
@@ -886,6 +887,7 @@
             {showRelays}
             onToggleShowRelays={() => showRelaysStore.set(!showRelays)}
             {onRefreshRelaysAndProfile}
+            {hostRelayConfigActive}
         />
     </div>
 

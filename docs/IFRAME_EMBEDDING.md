@@ -134,6 +134,52 @@ NIP-46 の bunker URL に `ws://127.0.0.1:4869/` のようなデバイス内ロ�
 
 埋め込みクエリを指定しない場合、iframe 内の eHagaki は通常起動時と同じ初期設定で起動します。アップロード先は eHagaki 側 IndexedDB へ、その他の設定は初回参照時に eHagaki 側 localStorage へ保存されます。
 
+## Host-provided temporary Relay Config
+
+iframe で Host がこの mount 専用の Relay Config を所有する場合は、`parentOrigin` に加えて
+`hostRelayConfig=1` を URL へ付けます。この marker は relay URL を含めない明示的 opt-in です。
+marker がない iframe は従来どおり保存済み Relay Config、kind:10002/kind:3、bootstrap relay を使う
+通常 bootstrap のままです。
+
+```html
+<iframe
+  id="ehagaki-iframe"
+  src="https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com&hostRelayConfig=1"
+></iframe>
+```
+
+child は App を import する前に trusted parent へ `relays.request` を送り、parent は同じ
+`requestId` で `relays.set` を返します。payload は次の厳密な配列です。
+
+```js
+iframe.contentWindow.postMessage({
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'relays.set',
+  requestId,
+  payload: [
+    { url: 'wss://relay.example', read: true, write: true },
+    { url: 'wss://read.example', read: true, write: false },
+  ],
+}, 'https://lokuyow.github.io');
+```
+
+entry は `url`、`read`、`write` だけを持ち、URL は `ws:` / `wss:`、credential 非許可、廃止済み relay
+除外の既存 external-input validation を通ります。空配列、重複、未知 field、不正 URL、両 capability が
+`false` の entry は config 全体を拒否します。受理すると child は同じ `requestId` の `relays.applied` を送り、
+拒否または親側の都合による中止は `relays.error` を送れます。
+
+`hostRelayConfig=1` は **fail-close** です。trusted source/origin 不一致、envelope/request ID/payload の
+検証失敗、親の `relays.error`、10 秒 timeout、その他の bootstrap 失敗では child は `relays.error` を送って
+relay bootstrap を開始しません。この場合、保存済み Relay Config、kind:10002、kind:3、bootstrap relay、
+built-in fallback へ移行しません。特に timeout 後に通常 relay 解決へ fallback することはありません。
+
+受理済み Config は mount-scoped で非永続です。Host Config の read relay は read の default、write relay は
+publish の default です。write relay がない read-only Config では投稿は `no_write_relays` で fail-close します。
+Host Config を稼働中に置換する message はありません。更新するには新しい `src` の iframe を作成し、次の
+bootstrap で新しい値を返してください。Host Config は relay cache、kind:10002/kind:3、次の standalone/PWA、
+または marker なし iframe へ保存・流入しません。Lite Host-owned Web Component は対象外です。
+
 | 設定                   | 初期値                                                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------------------ |
 | 言語                   | ブラウザ言語が日本語なら `ja`、それ以外は `en`                                                         |

@@ -3,6 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
@@ -244,10 +245,12 @@ export class PostHistoryDeletionFetchService {
 
     private resolveRelayUrls(params: PostHistoryDeletionFetchRequest): string[] {
         const configuredRelays = params.relayConfig
-            ? [
-                ...RelayConfigUtils.extractReadRelays(params.relayConfig),
-                ...RelayConfigUtils.extractWriteRelays(params.relayConfig),
-            ]
+            ? isHostRelayConfigActive()
+                ? RelayConfigUtils.extractReadRelays(params.relayConfig)
+                : [
+                    ...RelayConfigUtils.extractReadRelays(params.relayConfig),
+                    ...RelayConfigUtils.extractWriteRelays(params.relayConfig),
+                ]
             : [];
         const targetRelays = params.targets.flatMap((target) => target.relayUrls ?? []);
         const relays = RelayConfigUtils.sanitizeExternalRelayUrls([
@@ -256,7 +259,7 @@ export class PostHistoryDeletionFetchService {
             ...configuredRelays,
         ], { limit: POST_HISTORY_DELETION_FETCH_RELAY_LIMIT });
 
-        return relays.length > 0
+        return relays.length > 0 || isHostRelayConfigActive()
             ? relays
             : RelayConfigUtils.sanitizeExternalRelayUrls(
                 FALLBACK_RELAYS,

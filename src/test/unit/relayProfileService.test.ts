@@ -70,6 +70,24 @@ describe('RelayProfileService', () => {
     });
 
     describe('initializeRelays', () => {
+        it('Host Relay Configではstorage/bootstrapに触れずにhost configだけを適用する', async () => {
+            (mockRelayManager as any).useHostRelayConfig = vi.fn(() => true);
+            (mockRelayManager as any).hasHostRelayConfig = vi.fn(() => true);
+
+            await service.initializeRelays('pubkey123');
+            await service.initializeForLogin('pubkey123');
+            await service.refreshRelaysAndProfile('pubkey123');
+
+            expect((mockRelayManager as any).useHostRelayConfig).toHaveBeenCalled();
+            expect(mockRelayManager.useRelaysFromLocalStorageIfExists).not.toHaveBeenCalled();
+            expect(mockRelayManager.setBootstrapRelays).not.toHaveBeenCalled();
+            expect(mockRelayManager.getFromLocalStorage).not.toHaveBeenCalled();
+            expect(mockRelayManager.fetchUserRelays).not.toHaveBeenCalled();
+            expect(getProfileSpy).toHaveBeenCalledWith('pubkey123', expect.objectContaining({
+                forceRefresh: true,
+            }));
+        });
+
         it('pubkeyHexが指定され、ローカルストレージにリレーがある場合はそれを使用する', async () => {
             vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockResolvedValue(true);
 

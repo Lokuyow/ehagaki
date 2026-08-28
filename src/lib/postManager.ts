@@ -19,6 +19,7 @@ import { ReplyQuoteService } from "./replyQuoteService";
 import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svelte";
 import { settingsStore } from "../stores/settingsStore.svelte";
 import { writeRelaysStore } from "../stores/relayStore.svelte";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import {
   attestFullyVerifiedPostHistoryRawEvent,
@@ -360,6 +361,15 @@ export class PostManager {
 
     if (!this.eventSender) {
       return this.notifyPostFailure("nostr_not_ready");
+    }
+
+    if (
+      isHostRelayConfigActive()
+      && RelayConfigUtils.sanitizeExternalRelayUrls(
+        this.deps.writeRelaysStore?.value,
+      ).length === 0
+    ) {
+      return this.notifyPostFailure("no_write_relays");
     }
 
     try {

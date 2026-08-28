@@ -16,6 +16,7 @@
         showRelays: boolean;
         onToggleShowRelays: () => void;
         onRefreshRelaysAndProfile?: () => void;
+        hostRelayConfigActive?: boolean;
     }
 
     let {
@@ -23,6 +24,7 @@
         showRelays,
         onToggleShowRelays,
         onRefreshRelaysAndProfile,
+        hostRelayConfigActive = false,
     }: Props = $props();
 
     function toRelayListItems(config: RelayConfig | null): RelayListItem[] {
@@ -57,8 +59,10 @@
 <div class="setting-section">
     <div class="setting-row">
         <span class="setting-label">
-            {$_("settingsDialog.refresh_relays_and_profile") ||
-                "リレーリスト・プロフィール再取得"}
+            {hostRelayConfigActive
+                ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
+                : ($_('settingsDialog.refresh_relays_and_profile') ||
+                    'リレーリスト・プロフィール再取得')}
         </span>
         <div class="setting-control">
             <Button
@@ -67,15 +71,20 @@
                 contentLayout="iconText"
                 className="refresh-relays-profile-btn"
                 onClick={() => onRefreshRelaysAndProfile?.()}
-                ariaLabel={$_("settingsDialog.refresh_relays_and_profile") ||
-                    "再取得"}
+                ariaLabel={hostRelayConfigActive
+                    ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
+                    : ($_('settingsDialog.refresh_relays_and_profile') || '再取得')}
             >
                 <div
                     class="rotate-right-icon svg-icon"
-                    aria-label={$_("settingsDialog.refresh") || "更新"}
+                    aria-label={hostRelayConfigActive
+                        ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
+                        : ($_('settingsDialog.refresh') || '更新')}
                 ></div>
                 <span class="btn-text">
-                    {$_("settingsDialog.refresh") || "更新"}
+                    {hostRelayConfigActive
+                        ? ($_('settingsDialog.refresh_profile') || 'プロフィール再取得')
+                        : ($_('settingsDialog.refresh') || '更新')}
                 </span>
             </Button>
         </div>
@@ -83,6 +92,11 @@
 
     <!-- 投稿先リレー表示セクション（折りたたみ対応） -->
     <div class="setting-info">
+        {#if hostRelayConfigActive}
+            <span class="host-relay-note">
+                {$_('settingsDialog.host_relay_config') || 'ホストから一時的に指定されています'}
+            </span>
+        {/if}
         <Button
             variant="default"
             shape="rounded"
@@ -195,6 +209,12 @@
             padding: 10px;
             --btn-bg: transparent;
         }
+    }
+    .host-relay-note {
+        display: block;
+        margin: 0 10px 4px;
+        color: var(--text-light);
+        font-size: 0.8125rem;
     }
     .rotate-right-icon {
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");

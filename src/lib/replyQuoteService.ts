@@ -4,6 +4,7 @@ import { nip19 } from "nostr-tools";
 import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { parsePostHistoryThreadReferences } from "./postHistoryNip10Utils";
 import { decodeEventPointerValue } from "./eventPointerUtils";
 
@@ -97,7 +98,7 @@ export class ReplyQuoteService {
             });
             const hasReadRelays = !!relayConfig && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
             const temporaryRelays = new Set<string>(normalizedHints);
-            if (!hasReadRelays) {
+            if (!hasReadRelays && !isHostRelayConfigActive()) {
                 RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS)
                     .forEach(r => temporaryRelays.add(r));
             }

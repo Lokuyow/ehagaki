@@ -3,6 +3,7 @@ import {
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { RelayConfigUtils } from "./relayConfigUtils";
 import type { NostrEvent, RelayConfig } from "./types";
 import { usePostHistoryRelayEvents } from "./postHistoryRawEventVerification";
@@ -134,17 +135,19 @@ export class PostHistoryContextFetchService {
         relayConfig: RelayConfig | null | undefined,
     ): string[] {
         const configuredRelays = relayConfig
-            ? [
-                ...RelayConfigUtils.extractReadRelays(relayConfig),
-                ...RelayConfigUtils.extractWriteRelays(relayConfig),
-            ]
+            ? isHostRelayConfigActive()
+                ? RelayConfigUtils.extractReadRelays(relayConfig)
+                : [
+                    ...RelayConfigUtils.extractReadRelays(relayConfig),
+                    ...RelayConfigUtils.extractWriteRelays(relayConfig),
+                ]
             : [];
         const relays = RelayConfigUtils.sanitizeExternalRelayUrls([
             ...(relayHints ?? []),
             ...configuredRelays,
         ], { limit: POST_HISTORY_CONTEXT_RELAY_LIMIT });
 
-        return relays.length > 0
+        return relays.length > 0 || isHostRelayConfigActive()
             ? relays
             : RelayConfigUtils.sanitizeExternalRelayUrls(
                 FALLBACK_RELAYS,

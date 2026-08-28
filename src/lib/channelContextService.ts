@@ -1,6 +1,7 @@
 import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
+import { isHostRelayConfigActive } from "./hostRelayRuntime";
 import { compareChannelMetadataEventVersions } from "./channelMetadataEventOrder";
 import { normalizeChannelPictureUrl } from "./channelPictureUrlUtils";
 import {
@@ -59,7 +60,7 @@ function buildChannelReadOnParams(
     const temporaryRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
         RelayConfigUtils.mergeRelayConfigs(
             relayHints,
-            ...(hasReadRelays ? [] : [FALLBACK_RELAYS]),
+            ...(hasReadRelays || isHostRelayConfigActive() ? [] : [FALLBACK_RELAYS]),
         ),
         { limit: CHANNEL_TEMPORARY_READ_RELAY_LIMIT },
     );

@@ -67,7 +67,11 @@
     saveRelayConfigToStorage,
     invalidatePendingRelayConfigOperations,
     resetRelayConfigStore,
+    applyHostRelayConfig,
+    clearHostRelayConfig,
+    relayConfigSourceStore,
   } from "./stores/relayStore.svelte";
+  import type { RelayConfig } from "./lib/types";
   import {
     sharedMediaStore,
     urlQueryContentStore,
@@ -225,6 +229,9 @@
     /** The iframe transport remains the default for the PWA and iframe entry. */
     notificationPort?: AppPostNotificationPort & AppEmbedNotificationPort;
     onInitialized?: () => void;
+    /** Full embed or iframe bootstrap input; never persisted as user state. */
+    hostRelayConfig?: RelayConfig;
+    hostRelayBootstrapError?: { code: string; message?: string };
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -244,6 +251,8 @@
   let {
     notificationPort = iframeNotificationPort,
     onInitialized = () => undefined,
+    hostRelayConfig = undefined,
+    hostRelayBootstrapError = undefined,
   }: Props = $props();
 
   type PostComponent =
@@ -1078,6 +1087,7 @@
       setRelayManager,
       onRelayConfigSaved: (pubkeyHex, relayConfig) =>
         saveRelayConfigToStorage(pubkeyHex, relayConfig ?? {}),
+      hostRelayConfig,
       onSession: (session) => {
         rxNostr = session.rxNostr;
         relayProfileService = session.relayProfileService;
@@ -1110,6 +1120,7 @@
       accountManager,
       accountListStore,
       accountProfileCacheStore,
+      hostRelayConfig,
     });
 
     rxNostr = session.rxNostr;
@@ -1480,6 +1491,23 @@
     const overlayScopeTarget = appRuntimeEnvironment.overlayTarget;
     overlayScopeTarget.classList.add("ehagaki-app-root");
 
+    if (hostRelayConfig) {
+      applyHostRelayConfig(hostRelayConfig);
+    }
+
+    if (hostRelayBootstrapError) {
+      void waitLocale().then(() => {
+        localeInitialized = true;
+        isBootstrappingApp = false;
+      });
+      return () => {
+        overlayScopeTarget.classList.remove("ehagaki-app-root");
+        if (hostRelayConfig) {
+          clearHostRelayConfig();
+        }
+      };
+    }
+
     if (appRuntimeEnvironment.externalInputEnabled) {
       parentClientAvailable = parentClientAuthService.initialize({
         locationSearch: window.location.search,
@@ -1631,6 +1659,9 @@
       cleanupRuntimeBindings();
       composerTargetApplyController.dispose();
       channelContextApplyController.dispose();
+      if (hostRelayConfig) {
+        clearHostRelayConfig();
+      }
       if (
         rxNostr &&
         typeof (rxNostr as unknown as { dispose?: unknown }).dispose ===
@@ -2265,6 +2296,7 @@
           show={showSettingsDialogStore.value}
           onClose={settingsDialog.close}
           onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
+          hostRelayConfigActive={relayConfigSourceStore.value === "host"}
           onOpenWelcomeDialog={welcomeDialog.open}
           {rxNostr}
         />

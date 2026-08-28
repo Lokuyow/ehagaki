@@ -6,6 +6,7 @@ import { applyUploadDestinationBootstrap } from './lib/bootstrap/uploadDestinati
 import { handleStaleAssetPreloadError } from './lib/staleAssetPreloadError'
 import { configureAppRuntimeEnvironment } from './lib/appRuntimeEnvironment'
 import { startServiceWorkerRegistration } from './lib/bootstrap/serviceWorkerBootstrap'
+import { bootstrapIframeHostRelayConfig } from './lib/iframeHostRelayConfigBootstrap'
 
 configureAppRuntimeEnvironment({
   storage: window.localStorage,
@@ -45,10 +46,17 @@ themeColorStore.setExternalLayers({
 })
 themeColorStore.reload()
 
+const hostRelayBootstrap = await bootstrapIframeHostRelayConfig()
+
 const { default: App } = await import('./App.svelte')
 
 const app = mount(App, {
   target: document.getElementById('app')!,
+  props: hostRelayBootstrap.enabled
+    ? ('relayConfig' in hostRelayBootstrap
+      ? { hostRelayConfig: hostRelayBootstrap.relayConfig }
+      : { hostRelayBootstrapError: hostRelayBootstrap.error })
+    : undefined,
 })
 
 export default app

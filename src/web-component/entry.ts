@@ -14,6 +14,8 @@ export type {
     EHagakiComposerPostSuccessDetail,
     EHagakiComposerReadyDetail,
     EHagakiComposerSettings,
+    HostRelayConfig,
+    HostRelayConfigEntry,
 } from "./types";
 
 registerComposerDistribution("full", EHagakiComposerElement);
