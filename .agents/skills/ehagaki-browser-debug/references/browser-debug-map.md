@@ -63,7 +63,7 @@
 - **主な実装ファイル:** `src/app.css`、`src/stores/uiStore.svelte.ts`、`src/App.svelte`、`src/components/FooterComponent.svelte`、`src/components/KeyboardButtonBar.svelte`、`src/components/ReasonInput.svelte`、`src/components/ComposerTargetDialog.svelte`。
 - **主な関数、store、hook、controller:** `syncLayoutCssVariables()`、`reasonInputVisibleStore`、`keyboardHeightStore`、`bottomPositionStore`。
 - **Event source:** viewport/keyboard/focus同期、content-warning表示変更、component render。
-- **StateまたはCSS変数:** `--app-root-height/top/overflow-y`、`--app-main-height`、`--app-body-*`、`--app-overlay-position`、`--app-overscroll-behavior`、`--footer-*`、`--keyboard-*`、`--reason-input-*`、`--composer-bottom-reserved-height`、`--mobile-dialog-*`。`ComposerTargetDialog.svelte`は`env(safe-area-inset-top/bottom)`も使う。
+- **StateまたはCSS変数:** `--app-root-height/top/overflow-y`、`--app-main-height`、`--app-body-*`、`--app-overlay-position`、`--app-overscroll-behavior`、`--footer-*`、`--keyboard-*`、`--reason-input-*`、`--composer-bottom-reserved-height`、`--mobile-dialog-*`。`layoutCapabilities.hasKeyboardButtonBar` はバー DOM の有無と実効バー高さを共有予約値へ反映する。`ComposerTargetDialog.svelte`は`env(safe-area-inset-top/bottom)`も使う。
 - **Cleanup所有者:** CSS変数はrootへ維持され、次の`syncLayoutCssVariables()`で正規値へ戻る。browser listenerの所有者は`setupViewportListener()`。
 - **関連テスト:** `src/test/unit/uiStore.test.ts`、`src/test/unit/footerComponent.test.ts`、`src/test/unit/keyboardButtonBar.test.ts`、`src/test/e2e/composerTargetDialog.spec.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** fixed要素の実配置、overflow、safe area、短いviewport、landscapeはPlaywright。browser UIやkeyboard overlay込みは実端末。

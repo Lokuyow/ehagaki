@@ -112,6 +112,8 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     const composer = page.locator("ehagaki-composer");
     await expect(composer.locator(".image-button")).toHaveCount(0);
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
+    await expect(composer.locator(".footer-button-bar")).toHaveCount(1);
+    await expect(composer.locator(".tiptap-editor")).not.toHaveAttribute("enterkeyhint", "send");
     await expect(composer.locator("#content-warning-reason-input")).toHaveCount(0);
     await expect(composer.locator(".button-group-right button")).toHaveCount(0);
     await composer.locator(".tiptap-editor").click();
@@ -331,6 +333,155 @@ test("Lite disabled CW and hashtag pin do not carry shared state into a new inst
     expect(output.tags).toContainEqual(["t", "example"]);
     expect(output.tags.some((tag: string[]) => tag[0] === "content-warning")).toBe(false);
     await expect(disabled.locator(".tiptap-editor")).toHaveText("");
+});
+
+test("Lite validates keyboard options without consuming configuration after invalid input", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+        };
+        const invalidBoolean = (() => {
+            try {
+                composer.configureHostOwned({ submit: () => undefined, keyboardButtonBarEnabled: "false" });
+                return "accepted";
+            } catch (error) {
+                return (error as Error).name;
+            }
+        })();
+        const invalidEnum = (() => {
+            try {
+                composer.configureHostOwned({ submit: () => undefined, enterKeyBehavior: "send" });
+                return "accepted";
+            } catch (error) {
+                return (error as Error).name;
+            }
+        })();
+        composer.configureHostOwned({
+            submit: () => undefined,
+            keyboardButtonBarEnabled: false,
+            enterKeyBehavior: "submit",
+        });
+        return { invalidBoolean, invalidEnum };
+    }, { componentOrigin });
+    expect(result).toEqual({ invalidBoolean: "TypeError", invalidEnum: "TypeError" });
+});
+
+test("Lite keyboard options hide the bar and submit plain Enter repeatedly", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as any[] };
+        (window as any).__liteKeyboardState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                return { eventId: "c".repeat(64) };
+            },
+            keyboardButtonBarEnabled: false,
+            enterKeyBehavior: "submit",
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".footer-button-bar")).toHaveCount(0);
+    await expect(composer.locator(".tiptap-editor")).toHaveAttribute("enterkeyhint", "send");
+    const layout = await composer.evaluate((element) => {
+        const style = getComputedStyle(element.shadowRoot!.querySelector<HTMLElement>(".ehagaki-web-component-shell")!);
+        return {
+            barHeight: style.getPropertyValue("--keyboard-button-bar-height").trim(),
+            reservedHeight: style.getPropertyValue("--composer-bottom-reserved-height").trim(),
+            reasonBottom: style.getPropertyValue("--reason-input-bottom").trim(),
+        };
+    });
+    expect(layout).toEqual({ barHeight: "0px", reservedHeight: "0px", reasonBottom: "0px" });
+
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    const waitForContentTracking = () => page.evaluate(() => new Promise<void>((resolve) => {
+        window.addEventListener("editor-content-changed", () => resolve(), { once: true });
+    }));
+    let contentTracking = waitForContentTracking();
+    await editor.pressSequentially("first post");
+    await contentTracking;
+    await editor.press("Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(1);
+    await expect(editor).toHaveText("");
+
+    contentTracking = waitForContentTracking();
+    await editor.pressSequentially("second post");
+    await contentTracking;
+    await editor.press("Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(2);
+    await expect(editor).toHaveText("");
+
+    contentTracking = waitForContentTracking();
+    await editor.pressSequentially("line one");
+    await contentTracking;
+    // Playwright's mobile device emulation does not provide a physical
+    // keyboard. Dispatch the modifier explicitly to test the handler contract
+    // consistently across Chromium and WebKit.
+    await page.evaluate(() => {
+        const editor = document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector<HTMLElement>(".tiptap-editor");
+        editor?.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+            shiftKey: true,
+        }));
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(2);
+    await expect(editor).toContainText("line one");
+    await editor.press("Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(3);
+    await expect(editor).toHaveText("");
+});
+
+test("Lite default newline mode keeps Enter as a newline and Ctrl+Enter as submit", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as unknown[] };
+        (window as any).__liteDefaultKeyboardState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(output);
+                return { eventId: "d".repeat(64) };
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    const waitForContentTracking = () => page.evaluate(() => new Promise<void>((resolve) => {
+        window.addEventListener("editor-content-changed", () => resolve(), { once: true });
+    }));
+    let contentTracking = waitForContentTracking();
+    await editor.pressSequentially("newline text");
+    await contentTracking;
+    contentTracking = waitForContentTracking();
+    await editor.press("Enter");
+    await contentTracking;
+    await expect(composer.locator(".tiptap-editor > p")).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => (window as any).__liteDefaultKeyboardState.outputs.length)).toBe(0);
+
+    await editor.press("Control+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteDefaultKeyboardState.outputs.length)).toBe(1);
+    await expect(editor).toHaveText("");
 });
 
 test("Lite requires pre-connect Host-owned configuration without making assetBase a hard error", async ({ page }) => {

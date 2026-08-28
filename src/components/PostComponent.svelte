@@ -436,6 +436,7 @@
       getCustomEmojiItems: isHostOwned
         ? () => hostCustomEmojiItems
         : undefined,
+      enterKeyBehavior: isHostOwned ? hostOwnedConfig?.enterKeyBehavior : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
           void uploadHandlers.performUpload(files);

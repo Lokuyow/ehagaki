@@ -84,7 +84,11 @@
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
 
   const composerLayoutMetrics = useComposerLayoutMetrics({
-    setupViewportListener: () => setupViewportListener({ hasHeader: false, hasFooter: false }),
+    setupViewportListener: () => setupViewportListener({
+      hasHeader: false,
+      hasFooter: false,
+      hasKeyboardButtonBar: hostOwnedConfig.keyboardButtonBarEnabled !== false,
+    }),
     getComposerScrollRegionEl: () => composerScrollRegionEl,
     getComposerScrollContentEl: () => composerScrollContentEl,
     getCustomEmojiPickerRegionEl: () => customEmojiPickerRegionEl,
@@ -290,17 +294,19 @@
       </div>
     </div>
     <ReasonInput enabled={hostOwnedConfig.contentWarningEnabled === true} />
-    <KeyboardButtonBar
-      onUploadImage={() => postComponentRef?.openFileDialog()}
-      {customEmojiPickerOpen}
-      hasPostingCapability={true}
-      mediaEnabled={!!hostOwnedConfig.uploadMedia}
-      customEmojiEnabled={true}
-      customEmojiAvailable={hostCustomEmojiItems.length > 0}
-      contentWarningAvailable={hostOwnedConfig.contentWarningEnabled === true}
-      hashtagPinAvailable={hostOwnedConfig.hashtagPinEnabled === true}
-      onCustomEmojiPickerOpenChange={(open) => void setCustomEmojiPickerOpen(open)}
-    />
+    {#if hostOwnedConfig.keyboardButtonBarEnabled !== false}
+      <KeyboardButtonBar
+        onUploadImage={() => postComponentRef?.openFileDialog()}
+        {customEmojiPickerOpen}
+        hasPostingCapability={true}
+        mediaEnabled={!!hostOwnedConfig.uploadMedia}
+        customEmojiEnabled={true}
+        customEmojiAvailable={hostCustomEmojiItems.length > 0}
+        contentWarningAvailable={hostOwnedConfig.contentWarningEnabled === true}
+        hashtagPinAvailable={hostOwnedConfig.hashtagPinEnabled === true}
+        onCustomEmojiPickerOpenChange={(open) => void setCustomEmojiPickerOpen(open)}
+      />
+    {/if}
   </main>
 </Tooltip.Provider>
 

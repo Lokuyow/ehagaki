@@ -33,6 +33,16 @@ function validateHostOwnedOptions(
     if (value.hashtagPinEnabled !== undefined && typeof value.hashtagPinEnabled !== "boolean") {
         throw new TypeError("hashtagPinEnabled must be a boolean when provided.");
     }
+    if (value.keyboardButtonBarEnabled !== undefined && typeof value.keyboardButtonBarEnabled !== "boolean") {
+        throw new TypeError("keyboardButtonBarEnabled must be a boolean when provided.");
+    }
+    if (
+        value.enterKeyBehavior !== undefined &&
+        value.enterKeyBehavior !== "newline" &&
+        value.enterKeyBehavior !== "submit"
+    ) {
+        throw new TypeError("enterKeyBehavior must be \"newline\" or \"submit\" when provided.");
+    }
     return {
         submit: value.submit,
         ...(value.uploadMedia ? { uploadMedia: value.uploadMedia } : {}),
@@ -41,6 +51,12 @@ function validateHostOwnedOptions(
             : {}),
         ...(value.hashtagPinEnabled !== undefined
             ? { hashtagPinEnabled: value.hashtagPinEnabled }
+            : {}),
+        ...(value.keyboardButtonBarEnabled !== undefined
+            ? { keyboardButtonBarEnabled: value.keyboardButtonBarEnabled }
+            : {}),
+        ...(value.enterKeyBehavior !== undefined
+            ? { enterKeyBehavior: value.enterKeyBehavior }
             : {}),
     };
 }

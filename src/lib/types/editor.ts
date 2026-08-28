@@ -121,6 +121,7 @@ export interface InitializeEditorParams {
     submitPost: () => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
+    enterKeyBehavior?: "newline" | "submit";
     uploadFiles?: (files: File[] | FileList) => void;
     eventCallbacks: EditorEventCallbacks;
 }
