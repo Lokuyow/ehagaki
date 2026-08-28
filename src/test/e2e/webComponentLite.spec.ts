@@ -405,25 +405,26 @@ test("Lite keyboard options hide the bar and submit plain Enter repeatedly", asy
 
     const editor = composer.locator(".tiptap-editor");
     await editor.click();
-    const waitForContentTracking = () => page.evaluate(() => new Promise<void>((resolve) => {
-        window.addEventListener("editor-content-changed", () => resolve(), { once: true });
-    }));
-    let contentTracking = waitForContentTracking();
+    await page.clock.install();
+    // Keep the ContentTrackingExtension's 300ms timer pending while the real
+    // keyboard path receives Enter, so this cannot pass because of elapsed time
+    // between separate Playwright actions.
     await editor.pressSequentially("first post");
-    await contentTracking;
     await editor.press("Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(1);
     await expect(editor).toHaveText("");
 
-    contentTracking = waitForContentTracking();
     await editor.pressSequentially("second post");
-    await contentTracking;
     await editor.press("Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(2);
     await expect(editor).toHaveText("");
 
-    contentTracking = waitForContentTracking();
+    const waitForContentTracking = () => page.evaluate(() => new Promise<void>((resolve) => {
+        window.addEventListener("editor-content-changed", () => resolve(), { once: true });
+    }));
+    let contentTracking = waitForContentTracking();
     await editor.pressSequentially("line one");
+    await page.clock.fastForward(300);
     await contentTracking;
     // Playwright's mobile device emulation does not provide a physical
     // keyboard. Dispatch the modifier explicitly to test the handler contract

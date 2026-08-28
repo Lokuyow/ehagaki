@@ -1110,6 +1110,42 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it('KeyboardButtonBarなしでもkeyboard open時のinsetを維持し、ReasonInputはバー分を予約しない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+        createVisualViewportMock(800);
+        const virtualKeyboard = createVirtualKeyboardMock();
+
+        const { keyboardHeightStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const cleanup = setupViewportListener({
+            hasHeader: false,
+            hasFooter: false,
+            hasKeyboardButtonBar: false,
+        });
+
+        virtualKeyboard.setHeight(300);
+        virtualKeyboard.emitGeometryChange();
+
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('300px');
+        expect(keyboardHeightStore.value).toBe(300);
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
     it('reason input の表示状態を CSS 変数へ同期する', async () => {
         const {
             REASON_INPUT_HEIGHT,
