@@ -55,6 +55,11 @@
         <label><input id="hashtag-pin" type="checkbox" /> Enable hashtag pin</label>
         <label><input id="keyboard-bar" type="checkbox" checked /> Show KeyboardButtonBar</label>
       </div>
+      <div class="two-column">
+        <div class="control-row"><label for="editor-min-lines">Editor min lines</label><input id="editor-min-lines" type="number" min="1" step="1" placeholder="legacy" /></div>
+        <div class="control-row"><label for="editor-max-lines">Editor max lines</label><input id="editor-max-lines" type="number" min="1" step="1" placeholder="legacy" /></div>
+      </div>
+      <p class="hint">Leave both line fields blank to retain legacy sizing. Supply both positive integers to use editor-local auto-grow.</p>
       <div class="control-row">
         <label for="enter-behavior">Enter behavior</label>
         <select id="enter-behavior">
@@ -194,8 +199,13 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         hashtagPin: checked('hashtag-pin') ? 'on' : 'off',
         keyboardButtonBar: checked('keyboard-bar') ? 'on' : 'off',
         enterKeyBehavior: value('enter-behavior'),
+        editorAutoGrow: (() => {
+          const min = value('editor-min-lines').trim();
+          const max = value('editor-max-lines').trim();
+          return !min && !max ? 'legacy' : `${min || '?'}/${max || '?'}`;
+        })(),
       });
-      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | enter: ${config.enterKeyBehavior}`;
+      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | enter: ${config.enterKeyBehavior} | editor: ${config.editorAutoGrow}`;
       const setReadyStatus = (config) => {
         const text = readyText(config);
         status.textContent = text;
@@ -285,6 +295,14 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           hashtagPinEnabled: config.hashtagPin === 'on',
           keyboardButtonBarEnabled: config.keyboardButtonBar === 'on',
           enterKeyBehavior: config.enterKeyBehavior,
+          ...(() => {
+            const min = value('editor-min-lines').trim();
+            const max = value('editor-max-lines').trim();
+            return {
+              ...(min ? { editorMinLines: Number(min) } : {}),
+              ...(max ? { editorMaxLines: Number(max) } : {}),
+            };
+          })(),
           ...(config.upload === 'on' ? {
             async uploadMedia(file, metadata, { signal }) {
               write('upload metadata:', metadata);
