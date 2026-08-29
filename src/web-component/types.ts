@@ -77,6 +77,10 @@ export interface EHagakiHostOwnedComposerOptions {
     hashtagPinEnabled?: boolean;
     keyboardButtonBarEnabled?: boolean;
     enterKeyBehavior?: "newline" | "submit";
+    /** Enables intrinsic editor sizing only when supplied with editorMaxLines. */
+    editorMinLines?: number;
+    /** Enables intrinsic editor sizing only when supplied with editorMinLines. */
+    editorMaxLines?: number;
 }
 
 export interface EHagakiCustomEmojiCatalogItem {

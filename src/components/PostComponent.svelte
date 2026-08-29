@@ -171,8 +171,15 @@
   let editorResources: InitializeEditorResult | null = null;
   let editorSubscriptionUnsubscribe: (() => void) | null = null;
   let editorTargetHeight = $state(POST_EDITOR_MIN_HEIGHT);
+  let editorAutoGrow = $derived(
+    isHostOwned &&
+      hostOwnedConfig?.editorMinLines !== undefined &&
+      hostOwnedConfig.editorMaxLines !== undefined,
+  );
   let postContainerStyle = $derived(
-    `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
+    editorAutoGrow
+      ? `--post-editor-auto-grow-min-lines: ${hostOwnedConfig!.editorMinLines}lh; --post-editor-auto-grow-max-lines: ${hostOwnedConfig!.editorMaxLines}lh;`
+      : `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
   let editorPlaceholderText = $derived(
     $_("postComponent.enter_your_text") || "テキストを入力してください",
@@ -194,6 +201,8 @@
   });
 
   function syncEditorTargetHeight() {
+    if (editorAutoGrow) return;
+
     const minHeight = minEditorHeight;
 
     if (!postContainerEl || !editorContainerEl) {
@@ -362,6 +371,8 @@
   });
 
   $effect(() => {
+    if (editorAutoGrow) return;
+
     availableComposerHeight;
     minEditorHeight;
     mediaFreePlacement;
@@ -386,6 +397,8 @@
   });
 
   $effect(() => {
+    if (editorAutoGrow) return;
+
     availableComposerHeight;
     minEditorHeight;
     currentEditor;
@@ -1012,6 +1025,7 @@
 
 <div
   class="post-container"
+  class:editor-auto-grow={editorAutoGrow}
   data-post-editor-root
   style={postContainerStyle}
   bind:this={postContainerEl}
@@ -1139,6 +1153,7 @@
     max-width: 800px;
     align-items: stretch;
     overflow: visible;
+    --post-editor-block-padding: 10px;
   }
 
   .upload-error {
@@ -1159,6 +1174,37 @@
     background: var(--surface-editor);
     -webkit-tap-highlight-color: transparent;
     overflow: hidden;
+  }
+
+  .post-container.editor-auto-grow,
+  .post-container.editor-auto-grow .editor-container,
+  .post-container.editor-auto-grow :global(.editor-content),
+  .post-container.editor-auto-grow :global(.tiptap-editor) {
+    flex: 0 0 auto;
+  }
+
+  .post-container.editor-auto-grow .editor-container,
+  .post-container.editor-auto-grow :global(.editor-content),
+  .post-container.editor-auto-grow :global(.tiptap-editor) {
+    height: auto;
+  }
+
+  .post-container.editor-auto-grow .editor-container {
+    min-height: 0;
+    max-height: none;
+  }
+
+  .post-container.editor-auto-grow :global(.tiptap-editor) {
+    min-height: calc(
+      var(--post-editor-auto-grow-min-lines) +
+      var(--post-editor-block-padding) +
+      var(--post-editor-block-padding)
+    );
+    max-height: calc(
+      var(--post-editor-auto-grow-max-lines) +
+      var(--post-editor-block-padding) +
+      var(--post-editor-block-padding)
+    );
   }
 
   :global(.editor-account-placeholder) {
@@ -1227,7 +1273,7 @@
   /* Tiptapエディターのスタイル */
   :global(.tiptap-editor) {
     display: block;
-    padding: 10px;
+    padding: var(--post-editor-block-padding);
     font-family: inherit;
     font-size: 1.25rem;
     line-height: 1.5;

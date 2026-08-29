@@ -335,7 +335,7 @@ test("Lite disabled CW and hashtag pin do not carry shared state into a new inst
     await expect(disabled.locator(".tiptap-editor")).toHaveText("");
 });
 
-test("Lite validates keyboard options without consuming configuration after invalid input", async ({ page }) => {
+test("Lite validates keyboard and editor auto-grow options without consuming configuration after invalid input", async ({ page }) => {
     await page.goto(hostOrigin);
     const result = await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
@@ -358,14 +358,197 @@ test("Lite validates keyboard options without consuming configuration after inva
                 return (error as Error).name;
             }
         })();
+        const invalidEditorOptions = [
+            { editorMinLines: 1 },
+            { editorMaxLines: 3 },
+            { editorMinLines: 0, editorMaxLines: 1 },
+            { editorMinLines: 1.5, editorMaxLines: 2 },
+            { editorMinLines: 1, editorMaxLines: Number.POSITIVE_INFINITY },
+            { editorMinLines: 3, editorMaxLines: 1 },
+        ].map((options) => {
+            try {
+                composer.configureHostOwned({ submit: () => undefined, ...options });
+                return "accepted";
+            } catch (error) {
+                return (error as Error).name;
+            }
+        });
         composer.configureHostOwned({
             submit: () => undefined,
             keyboardButtonBarEnabled: false,
             enterKeyBehavior: "submit",
+            editorMinLines: 1,
+            editorMaxLines: 1,
         });
-        return { invalidBoolean, invalidEnum };
+        return { invalidBoolean, invalidEnum, invalidEditorOptions };
     }, { componentOrigin });
-    expect(result).toEqual({ invalidBoolean: "TypeError", invalidEnum: "TypeError" });
+    expect(result).toEqual({
+        invalidBoolean: "TypeError",
+        invalidEnum: "TypeError",
+        invalidEditorOptions: ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError", "TypeError"],
+    });
+});
+
+test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tiptap", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { submitted: 0 };
+        (window as any).__liteAutoGrowState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.style.cssText = "display: block; width: 360px; height: 640px;";
+        composer.configureHostOwned({
+            submit: () => {
+                state.submitted += 1;
+                return { eventId: "a".repeat(64) };
+            },
+            editorMinLines: 1,
+            editorMaxLines: 3,
+            keyboardButtonBarEnabled: false,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        (window as any).__liteAutoGrowComposer = composer;
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const measure = () => page.evaluate(() => {
+        const root = document.querySelector("ehagaki-composer")?.shadowRoot!;
+        const editor = root.querySelector<HTMLElement>(".tiptap-editor")!;
+        const outer = root.querySelector<HTMLElement>(".composer-scroll-region")!;
+        const paragraph = editor.querySelector("p");
+        const range = document.createRange();
+        if (paragraph) range.selectNodeContents(paragraph);
+        const visualLines = new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size;
+        return {
+            height: Math.round(editor.getBoundingClientRect().height * 100) / 100,
+            lineHeight: Number.parseFloat(getComputedStyle(editor).lineHeight),
+            clientHeight: editor.clientHeight,
+            scrollHeight: editor.scrollHeight,
+            visualLines,
+            outerClientHeight: outer.clientHeight,
+            outerScrollHeight: outer.scrollHeight,
+        };
+    });
+
+    const empty = await measure();
+    await editor.click();
+    await editor.pressSequentially("one line");
+    await expect.poll(measure).toMatchObject({ height: empty.height });
+
+    await editor.press("Enter");
+    await editor.pressSequentially("two lines");
+    await expect.poll(measure).toMatchObject({
+        height: Math.round((empty.height + empty.lineHeight) * 100) / 100,
+    });
+
+    await editor.press("Enter");
+    await editor.pressSequentially("three lines");
+    await expect.poll(measure).toMatchObject({
+        height: Math.round((empty.height + empty.lineHeight * 2) * 100) / 100,
+    });
+
+    await editor.press("Enter");
+    await editor.pressSequentially("four lines");
+    await expect.poll(measure).toMatchObject({
+        height: Math.round((empty.height + empty.lineHeight * 2) * 100) / 100,
+    });
+    expect(await measure()).toMatchObject({
+        outerScrollHeight: expect.any(Number),
+    });
+    const explicitOverflow = await measure();
+    expect(explicitOverflow.scrollHeight).toBeGreaterThan(explicitOverflow.clientHeight);
+    expect(explicitOverflow.outerScrollHeight).toBeLessThanOrEqual(explicitOverflow.outerClientHeight + 1);
+
+    await page.evaluate(async () => {
+        await (window as any).__liteAutoGrowComposer.setContext({ content: "W".repeat(200) });
+    });
+    await expect.poll(measure).toMatchObject({
+        height: Math.round((empty.height + empty.lineHeight * 2) * 100) / 100,
+    });
+    const softWrapped = await measure();
+    expect(softWrapped.visualLines).toBeGreaterThanOrEqual(4);
+    expect(softWrapped.scrollHeight).toBeGreaterThan(softWrapped.clientHeight);
+
+    await page.evaluate(async () => {
+        await (window as any).__liteAutoGrowComposer.setContext({ content: "delete me" });
+    });
+    await expect.poll(measure).toMatchObject({ height: empty.height });
+    await editor.click();
+    await editor.press("Control+A");
+    await editor.press("Backspace");
+    await expect.poll(measure).toMatchObject({ height: empty.height });
+
+    await page.evaluate(async () => {
+        await (window as any).__liteAutoGrowComposer.setContext({ content: "submit and clear" });
+    });
+    await editor.press("Control+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteAutoGrowState.submitted)).toBe(1);
+    await expect.poll(measure).toMatchObject({ height: empty.height });
+    await expect(editor).toHaveText("");
+});
+
+test("Lite keeps an explicit auto-grow range while the emoji picker makes the Composer overflow", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+            setCustomEmojis(value: unknown): Promise<void>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.style.cssText = "display: block; width: 360px; height: 132px;";
+        composer.configureHostOwned({
+            submit: () => undefined,
+            editorMinLines: 1,
+            editorMaxLines: 3,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
+        await composer.setContext({ content: "one\ntwo\nthree\nfour" });
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const beforePicker = await composer.evaluate((element) => {
+        const editor = element.shadowRoot!.querySelector<HTMLElement>(".tiptap-editor")!;
+        const style = getComputedStyle(editor);
+        return {
+            height: editor.getBoundingClientRect().height,
+            minHeight: Number.parseFloat(style.minHeight),
+            maxHeight: Number.parseFloat(style.maxHeight),
+        };
+    });
+    expect(beforePicker.height).toBeCloseTo(beforePicker.maxHeight, 1);
+    await composer.locator(".custom-emoji-button").click();
+    await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(1);
+    const afterPicker = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const editor = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+        const outer = shadow.querySelector<HTMLElement>(".composer-scroll-region")!;
+        const style = getComputedStyle(editor);
+        return {
+            height: editor.getBoundingClientRect().height,
+            minHeight: Number.parseFloat(style.minHeight),
+            maxHeight: Number.parseFloat(style.maxHeight),
+            outerClientHeight: outer.clientHeight,
+            outerScrollHeight: outer.scrollHeight,
+        };
+    });
+    expect(afterPicker.height).toBeCloseTo(beforePicker.height, 1);
+    expect(afterPicker.minHeight).toBe(beforePicker.minHeight);
+    expect(afterPicker.maxHeight).toBe(beforePicker.maxHeight);
+    expect(afterPicker.outerScrollHeight).toBeGreaterThan(afterPicker.outerClientHeight);
 });
 
 test("Lite keyboard options hide the bar and submit plain Enter repeatedly", async ({ page }) => {

@@ -311,6 +311,8 @@ composer.configureHostOwned({
   hashtagPinEnabled: true,
   keyboardButtonBarEnabled: true,
   enterKeyBehavior: 'newline',
+  editorMinLines: 1,
+  editorMaxLines: 3,
 });
 const customEmojisReady = composer.setCustomEmojis([
   { shortcode: 'wave', url: 'https://cdn.example/emoji/wave.webp' },
@@ -358,6 +360,20 @@ catalog などの capability 自体を自動的に無効化しません。paste/
 で投稿し、Shift+Enter は改行、Ctrl/Cmd+Enter は従来どおり投稿します。IME の変換確定 Enter は投稿に
 使用されません。これら2つは `configureHostOwned()` の mount-time 設定であり、HTML attribute や
 `setSettings()` ではありません。
+
+`editorMinLines` と `editorMaxLines` は Host-owned Lite の editor viewport を本文の実際の visual line 数に
+応じて伸縮させる、対になる mount-time option です。両方を省略すると従来の available-height を使う
+layout をそのまま維持します。auto-grow を有効にするには両方を正の safe integer として指定し、
+`editorMinLines <= editorMaxLines` でなければなりません。片方だけ、0、負数、小数、`NaN`、無限大、
+unsafe integer、型違い、または逆転した range は `TypeError` です。`1/1` のような同値 range は有効で、
+その高さに固定して超過本文を editor 内で scroll します。
+
+有効な range では空 editor と1 visual line は minimum、soft wrapping を含む本文は maximum まで自然に
+伸び、それを超える本文は `.tiptap-editor` が vertical scroll を所有します。custom emoji picker を開いても
+この明示 range は変わりません。reply、quote、picker、media などを含む Composer 全体が host の definite
+height に収まらない場合は、従来どおり `.composer-scroll-region` が outer scroll を所有します。この設定は
+HTML attribute、`setSettings()`、Full self-publish、iframe、通常版/PWA の API ではありません。Web Component
+host が definite height を提供する既存契約も変更しません。
 
 ## 設定を変更する `setSettings()`
 

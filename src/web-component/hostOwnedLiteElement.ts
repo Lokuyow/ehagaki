@@ -3,6 +3,7 @@ import {
     type EHagakiCustomEmojiCatalogItem,
     type EHagakiHostOwnedComposerOptions,
 } from "./types";
+import { validateHostOwnedOptions } from "./hostOwnedLiteOptions";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -16,49 +17,6 @@ function isHttpUrl(value: unknown): value is string {
     } catch {
         return false;
     }
-}
-
-function validateHostOwnedOptions(
-    value: EHagakiHostOwnedComposerOptions,
-): EHagakiHostOwnedComposerOptions {
-    if (!isRecord(value) || typeof value.submit !== "function") {
-        throw new TypeError("Host-owned Composer requires a submit handler.");
-    }
-    if (value.uploadMedia !== undefined && typeof value.uploadMedia !== "function") {
-        throw new TypeError("uploadMedia must be a function when provided.");
-    }
-    if (value.contentWarningEnabled !== undefined && typeof value.contentWarningEnabled !== "boolean") {
-        throw new TypeError("contentWarningEnabled must be a boolean when provided.");
-    }
-    if (value.hashtagPinEnabled !== undefined && typeof value.hashtagPinEnabled !== "boolean") {
-        throw new TypeError("hashtagPinEnabled must be a boolean when provided.");
-    }
-    if (value.keyboardButtonBarEnabled !== undefined && typeof value.keyboardButtonBarEnabled !== "boolean") {
-        throw new TypeError("keyboardButtonBarEnabled must be a boolean when provided.");
-    }
-    if (
-        value.enterKeyBehavior !== undefined &&
-        value.enterKeyBehavior !== "newline" &&
-        value.enterKeyBehavior !== "submit"
-    ) {
-        throw new TypeError("enterKeyBehavior must be \"newline\" or \"submit\" when provided.");
-    }
-    return {
-        submit: value.submit,
-        ...(value.uploadMedia ? { uploadMedia: value.uploadMedia } : {}),
-        ...(value.contentWarningEnabled !== undefined
-            ? { contentWarningEnabled: value.contentWarningEnabled }
-            : {}),
-        ...(value.hashtagPinEnabled !== undefined
-            ? { hashtagPinEnabled: value.hashtagPinEnabled }
-            : {}),
-        ...(value.keyboardButtonBarEnabled !== undefined
-            ? { keyboardButtonBarEnabled: value.keyboardButtonBarEnabled }
-            : {}),
-        ...(value.enterKeyBehavior !== undefined
-            ? { enterKeyBehavior: value.enterKeyBehavior }
-            : {}),
-    };
 }
 
 function validateCustomEmojiCatalog(
