@@ -25,7 +25,7 @@
       .control-row > label:first-child { min-width: 9rem; }
       .hint { color: #666; font-size: .9rem; margin: .25rem 0 .5rem; }
       @media (prefers-color-scheme: dark) { .hint { color: #aaa; } }
-      #mount { min-height: 460px; border: 1px solid #999; margin: 1rem 0; }
+      #mount { height: 460px; border: 1px solid #999; margin: 1rem 0; }
       ehagaki-composer { display: block; height: 100%; }
       output { display: block; margin: .5rem 0; overflow-wrap: anywhere; }
       pre {
@@ -135,6 +135,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           <div class="control-row"><label for="legacy-image-quality">imageCompressionLevel</label><select id="legacy-image-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
           <div class="control-row"><label for="legacy-video-quality">videoCompressionLevel</label><select id="legacy-video-quality"><option value="none" selected>none</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>
         </div>
+        <button id="apply-legacy-settings" type="button">Apply legacy compression keys</button>
       </details>
       <button id="apply-settings" type="button">Apply settings</button>
     </fieldset>
@@ -235,10 +236,11 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         };
         signal.addEventListener('abort', onAbort, { once: true });
       });
+      const customEmojiAsset = (name) => new URL(`./${name}`, import.meta.url).href;
       const customEmojiCatalog = [
-        { shortcode: 'wave', url: 'https://example.invalid/emoji/wave.webp' },
-        { shortcode: 'sparkles', url: 'https://example.invalid/emoji/sparkles.webp' },
-        { shortcode: 'coffee', url: 'https://example.invalid/emoji/coffee.webp' },
+        { shortcode: 'wave', url: customEmojiAsset('ehagaki_icon.webp') },
+        { shortcode: 'sparkles', url: customEmojiAsset('ehagaki_icon_circle.webp') },
+        { shortcode: 'coffee', url: customEmojiAsset('ehagaki_ogp.webp') },
       ];
       const quoteValues = () => value('quotes-references').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
       const contextChannel = () => {
@@ -376,10 +378,17 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           replyNotificationEnabled: checked('reply-notification'),
           showMascot: checked('show-mascot'),
           showFlavorText: checked('show-flavor-text'),
+        };
+        write('setSettings payload:', payload);
+        const applied = await ensureComposer().setSettings(payload);
+        return [...applied];
+      });
+      get('apply-legacy-settings').onclick = () => void run('setSettings legacy applied:', async () => {
+        const payload = {
           imageCompressionLevel: value('legacy-image-quality'),
           videoCompressionLevel: value('legacy-video-quality'),
         };
-        write('setSettings payload:', payload);
+        write('setSettings legacy payload:', payload);
         const applied = await ensureComposer().setSettings(payload);
         return [...applied];
       });

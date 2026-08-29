@@ -137,15 +137,24 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             const buttonBar = shadow.querySelector<HTMLElement>(".footer-button-bar")!;
             const component = element.getBoundingClientRect();
             const buttonBarRect = buttonBar.getBoundingClientRect();
+            const mount = document.querySelector<HTMLElement>("#mount")!;
+            const mountRect = mount.getBoundingClientRect();
             return {
+                mountHeight: mountRect.height,
+                composerHeight: component.height,
                 topSpacing: getComputedStyle(content).paddingTop,
                 buttonBarHeight: buttonBarRect.height,
                 buttonBarBottom: buttonBarRect.bottom,
                 componentBottom: component.bottom,
+                mountBottom: mountRect.bottom,
                 footerPresent: !!shadow.querySelector(".footer-bar"),
             };
         });
         expect(closedHostOwnedGeometry.topSpacing).toBe("0px");
+        expect(closedHostOwnedGeometry.mountHeight).toBeGreaterThanOrEqual(460);
+        expect(closedHostOwnedGeometry.composerHeight).toBeGreaterThanOrEqual(459);
+        expect(Math.abs(closedHostOwnedGeometry.mountHeight - closedHostOwnedGeometry.composerHeight)).toBeLessThanOrEqual(2);
+        expect(Math.abs(closedHostOwnedGeometry.componentBottom - closedHostOwnedGeometry.mountBottom)).toBeLessThanOrEqual(2);
         expect(closedHostOwnedGeometry.buttonBarHeight).toBe(50);
         expect(Math.abs(closedHostOwnedGeometry.buttonBarBottom - closedHostOwnedGeometry.componentBottom)).toBeLessThanOrEqual(1);
         expect(closedHostOwnedGeometry.footerPresent).toBe(false);
@@ -175,6 +184,14 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(1);
         await page.locator("#set-custom-emojis").click();
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
+        await page.locator("ehagaki-composer .custom-emoji-button").click();
+        await expect(page.locator("ehagaki-composer .emoji-button")).toHaveCount(3);
+        await expect.poll(() => page.locator("ehagaki-composer .emoji-button img").evaluateAll((images) => images.every((image) => {
+            const img = image as HTMLImageElement;
+            return img.complete && img.naturalWidth > 0;
+        }))).toBe(true);
+        await page.locator("ehagaki-composer .emoji-button[aria-label=':wave:']").click();
+        await expect(page.locator("ehagaki-composer .custom-emoji-image")).toHaveCount(1);
         await page.locator("#remove-composer").click();
         await expect(page.locator("ehagaki-composer")).toHaveCount(0);
         await page.locator("#reconnect-composer").click();
@@ -186,11 +203,19 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
         await page.locator("#set-custom-emojis").click();
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
+        await page.locator("ehagaki-composer .custom-emoji-button").click();
+        await expect(page.locator("ehagaki-composer .emoji-button img")).toHaveCount(3);
         await page.locator("#locale").selectOption("ja");
         await page.locator("#theme-mode").selectOption("dark");
         await page.locator("#apply-settings").click();
         await expect(page.locator("#log")).toContainText("setSettings applied:");
         await expect(page.locator("#log")).toContainText("locale");
+        await page.locator("details").filter({ hasText: "Advanced: legacy compression keys" }).locator("summary").click();
+        await page.locator("#legacy-image-quality").selectOption("low");
+        await page.locator("#legacy-video-quality").selectOption("high");
+        await page.locator("#apply-legacy-settings").click();
+        await expect(page.locator("#log")).toContainText("setSettings legacy payload:");
+        await expect(page.locator("#log")).toContainText("imageCompressionLevel");
         await page.locator("#context-content").fill("sample context body");
         await page.locator("#set-content").click();
         await page.locator("#set-reply").click();
