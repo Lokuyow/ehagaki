@@ -1,4 +1,4 @@
-import { bI as _, bJ as a, bK as I } from "./assets/entry-Agq2pP_8.js";
+import { bI as _, bJ as a, bK as I } from "./assets/entry-BQ9RlsLv.js";
 export {
   _ as EHAGAKI_COMPOSER_API_VERSION,
   a as EHAGAKI_COMPOSER_TAG_NAME,
