@@ -36,6 +36,7 @@ let lastViewportOffsetTop = 0;
 let lastVisibleViewportBottom = 0;
 let lastPhysicalKeyboardVisible = false;
 let lastPhysicalKeyboardHeight = 0;
+let lastUsesVirtualKeyboardGeometry = false;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
@@ -51,16 +52,6 @@ function setRootStyleProperty(name: string, value: string): void {
     }
 
     getAppRuntimeEnvironment().styleTarget.style.setProperty(name, value);
-}
-
-function isVirtualKeyboardOverlayActive(): boolean {
-    const virtualKeyboard = (
-        navigator as Navigator & {
-            virtualKeyboard?: { overlaysContent?: boolean };
-        }
-    ).virtualKeyboard;
-
-    return isNonPwaAndroidChrome() && virtualKeyboard?.overlaysContent === true;
 }
 
 function getFooterReservedHeight(
@@ -118,6 +109,10 @@ function syncLayoutCssVariables(
 
     if (viewportMetrics.physicalKeyboardHeight !== undefined) {
         lastPhysicalKeyboardHeight = viewportMetrics.physicalKeyboardHeight;
+    }
+
+    if (viewportMetrics.usesKeyboardOverlay !== undefined) {
+        lastUsesVirtualKeyboardGeometry = viewportMetrics.usesKeyboardOverlay;
     }
 
     const isContainerLayout =
@@ -283,7 +278,7 @@ export const reasonInputVisibleStore = {
         reasonInputVisible = v;
         syncLayoutCssVariables(
             lastPhysicalKeyboardVisible && isPostEditorFocusActive(),
-            { usesKeyboardOverlay: isVirtualKeyboardOverlayActive() },
+            { usesKeyboardOverlay: lastUsesVirtualKeyboardGeometry },
         );
     },
 };
@@ -348,6 +343,7 @@ export function setupViewportListener(
     layoutCapabilities.hasFooter = capabilities.hasFooter ?? true;
     layoutCapabilities.hasKeyboardButtonBar = capabilities.hasKeyboardButtonBar ?? true;
     bottomPosition = layoutCapabilities.hasFooter ? FOOTER_HEIGHT : 0;
+    lastUsesVirtualKeyboardGeometry = false;
     syncLayoutCssVariables(false);
 
     if (typeof window === "undefined" || !window.visualViewport) {
@@ -360,14 +356,18 @@ export function setupViewportListener(
     const virtualKeyboard = (
         navigator as Navigator & { virtualKeyboard?: VirtualKeyboardInfo }
     ).virtualKeyboard;
-    const usesKeyboardOverlay =
+    const canObserveVirtualKeyboardGeometry =
         isNonPwaAndroidChrome() &&
         virtualKeyboard?.boundingRect !== undefined &&
         typeof virtualKeyboard.addEventListener === "function" &&
         typeof virtualKeyboard.removeEventListener === "function";
-    const previousOverlaysContent = virtualKeyboard?.overlaysContent;
+    const managesVirtualKeyboardOverlay =
+        !isContainerLayout && canObserveVirtualKeyboardGeometry;
+    const previousOverlaysContent = managesVirtualKeyboardOverlay
+        ? virtualKeyboard?.overlaysContent
+        : undefined;
 
-    if (usesKeyboardOverlay && virtualKeyboard) {
+    if (managesVirtualKeyboardOverlay && virtualKeyboard) {
         virtualKeyboard.overlaysContent = true;
     }
 
@@ -457,22 +457,24 @@ export function setupViewportListener(
             // キーボードが開いているかどうかを閾値で判定
             const virtualKeyboardRect = virtualKeyboard?.boundingRect;
             const virtualKeyboardLayoutInset =
-                usesKeyboardOverlay && virtualKeyboardRect
+                canObserveVirtualKeyboardGeometry && virtualKeyboardRect
                     ? getVirtualKeyboardLayoutInset(
                         virtualKeyboardRect,
                         viewport.width,
                         layoutViewportHeight,
                     )
                     : 0;
-            const visibleViewportBottom = usesKeyboardOverlay
+            const usesVirtualKeyboardGeometry =
+                virtualKeyboardLayoutInset > 0;
+            const visibleViewportBottom = usesVirtualKeyboardGeometry
                 ? layoutViewportHeight - virtualKeyboardLayoutInset
                 : visibleBottom;
-            const isKeyboardOpen = usesKeyboardOverlay
+            const isKeyboardOpen = usesVirtualKeyboardGeometry
                 ? virtualKeyboardLayoutInset > KEYBOARD_THRESHOLD
                 : isSafariViewportMode
                     ? keyboardViewportReduction > KEYBOARD_THRESHOLD
                     : calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
-            const keyboardStoreHeight = usesKeyboardOverlay
+            const keyboardStoreHeight = usesVirtualKeyboardGeometry
                 ? virtualKeyboardLayoutInset
                 : isSafariViewportMode
                     ? keyboardViewportReduction
@@ -489,7 +491,7 @@ export function setupViewportListener(
                         true,
                         visibleViewportBottom,
                     )
-                    : usesKeyboardOverlay
+                    : usesVirtualKeyboardGeometry
                     ? virtualKeyboardLayoutInset
                     : calculatedKeyboardHeight
                 : FOOTER_HEIGHT;
@@ -502,7 +504,7 @@ export function setupViewportListener(
             syncLayoutCssVariables(isComposerKeyboardActive, {
                 height: viewport.height,
                 offsetTop: viewportOffsetTop,
-                usesKeyboardOverlay,
+                usesKeyboardOverlay: usesVirtualKeyboardGeometry,
                 physicalKeyboardVisible: isKeyboardOpen,
                 physicalKeyboardHeight: isKeyboardOpen
                     ? keyboardStoreHeight
@@ -532,7 +534,7 @@ export function setupViewportListener(
         "selectionchange",
         handleDocumentSelectionChange,
     );
-    if (usesKeyboardOverlay) {
+    if (canObserveVirtualKeyboardGeometry) {
         virtualKeyboard?.addEventListener?.(
             "geometrychange",
             handleVirtualKeyboardGeometryChange,
@@ -554,14 +556,18 @@ export function setupViewportListener(
             "selectionchange",
             handleDocumentSelectionChange,
         );
-        if (usesKeyboardOverlay) {
+        if (canObserveVirtualKeyboardGeometry) {
             virtualKeyboard?.removeEventListener?.(
                 "geometrychange",
                 handleVirtualKeyboardGeometryChange,
             );
-            if (virtualKeyboard && previousOverlaysContent !== undefined) {
-                virtualKeyboard.overlaysContent = previousOverlaysContent;
-            }
+        }
+        if (
+            managesVirtualKeyboardOverlay
+            && virtualKeyboard
+            && previousOverlaysContent !== undefined
+        ) {
+            virtualKeyboard.overlaysContent = previousOverlaysContent;
         }
 
         if (isSafariViewportMode) {

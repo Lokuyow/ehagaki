@@ -141,14 +141,25 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
             const buttonBarRect = buttonBar.getBoundingClientRect();
             const mount = document.querySelector<HTMLElement>("#mount")!;
             const mountRect = mount.getBoundingClientRect();
+            const mountStyle = getComputedStyle(mount);
+            const bodyStyle = getComputedStyle(document.body);
             return {
                 mountHeight: mountRect.height,
+                mountTop: mountRect.top,
+                mountBottom: mountRect.bottom,
+                mountLeft: mountRect.left,
+                mountRight: mountRect.right,
                 composerHeight: component.height,
+                composerTop: component.top,
                 topSpacing: getComputedStyle(content).paddingTop,
                 buttonBarHeight: buttonBarRect.height,
                 buttonBarBottom: buttonBarRect.bottom,
                 componentBottom: component.bottom,
-                mountBottom: mountRect.bottom,
+                viewportHeight: window.innerHeight,
+                viewportWidth: window.innerWidth,
+                mountPosition: mountStyle.position,
+                mountBottomOffset: mountStyle.bottom,
+                bodyPaddingBottom: Number.parseFloat(bodyStyle.paddingBottom),
                 footerPresent: !!shadow.querySelector(".footer-bar"),
             };
         });
@@ -156,7 +167,14 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         expect(closedHostOwnedGeometry.mountHeight).toBeGreaterThanOrEqual(460);
         expect(closedHostOwnedGeometry.composerHeight).toBeGreaterThanOrEqual(459);
         expect(Math.abs(closedHostOwnedGeometry.mountHeight - closedHostOwnedGeometry.composerHeight)).toBeLessThanOrEqual(2);
+        expect(closedHostOwnedGeometry.mountPosition).toBe("fixed");
+        expect(closedHostOwnedGeometry.mountBottomOffset).toBe("0px");
+        expect(Math.abs(closedHostOwnedGeometry.mountBottom - closedHostOwnedGeometry.viewportHeight)).toBeLessThanOrEqual(1);
+        expect(Math.abs(closedHostOwnedGeometry.composerTop - closedHostOwnedGeometry.mountTop)).toBeLessThanOrEqual(2);
         expect(Math.abs(closedHostOwnedGeometry.componentBottom - closedHostOwnedGeometry.mountBottom)).toBeLessThanOrEqual(2);
+        expect(closedHostOwnedGeometry.mountLeft).toBeGreaterThanOrEqual(0);
+        expect(closedHostOwnedGeometry.mountRight).toBeLessThanOrEqual(closedHostOwnedGeometry.viewportWidth);
+        expect(closedHostOwnedGeometry.bodyPaddingBottom).toBeGreaterThanOrEqual(460);
         expect(closedHostOwnedGeometry.buttonBarHeight).toBe(50);
         expect(Math.abs(closedHostOwnedGeometry.buttonBarBottom - closedHostOwnedGeometry.componentBottom)).toBeLessThanOrEqual(1);
         expect(closedHostOwnedGeometry.footerPresent).toBe(false);
@@ -201,6 +219,20 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         });
         expect(autoGrowPickerGeometry.height).toBeCloseTo(autoGrowPickerGeometry.minHeight, 1);
         expect(autoGrowPickerGeometry.maxHeight).toBeGreaterThan(autoGrowPickerGeometry.minHeight);
+        const preferredHeight = await page.locator("ehagaki-composer").evaluate((element) => (
+            (element as HTMLElement & { preferredHeight: number | null }).preferredHeight
+        ));
+        if (preferredHeight === null) throw new Error("Lite Composer did not publish a preferred height.");
+        expect(preferredHeight).toBeGreaterThan(0);
+        await page.locator("#follow-preferred-height").check();
+        await expect.poll(() => page.locator("#mount").evaluate((element) => (
+            Number.parseFloat(getComputedStyle(element).height)
+        ))).toBe(preferredHeight);
+        await expect.poll(() => page.locator("body").evaluate((element) => (
+            Number.parseFloat(getComputedStyle(element).paddingBottom)
+        ))).toBe(preferredHeight + 16);
+        await page.locator("#follow-preferred-height").uncheck();
+        await expect(page.locator("#mount")).toHaveCSS("height", "460px");
         await expect.poll(() => page.locator("ehagaki-composer .emoji-button img").evaluateAll((images) => images.every((image) => {
             const img = image as HTMLImageElement;
             return img.complete && img.naturalWidth > 0;
