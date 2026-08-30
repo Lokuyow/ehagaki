@@ -11,6 +11,7 @@ export type {
     EHagakiComposerInitializationErrorDetail,
     EHagakiComposerPostErrorDetail,
     EHagakiComposerPostSuccessDetail,
+    EHagakiComposerPreferredHeightChangeDetail,
     EHagakiComposerReadyDetail,
     EHagakiComposerSettings,
     EHagakiComposerContextReference,

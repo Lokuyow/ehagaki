@@ -93,6 +93,11 @@ export interface EHagakiComposerReadyDetail {
     apiVersion: typeof EHAGAKI_COMPOSER_API_VERSION;
 }
 
+/** Host-owned Lite notification that its intrinsic Composer height changed. */
+export interface EHagakiComposerPreferredHeightChangeDetail {
+    height: number;
+}
+
 export interface EHagakiComposerInitializationErrorDetail {
     code: "initialization_failed" | "multiple_instances_unsupported" | "disconnected";
     message: string;

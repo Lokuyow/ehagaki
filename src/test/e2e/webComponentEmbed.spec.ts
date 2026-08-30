@@ -237,6 +237,32 @@ test("keeps startup NIP-07 opt-in and preserves the existing ready path when abs
     });
 });
 
+test("Full Web Component does not expose the Lite preferred-height API", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            preferredHeight?: number | null;
+        };
+        let preferredHeightEvents = 0;
+        composer.addEventListener("ehagaki-preferred-height-change", () => preferredHeightEvents += 1);
+        document.body.append(composer);
+        await composer.whenReady();
+        return {
+            hasPreferredHeightProperty: "preferredHeight" in composer,
+            preferredHeight: composer.preferredHeight ?? null,
+            preferredHeightEvents,
+        };
+    }, { componentOrigin });
+
+    expect(result).toEqual({
+        hasPreferredHeightProperty: false,
+        preferredHeight: null,
+        preferredHeightEvents: 0,
+    });
+});
+
 test("auto-login persists NIP-07 and delays ready through authenticated bootstrap", async ({ page }) => {
     relayRequestsPaused = true;
     await page.goto(hostOrigin);

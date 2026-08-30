@@ -375,6 +375,48 @@ height に収まらない場合は、従来どおり `.composer-scroll-region` �
 HTML attribute、`setSettings()`、Full self-publish、iframe、通常版/PWA の API ではありません。Web Component
 host が definite height を提供する既存契約も変更しません。
 
+### Host-owned Lite の preferred height
+
+`editorMinLines` と `editorMaxLines` の有効な組を指定した Host-owned Lite だけは、現在幅で Composer 全体を
+outer scroll なしに表示するための preferred height を公開します。これは `height: auto` の契約ではありません。
+host は引き続き definite height の最終所有者であり、通知値を採用、clamp、または無視できます。eHagaki 自身は
+host element や host layout の高さを変更しません。
+
+```ts
+interface EHagakiComposerPreferredHeightChangeDetail {
+  height: number;
+}
+
+composer.preferredHeight; // number | null
+```
+
+値は正の有限な整数 CSS px で、`Math.ceil()` 相当で切り上げられます。editor、media/error、reference/context、
+開いている custom emoji picker、通常の gap/padding と、有効な KeyboardButtonBar および表示中 ReasonInput の
+予約高を含みます。Host の margin/padding、safe area、OS keyboard、VisualViewport/VirtualKeyboard inset、browser
+chrome、Host 独自の余白は含みません。同じ整数値の event は重複通知しません。
+
+auto-grow では初回 layout 測定が完了するまで `null` です。`whenReady()` 完了時には必ず現在の非 `null` 値を
+取得できます。legacy sizing、未接続、disconnect 後は `null` で、reconnect 時には現在内容と現在幅から再測定します。
+event は他の Web Component event と同じく `bubbles: true` / `composed: true` です。初回 event を受ける場合は、
+接続前に listener を登録してください。
+
+```js
+const applyPreferredHeight = () => {
+  if (composer.preferredHeight !== null) {
+    composer.style.height = `${composer.preferredHeight}px`;
+  }
+};
+
+composer.addEventListener('ehagaki-preferred-height-change', (event) => {
+  composer.style.height = `${event.detail.height}px`;
+});
+
+await composer.whenReady();
+applyPreferredHeight();
+```
+
+host がより小さい definite height を選んだ場合も、`.composer-scroll-region` の既存 outer scroll は維持されます。
+
 ## 設定を変更する `setSettings()`
 
 `setSettings(settings)` は、対応している設定だけを受け付け、適用された key の配列を
@@ -900,4 +942,5 @@ Full の公開サンプルは [https://lokuyow.github.io/ehagaki/web-component-p
 module URL と `asset-base` には信頼できる URL だけを指定してください。
 
 Host-owned Lite の公開サンプルは [https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html](https://lokuyow.github.io/ehagaki/host-owned-composer-lite-example.html) です。Lite の sample では text-only / media-enabled の切替、catalog、context、host submit/upload
-の成功・失敗を、既存の Parent Client sample とは独立して確認できます。
+の成功・失敗を、既存の Parent Client sample とは独立して確認できます。valid auto-grow range では、host-owned
+preferred-height 追従 toggle も確認できます。
