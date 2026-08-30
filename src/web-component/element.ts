@@ -309,7 +309,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                     onInitialized: () => {
                         this.#notifyAppInitialized(generation);
                     },
-                    ...this.getAdditionalMountProps(),
+                    ...this.getAdditionalMountProps(generation),
                     onEditorEmptyChange: (isEmpty: boolean) => {
                         this.#updateEditorEmptyState(generation, isEmpty);
                     },
@@ -319,6 +319,7 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             this.#app = this.#mountedApp as AppInstance;
             if (!this.isConnected || generation !== this.#connectionGeneration) return;
         } catch {
+            if (!this.isConnected || generation !== this.#connectionGeneration) return;
             this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
         }
     }
@@ -350,8 +351,17 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         return this.autoLogin;
     }
 
-    protected getAdditionalMountProps(): Record<string, unknown> {
+    protected getAdditionalMountProps(_generation?: number): Record<string, unknown> {
         return {};
+    }
+
+    protected notifyPostComponentLoadFailure(generation: number): void {
+        if (
+            !this.isConnected
+            || generation !== this.#connectionGeneration
+            || this.#readyState !== "pending"
+        ) return;
+        this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
     }
 
     protected enqueue<T>(operation: () => Promise<T>): Promise<T> {

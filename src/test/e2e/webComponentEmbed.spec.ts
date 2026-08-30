@@ -357,6 +357,44 @@ test("exposes the common editor empty state API through the Full element", async
     });
 });
 
+test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.route("**/PostComponent-*.js", (route) => route.abort());
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            editorIsEmpty: boolean | null;
+            whenReady(): Promise<void>;
+        };
+        const initializationErrors: Array<{ code: string; message: string }> = [];
+        composer.addEventListener("ehagaki-initialization-error", (event) => {
+            const detail = (event as CustomEvent<{ code: string; message: string }>).detail;
+            initializationErrors.push({ code: detail.code, message: detail.message });
+        });
+        document.body.append(composer);
+        const ready = composer.whenReady().then(
+            () => ({ status: "resolved" as const, errorName: null }),
+            (error: Error) => ({ status: "rejected" as const, errorName: error.name }),
+        );
+        const result = await Promise.race([
+            ready,
+            new Promise<{ status: "pending"; errorName: null }>((resolve) => {
+                window.setTimeout(() => resolve({ status: "pending", errorName: null }), 2_000);
+            }),
+        ]);
+        return { result, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
+    }, { componentOrigin });
+
+    expect(result).toEqual({
+        result: { status: "rejected", errorName: "initialization_failed" },
+        initializationErrors: [{
+            code: "initialization_failed",
+            message: "eHagaki Composer could not be initialized.",
+        }],
+        editorIsEmpty: null,
+    });
+});
+
 test("auto-login persists NIP-07 and delays ready through authenticated bootstrap", async ({ page }) => {
     relayRequestsPaused = true;
     await page.goto(hostOrigin);

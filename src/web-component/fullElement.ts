@@ -55,9 +55,10 @@ export class EHagakiComposerElement extends ComposerElementBase {
         return super.getConnectionError();
     }
 
-    protected override getAdditionalMountProps(): Record<string, unknown> {
-        return this.#hostRelayConfig
-            ? { hostRelayConfig: this.#hostRelayConfig }
-            : {};
+    protected override getAdditionalMountProps(generation: number): Record<string, unknown> {
+        return {
+            ...(this.#hostRelayConfig ? { hostRelayConfig: this.#hostRelayConfig } : {}),
+            onPostComponentLoadFailure: () => this.notifyPostComponentLoadFailure(generation),
+        };
     }
 }

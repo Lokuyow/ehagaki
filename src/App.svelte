@@ -232,6 +232,7 @@
     /** Full embed or iframe bootstrap input; never persisted as user state. */
     hostRelayConfig?: RelayConfig;
     onEditorEmptyChange?: (isEmpty: boolean) => void;
+    onPostComponentLoadFailure?: () => void;
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -253,6 +254,7 @@
     onInitialized = () => undefined,
     hostRelayConfig = undefined,
     onEditorEmptyChange = undefined,
+    onPostComponentLoadFailure = undefined,
   }: Props = $props();
 
   type PostComponent =
@@ -326,6 +328,9 @@
     failure: AppComponentLoadFailure,
   ): void {
     closeFailedComponentSurface(failure.componentKey);
+    if (failure.componentKey === "post") {
+      onPostComponentLoadFailure?.();
+    }
     if (failure.failureKind === "stale") {
       requestStaleReloadPrompt();
       return;
