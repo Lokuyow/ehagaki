@@ -1357,8 +1357,8 @@
 
   :global(button.editor-submit-button .plane-icon) {
     mask-image: url("/icons/paper-plane-solid-full.svg");
-    width: 22px;
-    height: 22px;
+    inline-size: 22px;
+    block-size: 22px;
     margin-inline-end: 1px;
     margin-top: 1px;
   }
