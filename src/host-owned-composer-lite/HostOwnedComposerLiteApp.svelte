@@ -60,6 +60,7 @@
   interface Props {
     notificationPort: AppPostNotificationPort & AppEmbedNotificationPort;
     onInitialized: () => void;
+    onEditorEmptyChange?: (isEmpty: boolean) => void;
     onPreferredHeightChange?: (height: number) => void;
     hostOwnedConfig: EHagakiHostOwnedComposerOptions & {
       customEmojis: EHagakiCustomEmojiCatalogItem[];
@@ -67,7 +68,7 @@
     };
   }
 
-  let { notificationPort, onInitialized, onPreferredHeightChange, hostOwnedConfig }: Props = $props();
+  let { notificationPort, onInitialized, onEditorEmptyChange, onPreferredHeightChange, hostOwnedConfig }: Props = $props();
 
   // Host-owned instances share the app stores with the common composer. Clear
   // disabled feature state before the first render so a previous mount cannot
@@ -366,6 +367,7 @@
                 availableComposerHeight={postAvailableComposerHeight}
                 minEditorHeight={postEditorMinHeight}
                 {notificationPort}
+                {onEditorEmptyChange}
                 {hostOwnedConfig}
                 {hostCustomEmojiItems}
               />

@@ -269,6 +269,49 @@ await settingsPromise;
 await contextPromise;
 ```
 
+## エディターが空かどうかを取得する `editorIsEmpty`
+
+Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在の Composer
+エディターの空状態を `editorIsEmpty` property で取得できます。値は次のいずれかです。
+
+```ts
+readonly editorIsEmpty: boolean | null;
+```
+
+- `true`: eHagaki の TipTap editor が empty
+- `false`: eHagaki の TipTap editor が non-empty
+- `null`: 現在の mount で editor 状態が未確定、または element が切断済み
+
+空判定は eHagaki が所有し、TipTap `Editor.isEmpty` を基準にします。Host は Shadow DOM、`.ProseMirror`、
+`textContent` などを検査する必要はありません。event には本文、HTML、ProseMirror document は含まれません。
+`whenReady()` が解決した後は、`editorIsEmpty` から必ず現在の boolean 値を取得できます。
+
+空状態が変化すると、両 distribution から `ehagaki-editor-empty-change` が発火します。これは他の
+Web Component event と同じく `bubbles: true`、`composed: true` の CustomEvent で、detail は次の形です。
+
+```ts
+interface EHagakiComposerEditorEmptyChangeDetail {
+  isEmpty: boolean;
+}
+```
+
+`EHagakiComposerEditorEmptyChangeDetail` は Full / Host-owned Lite の両方の entry から export されます。
+
+```js
+const composer = document.querySelector('ehagaki-composer');
+
+await composer.whenReady();
+
+console.log(composer.editorIsEmpty);
+
+composer.addEventListener('ehagaki-editor-empty-change', (event) => {
+  console.log(event.detail.isEmpty);
+});
+```
+
+この API は Direct Web Component の Full self-publish / Host-owned Composer Lite 共通 API です。iframe 版の
+`postMessage` API には今回追加していません。
+
 ## Full self-publish と Lite Host-owned
 
 通常の Full distribution (`/web-component/ehagaki-composer.js`) は eHagaki が署名・Relay

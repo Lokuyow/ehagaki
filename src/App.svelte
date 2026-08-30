@@ -231,6 +231,7 @@
     onInitialized?: () => void;
     /** Full embed or iframe bootstrap input; never persisted as user state. */
     hostRelayConfig?: RelayConfig;
+    onEditorEmptyChange?: (isEmpty: boolean) => void;
   }
 
   const iframeNotificationPort: AppPostNotificationPort & AppEmbedNotificationPort = {
@@ -251,6 +252,7 @@
     notificationPort = iframeNotificationPort,
     onInitialized = () => undefined,
     hostRelayConfig = undefined,
+    onEditorEmptyChange = undefined,
   }: Props = $props();
 
   type PostComponent =
@@ -2004,6 +2006,7 @@
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
                     onCustomEmojiSelect={recordCustomEmojiUse}
+                    {onEditorEmptyChange}
                     {notificationPort}
                     {normalUploadFiles}
                   />

@@ -134,9 +134,15 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     #readyReject: ((reason?: unknown) => void) | null = null;
     #readyPromise: Promise<void> = this.createReadyPromise();
     #readyState: "pending" | "resolved" | "rejected" = "pending";
+    #appInitializationNotified = false;
+    #editorIsEmpty: boolean | null = null;
     #operationQueue: Promise<void> = Promise.resolve();
     #connectionGeneration = 0;
     #assetStyleObserver: MutationObserver | null = null;
+
+    get editorIsEmpty(): boolean | null {
+        return this.#editorIsEmpty;
+    }
 
     get assetBase(): string | null {
         return this.getAttribute("asset-base");
@@ -170,6 +176,8 @@ export abstract class EHagakiComposerElement extends HTMLElement {
 
     connectedCallback(): void {
         this.onConnectionAttempt();
+        this.#editorIsEmpty = null;
+        this.#appInitializationNotified = false;
         if (this.#mountPromise) return;
         const connectionError = this.getConnectionError();
         if (connectionError) {
@@ -196,6 +204,8 @@ export abstract class EHagakiComposerElement extends HTMLElement {
 
     disconnectedCallback(): void {
         this.#connectionGeneration += 1;
+        this.#editorIsEmpty = null;
+        this.#appInitializationNotified = false;
         this.onDisconnected();
         this.#assetStyleObserver?.disconnect();
         this.#assetStyleObserver = null;
@@ -297,12 +307,12 @@ export abstract class EHagakiComposerElement extends HTMLElement {
                 props: {
                     notificationPort: createWebComponentNotificationPort(this),
                     onInitialized: () => {
-                        if (!this.isConnected || generation !== this.#connectionGeneration) return;
-                        this.#readyState = "resolved";
-                        this.#readyResolve?.();
-                        this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
+                        this.#notifyAppInitialized(generation);
                     },
                     ...this.getAdditionalMountProps(),
+                    onEditorEmptyChange: (isEmpty: boolean) => {
+                        this.#updateEditorEmptyState(generation, isEmpty);
+                    },
                 },
             });
             applyWebComponentIconAssetUrls(shadowRoot, shell, assetBase);
@@ -351,6 +361,40 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         });
         this.#operationQueue = queued.then(() => undefined, () => undefined);
         return queued;
+    }
+
+    #notifyAppInitialized(generation: number): void {
+        if (!this.isConnected || generation !== this.#connectionGeneration) return;
+        this.#appInitializationNotified = true;
+        this.#resolveReadyIfPossible(generation);
+    }
+
+    #updateEditorEmptyState(generation: number, isEmpty: boolean): void {
+        if (
+            !this.isConnected
+            || generation !== this.#connectionGeneration
+            || typeof isEmpty !== "boolean"
+        ) return;
+        if (this.#editorIsEmpty === isEmpty) {
+            this.#resolveReadyIfPossible(generation);
+            return;
+        }
+        this.#editorIsEmpty = isEmpty;
+        this.dispatchSafeEvent("ehagaki-editor-empty-change", { isEmpty });
+        this.#resolveReadyIfPossible(generation);
+    }
+
+    #resolveReadyIfPossible(generation: number): void {
+        if (
+            !this.isConnected
+            || generation !== this.#connectionGeneration
+            || !this.#appInitializationNotified
+            || this.#editorIsEmpty === null
+            || this.#readyState !== "pending"
+        ) return;
+        this.#readyState = "resolved";
+        this.#readyResolve?.();
+        this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
     }
 
     private fail(

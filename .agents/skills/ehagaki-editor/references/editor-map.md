@@ -4,7 +4,7 @@
 
 ## Entry point, lifecycle, and ownership
 
-- `src/components/PostComponent.svelte` が Svelte の composer owner である。`onMount` で `initializeEditor()` を呼び、`EditorContent` に store を渡す。editor store の subscription で `currentEditor`、`editorIsEmpty`、`currentEditorStore` を更新し、`transaction` listener で空状態を追跡する。cleanup では listener を外して `cleanupEditor()` を呼ぶ。
+- `src/components/PostComponent.svelte` が Svelte の composer owner である。`onMount` で `initializeEditor()` を呼び、`EditorContent` に store を渡す。editor store の subscription で `currentEditor`、`editorIsEmpty`、`currentEditorStore` を更新し、`transaction` listener で空状態を追跡する。Web Component の場合は同じ TipTap `Editor.isEmpty` の追跡結果を optional callback へ通知する。cleanup では listener を外して `cleanupEditor()` を呼ぶ。
 - `src/lib/editor/editorLifecycle.ts` は editor store 作成、DOM action の listener setup、submitter 登録、container への `__uploadFiles`、`__currentEditor`、`__hasStoredKey`、`__postStatus`、`__submitPost` の配線を担当する。`cleanupEditor()` は event listener と両 subscription を解放し、現在の instance だけを `currentEditorStore` から除去して destroy し、container property と submitter を解放する。これにより remount が destroyed view を更新しない。
 - `src/stores/editorStore.svelte.ts` は module-scoped `currentEditorStore`、`editorState`、placeholder text と post submitter を保持する。editor document の owner ではなく、`editorState.content` は UI の即時状態である。
 - `src/test/unit/editorLifecycle.test.ts` は current instance / submitter を release する cleanup と、古い cleanup が新しい instance を消さないことを検証する。

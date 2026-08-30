@@ -93,6 +93,11 @@ export interface EHagakiComposerReadyDetail {
     apiVersion: typeof EHAGAKI_COMPOSER_API_VERSION;
 }
 
+/** Common Web Component notification for a change in the TipTap editor state. */
+export interface EHagakiComposerEditorEmptyChangeDetail {
+    isEmpty: boolean;
+}
+
 /** Host-owned Lite notification that its intrinsic Composer height changed. */
 export interface EHagakiComposerPreferredHeightChangeDetail {
     height: number;
