@@ -21,6 +21,7 @@
     "test:e2e": "npm run test:e2e:dev-server && npm run test:e2e:parallel",
     "test:e2e:dev-server": "playwright test --config=playwright.web-component-dev.config.ts",
     "test:e2e:parallel": "playwright test --workers=2",
+    "test:e2e:agent": "npm run test:e2e:dev-server -- --reporter=dot && npm run test:e2e:parallel -- --reporter=dot",
     "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
