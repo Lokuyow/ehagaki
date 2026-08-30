@@ -389,20 +389,52 @@ test("Lite validates keyboard and editor auto-grow options without consuming con
     });
 });
 
+test("Lite legacy sizing never publishes a preferred height", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            preferredHeight: number | null;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.style.cssText = "display: block; width: 320px; height: 360px;";
+        const preferredEvents: number[] = [];
+        composer.addEventListener("ehagaki-preferred-height-change", (event) => {
+            preferredEvents.push((event as CustomEvent<{ height: number }>).detail.height);
+        });
+        composer.configureHostOwned({ submit: () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        return { preferredHeight: composer.preferredHeight, preferredEvents };
+    }, { componentOrigin });
+
+    expect(result).toEqual({ preferredHeight: null, preferredEvents: [] });
+});
+
 test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tiptap", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
-        const state = { submitted: 0 };
+        const state = { submitted: 0, preferredEvents: [] as number[] };
         (window as any).__liteAutoGrowState = state;
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             assetBase: string;
+            preferredHeight: number | null;
             configureHostOwned(value: unknown): void;
             whenReady(): Promise<void>;
             setContext(value: unknown): Promise<void>;
         };
         composer.assetBase = `${componentOrigin}/host-owned/`;
         composer.style.cssText = "display: block; width: 360px; height: 640px;";
+        composer.addEventListener("ehagaki-preferred-height-change", (event) => {
+            const height = (event as CustomEvent<{ height: number }>).detail.height;
+            state.preferredEvents.push(height);
+            composer.style.height = `${height}px`;
+        });
         composer.configureHostOwned({
             submit: () => {
                 state.submitted += 1;
@@ -423,6 +455,7 @@ test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tip
         const root = document.querySelector("ehagaki-composer")?.shadowRoot!;
         const editor = root.querySelector<HTMLElement>(".tiptap-editor")!;
         const outer = root.querySelector<HTMLElement>(".composer-scroll-region")!;
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & { preferredHeight: number | null };
         const paragraph = editor.querySelector("p");
         const range = document.createRange();
         if (paragraph) range.selectNodeContents(paragraph);
@@ -435,25 +468,32 @@ test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tip
             visualLines,
             outerClientHeight: outer.clientHeight,
             outerScrollHeight: outer.scrollHeight,
+            preferredHeight: composer.preferredHeight,
         };
     });
 
     const empty = await measure();
+    expect(empty.preferredHeight).toBeGreaterThan(0);
     await editor.click();
     await editor.pressSequentially("one line");
     await expect.poll(measure).toMatchObject({ height: empty.height });
+    expect((await measure()).preferredHeight).toBe(empty.preferredHeight);
 
     await editor.press("Enter");
     await editor.pressSequentially("two lines");
     await expect.poll(measure).toMatchObject({
         height: Math.round((empty.height + empty.lineHeight) * 100) / 100,
     });
+    await expect.poll(async () => (await measure()).preferredHeight).toBeGreaterThan(empty.preferredHeight!);
+    const twoLines = await measure();
 
     await editor.press("Enter");
     await editor.pressSequentially("three lines");
     await expect.poll(measure).toMatchObject({
         height: Math.round((empty.height + empty.lineHeight * 2) * 100) / 100,
     });
+    await expect.poll(async () => (await measure()).preferredHeight).toBeGreaterThan(twoLines.preferredHeight!);
+    const threeLines = await measure();
 
     await editor.press("Enter");
     await editor.pressSequentially("four lines");
@@ -464,11 +504,12 @@ test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tip
         outerScrollHeight: expect.any(Number),
     });
     const explicitOverflow = await measure();
+    expect(explicitOverflow.preferredHeight).toBe(threeLines.preferredHeight);
     expect(explicitOverflow.scrollHeight).toBeGreaterThan(explicitOverflow.clientHeight);
     expect(explicitOverflow.outerScrollHeight).toBeLessThanOrEqual(explicitOverflow.outerClientHeight + 1);
 
     await page.evaluate(async () => {
-        await (window as any).__liteAutoGrowComposer.setContext({ content: "W".repeat(200) });
+        await (window as any).__liteAutoGrowComposer.setContext({ content: "wrap ".repeat(20) });
     });
     await expect.poll(measure).toMatchObject({
         height: Math.round((empty.height + empty.lineHeight * 2) * 100) / 100,
@@ -477,14 +518,27 @@ test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tip
     expect(softWrapped.visualLines).toBeGreaterThanOrEqual(4);
     expect(softWrapped.scrollHeight).toBeGreaterThan(softWrapped.clientHeight);
 
+    await composer.evaluate((element) => element.style.width = "320px");
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(explicitOverflow.preferredHeight);
+    const narrowWidth = await measure();
+    expect(narrowWidth.visualLines).toBeGreaterThanOrEqual(4);
+    await composer.evaluate((element) => element.style.width = "640px");
+    await expect.poll(async () => (await measure()).preferredHeight).toBeLessThan(narrowWidth.preferredHeight!);
+    const wideWidth = await measure();
+    await composer.evaluate((element) => element.style.width = "320px");
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(narrowWidth.preferredHeight);
+    expect(wideWidth.preferredHeight).toBeLessThan(narrowWidth.preferredHeight!);
+
     await page.evaluate(async () => {
         await (window as any).__liteAutoGrowComposer.setContext({ content: "delete me" });
     });
     await expect.poll(measure).toMatchObject({ height: empty.height });
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(empty.preferredHeight);
     await editor.click();
     await editor.press("Control+A");
     await editor.press("Backspace");
     await expect.poll(measure).toMatchObject({ height: empty.height });
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(empty.preferredHeight);
 
     await page.evaluate(async () => {
         await (window as any).__liteAutoGrowComposer.setContext({ content: "submit and clear" });
@@ -492,7 +546,34 @@ test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tip
     await editor.press("Control+Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteAutoGrowState.submitted)).toBe(1);
     await expect.poll(measure).toMatchObject({ height: empty.height });
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(empty.preferredHeight);
     await expect(editor).toHaveText("");
+
+    await page.evaluate(async () => {
+        await (window as any).__liteAutoGrowComposer.setContext({
+            content: "context body",
+            reply: "note1zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsglnzgl",
+            quotes: [],
+        });
+    });
+    await expect(composer.locator(".reply-quote-preview")).toHaveCount(1);
+    await expect.poll(async () => (await measure()).preferredHeight).toBeGreaterThan(empty.preferredHeight!);
+    await page.evaluate(async () => {
+        await (window as any).__liteAutoGrowComposer.setContext({ content: "", reply: null, quotes: [] });
+    });
+    await expect(composer.locator(".reply-quote-preview")).toHaveCount(0);
+    await expect.poll(async () => (await measure()).preferredHeight).toBe(empty.preferredHeight);
+
+    const eventState = await page.evaluate(() => {
+        const state = (window as any).__liteAutoGrowState;
+        return { count: state.preferredEvents.length, heights: [...state.preferredEvents] as number[] };
+    });
+    await page.evaluate(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    const afterFrame = await page.evaluate(() => (window as any).__liteAutoGrowState.preferredEvents.length);
+    expect(afterFrame).toBe(eventState.count);
+    expect(eventState.count).toBeLessThanOrEqual(16);
+    expect(eventState.heights.at(-1)).toBe((await measure()).preferredHeight);
+    expect(eventState.heights.every((height, index) => index === 0 || height !== eventState.heights[index - 1])).toBe(true);
 });
 
 test("Lite publishes the measured preferred height before ready and reacts to ReasonInput", async ({ page }) => {
@@ -562,8 +643,11 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { preferredEvents: [] as number[] };
+        (window as any).__litePickerState = state;
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             assetBase: string;
+            preferredHeight: number | null;
             configureHostOwned(value: unknown): void;
             whenReady(): Promise<void>;
             setContext(value: unknown): Promise<void>;
@@ -571,6 +655,11 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
         };
         composer.assetBase = `${componentOrigin}/host-owned/`;
         composer.style.cssText = "display: block; width: 360px; height: 132px;";
+        composer.addEventListener("ehagaki-preferred-height-change", (event) => {
+            const height = (event as CustomEvent<{ height: number }>).detail.height;
+            state.preferredEvents.push(height);
+            composer.style.height = `${height}px`;
+        });
         composer.configureHostOwned({
             submit: () => undefined,
             editorMinLines: 1,
@@ -590,11 +679,15 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
             height: editor.getBoundingClientRect().height,
             minHeight: Number.parseFloat(style.minHeight),
             maxHeight: Number.parseFloat(style.maxHeight),
+            preferredHeight: (element as HTMLElement & { preferredHeight: number | null }).preferredHeight,
         };
     });
     expect(beforePicker.height).toBeCloseTo(beforePicker.maxHeight, 1);
     await composer.locator(".custom-emoji-button").click();
     await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(1);
+    await expect.poll(() => composer.evaluate((element) => (
+        element as HTMLElement & { preferredHeight: number | null }
+    ).preferredHeight)).toBeGreaterThan(beforePicker.preferredHeight!);
     const afterPicker = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
         const editor = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
@@ -606,12 +699,129 @@ test("Lite keeps an explicit auto-grow range while the emoji picker makes the Co
             maxHeight: Number.parseFloat(style.maxHeight),
             outerClientHeight: outer.clientHeight,
             outerScrollHeight: outer.scrollHeight,
+            preferredHeight: (element as HTMLElement & { preferredHeight: number | null }).preferredHeight,
         };
     });
     expect(afterPicker.height).toBeCloseTo(beforePicker.height, 1);
     expect(afterPicker.minHeight).toBe(beforePicker.minHeight);
     expect(afterPicker.maxHeight).toBe(beforePicker.maxHeight);
-    expect(afterPicker.outerScrollHeight).toBeGreaterThan(afterPicker.outerClientHeight);
+    expect(afterPicker.preferredHeight).toBeGreaterThan(beforePicker.preferredHeight!);
+    expect(afterPicker.outerScrollHeight).toBeLessThanOrEqual(afterPicker.outerClientHeight + 1);
+
+    await composer.evaluate((element) => element.style.height = "132px");
+    await expect.poll(() => composer.evaluate((element) => {
+        const outer = element.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-region")!;
+        return outer.scrollHeight > outer.clientHeight;
+    })).toBe(true);
+
+    const closePickerHeight = page.evaluate(() => new Promise<number>((resolve) => {
+        const element = document.querySelector("ehagaki-composer")!;
+        element.addEventListener("ehagaki-preferred-height-change", (event) => {
+            resolve((event as CustomEvent<{ height: number }>).detail.height);
+        }, { once: true });
+    }));
+    await composer.locator(".custom-emoji-button").click();
+    await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(0);
+    const withoutPicker = await closePickerHeight;
+    expect(withoutPicker).toBe(beforePicker.preferredHeight);
+    await expect.poll(() => composer.evaluate((element) => {
+        const outer = element.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-region")!;
+        return outer.scrollHeight <= outer.clientHeight + 1;
+    })).toBe(true);
+
+    const events = await page.evaluate(() => (window as any).__litePickerState.preferredEvents as number[]);
+    expect(events).toContain(afterPicker.preferredHeight);
+    expect(events.at(-1)).toBe(withoutPicker);
+});
+
+test("Lite preferred height accounts for the immutable KeyboardButtonBar reservation", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const mount = async (keyboardButtonBarEnabled: boolean) => {
+            const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+                assetBase: string;
+                preferredHeight: number | null;
+                configureHostOwned(value: unknown): void;
+                whenReady(): Promise<void>;
+            };
+            composer.assetBase = `${componentOrigin}/host-owned/`;
+            composer.style.cssText = "display: block; width: 320px; height: 640px;";
+            composer.configureHostOwned({
+                submit: () => undefined,
+                keyboardButtonBarEnabled,
+                editorMinLines: 1,
+                editorMaxLines: 3,
+            });
+            document.body.append(composer);
+            await composer.whenReady();
+            const surface = composer.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-content")!;
+            const measurement = {
+                preferredHeight: composer.preferredHeight,
+                surfaceHeight: surface.getBoundingClientRect().height,
+            };
+            composer.remove();
+            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+            return measurement;
+        };
+        return { enabled: await mount(true), disabled: await mount(false) };
+    }, { componentOrigin });
+
+    expect(result.enabled.preferredHeight).toBe(Math.ceil(result.enabled.surfaceHeight) + 50);
+    expect(result.disabled.preferredHeight).toBe(Math.ceil(result.disabled.surfaceHeight));
+    expect(result.enabled.preferredHeight! - result.disabled.preferredHeight!).toBe(50);
+});
+
+test("Lite clears and recomputes preferred height across reconnect without accepting stale mount callbacks", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            assetBase: string;
+            preferredHeight: number | null;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        composer.assetBase = `${componentOrigin}/host-owned/`;
+        composer.style.cssText = "display: block; width: 640px; height: 640px;";
+        const preferredEvents: number[] = [];
+        composer.addEventListener("ehagaki-preferred-height-change", (event) => {
+            preferredEvents.push((event as CustomEvent<{ height: number }>).detail.height);
+        });
+        composer.configureHostOwned({
+            submit: () => undefined,
+            keyboardButtonBarEnabled: false,
+            editorMinLines: 1,
+            editorMaxLines: 3,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        const firstMountHeight = composer.preferredHeight;
+
+        await composer.setContext({ content: "W".repeat(200) });
+        composer.remove();
+        const preferredHeightAfterDisconnect = composer.preferredHeight;
+        preferredEvents.length = 0;
+        composer.style.width = "320px";
+        document.body.append(composer);
+        await composer.whenReady();
+        const surface = composer.shadowRoot!.querySelector<HTMLElement>(".composer-scroll-content")!;
+        const expectedHeight = Math.ceil(surface.getBoundingClientRect().height);
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        return {
+            firstMountHeight,
+            preferredHeightAfterDisconnect,
+            reconnectedHeight: composer.preferredHeight,
+            expectedHeight,
+            preferredEvents,
+        };
+    }, { componentOrigin });
+
+    expect(result.firstMountHeight).toBeGreaterThan(0);
+    expect(result.preferredHeightAfterDisconnect).toBeNull();
+    expect(result.reconnectedHeight).toBe(result.expectedHeight);
+    expect(result.preferredEvents).toEqual([result.reconnectedHeight]);
 });
 
 test("Lite keyboard options hide the bar and submit plain Enter repeatedly", async ({ page }) => {
