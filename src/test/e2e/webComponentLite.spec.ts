@@ -168,7 +168,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
-test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page }) => {
+test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page, isMobile }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
@@ -213,11 +213,17 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
     await expect(composer.locator(".button-group-right button")).toHaveCount(2);
     await expect(editorSubmitButton).toBeDisabled();
+    await expect(editorSubmitButton.locator(".plane-icon")).toHaveCSS("width", "22px");
+    await expect(editorSubmitButton.locator(".plane-icon")).toHaveCSS("height", "22px");
 
     await editor.click();
     await editor.pressSequentially("editor button content");
     await expect(editorSubmitButton).toBeEnabled();
-    await editorSubmitButton.click();
+    if (isMobile) {
+        await editorSubmitButton.tap();
+    } else {
+        await editorSubmitButton.click();
+    }
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
     await expect(editorSubmitButton).toBeDisabled();
     await expect(editor).toHaveAttribute("contenteditable", "true");
