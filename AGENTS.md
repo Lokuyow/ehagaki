@@ -108,21 +108,30 @@ npm run check
 npm run complexity:thread-graph
 npm test
 npm run test:unit
+npm run test:agent
+npm run test:unit:agent
 npm run test:ui
 npm run test:e2e
+npm run test:e2e:agent
 npm run deploy
 ```
+
+For routine verification by a coding agent, prefer the quiet agent paths: use
+`npm run test:agent` for the full Vitest suite, `npm run test:unit:agent` for
+unit tests, and `npm run test:e2e:agent` for the full two-stage Playwright
+suite. These paths use Vitest's standard `agent` reporter and Playwright's
+standard `dot` reporter; the human-oriented commands above remain unchanged.
 
 Run one Vitest file:
 
 ```pwsh
-npm run test -- <file>
+npm run test:agent -- <file>
 ```
 
 Run selected Playwright tests:
 
 ```pwsh
-npx playwright test <file-or-filter>
+npx playwright test <file-or-filter> --reporter=dot
 ```
 
 `prebuild` is an npm lifecycle hook and runs automatically before `npm run build`.
@@ -134,7 +143,7 @@ Use a repository-pinned Node version when one is defined. Otherwise, inspect the
 Run the narrowest relevant verification first, then broaden it according to the impact area.
 
 - Run affected unit or integration tests while implementing.
-- For implementation changes, run `npm test` by default before finishing. It also runs the thread-graph complexity check.
+- For implementation changes, run `npm run test:agent` by default before finishing. It also runs the thread-graph complexity check. Use the human-oriented `npm test` when its full progress output is specifically useful.
 - Run `npm run check` for Svelte or TypeScript changes.
 - Run `npm run build` for changes affecting Vite, PWA behavior, service workers, workers, generated output, asset paths, bundling, FFmpeg, Mediabunny, WebCodecs, or WASM assets.
 - Use Playwright for browser integration and user interactions that unit or component tests cannot prove. For browser-specific investigation, use `.agents/skills/ehagaki-browser-debug/`; prefer relevant existing tests and keep ad hoc artifacts temporary. Device emulation is not evidence of real OS keyboard, browser chrome, PWA standalone UI, or WebView behavior.
