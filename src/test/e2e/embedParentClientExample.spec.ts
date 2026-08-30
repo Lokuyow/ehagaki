@@ -664,10 +664,44 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
     appUrl.searchParams.set("defaultAccentColor", "#ABCDEF");
     appUrl.searchParams.set("defaultBaseColor", "#CDEFAB");
     await page.getByLabel("eHagaki URL").fill(appUrl.toString());
-    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
 
     const frame = page.frameLocator("#ehagaki-iframe");
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    const readyLogRecord = "[info] ready を受信しました。eHagaki は既定で signEvent を要求し、親クライアントがログインした時点で auth.login を送信します";
+    const countReadyLogRecords = async () => {
+        const eventLog = await page.locator("#event-log").inputValue();
+        return eventLog.split(readyLogRecord).length - 1;
+    };
+    const reloadIframeForThemeSnapshot = async () => {
+        const readyLogCount = await countReadyLogRecords();
+        const expectedUrl = await page.locator("#iframe-src").textContent();
+        if (!expectedUrl) {
+            throw new Error("iframe URL was unavailable before reload");
+        }
+        const childFrames = page.frames().filter((candidate) =>
+            candidate.parentFrame() === page.mainFrame(),
+        );
+        if (childFrames.length !== 1) {
+            throw new Error("expected one current iframe frame before reload");
+        }
+        const [childFrame] = childFrames;
+
+        const navigation = page.waitForEvent("framenavigated", (candidate) =>
+            candidate === childFrame && candidate.url() === expectedUrl,
+        );
+        await page.getByRole("button", { name: "iframe を再読み込み" }).click();
+        await navigation;
+        await expect.poll(countReadyLogRecords).toBe(readyLogCount + 1);
+        await Promise.all([
+            expect(frame.locator(".header-actions button").first()).toBeAttached(),
+            expect(frame.locator(".settings-btn").first()).toBeAttached(),
+            expect(frame.locator(".ehagaki-app-root").first()).toBeAttached(),
+            expect(frame.locator(".editor-container").first()).toBeAttached(),
+            expect(frame.locator(".footer-bar").first()).toBeAttached(),
+            expect(frame.locator(".footer-button-bar").first()).toBeAttached(),
+            expect(frame.locator(".site-icon path").first()).toBeAttached(),
+        ]);
+    };
+    await reloadIframeForThemeSnapshot();
     const readFrameColors = () => frame.locator("html").evaluate((html) => ({
         accent: getComputedStyle(html).getPropertyValue("--accent-color").trim().toLowerCase(),
         base: getComputedStyle(html).getPropertyValue("--base-color").trim().toLowerCase(),
@@ -720,8 +754,7 @@ test("applies iframe color defaults, persists user colors, and releases runtime 
         localStorage.setItem("ehagaki.embed.storage.v1:accentColor", "#112233");
         localStorage.setItem("ehagaki.embed.storage.v1:baseColor", "#223344");
     });
-    await page.getByRole("button", { name: "iframe を再読み込み" }).click();
-    await expect(frame.locator(".tiptap-editor")).toBeVisible();
+    await reloadIframeForThemeSnapshot();
     await expect.poll(readFrameColors).toMatchObject({ accent: "#112233", base: "#223344" });
     const userUi = await readFrameThemeUi();
     expect(userUi.headerBorder).toBe("rgb(17, 34, 51)");
