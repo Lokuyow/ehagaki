@@ -229,7 +229,7 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editorSubmitButton.focus();
     expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
     if (isMobile) {
-        await editorSubmitButton.tap();
+        await editorSubmitButton.tap({ force: true });
     } else {
         await editorSubmitButton.click();
     }
