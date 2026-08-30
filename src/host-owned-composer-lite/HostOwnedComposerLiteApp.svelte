@@ -117,28 +117,36 @@
       : composerLayoutMetrics.composerAvailableHeight,
   );
 
-  function measurePreferredHeight(): void {
-    if (!preferredHeightMountActive || !preferredHeightEnabled || !onPreferredHeightChange) return;
+  function measurePreferredHeight(): boolean {
+    if (!preferredHeightMountActive || !preferredHeightEnabled || !onPreferredHeightChange) return false;
     const surfaceHeight = composerScrollContentEl?.getBoundingClientRect().height;
-    if (!surfaceHeight || !Number.isFinite(surfaceHeight) || surfaceHeight <= 0) return;
+    if (!surfaceHeight || !Number.isFinite(surfaceHeight) || surfaceHeight <= 0) return false;
     const reservedHeight = (hostOwnedConfig.keyboardButtonBarEnabled !== false
       ? KEYBOARD_BUTTON_BAR_HEIGHT
       : 0) + (reasonInputVisibleStore.value ? REASON_INPUT_HEIGHT : 0);
     onPreferredHeightChange(surfaceHeight + reservedHeight);
+    return true;
+  }
+
+  function completeInitialPreferredHeightMeasurement(): void {
+    if (!preferredHeightMountActive || preferredHeightInitialMeasurementComplete) return;
+    preferredHeightInitialMeasurementComplete = true;
+    onInitialized();
   }
 
   function schedulePreferredHeightMeasurement(): void {
     if (
       !preferredHeightMountActive
       || !preferredHeightEnabled
-      || !preferredHeightInitialMeasurementComplete
       || preferredHeightMeasurementRaf !== null
     ) {
       return;
     }
     preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
       preferredHeightMeasurementRaf = null;
-      measurePreferredHeight();
+      if (measurePreferredHeight()) {
+        completeInitialPreferredHeightMeasurement();
+      }
     });
   }
 
@@ -296,14 +304,13 @@
       });
       if (!preferredHeightMountActive) return;
 
-      measurePreferredHeight();
-      preferredHeightInitialMeasurementComplete = true;
-
       if (composerScrollContentEl && typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(schedulePreferredHeightMeasurement);
         resizeObserver.observe(composerScrollContentEl);
       }
-      onInitialized();
+      if (measurePreferredHeight()) {
+        completeInitialPreferredHeightMeasurement();
+      }
     };
 
     void initializePreferredHeight();
