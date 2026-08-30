@@ -288,6 +288,41 @@
     }
   }
 
+  function handleEditorSubmitButtonPress(event: Event): void {
+    const keyboardHeight = Number.parseFloat(
+      window
+        .getComputedStyle(document.documentElement)
+        .getPropertyValue("--keyboard-height"),
+    );
+
+    // On a visible software keyboard, preventing touchstart suppresses the
+    // native click on Android. Keep pointerdown prevention to retain editor
+    // focus, but allow touchstart to produce the button click.
+    if (keyboardHeight > 80 && event.type === "touchstart") {
+      return;
+    }
+
+    preventKeyboardFocusChange(event);
+  }
+
+  function restoreEditorFocusAfterEditorSubmitButtonFocus(
+    event: FocusEvent,
+  ): void {
+    const editorElement = currentEditor?.view.dom;
+    if (
+      !showEditorSubmitButton ||
+      !editorElement ||
+      event.relatedTarget !== editorElement
+    ) {
+      return;
+    }
+
+    // Android may focus a native button after its touch press even when the
+    // press default was cancelled. Return focus synchronously to the editor
+    // that was active before this button press so its soft keyboard remains.
+    editorElement.focus({ preventScroll: true });
+  }
+
   // UI状態をストアから取得
   let postComponentUI = $derived(postComponentUIStore.value);
   let showSecretKeyDialog = $derived(postComponentUI.showSecretKeyDialog);
@@ -1111,9 +1146,9 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="editor-submit-button-container"
-        onpointerdowncapture={preventKeyboardFocusChange}
-        ontouchstartcapture={preventKeyboardFocusChange}
-        onmousedowncapture={preventKeyboardFocusChange}
+        onpointerdowncapture={handleEditorSubmitButtonPress}
+        ontouchstartcapture={handleEditorSubmitButtonPress}
+        onmousedowncapture={handleEditorSubmitButtonPress}
       >
         <Button
           variant="primary"
@@ -1133,6 +1168,7 @@
               postStatus.completed) return;
             void submitPost();
           }}
+          onfocus={restoreEditorFocusAfterEditorSubmitButtonFocus}
           ariaLabel={$_("postComponent.post")}
         >
           <div class="plane-icon svg-icon"></div>
@@ -1355,10 +1391,10 @@
     flex: 0 0 40px;
   }
 
-  :global(button.editor-submit-button .plane-icon) {
+  :global(button.editor-submit-button .plane-icon.svg-icon) {
+    width: 22px;
+    height: 22px;
     mask-image: url("/icons/paper-plane-solid-full.svg");
-    inline-size: 22px;
-    block-size: 22px;
     margin-inline-end: 1px;
     margin-top: 1px;
   }
