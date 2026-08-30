@@ -223,6 +223,11 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editor.click();
     await editor.pressSequentially("editor button content");
     await expect(editorSubmitButton).toBeEnabled();
+    await page.evaluate(() => {
+        document.documentElement.style.setProperty("--keyboard-height", "300px");
+    });
+    await editorSubmitButton.focus();
+    expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
     if (isMobile) {
         await editorSubmitButton.tap();
     } else {
@@ -236,6 +241,9 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editor.press("Backspace");
     await editor.press("Control+z");
     await expect(editor).toHaveText("editor button content");
+    await page.evaluate(() => {
+        document.documentElement.style.removeProperty("--keyboard-height");
+    });
 
     await editorSubmitButton.dispatchEvent("click");
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);

@@ -288,6 +288,24 @@
     }
   }
 
+  function restoreEditorFocusAfterEditorSubmitButtonFocus(
+    event: FocusEvent,
+  ): void {
+    const editorElement = currentEditor?.view.dom;
+    if (
+      !showEditorSubmitButton ||
+      !editorElement ||
+      event.relatedTarget !== editorElement
+    ) {
+      return;
+    }
+
+    // Android may focus a native button after its touch press even when the
+    // press default was cancelled. Return focus synchronously to the editor
+    // that was active before this button press so its soft keyboard remains.
+    editorElement.focus({ preventScroll: true });
+  }
+
   // UI状態をストアから取得
   let postComponentUI = $derived(postComponentUIStore.value);
   let showSecretKeyDialog = $derived(postComponentUI.showSecretKeyDialog);
@@ -1133,6 +1151,7 @@
               postStatus.completed) return;
             void submitPost();
           }}
+          onfocus={restoreEditorFocusAfterEditorSubmitButtonFocus}
           ariaLabel={$_("postComponent.post")}
         >
           <div class="plane-icon svg-icon"></div>
@@ -1350,6 +1369,7 @@
   }
 
   :global(.editor-submit-button) {
+    --icon-size: 22px;
     width: 40px;
     height: 40px;
     flex: 0 0 40px;
@@ -1357,8 +1377,6 @@
 
   :global(button.editor-submit-button .plane-icon) {
     mask-image: url("/icons/paper-plane-solid-full.svg");
-    inline-size: 22px;
-    block-size: 22px;
     margin-inline-end: 1px;
     margin-top: 1px;
   }
