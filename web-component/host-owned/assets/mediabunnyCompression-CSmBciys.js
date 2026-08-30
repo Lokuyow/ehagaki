@@ -1,4 +1,4 @@
-import { i as Yo } from "./HostOwnedComposerLiteApp-CRvdjhHV.js";
+import { i as Yo } from "./HostOwnedComposerLiteApp-BSd5JBH4.js";
 function g(r) {
   if (!r)
     throw new Error("Assertion failed.");
@@ -20413,7 +20413,7 @@ function nh(r, e) {
   return { file: new File([r], `${t}_compressed.mp4`, { type: "video/mp4" }), wasCompressed: !0 };
 }
 async function sh() {
-  an || (an = import("./mediabunny-aac-encoder-s2nNxray.js").then(({ registerAacEncoder: r }) => {
+  an || (an = import("./mediabunny-aac-encoder-Yj4JEY2c.js").then(({ registerAacEncoder: r }) => {
     r();
   })), await an;
 }

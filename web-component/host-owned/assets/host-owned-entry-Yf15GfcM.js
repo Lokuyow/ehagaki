@@ -289,7 +289,7 @@ class X {
   /** @type {Batch | null} */
   #t = null;
   /** @type {Batch | null} */
-  #r = null;
+  #n = null;
   /** @type {Map<Effect, ReturnType<typeof deferred<any>>>} */
   async_deriveds = /* @__PURE__ */ new Map();
   /**
@@ -321,21 +321,21 @@ class X {
    * If a fork is discarded, we need to destroy any effects that are no longer needed
    * @type {Set<(batch: Batch) => void>}
    */
-  #s = /* @__PURE__ */ new Set();
+  #r = /* @__PURE__ */ new Set();
   /**
    * Callbacks that should run only when a fork is committed.
    * @type {Set<(batch: Batch) => void>}
    */
-  #a = /* @__PURE__ */ new Set();
+  #i = /* @__PURE__ */ new Set();
   /**
    * The number of async effects that are currently in flight
    */
-  #n = 0;
+  #o = 0;
   /**
    * Async effects that are currently in flight, _not_ inside a pending boundary
    * @type {Map<Effect, number>}
    */
-  #o = /* @__PURE__ */ new Map();
+  #s = /* @__PURE__ */ new Map();
   /**
    * A deferred that resolves when the batch is committed, used with `settled()`
    * TODO replace with Promise.withResolvers once supported widely enough
@@ -346,7 +346,7 @@ class X {
    * The root effects that need to be flushed
    * @type {Effect[]}
    */
-  #i = [];
+  #a = [];
   /**
    * Effects created while this batch was active.
    * @type {Effect[]}
@@ -379,7 +379,7 @@ class X {
   #v = !1;
   #y() {
     if (this.is_fork) return !0;
-    for (const n of this.#o.keys()) {
+    for (const n of this.#s.keys()) {
       for (var t = n, r = !1; t.parent !== null; ) {
         if (this.#f.has(t)) {
           r = !0;
@@ -423,8 +423,8 @@ class X {
       for (const a of this.#u)
         w(a, V), this.schedule(a);
     }
-    const t = this.#i;
-    this.#i = [], this.apply();
+    const t = this.#a;
+    this.#a = [], this.apply();
     var r = _e = [], n = [], o = qe = [];
     for (const a of t)
       try {
@@ -458,10 +458,10 @@ class X {
       /** @type {unknown} */
       v
     );
-    if (this.linked && this.#n === 0 && this.#w(), this.#i.length > 0) {
+    if (this.linked && this.#o === 0 && this.#w(), this.#a.length > 0) {
       l === null && (l = this, this.#m());
       const a = l;
-      a.#i.push(...this.#i.filter((c) => !a.#i.includes(c)));
+      a.#a.push(...this.#a.filter((c) => !a.#a.includes(c)));
     }
     l !== null && l.#b();
   }
@@ -569,8 +569,8 @@ class X {
     }
   }
   discard() {
-    for (const t of this.#s) t(this);
-    this.#s.clear(), this.#a.clear(), this.#w();
+    for (const t of this.#r) t(this);
+    this.#r.clear(), this.#i.clear(), this.#w();
   }
   /**
    * @param {Effect} effect
@@ -580,7 +580,7 @@ class X {
   }
   #x() {
     this.#w();
-    for (let u = it; u !== null; u = u.#r) {
+    for (let u = it; u !== null; u = u.#n) {
       var t = u.id < this.id, r = [];
       for (const [f, [h, d]] of this.current) {
         if (u.current.has(f)) {
@@ -624,11 +624,11 @@ class X {
           if (a.length > 0)
             for (const f of this.#p)
               (f.f & (F | O | Ge)) === 0 && wt(f, a, s) && ((f.f & (we | P)) !== 0 ? (w(f, x), u.schedule(f)) : u.#d.add(f));
-          if (u.#i.length > 0) {
+          if (u.#a.length > 0) {
             u.apply();
-            for (var c of u.#i)
+            for (var c of u.#a)
               u.#k(c, [], []);
-            u.#i = [];
+            u.#a = [];
           }
           u.deactivate();
         }
@@ -640,9 +640,9 @@ class X {
    * @param {Effect} effect
    */
   increment(t, r) {
-    if (this.#n += 1, t) {
-      let n = this.#o.get(r) ?? 0;
-      this.#o.set(r, n + 1);
+    if (this.#o += 1, t) {
+      let n = this.#s.get(r) ?? 0;
+      this.#s.set(r, n + 1);
     }
   }
   /**
@@ -650,9 +650,9 @@ class X {
    * @param {Effect} effect
    */
   decrement(t, r) {
-    if (this.#n -= 1, t) {
-      let n = this.#o.get(r) ?? 0;
-      n === 1 ? this.#o.delete(r) : this.#o.set(r, n - 1);
+    if (this.#o -= 1, t) {
+      let n = this.#s.get(r) ?? 0;
+      n === 1 ? this.#s.delete(r) : this.#s.set(r, n - 1);
     }
     this.#v || (this.#v = !0, ue(() => {
       this.#v = !1, this.linked && this.flush();
@@ -675,15 +675,15 @@ class X {
   }
   /** @param {(batch: Batch) => void} fn */
   ondiscard(t) {
-    this.#s.add(t);
+    this.#r.add(t);
   }
   /** @param {(batch: Batch) => void} fn */
   on_fork_commit(t) {
-    this.#a.add(t);
+    this.#i.add(t);
   }
   run_fork_commit_callbacks() {
-    for (const t of this.#a) t(this);
-    this.#a.clear();
+    for (const t of this.#i) t(this);
+    this.#i.clear();
   }
   settled() {
     return (this.#l ??= Vt()).promise;
@@ -723,14 +723,14 @@ class X {
         r.f ^= k;
       }
     }
-    this.#i.push(r);
+    this.#a.push(r);
   }
   #m() {
-    be === null ? it = be = this : (be.#r = this, this.#t = be), be = this;
+    be === null ? it = be = this : (be.#n = this, this.#t = be), be = this;
   }
   #w() {
-    var t = this.#t, r = this.#r;
-    t === null ? it = r : t.#r = r, r === null ? be = t : r.#t = t, this.linked = !1;
+    var t = this.#t, r = this.#n;
+    t === null ? it = r : t.#n = r, r === null ? be = t : r.#t = t, this.linked = !1;
   }
 }
 function rr(e) {
@@ -862,20 +862,20 @@ class Sn {
   /** @type {TemplateNode | null} */
   #t = y ? _ : null;
   /** @type {BoundaryProps} */
-  #r;
+  #n;
   /** @type {((anchor: Node) => void)} */
   #c;
   /** @type {Effect} */
-  #s;
+  #r;
   /** @type {Effect | null} */
-  #a = null;
-  /** @type {Effect | null} */
-  #n = null;
+  #i = null;
   /** @type {Effect | null} */
   #o = null;
+  /** @type {Effect | null} */
+  #s = null;
   /** @type {DocumentFragment | null} */
   #l = null;
-  #i = 0;
+  #a = 0;
   #p = 0;
   #d = !1;
   /** @type {Set<Effect>} */
@@ -890,7 +890,7 @@ class Sn {
    * @type {Source<number> | null}
    */
   #h = null;
-  #v = xn(() => (this.#h = je(this.#i), () => {
+  #v = xn(() => (this.#h = je(this.#a), () => {
     this.#h = null;
   }));
   /**
@@ -900,14 +900,14 @@ class Sn {
    * @param {((error: unknown) => unknown) | undefined} [transform_error]
    */
   constructor(t, r, n, o) {
-    this.#e = t, this.#r = r, this.#c = (i) => {
+    this.#e = t, this.#n = r, this.#c = (i) => {
       var s = (
         /** @type {Effect} */
         g
       );
       s.b = this, s.f |= lt, n(i);
     }, this.parent = /** @type {Effect} */
-    g.b, this.transform_error = o ?? this.parent?.transform_error ?? ((i) => i), this.#s = Hn(() => {
+    g.b, this.transform_error = o ?? this.parent?.transform_error ?? ((i) => i), this.#r = Hn(() => {
       if (y) {
         const i = (
           /** @type {Comment} */
@@ -925,7 +925,7 @@ class Sn {
   }
   #y() {
     try {
-      this.#a = se(() => this.#c(this.#e));
+      this.#i = se(() => this.#c(this.#e));
     } catch (t) {
       this.error(t);
     }
@@ -934,8 +934,8 @@ class Sn {
    * @param {unknown} error The deserialized error from the server's hydration comment
    */
   #b(t) {
-    const r = this.#r.failed;
-    r && (this.#o = se(() => {
+    const r = this.#n.failed;
+    r && (this.#s = se(() => {
       r(
         this.#e,
         () => t,
@@ -945,14 +945,14 @@ class Sn {
     }));
   }
   #k() {
-    const t = this.#r.pending;
-    t && (this.is_pending = !0, this.#n = se(() => t(this.#e)), ue(() => {
+    const t = this.#n.pending;
+    t && (this.is_pending = !0, this.#o = se(() => t(this.#e)), ue(() => {
       var r = this.#l = document.createDocumentFragment(), n = Z();
-      r.append(n), this.#a = this.#g(() => se(() => this.#c(n))), this.#p === 0 && (this.#e.before(r), this.#l = null, Ve(
+      r.append(n), this.#i = this.#g(() => se(() => this.#c(n))), this.#p === 0 && (this.#e.before(r), this.#l = null, Ve(
         /** @type {Effect} */
-        this.#n,
+        this.#o,
         () => {
-          this.#n = null;
+          this.#o = null;
         }
       ), this.#_(
         /** @type {Batch} */
@@ -962,16 +962,16 @@ class Sn {
   }
   #E() {
     try {
-      if (this.is_pending = this.has_pending_snippet(), this.#p = 0, this.#i = 0, this.#a = se(() => {
+      if (this.is_pending = this.has_pending_snippet(), this.#p = 0, this.#a = 0, this.#i = se(() => {
         this.#c(this.#e);
       }), this.#p > 0) {
         var t = this.#l = document.createDocumentFragment();
-        qn(this.#a, t);
+        qn(this.#i, t);
         const r = (
           /** @type {(anchor: Node) => void} */
-          this.#r.pending
+          this.#n.pending
         );
-        this.#n = se(() => r(this.#e));
+        this.#o = se(() => r(this.#e));
       } else
         this.#_(
           /** @type {Batch} */
@@ -1002,7 +1002,7 @@ class Sn {
     return !this.is_pending && (!this.parent || this.parent.is_rendered());
   }
   has_pending_snippet() {
-    return !!this.#r.pending;
+    return !!this.#n.pending;
   }
   /**
    * @template T
@@ -1010,7 +1010,7 @@ class Sn {
    */
   #g(t) {
     var r = g, n = b, o = A;
-    K(this.#s), N(this.#s), xe(this.#s.ctx);
+    K(this.#r), N(this.#r), xe(this.#r.ctx);
     try {
       return X.ensure(), t();
     } catch (i) {
@@ -1030,8 +1030,8 @@ class Sn {
       this.parent && this.parent.#x(t, r);
       return;
     }
-    this.#p += t, this.#p === 0 && (this.#_(r), this.#n && Ve(this.#n, () => {
-      this.#n = null;
+    this.#p += t, this.#p === 0 && (this.#_(r), this.#o && Ve(this.#o, () => {
+      this.#o = null;
     }), this.#l && (this.#e.before(this.#l), this.#l = null));
   }
   /**
@@ -1042,8 +1042,8 @@ class Sn {
    * @param {Batch} batch
    */
   update_pending_count(t, r) {
-    this.#x(t, r), this.#i += t, !(!this.#h || this.#d) && (this.#d = !0, ue(() => {
-      this.#d = !1, this.#h && Qe(this.#h, this.#i);
+    this.#x(t, r), this.#a += t, !(!this.#h || this.#d) && (this.#d = !0, ue(() => {
+      this.#d = !1, this.#h && Qe(this.#h, this.#a);
     }));
   }
   get_effect_pending() {
@@ -1054,9 +1054,9 @@ class Sn {
   }
   /** @param {unknown} error */
   error(t) {
-    if (!this.#r.onerror && !this.#r.failed)
+    if (!this.#n.onerror && !this.#n.failed)
       throw t;
-    v?.is_fork ? (this.#a && v.skip_effect(this.#a), this.#n && v.skip_effect(this.#n), this.#o && v.skip_effect(this.#o), v.on_fork_commit(() => {
+    v?.is_fork ? (this.#i && v.skip_effect(this.#i), this.#o && v.skip_effect(this.#o), this.#s && v.skip_effect(this.#s), v.on_fork_commit(() => {
       this.#m(t);
     })) : this.#m(t);
   }
@@ -1064,20 +1064,20 @@ class Sn {
    * @param {unknown} error
    */
   #m(t) {
-    this.#a && (D(this.#a), this.#a = null), this.#n && (D(this.#n), this.#n = null), this.#o && (D(this.#o), this.#o = null), y && (H(
+    this.#i && (D(this.#i), this.#i = null), this.#o && (D(this.#o), this.#o = null), this.#s && (D(this.#s), this.#s = null), y && (H(
       /** @type {TemplateNode} */
       this.#t
     ), dn(), H(pn()));
-    var r = this.#r.onerror;
-    let n = this.#r.failed;
+    var r = this.#n.onerror;
+    let n = this.#n.failed;
     var o = !1, i = !1;
     const s = () => {
       if (o) {
         hn();
         return;
       }
-      o = !0, i && an(), this.#o !== null && Ve(this.#o, () => {
-        this.#o = null;
+      o = !0, i && an(), this.#s !== null && Ve(this.#s, () => {
+        this.#s = null;
       }), this.#g(() => {
         this.#E();
       });
@@ -1085,9 +1085,9 @@ class Sn {
       try {
         i = !0, r?.(a, s), i = !1;
       } catch (c) {
-        te(c, this.#s && this.#s.parent);
+        te(c, this.#r && this.#r.parent);
       }
-      n && (this.#o = this.#g(() => {
+      n && (this.#s = this.#g(() => {
         try {
           return se(() => {
             var c = (
@@ -1104,7 +1104,7 @@ class Sn {
           return te(
             c,
             /** @type {Effect} */
-            this.#s.parent
+            this.#r.parent
           ), null;
         }
       }));
@@ -1114,14 +1114,14 @@ class Sn {
       try {
         a = this.transform_error(t);
       } catch (c) {
-        te(c, this.#s && this.#s.parent);
+        te(c, this.#r && this.#r.parent);
         return;
       }
       a !== null && typeof a == "object" && typeof /** @type {any} */
       a.then == "function" ? a.then(
         l,
         /** @param {unknown} e */
-        (c) => te(c, this.#s && this.#s.parent)
+        (c) => te(c, this.#r && this.#r.parent)
       ) : l(a);
     });
   }
@@ -3063,14 +3063,14 @@ class So extends HTMLElement {
   }
   #e = null;
   #t = null;
-  #r = null;
+  #n = null;
   #c = null;
-  #s = null;
-  #a = this.createReadyPromise();
-  #n = "pending";
-  #o = Promise.resolve();
+  #r = null;
+  #i = this.createReadyPromise();
+  #o = "pending";
+  #s = Promise.resolve();
   #l = 0;
-  #i = null;
+  #a = null;
   get assetBase() {
     return this.getAttribute("asset-base");
   }
@@ -3094,7 +3094,7 @@ class So extends HTMLElement {
   attributeChangedCallback() {
   }
   connectedCallback() {
-    if (this.onConnectionAttempt(), this.#r) return;
+    if (this.onConnectionAttempt(), this.#n) return;
     const t = this.getConnectionError();
     if (t) {
       const r = B(t.code, t.message);
@@ -3109,13 +3109,13 @@ class So extends HTMLElement {
       this.fail("multiple_instances_unsupported", r.message, r);
       return;
     }
-    this.#n !== "pending" && (this.#a = this.createReadyPromise(), this.#n = "pending"), Se = this, this.#r = this.mountApp();
+    this.#o !== "pending" && (this.#i = this.createReadyPromise(), this.#o = "pending"), Se = this, this.#n = this.mountApp();
   }
   disconnectedCallback() {
-    this.#l += 1, this.onDisconnected(), this.#i?.disconnect(), this.#i = null, Se === this && (Se = null), this.#t && (Lr(this.#t), this.#t = null), this.#e = null, this.#r = null, this.#n === "pending" && (this.#n = "rejected", this.#s?.(B("disconnected", "Component was disconnected before it became ready.")));
+    this.#l += 1, this.onDisconnected(), this.#a?.disconnect(), this.#a = null, Se === this && (Se = null), this.#t && (Lr(this.#t), this.#t = null), this.#e = null, this.#n = null, this.#o === "pending" && (this.#o = "rejected", this.#r?.(B("disconnected", "Component was disconnected before it became ready.")));
   }
   whenReady() {
-    return this.#a;
+    return this.#i;
   }
   setContext(t) {
     return this.enqueue(async () => {
@@ -3134,7 +3134,7 @@ class So extends HTMLElement {
   }
   createReadyPromise() {
     return new Promise((t, r) => {
-      this.#c = t, this.#s = r;
+      this.#c = t, this.#r = r;
     });
   }
   async mountApp() {
@@ -3156,9 +3156,9 @@ ${Ao()}`;
         this.assetBase ?? "./",
         import.meta.url
       );
-      this.#i = new MutationObserver(() => {
+      this.#a = new MutationObserver(() => {
         Ht(r, o, l);
-      }), this.#i.observe(r, {
+      }), this.#a.observe(r, {
         childList: !0,
         subtree: !0
       }), bo({
@@ -3185,7 +3185,7 @@ ${Ao()}`;
         props: {
           notificationPort: mo(this),
           onInitialized: () => {
-            !this.isConnected || t !== this.#l || (this.#n = "resolved", this.#c?.(), this.dispatchSafeEvent("ehagaki-ready", { apiVersion: 1 }));
+            !this.isConnected || t !== this.#l || (this.#o = "resolved", this.#c?.(), this.dispatchSafeEvent("ehagaki-ready", { apiVersion: 1 }));
           },
           ...this.getAdditionalMountProps()
         }
@@ -3215,13 +3215,13 @@ ${Ao()}`;
     return {};
   }
   enqueue(t) {
-    const r = this.#o.then(async () => (await this.whenReady(), t()));
-    return this.#o = r.then(() => {
+    const r = this.#s.then(async () => (await this.whenReady(), t()));
+    return this.#s = r.then(() => {
     }, () => {
     }), r;
   }
   fail(t, r, n = B(t, r)) {
-    this.#n = "rejected", this.#s?.(n), this.dispatchSafeEvent("ehagaki-initialization-error", { code: t, message: r });
+    this.#o = "rejected", this.#r?.(n), this.dispatchSafeEvent("ehagaki-initialization-error", { code: t, message: r });
   }
 }
 function To(e) {
@@ -3294,8 +3294,17 @@ function Oo(e) {
 class Lo extends So {
   #e = null;
   #t = [];
-  #r = null;
+  #n = null;
   #c = !1;
+  #r = null;
+  #i = 0;
+  /**
+   * The current Host-owned Lite intrinsic height, or null when this mount
+   * does not use editor auto-grow or has not measured yet.
+   */
+  get preferredHeight() {
+    return this.#r;
+  }
   /**
    * Selects Host-owned publication exactly once before this element's first
    * connection. Reconnection intentionally reuses this immutable choice.
@@ -3320,10 +3329,10 @@ class Lo extends So {
     });
   }
   loadApp() {
-    return import("./HostOwnedComposerLiteApp-CRvdjhHV.js").then((t) => t.H);
+    return import("./HostOwnedComposerLiteApp-BSd5JBH4.js").then((t) => t.H);
   }
   onConnectionAttempt() {
-    this.#c = !0;
+    this.#c = !0, this.#i += 1, this.#r = null;
   }
   getConnectionError() {
     return this.#e ? null : {
@@ -3332,7 +3341,7 @@ class Lo extends So {
     };
   }
   onDisconnected() {
-    this.#r?.abort(), this.#r = null;
+    this.#i += 1, this.#r = null, this.#n?.abort(), this.#n = null;
   }
   isAutoLoginNip07Enabled() {
     return !1;
@@ -3340,11 +3349,19 @@ class Lo extends So {
   getAdditionalMountProps() {
     if (!this.#e)
       throw new Error("Host-owned Composer Lite configuration is missing.");
-    return this.#r = new AbortController(), {
+    this.#n = new AbortController();
+    const t = this.#i;
+    return {
       hostOwnedConfig: {
         ...this.#e,
-        customEmojis: this.#t.map((t) => ({ ...t })),
-        signal: this.#r.signal
+        customEmojis: this.#t.map((r) => ({ ...r })),
+        signal: this.#n.signal
+      },
+      onPreferredHeightChange: (r) => {
+        if (!this.isConnected || t !== this.#i || !Number.isFinite(r) || r <= 0)
+          return;
+        const n = Math.ceil(r);
+        this.#r !== n && (this.#r = n, this.dispatchSafeEvent("ehagaki-preferred-height-change", { height: n }));
       }
     };
   }

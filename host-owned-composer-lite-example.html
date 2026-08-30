@@ -54,6 +54,7 @@
         <label><input id="content-warning" type="checkbox" /> Enable Content Warning</label>
         <label><input id="hashtag-pin" type="checkbox" /> Enable hashtag pin</label>
         <label><input id="keyboard-bar" type="checkbox" checked /> Show KeyboardButtonBar</label>
+        <label><input id="follow-preferred-height" type="checkbox" /> Follow preferred height</label>
       </div>
       <div class="two-column">
         <div class="control-row"><label for="editor-min-lines">Editor min lines</label><input id="editor-min-lines" type="number" min="1" step="1" placeholder="legacy" /></div>
@@ -181,6 +182,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
       let creationGeneration = 0;
       let failNextSubmit = false;
       let failNextUpload = false;
+      const defaultMountHeight = '460px';
 
       const get = (id) => document.querySelector(`#${id}`);
       const checked = (id) => get(id).checked;
@@ -210,6 +212,18 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         const text = readyText(config);
         status.textContent = text;
         mountConfigStatus.textContent = text;
+      };
+      const applyPreferredHeight = (config) => {
+        if (
+          !checked('follow-preferred-height')
+          || config.editorAutoGrow === 'legacy'
+          || composer?.preferredHeight === null
+        ) {
+          return false;
+        }
+        mount.style.height = `${composer.preferredHeight}px`;
+        status.textContent = `host applied preferred height: ${composer.preferredHeight}px`;
+        return true;
       };
       const ensureComposer = () => {
         if (!composer || !composer.isConnected) throw new Error('Composer is not mounted.');
@@ -269,6 +283,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         const generation = ++creationGeneration;
         const config = currentMountConfig();
         composer?.remove();
+        mount.style.height = defaultMountHeight;
         composer = document.createElement('ehagaki-composer');
         composer.id = 'composer';
         composer.assetBase = new URL('./web-component/host-owned/', import.meta.url).href;
@@ -325,9 +340,10 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           } : {}),
         };
         composer.configureHostOwned(hostOptions);
-        for (const name of ['ehagaki-ready', 'ehagaki-post-success', 'ehagaki-post-error', 'ehagaki-composer-context-updated', 'ehagaki-initialization-error']) {
+        for (const name of ['ehagaki-ready', 'ehagaki-preferred-height-change', 'ehagaki-post-success', 'ehagaki-post-error', 'ehagaki-composer-context-updated', 'ehagaki-initialization-error']) {
           composer.addEventListener(name, (event) => {
             write(name, event.detail);
+            if (name === 'ehagaki-preferred-height-change') applyPreferredHeight(config);
             if (name === 'ehagaki-post-success') status.textContent = `post success: ${event.detail.eventId ?? 'host acknowledged'}`;
             if (name === 'ehagaki-post-error') status.textContent = `post error: ${event.detail.code}`;
           });
@@ -339,10 +355,18 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         if (generation !== creationGeneration) return;
         mountedConfig = config;
         setReadyStatus(config);
+        applyPreferredHeight(config);
         write('create configuration:', config);
       }
 
       get('create-composer').onclick = () => void createComposer().catch((error) => write('create error:', safeError(error)));
+      get('follow-preferred-height').onchange = () => {
+        if (!checked('follow-preferred-height')) {
+          mount.style.height = defaultMountHeight;
+          return;
+        }
+        applyPreferredHeight(mountedConfig ?? currentMountConfig());
+      };
       get('set-custom-emojis').onclick = () => void run('setCustomEmojis:', async () => {
         await ensureComposer().setCustomEmojis(customEmojiCatalog);
         return customEmojiCatalog;

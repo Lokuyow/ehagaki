@@ -1,4 +1,4 @@
-import { r as k, L as i, C as s, E as l } from "./mediabunnyCompression-CWQpZNu4.js";
+import { r as k, L as i, C as s, E as l } from "./mediabunnyCompression-CSmBciys.js";
 var o = /* @__PURE__ */ ((v) => typeof require < "u" ? require : typeof Proxy < "u" ? new Proxy(v, {
   get: (x, A) => (typeof require < "u" ? require : x)[A]
 }) : v)(function(v) {
