@@ -213,8 +213,12 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
     await expect(composer.locator(".button-group-right button")).toHaveCount(2);
     await expect(editorSubmitButton).toBeDisabled();
-    await expect(editorSubmitButton.locator(".plane-icon")).toHaveCSS("width", "22px");
-    await expect(editorSubmitButton.locator(".plane-icon")).toHaveCSS("height", "22px");
+    const editorSubmitIcon = editorSubmitButton.locator(".plane-icon");
+    await expect(editorSubmitIcon).toHaveCSS("inline-size", "22px");
+    await expect(editorSubmitIcon).toHaveCSS("block-size", "22px");
+    const editorSubmitIconBox = await editorSubmitIcon.boundingBox();
+    expect(editorSubmitIconBox?.width).toBe(22);
+    expect(editorSubmitIconBox?.height).toBe(22);
 
     await editor.click();
     await editor.pressSequentially("editor button content");
