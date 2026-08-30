@@ -1113,6 +1113,7 @@
         class="editor-submit-button-container"
         onpointerdowncapture={preventKeyboardFocusChange}
         ontouchstartcapture={preventKeyboardFocusChange}
+        onmousedowncapture={preventKeyboardFocusChange}
       >
         <Button
           variant="primary"
@@ -1356,8 +1357,8 @@
 
   :global(.editor-submit-button .plane-icon) {
     mask-image: url("/icons/paper-plane-solid-full.svg");
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     margin-inline-end: 1px;
     margin-top: 1px;
   }
