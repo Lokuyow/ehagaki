@@ -1369,13 +1369,14 @@
   }
 
   :global(.editor-submit-button) {
-    --icon-size: 22px;
     width: 40px;
     height: 40px;
     flex: 0 0 40px;
   }
 
-  :global(button.editor-submit-button .plane-icon) {
+  :global(button.editor-submit-button .plane-icon.svg-icon) {
+    width: 22px;
+    height: 22px;
     mask-image: url("/icons/paper-plane-solid-full.svg");
     margin-inline-end: 1px;
     margin-top: 1px;
