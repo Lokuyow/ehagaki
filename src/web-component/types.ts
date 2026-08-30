@@ -76,6 +76,7 @@ export interface EHagakiHostOwnedComposerOptions {
     contentWarningEnabled?: boolean;
     hashtagPinEnabled?: boolean;
     keyboardButtonBarEnabled?: boolean;
+    editorSubmitButtonEnabled?: boolean;
     enterKeyBehavior?: "newline" | "submit";
     /** Enables intrinsic editor sizing only when supplied with editorMaxLines. */
     editorMinLines?: number;

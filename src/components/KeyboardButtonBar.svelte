@@ -23,6 +23,7 @@
         customEmojiPickerOpen?: boolean;
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
         hasPostingCapability?: boolean;
+        showPostButton?: boolean;
         mediaEnabled?: boolean;
         customEmojiEnabled?: boolean;
         customEmojiAvailable?: boolean;
@@ -37,6 +38,7 @@
         customEmojiPickerOpen = false,
         onCustomEmojiPickerOpenChange,
         hasPostingCapability = false,
+        showPostButton = true,
         mediaEnabled = true,
         customEmojiEnabled = true,
         customEmojiAvailable = true,
@@ -277,113 +279,115 @@
             {/if}
         </div>
         <div class="button-group-center">
-            {#if showProgressRing}
-                <div class="progress-ring-container">
-                    <svg
-                        class="progress-ring"
-                        width="52"
-                        height="52"
-                        viewBox="-6 -6 52 52"
-                        aria-hidden="true"
-                    >
-                        <circle
-                            class="progress-ring-bg"
-                            cx="20"
-                            cy="20"
-                            r="16"
-                        />
-                        <circle
-                            class="progress-ring-bar"
-                            cx="20"
-                            cy="20"
-                            r="16"
-                            style="stroke-dashoffset: {PROGRESS_RING_CIRCUMFERENCE *
-                                (1 - longPressProgress)}px"
-                        />
-                    </svg>
-                </div>
-            {/if}
-            <Tooltip.Root
-                delayDuration={500}
-                bind:open={
-                    () => postTooltipOpen,
-                    (v) => {
-                        if (!postTooltipBlocked || !v) postTooltipOpen = v;
-                    }
-                }
-            >
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const {
-                            onclick: tooltipOnclick,
-                            onpointerdown: tooltipPointerDown,
-                            onpointerup: tooltipPointerUp,
-                            onpointerleave: tooltipPointerLeave,
-                            ...restProps
-                        } = props}
-                        <Button
-                            variant="primary"
-                            contentLayout="icon"
-                            className="post-button {isShowingLoader
-                                ? 'loading'
-                                : ''}"
-                            disabled={!canPost ||
-                                postStatus.sending ||
-                                isUploading ||
-                                !hasPostingCapability ||
-                                postStatus.completed}
-                            onClick={(e) => {
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-
-                                if (ignoreNextPostClick) {
-                                    ignoreNextPostClick = false;
-                                    return;
-                                }
-
-                                if (!isPostDisabled()) {
-                                    submitPost();
-                                }
-                            }}
-                            ariaLabel={$_("postComponent.post")}
-                            {...restProps}
-                            onpointerdown={(e) => {
-                                if (typeof tooltipPointerDown === "function")
-                                    tooltipPointerDown(e);
-                                startLongPress(e);
-                            }}
-                            onpointerup={(e) => {
-                                if (typeof tooltipPointerUp === "function")
-                                    tooltipPointerUp(e);
-                                cancelLongPress();
-                            }}
-                            onpointerleave={(e) => {
-                                if (typeof tooltipPointerLeave === "function")
-                                    tooltipPointerLeave(e);
-                                cancelLongPress();
-                            }}
-                            onpointercancel={cancelLongPress}
-                            oncontextmenu={(e) => e.preventDefault()}
+            {#if showPostButton}
+                {#if showProgressRing}
+                    <div class="progress-ring-container">
+                        <svg
+                            class="progress-ring"
+                            width="52"
+                            height="52"
+                            viewBox="-6 -6 52 52"
+                            aria-hidden="true"
                         >
-                            {#if isShowingLoader}
-                                <LoadingPlaceholder
-                                    showLoader={true}
-                                    text={false}
-                                    customClass="post-button-loading"
-                                />
-                            {:else}
-                                <div class="plane-icon svg-icon"></div>
-                            {/if}
-                        </Button>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal to={overlayTarget}>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("keyboardButtonBar.post_tooltip")}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
+                            <circle
+                                class="progress-ring-bg"
+                                cx="20"
+                                cy="20"
+                                r="16"
+                            />
+                            <circle
+                                class="progress-ring-bar"
+                                cx="20"
+                                cy="20"
+                                r="16"
+                                style="stroke-dashoffset: {PROGRESS_RING_CIRCUMFERENCE *
+                                    (1 - longPressProgress)}px"
+                            />
+                        </svg>
+                    </div>
+                {/if}
+                <Tooltip.Root
+                    delayDuration={500}
+                    bind:open={
+                        () => postTooltipOpen,
+                        (v) => {
+                            if (!postTooltipBlocked || !v) postTooltipOpen = v;
+                        }
+                    }
+                >
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const {
+                                onclick: tooltipOnclick,
+                                onpointerdown: tooltipPointerDown,
+                                onpointerup: tooltipPointerUp,
+                                onpointerleave: tooltipPointerLeave,
+                                ...restProps
+                            } = props}
+                            <Button
+                                variant="primary"
+                                contentLayout="icon"
+                                className="post-button {isShowingLoader
+                                    ? 'loading'
+                                    : ''}"
+                                disabled={!canPost ||
+                                    postStatus.sending ||
+                                    isUploading ||
+                                    !hasPostingCapability ||
+                                    postStatus.completed}
+                                onClick={(e) => {
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+
+                                    if (ignoreNextPostClick) {
+                                        ignoreNextPostClick = false;
+                                        return;
+                                    }
+
+                                    if (!isPostDisabled()) {
+                                        submitPost();
+                                    }
+                                }}
+                                ariaLabel={$_("postComponent.post")}
+                                {...restProps}
+                                onpointerdown={(e) => {
+                                    if (typeof tooltipPointerDown === "function")
+                                        tooltipPointerDown(e);
+                                    startLongPress(e);
+                                }}
+                                onpointerup={(e) => {
+                                    if (typeof tooltipPointerUp === "function")
+                                        tooltipPointerUp(e);
+                                    cancelLongPress();
+                                }}
+                                onpointerleave={(e) => {
+                                    if (typeof tooltipPointerLeave === "function")
+                                        tooltipPointerLeave(e);
+                                    cancelLongPress();
+                                }}
+                                onpointercancel={cancelLongPress}
+                                oncontextmenu={(e) => e.preventDefault()}
+                            >
+                                {#if isShowingLoader}
+                                    <LoadingPlaceholder
+                                        showLoader={true}
+                                        text={false}
+                                        customClass="post-button-loading"
+                                    />
+                                {:else}
+                                    <div class="plane-icon svg-icon"></div>
+                                {/if}
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal to={overlayTarget}>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("keyboardButtonBar.post_tooltip")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            {/if}
         </div>
         <div class="button-group-right">
             {#if contentWarningAvailable}

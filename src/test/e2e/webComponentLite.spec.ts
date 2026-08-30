@@ -113,6 +113,8 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(composer.locator(".image-button")).toHaveCount(0);
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
     await expect(composer.locator(".footer-button-bar")).toHaveCount(1);
+    await expect(composer.locator(".editor-submit-button")).toHaveCount(0);
+    await expect(composer.locator("button.post-button")).toHaveCount(1);
     await expect(composer.locator(".tiptap-editor")).not.toHaveAttribute("enterkeyhint", "send");
     await expect(composer.locator("#content-warning-reason-input")).toHaveCount(0);
     await expect(composer.locator(".button-group-right button")).toHaveCount(0);
@@ -164,6 +166,186 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await replacement.locator("button.post-button").click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteMinimalState.errors)).toBe(1);
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
+});
+
+test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = {
+            outputs: [] as any[],
+            failNext: false,
+            resolveSubmit: null as ((value: unknown) => void) | null,
+        };
+        (window as any).__liteEditorSubmitState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setCustomEmojis(value: unknown): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                if (state.failNext) {
+                    state.failNext = false;
+                    return Promise.reject(new Error("expected host failure"));
+                }
+                return new Promise((resolve) => { state.resolveSubmit = resolve; });
+            },
+            uploadMedia: () => ({ url: "https://example.invalid/editor-submit.png" }),
+            contentWarningEnabled: true,
+            hashtagPinEnabled: true,
+            editorSubmitButtonEnabled: true,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.setCustomEmojis([{ shortcode: "wave", url: "https://example.invalid/wave.webp" }]);
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const editorSubmitButton = composer.locator(".editor-submit-button");
+    await expect(composer.locator(".footer-button-bar")).toHaveCount(1);
+    await expect(composer.locator("button.post-button")).toHaveCount(0);
+    await expect(editorSubmitButton).toHaveCount(1);
+    await expect(composer.locator(".image-button")).toHaveCount(1);
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
+    await expect(composer.locator(".button-group-right button")).toHaveCount(2);
+    await expect(editorSubmitButton).toBeDisabled();
+
+    await editor.click();
+    await editor.pressSequentially("editor button content");
+    await expect(editorSubmitButton).toBeEnabled();
+    await editorSubmitButton.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
+    await expect(editorSubmitButton).toBeDisabled();
+    await expect(editor).toHaveAttribute("contenteditable", "true");
+    expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
+    await editor.pressSequentially("ignored while pending");
+    await expect(editor).toHaveText("editor button content");
+
+    await editorSubmitButton.dispatchEvent("click");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
+    await page.evaluate(() => {
+        (window as any).__liteEditorSubmitState.resolveSubmit({ eventId: "e".repeat(64) });
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
+    await expect(editor).toHaveText("");
+
+    await editor.click();
+    await editor.pressSequentially("keep after editor button failure");
+    await page.evaluate(() => { (window as any).__liteEditorSubmitState.failNext = true; });
+    await editorSubmitButton.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(2);
+    await expect(editor).toContainText("keep after editor button failure");
+});
+
+test("Lite editor submit button works without KeyboardButtonBar", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { outputs: [] as any[] };
+        (window as any).__liteEditorOnlySubmitState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: unknown) {
+                state.outputs.push(JSON.parse(JSON.stringify(output)));
+                return { eventId: "f".repeat(64) };
+            },
+            editorSubmitButtonEnabled: true,
+            keyboardButtonBarEnabled: false,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const editorSubmitButton = composer.locator(".editor-submit-button");
+    await expect(composer.locator(".footer-button-bar")).toHaveCount(0);
+    await expect(editorSubmitButton).toHaveCount(1);
+    await expect(editorSubmitButton).toBeDisabled();
+    await editor.click();
+    await editor.pressSequentially("editor only submit");
+    await editorSubmitButton.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorOnlySubmitState.outputs.length)).toBe(1);
+    await expect(editor).toHaveText("");
+});
+
+test("Lite editor submit button stays inside a narrow editor and preserves preferred-height auto-grow", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            preferredHeight: number | null;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.style.cssText = "display: block; width: 280px; height: 640px;";
+        composer.addEventListener("ehagaki-preferred-height-change", (event) => {
+            composer.style.height = `${(event as CustomEvent<{ height: number }>).detail.height}px`;
+        });
+        composer.configureHostOwned({
+            submit: () => undefined,
+            editorSubmitButtonEnabled: true,
+            editorMinLines: 1,
+            editorMaxLines: 3,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+        (window as any).__liteNarrowEditorSubmitComposer = composer;
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const button = composer.locator(".editor-submit-button");
+    await expect(button).toBeVisible();
+    const initialPreferredHeight = await composer.evaluate((element) => (element as any).preferredHeight);
+    expect(initialPreferredHeight).toBeGreaterThan(0);
+    await editor.click();
+    await editor.pressSequentially("narrow width content ".repeat(10));
+    await expect.poll(() => composer.evaluate((element) => (element as any).preferredHeight)).toBeGreaterThan(initialPreferredHeight);
+
+    const geometry = await composer.evaluate((element) => {
+        const shadow = element.shadowRoot!;
+        const editorElement = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+        const buttonElement = shadow.querySelector<HTMLElement>(".editor-submit-button")!;
+        const componentRect = element.getBoundingClientRect();
+        const editorRect = editorElement.getBoundingClientRect();
+        const buttonRect = buttonElement.getBoundingClientRect();
+        const paragraph = editorElement.querySelector("p");
+        const range = document.createRange();
+        if (paragraph) range.selectNodeContents(paragraph);
+        const textRects = Array.from(range.getClientRects());
+        return {
+            componentWidth: componentRect.width,
+            componentScrollWidth: element.scrollWidth,
+            componentClientWidth: element.clientWidth,
+            editorScrollWidth: editorElement.scrollWidth,
+            editorClientWidth: editorElement.clientWidth,
+            editorRight: editorRect.right,
+            buttonRight: buttonRect.right,
+            buttonLeft: buttonRect.left,
+            buttonTop: buttonRect.top,
+            buttonBottom: buttonRect.bottom,
+            textOverlapsButton: textRects.some((rect) => (
+                rect.right > buttonRect.left
+                && rect.left < buttonRect.right
+                && rect.bottom > buttonRect.top
+                && rect.top < buttonRect.bottom
+            )),
+        };
+    });
+    expect(geometry.componentWidth).toBe(280);
+    expect(geometry.componentScrollWidth).toBeLessThanOrEqual(geometry.componentClientWidth);
+    expect(geometry.editorScrollWidth).toBeLessThanOrEqual(geometry.editorClientWidth);
+    expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.editorRight + 1);
+    expect(geometry.buttonLeft).toBeGreaterThanOrEqual(0);
+    expect(geometry.buttonBottom).toBeGreaterThan(geometry.buttonTop);
+    expect(geometry.textOverlapsButton).toBe(false);
 });
 
 test("exposes the common editor empty state API through the Host-owned Lite element", async ({ page }) => {
@@ -444,6 +626,14 @@ test("Lite validates keyboard and editor auto-grow options without consuming con
                 return (error as Error).name;
             }
         })();
+        const invalidEditorButtonBoolean = (() => {
+            try {
+                composer.configureHostOwned({ submit: () => undefined, editorSubmitButtonEnabled: "true" });
+                return "accepted";
+            } catch (error) {
+                return (error as Error).name;
+            }
+        })();
         const invalidEnum = (() => {
             try {
                 composer.configureHostOwned({ submit: () => undefined, enterKeyBehavior: "send" });
@@ -470,14 +660,16 @@ test("Lite validates keyboard and editor auto-grow options without consuming con
         composer.configureHostOwned({
             submit: () => undefined,
             keyboardButtonBarEnabled: false,
+            editorSubmitButtonEnabled: true,
             enterKeyBehavior: "submit",
             editorMinLines: 1,
             editorMaxLines: 1,
         });
-        return { invalidBoolean, invalidEnum, invalidEditorOptions };
+        return { invalidBoolean, invalidEditorButtonBoolean, invalidEnum, invalidEditorOptions };
     }, { componentOrigin });
     expect(result).toEqual({
         invalidBoolean: "TypeError",
+        invalidEditorButtonBoolean: "TypeError",
         invalidEnum: "TypeError",
         invalidEditorOptions: ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError", "TypeError"],
     });
