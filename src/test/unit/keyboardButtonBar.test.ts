@@ -131,4 +131,14 @@ describe('KeyboardButtonBar', () => {
         const button = screen.getByRole('button', { name: 'カスタム絵文字' });
         expect(button.hasAttribute('disabled')).toBe(true);
     });
+
+    it('投稿ボタンは既定で表示され、内部propで投稿surfaceだけを隠せる', () => {
+        const { unmount } = render(KeyboardButtonBarWithProvider);
+        expect(screen.getByRole('button', { name: '投稿' })).toBeTruthy();
+        unmount();
+
+        render(KeyboardButtonBarWithProvider, { props: { showPostButton: false } });
+        expect(screen.queryByRole('button', { name: '投稿' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'カスタム絵文字' })).toBeTruthy();
+    });
 });

@@ -353,6 +353,7 @@ composer.configureHostOwned({
   contentWarningEnabled: true,
   hashtagPinEnabled: true,
   keyboardButtonBarEnabled: true,
+  editorSubmitButtonEnabled: false,
   enterKeyBehavior: 'newline',
   editorMinLines: 1,
   editorMaxLines: 3,
@@ -403,6 +404,16 @@ catalog などの capability 自体を自動的に無効化しません。paste/
 で投稿し、Shift+Enter は改行、Ctrl/Cmd+Enter は従来どおり投稿します。IME の変換確定 Enter は投稿に
 使用されません。これら2つは `configureHostOwned()` の mount-time 設定であり、HTML attribute や
 `setSettings()` ではありません。
+
+`editorSubmitButtonEnabled` は Host-owned Lite の Editor surface 右下に小さな投稿ボタンを表示する
+mount-time option です。既定値は `false` で、未指定または `false` の場合は従来どおり Editor内ボタンを
+表示せず、`keyboardButtonBarEnabled !== false` なら KeyboardButtonBar 内の投稿ボタンを表示します。
+`true` にすると Editor内ボタンを通常の click/tap で利用でき、KeyboardButtonBar 自体が表示されていても
+バー内の投稿ボタンだけを非表示にします。画像、custom emoji、Content Warning、hashtag pin などバー内の
+他の有効な操作は残り、`keyboardButtonBarEnabled: false` と併用できます。長押しは必要ありません。
+これは Lite 専用の `configureHostOwned()` mount-time option であり、HTML attribute、`setSettings()`、Full
+self-publish、iframe API には含まれません。`editorSubmitButtonEnabled` を有効にしても、投稿は既存の
+PostComponent の submit 経路を使用します。
 
 `editorMinLines` と `editorMaxLines` は Host-owned Lite の editor viewport を本文の実際の visual line 数に
 応じて伸縮させる、対になる mount-time option です。両方を省略すると従来の available-height を使う

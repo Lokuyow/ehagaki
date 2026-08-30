@@ -70,7 +70,10 @@
   } from "../lib/editor/editorLifecycle";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
-  import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
+  import {
+    focusEditorWithoutKeyboardForCurrentTap,
+    preventKeyboardFocusChange,
+  } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import {
     profileDataStore,
@@ -84,6 +87,7 @@
   } from "../lib/utils/composerLayoutUtils";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import ProfileAvatar from "./ProfileAvatar.svelte";
+  import Button from "./Button.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
   import type {
@@ -146,6 +150,11 @@
   // its dedicated output/upload modules from the full graph.
   const isHostOwned = isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
   let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
+  let isUploading = $derived(editorState.isUploading);
+  let canPost = $derived(editorState.canPost);
+  let showEditorSubmitButton = $derived(
+    isHostOwned && hostOwnedConfig?.editorSubmitButtonEnabled === true,
+  );
   let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
@@ -195,7 +204,10 @@
 
   $effect(() => {
     const editorInstance = currentEditor;
-    const editable = !postStatus.sending;
+    // The inline Lite submit surface must leave the already-focused editor in
+    // place while its host callback is pending. The sending handlers below
+    // still block editor input and other editor actions for this local mode.
+    const editable = !postStatus.sending || showEditorSubmitButton;
 
     if (editorInstance && editorInstance.isEditable !== editable) {
       // Tiptap v3 supports suppressing the update event for this option-only change.
@@ -249,11 +261,6 @@
   }
 
   function handleEditorContainerKeydown(event: KeyboardEvent) {
-    if (postStatus.sending) {
-      event.preventDefault();
-      return;
-    }
-
     if (
       !currentEditor ||
       event.currentTarget !== event.target ||
@@ -264,6 +271,21 @@
 
     event.preventDefault();
     currentEditor.commands.focus("end");
+  }
+
+  function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
+    if (!postStatus.sending) return;
+
+    // Keep the focused contenteditable surface during an inline submit, but
+    // stop the event before Tiptap's target keymap can create a transaction.
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleEditorContainerBeforeInput(event: InputEvent) {
+    if (postStatus.sending) {
+      event.preventDefault();
+    }
   }
 
   // UI状態をストアから取得
@@ -1051,9 +1073,12 @@
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
     class:sending={postStatus.sending}
+    class:editor-submit-enabled={showEditorSubmitButton}
     class:account-avatar-placeholder={showAccountPlaceholder}
     onclick={handleEditorContainerClick}
+    onkeydowncapture={handleEditorContainerKeydownCapture}
     onkeydown={handleEditorContainerKeydown}
+    onbeforeinput={handleEditorContainerBeforeInput}
     use:fileDropActionWithDragState={{
       dragOver: (v: boolean) => (dragOver = v),
     }}
@@ -1081,6 +1106,37 @@
     {#if editor && currentEditor}
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
       <EditorContent editor={currentEditor as any} class="editor-content" />
+    {/if}
+    {#if showEditorSubmitButton}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="editor-submit-button-container"
+        onpointerdowncapture={preventKeyboardFocusChange}
+        ontouchstartcapture={preventKeyboardFocusChange}
+      >
+        <Button
+          variant="primary"
+          shape="circle"
+          contentLayout="icon"
+          className="editor-submit-button"
+          disabled={!canPost ||
+            postStatus.sending ||
+            isUploading ||
+            !hasPostingCapability ||
+            postStatus.completed}
+          onClick={() => {
+            if (!canPost ||
+              postStatus.sending ||
+              isUploading ||
+              !hasPostingCapability ||
+              postStatus.completed) return;
+            void submitPost();
+          }}
+          ariaLabel={$_("postComponent.post")}
+        >
+          <div class="plane-icon svg-icon"></div>
+        </Button>
+      </div>
     {/if}
   </div>
 
@@ -1271,10 +1327,39 @@
     opacity: 0.72;
   }
 
+  .editor-container.editor-submit-enabled.sending :global(.tiptap-editor) {
+    pointer-events: none;
+  }
+
   .editor-container.sending :global(.editor-image-button),
   .editor-container.sending :global(.custom-emoji-drag-target),
   .editor-container.sending :global(.media-delete-btn) {
     pointer-events: none;
+  }
+
+  .editor-container.editor-submit-enabled :global(.tiptap-editor) {
+    padding-inline-end: calc(var(--post-editor-block-padding) + 48px);
+  }
+
+  .editor-submit-button-container {
+    position: absolute;
+    inset-inline-end: var(--post-editor-block-padding);
+    bottom: var(--post-editor-block-padding);
+    z-index: 4;
+  }
+
+  :global(.editor-submit-button) {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+
+  :global(.editor-submit-button .plane-icon) {
+    mask-image: url("/icons/paper-plane-solid-full.svg");
+    width: 24px;
+    height: 24px;
+    margin-inline-end: 1px;
+    margin-top: 1px;
   }
 
   .editor-container.drag-over {

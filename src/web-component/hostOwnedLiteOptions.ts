@@ -25,6 +25,9 @@ export function validateHostOwnedOptions(value: unknown): EHagakiHostOwnedCompos
     if (value.keyboardButtonBarEnabled !== undefined && typeof value.keyboardButtonBarEnabled !== "boolean") {
         throw new TypeError("keyboardButtonBarEnabled must be a boolean when provided.");
     }
+    if (value.editorSubmitButtonEnabled !== undefined && typeof value.editorSubmitButtonEnabled !== "boolean") {
+        throw new TypeError("editorSubmitButtonEnabled must be a boolean when provided.");
+    }
     if (
         value.enterKeyBehavior !== undefined
         && value.enterKeyBehavior !== "newline"
@@ -65,6 +68,9 @@ export function validateHostOwnedOptions(value: unknown): EHagakiHostOwnedCompos
             : {}),
         ...(value.keyboardButtonBarEnabled !== undefined
             ? { keyboardButtonBarEnabled: value.keyboardButtonBarEnabled }
+            : {}),
+        ...(value.editorSubmitButtonEnabled !== undefined
+            ? { editorSubmitButtonEnabled: value.editorSubmitButtonEnabled }
             : {}),
         ...(value.enterKeyBehavior !== undefined
             ? { enterKeyBehavior: value.enterKeyBehavior }

@@ -54,6 +54,7 @@
         <label><input id="content-warning" type="checkbox" /> Enable Content Warning</label>
         <label><input id="hashtag-pin" type="checkbox" /> Enable hashtag pin</label>
         <label><input id="keyboard-bar" type="checkbox" checked /> Show KeyboardButtonBar</label>
+        <label><input id="editor-submit-button" type="checkbox" /> Show Editor submit button</label>
         <label><input id="follow-preferred-height" type="checkbox" /> Follow preferred height</label>
       </div>
       <div class="two-column">
@@ -200,6 +201,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         contentWarning: checked('content-warning') ? 'on' : 'off',
         hashtagPin: checked('hashtag-pin') ? 'on' : 'off',
         keyboardButtonBar: checked('keyboard-bar') ? 'on' : 'off',
+        editorSubmitButton: checked('editor-submit-button') ? 'on' : 'off',
         enterKeyBehavior: value('enter-behavior'),
         editorAutoGrow: (() => {
           const min = value('editor-min-lines').trim();
@@ -207,7 +209,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           return !min && !max ? 'legacy' : `${min || '?'}/${max || '?'}`;
         })(),
       });
-      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | enter: ${config.enterKeyBehavior} | editor: ${config.editorAutoGrow}`;
+      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | editor submit: ${config.editorSubmitButton} | enter: ${config.enterKeyBehavior} | editor: ${config.editorAutoGrow}`;
       const setReadyStatus = (config) => {
         const text = readyText(config);
         status.textContent = text;
@@ -309,6 +311,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           contentWarningEnabled: config.contentWarning === 'on',
           hashtagPinEnabled: config.hashtagPin === 'on',
           keyboardButtonBarEnabled: config.keyboardButtonBar === 'on',
+          editorSubmitButtonEnabled: config.editorSubmitButton === 'on',
           enterKeyBehavior: config.enterKeyBehavior,
           ...(() => {
             const min = value('editor-min-lines').trim();

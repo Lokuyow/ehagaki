@@ -397,6 +397,7 @@
     {#if hostOwnedConfig.keyboardButtonBarEnabled !== false}
       <KeyboardButtonBar
         onUploadImage={() => postComponentRef?.openFileDialog()}
+        showPostButton={hostOwnedConfig.editorSubmitButtonEnabled !== true}
         {customEmojiPickerOpen}
         hasPostingCapability={true}
         mediaEnabled={!!hostOwnedConfig.uploadMedia}

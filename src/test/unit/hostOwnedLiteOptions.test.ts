@@ -9,6 +9,14 @@ describe("Host-owned Lite mount options", () => {
         expect(validateHostOwnedOptions({ submit })).toEqual({ submit });
     });
 
+    it("accepts and snapshots the optional Editor submit surface toggle", () => {
+        const options = { submit, editorSubmitButtonEnabled: true };
+        const snapshot = validateHostOwnedOptions(options);
+        options.editorSubmitButtonEnabled = false;
+
+        expect(snapshot).toEqual({ submit, editorSubmitButtonEnabled: true });
+    });
+
     it("accepts and preserves valid editor auto-grow pairs, including an equal range", () => {
         expect(validateHostOwnedOptions({
             submit,
@@ -23,6 +31,9 @@ describe("Host-owned Lite mount options", () => {
     });
 
     it.each([
+        { editorSubmitButtonEnabled: "true" },
+        { editorSubmitButtonEnabled: 1 },
+        { editorSubmitButtonEnabled: null },
         { editorMinLines: 1 },
         { editorMaxLines: 3 },
         { editorMinLines: 0, editorMaxLines: 1 },

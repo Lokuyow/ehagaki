@@ -53,6 +53,16 @@ function restoreEditorKeyboardInput(): void {
     suppressedEditor = null;
 }
 
+function getActiveElementForEvent(event: Event): HTMLElement | null {
+    const target = event.target;
+    const root = target instanceof Node ? target.getRootNode() : document;
+    const activeElement = root instanceof ShadowRoot
+        ? root.activeElement
+        : document.activeElement;
+
+    return activeElement instanceof HTMLElement ? activeElement : null;
+}
+
 function suppressEditorKeyboardForCurrentTap(event: Event): void {
     const keyboardHeight = Number.parseFloat(
         window
@@ -67,7 +77,7 @@ function suppressEditorKeyboardForCurrentTap(event: Event): void {
         return;
     }
 
-    const activeElement = document.activeElement as HTMLElement | null;
+    const activeElement = getActiveElementForEvent(event);
     if (!activeElement?.classList?.contains("tiptap-editor")) {
         return;
     }
