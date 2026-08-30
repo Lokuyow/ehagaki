@@ -296,9 +296,9 @@
     );
 
     // On a visible software keyboard, preventing touchstart suppresses the
-    // native click on Android. Let the button receive its press and return
-    // focus to the editor in the focus handler below instead.
-    if (keyboardHeight > 80) {
+    // native click on Android. Keep pointerdown prevention to retain editor
+    // focus, but allow touchstart to produce the button click.
+    if (keyboardHeight > 80 && event.type === "touchstart") {
       return;
     }
 
