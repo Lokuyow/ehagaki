@@ -116,6 +116,7 @@
     availableComposerHeight?: number;
     minEditorHeight?: number;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
+    onEditorEmptyChange?: (isEmpty: boolean) => void;
     notificationPort?: AppPostNotificationPort;
     hostOwnedConfig?: EHagakiHostOwnedComposerOptions & { signal: AbortSignal };
     hostCustomEmojiItems?: CustomEmojiItem[];
@@ -132,6 +133,7 @@
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
     onCustomEmojiSelect,
+    onEditorEmptyChange,
     notificationPort,
     hostOwnedConfig,
     hostCustomEmojiItems = [],
@@ -159,6 +161,7 @@
   let profileLoaded = $derived(profileLoadedStore.value);
   let isLoadingProfile = $derived(isLoadingProfileStore.value);
   let editorIsEmpty = $state(true);
+  let editorEmptyStateInitialized = false;
   let showAccountPlaceholder = $derived(
     !isHostOwnedLiteBuild && hasStoredKey &&
       !isSwitchingAccount &&
@@ -475,8 +478,15 @@
 
     // エディターの購読
     let subscribedEditor: TipTapEditor | null = null;
+    const syncEditorEmptyState = (editorInstance: TipTapEditor): void => {
+      const nextIsEmpty = editorInstance.isEmpty;
+      const changed = !editorEmptyStateInitialized || editorIsEmpty !== nextIsEmpty;
+      editorIsEmpty = nextIsEmpty;
+      editorEmptyStateInitialized = true;
+      if (changed) onEditorEmptyChange?.(nextIsEmpty);
+    };
     const handleEditorTransaction = ({ editor: editorInstance }: { editor: TipTapEditor }) => {
-      editorIsEmpty = editorInstance.isEmpty;
+      syncEditorEmptyState(editorInstance);
     };
 
     editorSubscriptionUnsubscribe = editor.subscribe(
@@ -487,7 +497,9 @@
 
         subscribedEditor = editorInstance;
         currentEditor = editorInstance;
-        editorIsEmpty = editorInstance?.isEmpty ?? true;
+        if (editorInstance) {
+          syncEditorEmptyState(editorInstance);
+        }
         editorInstance?.on("transaction", handleEditorTransaction);
         // ストアにも設定
         currentEditorStore.set(editorInstance);
@@ -867,8 +879,12 @@
   }
 
   export function resetPostContent() {
-    if (!isHostOwnedLiteBuild && postManager && currentEditor)
+    if (!currentEditor) return;
+    if (!isHostOwnedLiteBuild && postManager) {
       postManager.resetPostContent(currentEditor);
+      return;
+    }
+    currentEditor.chain().clearContent().run();
   }
 
   export function clearContentAfterSuccess() {

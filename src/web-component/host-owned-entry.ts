@@ -8,6 +8,7 @@ export {
 } from "./types";
 export type {
     EHagakiComposerContext,
+    EHagakiComposerEditorEmptyChangeDetail,
     EHagakiComposerInitializationErrorDetail,
     EHagakiComposerPostErrorDetail,
     EHagakiComposerPostSuccessDetail,

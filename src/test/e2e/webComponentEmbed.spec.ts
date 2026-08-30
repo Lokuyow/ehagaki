@@ -263,6 +263,138 @@ test("Full Web Component does not expose the Lite preferred-height API", async (
     });
 });
 
+test("exposes the common editor empty state API through the Full element", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const initial = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            editorIsEmpty: boolean | null;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        const changes: Array<{ isEmpty: boolean; bubbles: boolean; composed: boolean; keys: string[] }> = [];
+        (window as any).__fullEditorEmptyChanges = changes;
+        composer.addEventListener("ehagaki-editor-empty-change", (event) => {
+            const customEvent = event as CustomEvent<{ isEmpty: boolean }>;
+            changes.push({
+                isEmpty: customEvent.detail.isEmpty,
+                bubbles: customEvent.bubbles,
+                composed: customEvent.composed,
+                keys: Object.keys(customEvent.detail),
+            });
+        });
+        const beforeConnection = composer.editorIsEmpty;
+        document.body.append(composer);
+        const duringConnectionBeforeReady = composer.editorIsEmpty;
+        await composer.whenReady();
+        return { beforeConnection, duringConnectionBeforeReady, atReady: composer.editorIsEmpty, changes };
+    }, { componentOrigin });
+
+    expect(initial).toEqual({
+        beforeConnection: null,
+        duringConnectionBeforeReady: null,
+        atReady: true,
+        changes: [{ isEmpty: true, bubbles: true, composed: true, keys: ["isEmpty"] }],
+    });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("Full text");
+    await expect.poll(() => composer.evaluate((element) => (element as any).editorIsEmpty)).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as any).__fullEditorEmptyChanges.length)).toBe(2);
+
+    await editor.press("ArrowLeft");
+    await expect.poll(() => page.evaluate(() => (window as any).__fullEditorEmptyChanges.length)).toBe(2);
+
+    await editor.press("ControlOrMeta+A");
+    await editor.press("Backspace");
+    // Clear the short test input through the editor's normal delete path. A
+    // character-by-character fallback keeps this deterministic on mobile
+    // projects where select-all chords are not exposed reliably.
+    await editor.press("End");
+    for (let index = 0; index < "Full text".length; index += 1) {
+        await editor.press("Backspace");
+    }
+    await expect.poll(() => composer.evaluate((element) => (element as any).editorIsEmpty)).toBe(true);
+    await expect.poll(() => page.evaluate(() => (window as any).__fullEditorEmptyChanges.length)).toBe(3);
+
+    const result = await page.evaluate(async () => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & {
+            editorIsEmpty: boolean | null;
+            setContext(value: unknown): Promise<void>;
+            whenReady(): Promise<void>;
+        };
+        const events = (window as any).__fullEditorEmptyChanges as Array<{ isEmpty: boolean }>;
+        await composer.setContext({ content: "programmatic content" });
+        const nonEmpty = composer.editorIsEmpty;
+        await composer.setContext({ content: "different content" });
+        const sameStateCount = events.length;
+        await composer.setContext({ content: null });
+        const empty = composer.editorIsEmpty;
+        const beforeDisconnectCount = events.length;
+        composer.remove();
+        const disconnected = composer.editorIsEmpty;
+        document.body.append(composer);
+        await composer.whenReady();
+        return {
+            nonEmpty,
+            sameStateCount,
+            empty,
+            disconnected,
+            reconnected: composer.editorIsEmpty,
+            events: events.slice(beforeDisconnectCount).map((event) => event.isEmpty),
+        };
+    });
+
+    expect(result).toEqual({
+        nonEmpty: false,
+        sameStateCount: 4,
+        empty: true,
+        disconnected: null,
+        reconnected: true,
+        events: [true],
+    });
+});
+
+test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.route("**/PostComponent-*.js", (route) => route.abort());
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            editorIsEmpty: boolean | null;
+            whenReady(): Promise<void>;
+        };
+        const initializationErrors: Array<{ code: string; message: string }> = [];
+        composer.addEventListener("ehagaki-initialization-error", (event) => {
+            const detail = (event as CustomEvent<{ code: string; message: string }>).detail;
+            initializationErrors.push({ code: detail.code, message: detail.message });
+        });
+        document.body.append(composer);
+        const ready = composer.whenReady().then(
+            () => ({ status: "resolved" as const, errorName: null }),
+            (error: Error) => ({ status: "rejected" as const, errorName: error.name }),
+        );
+        const result = await Promise.race([
+            ready,
+            new Promise<{ status: "pending"; errorName: null }>((resolve) => {
+                window.setTimeout(() => resolve({ status: "pending", errorName: null }), 2_000);
+            }),
+        ]);
+        return { result, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
+    }, { componentOrigin });
+
+    expect(result).toEqual({
+        result: { status: "rejected", errorName: "initialization_failed" },
+        initializationErrors: [{
+            code: "initialization_failed",
+            message: "eHagaki Composer could not be initialized.",
+        }],
+        editorIsEmpty: null,
+    });
+});
+
 test("auto-login persists NIP-07 and delays ready through authenticated bootstrap", async ({ page }) => {
     relayRequestsPaused = true;
     await page.goto(hostOrigin);
