@@ -288,6 +288,23 @@
     }
   }
 
+  function handleEditorSubmitButtonPress(event: Event): void {
+    const keyboardHeight = Number.parseFloat(
+      window
+        .getComputedStyle(document.documentElement)
+        .getPropertyValue("--keyboard-height"),
+    );
+
+    // On a visible software keyboard, preventing touchstart suppresses the
+    // native click on Android. Let the button receive its press and return
+    // focus to the editor in the focus handler below instead.
+    if (keyboardHeight > 80) {
+      return;
+    }
+
+    preventKeyboardFocusChange(event);
+  }
+
   function restoreEditorFocusAfterEditorSubmitButtonFocus(
     event: FocusEvent,
   ): void {
@@ -1129,9 +1146,9 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="editor-submit-button-container"
-        onpointerdowncapture={preventKeyboardFocusChange}
-        ontouchstartcapture={preventKeyboardFocusChange}
-        onmousedowncapture={preventKeyboardFocusChange}
+        onpointerdowncapture={handleEditorSubmitButtonPress}
+        ontouchstartcapture={handleEditorSubmitButtonPress}
+        onmousedowncapture={handleEditorSubmitButtonPress}
       >
         <Button
           variant="primary"
