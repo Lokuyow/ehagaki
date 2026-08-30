@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import "../i18n";
   import { Tooltip } from "bits-ui";
   import { waitLocale } from "svelte-i18n";
@@ -43,7 +43,12 @@
     settleReplyQuoteReferencesWithoutHydration,
     updateReferencedEvent,
   } from "../stores/replyQuoteStore.svelte";
-  import { setupViewportListener } from "../stores/uiStore.svelte";
+  import {
+    KEYBOARD_BUTTON_BAR_HEIGHT,
+    REASON_INPUT_HEIGHT,
+    reasonInputVisibleStore,
+    setupViewportListener,
+  } from "../stores/uiStore.svelte";
   import { clearUrlQueryContentStore, updateUrlQueryContentStore } from "../stores/sharedContentStore.svelte";
   import { settingsStore } from "../stores/settingsStore.svelte";
   import { editorState } from "../stores/editorStore.svelte";
@@ -55,13 +60,14 @@
   interface Props {
     notificationPort: AppPostNotificationPort & AppEmbedNotificationPort;
     onInitialized: () => void;
+    onPreferredHeightChange?: (height: number) => void;
     hostOwnedConfig: EHagakiHostOwnedComposerOptions & {
       customEmojis: EHagakiCustomEmojiCatalogItem[];
       signal: AbortSignal;
     };
   }
 
-  let { notificationPort, onInitialized, hostOwnedConfig }: Props = $props();
+  let { notificationPort, onInitialized, onPreferredHeightChange, hostOwnedConfig }: Props = $props();
 
   // Host-owned instances share the app stores with the common composer. Clear
   // disabled feature state before the first render so a previous mount cannot
@@ -82,6 +88,12 @@
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
+  let preferredHeightEnabled = $derived(hostOwnedConfig.editorMinLines !== undefined
+    && hostOwnedConfig.editorMaxLines !== undefined,
+  );
+  let preferredHeightInitialMeasurementComplete = $state(false);
+  let preferredHeightMountActive = false;
+  let preferredHeightMeasurementRaf: number | null = null;
 
   const composerLayoutMetrics = useComposerLayoutMetrics({
     setupViewportListener: () => setupViewportListener({
@@ -104,6 +116,37 @@
       ? Math.max(postEditorMinHeight, composerLayoutMetrics.composerAvailableHeight - composerLayoutMetrics.customEmojiPickerHeight)
       : composerLayoutMetrics.composerAvailableHeight,
   );
+
+  function measurePreferredHeight(): void {
+    if (!preferredHeightMountActive || !preferredHeightEnabled || !onPreferredHeightChange) return;
+    const surfaceHeight = composerScrollContentEl?.getBoundingClientRect().height;
+    if (!surfaceHeight || !Number.isFinite(surfaceHeight) || surfaceHeight <= 0) return;
+    const reservedHeight = (hostOwnedConfig.keyboardButtonBarEnabled !== false
+      ? KEYBOARD_BUTTON_BAR_HEIGHT
+      : 0) + (reasonInputVisibleStore.value ? REASON_INPUT_HEIGHT : 0);
+    onPreferredHeightChange(surfaceHeight + reservedHeight);
+  }
+
+  function schedulePreferredHeightMeasurement(): void {
+    if (
+      !preferredHeightMountActive
+      || !preferredHeightEnabled
+      || !preferredHeightInitialMeasurementComplete
+      || preferredHeightMeasurementRaf !== null
+    ) {
+      return;
+    }
+    preferredHeightMeasurementRaf = window.requestAnimationFrame(() => {
+      preferredHeightMeasurementRaf = null;
+      measurePreferredHeight();
+    });
+  }
+
+  $effect(() => {
+    reasonInputVisibleStore.value;
+    if (!preferredHeightEnabled || !preferredHeightInitialMeasurementComplete) return;
+    schedulePreferredHeightMeasurement();
+  });
 
   function notifyContextUpdated(): void {
     const contextUpdated = buildComposerContextUpdatedPayload(
@@ -232,7 +275,51 @@
 
   onMount(() => {
     replaceHostCustomEmojis(hostOwnedConfig.customEmojis);
-    void waitLocale().then(onInitialized);
+    if (!preferredHeightEnabled) {
+      void waitLocale().then(onInitialized);
+      return;
+    }
+
+    preferredHeightMountActive = true;
+    let initialMeasurementRaf: number | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const initializePreferredHeight = async () => {
+      await waitLocale();
+      await tick();
+      if (!preferredHeightMountActive) return;
+      await new Promise<void>((resolve) => {
+        initialMeasurementRaf = window.requestAnimationFrame(() => {
+          initialMeasurementRaf = null;
+          resolve();
+        });
+      });
+      if (!preferredHeightMountActive) return;
+
+      measurePreferredHeight();
+      preferredHeightInitialMeasurementComplete = true;
+
+      if (composerScrollContentEl && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(schedulePreferredHeightMeasurement);
+        resizeObserver.observe(composerScrollContentEl);
+      }
+      onInitialized();
+    };
+
+    void initializePreferredHeight();
+
+    return () => {
+      preferredHeightMountActive = false;
+      preferredHeightInitialMeasurementComplete = false;
+      if (initialMeasurementRaf !== null) {
+        window.cancelAnimationFrame(initialMeasurementRaf);
+      }
+      if (preferredHeightMeasurementRaf !== null) {
+        window.cancelAnimationFrame(preferredHeightMeasurementRaf);
+        preferredHeightMeasurementRaf = null;
+      }
+      resizeObserver?.disconnect();
+    };
   });
 </script>
 
@@ -240,7 +327,11 @@
   <main class="ehagaki-app-root host-owned-composer-lite">
     <div class="main-content">
       <div class="composer-scroll-region" bind:this={composerScrollRegionEl}>
-        <div class="composer-scroll-content" bind:this={composerScrollContentEl}>
+        <div
+          class="composer-scroll-content"
+          class:preferred-height-measurement={preferredHeightEnabled}
+          bind:this={composerScrollContentEl}
+        >
           {#if effectiveChannelContextState.value}
             <div class="composer-block composer-reference-block">
               <ChannelContextPreview
@@ -333,8 +424,11 @@
 
   .composer-scroll-region { width: 100%; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .composer-scroll-content { width: 100%; min-height: 100%; display: flex; flex: 1 0 auto; flex-direction: column; gap: 4px; }
+  .composer-scroll-content.preferred-height-measurement { min-height: 0; flex: 0 0 auto; }
   .composer-block { width: 100%; display: flex; flex-direction: column; align-items: center; min-width: 0; }
   .composer-post-block { flex: 1 1 auto; min-height: 0; }
   .composer-post-layout { width: 100%; max-width: 800px; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: stretch; }
+  .composer-scroll-content.preferred-height-measurement .composer-post-block,
+  .composer-scroll-content.preferred-height-measurement .composer-post-layout { flex: 0 0 auto; }
   .custom-emoji-picker-region { width: 100%; flex: 0 0 auto; min-height: 0; position: relative; z-index: 99; }
 </style>

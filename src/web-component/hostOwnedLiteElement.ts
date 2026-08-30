@@ -60,6 +60,16 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
     #hostCustomEmojiCatalog: EHagakiCustomEmojiCatalogItem[] = [];
     #hostOperationAbortController: AbortController | null = null;
     #hasEverConnected = false;
+    #preferredHeight: number | null = null;
+    #preferredHeightMountToken = 0;
+
+    /**
+     * The current Host-owned Lite intrinsic height, or null when this mount
+     * does not use editor auto-grow or has not measured yet.
+     */
+    get preferredHeight(): number | null {
+        return this.#preferredHeight;
+    }
 
     /**
      * Selects Host-owned publication exactly once before this element's first
@@ -98,6 +108,8 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
 
     protected override onConnectionAttempt(): void {
         this.#hasEverConnected = true;
+        this.#preferredHeightMountToken += 1;
+        this.#preferredHeight = null;
     }
 
     protected override getConnectionError() {
@@ -109,6 +121,8 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
     }
 
     protected override onDisconnected(): void {
+        this.#preferredHeightMountToken += 1;
+        this.#preferredHeight = null;
         this.#hostOperationAbortController?.abort();
         this.#hostOperationAbortController = null;
     }
@@ -122,11 +136,26 @@ export class EHagakiHostOwnedLiteComposerElement extends EHagakiComposerElement 
             throw new Error("Host-owned Composer Lite configuration is missing.");
         }
         this.#hostOperationAbortController = new AbortController();
+        const mountToken = this.#preferredHeightMountToken;
         return {
             hostOwnedConfig: {
                 ...this.#hostOwnedOptions,
                 customEmojis: this.#hostCustomEmojiCatalog.map((item) => ({ ...item })),
                 signal: this.#hostOperationAbortController.signal,
+            },
+            onPreferredHeightChange: (height: number) => {
+                if (
+                    !this.isConnected
+                    || mountToken !== this.#preferredHeightMountToken
+                    || !Number.isFinite(height)
+                    || height <= 0
+                ) {
+                    return;
+                }
+                const nextHeight = Math.ceil(height);
+                if (this.#preferredHeight === nextHeight) return;
+                this.#preferredHeight = nextHeight;
+                this.dispatchSafeEvent("ehagaki-preferred-height-change", { height: nextHeight });
             },
         };
     }
