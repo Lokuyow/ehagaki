@@ -17,8 +17,6 @@
     "complexity:thread-graph": "node scripts/threadGraphComplexityCheck.mjs",
     "test": "npm run complexity:thread-graph && vitest run",
     "test:unit": "npm run complexity:thread-graph && vitest run src/test/unit",
-    "test:agent": "npm run test -- --reporter=agent",
-    "test:unit:agent": "npm run test:unit -- --reporter=agent",
     "test:ui": "vitest --ui",
     "test:e2e": "npm run test:e2e:dev-server && npm run test:e2e:parallel",
     "test:e2e:dev-server": "playwright test --config=playwright.web-component-dev.config.ts",
