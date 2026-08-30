@@ -183,6 +183,7 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
             whenReady(): Promise<void>;
             setCustomEmojis(value: unknown): Promise<void>;
         };
+        composer.style.cssText = "display: block; height: 360px;";
         composer.configureHostOwned({
             submit(output: unknown) {
                 state.outputs.push(JSON.parse(JSON.stringify(output)));
@@ -221,7 +222,9 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await expect(editorSubmitButton).toBeDisabled();
     await expect(editor).toHaveAttribute("contenteditable", "true");
     expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
-    await editor.pressSequentially("ignored while pending");
+    await editor.press("Shift+Enter");
+    await editor.press("Backspace");
+    await editor.press("Control+z");
     await expect(editor).toHaveText("editor button content");
 
     await editorSubmitButton.dispatchEvent("click");
@@ -291,6 +294,7 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
         composer.configureHostOwned({
             submit: () => undefined,
             editorSubmitButtonEnabled: true,
+            contentWarningEnabled: true,
             editorMinLines: 1,
             editorMaxLines: 3,
         });
@@ -305,11 +309,8 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
     await expect(button).toBeVisible();
     const initialPreferredHeight = await composer.evaluate((element) => (element as any).preferredHeight);
     expect(initialPreferredHeight).toBeGreaterThan(0);
-    await editor.click();
-    await editor.pressSequentially("narrow width content ".repeat(10));
-    await expect.poll(() => composer.evaluate((element) => (element as any).preferredHeight)).toBeGreaterThan(initialPreferredHeight);
 
-    const geometry = await composer.evaluate((element) => {
+    const getGeometry = () => composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
         const editorElement = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
         const buttonElement = shadow.querySelector<HTMLElement>(".editor-submit-button")!;
@@ -326,11 +327,15 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
             componentClientWidth: element.clientWidth,
             editorScrollWidth: editorElement.scrollWidth,
             editorClientWidth: editorElement.clientWidth,
+            editorTop: editorRect.top,
             editorRight: editorRect.right,
+            editorBottom: editorRect.bottom,
             buttonRight: buttonRect.right,
             buttonLeft: buttonRect.left,
             buttonTop: buttonRect.top,
             buttonBottom: buttonRect.bottom,
+            buttonBottomInset: editorRect.bottom - buttonRect.bottom,
+            editorPaddingBottom: Number.parseFloat(getComputedStyle(editorElement).paddingBottom),
             textOverlapsButton: textRects.some((rect) => (
                 rect.right > buttonRect.left
                 && rect.left < buttonRect.right
@@ -339,13 +344,35 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
             )),
         };
     });
+    const expectButtonInsideEditor = (geometry: Awaited<ReturnType<typeof getGeometry>>) => {
+        expect(geometry.buttonTop).toBeGreaterThanOrEqual(geometry.editorTop - 1);
+        expect(geometry.buttonBottom).toBeLessThanOrEqual(geometry.editorBottom + 1);
+        expect(geometry.buttonBottomInset).toBeCloseTo(geometry.editorPaddingBottom, 0);
+    };
+
+    // A one-line editor has the smallest usable surface, so prove that the
+    // inline button is not clipped before testing the auto-grow case.
+    const shortGeometry = await getGeometry();
+    expectButtonInsideEditor(shortGeometry);
+
+    await editor.click();
+    await editor.pressSequentially("narrow width content ".repeat(10));
+    await expect.poll(() => composer.evaluate((element) => (element as any).preferredHeight)).toBeGreaterThan(initialPreferredHeight);
+
+    const geometry = await getGeometry();
     expect(geometry.componentWidth).toBe(280);
     expect(geometry.componentScrollWidth).toBeLessThanOrEqual(geometry.componentClientWidth);
     expect(geometry.editorScrollWidth).toBeLessThanOrEqual(geometry.editorClientWidth);
     expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.editorRight + 1);
     expect(geometry.buttonLeft).toBeGreaterThanOrEqual(0);
-    expect(geometry.buttonBottom).toBeGreaterThan(geometry.buttonTop);
+    expectButtonInsideEditor(geometry);
     expect(geometry.textOverlapsButton).toBe(false);
+
+    await composer.locator(".button-group-right button").first().click();
+    await expect(composer.locator("#content-warning-reason-input")).toBeVisible();
+    const contentWarningGeometry = await getGeometry();
+    expectButtonInsideEditor(contentWarningGeometry);
+    expect(contentWarningGeometry.buttonBottomInset).toBeCloseTo(geometry.buttonBottomInset, 0);
 });
 
 test("exposes the common editor empty state API through the Host-owned Lite element", async ({ page }) => {

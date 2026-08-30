@@ -261,11 +261,6 @@
   }
 
   function handleEditorContainerKeydown(event: KeyboardEvent) {
-    if (postStatus.sending) {
-      event.preventDefault();
-      return;
-    }
-
     if (
       !currentEditor ||
       event.currentTarget !== event.target ||
@@ -276,6 +271,15 @@
 
     event.preventDefault();
     currentEditor.commands.focus("end");
+  }
+
+  function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
+    if (!postStatus.sending) return;
+
+    // Keep the focused contenteditable surface during an inline submit, but
+    // stop the event before Tiptap's target keymap can create a transaction.
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   function handleEditorContainerBeforeInput(event: InputEvent) {
@@ -1072,6 +1076,7 @@
     class:editor-submit-enabled={showEditorSubmitButton}
     class:account-avatar-placeholder={showAccountPlaceholder}
     onclick={handleEditorContainerClick}
+    onkeydowncapture={handleEditorContainerKeydownCapture}
     onkeydown={handleEditorContainerKeydown}
     onbeforeinput={handleEditorContainerBeforeInput}
     use:fileDropActionWithDragState={{
@@ -1339,11 +1344,7 @@
   .editor-submit-button-container {
     position: absolute;
     inset-inline-end: var(--post-editor-block-padding);
-    bottom: calc(
-      var(--keyboard-button-bar-height, 0px) +
-      var(--reason-input-height, 0px) +
-      var(--post-editor-block-padding)
-    );
+    bottom: var(--post-editor-block-padding);
     z-index: 4;
   }
 
