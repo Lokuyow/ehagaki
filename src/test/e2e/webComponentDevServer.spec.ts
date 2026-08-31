@@ -320,6 +320,71 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("#last-submit-output")).toContainText("sample context body");
         await page.locator("#clear-log").click();
         await expect(page.locator("#log")).toHaveText("");
+
+        await page.locator("#editor-submit-button").check();
+        await page.locator("#keyboard-bar").uncheck();
+        await page.locator("#follow-preferred-height").check();
+        await page.locator("#create-composer").click();
+        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | editor submit: on | enter: submit | editor: 1/3");
+
+        const measureFollowedHeight = () => page.locator("#mount").evaluate((mount) => {
+            const composer = mount.querySelector("ehagaki-composer")! as HTMLElement & { preferredHeight: number | null };
+            const editor = composer.shadowRoot!.querySelector<HTMLElement>(".tiptap-editor")!;
+            const mountRect = mount.getBoundingClientRect();
+            const mountStyle = getComputedStyle(mount);
+            const borderHeight = Number.parseFloat(mountStyle.borderTopWidth) + Number.parseFloat(mountStyle.borderBottomWidth);
+            const preferredHeight = composer.preferredHeight;
+            if (preferredHeight === null) throw new Error("Lite Composer did not publish a preferred height.");
+            return {
+                preferredHeight,
+                editorHeight: editor.getBoundingClientRect().height,
+                mountHeight: mountRect.height,
+                mountContentHeight: mountRect.height - borderHeight,
+                bodyPaddingBottom: Number.parseFloat(getComputedStyle(document.body).paddingBottom),
+                log: document.querySelector("#log")!.textContent ?? "",
+            };
+        });
+
+        const followedEditor = page.locator("ehagaki-composer .tiptap-editor");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(50);
+        const oneLineGeometry = await measureFollowedHeight();
+        expect(oneLineGeometry.editorHeight).toBe(oneLineGeometry.preferredHeight);
+        expect(oneLineGeometry.mountContentHeight).toBeCloseTo(oneLineGeometry.preferredHeight, 0);
+        expect(oneLineGeometry.bodyPaddingBottom).toBe(oneLineGeometry.preferredHeight + 16);
+
+        await followedEditor.fill("one\ntwo");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(80);
+        const twoLineGeometry = await measureFollowedHeight();
+        expect(twoLineGeometry.editorHeight).toBe(twoLineGeometry.preferredHeight);
+        expect(twoLineGeometry.mountContentHeight).toBeCloseTo(twoLineGeometry.preferredHeight, 0);
+        expect(twoLineGeometry.mountHeight).toBeGreaterThan(oneLineGeometry.mountHeight);
+        expect(twoLineGeometry.log).toContain('ehagaki-preferred-height-change {"height":80}');
+
+        await followedEditor.fill("one\ntwo\nthree");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(110);
+        const threeLineGeometry = await measureFollowedHeight();
+        expect(threeLineGeometry.editorHeight).toBe(threeLineGeometry.preferredHeight);
+        expect(threeLineGeometry.mountContentHeight).toBeCloseTo(threeLineGeometry.preferredHeight, 0);
+        expect(threeLineGeometry.mountHeight).toBeGreaterThan(twoLineGeometry.mountHeight);
+
+        await followedEditor.fill("one\ntwo\nthree\nfour");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(110);
+        const cappedGeometry = await measureFollowedHeight();
+        expect(cappedGeometry.mountHeight).toBeCloseTo(threeLineGeometry.mountHeight, 0);
+        expect(cappedGeometry.editorHeight).toBe(threeLineGeometry.editorHeight);
+
+        await followedEditor.fill("one\ntwo");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(80);
+        const reducedTwoLineGeometry = await measureFollowedHeight();
+        expect(reducedTwoLineGeometry.mountHeight).toBeCloseTo(twoLineGeometry.mountHeight, 0);
+
+        await followedEditor.fill("one");
+        await expect.poll(async () => (await measureFollowedHeight()).preferredHeight).toBe(50);
+        const reducedOneLineGeometry = await measureFollowedHeight();
+        expect(reducedOneLineGeometry.mountHeight).toBeCloseTo(oneLineGeometry.mountHeight, 0);
+        expect(reducedOneLineGeometry.mountContentHeight).toBeCloseTo(reducedOneLineGeometry.preferredHeight, 0);
+        expect(reducedOneLineGeometry.log).toContain('ehagaki-preferred-height-change {"height":50}');
+
         const iconStatuses = await page.evaluate(async () => Promise.all([
             "paper-plane-solid-full.svg",
             "visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
