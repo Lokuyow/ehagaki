@@ -1,4 +1,8 @@
-import type { EHagakiHostOwnedComposerOptions } from "./types";
+import type {
+    EHagakiHostOwnedComposerOptions,
+    EHagakiHostSubmitShortcut,
+    EHagakiHostSubmitShortcutModifier,
+} from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -6,6 +10,93 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isPositiveSafeInteger(value: unknown): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+const SUBMIT_SHORTCUT_MODIFIER_BITS = {
+    ctrl: 1,
+    meta: 2,
+    alt: 4,
+    shift: 8,
+} as const;
+
+const SUBMIT_SHORTCUT_MODIFIERS = new Set<EHagakiHostSubmitShortcutModifier>([
+    "ctrl",
+    "meta",
+    "ctrlOrMeta",
+    "alt",
+    "shift",
+]);
+
+function getSubmitShortcutStates(
+    modifiers: readonly EHagakiHostSubmitShortcutModifier[],
+): number[] {
+    let requiredBits = 0;
+    const usesCtrlOrMeta = modifiers.includes("ctrlOrMeta");
+
+    for (const modifier of modifiers) {
+        if (modifier === "ctrlOrMeta") continue;
+        requiredBits |= SUBMIT_SHORTCUT_MODIFIER_BITS[modifier];
+    }
+
+    if (usesCtrlOrMeta) {
+        return [requiredBits | SUBMIT_SHORTCUT_MODIFIER_BITS.ctrl, requiredBits | SUBMIT_SHORTCUT_MODIFIER_BITS.meta];
+    }
+    return [requiredBits];
+}
+
+function validateAndSnapshotSubmitShortcuts(value: unknown): readonly EHagakiHostSubmitShortcut[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) {
+        throw new TypeError("submitShortcuts must be an array when provided.");
+    }
+
+    const occupiedStates = new Set<number>();
+    const snapshot: EHagakiHostSubmitShortcut[] = [];
+
+    for (const shortcut of value) {
+        if (!isRecord(shortcut)) {
+            throw new TypeError("Each submitShortcuts item must be an object.");
+        }
+        if (typeof shortcut.id !== "string" || shortcut.id.trim() === "") {
+            throw new TypeError("Each submitShortcuts item requires a non-blank string id.");
+        }
+        if (!Array.isArray(shortcut.modifiers) || shortcut.modifiers.length === 0) {
+            throw new TypeError("Each submitShortcuts item requires a non-empty modifiers array.");
+        }
+
+        const modifiers: EHagakiHostSubmitShortcutModifier[] = [];
+        const seenModifiers = new Set<string>();
+        for (const modifier of shortcut.modifiers) {
+            if (typeof modifier !== "string" || !SUBMIT_SHORTCUT_MODIFIERS.has(modifier as EHagakiHostSubmitShortcutModifier)) {
+                throw new TypeError("submitShortcuts contains an unknown modifier.");
+            }
+            if (seenModifiers.has(modifier)) {
+                throw new TypeError("submitShortcuts cannot contain duplicate modifiers.");
+            }
+            seenModifiers.add(modifier);
+            modifiers.push(modifier as EHagakiHostSubmitShortcutModifier);
+        }
+        if (
+            modifiers.includes("ctrlOrMeta")
+            && (modifiers.includes("ctrl") || modifiers.includes("meta"))
+        ) {
+            throw new TypeError("ctrlOrMeta cannot be combined with ctrl or meta.");
+        }
+
+        for (const state of getSubmitShortcutStates(modifiers)) {
+            if (occupiedStates.has(state)) {
+                throw new TypeError("submitShortcuts cannot contain overlapping modifier states.");
+            }
+            occupiedStates.add(state);
+        }
+
+        snapshot.push(Object.freeze({
+            id: shortcut.id,
+            modifiers: Object.freeze([...modifiers]),
+        }));
+    }
+
+    return Object.freeze(snapshot);
 }
 
 /** Validates and snapshots immutable Host-owned Lite mount options. */
@@ -56,6 +147,7 @@ export function validateHostOwnedOptions(value: unknown): EHagakiHostOwnedCompos
     const uploadMedia = value.uploadMedia as EHagakiHostOwnedComposerOptions["uploadMedia"];
     const editorMinLines = value.editorMinLines as number | undefined;
     const editorMaxLines = value.editorMaxLines as number | undefined;
+    const submitShortcuts = validateAndSnapshotSubmitShortcuts(value.submitShortcuts);
 
     return {
         submit,
@@ -75,6 +167,7 @@ export function validateHostOwnedOptions(value: unknown): EHagakiHostOwnedCompos
         ...(value.enterKeyBehavior !== undefined
             ? { enterKeyBehavior: value.enterKeyBehavior }
             : {}),
+        ...(submitShortcuts !== undefined ? { submitShortcuts } : {}),
         ...(hasEditorMinLines
             ? {
                 editorMinLines,

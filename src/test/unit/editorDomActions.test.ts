@@ -410,6 +410,23 @@ describe("keydownAction", () => {
         });
         expect(() => node.dispatchEvent(event)).not.toThrow();
     });
+
+    it("does not intercept keyboard shortcuts when disabled", () => {
+        destroy();
+        destroy = keydownAction(node, false).destroy;
+        mockedExtractContentWithImages.mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+
+        node.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(node.__submitPost).not.toHaveBeenCalled();
+    });
 });
 
 describe("fileDropActionWithDragState", () => {

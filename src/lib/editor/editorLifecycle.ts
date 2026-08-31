@@ -23,6 +23,8 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         onCustomEmojiSelect,
         getCustomEmojiItems,
         enterKeyBehavior,
+        hostOwnedLite,
+        submitShortcuts,
         uploadFiles,
         eventCallbacks
     } = params;
@@ -37,6 +39,8 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         onCustomEmojiSelect,
         getCustomEmojiItems,
         enterKeyBehavior,
+        hostOwnedLite,
+        submitShortcuts,
         onCreate: (editorInstance: TipTapEditor | null) => {
             currentEditorStore.set(editorInstance);
         }

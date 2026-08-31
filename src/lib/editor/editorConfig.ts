@@ -5,7 +5,7 @@ import Image from '@tiptap/extension-image';
 import { Placeholder, Focus } from '@tiptap/extensions';
 import { Extension, Editor, AnyExtension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
@@ -14,6 +14,8 @@ import UniqueID from './uniqueIdExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, CustomEmojiDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion, ToolbarCaretExtension } from '.';
 import type { CustomEmojiSelection } from '../customEmojiUsage';
 import type { CustomEmojiItem } from '../customEmoji';
+import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } from '../../web-component/types';
+import type { EditorSubmitTrigger } from '../types/editor';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -37,37 +39,26 @@ const ShiftEnterToParagraph = Extension.create({
     },
 });
 
-const SubmitOnPlainEnter = Extension.create<{ onSubmitPost: () => Promise<void> }>({
-    name: 'submitOnPlainEnter',
-    priority: 1000,
-    addProseMirrorPlugins() {
-        return [new Plugin({
-            props: {
-                handleKeyDown: (view, event) => {
-                    if (
-                        (event.key !== 'Enter' && event.key !== 'NumpadEnter') ||
-                        event.shiftKey ||
-                        event.ctrlKey ||
-                        event.metaKey ||
-                        event.altKey
-                    ) {
-                        return false;
-                    }
+type HostOwnedSubmitShortcut = Pick<EHagakiHostSubmitShortcut, 'modifiers'> & {
+    readonly id?: string;
+};
 
-                    // Composition-confirming Enter must remain with the native
-                    // editor/composition path instead of submitting the post.
-                    if (event.isComposing || event.keyCode === 229 || view.composing) {
-                        return false;
-                    }
+const DEFAULT_HOST_OWNED_SUBMIT_SHORTCUTS: readonly HostOwnedSubmitShortcut[] = [
+    { modifiers: ['ctrl'] },
+    { modifiers: ['meta'] },
+];
 
-                    event.preventDefault();
-                    void this.options.onSubmitPost();
-                    return true;
-                },
-            },
-        })];
-    },
-});
+function matchesHostOwnedSubmitShortcut(
+    event: KeyboardEvent,
+    modifiers: readonly EHagakiHostSubmitShortcutModifier[],
+): boolean {
+    const ctrlOrMeta = modifiers.includes('ctrlOrMeta');
+    if (ctrlOrMeta ? event.ctrlKey === event.metaKey : event.ctrlKey !== modifiers.includes('ctrl')) return false;
+    if (!ctrlOrMeta && event.metaKey !== modifiers.includes('meta')) return false;
+    if (event.altKey !== modifiers.includes('alt')) return false;
+    if (event.shiftKey !== modifiers.includes('shift')) return false;
+    return true;
+}
 
 const GapCursorFocusReset = Extension.create({
     name: 'gapCursorFocusReset',
@@ -161,10 +152,12 @@ const GapCursorFocusReset = Extension.create({
 
 export interface EditorConfigOptions {
     placeholderText: string;
-    onSubmitPost: () => Promise<void>;
+    onSubmitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
     enterKeyBehavior?: 'newline' | 'submit';
+    hostOwnedLite?: boolean;
+    submitShortcuts?: readonly EHagakiHostSubmitShortcut[];
     onUpdate?: () => void;
     onCreate?: (editor: Editor) => void;
     onDestroy?: () => void;
@@ -180,6 +173,8 @@ export function createEditorStore(options: EditorConfigOptions) {
         onCustomEmojiSelect,
         getCustomEmojiItems,
         enterKeyBehavior = 'newline',
+        hostOwnedLite = false,
+        submitShortcuts,
         onUpdate,
         onCreate,
         onDestroy,
@@ -188,9 +183,6 @@ export function createEditorStore(options: EditorConfigOptions) {
 
     const editorStore = createEditor({
         extensions: [
-            ...(enterKeyBehavior === 'submit'
-                ? [SubmitOnPlainEnter.configure({ onSubmitPost })]
-                : []),
             StarterKit.configure({
                 paragraph: {
                     HTMLAttributes: {
@@ -388,7 +380,35 @@ export function createEditorStore(options: EditorConfigOptions) {
                 }
                 return false;
             },
-            handleKeyDown: (_view, event) => {
+            handleKeyDown: (view, event) => {
+                if (hostOwnedLite) {
+                    if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return false;
+                    if (event.isComposing || event.keyCode === 229 || view.composing) return false;
+
+                    const configuredShortcuts: readonly HostOwnedSubmitShortcut[] =
+                        submitShortcuts === undefined
+                            ? DEFAULT_HOST_OWNED_SUBMIT_SHORTCUTS
+                            : submitShortcuts;
+                    const matchedShortcut = configuredShortcuts.find((shortcut) =>
+                        matchesHostOwnedSubmitShortcut(event, shortcut.modifiers));
+                    if (matchedShortcut) {
+                        event.preventDefault();
+                        if (matchedShortcut.id === undefined) {
+                            void onSubmitPost();
+                        } else {
+                            void onSubmitPost({ shortcutId: matchedShortcut.id });
+                        }
+                        return true;
+                    }
+
+                    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+                    if (enterKeyBehavior === 'submit') {
+                        event.preventDefault();
+                        void onSubmitPost();
+                        return true;
+                    }
+                    return false;
+                }
                 if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key === 'NumpadEnter')) {
                     event.preventDefault();
                     onSubmitPost();

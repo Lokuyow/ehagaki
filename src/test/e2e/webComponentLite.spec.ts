@@ -231,6 +231,7 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
         const state = {
             outputs: [] as any[],
+            submitOptions: [] as { hasShortcutId: boolean; shortcutId: string | null }[],
             failNext: false,
             resolveSubmit: null as ((value: unknown) => void) | null,
         };
@@ -242,8 +243,12 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
         };
         composer.style.cssText = "display: block; height: 360px;";
         composer.configureHostOwned({
-            submit(output: unknown) {
+            submit(output: unknown, options: { shortcutId?: string }) {
                 state.outputs.push(JSON.parse(JSON.stringify(output)));
+                state.submitOptions.push({
+                    hasShortcutId: Object.hasOwn(options, "shortcutId"),
+                    shortcutId: options.shortcutId ?? null,
+                });
                 if (state.failNext) {
                     state.failNext = false;
                     return Promise.reject(new Error("expected host failure"));
@@ -284,6 +289,10 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
     await editorSubmitButton.click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__liteEditorSubmitState.submitOptions[0])).toEqual({
+        hasShortcutId: false,
+        shortcutId: null,
+    });
     await expect(editorSubmitButton).toBeDisabled();
     await expect(editor).toHaveAttribute("contenteditable", "true");
     expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
@@ -304,6 +313,10 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await page.evaluate(() => { (window as any).__liteEditorSubmitState.failNext = true; });
     await editorSubmitButton.click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(2);
+    expect(await page.evaluate(() => (window as any).__liteEditorSubmitState.submitOptions[1])).toEqual({
+        hasShortcutId: false,
+        shortcutId: null,
+    });
     await expect(editor).toContainText("keep after editor button failure");
 });
 
@@ -1527,15 +1540,22 @@ test("Lite keyboard options hide the bar and submit plain Enter repeatedly", asy
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
-        const state = { outputs: [] as any[] };
+        const state = {
+            outputs: [] as any[],
+            submitOptions: [] as { hasShortcutId: boolean; shortcutId: string | null }[],
+        };
         (window as any).__liteKeyboardState = state;
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             configureHostOwned(value: unknown): void;
             whenReady(): Promise<void>;
         };
         composer.configureHostOwned({
-            submit(output: unknown) {
+            submit(output: unknown, options: { shortcutId?: string }) {
                 state.outputs.push(JSON.parse(JSON.stringify(output)));
+                state.submitOptions.push({
+                    hasShortcutId: Object.hasOwn(options, "shortcutId"),
+                    shortcutId: options.shortcutId ?? null,
+                });
                 return { eventId: "c".repeat(64) };
             },
             keyboardButtonBarEnabled: false,
@@ -1567,11 +1587,13 @@ test("Lite keyboard options hide the bar and submit plain Enter repeatedly", asy
     await editor.pressSequentially("first post");
     await editor.press("Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__liteKeyboardState.submitOptions[0])).toEqual({ hasShortcutId: false, shortcutId: null });
     await expect(editor).toHaveText("");
 
     await editor.pressSequentially("second post");
     await editor.press("Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteKeyboardState.outputs.length)).toBe(2);
+    expect(await page.evaluate(() => (window as any).__liteKeyboardState.submitOptions[1])).toEqual({ hasShortcutId: false, shortcutId: null });
     await expect(editor).toHaveText("");
 
     const waitForContentTracking = () => page.evaluate(() => new Promise<void>((resolve) => {
@@ -1604,15 +1626,22 @@ test("Lite default newline mode keeps Enter as a newline and Ctrl+Enter as submi
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
-        const state = { outputs: [] as unknown[] };
+        const state = {
+            outputs: [] as unknown[],
+            submitOptions: [] as { hasShortcutId: boolean; shortcutId: string | null }[],
+        };
         (window as any).__liteDefaultKeyboardState = state;
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             configureHostOwned(value: unknown): void;
             whenReady(): Promise<void>;
         };
         composer.configureHostOwned({
-            submit(output: unknown) {
+            submit(output: unknown, options: { shortcutId?: string }) {
                 state.outputs.push(output);
+                state.submitOptions.push({
+                    hasShortcutId: Object.hasOwn(options, "shortcutId"),
+                    shortcutId: options.shortcutId ?? null,
+                });
                 return { eventId: "d".repeat(64) };
             },
         });
@@ -1637,7 +1666,96 @@ test("Lite default newline mode keeps Enter as a newline and Ctrl+Enter as submi
 
     await editor.press("Control+Enter");
     await expect.poll(() => page.evaluate(() => (window as any).__liteDefaultKeyboardState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__liteDefaultKeyboardState.submitOptions[0])).toEqual({ hasShortcutId: false, shortcutId: null });
     await expect(editor).toHaveText("");
+});
+
+test("Lite explicit submit shortcuts replace defaults and pass only the matched shortcut ID", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { calls: [] as { id: string | null; hasId: boolean }[] };
+        (window as any).__liteExplicitShortcutState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(_output: unknown, options: { shortcutId?: string }) {
+                state.calls.push({ id: options.shortcutId ?? null, hasId: Object.hasOwn(options, "shortcutId") });
+                return { eventId: "f".repeat(64) };
+            },
+            submitShortcuts: [
+                { id: "primary", modifiers: ["ctrlOrMeta"] },
+                { id: "alt", modifiers: ["alt"] },
+                { id: "shift", modifiers: ["shift"] },
+            ],
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("ctrl");
+    await editor.press("Control+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteExplicitShortcutState.calls.length)).toBe(1);
+    await editor.pressSequentially("meta");
+    await editor.press("Meta+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteExplicitShortcutState.calls.length)).toBe(2);
+    await editor.pressSequentially("alt");
+    await editor.press("Alt+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteExplicitShortcutState.calls.length)).toBe(3);
+    await editor.pressSequentially("shift");
+    await page.evaluate(() => {
+        const editor = document.querySelector("ehagaki-composer")?.shadowRoot?.querySelector<HTMLElement>(".tiptap-editor");
+        editor?.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+            shiftKey: true,
+        }));
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).__liteExplicitShortcutState.calls.length)).toBe(4);
+
+    expect(await page.evaluate(() => (window as any).__liteExplicitShortcutState.calls)).toEqual([
+        { id: "primary", hasId: true },
+        { id: "primary", hasId: true },
+        { id: "alt", hasId: true },
+        { id: "shift", hasId: true },
+    ]);
+
+    await editor.pressSequentially("extra modifier");
+    await editor.press("Control+Shift+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteExplicitShortcutState.calls.length)).toBe(4);
+    await expect(editor).toContainText("extra modifier");
+});
+
+test("Lite explicit empty submit shortcuts disable modified Enter submit", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { calls: 0 };
+        (window as any).__liteDisabledShortcutState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit() { state.calls += 1; return { eventId: "g".repeat(64) }; },
+            submitShortcuts: [],
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const editor = page.locator("ehagaki-composer .tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("disabled");
+    await editor.press("Control+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteDisabledShortcutState.calls)).toBe(0);
+    await expect(editor).toContainText("disabled");
 });
 
 test("Lite requires pre-connect Host-owned configuration without making assetBase a hard error", async ({ page }) => {

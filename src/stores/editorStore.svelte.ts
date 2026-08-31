@@ -1,5 +1,6 @@
 import type { PostStatus, EditorState } from '../lib/types';
 import type { Editor as TipTapEditor } from '@tiptap/core';
+import type { EditorSubmitTrigger } from '../lib/types/editor';
 import {
     updateEditorPlaceholder
 } from '../lib/editor';
@@ -108,21 +109,20 @@ export function updatePlaceholderText(text: string): void {
 }
 
 // --- 投稿機能の統合 ---
-let postComponentSubmit: (() => Promise<void>) | undefined = undefined;
+let postComponentSubmit: ((trigger?: EditorSubmitTrigger) => Promise<void>) | undefined = undefined;
 
-export function setPostSubmitter(submitter: () => Promise<void>) {
+export function setPostSubmitter(submitter: (trigger?: EditorSubmitTrigger) => Promise<void>) {
     postComponentSubmit = submitter;
 }
 
-export function clearPostSubmitter(submitter?: () => Promise<void>): void {
+export function clearPostSubmitter(submitter?: (trigger?: EditorSubmitTrigger) => Promise<void>): void {
     if (!submitter || postComponentSubmit === submitter) {
         postComponentSubmit = undefined;
     }
 }
 
-export async function submitPost() {
+export async function submitPost(trigger?: EditorSubmitTrigger) {
     if (postComponentSubmit) {
-        await postComponentSubmit();
+        await postComponentSubmit(trigger);
     }
 }
-

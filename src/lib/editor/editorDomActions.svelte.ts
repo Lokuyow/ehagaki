@@ -261,8 +261,9 @@ export function touchAction(node: HTMLElement) {
 }
 
 // keydownAction
-export function keydownAction(node: HTMLElement) {
+export function keydownAction(node: HTMLElement, enabled = true) {
     function handleEditorKeydown(event: KeyboardEvent) {
+        if (!enabled) return;
         if (
             (event.ctrlKey || event.metaKey) &&
             (event.key === "Enter" || event.key === "NumpadEnter")

@@ -357,9 +357,10 @@ chunks、MediaBunny、optional AAC encoder、image compression が同じ distrib
 ```js
 const composer = document.createElement('ehagaki-composer');
 composer.configureHostOwned({
-  async submit(output, { signal }) {
+  async submit(output, { signal, shortcutId }) {
     // The host owns kind, tags that express references, pubkey, timestamp,
     // signing and publication. `output` is not an unsigned Nostr event.
+    console.log('submit shortcut:', shortcutId ?? 'none');
     const result = await publishFromHost(output, { signal });
     return { eventId: result.id };
   },
@@ -373,6 +374,10 @@ composer.configureHostOwned({
   keyboardButtonBarEnabled: true,
   editorSubmitButtonEnabled: false,
   enterKeyBehavior: 'newline',
+  submitShortcuts: [
+    { id: 'primary', modifiers: ['ctrlOrMeta'] },
+    { id: 'alternate', modifiers: ['alt'] },
+  ],
   editorMinLines: 1,
   editorMaxLines: 3,
 });
@@ -421,6 +426,22 @@ catalog などの capability 自体を自動的に無効化しません。paste/
 経路は維持されます。`enterKeyBehavior` の既定値は `'newline'` です。`'submit'` にすると plain Enter
 で投稿し、Shift+Enter は改行、Ctrl/Cmd+Enter は従来どおり投稿します。IME の変換確定 Enter は投稿に
 使用されません。これら2つは `configureHostOwned()` の mount-time 設定であり、HTML attribute や
+`setSettings()` ではありません。
+
+`submitShortcuts` は Host-owned Lite の mount-time option で、`Enter` または `NumpadEnter` と組み合わせる
+modified Enter submit を Host が定義します。各 shortcut は opaque な `id` と、順序によらない
+`modifiers`（`ctrl`、`meta`、`ctrlOrMeta`、`alt`、`shift`）を持ち、modifier state は完全一致します。
+指定されていない modifier が追加された場合は一致しません。`ctrlOrMeta` は Ctrl または Meta の一方だけを
+意味し、Ctrl+Meta は `['ctrl', 'meta']` で明示します。同じ物理 modifier state に重なる shortcut は
+`TypeError` です。`submitShortcuts` を省略すると従来の Ctrl+Enter / Meta+Enter が使えますが ID は渡されません。
+明示的な配列は default を置換し、`[]` は modified Enter submit を無効化します。
+
+plain Enter は引き続き `enterKeyBehavior` が所有します。`'newline'` では改行、`'submit'` では IDなしの
+submit です。Shift の shortcut を設定しなければ Shift+Enter は従来の paragraph split に委譲され、設定した
+場合だけその shortcut の ID付き submit になります。shortcut submit の場合のみ `submit` の options に
+`shortcutId` property が含まれ、button submit、plain Enter、通常の default submit では property 自体が
+含まれません。`event.isComposing`、keyCode 229、editor composing state の Enter は submit されず、
+native IME path に委譲されます。これも `configureHostOwned()` の mount-time option であり、HTML attribute や
 `setSettings()` ではありません。
 
 `editorSubmitButtonEnabled` は Host-owned Lite の Editor surface 右下に小さな投稿ボタンを表示する
