@@ -1732,6 +1732,81 @@ test("Lite explicit submit shortcuts replace defaults and pass only the matched 
     await expect(editor).toContainText("extra modifier");
 });
 
+test("Lite host-defined NumpadEnter shortcut prevents duplicate pending submits and clears on success", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = {
+            calls: [] as { id: string | null; content: string }[],
+            resolveSubmit: null as ((value: unknown) => void) | null,
+            events: [] as string[],
+        };
+        (window as any).__liteNumpadShortcutState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(options: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: { content: string }, options: { shortcutId?: string }) {
+                state.calls.push({ id: options.shortcutId ?? null, content: output.content });
+                return new Promise((resolve) => { state.resolveSubmit = resolve; });
+            },
+            submitShortcuts: [{ id: "numpad-primary", modifiers: ["ctrl"] }],
+        });
+        composer.addEventListener("ehagaki-post-success", () => state.events.push("success"));
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("numpad pending");
+    await editor.press("Control+NumpadEnter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteNumpadShortcutState.calls.length)).toBe(1);
+    await editor.press("Control+NumpadEnter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteNumpadShortcutState.calls.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__liteNumpadShortcutState.calls)).toEqual([
+        { id: "numpad-primary", content: "numpad pending" },
+    ]);
+    await page.evaluate(() => (window as any).__liteNumpadShortcutState.resolveSubmit({ eventId: "e".repeat(64) }));
+    await expect.poll(() => page.evaluate(() => (window as any).__liteNumpadShortcutState.events)).toContain("success");
+    await expect(editor).toHaveText("");
+});
+
+test("Lite host-defined shortcut retains content when the Host submit rejects", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { calls: [] as string[] };
+        (window as any).__liteRejectedShortcutState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(options: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit(output: { content: string }, options: { shortcutId?: string }) {
+                state.calls.push(`${options.shortcutId}:${output.content}`);
+                return Promise.reject(new Error("expected shortcut failure"));
+            },
+            submitShortcuts: [{ id: "reject-shortcut", modifiers: ["alt"] }],
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await editor.click();
+    await editor.pressSequentially("keep shortcut content");
+    await editor.press("Alt+Enter");
+    await expect.poll(() => page.evaluate(() => (window as any).__liteRejectedShortcutState.calls.length)).toBe(1);
+    await expect(editor).toHaveText("keep shortcut content");
+    expect(await page.evaluate(() => (window as any).__liteRejectedShortcutState.calls)).toEqual([
+        "reject-shortcut:keep shortcut content",
+    ]);
+});
+
 test("Lite explicit empty submit shortcuts disable modified Enter submit", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {

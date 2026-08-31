@@ -13,12 +13,13 @@ describe("editorConfig submit-on-plain-Enter", () => {
     function createEditor(
         enterKeyBehavior?: "newline" | "submit",
         submitShortcuts?: readonly { id: string; modifiers: readonly string[] }[],
+        hostOwnedLite: boolean | undefined = true,
     ) {
         const onSubmitPost = vi.fn(async () => undefined);
         const store = createEditorStore({
             placeholderText: "",
             onSubmitPost,
-            hostOwnedLite: true,
+            hostOwnedLite,
             enterKeyBehavior,
             submitShortcuts: submitShortcuts as any,
         });
@@ -157,6 +158,31 @@ describe("editorConfig submit-on-plain-Enter", () => {
         });
         expect(runKeydown(editor, event)).toBe(true);
         expect(onSubmitPost).toHaveBeenCalledWith({ shortcutId: id });
+    });
+
+    it("keeps the non-Lite Ctrl/Meta submit path separate from Host-owned shortcuts", () => {
+        const { editor, onSubmitPost } = createEditor("newline", [
+            { id: "alt-submit", modifiers: ["alt"] },
+        ], false);
+
+        for (const event of [
+            new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, cancelable: true }),
+            new KeyboardEvent("keydown", { key: "NumpadEnter", metaKey: true, cancelable: true }),
+        ]) {
+            expect(runKeydown(editor, event)).toBe(true);
+            expect(event.defaultPrevented).toBe(true);
+        }
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
+        expect(onSubmitPost).toHaveBeenNthCalledWith(1);
+        expect(onSubmitPost).toHaveBeenNthCalledWith(2);
+
+        const hostOwnedShortcut = new KeyboardEvent("keydown", {
+            key: "Enter",
+            altKey: true,
+            cancelable: true,
+        });
+        expect(runKeydown(editor, hostOwnedShortcut)).toBe(false);
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
     });
 
     it("does not submit modified Enter when explicitly disabled", () => {
