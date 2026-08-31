@@ -70,11 +70,7 @@
   } from "../lib/editor/editorLifecycle";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
-  import {
-    focusEditorWithoutKeyboardForCurrentTap,
-    isComposerKeyboardVisible,
-    preventKeyboardFocusChange,
-  } from "../lib/utils/keyboardFocusUtils";
+  import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import {
     profileDataStore,
@@ -289,15 +285,8 @@
     }
   }
 
-  function handleEditorSubmitButtonPress(event: Event): void {
-    // On a visible software keyboard, preventing touchstart suppresses the
-    // native click on Android. Keep pointerdown prevention to retain editor
-    // focus, but allow touchstart to produce the button click.
-    if (isComposerKeyboardVisible() && event.type === "touchstart") {
-      return;
-    }
-
-    preventKeyboardFocusChange(event);
+  function handleEditorSubmitButtonPointerDown(event: PointerEvent): void {
+    event.preventDefault();
   }
 
   function restoreEditorFocusAfterEditorSubmitButtonFocus(
@@ -1141,9 +1130,7 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="editor-submit-button-container"
-        onpointerdowncapture={handleEditorSubmitButtonPress}
-        ontouchstartcapture={handleEditorSubmitButtonPress}
-        onmousedowncapture={handleEditorSubmitButtonPress}
+        onpointerdowncapture={handleEditorSubmitButtonPointerDown}
       >
         <Button
           variant="primary"

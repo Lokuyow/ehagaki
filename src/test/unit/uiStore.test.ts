@@ -1054,7 +1054,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('container mode は host policy を変更せず、getter が false でも VirtualKeyboard rect を使う', async () => {
+    it('container mode は overlay mode の VirtualKeyboard rect を使い、host policy を維持する', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
         const runtime = await import('../../lib/appRuntimeEnvironment');
@@ -1082,6 +1082,7 @@ describe('uiStore', () => {
             .mockImplementation(() => { });
         createVisualViewportMock(800);
         const virtualKeyboard = createVirtualKeyboardMock();
+        virtualKeyboard.virtualKeyboard.overlaysContent = true;
         const {
             bottomPositionStore,
             keyboardHeightStore,
@@ -1091,7 +1092,7 @@ describe('uiStore', () => {
 
         const cleanup = setupViewportListener();
 
-        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(true);
         expect(virtualKeyboard.virtualKeyboard.addEventListener).toHaveBeenCalledWith(
             'geometrychange',
             expect.any(Function),
@@ -1110,7 +1111,7 @@ describe('uiStore', () => {
         expect(layoutTarget.style.getPropertyValue('--reason-input-bottom')).toBe('250px');
 
         cleanup?.();
-        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(true);
         requestAnimationFrameSpy.mockRestore();
         cancelAnimationFrameSpy.mockRestore();
     });
@@ -1160,6 +1161,7 @@ describe('uiStore', () => {
             .mockImplementation(() => { });
         createVisualViewportMock(800);
         const virtualKeyboard = createVirtualKeyboardMock();
+        virtualKeyboard.virtualKeyboard.overlaysContent = true;
         const { keyboardHeightStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
         const cleanup = setupViewportListener();
 
@@ -1264,6 +1266,55 @@ describe('uiStore', () => {
         const cleanup = setupViewportListener();
 
         expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
+        expect(virtualKeyboard.virtualKeyboard.boundingRect.height).toBe(0);
+        expect(layoutTarget.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(layoutTarget.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
+        expect(keyboardHeightStore.value).toBe(0);
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
+    it('container mode は resizes-visual の auto-pan false-negative を keyboard hidden として観測する', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const runtime = await import('../../lib/appRuntimeEnvironment');
+        const layoutTarget = document.createElement('div');
+        Object.defineProperty(layoutTarget, 'getBoundingClientRect', {
+            configurable: true,
+            value: vi.fn(() => ({ bottom: 780, height: 360 })),
+        });
+        runtime.configureAppRuntimeEnvironment({
+            layoutMode: 'container',
+            styleTarget: layoutTarget,
+            layoutTarget,
+            overlayTarget: layoutTarget,
+            themeTarget: layoutTarget,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 780,
+        });
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+        createVisualViewportMock(528, 252);
+        const virtualKeyboard = createVirtualKeyboardMock();
+        const { keyboardHeightStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
+
+        const cleanup = setupViewportListener();
+
+        expect(virtualKeyboard.virtualKeyboard.overlaysContent).toBe(false);
+        expect(virtualKeyboard.virtualKeyboard.boundingRect.height).toBe(0);
+        expect(layoutTarget.style.getPropertyValue('--keyboard-height')).toBe('0px');
         expect(layoutTarget.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(layoutTarget.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('66px');
         expect(keyboardHeightStore.value).toBe(0);

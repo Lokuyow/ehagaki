@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!assets/|web-component(?:/|$)|host-owned-composer-lite-android-diagnostic(?:/|$)|web-component-parent-client-example\\.(?:html|js)$|host-owned-composer-lite-example\\.html$).*)",
+      "source": "/((?!assets/|web-component(?:/|$)|web-component-parent-client-example\\.(?:html|js)$|host-owned-composer-lite-example\\.html$).*)",
       "destination": "/index.html"
     }
   ],
