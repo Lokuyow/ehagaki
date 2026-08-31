@@ -282,6 +282,16 @@
     return applied;
   }
 
+  /** Public in-process editor control used by the Host-owned Lite element. */
+  export function focusEditor(): void {
+    postComponentRef?.focusEditor?.();
+  }
+
+  /** Public in-process editor control used by the Host-owned Lite element. */
+  export function blurEditor(): void {
+    postComponentRef?.blurEditor?.();
+  }
+
   onMount(() => {
     replaceHostCustomEmojis(hostOwnedConfig.customEmojis);
     if (!preferredHeightEnabled) {

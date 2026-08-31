@@ -22,6 +22,8 @@ type AppInstance = {
     setEmbedSettings(
         payload: EmbedSettingsSetPayload,
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>>;
+    focusEditor(): void;
+    blurEditor(): void;
 };
 
 let activeInstance: EHagakiComposerElement | null = null;
@@ -237,6 +239,20 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
         return this.enqueue(async () =>
             this.requireApp().setEmbedSettings(validateSettings(settings)));
+    }
+
+    /** Focus the current Editor after the existing ready/operation boundary. */
+    focusEditor(): Promise<void> {
+        return this.enqueue(async () => {
+            this.requireApp().focusEditor();
+        });
+    }
+
+    /** Blur the current Editor after the existing ready/operation boundary. */
+    blurEditor(): Promise<void> {
+        return this.enqueue(async () => {
+            this.requireApp().blurEditor();
+        });
     }
 
     dispatchSafeEvent(type: string, detail: Record<string, unknown>): boolean {

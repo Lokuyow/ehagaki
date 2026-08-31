@@ -357,6 +357,61 @@ test("exposes the common editor empty state API through the Full element", async
     });
 });
 
+test("controls the Full editor focus through the public API without changing content or caret", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            focusEditor(): Promise<void>;
+            blurEditor(): Promise<void>;
+        };
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.focusEditor();
+        (window as any).__fullFocusApiComposer = composer;
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(true);
+    await editor.pressSequentially("full focus api text");
+    await editor.press("ArrowLeft");
+    const beforeBlur = await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        return {
+            text: element.textContent,
+            anchorOffset: selection?.anchorOffset ?? null,
+            anchorText: selection?.anchorNode?.textContent ?? null,
+        };
+    });
+
+    await page.evaluate(async () => {
+        await (window as any).__fullFocusApiComposer.blurEditor();
+    });
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(false);
+
+    await page.evaluate(async () => {
+        await (window as any).__fullFocusApiComposer.focusEditor();
+    });
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(true);
+    const afterFocus = await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        return {
+            text: element.textContent,
+            anchorOffset: selection?.anchorOffset ?? null,
+            anchorText: selection?.anchorNode?.textContent ?? null,
+        };
+    });
+    expect(afterFocus).toEqual(beforeBlur);
+});
+
 test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.route("**/PostComponent-*.js", (route) => route.abort());

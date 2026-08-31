@@ -269,6 +269,24 @@ await settingsPromise;
 await contextPromise;
 ```
 
+## エディターの focus / blur を制御する `focusEditor()` / `blurEditor()`
+
+Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在 mount
+されている投稿エディターを公開メソッドから制御できます。どちらも既存の operation queue に入り、
+`Promise<void>` を返します。接続前・準備完了前の呼び出しも既存の queue 方針に従って保留されるため、
+通常は `whenReady()` と組み合わせて呼び出してください。
+
+```js
+await composer.focusEditor();
+// 現在の本文と EditorState の selection は維持されます。
+await composer.blurEditor();
+```
+
+`focusEditor()` は現在の TipTap/ProseMirror Editor instance にフォーカスするだけで、focus のために
+caret や selection を本文の末尾・先頭へ移動しません。`blurEditor()` も本文や EditorState の selection
+をクリアせず、Editor を再生成しません。Shadow DOM 内部の selector を host が調べる必要はありません。
+この2つのメソッドは iframe の `postMessage` API には追加されていません。
+
 ## エディターが空かどうかを取得する `editorIsEmpty`
 
 Full self-publish と Host-owned Composer Lite のどちらの `<ehagaki-composer>` でも、現在の Composer
