@@ -217,8 +217,8 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await expect(editorSubmitIcon).toHaveCSS("inline-size", "22px");
     await expect(editorSubmitIcon).toHaveCSS("block-size", "22px");
     const editorSubmitIconBox = await editorSubmitIcon.boundingBox();
-    expect(editorSubmitIconBox?.width).toBe(22);
-    expect(editorSubmitIconBox?.height).toBe(22);
+    expect(editorSubmitIconBox?.width).toBeCloseTo(22, 3);
+    expect(editorSubmitIconBox?.height).toBeCloseTo(22, 3);
 
     await editor.click();
     await editor.pressSequentially("editor button content");
@@ -623,11 +623,14 @@ test("Lite editor submit button centers on each visible auto-grow line", async (
         };
     }, lineCount);
 
-    for (const [content, lineCount] of [["one", 1], ["one\ntwo", 2], ["one\ntwo\nthree", 3]] as const) {
-        await editor.fill(content);
-        await expect.poll(async () => (await getLineGeometry(lineCount)).editorHeight).toBe(20 + lineCount * 30);
+    await editor.click();
+    for (const [text, lineCount] of [["one", 1], ["two", 2], ["three", 3]] as const) {
+        await editor.pressSequentially(text);
+        await expect.poll(async () => (await getLineGeometry(lineCount)).editorHeight)
+            .toBeCloseTo(20 + lineCount * 30, 3);
         const geometry = await getLineGeometry(lineCount);
         expect(Math.abs(geometry.buttonCenter - geometry.expectedLastLineCenter)).toBeLessThanOrEqual(0.5);
+        if (lineCount < 3) await editor.press("Enter");
     }
 });
 
