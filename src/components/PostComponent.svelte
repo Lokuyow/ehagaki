@@ -1245,6 +1245,8 @@
     align-items: stretch;
     overflow: visible;
     --post-editor-block-padding: 10px;
+    --post-editor-line-height: 30px;
+    --post-editor-submit-button-size: 40px;
   }
 
   .upload-error {
@@ -1367,10 +1369,17 @@
     z-index: 4;
   }
 
+  .post-container.editor-auto-grow .editor-submit-button-container {
+    bottom: calc(
+      var(--post-editor-block-padding) +
+      (var(--post-editor-line-height) - var(--post-editor-submit-button-size)) / 2
+    );
+  }
+
   :global(.editor-submit-button) {
-    width: 40px;
-    height: 40px;
-    flex: 0 0 40px;
+    width: var(--post-editor-submit-button-size);
+    height: var(--post-editor-submit-button-size);
+    flex: 0 0 var(--post-editor-submit-button-size);
   }
 
   :global(button.editor-submit-button .plane-icon.svg-icon) {
@@ -1396,7 +1405,7 @@
     padding: var(--post-editor-block-padding);
     font-family: inherit;
     font-size: 1.25rem;
-    line-height: 1.5;
+    line-height: var(--post-editor-line-height);
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;
