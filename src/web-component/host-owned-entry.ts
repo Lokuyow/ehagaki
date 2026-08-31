@@ -21,6 +21,9 @@ export type {
     EHagakiHostSubmissionResult,
     EHagakiHostMediaMetadata,
     EHagakiHostMediaUploadResult,
+    EHagakiHostSubmitOptions,
+    EHagakiHostSubmitShortcut,
+    EHagakiHostSubmitShortcutModifier,
     EHagakiHostOwnedComposerOptions,
     EHagakiCustomEmojiCatalogItem,
 } from "./types";

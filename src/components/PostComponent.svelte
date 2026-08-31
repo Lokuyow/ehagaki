@@ -10,6 +10,7 @@
     FullscreenMediaItem,
     PostResult,
     UploadHelperResult,
+    EditorSubmitTrigger,
   } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
@@ -511,6 +512,10 @@
       enterKeyBehavior: isHostOwned
         ? hostOwnedConfig?.enterKeyBehavior
         : undefined,
+      hostOwnedLite: isHostOwned,
+      submitShortcuts: isHostOwned
+        ? hostOwnedConfig?.submitShortcuts
+        : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
             void uploadHandlers.performUpload(files);
@@ -877,7 +882,10 @@
     return mediaMetadata;
   }
 
-  async function submitHostOwned(editorInstance: TipTapEditor): Promise<void> {
+  async function submitHostOwned(
+    editorInstance: TipTapEditor,
+    trigger?: EditorSubmitTrigger,
+  ): Promise<void> {
     const config = hostOwnedConfig;
     if (!config || !canStartHostOwnedSubmit(editorInstance)) return;
 
@@ -912,7 +920,10 @@
     postStatusHandlers.markSending();
     try {
       const output = await buildHostOwnedComposerOutput(snapshot);
-      const result = await config.submit(output, { signal: config.signal });
+      const submitOptions = trigger?.shortcutId !== undefined
+        ? { signal: config.signal, shortcutId: trigger.shortcutId }
+        : { signal: config.signal };
+      const result = await config.submit(output, submitOptions);
       if (config.signal.aborted) return;
       const eventId = getHostSubmissionEventId(result);
       notificationPort?.notifyPostSuccess({
@@ -948,10 +959,10 @@
     }
   }
 
-  export async function submitPost() {
+  export async function submitPost(trigger?: EditorSubmitTrigger) {
     if (!currentEditor) return;
     if (isHostOwned) {
-      await submitHostOwned(currentEditor);
+      await submitHostOwned(currentEditor, trigger);
       return;
     }
     if (!canStartSubmit()) return;
@@ -1161,7 +1172,7 @@
     }}
     use:pasteAction
     use:touchAction
-    use:keydownAction
+    use:keydownAction={!isHostOwned}
     aria-label={$_("postComponent.editor_label")}
     aria-disabled={postStatus.sending ? "true" : undefined}
     role="textbox"

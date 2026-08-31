@@ -5,6 +5,7 @@ import type { MediaGalleryItem } from "./media";
 import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
 import type { CustomEmojiItem } from "../customEmoji";
+import type { EHagakiHostSubmitShortcut } from "../../web-component/types";
 
 // Post and Editor types
 export interface PostStatus {
@@ -106,6 +107,10 @@ export interface EditorEventHandlers {
     handleSelectImageNode: EventListener;
 }
 
+export interface EditorSubmitTrigger {
+    readonly shortcutId?: string;
+}
+
 export interface SetupEventListenersParams {
     currentEditor: TipTapEditor | null;
     editorContainerEl: HTMLElement | null;
@@ -118,10 +123,12 @@ export interface InitializeEditorParams {
     currentEditor: TipTapEditor | null;
     hasStoredKey: boolean;
     hasPostingCapability?: boolean;
-    submitPost: () => Promise<void>;
+    submitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     getCustomEmojiItems?: () => CustomEmojiItem[];
     enterKeyBehavior?: "newline" | "submit";
+    hostOwnedLite?: boolean;
+    submitShortcuts?: readonly EHagakiHostSubmitShortcut[];
     uploadFiles?: (files: File[] | FileList) => void;
     eventCallbacks: EditorEventCallbacks;
 }
@@ -138,7 +145,7 @@ export interface CleanupEditorParams {
     handlers: EditorEventHandlers;
     currentEditor: TipTapEditor | null;
     editorContainerEl: HTMLElement | null;
-    submitPost: () => Promise<void>;
+    submitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
 }
 
 // Draft types

@@ -63,10 +63,27 @@ export interface EHagakiHostMediaUploadResult {
     imeta?: Record<string, string>;
 }
 
+export type EHagakiHostSubmitShortcutModifier =
+    | "ctrl"
+    | "meta"
+    | "ctrlOrMeta"
+    | "alt"
+    | "shift";
+
+export interface EHagakiHostSubmitShortcut {
+    readonly id: string;
+    readonly modifiers: readonly EHagakiHostSubmitShortcutModifier[];
+}
+
+export interface EHagakiHostSubmitOptions {
+    readonly signal: AbortSignal;
+    readonly shortcutId?: string;
+}
+
 export interface EHagakiHostOwnedComposerOptions {
     submit: (
         output: Readonly<EHagakiComposerOutput>,
-        options: { signal: AbortSignal },
+        options: EHagakiHostSubmitOptions,
     ) => Promise<EHagakiHostSubmissionResult | void> | EHagakiHostSubmissionResult | void;
     uploadMedia?: (
         file: File,
@@ -78,6 +95,7 @@ export interface EHagakiHostOwnedComposerOptions {
     keyboardButtonBarEnabled?: boolean;
     editorSubmitButtonEnabled?: boolean;
     enterKeyBehavior?: "newline" | "submit";
+    submitShortcuts?: readonly EHagakiHostSubmitShortcut[];
     /** Enables intrinsic editor sizing only when supplied with editorMaxLines. */
     editorMinLines?: number;
     /** Enables intrinsic editor sizing only when supplied with editorMinLines. */

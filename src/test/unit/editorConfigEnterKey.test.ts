@@ -10,12 +10,18 @@ describe("editorConfig submit-on-plain-Enter", () => {
         unsubscribe = undefined;
     });
 
-    function createEditor(enterKeyBehavior?: "newline" | "submit") {
+    function createEditor(
+        enterKeyBehavior?: "newline" | "submit",
+        submitShortcuts?: readonly { id: string; modifiers: readonly string[] }[],
+        hostOwnedLite: boolean | undefined = true,
+    ) {
         const onSubmitPost = vi.fn(async () => undefined);
         const store = createEditorStore({
             placeholderText: "",
             onSubmitPost,
+            hostOwnedLite,
             enterKeyBehavior,
+            submitShortcuts: submitShortcuts as any,
         });
         unsubscribe = store.subscribe(() => undefined);
         const editor = get(store);
@@ -55,6 +61,7 @@ describe("editorConfig submit-on-plain-Enter", () => {
         expect(runKeydown(editor, event)).toBe(true);
         expect(event.defaultPrevented).toBe(true);
         expect(onSubmitPost).toHaveBeenCalledOnce();
+        expect(onSubmitPost).toHaveBeenCalledWith();
         expect(editor.getText()).toBe("");
     });
 
@@ -93,6 +100,97 @@ describe("editorConfig submit-on-plain-Enter", () => {
         }
 
         runKeydown(editor, event);
+        expect(onSubmitPost).not.toHaveBeenCalled();
+    });
+
+    it("uses an explicit shortcut list instead of the default shortcuts", () => {
+        const { editor, onSubmitPost } = createEditor("newline", [
+            { id: "alt-submit", modifiers: ["alt"] },
+        ]);
+
+        const defaultEvent = new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, cancelable: true });
+        expect(runKeydown(editor, defaultEvent)).toBe(false);
+        expect(onSubmitPost).not.toHaveBeenCalled();
+
+        const explicitEvent = new KeyboardEvent("keydown", { key: "Enter", altKey: true, cancelable: true });
+        expect(runKeydown(editor, explicitEvent)).toBe(true);
+        expect(explicitEvent.defaultPrevented).toBe(true);
+        expect(onSubmitPost).toHaveBeenCalledWith({ shortcutId: "alt-submit" });
+    });
+
+    it("supports ctrlOrMeta and exact additional modifiers", () => {
+        const { editor, onSubmitPost } = createEditor("newline", [
+            { id: "primary", modifiers: ["ctrlOrMeta", "shift"] },
+        ]);
+
+        for (const event of [
+            new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, shiftKey: true, cancelable: true }),
+            new KeyboardEvent("keydown", { key: "NumpadEnter", metaKey: true, shiftKey: true, cancelable: true }),
+        ]) {
+            expect(runKeydown(editor, event)).toBe(true);
+        }
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
+        expect(onSubmitPost).toHaveBeenNthCalledWith(1, { shortcutId: "primary" });
+        expect(onSubmitPost).toHaveBeenNthCalledWith(2, { shortcutId: "primary" });
+
+        const both = new KeyboardEvent("keydown", {
+            key: "Enter", ctrlKey: true, metaKey: true, shiftKey: true, cancelable: true,
+        });
+        expect(runKeydown(editor, both)).toBe(false);
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        { id: "ctrl", modifiers: ["ctrl"] },
+        { id: "meta", modifiers: ["meta"] },
+        { id: "alt", modifiers: ["alt"] },
+        { id: "shift", modifiers: ["shift"] },
+        { id: "ctrl-meta", modifiers: ["ctrl", "meta"] },
+    ])("supports the explicit $id modifier binding", ({ id, modifiers }) => {
+        const { editor, onSubmitPost } = createEditor("newline", [{ id, modifiers }]);
+        const event = new KeyboardEvent("keydown", {
+            key: "Enter",
+            ctrlKey: modifiers.includes("ctrl"),
+            metaKey: modifiers.includes("meta"),
+            altKey: modifiers.includes("alt"),
+            shiftKey: modifiers.includes("shift"),
+            cancelable: true,
+        });
+        expect(runKeydown(editor, event)).toBe(true);
+        expect(onSubmitPost).toHaveBeenCalledWith({ shortcutId: id });
+    });
+
+    it("keeps the non-Lite Ctrl/Meta submit path separate from Host-owned shortcuts", () => {
+        const { editor, onSubmitPost } = createEditor("newline", [
+            { id: "alt-submit", modifiers: ["alt"] },
+        ], false);
+
+        for (const event of [
+            new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, cancelable: true }),
+            new KeyboardEvent("keydown", { key: "NumpadEnter", metaKey: true, cancelable: true }),
+        ]) {
+            expect(runKeydown(editor, event)).toBe(true);
+            expect(event.defaultPrevented).toBe(true);
+        }
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
+        expect(onSubmitPost).toHaveBeenNthCalledWith(1);
+        expect(onSubmitPost).toHaveBeenNthCalledWith(2);
+
+        const hostOwnedShortcut = new KeyboardEvent("keydown", {
+            key: "Enter",
+            altKey: true,
+            cancelable: true,
+        });
+        expect(runKeydown(editor, hostOwnedShortcut)).toBe(false);
+        expect(onSubmitPost).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not submit modified Enter when explicitly disabled", () => {
+        const { editor, onSubmitPost } = createEditor("newline", []);
+        const event = new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, cancelable: true });
+
+        expect(runKeydown(editor, event)).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
         expect(onSubmitPost).not.toHaveBeenCalled();
     });
 

@@ -128,8 +128,8 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         consoleErrors.length = 0;
         await page.goto(`${origin}/ehagaki/host-owned-composer-lite-example.html`);
         await expect(page.locator("#log")).toContainText("create configuration:");
-        await expect(page.locator("#status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | editor: legacy");
-        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | editor: legacy");
+        await expect(page.locator("#status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy");
+        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: off | CW: off | hashtag pin: off | bar: on | editor submit: off | enter: newline | shortcuts: default | editor: legacy");
         await expect(page.locator("#editor-min-lines")).toHaveValue("");
         await expect(page.locator("#editor-max-lines")).toHaveValue("");
         await expect(page.locator("ehagaki-composer")).toBeVisible();
@@ -187,10 +187,11 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await page.locator("#hashtag-pin").check();
         await page.locator("#keyboard-bar").uncheck();
         await page.locator("#enter-behavior").selectOption("submit");
+        await page.locator("#submit-shortcut-preset").selectOption("host-defined");
         await page.locator("#editor-min-lines").fill("1");
         await page.locator("#editor-max-lines").fill("3");
         await page.locator("#create-composer").click();
-        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | editor submit: off | enter: submit | editor: 1/3");
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | editor submit: off | enter: submit | shortcuts: host-defined | editor: 1/3");
         await expect(page.locator("#log")).toContainText("\"upload\":\"on\"");
         await expect(page.locator("ehagaki-composer .footer-button-bar")).toHaveCount(0);
         await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(0);
@@ -202,7 +203,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(0);
         await page.locator("#keyboard-bar").check();
         await page.locator("#create-composer").click();
-        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | editor submit: off | enter: submit | editor: 1/3");
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | editor submit: off | enter: submit | shortcuts: host-defined | editor: 1/3");
         await expect(page.locator("ehagaki-composer .image-button")).toHaveCount(1);
         await page.locator("#set-custom-emojis").click();
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
@@ -242,7 +243,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await page.locator("#remove-composer").click();
         await expect(page.locator("ehagaki-composer")).toHaveCount(0);
         await page.locator("#reconnect-composer").click();
-        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | editor submit: off | enter: submit | editor: 1/3");
+        await expect(page.locator("#status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: on | editor submit: off | enter: submit | shortcuts: host-defined | editor: 1/3");
         await expect(page.locator("ehagaki-composer .custom-emoji-button")).toHaveCount(1);
         await expect(page.locator("#log")).toContainText("\"sameInstance\":true");
         await page.locator("#clear-custom-emojis").click();
@@ -315,8 +316,9 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await sampleEditor.pressSequentially("host-owned sample body");
         await page.locator("#apply-reply-quotes").click();
         await expect(page.locator("#log")).toContainText("ehagaki-composer-context-updated");
-        await page.locator("ehagaki-composer button.post-button").click();
+        await sampleEditor.press("Control+Shift+Enter");
         await expect(page.locator("#log")).toContainText("submit output:");
+        await expect(page.locator("#log")).toContainText('submit shortcut: "primary"');
         await expect(page.locator("#last-submit-output")).toContainText("sample context body");
         await page.locator("#clear-log").click();
         await expect(page.locator("#log")).toHaveText("");
@@ -325,7 +327,7 @@ test("serves the Web Component sample through the local dev proxy", async ({ pag
         await page.locator("#keyboard-bar").uncheck();
         await page.locator("#follow-preferred-height").check();
         await page.locator("#create-composer").click();
-        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | editor submit: on | enter: submit | editor: 1/3");
+        await expect(page.locator("#mount-config-status")).toHaveText("ready | upload: on | CW: on | hashtag pin: on | bar: off | editor submit: on | enter: submit | shortcuts: host-defined | editor: 1/3");
 
         const measureFollowedHeight = () => page.locator("#mount").evaluate((mount) => {
             const composer = mount.querySelector("ehagaki-composer")! as HTMLElement & { preferredHeight: number | null };
