@@ -168,6 +168,63 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
+test("controls the Host-owned Lite editor focus through the public API without changing content or caret", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(options: unknown): void;
+            whenReady(): Promise<void>;
+            focusEditor(): Promise<void>;
+            blurEditor(): Promise<void>;
+        };
+        composer.configureHostOwned({ submit: () => undefined });
+        document.body.append(composer);
+        await composer.whenReady();
+        await composer.focusEditor();
+        (window as any).__liteFocusApiComposer = composer;
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(true);
+    await editor.pressSequentially("lite focus api text");
+    await editor.press("ArrowLeft");
+    const beforeBlur = await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        return {
+            text: element.textContent,
+            anchorOffset: selection?.anchorOffset ?? null,
+            anchorText: selection?.anchorNode?.textContent ?? null,
+        };
+    });
+
+    await page.evaluate(async () => {
+        await (window as any).__liteFocusApiComposer.blurEditor();
+    });
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(false);
+
+    await page.evaluate(async () => {
+        await (window as any).__liteFocusApiComposer.focusEditor();
+    });
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    )).toBe(true);
+    const afterFocus = await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        return {
+            text: element.textContent,
+            anchorOffset: selection?.anchorOffset ?? null,
+            anchorText: selection?.anchorNode?.textContent ?? null,
+        };
+    });
+    expect(afterFocus).toEqual(beforeBlur);
+});
+
 test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {

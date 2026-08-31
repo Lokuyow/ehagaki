@@ -99,6 +99,7 @@ Lite の `submit(output, { signal })` に渡る `output` は unsigned Nostr even
 - Full と Lite はどちらも同じ `<ehagaki-composer>` tag を登録するため、1 document で両 distribution を import しないでください。接続可能なのは1 documentにつき1 instanceです。
 - host は definite height を指定してください。`asset-base` / `assetBase` は connection 前に、import した distribution のディレクトリへ設定します。
 - Shadow DOM 内のテーマ変更には公開 CSS Custom Properties を使用します。通常の host selector で内部 DOM を直接 style する契約ではありません。
+- Full と Host-owned Lite は `focusEditor()` / `blurEditor()` で現在の投稿 Editor を制御できます。これは iframe の `postMessage` API ではありません。
 - `ehagaki-ready.detail.apiVersion` は現在 `1` です。
 - self-host する場合は entry だけでなく、その distribution の関連 assets、chunks、icons をディレクトリ構成ごと配信します。
 

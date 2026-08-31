@@ -624,6 +624,16 @@
     return await uploadHandlers.performUpload(files);
   }
 
+  /** Focus the mounted TipTap editor without changing its current selection. */
+  export function focusEditor(): void {
+    currentEditor?.commands.focus();
+  }
+
+  /** Blur the mounted TipTap editor without changing its document or state. */
+  export function blurEditor(): void {
+    currentEditor?.commands.blur();
+  }
+
   export function insertTextContent(content: string): void {
     if (!currentEditor || !content) return;
 

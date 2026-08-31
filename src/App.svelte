@@ -202,7 +202,7 @@
   import { setupAppRuntimeBindings } from "./lib/appRuntimeBindings";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
-  import { focusEditor } from "./lib/utils/appDomUtils";
+  import { focusEditor as focusEditorElement } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
 
@@ -586,7 +586,7 @@
       clearReplyQuote,
       addQuoteReference,
       focusEditor: () => {
-        focusEditor(".tiptap-editor", 100);
+        focusEditorElement(".tiptap-editor", 100);
       },
       logger: console,
     });
@@ -1202,7 +1202,7 @@
     clearReplyReference,
     addQuoteReference,
     focusEditor: () => {
-      focusEditor(".tiptap-editor", 100);
+      focusEditorElement(".tiptap-editor", 100);
     },
     logger: console,
   });
@@ -1397,6 +1397,16 @@
     payload: EmbedSettingsSetPayload,
   ): Promise<ReadonlyArray<AppEmbedAppliedSettingKey>> {
     return appEmbedController.applySettings(payload);
+  }
+
+  /** Public in-process editor control used by the Direct Web Component root. */
+  export function focusEditor(): void {
+    postComponentRef?.focusEditor?.();
+  }
+
+  /** Public in-process editor control used by the Direct Web Component root. */
+  export function blurEditor(): void {
+    postComponentRef?.blurEditor?.();
   }
 
   async function handleRemoteParentClientLogin(
