@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     focusEditorWithoutKeyboardForCurrentTap,
+    isComposerKeyboardVisible,
     isIosTouchDevice,
     isPostEditorFocusActive,
     preserveKeyboardForScrollableTouch,
+    readComposerKeyboardHeight,
 } from '../../lib/utils/keyboardFocusUtils';
+import {
+    configureAppRuntimeEnvironment,
+    getAppRuntimeEnvironment,
+} from '../../lib/appRuntimeEnvironment';
+
+const previousRuntimeEnvironment = getAppRuntimeEnvironment();
 
 function setNavigatorValue(name: keyof Navigator, value: unknown): void {
     Object.defineProperty(navigator, name, {
@@ -12,6 +20,36 @@ function setNavigatorValue(name: keyof Navigator, value: unknown): void {
         configurable: true,
     });
 }
+
+function createShadowRuntime(): {
+    host: HTMLDivElement;
+    shadowRoot: ShadowRoot;
+    styleTarget: HTMLDivElement;
+} {
+    const host = document.createElement('div');
+    const shadowRoot = host.attachShadow({ mode: 'open' });
+    const styleTarget = document.createElement('div');
+    shadowRoot.append(styleTarget);
+    document.body.append(host);
+    configureAppRuntimeEnvironment({
+        window,
+        document,
+        domRoot: shadowRoot,
+        styleTarget,
+        layoutTarget: styleTarget,
+        overlayTarget: styleTarget,
+        themeTarget: host,
+        layoutMode: 'container',
+        runtimeKind: 'web-component',
+    });
+
+    return { host, shadowRoot, styleTarget };
+}
+
+afterEach(() => {
+    configureAppRuntimeEnvironment(previousRuntimeEnvironment);
+    document.documentElement.style.removeProperty('--keyboard-height');
+});
 
 describe('focusEditorWithoutKeyboardForCurrentTap', () => {
     afterEach(() => {
@@ -106,6 +144,23 @@ describe('isPostEditorFocusActive', () => {
         expect(isPostEditorFocusActive()).toBe(true);
     });
 
+    it('ShadowRoot 内の投稿エディター focus を runtime root から検出する', () => {
+        const { host, shadowRoot, styleTarget } = createShadowRuntime();
+        const root = document.createElement('div');
+        root.setAttribute('data-post-editor-root', '');
+        const editor = document.createElement('div');
+        editor.contentEditable = 'true';
+        editor.tabIndex = 0;
+        root.append(editor);
+        styleTarget.append(root);
+
+        editor.focus();
+
+        expect(document.activeElement).toBe(host);
+        expect(shadowRoot.activeElement).toBe(editor);
+        expect(isPostEditorFocusActive()).toBe(true);
+    });
+
     it('投稿エディター内に selection が残っていてもダイアログ input の focus を優先する', () => {
         const root = document.createElement('div');
         root.setAttribute('data-post-editor-root', '');
@@ -123,6 +178,72 @@ describe('isPostEditorFocusActive', () => {
         input.focus();
 
         expect(isPostEditorFocusActive()).toBe(false);
+    });
+
+    it('ShadowRoot 内の別 input focus を残留 editor selection より優先する', () => {
+        const { styleTarget } = createShadowRuntime();
+        const root = document.createElement('div');
+        root.setAttribute('data-post-editor-root', '');
+        const editorText = document.createTextNode('draft');
+        root.append(editorText);
+        const input = document.createElement('input');
+        styleTarget.append(root, input);
+        const range = document.createRange();
+        range.setStart(editorText, 2);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        input.focus();
+
+        expect(isPostEditorFocusActive()).toBe(false);
+    });
+});
+
+describe('composer keyboard runtime state', () => {
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('runtime styleTarget の keyboard height だけを参照する', () => {
+        const { styleTarget } = createShadowRuntime();
+        styleTarget.style.setProperty('--keyboard-height', '300px');
+
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('');
+        expect(readComposerKeyboardHeight()).toBe(300);
+        expect(isComposerKeyboardVisible()).toBe(true);
+    });
+
+    it('document root だけにある keyboard height へ fallback しない', () => {
+        const { styleTarget } = createShadowRuntime();
+        document.documentElement.style.setProperty('--keyboard-height', '300px');
+        styleTarget.style.setProperty('--keyboard-height', '0px');
+
+        expect(readComposerKeyboardHeight()).toBe(0);
+        expect(isComposerKeyboardVisible()).toBe(false);
+    });
+
+    it('keyboard 表示中の ShadowRoot touch では editor inputmode を変更しない', () => {
+        vi.useFakeTimers();
+        const { styleTarget } = createShadowRuntime();
+        styleTarget.style.setProperty('--keyboard-height', '300px');
+        const editor = document.createElement('div');
+        editor.className = 'tiptap-editor';
+        editor.tabIndex = 0;
+        const surface = document.createElement('div');
+        styleTarget.append(editor, surface);
+        editor.focus();
+        surface.addEventListener('touchstart', preserveKeyboardForScrollableTouch);
+
+        surface.dispatchEvent(new Event('touchstart', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(editor.hasAttribute('inputmode')).toBe(false);
+        vi.runAllTimers();
+        vi.useRealTimers();
     });
 });
 

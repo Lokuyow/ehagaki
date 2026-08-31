@@ -28,6 +28,7 @@
     import {
         preserveKeyboardForScrollableTouch,
         preventKeyboardFocusChange,
+        readComposerKeyboardHeight,
     } from "../lib/utils/keyboardFocusUtils";
     import { getAppStorage } from "../lib/appStorage";
 
@@ -171,18 +172,9 @@
         cacheCustomEmojiImages([url]);
     }
 
-    function readRootPixelValue(name: string): number {
-        if (typeof document === "undefined") return 0;
-        const rawValue = getComputedStyle(document.documentElement)
-            .getPropertyValue(name)
-            .trim();
-        const value = Number.parseFloat(rawValue);
-        return Number.isFinite(value) ? value : 0;
-    }
-
     function getPickerHeightClampViewport(): number {
         const visualViewportHeight = window.visualViewport?.height ?? 0;
-        const keyboardHeight = readRootPixelValue("--keyboard-height");
+        const keyboardHeight = readComposerKeyboardHeight();
         return Math.max(
             window.innerHeight || 0,
             visualViewportHeight + keyboardHeight,
