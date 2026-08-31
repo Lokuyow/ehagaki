@@ -72,6 +72,7 @@
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import {
     focusEditorWithoutKeyboardForCurrentTap,
+    isComposerKeyboardVisible,
     preventKeyboardFocusChange,
   } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
@@ -289,16 +290,10 @@
   }
 
   function handleEditorSubmitButtonPress(event: Event): void {
-    const keyboardHeight = Number.parseFloat(
-      window
-        .getComputedStyle(document.documentElement)
-        .getPropertyValue("--keyboard-height"),
-    );
-
     // On a visible software keyboard, preventing touchstart suppresses the
     // native click on Android. Keep pointerdown prevention to retain editor
     // focus, but allow touchstart to produce the button click.
-    if (keyboardHeight > 80 && event.type === "touchstart") {
+    if (isComposerKeyboardVisible() && event.type === "touchstart") {
       return;
     }
 

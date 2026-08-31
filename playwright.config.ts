@@ -43,6 +43,15 @@ export default defineConfig({
             },
         },
         {
+            name: 'android-chromium',
+            testMatch: '**/webComponentLite.spec.ts',
+            grep: /@android-chrome/,
+            use: {
+                ...devices['Pixel 7'],
+                browserName: 'chromium',
+            },
+        },
+        {
             name: 'mobile-webkit',
             testMatch: [
                 '**/composerTargetDialog.spec.ts',

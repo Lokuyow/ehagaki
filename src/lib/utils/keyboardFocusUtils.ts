@@ -1,7 +1,10 @@
+import { getAppRuntimeEnvironment } from "../appRuntimeEnvironment";
+
 let restoreTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let suppressedEditor: [HTMLElement, string | null] | null = null;
 
 export const POST_EDITOR_ROOT_SELECTOR = "[data-post-editor-root]";
+const COMPOSER_KEYBOARD_VISIBLE_THRESHOLD = 80;
 
 function getElementForNode(node: Node | null): Element | null {
     if (node instanceof Element) {
@@ -11,10 +14,13 @@ function getElementForNode(node: Node | null): Element | null {
     return node?.parentElement ?? null;
 }
 
-export function isPostEditorFocusActive(
-    doc: Document = document,
-): boolean {
-    const activeElement = doc.activeElement;
+export function isPostEditorFocusActive(): boolean {
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    const root = runtimeEnvironment.domRoot;
+    const doc = runtimeEnvironment.document;
+    const activeElement = root && "activeElement" in root
+        ? root.activeElement
+        : doc?.activeElement;
 
     if (activeElement?.closest(POST_EDITOR_ROOT_SELECTOR)) {
         return true;
@@ -22,19 +28,37 @@ export function isPostEditorFocusActive(
 
     if (
         activeElement &&
-        activeElement !== doc.body &&
-        activeElement !== doc.documentElement
+        activeElement !== doc?.body &&
+        activeElement !== doc?.documentElement
     ) {
         return false;
     }
 
-    const selection = doc.getSelection();
+    const selection = doc?.getSelection();
     return Boolean(
         selection?.rangeCount &&
             getElementForNode(selection.anchorNode)?.closest(
                 POST_EDITOR_ROOT_SELECTOR,
             ),
     );
+}
+
+export function readComposerKeyboardHeight(): number {
+    const runtimeEnvironment = getAppRuntimeEnvironment();
+    const rawValue = runtimeEnvironment.window
+        ?.getComputedStyle(runtimeEnvironment.styleTarget)
+        .getPropertyValue("--keyboard-height")
+        .trim()
+        ?? runtimeEnvironment.styleTarget.style
+            .getPropertyValue("--keyboard-height")
+            .trim();
+    const value = Number.parseFloat(rawValue);
+
+    return Number.isFinite(value) ? value : 0;
+}
+
+export function isComposerKeyboardVisible(): boolean {
+    return readComposerKeyboardHeight() > COMPOSER_KEYBOARD_VISIBLE_THRESHOLD;
 }
 
 function restoreEditorKeyboardInput(): void {
@@ -64,15 +88,10 @@ function getActiveElementForEvent(event: Event): HTMLElement | null {
 }
 
 function suppressEditorKeyboardForCurrentTap(event: Event): void {
-    const keyboardHeight = Number.parseFloat(
-        window
-            .getComputedStyle(document.documentElement)
-            .getPropertyValue("--keyboard-height"),
-    );
     if (
         (event.type !== "touchstart" &&
             (event as PointerEvent).pointerType !== "touch") ||
-        keyboardHeight > 80
+        isComposerKeyboardVisible()
     ) {
         return;
     }

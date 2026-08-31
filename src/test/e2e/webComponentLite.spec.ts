@@ -168,7 +168,7 @@ test("Lite minimal configuration exposes only text composition and preserves suc
     await expect(replacement.locator(".tiptap-editor")).toContainText("keep after failure");
 });
 
-test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page, isMobile }) => {
+test("Lite editor submit button replaces only the bar submit surface and preserves the existing submit flow", async ({ page }) => {
     await page.goto(hostOrigin);
     await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
@@ -223,37 +223,9 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editor.click();
     await editor.pressSequentially("editor button content");
     await expect(editorSubmitButton).toBeEnabled();
-    await page.evaluate(() => {
-        document.documentElement.style.setProperty("--keyboard-height", "300px");
-    });
     await editorSubmitButton.focus();
     expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
-    if (isMobile) {
-        const touchPressHandling = await editorSubmitButton.evaluate((button) => {
-            const pointerDown = new PointerEvent("pointerdown", {
-                bubbles: true,
-                cancelable: true,
-                pointerType: "touch",
-            });
-            button.dispatchEvent(pointerDown);
-            const touchStart = new TouchEvent("touchstart", {
-                bubbles: true,
-                cancelable: true,
-            });
-            button.dispatchEvent(touchStart);
-
-            return {
-                pointerDownPrevented: pointerDown.defaultPrevented,
-                touchStartPrevented: touchStart.defaultPrevented,
-            };
-        });
-        expect(touchPressHandling.pointerDownPrevented).toBe(true);
-        expect(touchPressHandling.touchStartPrevented).toBe(false);
-        expect(await composer.evaluate((element) => element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"))).toBe(true);
-        await editorSubmitButton.dispatchEvent("click");
-    } else {
-        await editorSubmitButton.click();
-    }
+    await editorSubmitButton.click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
     await expect(editorSubmitButton).toBeDisabled();
     await expect(editor).toHaveAttribute("contenteditable", "true");
@@ -262,12 +234,8 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editor.press("Backspace");
     await editor.press("Control+z");
     await expect(editor).toHaveText("editor button content");
-    await page.evaluate(() => {
-        document.documentElement.style.removeProperty("--keyboard-height");
-    });
 
-    await editorSubmitButton.dispatchEvent("click");
-    await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(1);
     await page.evaluate(() => {
         (window as any).__liteEditorSubmitState.resolveSubmit({ eventId: "e".repeat(64) });
     });
@@ -280,6 +248,142 @@ test("Lite editor submit button replaces only the bar submit surface and preserv
     await editorSubmitButton.click();
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorSubmitState.outputs.length)).toBe(2);
     await expect(editor).toContainText("keep after editor button failure");
+});
+
+test("Lite editor submit tap keeps Android keyboard input active @android-chrome", async ({ page }, testInfo) => {
+    test.skip(
+        testInfo.project.name !== "android-chromium",
+        "This regression uses the dedicated Android Chromium touch profile.",
+    );
+
+    await page.addInitScript(() => {
+        let keyboardHeight = 0;
+        const geometryTarget = new EventTarget();
+        const virtualKeyboard = {
+            overlaysContent: false,
+            get boundingRect() {
+                const width = window.visualViewport?.width ?? window.innerWidth;
+                const top = Math.max(0, window.innerHeight - keyboardHeight);
+                return {
+                    top,
+                    bottom: top + keyboardHeight,
+                    width,
+                    height: keyboardHeight,
+                };
+            },
+            addEventListener(
+                type: string,
+                listener: EventListenerOrEventListenerObject,
+                options?: boolean | AddEventListenerOptions,
+            ) {
+                geometryTarget.addEventListener(type, listener, options);
+            },
+            removeEventListener(
+                type: string,
+                listener: EventListenerOrEventListenerObject,
+                options?: boolean | EventListenerOptions,
+            ) {
+                geometryTarget.removeEventListener(type, listener, options);
+            },
+        };
+
+        Object.defineProperty(navigator, "virtualKeyboard", {
+            configurable: true,
+            value: virtualKeyboard,
+        });
+        (window as any).__setAndroidKeyboardHeight = (height: number) => {
+            keyboardHeight = height;
+            geometryTarget.dispatchEvent(new Event("geometrychange"));
+        };
+    });
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = {
+            browserClicks: 0,
+            inputModes: [] as Array<string | null>,
+            submits: 0,
+            touchStartDefaultPrevented: [] as boolean[],
+        };
+        (window as any).__liteAndroidSubmitState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.style.cssText = "display: block; height: 360px;";
+        composer.configureHostOwned({
+            editorSubmitButtonEnabled: true,
+            submit() {
+                state.submits += 1;
+                return new Promise(() => undefined);
+            },
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+
+        const shadowRoot = composer.shadowRoot!;
+        const editor = shadowRoot.querySelector<HTMLElement>(".tiptap-editor")!;
+        const button = shadowRoot.querySelector<HTMLButtonElement>(".editor-submit-button")!;
+        new MutationObserver(() => {
+            state.inputModes.push(editor.getAttribute("inputmode"));
+        }).observe(editor, {
+            attributes: true,
+            attributeFilter: ["inputmode"],
+        });
+        button.addEventListener("click", () => {
+            state.browserClicks += 1;
+        });
+        button.addEventListener("touchstart", (event) => {
+            state.touchStartDefaultPrevented.push(event.defaultPrevented);
+        });
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const editorSubmitButton = composer.locator(".editor-submit-button");
+    await editor.click();
+    await editor.pressSequentially("android tap content");
+    await expect(editorSubmitButton).toBeEnabled();
+    await page.evaluate(() => {
+        (window as any).__setAndroidKeyboardHeight(300);
+    });
+    await expect.poll(() => composer.evaluate((element) =>
+        element.shadowRoot
+            ?.querySelector<HTMLElement>(".ehagaki-web-component-shell")
+            ?.style.getPropertyValue("--keyboard-height"),
+    )).toBe("300px");
+    expect(await page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--keyboard-height"),
+    )).toBe("");
+    expect(await composer.evaluate((element) => ({
+        documentActiveIsHost: document.activeElement === element,
+        shadowActiveIsEditor: element.shadowRoot?.activeElement?.classList.contains("tiptap-editor") === true,
+    }))).toEqual({
+        documentActiveIsHost: true,
+        shadowActiveIsEditor: true,
+    });
+
+    await editorSubmitButton.tap();
+
+    await expect.poll(() => page.evaluate(() => ({
+        browserClicks: (window as any).__liteAndroidSubmitState.browserClicks,
+        submits: (window as any).__liteAndroidSubmitState.submits,
+    }))).toEqual({ browserClicks: 1, submits: 1 });
+    const interactionState = await page.evaluate(() =>
+        (window as any).__liteAndroidSubmitState as {
+            browserClicks: number;
+            inputModes: Array<string | null>;
+            submits: number;
+            touchStartDefaultPrevented: boolean[];
+        },
+    );
+    expect(interactionState.inputModes).not.toContain("none");
+    expect(interactionState.browserClicks).toBe(1);
+    expect(interactionState.submits).toBe(1);
+    expect(interactionState.touchStartDefaultPrevented).toEqual([false]);
+    expect(await composer.evaluate((element) =>
+        element.shadowRoot?.activeElement?.classList.contains("tiptap-editor"),
+    )).toBe(true);
 });
 
 test("Lite editor submit button works without KeyboardButtonBar", async ({ page }) => {

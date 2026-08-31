@@ -126,10 +126,21 @@ describe('Playwright config connection values', () => {
             expect(config.projects?.map((project) => project.name)).toEqual([
                 'desktop-chromium',
                 'mobile-chromium',
+                'android-chromium',
                 'mobile-webkit',
                 'desktop-firefox',
             ]);
-            expect(config.projects?.[2]?.testMatch).toEqual([
+            expect(config.projects?.[2]?.testMatch).toBe(
+                '**/webComponentLite.spec.ts',
+            );
+            expect(config.projects?.[2]?.grep).toEqual(/@android-chrome/);
+            expect(config.projects?.[2]?.use).toMatchObject({
+                browserName: 'chromium',
+                hasTouch: true,
+                isMobile: true,
+                userAgent: expect.stringMatching(/Android.+Chrome\//),
+            });
+            expect(config.projects?.[3]?.testMatch).toEqual([
                 '**/composerTargetDialog.spec.ts',
                 '**/webComponentEmbed.spec.ts',
                 '**/webComponentLite.spec.ts',

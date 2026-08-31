@@ -1115,6 +1115,68 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
+    it('ShadowRoot editor focus では shell だけに keyboard height を同期する', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
+        const runtime = await import('../../lib/appRuntimeEnvironment');
+        const host = document.createElement('div');
+        const shadowRoot = host.attachShadow({ mode: 'open' });
+        const layoutTarget = document.createElement('div');
+        const editorRoot = document.createElement('div');
+        const editor = document.createElement('div');
+        editorRoot.setAttribute('data-post-editor-root', '');
+        editor.className = 'tiptap-editor';
+        editor.contentEditable = 'true';
+        editor.tabIndex = 0;
+        editorRoot.append(editor);
+        layoutTarget.append(editorRoot);
+        shadowRoot.append(layoutTarget);
+        document.body.append(host);
+        Object.defineProperty(layoutTarget, 'getBoundingClientRect', {
+            configurable: true,
+            value: vi.fn(() => ({ bottom: 800, height: 800 })),
+        });
+        runtime.configureAppRuntimeEnvironment({
+            window,
+            document,
+            domRoot: shadowRoot,
+            layoutMode: 'container',
+            styleTarget: layoutTarget,
+            layoutTarget,
+            overlayTarget: layoutTarget,
+            themeTarget: host,
+            runtimeKind: 'web-component',
+        });
+        editor.focus();
+
+        const requestAnimationFrameSpy = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((callback: FrameRequestCallback) => {
+                callback(0);
+                return 1;
+            });
+        const cancelAnimationFrameSpy = vi
+            .spyOn(window, 'cancelAnimationFrame')
+            .mockImplementation(() => { });
+        createVisualViewportMock(800);
+        const virtualKeyboard = createVirtualKeyboardMock();
+        const { keyboardHeightStore, setupViewportListener } = await import('../../stores/uiStore.svelte');
+        const cleanup = setupViewportListener();
+
+        virtualKeyboard.setHeight(300);
+        virtualKeyboard.emitGeometryChange();
+
+        expect(document.activeElement).toBe(host);
+        expect(shadowRoot.activeElement).toBe(editor);
+        expect(layoutTarget.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('');
+        expect(keyboardHeightStore.value).toBe(300);
+
+        cleanup?.();
+        requestAnimationFrameSpy.mockRestore();
+        cancelAnimationFrameSpy.mockRestore();
+    });
+
     it('container mode は host が設定した VirtualKeyboard policy を cleanup 時に変更しない', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
