@@ -185,6 +185,7 @@ export default defineConfig({
           '**/node_modules/**/*',
           'sw.js',
           'workbox-*.js',
+          'host-owned-composer-lite-android-diagnostic/**/*',
           'host-owned-composer-lite-example.html',
           'web-component-parent-client-example.html',
           'web-component-parent-client-example.js',

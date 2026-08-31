@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-variant="C" data-viewport-mode="resizes-content">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <title>Host-owned Lite Android Diagnostic C</title>
+    <link rel="stylesheet" href="./diagnostic.css" />
+  </head>
+  <body data-mount-mode="in-flow">
+    <main>
+      <h1>Host-owned Lite Android Diagnostic <span data-variant-label>C</span></h1>
+      <p>A/B/C use one shared bundle, configuration, logger, and composer size. Only viewport policy and mount positioning vary.</p>
+      <nav><a href="./a-resizes-content-fixed.html">A</a><a href="./b-resizes-visual-fixed.html">B</a><a href="./c-resizes-content-in-flow.html">C</a></nav>
+      <p id="status" role="status">not initialized</p>
+      <p>Tap the editor, type non-sensitive test text, then tap the inline submit button once. Use Dump or Download only after that gesture has ended.</p>
+      <div class="controls">
+        <button id="dump-trace" type="button">Dump JSON trace</button>
+        <button id="download-trace" type="button">Download JSON trace</button>
+        <button id="clear-trace" type="button">Clear trace</button>
+      </div>
+      <pre id="trace-output">No trace dumped yet.</pre>
+    </main>
+    <div id="mount"></div>
+    <script type="module" src="./diagnostic.js"></script>
+  </body>
+</html>
