@@ -87,19 +87,17 @@
   import Button from "./Button.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
-  import type {
-    EHagakiHostOwnedComposerOptions,
-  } from "../web-component/types";
+  import type { EHagakiHostOwnedComposerOptions } from "../web-component/types";
   import type { CustomEmojiItem } from "../lib/customEmoji";
-  import { buildHostOwnedComposerOutput, getHostSubmissionEventId } from "../lib/hostOwnedComposer";
+  import {
+    buildHostOwnedComposerOutput,
+    getHostSubmissionEventId,
+  } from "../lib/hostOwnedComposer";
   import {
     createHostOwnedUploadDependencies,
     createHostOwnedUploadExecutor,
   } from "../lib/hostOwnedUpload";
-  import {
-    uploadHelper,
-    showUploadErrorMessage,
-  } from "../lib/uploadHelper";
+  import { uploadHelper, showUploadErrorMessage } from "../lib/uploadHelper";
   import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
   import {
     contentWarningStore,
@@ -140,12 +138,14 @@
     hostCustomEmojiItems = [],
     normalUploadFiles,
   }: Props = $props();
-  const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined"
-    && __EHAGAKI_COMPOSER_LITE__;
+  const isHostOwnedLiteBuild =
+    typeof __EHAGAKI_COMPOSER_LITE__ !== "undefined" &&
+    __EHAGAKI_COMPOSER_LITE__;
   // Host-owned behavior is a build-time capability. The full distribution
   // never accepts the host config, allowing Rollup to remove this branch and
   // its dedicated output/upload modules from the full graph.
-  const isHostOwned = isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
+  const isHostOwned =
+    isHostOwnedLiteBuild && (() => Boolean(hostOwnedConfig))();
   let mediaEnabled = $derived(!isHostOwned || !!hostOwnedConfig?.uploadMedia);
   let isUploading = $derived(editorState.isUploading);
   let canPost = $derived(editorState.canPost);
@@ -169,7 +169,8 @@
   let editorIsEmpty = $state(true);
   let editorEmptyStateInitialized = false;
   let showAccountPlaceholder = $derived(
-    !isHostOwnedLiteBuild && hasStoredKey &&
+    !isHostOwnedLiteBuild &&
+      hasStoredKey &&
       !isSwitchingAccount &&
       profileLoaded &&
       !isLoadingProfile &&
@@ -357,7 +358,11 @@
       editorState.uploadErrorMessage = message;
     },
     uploadFiles: async (params) => {
-      if (postStatus.sending || editorState.isUploading || (isHostOwned && !hostMountActive)) {
+      if (
+        postStatus.sending ||
+        editorState.isUploading ||
+        (isHostOwned && !hostMountActive)
+      ) {
         return null;
       }
       if (!isHostOwned) {
@@ -367,7 +372,11 @@
         return await uploadFiles(params);
       }
       if (!hostOwnedConfig?.uploadMedia) {
-        updateEditorUploadState(editorState, false, $_("postComponent.media_not_supported"));
+        updateEditorUploadState(
+          editorState,
+          false,
+          $_("postComponent.media_not_supported"),
+        );
         return null;
       }
       updateEditorUploadState(editorState, true, "");
@@ -378,30 +387,37 @@
       try {
         return await uploadHelper({
           ...params,
-          showUploadError: (message, duration) => showUploadErrorMessage(message, duration, {
-            updateUploadState: (nextIsUploading, nextMessage) => {
-              if (hostMountActive) {
-                updateEditorUploadState(editorState, nextIsUploading, nextMessage);
-              }
-            },
-            setUploadErrorMessage: (nextMessage) => {
-              if (hostMountActive) editorState.uploadErrorMessage = nextMessage;
-            },
-            keepUploading: true,
-          }),
+          showUploadError: (message, duration) =>
+            showUploadErrorMessage(message, duration, {
+              updateUploadState: (nextIsUploading, nextMessage) => {
+                if (hostMountActive) {
+                  updateEditorUploadState(
+                    editorState,
+                    nextIsUploading,
+                    nextMessage,
+                  );
+                }
+              },
+              setUploadErrorMessage: (nextMessage) => {
+                if (hostMountActive)
+                  editorState.uploadErrorMessage = nextMessage;
+              },
+              keepUploading: true,
+            }),
           setUploadErrorMessage: (message) => {
             if (hostMountActive) editorState.uploadErrorMessage = message;
           },
           devMode: false,
-          dependencies: createHostOwnedUploadDependencies(executor.fileUploadManager),
+          dependencies: createHostOwnedUploadDependencies(
+            executor.fileUploadManager,
+          ),
           prepareFiles: executor.prepareFiles,
           uploadPreparedFiles: executor.uploadPreparedFiles,
           fileUploadManager: executor.fileUploadManager,
           fileUploadManagerInstance: new executor.fileUploadManager(),
           deferUploadStateClear: true,
-          isUploadAborted: () => (
-            !hostMountActive || !!hostOwnedConfig.signal.aborted
-          ),
+          isUploadAborted: () =>
+            !hostMountActive || !!hostOwnedConfig.signal.aborted,
         });
       } finally {
         if (hostMountActive) updateEditorUploadState(editorState, false);
@@ -491,14 +507,14 @@
       hasPostingCapability,
       submitPost,
       onCustomEmojiSelect,
-      getCustomEmojiItems: isHostOwned
-        ? () => hostCustomEmojiItems
+      getCustomEmojiItems: isHostOwned ? () => hostCustomEmojiItems : undefined,
+      enterKeyBehavior: isHostOwned
+        ? hostOwnedConfig?.enterKeyBehavior
         : undefined,
-      enterKeyBehavior: isHostOwned ? hostOwnedConfig?.enterKeyBehavior : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
-          void uploadHandlers.performUpload(files);
-        }
+            void uploadHandlers.performUpload(files);
+          }
         : undefined,
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
@@ -521,12 +537,17 @@
     let subscribedEditor: TipTapEditor | null = null;
     const syncEditorEmptyState = (editorInstance: TipTapEditor): void => {
       const nextIsEmpty = editorInstance.isEmpty;
-      const changed = !editorEmptyStateInitialized || editorIsEmpty !== nextIsEmpty;
+      const changed =
+        !editorEmptyStateInitialized || editorIsEmpty !== nextIsEmpty;
       editorIsEmpty = nextIsEmpty;
       editorEmptyStateInitialized = true;
       if (changed) onEditorEmptyChange?.(nextIsEmpty);
     };
-    const handleEditorTransaction = ({ editor: editorInstance }: { editor: TipTapEditor }) => {
+    const handleEditorTransaction = ({
+      editor: editorInstance,
+    }: {
+      editor: TipTapEditor;
+    }) => {
       syncEditorEmptyState(editorInstance);
     };
 
@@ -789,34 +810,46 @@
   }
 
   function canStartSubmit(): boolean {
-    return !!currentEditor &&
+    return (
+      !!currentEditor &&
       editorState.canPost &&
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
-      (hasPostingCapability || !!postManager);
+      (hasPostingCapability || !!postManager)
+    );
   }
 
   function canStartHostOwnedSubmit(editorInstance: TipTapEditor): boolean {
     const extraction = extractPostContentWithEmojiTags(editorInstance);
-    const hasLivePostableContent = !!extraction.content.trim() ||
+    const hasLivePostableContent =
+      !!extraction.content.trim() ||
       hasMediaInDoc(editorInstance.state.doc) ||
       mediaGalleryStore.hasNonPlaceholderItems();
 
-    return hasLivePostableContent &&
+    return (
+      hasLivePostableContent &&
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
-      (hasPostingCapability || !!postManager);
+      (hasPostingCapability || !!postManager)
+    );
   }
 
-  function createHostOwnedMediaImetaMap(editorInstance: TipTapEditor): Record<string, any> {
+  function createHostOwnedMediaImetaMap(
+    editorInstance: TipTapEditor,
+  ): Record<string, any> {
     if (!mediaFreePlacement) {
       return mediaGalleryStore.getMediaImetaMap();
     }
     const mediaMetadata: Record<string, any> = {};
     editorInstance.state.doc.descendants((node: any) => {
-      if ((node.type?.name !== "image" && node.type?.name !== "video") || !node.attrs?.src || node.attrs?.isPlaceholder) return;
+      if (
+        (node.type?.name !== "image" && node.type?.name !== "video") ||
+        !node.attrs?.src ||
+        node.attrs?.isPlaceholder
+      )
+        return;
       const m = node.attrs.m ?? node.attrs.mimeType;
       if (typeof m !== "string" || !m) return;
       const size = Number(node.attrs.size);
@@ -841,21 +874,25 @@
     // Capture every mutable input before entering the host handler. The handler
     // is then free to await without observing later editor/context mutations.
     const extraction = extractPostContentWithEmojiTags(editorInstance);
-    const content = !mediaFreePlacement && mediaGalleryStore.getContentUrls().length > 0
-      ? [extraction.content.trim(), ...mediaGalleryStore.getContentUrls()]
-        .filter(Boolean)
-        .join("\n")
-      : extraction.content;
+    const content =
+      !mediaFreePlacement && mediaGalleryStore.getContentUrls().length > 0
+        ? [extraction.content.trim(), ...mediaGalleryStore.getContentUrls()]
+            .filter(Boolean)
+            .join("\n")
+        : extraction.content;
     const hashtagSnapshot = getHashtagDataSnapshot();
     const snapshot = {
       content,
       hashtagTags: hashtagSnapshot.tags.map((tag) => [...tag]),
       hashtags: [...hashtagSnapshot.hashtags],
       contentWarningAvailable: hostOwnedConfig.contentWarningEnabled === true,
-      contentWarningEnabled: hostOwnedConfig.contentWarningEnabled === true && contentWarningStore.value,
-      contentWarningReason: hostOwnedConfig.contentWarningEnabled === true
-        ? contentWarningReasonStore.value
-        : "",
+      contentWarningEnabled:
+        hostOwnedConfig.contentWarningEnabled === true &&
+        contentWarningStore.value,
+      contentWarningReason:
+        hostOwnedConfig.contentWarningEnabled === true
+          ? contentWarningReasonStore.value
+          : "",
       emojiTags: extraction.emojiTags.map((tag) => [...tag]),
       mediaImetaMap: createHostOwnedMediaImetaMap(editorInstance),
       replyQuote: $state.snapshot(replyQuoteState.value),
@@ -870,12 +907,21 @@
       const eventId = getHostSubmissionEventId(result);
       notificationPort?.notifyPostSuccess({
         ...(eventId ? { eventId } : {}),
-        ...(output.context.reply ? { replyToEventId: output.context.reply.eventId } : {}),
+        ...(output.context.reply
+          ? { replyToEventId: output.context.reply.eventId }
+          : {}),
         ...(output.context.quotes.length
-          ? { quotedEventIds: output.context.quotes.map((quote) => quote.eventId) }
+          ? {
+              quotedEventIds: output.context.quotes.map(
+                (quote) => quote.eventId,
+              ),
+            }
           : {}),
       });
-      postStatusHandlers.markSuccess({ success: true, ...(eventId ? { eventId } : {}) });
+      postStatusHandlers.markSuccess({
+        success: true,
+        ...(eventId ? { eventId } : {}),
+      });
       if (isHostOwnedLiteBuild) {
         updatePostStatus({
           sending: false,
@@ -934,9 +980,10 @@
       return;
     }
     if (currentEditor) {
-      const pinnedHashtags = hostOwnedConfig?.hashtagPinEnabled === true && hashtagPinStore.value
-        ? [...getHashtagDataSnapshot().hashtags]
-        : [];
+      const pinnedHashtags =
+        hostOwnedConfig?.hashtagPinEnabled === true && hashtagPinStore.value
+          ? [...getHashtagDataSnapshot().hashtags]
+          : [];
       currentEditor.chain().clearContent().run();
       contentWarningStore.reset();
       contentWarningReasonStore.reset();
@@ -1006,7 +1053,8 @@
 
   $effect(() => {
     if (
-      !isHostOwnedLiteBuild && currentEditor &&
+      !isHostOwnedLiteBuild &&
+      currentEditor &&
       postManager &&
       postManager.preparePostContent(currentEditor) !== editorState.content &&
       postStatus.error
@@ -1143,11 +1191,14 @@
             !hasPostingCapability ||
             postStatus.completed}
           onClick={() => {
-            if (!canPost ||
+            if (
+              !canPost ||
               postStatus.sending ||
               isUploading ||
               !hasPostingCapability ||
-              postStatus.completed) return;
+              postStatus.completed
+            )
+              return;
             void submitPost();
           }}
           onfocus={restoreEditorFocusAfterEditorSubmitButtonFocus}
@@ -1245,6 +1296,8 @@
     align-items: stretch;
     overflow: visible;
     --post-editor-block-padding: 10px;
+    --post-editor-line-height: 30px;
+    --post-editor-submit-button-size: 40px;
   }
 
   .upload-error {
@@ -1287,14 +1340,12 @@
 
   .post-container.editor-auto-grow :global(.tiptap-editor) {
     min-height: calc(
-      var(--post-editor-auto-grow-min-lines) +
-      var(--post-editor-block-padding) +
-      var(--post-editor-block-padding)
+      var(--post-editor-auto-grow-min-lines) + var(--post-editor-block-padding) +
+        var(--post-editor-block-padding)
     );
     max-height: calc(
-      var(--post-editor-auto-grow-max-lines) +
-      var(--post-editor-block-padding) +
-      var(--post-editor-block-padding)
+      var(--post-editor-auto-grow-max-lines) + var(--post-editor-block-padding) +
+        var(--post-editor-block-padding)
     );
   }
 
@@ -1337,7 +1388,11 @@
   }
 
   .editor-container.sending {
-    background: color-mix(in srgb, var(--surface-editor) 82%, var(--surface-button) 18%);
+    background: color-mix(
+      in srgb,
+      var(--surface-editor) 82%,
+      var(--surface-button) 18%
+    );
     cursor: not-allowed;
   }
 
@@ -1357,7 +1412,7 @@
   }
 
   .editor-container.editor-submit-enabled :global(.tiptap-editor) {
-    padding-inline-end: calc(var(--post-editor-block-padding) + 48px);
+    padding-inline-end: calc(var(--post-editor-block-padding) + 40px);
   }
 
   .editor-submit-button-container {
@@ -1365,12 +1420,21 @@
     inset-inline-end: var(--post-editor-block-padding);
     bottom: var(--post-editor-block-padding);
     z-index: 4;
+    inset-inline-end: 14px;
+  }
+
+  .post-container.editor-auto-grow .editor-submit-button-container {
+    bottom: calc(
+      var(--post-editor-block-padding) +
+        (var(--post-editor-line-height) - var(--post-editor-submit-button-size)) /
+        2
+    );
   }
 
   :global(.editor-submit-button) {
-    width: 40px;
-    height: 40px;
-    flex: 0 0 40px;
+    width: var(--post-editor-submit-button-size);
+    height: var(--post-editor-submit-button-size);
+    flex: 0 0 var(--post-editor-submit-button-size);
   }
 
   :global(button.editor-submit-button .plane-icon.svg-icon) {
@@ -1396,7 +1460,7 @@
     padding: var(--post-editor-block-padding);
     font-family: inherit;
     font-size: 1.25rem;
-    line-height: 1.5;
+    line-height: var(--post-editor-line-height);
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;

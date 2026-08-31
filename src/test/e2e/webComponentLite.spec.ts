@@ -537,7 +537,9 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
             buttonLeft: buttonRect.left,
             buttonTop: buttonRect.top,
             buttonBottom: buttonRect.bottom,
+            buttonHeight: buttonRect.height,
             buttonBottomInset: editorRect.bottom - buttonRect.bottom,
+            editorLineHeight: Number.parseFloat(getComputedStyle(editorElement).lineHeight),
             editorPaddingBottom: Number.parseFloat(getComputedStyle(editorElement).paddingBottom),
             textOverlapsButton: textRects.some((rect) => (
                 rect.right > buttonRect.left
@@ -550,7 +552,10 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
     const expectButtonInsideEditor = (geometry: Awaited<ReturnType<typeof getGeometry>>) => {
         expect(geometry.buttonTop).toBeGreaterThanOrEqual(geometry.editorTop - 1);
         expect(geometry.buttonBottom).toBeLessThanOrEqual(geometry.editorBottom + 1);
-        expect(geometry.buttonBottomInset).toBeCloseTo(geometry.editorPaddingBottom, 0);
+        expect(geometry.buttonBottomInset).toBeCloseTo(
+            geometry.editorPaddingBottom + (geometry.editorLineHeight - geometry.buttonHeight) / 2,
+            0,
+        );
     };
 
     // A one-line editor has the smallest usable surface, so prove that the
@@ -576,6 +581,54 @@ test("Lite editor submit button stays inside a narrow editor and preserves prefe
     const contentWarningGeometry = await getGeometry();
     expectButtonInsideEditor(contentWarningGeometry);
     expect(contentWarningGeometry.buttonBottomInset).toBeCloseTo(geometry.buttonBottomInset, 0);
+});
+
+test("Lite editor submit button centers on each visible auto-grow line", async ({ page }) => {
+    await page.goto(hostOrigin);
+    await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.style.cssText = "display: block; width: 420px; height: 640px;";
+        composer.configureHostOwned({
+            submit: () => undefined,
+            editorSubmitButtonEnabled: true,
+            keyboardButtonBarEnabled: false,
+            editorMinLines: 1,
+            editorMaxLines: 3,
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+    }, { componentOrigin });
+
+    const composer = page.locator("ehagaki-composer");
+    const editor = composer.locator(".tiptap-editor");
+    const getLineGeometry = (lineCount: number) => composer.evaluate((element, lineCount) => {
+        const shadow = element.shadowRoot!;
+        const editorElement = shadow.querySelector<HTMLElement>(".tiptap-editor")!;
+        const buttonElement = shadow.querySelector<HTMLElement>(".editor-submit-button")!;
+        const editorRect = editorElement.getBoundingClientRect();
+        const buttonRect = buttonElement.getBoundingClientRect();
+        const style = getComputedStyle(editorElement);
+        const lineHeight = Number.parseFloat(style.lineHeight);
+        const paddingTop = Number.parseFloat(style.paddingTop);
+        return {
+            editorHeight: editorRect.height,
+            lineHeight,
+            paddingTop,
+            expectedLastLineCenter: editorRect.top + paddingTop + lineHeight * (lineCount - 0.5),
+            buttonCenter: buttonRect.top + buttonRect.height / 2,
+        };
+    }, lineCount);
+
+    for (const [content, lineCount] of [["one", 1], ["one\ntwo", 2], ["one\ntwo\nthree", 3]] as const) {
+        await editor.fill(content);
+        await expect.poll(async () => (await getLineGeometry(lineCount)).editorHeight).toBe(20 + lineCount * 30);
+        const geometry = await getLineGeometry(lineCount);
+        expect(Math.abs(geometry.buttonCenter - geometry.expectedLastLineCenter)).toBeLessThanOrEqual(0.5);
+    }
 });
 
 test("exposes the common editor empty state API through the Host-owned Lite element", async ({ page }) => {
