@@ -81,6 +81,14 @@
           <option value="submit">Enter: submit</option>
         </select>
       </div>
+      <div class="control-row">
+        <label for="submit-shortcut-preset">Submit shortcut preset</label>
+        <select id="submit-shortcut-preset">
+          <option value="default" selected>Default Ctrl/Cmd+Enter</option>
+          <option value="host-defined">Host-defined Ctrl/Cmd+Shift, Alt, Shift</option>
+          <option value="disabled">Disabled</option>
+        </select>
+      </div>
       <button id="create-composer" type="button">Create / Recreate Composer</button>
       <output id="mount-config-status" role="status">not mounted</output>
     </fieldset>
@@ -215,13 +223,14 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         keyboardButtonBar: checked('keyboard-bar') ? 'on' : 'off',
         editorSubmitButton: checked('editor-submit-button') ? 'on' : 'off',
         enterKeyBehavior: value('enter-behavior'),
+        submitShortcutPreset: value('submit-shortcut-preset'),
         editorAutoGrow: (() => {
           const min = value('editor-min-lines').trim();
           const max = value('editor-max-lines').trim();
           return !min && !max ? 'legacy' : `${min || '?'}/${max || '?'}`;
         })(),
       });
-      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | editor submit: ${config.editorSubmitButton} | enter: ${config.enterKeyBehavior} | editor: ${config.editorAutoGrow}`;
+      const readyText = (config) => `ready | upload: ${config.upload} | CW: ${config.contentWarning} | hashtag pin: ${config.hashtagPin} | bar: ${config.keyboardButtonBar} | editor submit: ${config.editorSubmitButton} | enter: ${config.enterKeyBehavior} | shortcuts: ${config.submitShortcutPreset} | editor: ${config.editorAutoGrow}`;
       const setReadyStatus = (config) => {
         const text = readyText(config);
         status.textContent = text;
@@ -296,6 +305,19 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           about: value('channel-about').trim() || null,
         };
       };
+      const submitShortcutsForPreset = (preset) => {
+        if (preset === 'host-defined') {
+          return {
+            submitShortcuts: [
+              { id: 'primary', modifiers: ['ctrlOrMeta', 'shift'] },
+              { id: 'secondary', modifiers: ['alt'] },
+              { id: 'shift-submit', modifiers: ['shift'] },
+            ],
+          };
+        }
+        if (preset === 'disabled') return { submitShortcuts: [] };
+        return {};
+      };
 
       async function createComposer() {
         const generation = ++creationGeneration;
@@ -306,8 +328,9 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
         composer.id = 'composer';
         composer.assetBase = new URL('./web-component/host-owned/', import.meta.url).href;
         const hostOptions = {
-          async submit(output, { signal }) {
+          async submit(output, { signal, shortcutId }) {
             write('submit output:', output);
+            write('submit shortcut:', shortcutId === undefined ? 'none' : shortcutId);
             lastSubmitOutput.textContent = stringify(output, true);
             await delayWithAbort(Number(value('submit-delay')), signal, 'submit');
             if (signal.aborted) {
@@ -329,6 +352,7 @@ note1424242424242424242424242424242424242424242424242424qv3q9y6</textarea>
           keyboardButtonBarEnabled: config.keyboardButtonBar === 'on',
           editorSubmitButtonEnabled: config.editorSubmitButton === 'on',
           enterKeyBehavior: config.enterKeyBehavior,
+          ...submitShortcutsForPreset(config.submitShortcutPreset),
           ...(() => {
             const min = value('editor-min-lines').trim();
             const max = value('editor-max-lines').trim();
