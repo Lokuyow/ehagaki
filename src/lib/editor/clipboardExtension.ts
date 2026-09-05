@@ -26,6 +26,7 @@ import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { debugClipboardData } from '../utils/clipboardDebug';
+import { normalizeEmojiShortcode } from '../customEmoji';
 
 // ================================================================================
 // 内部ヘルパー関数
@@ -71,6 +72,11 @@ function extractParagraphsFromSlice(slice: Slice): string[] {
             node.content.forEach((child: PMNode) => {
                 if (child.isText) {
                     text += child.text || '';
+                } else if (child.type.name === 'customEmoji') {
+                    const shortcode = normalizeEmojiShortcode(child.attrs?.shortcode);
+                    if (shortcode) {
+                        text += `:${shortcode}:`;
+                    }
                 }
             });
             paragraphs.push(text);
