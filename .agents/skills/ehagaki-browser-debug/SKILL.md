@@ -35,7 +35,7 @@ eHagakiの現在のcheckoutを根拠に、ブラウザ制約とアプリケー�
 - 対象inputまたはeditor、再現操作
 - 期待結果と実際の結果
 
-再現できない場合は、既存コードと証拠から原因を特定できるかを明示する。原因を特定できなければ本番コードを推測で変更せず、追加で必要な計測または実端末確認を報告する。
+実端末での再現だけを修正の前提にしない。再現、現在のコード、ログ・計測、テスト、正常経路との決定論的比較から、原因と最小修正を支える十分な根拠が得られれば進める。根拠が不足する場合は推測で本番コードを変更せず、必要な追加調査を行い、実行できない計測や実端末確認は未確認として報告する。
 
 ## 原因層を分類する
 
@@ -81,7 +81,7 @@ nsec、秘密鍵、token、署名payload、認証payload、投稿本文などを
 4. 非同期処理ではowner、generation、abort/unsubscribe、cleanup、stale completionを確認する。
 5. focus、selection、resize、scroll、geometrychangeへ依存する場合はevent列とrAF境界を確認する。
 6. 正常なsibling pathがある場合は、入力、state遷移、event順、cleanupの差を比較する。
-7. 原因が確定するまで本番コードを変更しない。
+7. 本番コードの修正は、上記の証拠で説明できる原因と責務に限定する。仮説だけを根拠に補償的workaroundを追加しない。
 
 ## 回避策を制限する
 
@@ -114,7 +114,7 @@ nsec、秘密鍵、token、署名payload、認証payload、投稿本文などを
 - protocol semanticsだけの変更にはPlaywrightを追加しない。
 - 実ブラウザでしか成立しない回帰は、決定論的に再現できる場合にpersistent E2Eを検討する。
 - 調査専用のspec、HTML、script、screenshot、traceは完了時に削除する。
-- 実装変更では対象テストから始め、`AGENTS.md`に従い原則`npm test`まで広げる。Svelte/TypeScript変更では`npm run check`、PWA/SW/build境界では`npm run build`も実行する。
+- 共通の必須検証と、検証を追加・反復する条件は`AGENTS.md`のVerificationに従う。
 
 Playwrightのdevice設定はuser agent、viewport、screen、touch等のemulationにすぎない。Android IME、iOS Safari keyboard、VirtualKeyboard APIの実geometry、ブラウザ下部バー、PWA standalone固有UI、WebView固有挙動を同一とは扱わない。必要な実端末確認を実行できなければ、未確認と明記する。
 

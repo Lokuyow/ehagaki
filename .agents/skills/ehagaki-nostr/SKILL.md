@@ -25,7 +25,7 @@ eHagakiの既存境界と実装済みライブラリAPIを基準に、Nostr関�
 5. `nostr-tools`と`rx-nostr`の責務を混同しない。
 6. iframeまたはDirect Web Componentを含む場合も、event、tag、signer、relay、subscriptionのprotocol semanticsはこのSkillで扱い、browser realm、postMessage/WebSocket interception、Shadow DOM、geometry、mount/disconnect lifecycleの観測は[ehagaki-browser-debug](../ehagaki-browser-debug/SKILL.md)へ分離する。
 7. 一時的な互換処理やフォールバックは、仕様、対応ブラウザ、再現ログ、既存互換契約のいずれかで必要性を示せる場合だけ追加する。
-8. 曖昧さがevent semanticsや互換性を変える場合は、推測せず`needs confirmation`として扱う。
+8. 曖昧さはまずuser/task context、現在のrepository、適用されるNIP・protocol仕様から解消する。それでも未解決で、event semantics、互換性、安全性などの結果を実質的に変える選択だけを、`AGENTS.md`の確認条件に従い`needs confirmation`として扱う。
 
 ## 取得と購読を検証する
 
@@ -55,8 +55,6 @@ eHagakiの既存境界と実装済みライブラリAPIを基準に、Nostr関�
 1. 最小の既存責務へ変更を置き、無関係なrefactorを混ぜない。
 2. protocol semantics、subscription lifecycle、dedupe、cache、securityの観点でdiffをレビューする。
 3. Nostr関連の責務、主要ファイル、event kind、tag semantics、対応NIP、関連テストを変更した場合は、`references/implementation-map.md`を同じ変更内で更新する。
-4. 変更範囲に応じて、対象unit test、component test、Playwright、`npm run check`を選ぶ。
-5. ブラウザ統合またはユーザー操作を通した一連の挙動が受け入れ条件に含まれる場合はPlaywrightを使う。layout、focus、viewport、clipboard、touchに限定せず、URLクエリ、iframe、ダイアログ操作、アカウント切替、IndexedDBを含むブラウザ内フローも必要に応じて対象にする。
+4. 共通の必須検証、検証を追加・反復する条件、結果の報告は`AGENTS.md`のVerificationに従う。
+5. URLクエリ、iframe、ダイアログ操作、アカウント切替、IndexedDBを含むブラウザ内フローは、下位レベルのテストでは受け入れ条件を証明できない場合にPlaywrightで検証する。
 6. protocol semanticsだけの変更にはPlaywrightを追加せず、unit testまたはcomponent testで検証する。
-7. 実装変更では狭いテストから実行し、リポジトリ規則に従って原則`npm test`まで広げる。SvelteまたはTypeScript変更では`npm run check`も実行する。
-8. 実行した検証と結果、実行していない検証と理由を分けて報告する。実行していない検証を成功したと報告しない。

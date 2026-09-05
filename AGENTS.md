@@ -20,6 +20,16 @@ eHagaki is a post-focused Nostr client with on-device image and video compressio
 
 Use `npm`. Do not replace it with `pnpm` or `yarn`.
 
+## Instruction priority and clarification
+
+`AGENTS.md` defines repository-wide rules; Skills provide domain-specific guidance. Explicit user/task instructions take precedence over general Skill guidance. Do not infer approval gates, scope expansion, or additional requirements from a Skill that the user/task instructions and `AGENTS.md` do not establish.
+
+If a Skill requires confirmation, pausing, leaving work unfinished, or departing from user intent, identify and link the exact `SKILL.md`, quote the relevant instruction, and explain its applicability. Distinguish an explicit requirement from your interpretation of guidance.
+
+Resolve routine gaps first from explicit user/task context, the current checkout, applicable specifications, existing code, tests, and repository documentation, using ordinary implementation judgment safely supported by those sources. Only mark an unresolved choice as `needs confirmation` when it materially changes user-visible behavior, a public contract, security, secrets or data, compatibility, requested scope, or an irreversible or external action. Continue independent authorized work while that choice is pending.
+
+Do not stop for redundant permission checks on already-authorized read-only investigation or reversible editing and verification. This does not authorize commit, push, PR creation, release, or deployment; the explicit authorization rule below still applies.
+
 ## Before editing
 
 - Read the target files, their callers, related stores or services, and relevant tests.
@@ -31,7 +41,6 @@ Use `npm`. Do not replace it with `pnpm` or `yarn`.
 - Keep changes within the requested scope, and do not mix unrelated refactoring into feature work or bug fixes.
 - Do not modify implementation code and repository instruction files in the same task unless explicitly requested.
 - Do not invent product behavior, protocol behavior, commands, or compatibility requirements.
-- If an ambiguity materially affects behavior and cannot be resolved from the repository or applicable specifications, mark it as `needs confirmation` rather than guessing.
 - Do not commit, push, open a pull request, release, or deploy unless explicitly requested.
 - When implementation depends on current third-party library APIs, use Context7 when available after checking `package.json`, local types, and existing project usage. Prefer the repository code and applicable protocol specifications for project behavior. Do not use Context7 as a substitute for NIPs or eHagaki-specific design decisions.
 
@@ -146,6 +155,8 @@ Run the narrowest relevant verification first, then broaden it according to the 
 - Use Playwright for browser integration and user interactions that unit or component tests cannot prove. For browser-specific investigation, use `.agents/skills/ehagaki-browser-debug/`; prefer relevant existing tests and keep ad hoc artifacts temporary. Device emulation is not evidence of real OS keyboard, browser chrome, PWA standalone UI, or WebView behavior.
 - Run `npm run deploy` only when deployment is explicitly requested, and run `npm run build` first.
 - Documentation-only changes do not require application test suites unless they alter executable configuration or reveal an implementation issue.
+
+Do not add low-value tests that merely mirror the implementation for reversible, low-impact changes. For bug fixes and contract changes, prioritize meaningful regression coverage at the lowest sufficient level. Complete the required and relevant checks above; after they pass, repeat or broaden verification only for new changes, failures, or unresolved concerns.
 
 Do not claim that a check passed unless it was actually run. Report relevant checks that were not run and why.
 
