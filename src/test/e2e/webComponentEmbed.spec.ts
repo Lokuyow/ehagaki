@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative } from "node:path";
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
@@ -28,6 +28,8 @@ let relayConnectionCount = 0;
 let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
 let relayRequestsPaused = false;
 let pendingRelayResponses: Array<() => void> = [];
+let failPostComponentLoad = false;
+let postComponentFaultRequestCount = 0;
 const componentRequests = new Set<string>();
 const hostRequests = new Set<string>();
 const componentStoragePrefix = "ehagaki.web-component.v1:";
@@ -92,6 +94,18 @@ function contentTypeFor(filePath: string): string {
     }
 }
 
+async function findPostComponentChunks(directory: string): Promise<Set<string>> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const paths = await Promise.all(entries.map(async (entry) => {
+        const filePath = join(directory, entry.name);
+        if (entry.isDirectory()) return findPostComponentChunks(filePath);
+        return /^PostComponent-[^/\\]+\.js$/.test(entry.name)
+            ? new Set([`/${relative(join(process.cwd(), "dist-web-component"), filePath).replaceAll("\\", "/")}`])
+            : new Set<string>();
+    }));
+    return new Set(paths.flatMap((pathsForEntry) => [...pathsForEntry]));
+}
+
 test.beforeAll(async () => {
     test.setTimeout(180_000);
     await ensureWebComponentE2EOutput();
@@ -134,6 +148,10 @@ test.beforeAll(async () => {
     });
     const relayPort = await listenWebSocketServer(relayServer);
     relayOrigin = `ws://127.0.0.1:${relayPort}`;
+    const postComponentChunkPaths = await findPostComponentChunks(join(process.cwd(), "dist-web-component"));
+    if (postComponentChunkPaths.size === 0) {
+        throw new Error("The Web Component build did not emit a PostComponent chunk.");
+    }
     componentServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", componentOrigin).pathname;
         componentRequests.add(pathname);
@@ -141,6 +159,11 @@ test.beforeAll(async () => {
         const filePath = normalize(join(process.cwd(), "dist-web-component", relativePath));
         if (!filePath.startsWith(normalize(join(process.cwd(), "dist-web-component")))) {
             response.writeHead(400).end();
+            return;
+        }
+        if (failPostComponentLoad && postComponentChunkPaths.has(pathname)) {
+            postComponentFaultRequestCount += 1;
+            response.writeHead(503).end();
             return;
         }
         try {
@@ -185,6 +208,12 @@ test.beforeEach(() => {
     relayPublishedEvents = [];
     relayRequestsPaused = false;
     pendingRelayResponses = [];
+    failPostComponentLoad = false;
+    postComponentFaultRequestCount = 0;
+});
+
+test.afterEach(() => {
+    failPostComponentLoad = false;
 });
 
 function releasePausedRelayRequests(): void {
@@ -413,8 +442,8 @@ test("controls the Full editor focus through the public API without changing con
 });
 
 test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
+    failPostComponentLoad = true;
     await page.goto(hostOrigin);
-    await page.route("**/PostComponent-*.js", (route) => route.abort());
     const result = await page.evaluate(async ({ componentOrigin }) => {
         await import(`${componentOrigin}/ehagaki-composer.js`);
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
@@ -448,6 +477,7 @@ test("Full Web Component rejects ready when PostComponent loading fails", async 
         }],
         editorIsEmpty: null,
     });
+    expect(postComponentFaultRequestCount).toBe(1);
 });
 
 test("auto-login persists NIP-07 and delays ready through authenticated bootstrap", async ({ page }) => {
