@@ -12,6 +12,7 @@ import type {
     ReplyNotificationRecipient,
 } from '../lib/types';
 import { settingsStore } from './settingsStore.svelte';
+import type { EmbedPreloadedProfilePresentation } from '../lib/embedProtocol';
 
 // --- リプライ・引用状態管理 ---
 let replyQuote = $state<ReplyQuoteComposerState>({
@@ -41,6 +42,7 @@ function createReplyQuoteState(params: {
         replyNotificationRecipients: [],
         authorDisplayName: null,
         authorPicture: null,
+        authorPreviewPresentationSource: 'none',
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,
@@ -60,6 +62,7 @@ function createDraftEntryState(data: DraftReplyQuoteEntryData): ReplyQuoteState 
         quoteNotificationEnabled: data.quoteNotificationEnabled === true,
         authorDisplayName: normalizePresentationValue(data.authorDisplayName),
         authorPicture: normalizePresentationValue(data.authorPicture),
+        authorPreviewPresentationSource: 'draft',
         replyNotificationRecipients: data.replyNotificationRecipients
             ? data.replyNotificationRecipients.map((recipient) => ({
                 ...recipient,
@@ -320,6 +323,7 @@ export function updateAuthorProfile(
         displayName: string | null;
         picture: string | null;
     },
+    source: 'profile-sync' = 'profile-sync',
 ): void {
     const displayName = profile.displayName?.trim() || null;
     const picture = profile.picture?.trim() || null;
@@ -330,17 +334,49 @@ export function updateAuthorProfile(
             || (
                 reference.authorDisplayName === displayName
                 && reference.authorPicture === picture
+                && reference.authorPreviewPresentationSource === source
             )
         ) {
             return;
         }
         reference.authorDisplayName = displayName;
         reference.authorPicture = picture;
+        reference.authorPreviewPresentationSource = source;
         changed = true;
     });
     if (changed) {
         notifyReplyQuoteChanged();
     }
+}
+
+/** Applies a detached host presentation only to its still-owned, known author. */
+export function applyPreloadedAuthorPreviewPresentation(
+    targets: readonly ReplyQuoteUpdateTarget[],
+    profiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>,
+): void {
+    let changed = false;
+    for (const target of targets) {
+        updateMatchingReferences(target, (reference) => {
+            const profile = reference.authorPubkey
+                ? profiles[reference.authorPubkey]
+                : undefined;
+            if (!profile || reference.authorPreviewPresentationSource === 'profile-sync') {
+                return;
+            }
+            if (
+                reference.authorDisplayName === profile.displayName
+                && reference.authorPicture === profile.picture
+                && reference.authorPreviewPresentationSource === 'host-preload'
+            ) {
+                return;
+            }
+            reference.authorDisplayName = profile.displayName;
+            reference.authorPicture = profile.picture;
+            reference.authorPreviewPresentationSource = 'host-preload';
+            changed = true;
+        });
+    }
+    if (changed) notifyReplyQuoteChanged();
 }
 
 export function restoreReplyQuote(data: DraftReplyQuoteData): void {

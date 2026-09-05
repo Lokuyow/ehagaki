@@ -14,6 +14,7 @@
   import type { AppPostNotificationPort } from "../lib/appNotificationPort";
   import type { EmbedSettingsSetPayload } from "../lib/embedProtocol";
   import {
+    selectPreloadedProfiles,
     selectVerifiedPreloadedEvents,
     validateEmbedComposerSetContextPayload,
   } from "../lib/embedComposerContextValidation";
@@ -42,6 +43,7 @@
     setReplyQuote,
     settleReplyQuoteReferencesWithoutHydration,
     updateReferencedEvent,
+    applyPreloadedAuthorPreviewPresentation,
   } from "../stores/replyQuoteStore.svelte";
   import {
     KEYBOARD_BUTTON_BAR_HEIGHT,
@@ -254,10 +256,12 @@
       } else {
         const targets = setReplyQuote(replyQuoteQuery);
         const preloaded = selectVerifiedPreloadedEvents(validated.preloadedEvents, targets);
+        const preloadedProfiles = selectPreloadedProfiles(validated.preloadedProfiles);
         for (const target of targets) {
           const event = preloaded[target.eventId];
           if (event) updateReferencedEvent(target, event);
         }
+        applyPreloadedAuthorPreviewPresentation(targets, preloadedProfiles);
         // No relay is introduced in Lite. References without a verified preload
         // remain stable, collapsed context entries rather than loading forever.
         settleReplyQuoteReferencesWithoutHydration(targets);

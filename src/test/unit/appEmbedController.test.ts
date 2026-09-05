@@ -76,6 +76,7 @@ function createController(overrides: Record<string, unknown> = {}) {
     const composerContextApply = {
         applyReplyQuoteSelection: vi.fn(() => []),
         hydrateReplyQuoteReferences: vi.fn().mockResolvedValue(undefined),
+        applyPreloadedAuthorPreviewPresentation: vi.fn(),
         clearReplyQuote: vi.fn(),
         applyChannelContextQuery: vi.fn(),
         clearChannelContext: vi.fn(),
@@ -1087,5 +1088,33 @@ describe('createAppEmbedController', () => {
         expect(injectedStorage.applyEmbedStorageSnapshot).toHaveBeenCalledWith({ locale: 'ja' });
         expect(injectedStorage.applyStoredSettingsSnapshot).toHaveBeenCalledTimes(1);
         expect(injectedStorage.persistEmbedStorageKeys).toHaveBeenCalledTimes(1);
+    });
+
+    it('detached profile preloadを同じselectionのpresentation portへだけ渡す', async () => {
+        const authorPubkey = 'a'.repeat(64);
+        const target: ReplyQuoteHydrationTarget = {
+            eventId: 'b'.repeat(64), mode: 'reply', ownerToken: Symbol('reply'), relayHints: [], authorPubkey,
+        };
+        const applyPreloadedAuthorPreviewPresentation = vi.fn();
+        const { controller } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection: vi.fn(() => [target]),
+                hydrateReplyQuoteReferences: vi.fn().mockResolvedValue(undefined),
+                applyPreloadedAuthorPreviewPresentation,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+
+        await controller.applyComposerContext({
+            reply: nip19.neventEncode({ id: target.eventId, author: authorPubkey }),
+            preloadedProfiles: { [authorPubkey]: { displayName: 'Host', picture: null } },
+        });
+
+        expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
+            [target],
+            { [authorPubkey]: { displayName: 'Host', picture: null } },
+        );
     });
 });

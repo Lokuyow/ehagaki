@@ -1,11 +1,15 @@
 import { getEventHash, validateEvent, verifyEvent } from "nostr-tools";
-import type { EmbedComposerSetContextPayload } from "./embedProtocol";
+import type {
+    EmbedComposerSetContextPayload,
+    EmbedPreloadedProfilePresentation,
+} from "./embedProtocol";
 import { decodeEventPointerValue } from "./eventPointerUtils";
 import {
     createPlainNostrEventSnapshot,
     isSignedNostrEvent,
 } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { normalizeProfilePictureUrl } from "./profilePictureUrlUtils";
 import type { NostrEvent, ReplyQuoteHydrationTarget } from "./types";
 
 export class EmbedComposerContextValidationError extends Error {
@@ -21,6 +25,10 @@ function invalid(): never {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isLowercaseHexPubkey(value: string): boolean {
+    return /^[0-9a-f]{64}$/.test(value);
 }
 
 function validateReference(value: unknown): void {
@@ -146,5 +154,31 @@ export function selectVerifiedPreloadedEvents(
         }
     }
 
+    return selected;
+}
+
+/**
+ * Selects detached, display-only profile hints. Invalid hints are deliberately
+ * isolated from whole-context validation just like preloaded events.
+ */
+export function selectPreloadedProfiles(
+    value: unknown,
+): Record<string, EmbedPreloadedProfilePresentation> {
+    if (!isRecord(value)) return {};
+
+    const selected: Record<string, EmbedPreloadedProfilePresentation> = {};
+    for (const [pubkey, candidate] of Object.entries(value)) {
+        if (!isLowercaseHexPubkey(pubkey) || !isRecord(candidate)) continue;
+
+        const displayName = typeof candidate.displayName === "string"
+            ? candidate.displayName.trim() || null
+            : null;
+        const picture = typeof candidate.picture === "string"
+            ? normalizeProfilePictureUrl(candidate.picture)
+            : null;
+        if (!displayName && !picture) continue;
+
+        selected[pubkey] = { displayName, picture };
+    }
     return selected;
 }

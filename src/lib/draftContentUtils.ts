@@ -24,6 +24,7 @@ type DraftReplyQuoteStateLike = Pick<
     | 'replyNotificationRecipients'
     | 'authorDisplayName'
     | 'authorPicture'
+    | 'authorPreviewPresentationSource'
     | 'referencedEvent'
     | 'rootEventId'
     | 'rootRelayHint'
@@ -112,7 +113,11 @@ function cloneReferencedEvent(event: NostrEvent | null): NostrEvent | null {
 function buildDraftReplyQuoteEntry(
     replyQuoteState: DraftReplyQuoteStateLike,
 ): DraftReplyQuoteEntryData {
-    const authorPicture = normalizePresentationValue(replyQuoteState.authorPicture);
+    const hasHostPreloadedPresentation =
+        replyQuoteState.authorPreviewPresentationSource === 'host-preload';
+    const authorPicture = hasHostPreloadedPresentation
+        ? null
+        : normalizePresentationValue(replyQuoteState.authorPicture);
     const replyNotificationRecipients = replyQuoteState.replyNotificationRecipients?.map(
         buildDraftReplyNotificationRecipient,
     );
@@ -123,7 +128,9 @@ function buildDraftReplyQuoteEntry(
         authorPubkey: replyQuoteState.authorPubkey,
         quoteNotificationEnabled: replyQuoteState.quoteNotificationEnabled,
         ...(replyNotificationRecipients ? { replyNotificationRecipients } : {}),
-        authorDisplayName: normalizePresentationValue(replyQuoteState.authorDisplayName),
+        authorDisplayName: hasHostPreloadedPresentation
+            ? null
+            : normalizePresentationValue(replyQuoteState.authorDisplayName),
         ...(authorPicture ? { authorPicture } : {}),
         referencedEvent: cloneReferencedEvent(replyQuoteState.referencedEvent),
         rootEventId: replyQuoteState.rootEventId,

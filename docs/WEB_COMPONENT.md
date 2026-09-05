@@ -569,6 +569,12 @@ console.log('applied settings:', [...applied]);
 `preloadedEvents` を同じ `setContext()` に指定できます。これはその呼び出しのreply / quote
 hydrationだけに使われ、保存や後続のcontextへは持ち越されません。
 
+Hostがauthor profileの表示値も保持している場合は、同じ呼び出しにpubkeyをkeyとした
+`preloadedProfiles` を指定できます。値は `{ displayName, picture }` で、未提供値は `null` です。
+これは表示専用の一時hintであり、author identity、event/tag、output、投稿eventには使われません。
+有効なreply/quotesと同じpatchでのみ利用され、不正なcontainer・entry・表示値はcontext全体を
+rejectせず無視されます。Relay profileが利用できた場合は通常profileが優先されます。
+
 ```js
 await composer.setContext({
   reply: 'nevent1...',
@@ -581,6 +587,12 @@ await composer.setContext({
       tags: [],
       content: '親が取得済みの本文',
       sig: 'event-signature-hex',
+    },
+  },
+  preloadedProfiles: {
+    'author-pubkey-hex': {
+      displayName: '親が保持する表示名',
+      picture: 'https://example.com/author.png',
     },
   },
 });
@@ -684,6 +696,8 @@ await composer.setContext({
 - `channel.name` / `channel.about` が指定されているのに、空でない文字列または `null` ではない場合
 - `preloadedEvents` は補助入力のため、containerがobjectでない場合や個別eventが不正な場合も、
   context全体を拒否せずpreloadなしとして扱います
+- `preloadedProfiles` も補助入力です。pubkey key、entry、display name、picture URLが不正な値は
+  個別に無視し、保存・URL・context updatedへは出力しません
 
 不正な参照を含むペイロードは、本文だけ先に適用されることはありません。`content`、
 reply、quotes、channel をまとめて指定した場合も、検証が失敗すれば状態は変更されません。

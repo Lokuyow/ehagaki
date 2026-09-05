@@ -62,6 +62,39 @@ function createProfile(name: string, picture = `https://example.com/${name}.png`
 }
 
 describe("replyQuoteProfileSync", () => {
+    it("replaces a host-preloaded presentation with the normal relay profile", async () => {
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime: vi.fn(async () => createProfile("Relay Author")),
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+                authorDisplayName: "Host Author",
+                authorPicture: "https://example.com/host.png",
+                authorPreviewPresentationSource: "host-preload",
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(updateAuthorProfile).toHaveBeenCalledWith(
+            ownedTarget("reply-event", "reply"),
+            "author-a",
+            {
+                displayName: "Relay Author",
+                picture: "https://example.com/Relay Author.png",
+            },
+        );
+    });
+
     it("同じentryを再生成した場合は古いprofile fetch結果を新ownerへ適用しない", async () => {
         let resolveOld!: (profile: ProfileData) => void;
         let resolveNew!: (profile: ProfileData) => void;

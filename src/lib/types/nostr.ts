@@ -275,6 +275,8 @@ export interface ReplyQuoteState {
     replyNotificationRecipients?: ReplyNotificationRecipient[];
     authorDisplayName: string | null;
     authorPicture: string | null;
+    /** Source for preview-only author display name and picture, not identity/event provenance. */
+    authorPreviewPresentationSource?: 'none' | 'host-preload' | 'profile-sync' | 'draft';
     referencedEvent: NostrEvent | null;
     rootEventId: string | null;
     rootRelayHint: string | null;

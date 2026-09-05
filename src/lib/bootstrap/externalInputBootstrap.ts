@@ -25,6 +25,7 @@ import type {
     ReplyQuoteHydrationTarget,
     ReplyQuoteUpdateTarget,
 } from "../types";
+import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 
 interface SharedMediaStoreLike {
     files: File[];
@@ -259,11 +260,18 @@ export interface HydrateReplyQuoteReferencesParams extends Pick<
 > {
     references: ReplyQuoteHydrationTarget[];
     preloadedEvents?: Record<string, NostrEvent>;
+    preloadedProfiles?: Readonly<Record<string, EmbedPreloadedProfilePresentation>>;
+    applyPreloadedAuthorPreviewPresentation?: (
+        targets: readonly ReplyQuoteUpdateTarget[],
+        profiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>,
+    ) => void;
 }
 
 export async function hydrateReplyQuoteReferences({
     references,
     preloadedEvents = {},
+    preloadedProfiles,
+    applyPreloadedAuthorPreviewPresentation,
     rxNostr,
     relayConfig,
     updateReferencedEvent,
@@ -291,6 +299,8 @@ export async function hydrateReplyQuoteReferences({
                 updateReferencedEvent,
                 initializeReplyNotificationRecipients,
                 setReplyQuoteError,
+                preloadedProfiles,
+                applyPreloadedAuthorPreviewPresentation,
             }),
         ),
     );

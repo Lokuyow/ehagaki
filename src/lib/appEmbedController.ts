@@ -12,6 +12,7 @@ import type { ChannelContextProvenance } from "./channelContextRuntime";
 import type {
     EmbedChannelContextPayload,
     EmbedIframeSettingsSetPayload,
+    EmbedPreloadedProfilePresentation,
 } from "./embedProtocol";
 import {
     applyEmbedComposerContent,
@@ -22,6 +23,7 @@ import {
     buildComposerContextUpdatedPayload,
 } from "./embedComposerContextNotification";
 import {
+    selectPreloadedProfiles,
     selectVerifiedPreloadedEvents,
     validateEmbedComposerSetContextPayload,
 } from "./embedComposerContextValidation";
@@ -37,7 +39,12 @@ export interface AppEmbedComposerContextApplyPort {
         references: ReplyQuoteHydrationTarget[],
         runtime: AppEmbedRuntimeSnapshot,
         preloadedEvents?: Record<string, NostrEvent>,
+        preloadedProfiles?: Readonly<Record<string, EmbedPreloadedProfilePresentation>>,
     ): Promise<void>;
+    applyPreloadedAuthorPreviewPresentation?(
+        targets: readonly ReplyQuoteHydrationTarget[],
+        profiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>,
+    ): void;
     clearReplyQuote(): void;
     applyChannelContextQuery(
         query: ChannelContextQueryTarget,
@@ -167,6 +174,7 @@ interface AppEmbedControllerState {
     pendingComposerAction?: AppEmbedPendingComposerAction;
     pendingReplyQuoteHydration?: Readonly<{
         references: ReplyQuoteHydrationTarget[];
+        preloadedProfiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>;
     }>;
     lastNotifiedComposerContextSignature: string | null;
     applyingComposerContext: boolean;
@@ -282,6 +290,13 @@ export function createAppEmbedController(
             payload.preloadedEvents,
             references,
         );
+        const selectedPreloadedProfiles = selectPreloadedProfiles(
+            payload.preloadedProfiles,
+        );
+        deps.composerContextApply.applyPreloadedAuthorPreviewPresentation?.(
+            references,
+            selectedPreloadedProfiles,
+        );
         const preloadedReferences = references.filter((reference) =>
             Object.prototype.hasOwnProperty.call(
                 selectedPreloadedEvents,
@@ -296,19 +311,26 @@ export function createAppEmbedController(
         );
 
         state.pendingReplyQuoteHydration = relayReferences.length > 0
-            ? { references: [...relayReferences] }
+            ? {
+                references: [...relayReferences],
+                preloadedProfiles: selectedPreloadedProfiles,
+            }
             : undefined;
 
         const tasks: Array<() => Promise<void>> = [];
         if (preloadedReferences.length > 0) {
-            tasks.push(() => deps.composerContextApply.hydrateReplyQuoteReferences(
-                preloadedReferences,
-                {
-                    rxNostr: undefined,
-                    relayConfig: runtimeSnapshot.relayConfig,
-                },
-                selectedPreloadedEvents,
-            ));
+            tasks.push(() => Object.keys(selectedPreloadedProfiles).length > 0
+                ? deps.composerContextApply.hydrateReplyQuoteReferences(
+                    preloadedReferences,
+                    { rxNostr: undefined, relayConfig: runtimeSnapshot.relayConfig },
+                    selectedPreloadedEvents,
+                    selectedPreloadedProfiles,
+                )
+                : deps.composerContextApply.hydrateReplyQuoteReferences(
+                    preloadedReferences,
+                    { rxNostr: undefined, relayConfig: runtimeSnapshot.relayConfig },
+                    selectedPreloadedEvents,
+                ));
         }
         if (relayReferences.length > 0) {
             tasks.push(flushPendingReplyQuoteHydration);
@@ -355,10 +377,19 @@ export function createAppEmbedController(
         }
 
         try {
-            await deps.composerContextApply.hydrateReplyQuoteReferences(
-                currentReferences,
-                runtimeSnapshot,
-            );
+            if (Object.keys(pending.preloadedProfiles).length > 0) {
+                await deps.composerContextApply.hydrateReplyQuoteReferences(
+                    currentReferences,
+                    runtimeSnapshot,
+                    undefined,
+                    pending.preloadedProfiles,
+                );
+            } else {
+                await deps.composerContextApply.hydrateReplyQuoteReferences(
+                    currentReferences,
+                    runtimeSnapshot,
+                );
+            }
         } catch (error) {
             deps.logger.warn("composer context の非同期補完をスキップ:", error);
         }

@@ -187,6 +187,22 @@ describe('buildDraftReplyQuoteData', () => {
         ).not.toHaveProperty('picture');
         expect(() => structuredClone(data)).not.toThrow();
     });
+
+    it('host preload由来のauthor presentationを下書きへ保存しない', () => {
+        const data = buildDraftReplyQuoteData({
+            reply: {
+                ...createReplyState(),
+                authorDisplayName: 'Host-only',
+                authorPicture: 'https://example.com/host.png',
+                authorPreviewPresentationSource: 'host-preload' as const,
+            },
+            quotes: [],
+        });
+        expect(data && 'reply' in data ? data.reply : null).toMatchObject({
+            authorDisplayName: null,
+        });
+        expect(data && 'reply' in data ? data.reply : null).not.toHaveProperty('authorPicture');
+    });
 });
 
 describe('createDraftSavePayload', () => {

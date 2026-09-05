@@ -110,6 +110,7 @@
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorProfile,
+    applyPreloadedAuthorPreviewPresentation,
     setReplyQuoteError,
     onReplyQuoteChanged,
     replyQuoteState,
@@ -1230,16 +1231,19 @@
         });
         return references;
       },
-      hydrateReplyQuoteReferences: (references, runtime, preloadedEvents) =>
+      hydrateReplyQuoteReferences: (references, runtime, preloadedEvents, preloadedProfiles) =>
         hydrateReplyQuoteReferences({
           references,
           preloadedEvents,
+          preloadedProfiles,
           rxNostr: runtime.rxNostr,
           relayConfig: runtime.relayConfig,
           updateReferencedEvent,
           initializeReplyNotificationRecipients,
           setReplyQuoteError,
+          applyPreloadedAuthorPreviewPresentation,
         }),
+      applyPreloadedAuthorPreviewPresentation,
       clearReplyQuote,
       applyChannelContextQuery: (query, runtime) => {
         channelContextApplyController.applyExternal({

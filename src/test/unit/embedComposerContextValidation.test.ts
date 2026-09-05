@@ -2,6 +2,7 @@ import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { describe, expect, it } from "vitest";
 
 import {
+    selectPreloadedProfiles,
     selectVerifiedPreloadedEvents,
     validateEmbedComposerSetContextPayload,
 } from "../../lib/embedComposerContextValidation";
@@ -152,5 +153,34 @@ describe("selectVerifiedPreloadedEvents", () => {
         expect(() => validateEmbedComposerSetContextPayload({
             preloadedEvents: [],
         } as never)).not.toThrow();
+    });
+});
+
+describe("selectPreloadedProfiles", () => {
+    it("returns detached sanitized display hints without retaining host objects", () => {
+        const pubkey = "a".repeat(64);
+        const hostProfiles = {
+            [pubkey]: { displayName: " Alice ", picture: "https://example.com/alice.png#ignored" },
+        };
+
+        const selected = selectPreloadedProfiles(hostProfiles);
+        hostProfiles[pubkey].displayName = "Changed";
+
+        expect(selected).toEqual({
+            [pubkey]: { displayName: "Alice", picture: "https://example.com/alice.png" },
+        });
+        expect(selected[pubkey]).not.toBe(hostProfiles[pubkey]);
+    });
+
+    it("soft-fails malformed fields and unrelated pubkeys independently", () => {
+        const valid = "b".repeat(64);
+        expect(selectPreloadedProfiles({
+            invalid: { displayName: "Ignored", picture: null },
+            [valid]: { displayName: " Bob ", picture: "javascript:alert(1)" },
+            ["c".repeat(64)]: { displayName: "   ", picture: null },
+        })).toEqual({
+            [valid]: { displayName: "Bob", picture: null },
+        });
+        expect(selectPreloadedProfiles([])).toEqual({});
     });
 });

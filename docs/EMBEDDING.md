@@ -16,7 +16,7 @@ eHagaki 自身に account/auth、relay、upload、sign、publish まで所有さ
 
 ホスト JavaScript との origin / 実行環境の隔離が必要な場合、または iframe の parent-client auth/RPC や storage / IndexedDB delegation を利用したい場合は **iframe** を選びます。
 
-Host-owned Lite は既存 Nostr クライアントへ eHagaki の Composer UI / 編集処理を組み込む方式です。Lite 側は auth/account/session、Relay、target fetch、profile/history、draft、sign/send を所有せず、認証・署名・publish へ fallback しません。`submit` に渡る output は unsigned Nostr event ではなく、ホストが event を構築するための `{ content, tags, context }` です。
+Host-owned Lite は既存 Nostr クライアントへ eHagaki の Composer UI / 編集処理を組み込む方式です。Lite 側は auth/account/session、Relay、target fetch、profile/history、draft、sign/send を所有せず、認証・署名・publish へ fallback しません。Hostは`setContext()`の一時的な`preloadedEvents` / `preloadedProfiles`でreply/quote previewを補完できますが、LiteはそのためのRelay readを開始しません。`submit` に渡る output は unsigned Nostr event ではなく、ホストが event を構築するための `{ content, tags, context }` です。
 
 ## 3方式比較
 

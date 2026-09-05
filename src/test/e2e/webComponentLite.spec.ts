@@ -1947,7 +1947,7 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
     const reply = nip19.noteEncode(replyEvent.id);
     const quote = nip19.noteEncode(quoteEvent.id);
     const channel = nip19.noteEncode("d".repeat(64));
-    await page.evaluate(async ({ componentOrigin, reply, quote, channel, replyEvent, quoteEvent }) => {
+        await page.evaluate(async ({ componentOrigin, reply, quote, channel, replyEvent, quoteEvent }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
         const state = { outputs: [] as any[], uploads: 0, events: [] as string[] };
         (window as any).__liteContractState = state;
@@ -1987,6 +1987,10 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
                 about: "Host supplied channel preview",
             },
             preloadedEvents: { [replyEvent.id]: replyEvent, [quoteEvent.id]: quoteEvent },
+            preloadedProfiles: {
+                [replyEvent.pubkey]: { displayName: "Lite Reply Author", picture: "https://example.com/reply.png" },
+                [quoteEvent.pubkey]: { displayName: "Lite Quote Author", picture: "https://example.com/quote.png" },
+            },
         });
         document.body.append(composer);
         await composer.whenReady();
@@ -2001,6 +2005,8 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
     await composer.locator(".reply-quote-preview").last().getByRole("button").first().click();
     await expect(composer.locator(".reply-quote-preview").first()).toContainText("preloaded Lite reply");
     await expect(composer.locator(".reply-quote-preview").last()).toContainText("preloaded Lite quote");
+    await expect(composer.locator(".reply-quote-preview").first()).toContainText("Lite Reply Author");
+    await expect(composer.locator(".reply-quote-preview").last()).toContainText("Lite Quote Author");
     await expect(composer.locator(".channel-context-preview")).toContainText("Lite channel");
     const closedGeometry = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
