@@ -5,7 +5,15 @@ import type {
     ReplyQuoteComposerState,
     ReplyQuoteState,
 } from "../../lib/types";
+import { buildDraftReplyQuoteData } from "../../lib/draftContentUtils";
 import { createProfileData } from "../profileTestUtils";
+import {
+    applyPreloadedAuthorPreviewPresentation,
+    clearReplyQuote,
+    replyQuoteState,
+    setReplyQuote,
+    updateAuthorProfile,
+} from "../../stores/replyQuoteStore.svelte";
 
 const ownerTokens = new Map<string, symbol>();
 
@@ -62,6 +70,80 @@ function createProfile(name: string, picture = `https://example.com/${name}.png`
 }
 
 describe("replyQuoteProfileSync", () => {
+    it("promotes an equal host preload to profile-sync and preserves it in drafts", async () => {
+        clearReplyQuote();
+        const eventId = "1".repeat(64);
+        const authorPubkey = "2".repeat(64);
+        const targets = setReplyQuote({
+            reply: { eventId, relayHints: [], authorPubkey },
+            quotes: [],
+        });
+        applyPreloadedAuthorPreviewPresentation(targets, {
+            [authorPubkey]: {
+                displayName: "Same author",
+                picture: "https://example.com/same.png",
+            },
+        });
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime: vi.fn(async () => createProfile("Same author", "https://example.com/same.png")),
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync(replyQuoteState.value);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: "Same author",
+            authorPicture: "https://example.com/same.png",
+            authorPreviewPresentationSource: "profile-sync",
+        });
+        const draft = buildDraftReplyQuoteData(replyQuoteState.value);
+        expect(draft && 'reply' in draft ? draft.reply : null).toMatchObject({
+            authorDisplayName: "Same author",
+            authorPicture: "https://example.com/same.png",
+        });
+        controller.dispose();
+        clearReplyQuote();
+    });
+
+    it("replaces a host-preloaded presentation with the normal relay profile", async () => {
+        const updateAuthorProfile = vi.fn();
+        const controller = createReplyQuoteProfileSyncController({
+            relayProfileService: {
+                fetchProfileRealtime: vi.fn(async () => createProfile("Relay Author")),
+                subscribeProfile: vi.fn(() => vi.fn()),
+            },
+            updateAuthorProfile,
+            updateReplyNotificationRecipientProfile: vi.fn(),
+        });
+
+        controller.sync({
+            reply: createReference("reply", "reply-event", {
+                authorPubkey: "author-a",
+                authorDisplayName: "Host Author",
+                authorPicture: "https://example.com/host.png",
+                authorPreviewPresentationSource: "host-preload",
+            }),
+            quotes: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(updateAuthorProfile).toHaveBeenCalledWith(
+            ownedTarget("reply-event", "reply"),
+            "author-a",
+            {
+                displayName: "Relay Author",
+                picture: "https://example.com/Relay Author.png",
+            },
+        );
+    });
+
     it("同じentryを再生成した場合は古いprofile fetch結果を新ownerへ適用しない", async () => {
         let resolveOld!: (profile: ProfileData) => void;
         let resolveNew!: (profile: ProfileData) => void;
@@ -255,6 +337,7 @@ describe("replyQuoteProfileSync", () => {
                 authorPubkey: "author-a",
                 authorDisplayName: "Alice",
                 authorPicture: "https://example.com/Alice.png",
+                authorPreviewPresentationSource: "profile-sync",
                 relayHints: ["wss://new.example.com/"],
             }),
             quotes: [],

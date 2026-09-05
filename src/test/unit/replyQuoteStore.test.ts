@@ -10,6 +10,7 @@ import {
     setQuoteNotificationEnabled,
     initializeReplyNotificationRecipients,
     updateAuthorProfile,
+    applyPreloadedAuthorPreviewPresentation,
     updateReplyNotificationRecipientProfile,
     setReplyNotificationRecipientEnabled,
     setReplyQuoteError,
@@ -542,6 +543,26 @@ describe('replyQuoteStore', () => {
                 pubkey: recipientPubkey,
                 displayName: null,
             }],
+        });
+    });
+
+    it('host profile hint は確定済みauthorだけへ適用し、profile syncを逆上書きしない', () => {
+        const authorPubkey = 'aa'.repeat(32);
+        const [target] = setReplyQuote({
+            reply: { eventId: 'bb'.repeat(32), relayHints: [], authorPubkey },
+            quotes: [],
+        });
+        const profiles = { [authorPubkey]: { displayName: 'Host', picture: null } };
+
+        applyPreloadedAuthorPreviewPresentation([target], profiles);
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: 'Host', authorPreviewPresentationSource: 'host-preload',
+        });
+
+        updateAuthorProfile(target, authorPubkey, { displayName: 'Relay', picture: null });
+        applyPreloadedAuthorPreviewPresentation([target], profiles);
+        expect(replyQuoteState.value.reply).toMatchObject({
+            authorDisplayName: 'Relay', authorPreviewPresentationSource: 'profile-sync',
         });
     });
 });

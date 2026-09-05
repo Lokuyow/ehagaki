@@ -6,6 +6,7 @@ import type {
     EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
 } from "../lib/embedProtocol";
+import { selectPreloadedProfiles } from "../lib/embedComposerContextValidation";
 import appCss from "../app.css?inline";
 import photoSwipeCss from "photoswipe/style.css?inline";
 import {
@@ -36,6 +37,19 @@ function createError(code: EHagakiComposerInitializationErrorDetail["code"], mes
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Captures only the mutable preview-only profile input at the public boundary. */
+function detachPreloadedProfilesContext(
+    context: EHagakiComposerContext,
+): EHagakiComposerContext {
+    if (!isRecord(context) || !Object.hasOwn(context, "preloadedProfiles")) {
+        return context;
+    }
+    return {
+        ...context,
+        preloadedProfiles: selectPreloadedProfiles(context.preloadedProfiles),
+    };
 }
 
 function validateSettings(value: EHagakiComposerSettings): EmbedSettingsSetPayload {
@@ -229,8 +243,9 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     }
 
     setContext(context: EHagakiComposerContext): Promise<void> {
+        const detachedContext = detachPreloadedProfilesContext(context);
         return this.enqueue(async () => {
-            await this.requireApp().setEmbedContext(context as EmbedComposerSetContextPayload);
+            await this.requireApp().setEmbedContext(detachedContext as EmbedComposerSetContextPayload);
         });
     }
 

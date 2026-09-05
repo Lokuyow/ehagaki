@@ -4,6 +4,7 @@ import type {
     ReplyQuoteHydrationTarget,
     ReplyQuoteUpdateTarget,
 } from '../types';
+import type { EmbedPreloadedProfilePresentation } from '../embedProtocol';
 
 export interface ProcessReplyQuoteReferenceParams {
     reference: ReplyQuoteHydrationTarget;
@@ -14,6 +15,11 @@ export interface ProcessReplyQuoteReferenceParams {
     updateReferencedEvent: (target: ReplyQuoteUpdateTarget, event: any, threadInfo: any) => void;
     initializeReplyNotificationRecipients?: (target: ReplyQuoteUpdateTarget, event: NostrEvent) => void;
     setReplyQuoteError: (target: ReplyQuoteUpdateTarget, message: string) => void;
+    preloadedProfiles?: Readonly<Record<string, EmbedPreloadedProfilePresentation>>;
+    applyPreloadedAuthorPreviewPresentation?: (
+        targets: readonly ReplyQuoteUpdateTarget[],
+        profiles: Readonly<Record<string, EmbedPreloadedProfilePresentation>>,
+    ) => void;
 }
 
 export async function processReplyQuoteReference({
@@ -25,6 +31,8 @@ export async function processReplyQuoteReference({
     updateReferencedEvent,
     initializeReplyNotificationRecipients,
     setReplyQuoteError,
+    preloadedProfiles,
+    applyPreloadedAuthorPreviewPresentation,
 }: ProcessReplyQuoteReferenceParams): Promise<void> {
     const event = initialEvent
         ?? await replyQuoteService.fetchReferencedEvent(
@@ -41,5 +49,8 @@ export async function processReplyQuoteReference({
 
     const threadInfo = replyQuoteService.extractThreadInfo(event);
     updateReferencedEvent(reference, event, threadInfo);
+    if (preloadedProfiles && applyPreloadedAuthorPreviewPresentation) {
+        applyPreloadedAuthorPreviewPresentation([reference], preloadedProfiles);
+    }
     initializeReplyNotificationRecipients?.(reference, event);
 }

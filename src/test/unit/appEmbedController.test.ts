@@ -76,6 +76,7 @@ function createController(overrides: Record<string, unknown> = {}) {
     const composerContextApply = {
         applyReplyQuoteSelection: vi.fn(() => []),
         hydrateReplyQuoteReferences: vi.fn().mockResolvedValue(undefined),
+        applyPreloadedAuthorPreviewPresentation: vi.fn(),
         clearReplyQuote: vi.fn(),
         applyChannelContextQuery: vi.fn(),
         clearChannelContext: vi.fn(),
@@ -269,6 +270,12 @@ describe('createAppEmbedController', () => {
 
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(reply.eventId),
+            preloadedProfiles: {
+                ['a'.repeat(64)]: {
+                    displayName: 'Deferred Host author',
+                    picture: 'https://example.com/deferred.png',
+                },
+            },
         }, 'req-reply-fast-ack');
 
         expect(applyReplyQuoteSelection).toHaveBeenCalledOnce();
@@ -287,6 +294,13 @@ describe('createAppEmbedController', () => {
         expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
             [reply],
             { rxNostr: stableRxNostr, relayConfig: null },
+            undefined,
+            {
+                ['a'.repeat(64)]: {
+                    displayName: 'Deferred Host author',
+                    picture: 'https://example.com/deferred.png',
+                },
+            },
         );
         expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
             .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
@@ -581,11 +595,17 @@ describe('createAppEmbedController', () => {
         setReplyQuoteState(createSelectedReplyQuoteState([oldTarget]));
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(oldTarget.eventId),
+            preloadedProfiles: {
+                ['b'.repeat(64)]: { displayName: 'Old host', picture: null },
+            },
         }, 'req-old-owner');
 
         setReplyQuoteState(createSelectedReplyQuoteState([newTarget]));
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(newTarget.eventId),
+            preloadedProfiles: {
+                ['c'.repeat(64)]: { displayName: 'New host', picture: null },
+            },
         }, 'req-new-owner');
 
         const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
@@ -597,6 +617,10 @@ describe('createAppEmbedController', () => {
         expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
             [newTarget],
             { rxNostr: stableRxNostr, relayConfig: null },
+            undefined,
+            {
+                ['c'.repeat(64)]: { displayName: 'New host', picture: null },
+            },
         );
     });
 
@@ -1087,5 +1111,33 @@ describe('createAppEmbedController', () => {
         expect(injectedStorage.applyEmbedStorageSnapshot).toHaveBeenCalledWith({ locale: 'ja' });
         expect(injectedStorage.applyStoredSettingsSnapshot).toHaveBeenCalledTimes(1);
         expect(injectedStorage.persistEmbedStorageKeys).toHaveBeenCalledTimes(1);
+    });
+
+    it('detached profile preloadを同じselectionのpresentation portへだけ渡す', async () => {
+        const authorPubkey = 'a'.repeat(64);
+        const target: ReplyQuoteHydrationTarget = {
+            eventId: 'b'.repeat(64), mode: 'reply', ownerToken: Symbol('reply'), relayHints: [], authorPubkey,
+        };
+        const applyPreloadedAuthorPreviewPresentation = vi.fn();
+        const { controller } = createController({
+            composerContextApply: {
+                applyReplyQuoteSelection: vi.fn(() => [target]),
+                hydrateReplyQuoteReferences: vi.fn().mockResolvedValue(undefined),
+                applyPreloadedAuthorPreviewPresentation,
+                clearReplyQuote: vi.fn(),
+                applyChannelContextQuery: vi.fn(),
+                clearChannelContext: vi.fn(),
+            },
+        });
+
+        await controller.applyComposerContext({
+            reply: nip19.neventEncode({ id: target.eventId, author: authorPubkey }),
+            preloadedProfiles: { [authorPubkey]: { displayName: 'Host', picture: null } },
+        });
+
+        expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
+            [target],
+            { [authorPubkey]: { displayName: 'Host', picture: null } },
+        );
     });
 });

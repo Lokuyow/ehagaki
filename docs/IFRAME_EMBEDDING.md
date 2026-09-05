@@ -350,6 +350,7 @@ window.addEventListener('message', (event) => {
 - `preloadedEvents` は、親クライアントがすでに保持している署名済みNostr eventを、`event id` をkeyにして同じ `composer.setContext` の reply / quote hydrationへ一時的に渡す任意フィールドです。値は `{ id, pubkey, created_at, kind, tags, content, sig }` の完全なeventにしてください
 - `preloadedEvents` の各eventは、構造、event ID、hash、署名、referenceのevent ID、`nevent` にauthor hintがある場合のpubkeyを検証します。検証済みのwire-field snapshotだけが利用され、個別eventが不正でもcontext全体はrejectされません。無効なcontainerやeventはpreloadなしとして扱い、relay hydrationへfallbackします
 - `preloadedEvents` はURL queryへ指定できず、保存されず、`composer.contextUpdated`にも返りません。`composer.contextApplied`は従来どおりevent hydration完了を待ちません
+- `preloadedProfiles` は `{ [pubkey]: { displayName, picture } }` の表示専用任意hintです。各fieldは文字列または`null`、有効なpubkey keyと安全なpicture URLだけを採用します。不正entryはcontext全体をrejectせず無視し、author identity、event/tag、output、投稿event、URL、保存、`composer.contextUpdated`には使いません。reply/quotesを同じpatchで更新する場合だけ利用し、Relay profileが取得できれば通常profileが優先されます
 - `composer.setContext` は patch として扱われます。`undefined` は変更なし、`reply: null` は reply 解除、`quotes: []` または `quotes: null` は quote 全解除、`channel: null` はパブリックチャット解除、`content: null` は本文クリアです
 - `composer.setContext` の `requestId` は必須です。iframe は `composer.contextApplied` / `composer.contextError` に同じ `requestId` を載せて返します
 - `composer.contextApplied` の payload は `{ timestamp }` です。payload全体の構文とreferenceを検証し、channel、reply、quotes、contentの利用可能な初期状態を設定した時点で返します。IndexedDB補完、kind 40 / kind 41取得、reply / quote参照イベントhydrate、プロフィール取得の完了は待ちません

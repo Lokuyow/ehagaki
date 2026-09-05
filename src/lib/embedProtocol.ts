@@ -68,12 +68,22 @@ export interface EmbedChannelContextPayload {
     picture?: string | null;
 }
 
+/**
+ * A host-provided, display-only author profile snapshot for a reply or quote.
+ * It never establishes a Nostr event or author identity.
+ */
+export interface EmbedPreloadedProfilePresentation {
+    displayName: string | null;
+    picture: string | null;
+}
+
 export interface EmbedComposerSetContextPayload {
     reply?: string | null;
     quotes?: string[] | null;
     content?: string | null;
     channel?: EmbedChannelContextPayload | null;
     preloadedEvents?: Record<string, NostrEvent>;
+    preloadedProfiles?: Record<string, EmbedPreloadedProfilePresentation>;
 }
 
 export interface EmbedSettingsSetPayload {

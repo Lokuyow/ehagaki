@@ -46,6 +46,13 @@ describe('externalReplyQuoteBootstrapUtils', () => {
         };
         const updateReferencedEvent = vi.fn();
         const initializeReplyNotificationRecipients = vi.fn();
+        const applyPreloadedAuthorPreviewPresentation = vi.fn();
+        const preloadedProfiles = {
+            'author-pubkey': {
+                displayName: 'Host author',
+                picture: 'https://example.com/author.png',
+            },
+        };
 
         await processReplyQuoteReference({
             reference: {
@@ -62,6 +69,8 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             relayConfig: null,
             updateReferencedEvent,
             initializeReplyNotificationRecipients,
+            preloadedProfiles,
+            applyPreloadedAuthorPreviewPresentation,
             setReplyQuoteError: vi.fn(),
         });
 
@@ -70,6 +79,12 @@ describe('externalReplyQuoteBootstrapUtils', () => {
             event,
             threadInfo,
         );
+        expect(applyPreloadedAuthorPreviewPresentation).toHaveBeenCalledWith(
+            [expect.objectContaining({ eventId: 'event-1', mode: 'reply' })],
+            preloadedProfiles,
+        );
+        expect(updateReferencedEvent.mock.invocationCallOrder[0])
+            .toBeLessThan(applyPreloadedAuthorPreviewPresentation.mock.invocationCallOrder[0]);
         expect(initializeReplyNotificationRecipients).toHaveBeenCalledWith(
             expect.objectContaining({ eventId: 'event-1', mode: 'reply' }),
             event,
