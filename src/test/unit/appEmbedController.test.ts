@@ -270,6 +270,12 @@ describe('createAppEmbedController', () => {
 
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(reply.eventId),
+            preloadedProfiles: {
+                ['a'.repeat(64)]: {
+                    displayName: 'Deferred Host author',
+                    picture: 'https://example.com/deferred.png',
+                },
+            },
         }, 'req-reply-fast-ack');
 
         expect(applyReplyQuoteSelection).toHaveBeenCalledOnce();
@@ -288,6 +294,13 @@ describe('createAppEmbedController', () => {
         expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
             [reply],
             { rxNostr: stableRxNostr, relayConfig: null },
+            undefined,
+            {
+                ['a'.repeat(64)]: {
+                    displayName: 'Deferred Host author',
+                    picture: 'https://example.com/deferred.png',
+                },
+            },
         );
         expect(parentFrame.notifyComposerContextApplied.mock.invocationCallOrder[0])
             .toBeLessThan(hydrateReplyQuoteReferences.mock.invocationCallOrder[0]);
@@ -582,11 +595,17 @@ describe('createAppEmbedController', () => {
         setReplyQuoteState(createSelectedReplyQuoteState([oldTarget]));
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(oldTarget.eventId),
+            preloadedProfiles: {
+                ['b'.repeat(64)]: { displayName: 'Old host', picture: null },
+            },
         }, 'req-old-owner');
 
         setReplyQuoteState(createSelectedReplyQuoteState([newTarget]));
         await controller.handleRemoteComposerSetContext({
             reply: nip19.noteEncode(newTarget.eventId),
+            preloadedProfiles: {
+                ['c'.repeat(64)]: { displayName: 'New host', picture: null },
+            },
         }, 'req-new-owner');
 
         const stableRxNostr = {} as NonNullable<AppEmbedRuntimeSnapshot['rxNostr']>;
@@ -598,6 +617,10 @@ describe('createAppEmbedController', () => {
         expect(hydrateReplyQuoteReferences).toHaveBeenCalledWith(
             [newTarget],
             { rxNostr: stableRxNostr, relayConfig: null },
+            undefined,
+            {
+                ['c'.repeat(64)]: { displayName: 'New host', picture: null },
+            },
         );
     });
 

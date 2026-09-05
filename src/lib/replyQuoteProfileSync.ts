@@ -10,6 +10,7 @@ import type {
 interface ReplyQuoteProfileTarget {
     key: string;
     presentation: ProfilePresentation;
+    requiresProfileSyncPresentation: boolean;
     applyProfile: (profile: ProfilePresentation) => void;
     ownerToken: symbol;
 }
@@ -118,6 +119,8 @@ function appendReferenceTargets(
                 displayName: reference.authorDisplayName,
                 picture: reference.authorPicture,
             },
+            requiresProfileSyncPresentation:
+                reference.authorPreviewPresentationSource !== 'profile-sync',
             ownerToken: reference.ownerToken,
             applyProfile: (profile) => {
                 deps.updateAuthorProfile(
@@ -136,6 +139,7 @@ function appendReferenceTargets(
                 displayName: recipient.displayName,
                 picture: recipient.picture,
             },
+            requiresProfileSyncPresentation: false,
             ownerToken: reference.ownerToken,
             applyProfile: (profile) => {
                 deps.updateReplyNotificationRecipientProfile(
@@ -177,10 +181,14 @@ export function createReplyQuoteProfileSyncController(
         const presentation = toProfilePresentation(profile);
 
         for (const target of active.targets.values()) {
-            if (areProfilePresentationsEqual(target.presentation, presentation)) {
+            if (
+                areProfilePresentationsEqual(target.presentation, presentation)
+                && !target.requiresProfileSyncPresentation
+            ) {
                 continue;
             }
             target.presentation = presentation;
+            target.requiresProfileSyncPresentation = false;
             target.applyProfile(presentation);
         }
     };

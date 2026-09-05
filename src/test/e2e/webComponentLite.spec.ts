@@ -1949,8 +1949,15 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
     const channel = nip19.noteEncode("d".repeat(64));
         await page.evaluate(async ({ componentOrigin, reply, quote, channel, replyEvent, quoteEvent }) => {
         await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
-        const state = { outputs: [] as any[], uploads: 0, events: [] as string[] };
+        const state = { outputs: [] as any[], uploads: 0, events: [] as string[], webSocketConnections: 0 };
         (window as any).__liteContractState = state;
+        const NativeWebSocket = window.WebSocket;
+        (window as any).WebSocket = class extends NativeWebSocket {
+            constructor(...args: ConstructorParameters<typeof WebSocket>) {
+                state.webSocketConnections += 1;
+                super(...args);
+            }
+        };
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             assetBase: string;
             configureHostOwned(value: unknown): void;
@@ -1977,6 +1984,10 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
         for (const name of ["ehagaki-ready", "ehagaki-post-success", "ehagaki-post-error", "ehagaki-composer-context-updated"]) {
             composer.addEventListener(name, () => state.events.push(name));
         }
+        const preloadedProfiles = {
+            [replyEvent.pubkey]: { displayName: "Lite Reply Author", picture: "https://example.com/reply.png" },
+            [quoteEvent.pubkey]: { displayName: "Lite Quote Author", picture: "https://example.com/quote.png" },
+        };
         const context = composer.setContext({
             content: "Lite seeded #context",
             reply,
@@ -1987,11 +1998,16 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
                 about: "Host supplied channel preview",
             },
             preloadedEvents: { [replyEvent.id]: replyEvent, [quoteEvent.id]: quoteEvent },
-            preloadedProfiles: {
-                [replyEvent.pubkey]: { displayName: "Lite Reply Author", picture: "https://example.com/reply.png" },
-                [quoteEvent.pubkey]: { displayName: "Lite Quote Author", picture: "https://example.com/quote.png" },
-            },
+            preloadedProfiles,
         });
+        preloadedProfiles[replyEvent.pubkey] = {
+            displayName: "Mutated Reply Author",
+            picture: "https://example.com/mutated-reply.png",
+        };
+        preloadedProfiles[quoteEvent.pubkey] = {
+            displayName: "Mutated Quote Author",
+            picture: "https://example.com/mutated-quote.png",
+        };
         document.body.append(composer);
         await composer.whenReady();
         await context;
@@ -2007,6 +2023,11 @@ test("Lite keeps the Host-owned public contract across context, submission, medi
     await expect(composer.locator(".reply-quote-preview").last()).toContainText("preloaded Lite quote");
     await expect(composer.locator(".reply-quote-preview").first()).toContainText("Lite Reply Author");
     await expect(composer.locator(".reply-quote-preview").last()).toContainText("Lite Quote Author");
+    await expect(composer.locator(".reply-quote-preview").first().locator("img.reply-quote-profile-avatar-image"))
+        .toHaveAttribute("src", "https://example.com/reply.png?profile=true");
+    await expect(composer.locator(".reply-quote-preview").last().locator("img.reply-quote-profile-avatar-image"))
+        .toHaveAttribute("src", "https://example.com/quote.png?profile=true");
+    expect(await page.evaluate(() => (window as any).__liteContractState.webSocketConnections)).toBe(0);
     await expect(composer.locator(".channel-context-preview")).toContainText("Lite channel");
     const closedGeometry = await composer.evaluate((element) => {
         const shadow = element.shadowRoot!;
