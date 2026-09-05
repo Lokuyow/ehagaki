@@ -5,9 +5,10 @@ import {
     getFilesFromInputEvent,
     updateEditorUploadState,
 } from '../../lib/postUploadUtils';
+import { showUploadErrorMessage } from '../../lib/uploadHelper';
 
 describe('updateEditorUploadState', () => {
-    it('アップロード状態とエラーメッセージを更新する', () => {
+    it('明示されたエラーメッセージだけを更新し、状態解除時は保持する', () => {
         const target = {
             isUploading: false,
             uploadErrorMessage: '',
@@ -20,6 +21,66 @@ describe('updateEditorUploadState', () => {
         });
 
         updateEditorUploadState(target, false);
+        expect(target).toEqual({
+            isUploading: false,
+            uploadErrorMessage: 'error',
+        });
+    });
+
+    it('失敗メッセージを表示したまま upload 終了し、既存の clear 経路で消せる', () => {
+        vi.useFakeTimers();
+        const target = {
+            isUploading: false,
+            uploadErrorMessage: '',
+        };
+        const setUploadErrorMessage = (message: string) => {
+            target.uploadErrorMessage = message;
+        };
+        const updateUploadState = (isUploading: boolean, message?: string) => {
+            updateEditorUploadState(target, isUploading, message);
+        };
+
+        updateUploadState(true, '');
+        showUploadErrorMessage('upload failed', 1000, {
+            updateUploadState,
+            setUploadErrorMessage,
+        });
+        updateUploadState(false);
+
+        expect(target).toEqual({
+            isUploading: false,
+            uploadErrorMessage: 'upload failed',
+        });
+
+        vi.advanceTimersByTime(1000);
+        expect(target.uploadErrorMessage).toBe('');
+        vi.useRealTimers();
+    });
+
+    it('成功時は開始時の明示的な clear で古いエラーを残さない', () => {
+        const target = {
+            isUploading: false,
+            uploadErrorMessage: 'old error',
+        };
+
+        updateEditorUploadState(target, true, '');
+        updateEditorUploadState(target, false);
+
+        expect(target).toEqual({
+            isUploading: false,
+            uploadErrorMessage: '',
+        });
+    });
+
+    it('中止時も開始時にエラーを clear し、終了時に uploading を解除する', () => {
+        const target = {
+            isUploading: false,
+            uploadErrorMessage: 'old error',
+        };
+
+        updateEditorUploadState(target, true, '');
+        updateEditorUploadState(target, false);
+
         expect(target).toEqual({
             isUploading: false,
             uploadErrorMessage: '',
