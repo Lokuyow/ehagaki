@@ -1,6 +1,6 @@
-import { bh as _, bi as a, bj as O } from "./assets/host-owned-entry-syQOqurp.js";
+import { bq as _, br as a, bs as s } from "./assets/host-owned-entry-B6Y4DLVu.js";
 export {
   _ as EHAGAKI_COMPOSER_API_VERSION,
   a as EHAGAKI_COMPOSER_TAG_NAME,
-  O as EHagakiComposerElement
+  s as EHagakiComposerElement
 };
