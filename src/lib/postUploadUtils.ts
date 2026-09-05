@@ -43,7 +43,9 @@ export function updateEditorUploadState(
     message?: string,
 ): void {
     target.isUploading = isUploading;
-    target.uploadErrorMessage = message || '';
+    if (message !== undefined) {
+        target.uploadErrorMessage = message;
+    }
 }
 
 export function getFilesFromInputEvent(event: Event): FileList | undefined {
