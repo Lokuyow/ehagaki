@@ -742,7 +742,7 @@ describe('Nip46Service', () => {
                 expect.any(Uint8Array),
                 {
                     pubkey: mockBp.pubkey,
-                    relays: ['wss://relay.example.com'],
+                    relays: mockBp.relays,
                     secret: null,
                 },
                 expect.objectContaining({
@@ -750,6 +750,37 @@ describe('Nip46Service', () => {
                 }),
             );
             expect(mockPool.destroy).not.toHaveBeenCalled();
+        });
+
+        it('direct bunker connectionは先頭の遅延candidateを待たず全supported candidateを保持する', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const slowConnection = createDeferred<unknown>();
+            const relays = ['wss://slow.example.com', 'wss://fast.example.com'];
+            (parseBunkerInput as any).mockResolvedValue({
+                pubkey: 'a'.repeat(64),
+                relays,
+                secret: null,
+            });
+            mockPool.ensureRelay.mockImplementation((relay: string) =>
+                relay === relays[0] ? slowConnection.promise : Promise.resolve({}),
+            );
+            (BunkerSigner.fromBunker as any).mockReturnValue(createMockNostrConnectSigner({
+                remoteSignerPubkey: 'a'.repeat(64),
+                relays,
+                sharedSecret: '',
+                getPublicKeyResult: TEST_USER_PUBKEY,
+            }));
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).resolves.toBe(
+                TEST_USER_PUBKEY,
+            );
+            expect(mockPool.ensureRelay).toHaveBeenCalledWith(
+                'wss://fast.example.com',
+                expect.any(Object),
+            );
+            expect((BunkerSigner.fromBunker as any).mock.calls[0][1].relays).toEqual(relays);
+            service.saveSession(mockStorage, TEST_USER_PUBKEY);
+            expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)?.relays).toEqual(relays);
         });
 
         it('対話的な初回接続ではget_public_key permission拒否時だけ検証済みsign_eventをfallbackに使う', async () => {
@@ -1245,7 +1276,7 @@ describe('Nip46Service', () => {
             expect(finalSigner.sendRequest).toHaveBeenCalledWith('get_public_key', []);
             expect((BunkerSigner.fromBunker as any).mock.calls[1][1]).toEqual({
                 pubkey: remoteSignerPubkey,
-                relays: ['wss://relay.final.example.com'],
+                relays: finalRelays,
                 secret: 'ab'.repeat(32),
             });
             expect(closeSubscription).toHaveBeenCalled();
@@ -1307,7 +1338,10 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
-                relays: ['wss://relay.final.example.com'],
+                relays: [
+                    'ws://127.0.0.1:4869/',
+                    'wss://relay.final.example.com',
+                ],
                 userPubkey: TEST_USER_PUBKEY,
                 pingVerified: false,
                 relayResolution: 'signer-negotiated',
@@ -1350,7 +1384,7 @@ describe('Nip46Service', () => {
             });
         });
 
-        it('local final relay が先に接続して検証失敗しても public final relay の検証成功でログイン成功する', async () => {
+        it('negotiated final relay の全candidateをruntime signerとsessionへ維持する', async () => {
             mockPool.ensureRelay.mockReset().mockImplementation((relay: string) => {
                 if (
                     relay === 'wss://relay.initial.example.com'
@@ -1363,25 +1397,19 @@ describe('Nip46Service', () => {
                 return Promise.reject(new Error('connection refused'));
             });
 
-            const localFinalSigner = createMockNostrConnectSigner({
+            const finalRelayCandidates = [
+                'ws://127.0.0.1:4869/',
+                'wss://relay.final.example.com',
+            ];
+            const finalSigner = createMockNostrConnectSigner({
                 remoteSignerPubkey: 'd'.repeat(64),
-                relays: ['ws://127.0.0.1:4869/'],
-                getPublicKeyError: new Error(
-                    "mute: no one was listening to your ephemeral event and it wasn't handled in any way, it was ignored",
-                ),
-            });
-            const publicFinalSigner = createMockNostrConnectSigner({
-                remoteSignerPubkey: 'd'.repeat(64),
-                relays: ['wss://relay.final.example.com'],
+                relays: finalRelayCandidates,
                 getPublicKeyResult: TEST_USER_PUBKEY,
             });
 
             const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
-                finalRelayResponse: [
-                    'ws://127.0.0.1:4869/',
-                    'wss://relay.final.example.com',
-                ],
-                finalSignerMocks: [localFinalSigner, publicFinalSigner],
+                finalRelayResponse: finalRelayCandidates,
+                finalSignerMocks: [finalSigner],
             });
 
             await pendingFlow.handlers.onevent({
@@ -1392,14 +1420,12 @@ describe('Nip46Service', () => {
             await expect(pendingFlow.pending.completion).resolves.toBe(
                 TEST_USER_PUBKEY,
             );
-            expect(localFinalSigner.getPublicKey).toHaveBeenCalledTimes(1);
-            expect(localFinalSigner.close).toHaveBeenCalledTimes(1);
-            expect(publicFinalSigner.getPublicKey).toHaveBeenCalledTimes(1);
+            expect(finalSigner.getPublicKey).toHaveBeenCalledTimes(1);
             expect((await import('nostr-tools/nip46')).BunkerSigner.fromBunker).toHaveBeenCalledWith(
                 expect.any(Uint8Array),
                 {
                     pubkey: pendingFlow.remoteSignerPubkey,
-                    relays: ['wss://relay.final.example.com'],
+                    relays: finalRelayCandidates,
                     secret: 'ab'.repeat(32),
                 },
                 expect.any(Object),
@@ -1409,33 +1435,29 @@ describe('Nip46Service', () => {
             expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)).toEqual({
                 clientSecretKeyHex: 'ab'.repeat(32),
                 remoteSignerPubkey: pendingFlow.remoteSignerPubkey,
-                relays: ['wss://relay.final.example.com'],
+                relays: finalRelayCandidates,
                 userPubkey: TEST_USER_PUBKEY,
                 pingVerified: false,
                 relayResolution: 'signer-negotiated',
             });
         });
 
-        it('local final relay の検証失敗だけでは未検証の public final relay を残して接続全体を失敗させない', async () => {
-            mockPool.ensureRelay.mockReset().mockResolvedValue({});
-
-            const localFinalSigner = createMockNostrConnectSigner({
-                remoteSignerPubkey: 'd'.repeat(64),
-                relays: ['ws://127.0.0.1:4869/'],
-                getPublicKeyError: new Error('mute: ignored'),
-            });
-            const publicFinalSigner = createMockNostrConnectSigner({
-                remoteSignerPubkey: 'd'.repeat(64),
-                relays: ['wss://relay.public.example.com'],
-                getPublicKeyResult: TEST_USER_PUBKEY,
+        it('先頭が遅いnegotiated final candidateでも到達可能な後続relayで進み全candidateを保存する', async () => {
+            const slowConnection = createDeferred<unknown>();
+            const finalRelayCandidates = [
+                'wss://slow.example.com',
+                'wss://fast.example.com',
+            ];
+            mockPool.ensureRelay.mockImplementation((relay: string) => {
+                if (relay === 'wss://relay.initial.example.com' || relay === finalRelayCandidates[1]) {
+                    return Promise.resolve({});
+                }
+                return slowConnection.promise;
             });
 
             const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
-                finalRelayResponse: [
-                    'ws://127.0.0.1:4869/',
-                    'wss://relay.public.example.com',
-                ],
-                finalSignerMocks: [localFinalSigner, publicFinalSigner],
+                finalRelayResponse: finalRelayCandidates,
+                finalSignerRelays: finalRelayCandidates,
             });
 
             await pendingFlow.handlers.onevent({
@@ -1443,11 +1465,16 @@ describe('Nip46Service', () => {
                 pubkey: pendingFlow.remoteSignerPubkey,
             });
 
-            await expect(pendingFlow.pending.completion).resolves.toBe(
-                TEST_USER_PUBKEY,
+            await expect(pendingFlow.pending.completion).resolves.toBe(TEST_USER_PUBKEY);
+            expect((await import('nostr-tools/nip46')).BunkerSigner.fromBunker).toHaveBeenCalledWith(
+                expect.any(Uint8Array),
+                expect.objectContaining({ relays: finalRelayCandidates }),
+                expect.any(Object),
             );
-            expect(publicFinalSigner.getPublicKey).toHaveBeenCalledTimes(1);
-            expect(service.isConnected()).toBe(true);
+            service.saveSession(mockStorage, TEST_USER_PUBKEY);
+            expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)?.relays).toEqual(
+                finalRelayCandidates,
+            );
         });
 
         it('switch_relays が unsupported relay のみを返した場合は initial ready relay へ fallback せず失敗する', async () => {
@@ -1526,12 +1553,6 @@ describe('Nip46Service', () => {
 
         it.each([
             {
-                title: 'timeout',
-                finalGetPublicKeyPromise: new Promise<string>(() => {
-                    // never resolves
-                }),
-            },
-            {
                 title: 'error',
                 finalGetPublicKeyError: new Error('permission denied'),
             },
@@ -1541,13 +1562,12 @@ describe('Nip46Service', () => {
             },
         ])(
             'supported final relay 上の get_public_key 再確認が $title の場合は session を保存せず失敗する',
-            async ({ finalGetPublicKeyPromise, finalGetPublicKeyError, finalGetPublicKeyResult }) => {
+            async ({ finalGetPublicKeyError, finalGetPublicKeyResult }) => {
                 vi.useFakeTimers();
 
                 const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
                     finalRelayResponse: ['wss://relay.final.example.com'],
                     finalSignerRelays: ['wss://relay.final.example.com'],
-                    finalGetPublicKeyPromise,
                     finalGetPublicKeyError,
                     finalGetPublicKeyResult,
                 });
@@ -1557,9 +1577,6 @@ describe('Nip46Service', () => {
                     pubkey: pendingFlow.remoteSignerPubkey,
                 });
 
-                if (finalGetPublicKeyPromise) {
-                    await vi.advanceTimersByTimeAsync(5000);
-                }
                 await oneventPromise;
 
                 await expect(pendingFlow.pending.completion).rejects.toThrow(
@@ -1574,17 +1591,49 @@ describe('Nip46Service', () => {
             },
         );
 
-        it('すべての supported final relay で get_public_key 検証に失敗した場合のみ接続失敗になる', async () => {
-            mockPool.ensureRelay.mockReset().mockResolvedValue({});
-
-            const localFinalSigner = createMockNostrConnectSigner({
-                remoteSignerPubkey: 'd'.repeat(64),
-                relays: ['ws://127.0.0.1:4869/'],
-                getPublicKeyError: new Error('mute: ignored'),
-            });
-            const publicFinalSigner = createMockNostrConnectSigner({
+        it('negotiated final relayのget_public_key timeoutはsigner移行待ちとしてretryする', async () => {
+            vi.useFakeTimers();
+            const firstAttempt = createMockNostrConnectSigner({
                 remoteSignerPubkey: 'd'.repeat(64),
                 relays: ['wss://relay.final.example.com'],
+                getPublicKeyPromise: new Promise<string>(() => {
+                    // The remote signer has not subscribed to its new relay yet.
+                }),
+            });
+            const retryAttempt = createMockNostrConnectSigner({
+                remoteSignerPubkey: 'd'.repeat(64),
+                relays: ['wss://relay.final.example.com'],
+                getPublicKeyResult: TEST_USER_PUBKEY,
+            });
+            const pendingFlow = await createPendingNegotiatedFinalRelayNostrConnect({
+                finalRelayResponse: ['wss://relay.final.example.com'],
+                finalSignerMocks: [firstAttempt, retryAttempt],
+            });
+
+            const onevent = pendingFlow.handlers.onevent({
+                content: 'encrypted-content',
+                pubkey: pendingFlow.remoteSignerPubkey,
+            });
+            await vi.advanceTimersByTimeAsync(
+                NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS
+                + NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS,
+            );
+            await onevent;
+
+            await expect(pendingFlow.pending.completion).resolves.toBe(TEST_USER_PUBKEY);
+            expect(firstAttempt.close).toHaveBeenCalledOnce();
+            expect(retryAttempt.getPublicKey).toHaveBeenCalledOnce();
+        });
+
+        it('multi-relay final signerのget_public_key検証失敗時はsessionを保存しない', async () => {
+            mockPool.ensureRelay.mockReset().mockResolvedValue({});
+
+            const finalSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey: 'd'.repeat(64),
+                relays: [
+                    'ws://127.0.0.1:4869/',
+                    'wss://relay.final.example.com',
+                ],
                 getPublicKeyError: new Error('remote signer unavailable'),
             });
 
@@ -1593,7 +1642,7 @@ describe('Nip46Service', () => {
                     'ws://127.0.0.1:4869/',
                     'wss://relay.final.example.com',
                 ],
-                finalSignerMocks: [localFinalSigner, publicFinalSigner],
+                finalSignerMocks: [finalSigner],
             });
 
             await pendingFlow.handlers.onevent({
@@ -1604,10 +1653,8 @@ describe('Nip46Service', () => {
             await expect(pendingFlow.pending.completion).rejects.toThrow(
                 'Communication could not be verified on the relay selected by the remote signer',
             );
-            expect(localFinalSigner.getPublicKey).toHaveBeenCalledTimes(1);
-            expect(publicFinalSigner.getPublicKey).toHaveBeenCalledTimes(1);
-            expect(localFinalSigner.close).toHaveBeenCalledTimes(1);
-            expect(publicFinalSigner.close).toHaveBeenCalledTimes(1);
+            expect(finalSigner.getPublicKey).toHaveBeenCalledTimes(1);
+            expect(finalSigner.close).toHaveBeenCalledTimes(1);
             service.saveSession(mockStorage, TEST_USER_PUBKEY);
             expect(
                 mockStorage.getItem(`nostr-nip46-session-${TEST_USER_PUBKEY}`),
@@ -2653,6 +2700,21 @@ describe('Nip46Service', () => {
             expect(JSON.parse(mockStorage.getItem(`nostr-nip46-session-${TEST_RECONNECT_PUBKEY}`)!)).toEqual(sessionData);
         });
 
+        it('reconnectは先頭の遅延relayを待たず全session candidateをruntime signerへ渡す', async () => {
+            const slowConnection = createDeferred<unknown>();
+            const relays = ['wss://slow.example.com', 'wss://fast.example.com'];
+            mockPool.ensureRelay.mockImplementation((relay: string) =>
+                relay === relays[0] ? slowConnection.promise : Promise.resolve({}),
+            );
+
+            const { BunkerSigner, sessionData } = await reconnectService({ relays });
+
+            expect(mockPool.ensureRelay).toHaveBeenCalledWith(relays[1], expect.any(Object));
+            expect((BunkerSigner.fromBunker as any).mock.calls[0][1].relays).toEqual(relays);
+            service.saveSession(mockStorage, sessionData.userPubkey);
+            expect(Nip46Service.loadSession(mockStorage, sessionData.userPubkey)?.relays).toEqual(relays);
+        });
+
         it('metadata付き session reconnect が失敗した場合は既存の metadataなし fallback を試す', async () => {
             const sendRequest = vi.fn()
                 .mockRejectedValueOnce(new Error('unsupported client metadata'))
@@ -2809,6 +2871,29 @@ describe('Nip46Service', () => {
             expect(mockPool.destroy).toHaveBeenCalled();
             expect(mockSigner.sendRequest).not.toHaveBeenCalledWith('ping', []);
             expect((BunkerSigner.fromBunker as any).mock.calls.length - callCountAfterConnect).toBe(1);
+        });
+
+        it('background rebuildは先頭の遅延relayを待たず全session candidateを保持する', async () => {
+            const relays = ['wss://slow.example.com', 'wss://fast.example.com'];
+            await connectService({ relays });
+            const slowConnection = createDeferred<unknown>();
+            mockPool.ensureRelay.mockReset().mockImplementation((relay: string) =>
+                relay === relays[0] ? slowConnection.promise : Promise.resolve({}),
+            );
+            const { BunkerSigner } = await import('nostr-tools/nip46');
+            const rebuiltSigner = createMockNostrConnectSigner({
+                remoteSignerPubkey: 'a'.repeat(64),
+                relays,
+                sharedSecret: '',
+                getPublicKeyResult: TEST_USER_PUBKEY,
+            });
+            (BunkerSigner.fromBunker as any).mockReturnValue(rebuiltSigner);
+
+            await expect(service.ensureConnection()).resolves.toBe(true);
+            expect(mockPool.ensureRelay).toHaveBeenCalledWith(relays[1], expect.any(Object));
+            expect((BunkerSigner.fromBunker as any).mock.calls.at(-1)?.[1].relays).toEqual(relays);
+            service.saveSession(mockStorage, TEST_USER_PUBKEY);
+            expect(Nip46Service.loadSession(mockStorage, TEST_USER_PUBKEY)?.relays).toEqual(relays);
         });
 
         it('ping確認済みsessionではpongならrebuildしない', async () => {
