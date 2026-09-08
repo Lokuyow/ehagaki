@@ -422,75 +422,6 @@ class Nip46WebSocket extends WebSocket {
     }
 }
 
-/**
- * リレーへのWebSocket接続を事前確認し、到達可能な relay だけを保持した SimplePool を返す。
- * nostr-tools の BunkerSigner は publish 時に Promise.any() を使うため、
- * relay が複数ある場合は 1 つでも到達できれば接続を継続できる。
- */
-async function createConnectedPool(
-    relays: string[],
-): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
-    const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
-    if (uniqueRelays.length === 0) {
-        throw new Error('Relay connection failed: no reachable relays');
-    }
-
-    // NIP-46用WebSocket(デバッグログ + limit:0パッチ)を設定
-    const origWs = globalThis.WebSocket;
-    useWebSocketImplementation(Nip46WebSocket);
-    const pool = new SimplePool();
-    useWebSocketImplementation(origWs);
-    const connectedRelays: string[] = [];
-    const connectionErrors: string[] = [];
-
-    for (const [index, relay] of uniqueRelays.entries()) {
-        try {
-            console.debug('[NIP-46] relay connection attempt', {
-                attempt: index + 1,
-                total: uniqueRelays.length,
-            });
-            await pool.ensureRelay(relay, {
-                connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
-            });
-            console.debug('[NIP-46] relay connection succeeded', {
-                connected: connectedRelays.length + 1,
-                total: uniqueRelays.length,
-            });
-            connectedRelays.push(relay);
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.warn('[NIP-46] relay connection failed', {
-                reason: 'relay-unreachable' satisfies Nip46LogFailureReason,
-                failed: connectionErrors.length + 1,
-                total: uniqueRelays.length,
-            });
-            connectionErrors.push(`${relay}: ${msg}`);
-        }
-    }
-
-    if (connectedRelays.length === 0) {
-        pool.destroy();
-        const hint = getRelayConnectionFailureHint(relays);
-        const message = connectionErrors.length > 0
-            ? connectionErrors.join('; ')
-            : 'no reachable relays';
-        throw new Error(
-            hint
-                ? `Relay connection failed: ${message}. ${hint}`
-                : `Relay connection failed: ${message}`,
-        );
-    }
-
-    if (connectionErrors.length > 0) {
-        console.warn('[NIP-46] continuing with reachable relays only', {
-            connected: connectedRelays.length,
-            failed: connectionErrors.length,
-        });
-    }
-
-    return { pool, connectedRelays };
-}
-
 async function createConnectedPoolReadyOnFirstReachable(
     relays: string[],
     logMessages: RelayConnectionLogMessages =
@@ -619,80 +550,6 @@ async function createConnectedPoolReadyOnFirstReachable(
     const finalizedConnectedRelays = uniqueRelays.filter((relay) =>
         connectedRelaySet.has(relay),
     );
-
-    if (connectionErrors.length > 0) {
-        console.warn(logMessages.partial, {
-            connected: finalizedConnectedRelays.length,
-            failed: connectionErrors.length,
-        });
-    }
-
-    return {
-        pool,
-        connectedRelays: finalizedConnectedRelays,
-    };
-}
-
-async function createConnectedPoolForReachableRelays(
-    relays: string[],
-    logMessages: RelayConnectionLogMessages,
-): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
-    const uniqueRelays = [...new Set(sanitizeNip46NostrConnectRelays(relays))];
-    if (uniqueRelays.length === 0) {
-        throw new Error('Relay connection failed: no reachable relays');
-    }
-
-    const origWs = globalThis.WebSocket;
-    useWebSocketImplementation(Nip46WebSocket);
-    const pool = new SimplePool();
-    useWebSocketImplementation(origWs);
-
-    const connectedRelaySet = new Set<string>();
-    const connectionErrors: string[] = [];
-
-    await Promise.all(
-        uniqueRelays.map(async (relay, index) => {
-            try {
-                console.debug(logMessages.connecting, {
-                    attempt: index + 1,
-                    total: uniqueRelays.length,
-                });
-                await pool.ensureRelay(relay, {
-                    connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
-                });
-                console.debug(logMessages.connected, {
-                    connected: connectedRelaySet.size + 1,
-                    total: uniqueRelays.length,
-                });
-                connectedRelaySet.add(relay);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                console.warn(logMessages.failed, {
-                    reason: 'relay-unreachable' satisfies Nip46LogFailureReason,
-                    failed: connectionErrors.length + 1,
-                    total: uniqueRelays.length,
-                });
-                connectionErrors.push(`${relay}: ${msg}`);
-            }
-        }),
-    );
-
-    const finalizedConnectedRelays = uniqueRelays.filter((relay) =>
-        connectedRelaySet.has(relay),
-    );
-
-    if (finalizedConnectedRelays.length === 0) {
-        pool.destroy();
-        const hint = getRelayConnectionFailureHint(relays);
-        const message = connectionErrors.length > 0
-            ? connectionErrors.join('; ')
-            : 'no reachable relays';
-        throw new Error(
-            hint
-                ? `Relay connection failed: ${message}. ${hint}`
-                : `Relay connection failed: ${message}`,
-        );
-    }
 
     if (connectionErrors.length > 0) {
         console.warn(logMessages.partial, {
@@ -1399,12 +1256,15 @@ export class Nip46Service {
 
         try {
             const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
-            const { pool, connectedRelays } = await createConnectedPool(session.relays);
+            const supportedRelays = sanitizeNip46NostrConnectRelays(session.relays);
+            const { pool } = await createConnectedPoolReadyOnFirstReachable(
+                supportedRelays,
+            );
             candidatePool = pool;
             const authChallenge = createLiveIdentityAuthChallenge();
             candidateBunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
                 pubkey: session.remoteSignerPubkey,
-                relays: connectedRelays,
+                relays: supportedRelays,
                 secret: null,
             }, {
                 pool,
@@ -1425,7 +1285,7 @@ export class Nip46Service {
 
             const nextSession: Nip46SessionData = {
                 ...session,
-                relays: [...connectedRelays],
+                relays: supportedRelays,
             };
 
             if (
@@ -1559,11 +1419,14 @@ export class Nip46Service {
         };
 
         try {
-            const { pool, connectedRelays } = await createConnectedPool(bp.relays);
+            const supportedRelays = sanitizeNip46NostrConnectRelays(bp.relays);
+            const { pool } = await createConnectedPoolReadyOnFirstReachable(
+                supportedRelays,
+            );
             candidatePool = pool;
             const bunkerPointer = {
                 ...bp,
-                relays: connectedRelays,
+                relays: supportedRelays,
             };
             const clientSecretKey = generateSecretKey();
             const clientSecretKeyHex = bytesToHex(clientSecretKey);
@@ -1665,7 +1528,7 @@ export class Nip46Service {
             this.setCurrentSession({
                 clientSecretKeyHex,
                 remoteSignerPubkey: bunkerPointer.pubkey,
-                relays: [...connectedRelays],
+                relays: [...supportedRelays],
                 userPubkey: resolvedUserPubkey,
                 pingVerified: false,
             });
@@ -1847,7 +1710,6 @@ export class Nip46Service {
             pool: SimplePool;
             signer: BunkerSigner;
             userPubkey: string;
-            selectedRelay: string;
         }> => {
             const containsLoopbackFinalRelay = finalRelayCandidates.some((relay) =>
                 isLoopbackRelayUrl(relay),
@@ -1859,7 +1721,7 @@ export class Nip46Service {
             let finalSignerCandidate: BunkerSigner | null = null;
 
             try {
-                finalConnection = await createConnectedPoolForReachableRelays(
+                finalConnection = await createConnectedPoolReadyOnFirstReachable(
                     finalRelayCandidates,
                     NEGOTIATED_FINAL_RELAY_CONNECTION_LOG_MESSAGES,
                 );
@@ -1876,12 +1738,15 @@ export class Nip46Service {
                 throw error;
             }
 
-            for (const selectedRelay of finalConnection.connectedRelays) {
+            const readinessDeadline =
+                Date.now() + NIP46_INITIAL_READINESS_RETRY_WINDOW_MS;
+
+            while (true) {
                 try {
                     const finalCandidate = createNostrConnectBunkerSigner(
                         clientSecretKey,
                         remoteSignerPubkey,
-                        [selectedRelay],
+                        finalRelayCandidates,
                         sharedSecret,
                         finalConnection.pool,
                     );
@@ -1907,7 +1772,6 @@ export class Nip46Service {
                         pool: finalConnection.pool,
                         signer: finalSignerCandidate,
                         userPubkey: verifiedUserPubkey,
-                        selectedRelay,
                     };
                 } catch (error) {
                     if (settled) {
@@ -1920,11 +1784,28 @@ export class Nip46Service {
 
                     await closeNostrConnectTemporarySigner(finalSignerCandidate);
                     finalSignerCandidate = null;
+
+                    if (!isNostrConnectPublicKeyTimeoutError(error)) {
+                        finalConnection.pool.destroy();
+                        throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
+                    }
+
+                    if (
+                        Date.now()
+                        + NIP46_INITIAL_READINESS_RETRY_INTERVAL_MS
+                        + NIP46_INITIAL_READINESS_ATTEMPT_TIMEOUT_MS
+                        > readinessDeadline
+                    ) {
+                        finalConnection.pool.destroy();
+                        throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
+                    }
+
+                    console.debug(
+                        '[NIP-46] negotiated final relay readiness timed out; retrying',
+                    );
+                    await waitForReadinessRetryDelay();
                 }
             }
-
-            finalConnection.pool.destroy();
-            throw new Error(NIP46_FINAL_RELAY_VERIFICATION_FAILED_MESSAGE);
         };
 
         const completion = new Promise<string>((resolve, reject) => {
@@ -2160,7 +2041,6 @@ export class Nip46Service {
                                     negotiatedSigner = finalSigner;
                                     resolvedUserPubkey =
                                         negotiatedFinalRelay.userPubkey;
-                                    finalRelays = [negotiatedFinalRelay.selectedRelay];
                                     finalSessionRelays = [...finalRelays];
 
                                     await closeNostrConnectTemporarySigner(interimSigner);
@@ -2320,11 +2200,16 @@ export class Nip46Service {
 
         try {
             const clientSecretKey = hexToBytes(sessionSnapshot.clientSecretKeyHex);
-            const { pool, connectedRelays } = await createConnectedPool(sessionSnapshot.relays);
+            const supportedRelays = sanitizeNip46NostrConnectRelays(
+                sessionSnapshot.relays,
+            );
+            const { pool } = await createConnectedPoolReadyOnFirstReachable(
+                supportedRelays,
+            );
             candidatePool = pool;
             const bunkerPointer = {
                 pubkey: sessionSnapshot.remoteSignerPubkey,
-                relays: connectedRelays,
+                relays: supportedRelays,
                 secret: null,
             };
             const authChallenge = createLiveIdentityAuthChallenge();
@@ -2380,7 +2265,7 @@ export class Nip46Service {
             );
             const nextSession: Nip46SessionData = {
                 ...sessionSnapshot,
-                relays: [...connectedRelays],
+                relays: supportedRelays,
             };
 
             await this.closeRuntimeResources();
