@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { extname, join, normalize, relative } from "node:path";
 import { finalizeEvent, generateSecretKey, nip19 } from "nostr-tools";
 import { ensureWebComponentE2EOutput } from "../../../scripts/ensureWebComponentE2EOutput.mjs";
 import { POST_EDITOR_MIN_HEIGHT } from "../../lib/postLayoutUtils";
@@ -11,6 +11,10 @@ let hostServer: Server;
 let componentOrigin = "";
 let hostOrigin = "";
 const componentStoragePrefix = "ehagaki.web-component.v1:";
+let localeRequestsPaused = false;
+let pendingLocaleResponses: Array<() => void> = [];
+let localeChunkRequestCount = 0;
+let localeChunkPaths = new Set<string>();
 
 function listen(server: Server): Promise<number> {
     return new Promise((resolve) => server.listen(0, "127.0.0.1", () => {
@@ -29,15 +33,42 @@ function contentType(filePath: string): string {
     return "application/octet-stream";
 }
 
+async function findLocaleChunkPaths(directory: string): Promise<Set<string>> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const paths = await Promise.all(entries.map(async (entry) => {
+        const filePath = join(directory, entry.name);
+        if (entry.isDirectory()) return findLocaleChunkPaths(filePath);
+        return /^(?:ja|en)-[^/\\]+\.js$/.test(entry.name)
+            ? new Set([`/${relative(join(process.cwd(), "dist-web-component"), filePath).replaceAll("\\", "/")}`])
+            : new Set<string>();
+    }));
+    return new Set(paths.flatMap((pathsForEntry) => [...pathsForEntry]));
+}
+
+function releasePausedLocaleResponses(): void {
+    localeRequestsPaused = false;
+    const responses = pendingLocaleResponses;
+    pendingLocaleResponses = [];
+    for (const respond of responses) respond();
+}
+
 test.beforeAll(async () => {
     test.setTimeout(180_000);
     await ensureWebComponentE2EOutput();
+    localeChunkPaths = await findLocaleChunkPaths(join(process.cwd(), "dist-web-component", "host-owned"));
+    if (localeChunkPaths.size < 2) {
+        throw new Error("The Host-owned Web Component build did not emit both locale chunks.");
+    }
     componentServer = createServer(async (request, response) => {
         const pathname = new URL(request.url ?? "/", componentOrigin).pathname;
         const filePath = normalize(join(process.cwd(), "dist-web-component", pathname === "/" ? "ehagaki-composer.js" : pathname.slice(1)));
         if (!filePath.startsWith(normalize(join(process.cwd(), "dist-web-component")))) {
             response.writeHead(400).end();
             return;
+        }
+        if (localeRequestsPaused && localeChunkPaths.has(pathname)) {
+            localeChunkRequestCount += 1;
+            await new Promise<void>((resolve) => pendingLocaleResponses.push(resolve));
         }
         try {
             const body = await readFile(filePath);
@@ -49,6 +80,16 @@ test.beforeAll(async () => {
     componentOrigin = `http://127.0.0.1:${await listen(componentServer)}`;
     hostServer = createServer((_request, response) => response.writeHead(200, { "Content-Type": "text/html" }).end("<!doctype html><body></body>"));
     hostOrigin = `http://127.0.0.1:${await listen(hostServer)}`;
+});
+
+test.beforeEach(() => {
+    localeRequestsPaused = false;
+    pendingLocaleResponses = [];
+    localeChunkRequestCount = 0;
+});
+
+test.afterEach(() => {
+    releasePausedLocaleResponses();
 });
 
 test.afterAll(async () => {
@@ -1055,6 +1096,108 @@ test("Lite legacy sizing never publishes a preferred height", async ({ page }) =
     }, { componentOrigin });
 
     expect(result).toEqual({ preferredHeight: null, preferredEvents: [] });
+});
+
+test("Lite waits for the initial locale before mounting the translation-dependent surface", async ({ page }) => {
+    await page.goto(hostOrigin);
+    localeRequestsPaused = true;
+    await page.evaluate(async ({ componentOrigin, storageKey }) => {
+        localStorage.setItem(storageKey, "en");
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { ready: false, readyEvents: 0 };
+        (window as any).__liteLocaleDelayState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            editorIsEmpty: boolean | null;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({ submit: () => undefined });
+        composer.addEventListener("ehagaki-ready", () => state.readyEvents += 1);
+        void composer.whenReady().then(() => { state.ready = true; });
+        document.body.append(composer);
+    }, { componentOrigin, storageKey: `${componentStoragePrefix}locale` });
+
+    await expect.poll(() => localeChunkRequestCount).toBe(2);
+    const beforeRelease = await page.evaluate(() => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & { editorIsEmpty: boolean | null };
+        const shadow = composer.shadowRoot!;
+        const state = (window as any).__liteLocaleDelayState;
+        return {
+            ready: state.ready,
+            readyEvents: state.readyEvents,
+            editorIsEmpty: composer.editorIsEmpty,
+            rawPlaceholderCount: shadow.querySelectorAll('[data-placeholder="postComponent.enter_your_text"]').length,
+            editorCount: shadow.querySelectorAll(".tiptap-editor").length,
+        };
+    });
+    expect(beforeRelease).toEqual({
+        ready: false,
+        readyEvents: 0,
+        editorIsEmpty: null,
+        rawPlaceholderCount: 0,
+        editorCount: 0,
+    });
+
+    releasePausedLocaleResponses();
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator(".tiptap-editor")).toHaveCount(1);
+    await expect(composer.locator('[data-placeholder="What\'s happening?"]')).toHaveCount(1);
+    await expect(composer.locator('[data-placeholder="postComponent.enter_your_text"]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & { editorIsEmpty: boolean | null };
+        return {
+            ready: (window as any).__liteLocaleDelayState.ready,
+            editorIsEmpty: composer.editorIsEmpty,
+            readyEvents: (window as any).__liteLocaleDelayState.readyEvents,
+        };
+    })).toEqual({ ready: true, editorIsEmpty: true, readyEvents: 1 });
+});
+
+test("Lite waits for the initial locale before measuring preferred height", async ({ page }) => {
+    await page.goto(hostOrigin);
+    localeRequestsPaused = true;
+    await page.evaluate(async ({ componentOrigin, storageKey }) => {
+        localStorage.setItem(storageKey, "en");
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const state = { ready: false, preferredEvents: 0 };
+        (window as any).__liteLocalePreferredDelayState = state;
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            preferredHeight: number | null;
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+        };
+        composer.configureHostOwned({
+            submit: () => undefined,
+            editorMinLines: 1,
+            editorMaxLines: 3,
+        });
+        composer.addEventListener("ehagaki-preferred-height-change", () => state.preferredEvents += 1);
+        void composer.whenReady().then(() => { state.ready = true; });
+        document.body.append(composer);
+    }, { componentOrigin, storageKey: `${componentStoragePrefix}locale` });
+
+    await expect.poll(() => localeChunkRequestCount).toBe(2);
+    const beforeRelease = await page.evaluate(() => {
+        const composer = document.querySelector("ehagaki-composer") as HTMLElement & { preferredHeight: number | null };
+        return {
+            preferredHeight: composer.preferredHeight,
+            preferredEvents: (window as any).__liteLocalePreferredDelayState.preferredEvents,
+            ready: (window as any).__liteLocalePreferredDelayState.ready,
+            editorCount: composer.shadowRoot?.querySelectorAll(".tiptap-editor").length ?? 0,
+        };
+    });
+    expect(beforeRelease).toEqual({ preferredHeight: null, preferredEvents: 0, ready: false, editorCount: 0 });
+
+    releasePausedLocaleResponses();
+    const composer = page.locator("ehagaki-composer");
+    await expect(composer.locator('[data-placeholder="What\'s happening?"]')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => {
+        const element = document.querySelector("ehagaki-composer") as HTMLElement & { preferredHeight: number | null };
+        return element.preferredHeight;
+    })).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLocalePreferredDelayState.preferredEvents))
+        .toBeGreaterThanOrEqual(1);
+    await expect.poll(() => page.evaluate(() => (window as any).__liteLocalePreferredDelayState.ready)).toBe(true);
 });
 
 test("Lite auto-grows the editor by rendered lines and keeps overflow inside Tiptap", async ({ page }) => {

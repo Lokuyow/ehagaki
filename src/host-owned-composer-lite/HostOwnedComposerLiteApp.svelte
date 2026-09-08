@@ -94,6 +94,7 @@
   let preferredHeightEnabled = $derived(hostOwnedConfig.editorMinLines !== undefined
     && hostOwnedConfig.editorMaxLines !== undefined,
   );
+  let initialLocaleReady = $state(false);
   let preferredHeightInitialMeasurementComplete = $state(false);
   let preferredHeightMountActive = false;
   let preferredHeightMeasurementRaf: number | null = null;
@@ -298,19 +299,21 @@
 
   onMount(() => {
     replaceHostCustomEmojis(hostOwnedConfig.customEmojis);
-    if (!preferredHeightEnabled) {
-      void waitLocale().then(onInitialized);
-      return;
-    }
-
-    preferredHeightMountActive = true;
+    let mountActive = true;
+    if (preferredHeightEnabled) preferredHeightMountActive = true;
     let initialMeasurementRaf: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
 
-    const initializePreferredHeight = async () => {
+    const initialize = async () => {
       await waitLocale();
+      if (!mountActive) return;
+      initialLocaleReady = true;
       await tick();
-      if (!preferredHeightMountActive) return;
+      if (!mountActive) return;
+      if (!preferredHeightEnabled) {
+        onInitialized();
+        return;
+      }
       await new Promise<void>((resolve) => {
         initialMeasurementRaf = window.requestAnimationFrame(() => {
           initialMeasurementRaf = null;
@@ -328,9 +331,11 @@
       }
     };
 
-    void initializePreferredHeight();
+    void initialize();
 
     return () => {
+      mountActive = false;
+      initialLocaleReady = false;
       preferredHeightMountActive = false;
       preferredHeightInitialMeasurementComplete = false;
       if (initialMeasurementRaf !== null) {
@@ -346,7 +351,8 @@
 </script>
 
 <Tooltip.Provider>
-  <main class="ehagaki-app-root host-owned-composer-lite">
+  {#if initialLocaleReady}
+    <main class="ehagaki-app-root host-owned-composer-lite">
     <div class="main-content">
       <div class="composer-scroll-region" bind:this={composerScrollRegionEl}>
         <div
@@ -422,7 +428,8 @@
         onCustomEmojiPickerOpenChange={(open) => void setCustomEmojiPickerOpen(open)}
       />
     {/if}
-  </main>
+    </main>
+  {/if}
 </Tooltip.Provider>
 
 <style>
