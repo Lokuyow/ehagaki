@@ -66,6 +66,18 @@ describe('Nip07AuthService', () => {
     });
 
     describe('waitForExtension', () => {
+        it('AbortSignalをawaiterへ転送する', async () => {
+            const mockWaitNostr = vi.fn().mockResolvedValue(undefined);
+            const service = new Nip07AuthService(createMockWindow(), mockConsole, mockWaitNostr);
+            const controller = new AbortController();
+
+            await service.waitForExtension(Number.POSITIVE_INFINITY, { signal: controller.signal });
+
+            expect(mockWaitNostr).toHaveBeenCalledWith(Number.POSITIVE_INFINITY, {
+                signal: controller.signal,
+            });
+        });
+
         it('既に利用可能な場合は即座にtrueを返す', async () => {
             const mockWaitNostr = vi.fn();
             const service = new Nip07AuthService(

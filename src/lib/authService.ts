@@ -9,6 +9,7 @@ import {
     type AuthInitializationResult,
     type ManagedRestoreResult,
     runLegacyAuthChecks,
+    MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
     type RestoreResult,
 } from './authRestoreUtils';
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
@@ -45,6 +46,10 @@ export class AuthService {
 
     setAccountManager(accountManager: AccountManager): void {
         this.accountManager = accountManager;
+    }
+
+    getNip07Service() {
+        return this.runtime.nip07Service;
     }
 
     // --- nsec認証 ---
@@ -137,6 +142,14 @@ export class AuthService {
         }
 
         return { success: true, pubkeyHex: resolvedIdentity.hex };
+    }
+
+    /** Reads the NIP-07 identity without changing auth, account, or active state. */
+    async readNip07Identity(): Promise<PublicKeyData | null> {
+        const result = await this.runtime.nip07Service.authenticate({
+            timeoutMs: MANAGED_NIP07_IDENTITY_READ_TIMEOUT_MS,
+        });
+        return result.success && result.pubkeyData ? result.pubkeyData : null;
     }
 
     // --- NIP-46認証 ---

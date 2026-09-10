@@ -202,6 +202,8 @@
   import { createAppAccountDialogController } from "./lib/appAccountDialogController";
   import { setupAppRuntimeBindings } from "./lib/appRuntimeBindings";
   import { createAppAuthEffectController } from "./lib/appAuthEffectController";
+  import { createDelayedNip07RecoveryController } from "./lib/delayedNip07Recovery";
+  import type { AuthInitializationResult } from "./lib/authRestoreUtils";
   import { createParentClientAuthCoordinator } from "./lib/parentClientAuthCoordinator";
   import { focusEditor as focusEditorElement } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
@@ -460,6 +462,8 @@
   let lastAccountLogoutError = $state("");
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
+  let authTransitionGeneration = 0;
+  let startupAuthResult: AuthInitializationResult | null = null;
   let latestInboundInteractionSave = $state<{
     revision: number;
     parentEventIds: string[];
@@ -708,6 +712,35 @@
   });
   authService.setAccountManager(accountManager);
 
+  const delayedNip07Service = typeof authService.getNip07Service === "function"
+    ? authService.getNip07Service()
+    : {
+        isAvailable: () => false,
+        waitForExtension: async () => false,
+      };
+
+  const delayedNip07Recovery = createDelayedNip07RecoveryController({
+    window: appRuntimeEnvironment.window,
+    document: appRuntimeEnvironment.document,
+    nip07Service: delayedNip07Service,
+    readIdentity: () => typeof authService.readNip07Identity === "function"
+      ? authService.readNip07Identity()
+      : Promise.resolve(null),
+    restoreAccount: (pubkeyHex, type, options) =>
+      authService.restoreAccount(pubkeyHex, type, options),
+    handlePostAuth,
+    getActivePubkey: () => accountManager.getActiveAccountPubkey(),
+    getAccountType: (pubkeyHex) => accountManager.getAccountType(pubkeyHex),
+    isAuthenticated: () => authState.value?.isAuthenticated === true,
+    getGeneration: () => authTransitionGeneration,
+    console,
+  });
+
+  function beginAuthTransition(): void {
+    authTransitionGeneration += 1;
+    delayedNip07Recovery.markTransition();
+  }
+
   const loginDialog = createDialogVisibilityHandlers(showLoginDialogStore);
   const logoutDialog = createDialogVisibilityHandlers(showLogoutDialogStore);
   const settingsDialog = createDialogVisibilityHandlers(
@@ -860,6 +893,7 @@
   async function handleNostrConnectStart(
     relayCandidates: string[],
   ): Promise<string | undefined> {
+    beginAuthTransition();
     return nip46AuthFlowCoordinator.handleNostrConnectStart(relayCandidates);
   }
 
@@ -1158,6 +1192,7 @@
       timeoutMs?: number;
     } = {},
   ): Promise<string | undefined> {
+    beginAuthTransition();
     return runParentClientTransition(() =>
       appAuthLoginController.activateParentClientAuth(options),
     );
@@ -1416,6 +1451,7 @@
   async function handleRemoteParentClientLogin(
     pubkeyHex: string | null,
   ): Promise<void> {
+    beginAuthTransition();
     await appParentClientSyncController.handleRemoteParentClientLogin(
       pubkeyHex,
     );
@@ -1424,11 +1460,13 @@
   async function handleRemoteParentClientLogout(
     pubkeyHex: string | null,
   ): Promise<void> {
+    beginAuthTransition();
     await appAccountSessionController.handleRemoteParentClientLogout(pubkeyHex);
   }
 
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
+    beginAuthTransition();
     await appAuthLoginController.saveSecretKey(secretKey);
   }
 
@@ -1439,6 +1477,7 @@
     pubkeyHex: string,
     options: { closeDialog?: boolean; notifyParentClient?: boolean } = {},
   ) {
+    beginAuthTransition();
     await appAccountSessionController.logoutAccount(pubkeyHex, options);
   }
 
@@ -1458,6 +1497,7 @@
    * アカウント切替
    */
   async function switchAccount(pubkeyHex: string): Promise<boolean> {
+    beginAuthTransition();
     return appAccountSessionController.switchAccount(pubkeyHex);
   }
 
@@ -1472,10 +1512,12 @@
   }
 
   async function handleNip07Login(): Promise<string | undefined> {
+    beginAuthTransition();
     return appAuthInteractionController.handleNip07Login();
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
+    beginAuthTransition();
     return runParentClientTransition(() =>
       appAuthLoginController.handleParentClientLogin(),
     );
@@ -1484,6 +1526,7 @@
   async function handleNip46Login(
     bunkerUrl: string,
   ): Promise<string | undefined> {
+    beginAuthTransition();
     return appAuthInteractionController.handleNip46Login(bunkerUrl);
   }
 
@@ -1624,14 +1667,19 @@
       markLocaleInitialized: () => {
         localeInitialized = true;
       },
-      initializeAuth: () => authService.initializeAuth(),
+      initializeAuth: async () => {
+        startupAuthResult = await authService.initializeAuth();
+        return startupAuthResult;
+      },
       resolveAuthenticatedSession: appRuntimeEnvironment.autoLoginNip07Enabled
-        ? (current) =>
-            resolveNip07AutoLoginSession(current, {
+        ? async (current) => {
+            startupAuthResult = await resolveNip07AutoLoginSession(current, {
               authenticateWithNip07: (identity) =>
                 authService.authenticateWithNip07ForAutoLogin(identity),
               console,
-            })
+            });
+            return startupAuthResult;
+          }
         : undefined,
       handleAuthenticated: handlePostAuth,
       initializeGuestSession: () => initializeNostr(),
@@ -1645,6 +1693,16 @@
       isBootstrappingApp = false;
       if (appRuntimeEnvironment.autoLoginNip07Enabled) {
         startupAuthenticationSettled = true;
+      }
+      const activePubkey = accountManager.getActiveAccountPubkey();
+      if (
+        startupAuthResult?.activeSelectionPreserved
+        && startupAuthResult.restoreOutcome === 'completed'
+        && activePubkey
+        && accountManager.getAccountType(activePubkey) === 'nip07'
+        && !isAuthenticated
+      ) {
+        delayedNip07Recovery.start(activePubkey);
       }
       void flushPendingRemoteParentClientAndEmbedActions().finally(() => {
         void flushPendingReplyQuoteHydrationWhenRuntimeReady();
@@ -1679,6 +1737,7 @@
       }
       void cancelPendingNip46Auth(undefined, { preserveError: true });
       void nip46Service.disconnect();
+      delayedNip07Recovery.dispose();
     };
   });
 
