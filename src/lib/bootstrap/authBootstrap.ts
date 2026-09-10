@@ -45,6 +45,7 @@ interface InitializeNostrSessionParams {
     setRelayManager: (relayManager: RelayManager) => void;
     onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
     hostRelayConfig?: RelayConfig;
+    isCurrent?: () => boolean;
 }
 
 interface RunInitializeNostrSessionParams extends InitializeNostrSessionParams {
@@ -63,6 +64,7 @@ interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, Initi
     profileDataStore: ProfileDataStoreLike;
     profileLoadedStore: BooleanStoreLike;
     isLoadingProfileStore: BooleanStoreLike;
+    isCurrent?: () => boolean;
 }
 
 interface ApplyProfileToStoresParams {
@@ -87,6 +89,7 @@ export async function initializeNostrSession({
     setRelayManager,
     onRelayConfigSaved,
     hostRelayConfig,
+    isCurrent = () => true,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
     const rxNostr = createRxNostr({
         verifier,
@@ -109,7 +112,7 @@ export async function initializeNostrSession({
         relayManager,
     );
 
-    setRelayManager(relayManager);
+    if (isCurrent()) setRelayManager(relayManager);
     await relayProfileService.initializeRelays(pubkeyHex);
 
     return {
@@ -207,6 +210,7 @@ export async function completePostAuthBootstrap({
     accountProfileCacheStore,
     onRelayConfigSaved,
     hostRelayConfig,
+    isCurrent = () => true,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
     isLoadingProfileStore.set(true);
     closeAuthDialogs();
@@ -218,8 +222,10 @@ export async function completePostAuthBootstrap({
             setRelayManager,
             onRelayConfigSaved,
             hostRelayConfig,
+            isCurrent,
         });
         const fetchedProfile = await session.relayProfileService.initializeForLogin(pubkeyHex);
+        if (!isCurrent()) return session;
         const profile = fetchedProfile ?? createDefaultProfileForAccount(pubkeyHex);
 
         applyProfileToStores({
@@ -233,10 +239,8 @@ export async function completePostAuthBootstrap({
         return session;
     } finally {
         isLoadingProfileStore.set(false);
-        await syncAccountStores({
-            accountManager,
-            accountListStore,
-            accountProfileCacheStore,
-        });
+        if (isCurrent()) {
+            await syncAccountStores({ accountManager, accountListStore, accountProfileCacheStore });
+        }
     }
 }

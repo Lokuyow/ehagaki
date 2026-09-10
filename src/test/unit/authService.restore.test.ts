@@ -58,6 +58,21 @@ describe('AuthService.restoreAccount', () => {
         expect(mockKeyManager.readStoredKey).not.toHaveBeenCalled();
     });
 
+    it('NIP-07 identity probeはauth state・account list・active pointerを変更しない', async () => {
+        const nip07Dependencies = createMockNip07Dependencies(NIP07_PUBKEY, mockDependencies);
+        const service = new AuthService(nip07Dependencies);
+        const accountManager = createMockAccountManager({
+            getActiveAccountPubkey: vi.fn().mockReturnValue(NIP07_PUBKEY),
+            getAccountType: vi.fn().mockReturnValue('nip07'),
+        });
+        service.setAccountManager(accountManager as any);
+
+        await expect(service.readNip07Identity()).resolves.toMatchObject({ hex: NIP07_PUBKEY });
+        expect(nip07Dependencies.setNip07Auth).not.toHaveBeenCalled();
+        expect(accountManager.addAccount).not.toHaveBeenCalled();
+        expect(accountManager.setActiveAccount).not.toHaveBeenCalled();
+    });
+
     it('nsec: 導出identity一致後だけsecret stateとauth stateを反映する', async () => {
         mockKeyManager.readStoredKey.mockReturnValue({ status: 'found', secretKey: 'stored-nsec' });
         mockKeyManager.isValidNsec.mockReturnValue(true);

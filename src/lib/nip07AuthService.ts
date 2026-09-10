@@ -15,7 +15,7 @@ export class Nip07AuthService {
     private capturedNostr: any;
 
     /** テスト用: waitNostrの代替関数 */
-    private waitNostrFn: (timeout: number) => Promise<any>;
+    private waitNostrFn: (timeout: number, options?: { signal?: AbortSignal }) => Promise<any>;
 
     constructor(
         private windowObj: Window = typeof window !== 'undefined' ? window : {} as Window,
@@ -54,10 +54,20 @@ export class Nip07AuthService {
      * window.nostrが利用可能になるまでnip07-awaiterで待機し、見つかり次第capturedNostrを更新する。
      * nos2x等のdocument_endで注入される拡張機能にも対応。
      */
-    async waitForExtension(maxWaitMs: number = 3000): Promise<boolean> {
+    async waitForExtension(
+        maxWaitMs: number = 3000,
+        options: { signal?: AbortSignal } = {},
+    ): Promise<boolean> {
         if (this.isAvailable()) return true;
 
-        const nostr = await this.waitNostrFn(maxWaitMs);
+        let nostr: any;
+        try {
+            nostr = options.signal
+                ? await this.waitNostrFn(maxWaitMs, options)
+                : await this.waitNostrFn(maxWaitMs);
+        } catch {
+            return false;
+        }
         if (nostr) {
             this.capturedNostr = nostr;
             return true;
