@@ -13,6 +13,8 @@ const LEGACY_NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 
 export type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
 export type AuthInitializationResult = RestoreResult & {
+    /** The selected account failed to restore; do not automatically choose another identity. */
+    activeSelectionPreserved?: true;
     /** Whether startup restore candidates were evaluated without an infrastructure failure. */
     restoreOutcome?: 'completed' | 'infrastructure-failure';
     /** NIP-07 identity already read while restoring a saved account. */
@@ -488,6 +490,8 @@ export async function runManagedAuthRestore(
     return {
         hasAuth: false,
         restoreOutcome: infrastructureFailureDetected ? 'infrastructure-failure' : 'completed',
+        ...(candidates.some(candidate => !candidate.activateOnSuccess)
+            ? { activeSelectionPreserved: true as const } : {}),
         ...(nip07Identity ? { nip07Identity } : {}),
     };
 }
