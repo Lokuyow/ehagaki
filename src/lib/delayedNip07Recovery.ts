@@ -39,6 +39,7 @@ export function createDelayedNip07RecoveryController(
     let attemptPromise: Promise<void> | null = null;
     let providerWaitPromise: Promise<void> | null = null;
     let abortController: AbortController | null = null;
+    let listenersAttached = false;
 
     const isSelected = (attemptGeneration: number): boolean =>
         !disposed
@@ -51,6 +52,11 @@ export function createDelayedNip07RecoveryController(
         isSelected(attemptGeneration) && !deps.isAuthenticated();
 
     const cleanup = (): void => {
+        if (listenersAttached) {
+            deps.window?.removeEventListener('focus', trigger);
+            deps.document?.removeEventListener('visibilitychange', onVisibilityChange);
+            listenersAttached = false;
+        }
         abortController?.abort();
         abortController = null;
         providerWaitPromise = null;
@@ -105,6 +111,7 @@ export function createDelayedNip07RecoveryController(
             generation = deps.getGeneration();
             deps.window?.addEventListener('focus', trigger);
             deps.document?.addEventListener('visibilitychange', onVisibilityChange);
+            listenersAttached = true;
 
             if (!deps.nip07Service.isAvailable()) {
                 abortController = new AbortController();
@@ -126,8 +133,6 @@ export function createDelayedNip07RecoveryController(
         dispose(): void {
             if (disposed) return;
             disposed = true;
-            deps.window?.removeEventListener('focus', trigger);
-            deps.document?.removeEventListener('visibilitychange', onVisibilityChange);
             cleanup();
         },
     };

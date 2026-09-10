@@ -258,6 +258,11 @@ vi.mock('../../lib/authService', () => ({
         authenticateWithNip46: vi.fn(),
         authenticateWithParentClient: mockState.authenticateWithParentClient,
         initializeAuth: vi.fn(async () => ({ hasAuth: true, pubkeyHex: PARENT_CLIENT_PUBKEY })),
+        getNip07Service: vi.fn(() => ({
+            isAvailable: vi.fn(() => false),
+            waitForExtension: vi.fn(async () => false),
+        })),
+        readNip07Identity: vi.fn(async () => null),
         markAuthInitialized: vi.fn(),
         logoutAccount: mockState.logoutAccount,
         restoreAccount: vi.fn(),

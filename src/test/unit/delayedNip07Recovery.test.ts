@@ -52,7 +52,7 @@ function createHarness() {
         console: { error: vi.fn() },
     });
     return {
-        controller, readIdentity, restoreAccount, handlePostAuth, service, waitForExtension, window,
+        controller, readIdentity, restoreAccount, handlePostAuth, service, waitForExtension, window, document,
         fire, setVisible, setGeneration: (value: number) => { generation = value; },
         setActive: (value: string) => { active = value; },
         setAuthenticated: (value: boolean) => { authenticated = value; },
@@ -72,6 +72,8 @@ describe('delayed NIP-07 recovery', () => {
         resolveIdentity(h.identity(ACTIVE));
         await vi.waitFor(() => expect(h.handlePostAuth).toHaveBeenCalledWith(ACTIVE));
         expect(h.restoreAccount).toHaveBeenCalledOnce();
+        expect(h.window.removeEventListener).toHaveBeenCalledWith('focus', expect.any(Function));
+        expect(h.document.removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
         expect(h.restoreAccount).toHaveBeenCalledWith(ACTIVE, 'nip07', {
             nip07Identity: h.identity(ACTIVE),
         });
@@ -88,7 +90,9 @@ describe('delayed NIP-07 recovery', () => {
         resolveWait(true);
         await Promise.resolve();
         expect(h.readIdentity).not.toHaveBeenCalled();
+        expect(h.waitForExtension.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
         expect(h.window.removeEventListener).toHaveBeenCalled();
+        expect(h.document.removeEventListener).toHaveBeenCalled();
     });
 
     it('coalesces provider discovery and focus into one probe', async () => {
@@ -104,6 +108,8 @@ describe('delayed NIP-07 recovery', () => {
         await vi.waitFor(() => expect(h.handlePostAuth).toHaveBeenCalledOnce());
         expect(h.readIdentity).toHaveBeenCalledOnce();
         expect(h.restoreAccount).toHaveBeenCalledOnce();
+        expect(h.window.removeEventListener).toHaveBeenCalled();
+        expect(h.document.removeEventListener).toHaveBeenCalled();
     });
 
     it('ignores mismatch identity and retries after a later visible trigger', async () => {
@@ -136,6 +142,8 @@ describe('delayed NIP-07 recovery', () => {
         resolveIdentity(h.identity(ACTIVE));
         await Promise.resolve();
         expect(h.restoreAccount).not.toHaveBeenCalled();
+        expect(h.window.removeEventListener).toHaveBeenCalled();
+        expect(h.document.removeEventListener).toHaveBeenCalled();
 
         const h2 = createHarness();
         h2.readIdentity.mockResolvedValueOnce(h2.identity(ACTIVE));
@@ -144,5 +152,7 @@ describe('delayed NIP-07 recovery', () => {
         h2.fire('focus');
         await Promise.resolve();
         expect(h2.restoreAccount).not.toHaveBeenCalled();
+        expect(h2.window.removeEventListener).toHaveBeenCalled();
+        expect(h2.document.removeEventListener).toHaveBeenCalled();
     });
 });

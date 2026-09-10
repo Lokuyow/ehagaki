@@ -712,20 +712,11 @@
   });
   authService.setAccountManager(accountManager);
 
-  const delayedNip07Service = typeof authService.getNip07Service === "function"
-    ? authService.getNip07Service()
-    : {
-        isAvailable: () => false,
-        waitForExtension: async () => false,
-      };
-
   const delayedNip07Recovery = createDelayedNip07RecoveryController({
     window: appRuntimeEnvironment.window,
     document: appRuntimeEnvironment.document,
-    nip07Service: delayedNip07Service,
-    readIdentity: () => typeof authService.readNip07Identity === "function"
-      ? authService.readNip07Identity()
-      : Promise.resolve(null),
+    nip07Service: authService.getNip07Service(),
+    readIdentity: () => authService.readNip07Identity(),
     restoreAccount: (pubkeyHex, type, options) =>
       authService.restoreAccount(pubkeyHex, type, options),
     handlePostAuth,
