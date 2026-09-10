@@ -1130,7 +1130,15 @@
   /**
    * 認証成功後の共通処理: Nostr初期化 → リレー・プロフィール取得 → ストア更新
    */
-  async function handlePostAuth(pubkeyHex: string): Promise<void> {
+  async function handlePostAuth(
+    pubkeyHex: string,
+    options: { generation?: number } = {},
+  ): Promise<void> {
+    const isCurrent = options.generation === undefined
+      ? () => true
+      : () => authTransitionGeneration === options.generation
+        && accountManager.getActiveAccountPubkey() === pubkeyHex
+        && authState.value?.pubkey === pubkeyHex;
     const session = await completePostAuthBootstrap({
       pubkeyHex,
       closeAuthDialogs: () => {
@@ -1152,8 +1160,13 @@
       accountListStore,
       accountProfileCacheStore,
       hostRelayConfig,
+      isCurrent,
     });
 
+    if (!isCurrent()) {
+      disposeNostrSession(session.rxNostr);
+      return;
+    }
     rxNostr = session.rxNostr;
     relayProfileService = session.relayProfileService;
     void flushPendingReplyQuoteHydrationWhenRuntimeReady();

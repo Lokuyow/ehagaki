@@ -16,7 +16,7 @@ export interface DelayedNip07RecoveryDependencies {
         type: 'nip07',
         options: { nip07Identity: PublicKeyData },
     ): Promise<{ hasAuth: boolean; pubkeyHex?: string }>;
-    handlePostAuth(pubkeyHex: string): Promise<void>;
+    handlePostAuth(pubkeyHex: string, options?: { generation: number }): Promise<void>;
     getActivePubkey(): string | null;
     getAccountType(pubkeyHex: string): string | null;
     isAuthenticated(): boolean;
@@ -78,7 +78,7 @@ export function createDelayedNip07RecoveryController(
 
         const restoredPubkey = targetPubkey;
         cleanup();
-        await deps.handlePostAuth(restoredPubkey);
+        await deps.handlePostAuth(restoredPubkey, { generation: attemptGeneration });
     };
 
     const trigger = (): void => {

@@ -70,7 +70,7 @@ describe('delayed NIP-07 recovery', () => {
         h.fire('focus');
         expect(h.readIdentity).toHaveBeenCalledOnce();
         resolveIdentity(h.identity(ACTIVE));
-        await vi.waitFor(() => expect(h.handlePostAuth).toHaveBeenCalledWith(ACTIVE));
+        await vi.waitFor(() => expect(h.handlePostAuth).toHaveBeenCalledWith(ACTIVE, { generation: 0 }));
         expect(h.restoreAccount).toHaveBeenCalledOnce();
         expect(h.window.removeEventListener).toHaveBeenCalledWith('focus', expect.any(Function));
         expect(h.document.removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));

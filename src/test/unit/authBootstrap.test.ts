@@ -110,6 +110,44 @@ describe('refreshRelaysAndProfileForAccount', () => {
 });
 
 describe('completePostAuthBootstrap', () => {
+    it('認証後のプロフィール取得中に遷移した場合は古いプロフィールとアカウント同期を反映しない', async () => {
+        const pubkeyHex = '04'.repeat(32);
+        const staleProfile = createProfile();
+        let current = true;
+        let resolveProfile!: (profile: ReturnType<typeof createProfile>) => void;
+        const profileDataStore = { set: vi.fn() };
+        const accountProfileCacheStore = { setProfile: vi.fn() };
+        const accountListStore = { set: vi.fn() };
+
+        vi.spyOn(RelayProfileService.prototype, 'initializeRelays').mockResolvedValue(undefined);
+        vi.spyOn(RelayProfileService.prototype, 'initializeForLogin').mockReturnValue(
+            new Promise(resolve => { resolveProfile = resolve; }),
+        );
+
+        const bootstrap = completePostAuthBootstrap({
+            pubkeyHex,
+            closeAuthDialogs: vi.fn(),
+            relayListUpdatedStore: { value: 0, set: vi.fn() },
+            setRelayManager: vi.fn(),
+            profileDataStore,
+            profileLoadedStore: { set: vi.fn() },
+            isLoadingProfileStore: { set: vi.fn() },
+            accountManager: { getAccounts: () => [] },
+            accountListStore,
+            accountProfileCacheStore,
+            isCurrent: () => current,
+        });
+
+        current = false;
+        resolveProfile(staleProfile);
+        await bootstrap;
+
+        expect(profileDataStore.set).not.toHaveBeenCalled();
+        expect(accountProfileCacheStore.setProfile).not.toHaveBeenCalled();
+        expect(accountListStore.set).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
+    });
+
     it('認証後にkind:0がない場合も前アカウントのプロフィールを残さない', async () => {
         const pubkeyHex = '03'.repeat(32);
         const accountA = createProfile();
