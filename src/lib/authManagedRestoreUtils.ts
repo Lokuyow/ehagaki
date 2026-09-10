@@ -19,12 +19,15 @@ export function buildManagedRestoreCandidates({
 }): ManagedRestoreCandidate[] {
     const candidates: ManagedRestoreCandidate[] = [];
 
-    if (activePubkey && activeType && activeType !== 'parentClient') {
-        candidates.push({
+    if (activePubkey && /^[0-9a-fA-F]{64}$/.test(activePubkey)
+        && activeType && activeType !== 'parentClient'
+        && accounts.some(account => account.pubkeyHex === activePubkey && account.type === activeType)) {
+        // A saved selection is not invalidated by an unavailable credential or signer.
+        return [{
             pubkeyHex: activePubkey,
             type: activeType,
             activateOnSuccess: false,
-        });
+        }];
     }
 
     for (const account of accounts) {

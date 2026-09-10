@@ -12,6 +12,7 @@ export async function resolveNip07AutoLoginSession(
     deps: Nip07AutoLoginDependencies,
 ): Promise<AuthInitializationResult> {
     if (current.hasAuth) return current;
+    if (current.activeSelectionPreserved) return current;
     if (current.restoreOutcome === 'infrastructure-failure') return current;
 
     try {

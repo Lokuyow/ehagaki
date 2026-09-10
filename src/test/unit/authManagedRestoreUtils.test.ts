@@ -3,20 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { buildManagedRestoreCandidates } from '../../lib/authManagedRestoreUtils';
 
 describe('authManagedRestoreUtils', () => {
-    it('active account を先頭に置き、fallback では active と parentClient を除外する', () => {
+    it('有効なactive accountだけを復元候補にする', () => {
         expect(
             buildManagedRestoreCandidates({
-                activePubkey: 'active-pub',
+                activePubkey: 'aa'.repeat(32),
                 activeType: 'nsec',
                 accounts: [
-                    { pubkeyHex: 'active-pub', type: 'nsec' },
+                    { pubkeyHex: 'aa'.repeat(32), type: 'nsec' },
                     { pubkeyHex: 'parent-pub', type: 'parentClient' },
                     { pubkeyHex: 'fallback-pub', type: 'nip07' },
                 ],
             }),
         ).toEqual([
-            { pubkeyHex: 'active-pub', type: 'nsec', activateOnSuccess: false },
-            { pubkeyHex: 'fallback-pub', type: 'nip07', activateOnSuccess: true },
+            { pubkeyHex: 'aa'.repeat(32), type: 'nsec', activateOnSuccess: false },
         ]);
     });
 
