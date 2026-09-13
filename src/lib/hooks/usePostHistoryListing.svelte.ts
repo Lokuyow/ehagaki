@@ -3003,8 +3003,11 @@ export function usePostHistoryListing({
         state.listingMode = isSparseJump ? "sparse" : "contiguous";
         state.sparseSource = isSparseJump ? "jump" : null;
         state.loadedPosts = targetPosts;
+        state.hasOlderLocal = false;
+        state.hasNewerLocal = false;
         resetOlderBackfillSearchState();
-        await refreshTimelineAvailability(pubkeyHex, targetPosts, requestId);
+        void refreshTimelineAvailability(pubkeyHex, targetPosts, requestId)
+            .catch(() => undefined);
         return true;
     }
 

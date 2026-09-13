@@ -257,6 +257,7 @@
     let localHistoryDeleteConfirmOpen = $state(false);
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let isExplicitNavigation = $state(false);
+    let surroundingPostsNavigationRequestId = 0;
     let jumpDateValue = $state<DateValue | undefined>(createTodayDateValue());
     let jumpDatePlaceholder = $state<DateValue | undefined>(
         createTodayDateValue(),
@@ -545,6 +546,7 @@
     });
 
     function resetDialogState(): void {
+        surroundingPostsNavigationRequestId += 1;
         profileSyncCoordinator.reset();
         copyNeventUi.resetState();
         hideBroadcastFloatingMessage();
@@ -575,6 +577,7 @@
     }
 
     function handleClose() {
+        surroundingPostsNavigationRequestId += 1;
         const wasSearchMode = history.isSearchMode;
         if (wasSearchMode) {
             historyViewport.clearCurrentSessionScrollAnchor();
@@ -855,6 +858,7 @@
     });
 
     onDestroy(() => {
+        surroundingPostsNavigationRequestId += 1;
         cancelExport();
         resetPendingDeletionRequests();
         profileSyncCoordinator.dispose();
@@ -1646,8 +1650,12 @@
     async function handleShowSurroundingPosts(
         post: PostHistoryRecord,
     ): Promise<void> {
+        const requestId = ++surroundingPostsNavigationRequestId;
         isExplicitNavigation = true;
         const changed = await history.jumpToEventId(post.eventId);
+        if (requestId !== surroundingPostsNavigationRequestId || !show) {
+            return;
+        }
         if (!changed) {
             isExplicitNavigation = false;
             return;
