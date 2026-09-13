@@ -427,7 +427,9 @@ test.describe("composer target dialog fixture", () => {
         await openDialog(page);
         await page.getByLabel("イベントID").fill(harness.inputs.mediaPost);
 
-        const firstImage = page.locator(".post-history-image-surface").first();
+        // Images become actionable in fetch-completion order. Keep the same
+        // opener even when an earlier image finishes loading after this one.
+        const firstImage = page.getByRole("button", { name: "開く preview-media-1.jpg", exact: true });
         await expect(firstImage).toBeVisible();
         await firstImage.focus();
         await firstImage.press("Enter");

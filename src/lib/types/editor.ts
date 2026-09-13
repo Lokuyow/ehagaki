@@ -17,6 +17,7 @@ export interface PostStatus {
 }
 
 export interface EditorState {
+    isSubmitPending: boolean;
     content: string;
     canPost: boolean;
     isUploading: boolean;
@@ -118,6 +119,7 @@ export interface SetupEventListenersParams {
 }
 
 export interface InitializeEditorParams {
+    isInputBlocked?: () => boolean;
     placeholderText: string;
     editorContainerEl: HTMLElement | null;
     currentEditor: TipTapEditor | null;

@@ -18,6 +18,7 @@ export const currentEditorStore = {
 };
 
 export let editorState = $state<EditorState>({
+    isSubmitPending: false,
     content: '',
     canPost: false,
     isUploading: false,

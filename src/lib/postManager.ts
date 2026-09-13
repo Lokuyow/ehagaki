@@ -733,13 +733,13 @@ export class PostManager {
 
   async performPostSubmission(
     editor: TipTapEditor,
+    postPayload: ExtractedPostContent,
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
     onStart?: () => void,
     onSuccess?: (result?: PostResult) => void,
     onError?: (error: string) => void
   ): Promise<void> {
-    const postPayload = this.preparePostPayload(editor);
     const imageBlurhashMap = this.prepareImageBlurhashMap(editor, imageOxMap, imageXMap);
 
     onStart?.();
@@ -791,9 +791,8 @@ export class PostManager {
       editor.commands.insertContent(hashtagText);
     }
 
-    // 投稿成功後は、固定ハッシュタグの有無にかかわらずエディターへ戻す。
-    // 固定ハッシュタグがある場合は、復元されたハッシュタグより前に
-    // カレットを置く既存の位置を維持する。
-    editor.commands.focus('start');
+    // Preserve the current focus state, including an intentionally hidden IME.
+    // Keep the caret before any restored pinned hashtags without refocusing.
+    editor.commands.setTextSelection(1);
   }
 }

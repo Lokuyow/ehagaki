@@ -26,6 +26,8 @@ let relayServer: WebSocketServer;
 let relayOrigin = "";
 let relayConnectionCount = 0;
 let relayPublishedEvents: Array<{ event: Record<string, unknown> }> = [];
+let relayEventsPaused = false;
+let pendingEventAcks: Array<() => void> = [];
 let relayRequestsPaused = false;
 let pendingRelayResponses: Array<() => void> = [];
 let failPostComponentLoad = false;
@@ -134,12 +136,11 @@ test.beforeAll(async () => {
                 ) {
                     const event = message[1] as Record<string, unknown>;
                     relayPublishedEvents.push({ event });
-                    socket.send(JSON.stringify([
-                        "OK",
-                        typeof event.id === "string" ? event.id : "",
-                        true,
-                        "accepted",
+                    const acknowledge = () => socket.send(JSON.stringify([
+                        "OK", typeof event.id === "string" ? event.id : "", true, "accepted",
                     ]));
+                    if (relayEventsPaused) pendingEventAcks.push(acknowledge);
+                    else acknowledge();
                 }
             } catch {
                 // The relay only needs to accept the browser connection for this proof.
@@ -206,6 +207,8 @@ test.beforeEach(() => {
     hostRequests.clear();
     relayConnectionCount = 0;
     relayPublishedEvents = [];
+    relayEventsPaused = false;
+    pendingEventAcks = [];
     relayRequestsPaused = false;
     pendingRelayResponses = [];
     failPostComponentLoad = false;
@@ -336,12 +339,8 @@ test("exposes the common editor empty state API through the Full element", async
     await editor.press("ArrowLeft");
     await expect.poll(() => page.evaluate(() => (window as any).__fullEditorEmptyChanges.length)).toBe(2);
 
-    await editor.press("ControlOrMeta+A");
-    await editor.press("Backspace");
-    // Clear the short test input through the editor's normal delete path. A
-    // character-by-character fallback keeps this deterministic on mobile
-    // projects where select-all chords are not exposed reliably.
-    await editor.press("End");
+    // Return from ArrowLeft to the known end, without mobile select-all/End.
+    await editor.press("ArrowRight");
     for (let index = 0; index < "Full text".length; index += 1) {
         await editor.press("Backspace");
     }
@@ -847,7 +846,8 @@ test("uses a preconnection Full relays property instead of saved user relays", a
     ]);
 });
 
-test("publishes EVENT only through the configured Host write relay", async ({ page }) => {
+test("publishes EVENT only through the configured Host write relay", async ({ page, browserName, isMobile }) => {
+    relayEventsPaused = true;
     const savedUserRelay = "wss://saved-user-relay.example";
     const hostReadRelay = "wss://host-read-relay.example";
     const hostWriteRelay = "wss://host-write-relay.example";
@@ -936,9 +936,39 @@ test("publishes EVENT only through the configured Host write relay", async ({ pa
     await expect(editor).toBeVisible();
     await editor.click();
     await editor.pressSequentially(content);
-    await composer.locator("button.post-button").click();
+    await editor.evaluate((element) => {
+        (window as any).__fullSubmitBlurs = 0;
+        element.addEventListener('blur', () => (window as any).__fullSubmitBlurs++);
+    });
+    const postButton = composer.locator("button.post-button");
+    await expect(postButton).toBeEnabled();
+    const touch = browserName === 'chromium' && isMobile ? await page.context().newCDPSession(page) : null;
+    if (touch) {
+        const box = await postButton.boundingBox();
+        if (!box) throw new Error('Submit button has no box');
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
+    } else {
+        await postButton.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1 });
+    }
 
     await expect.poll(() => relayPublishedEvents.length).toBe(1);
+    await expect(editor).toHaveAttribute('contenteditable', 'true');
+    expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
+    if (touch) {
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await touch.detach();
+    } else {
+        await postButton.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1 });
+        await postButton.dispatchEvent('click');
+    }
+    await page.keyboard.press('Backspace');
+    await expect(editor).toHaveText(content);
+    relayEventsPaused = false;
+    pendingEventAcks.splice(0).forEach(acknowledge => acknowledge());
+    await expect(editor).toHaveText('');
+    expect(await composer.evaluate(el => el.shadowRoot?.activeElement?.classList.contains('tiptap-editor'))).toBe(true);
+    expect(await page.evaluate(() => (window as any).__fullSubmitBlurs)).toBe(0);
+    expect(relayPublishedEvents).toHaveLength(1);
     const result = await page.evaluate(() => (window as any).__hostRelayPublishState);
     expect(relayPublishedEvents[0]?.event.content).toBe(content);
     expect(result.eventDestinations).toEqual([hostWriteRelay]);

@@ -40,6 +40,7 @@ export default defineConfig({
             testIgnore: '**/webComponentDevServer.spec.ts',
             use: {
                 ...devices['iPhone 13'],
+                browserName: 'chromium',
             },
         },
         {

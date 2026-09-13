@@ -72,6 +72,7 @@
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
+  import { waitForEditorComposition } from "../lib/editor/waitForEditorComposition";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import {
     profileDataStore,
@@ -156,6 +157,7 @@
   let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
+  let compositionWait: ReturnType<typeof waitForEditorComposition> | undefined;
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let postManager: PostManager | undefined = $state();
@@ -202,15 +204,12 @@
   });
 
   $effect(() => {
-    const editorInstance = currentEditor;
-    // The inline Lite submit surface must leave the already-focused editor in
-    // place while its host callback is pending. The sending handlers below
-    // still block editor input and other editor actions for this local mode.
+    // Lite's non-inline submit mode retains its existing editable policy.
+    // Normal composers use the document guard instead of closing the surface.
+    if (!isHostOwned) return;
     const editable = !postStatus.sending || showEditorSubmitButton;
-
-    if (editorInstance && editorInstance.isEditable !== editable) {
-      // Tiptap v3 supports suppressing the update event for this option-only change.
-      editorInstance.setEditable(editable, false);
+    if (currentEditor && currentEditor.isEditable !== editable) {
+      currentEditor.setEditable(editable, false);
     }
   });
 
@@ -275,15 +274,16 @@
   function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
     if (!postStatus.sending) return;
 
-    // Keep the focused contenteditable surface during an inline submit, but
+    // Keep the focused contenteditable surface during submission, but
     // stop the event before Tiptap's target keymap can create a transaction.
     event.preventDefault();
     event.stopPropagation();
   }
 
-  function handleEditorContainerBeforeInput(event: InputEvent) {
+  function blockSendingInput(event: Event) {
     if (postStatus.sending) {
       event.preventDefault();
+      event.stopPropagation();
     }
   }
 
@@ -361,6 +361,7 @@
     uploadFiles: async (params) => {
       if (
         postStatus.sending ||
+        editorState.isSubmitPending ||
         editorState.isUploading ||
         (isHostOwned && !hostMountActive)
       ) {
@@ -501,6 +502,7 @@
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
     editorResources = initializeEditor({
+      isInputBlocked: isHostOwned ? undefined : () => editorState.postStatus.sending,
       placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
@@ -589,6 +591,12 @@
     );
 
     return () => {
+      compositionWait?.cancel();
+      compositionWait = undefined;
+      if (currentEditorStore.value === currentEditor) {
+        editorState.isSubmitPending = false;
+        if (!isHostOwned) postComponentUIStore.hideSecretKeyDialog();
+      }
       window.removeEventListener(
         "image-fullscreen-request",
         handleImageFullscreenRequest,
@@ -826,12 +834,22 @@
 
   function canStartSubmit(): boolean {
     return (
-      !!currentEditor &&
+      canSendNormalPost() &&
       editorState.canPost &&
+      !editorState.isSubmitPending &&
+      !showSecretKeyDialog
+    );
+  }
+
+  function canSendNormalPost(): boolean {
+    return (
+      !!currentEditor &&
+      !!postManager &&
+      !isSwitchingAccount &&
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
-      (hasPostingCapability || !!postManager)
+      hasPostingCapability
     );
   }
 
@@ -968,22 +986,43 @@
     if (!canStartSubmit()) return;
     if (isHostOwnedLiteBuild) return;
     if (!postManager) return;
-    const postPayload = postManager.preparePostPayload(currentEditor);
-    if (containsSecretKey(postPayload.content)) {
-      postComponentUIStore.showSecretKeyDialog(
-        postPayload.content,
-        postPayload.emojiTags,
+    const editorInstance = currentEditor;
+    editorState.isSubmitPending = true;
+    try {
+      if (editorInstance.view.composing) {
+        compositionWait = waitForEditorComposition(editorInstance);
+        const ready = await compositionWait.settled;
+        compositionWait = undefined;
+        if (!ready) return;
+      }
+      if (
+        editorInstance.isDestroyed ||
+        currentEditorStore.value !== editorInstance ||
+        !canSendNormalPost()
+      ) return;
+      const postPayload = postManager.preparePostPayload(editorInstance);
+      if (!postPayload.content.trim()) return;
+      if (containsSecretKey(postPayload.content)) {
+        // The existing confirmation store now owns this one submission intent.
+        postComponentUIStore.showSecretKeyDialog(postPayload.content, postPayload.emojiTags);
+        editorState.isSubmitPending = false;
+        return;
+      }
+      await postManager.performPostSubmission(
+        editorInstance,
+        postPayload,
+        imageOxMap,
+        imageXMap,
+        () => {
+          postStatusHandlers.markSending();
+          editorState.isSubmitPending = false;
+        },
+        postStatusHandlers.markSuccess,
+        postStatusHandlers.markFailure,
       );
-      return;
+    } finally {
+      if (currentEditorStore.value === editorInstance) editorState.isSubmitPending = false;
     }
-    await postManager.performPostSubmission(
-      currentEditor,
-      imageOxMap,
-      imageXMap,
-      postStatusHandlers.markSending,
-      postStatusHandlers.markSuccess,
-      postStatusHandlers.markFailure,
-    );
   }
 
   export function resetPostContent() {
@@ -1023,10 +1062,10 @@
 
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
-    if (!canStartSubmit()) return;
+    if (!showSecretKeyDialog || !canSendNormalPost()) return;
     const pendingPost = postComponentUIStore.getPendingPost();
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
-    postComponentUIStore.hideSecretKeyDialog();
+    if (!pendingPost.trim()) return;
     if (!isHostOwnedLiteBuild && postManager && currentEditor) {
       await submitPendingPostWithSecretKey({
         postManager,
@@ -1035,7 +1074,10 @@
         imageXMap,
         pendingPost,
         pendingEmojiTags,
-        onStart: postStatusHandlers.markSending,
+        onStart: () => {
+          postStatusHandlers.markSending();
+          postComponentUIStore.hideSecretKeyDialog();
+        },
         onSuccess: postStatusHandlers.markSuccess,
         onFailure: postStatusHandlers.markFailure,
       });
@@ -1085,7 +1127,7 @@
   });
 
   export function openFileDialog() {
-    if (!mediaEnabled || postStatus.sending || editorState.isUploading) return;
+    if (!mediaEnabled || postStatus.sending || editorState.isSubmitPending || editorState.isUploading) return;
     fileInput?.click();
   }
 
@@ -1166,7 +1208,10 @@
     onclick={handleEditorContainerClick}
     onkeydowncapture={handleEditorContainerKeydownCapture}
     onkeydown={handleEditorContainerKeydown}
-    onbeforeinput={handleEditorContainerBeforeInput}
+    onbeforeinputcapture={blockSendingInput}
+    onpastecapture={blockSendingInput}
+    oncutcapture={blockSendingInput}
+    ondropcapture={blockSendingInput}
     use:fileDropActionWithDragState={{
       dragOver: (v: boolean) => (dragOver = v),
     }}

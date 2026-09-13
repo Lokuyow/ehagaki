@@ -1,4 +1,278 @@
-import { expect, test } from '@playwright/test';
+import { devices, expect, test, type Page, type Locator } from '@playwright/test';
+
+async function beginLongPress(page: Page, button: Locator, nativeTouch: boolean) {
+    if (nativeTouch) {
+        const session = await page.context().newCDPSession(page);
+        const box = await button.boundingBox();
+        if (!box) throw new Error('No submit button box');
+        await session.send('Input.dispatchTouchEvent', {
+            type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }],
+        });
+        return async () => {
+            await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await session.detach();
+        };
+    }
+    // WebKit has no CDP touch hold API. Test the real pointer handler with a
+    // synthetic touch pointer, separately from Chromium's native touch input.
+    await button.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, bubbles: true });
+    return async () => {
+        await button.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1, bubbles: true });
+        await button.dispatchEvent('click');
+    };
+}
+
+async function observeFocus(editor: Locator) {
+    await editor.evaluate((element) => {
+        const state = { blurs: 0, focusCalls: 0, invalidAttributes: [] as string[] };
+        (window as any).__focusObservation = state;
+        element.addEventListener('blur', () => state.blurs++);
+        element.addEventListener('focus', () => state.focusCalls++);
+        new MutationObserver((records) => {
+            for (const record of records) {
+                const value = element.getAttribute(record.attributeName!);
+                if (value === 'none' || value === 'false' || record.oldValue === 'none' || record.oldValue === 'false') {
+                    state.invalidAttributes.push(record.attributeName!);
+                }
+            }
+        }).observe(element, { attributes: true, attributeOldValue: true, attributeFilter: ['contenteditable', 'inputmode'] });
+    });
+}
+
+async function finishSubmission(page: Page, success: boolean) {
+    await page.evaluate((ok) => (window as any).__postSubmitHarness.finish(ok), success);
+}
+
+async function endComposition(editor: Locator, text: string) {
+    await editor.evaluate((element, value) => {
+        element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: value }));
+        // Intentionally update after compositionend in this same task. Reading
+        // synchronously in that handler would capture the old document.
+        element.querySelector('p')!.textContent = value;
+        element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+    }, text);
+}
+
+test('long-press submits once without losing focus and freezes the document until success', async ({ page, browserName, isMobile }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+    await page.keyboard.type('frozen draft');
+    const button = page.locator('button.post-button');
+    await expect(button).toBeEnabled();
+    await observeFocus(editor);
+    const release = await beginLongPress(page, button, browserName === 'chromium' && isMobile);
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    // Sending must begin before releasing the pointer.
+    await expect(editor).toBeFocused();
+    await release();
+    await expect(editor).toHaveAttribute('contenteditable', 'true');
+    await expect(page.getByRole('textbox')).toMatchAriaSnapshot('- textbox "投稿エディター" [disabled]');
+    for (const key of ['x', 'Enter', 'Shift+Enter', 'Backspace', 'Control+z', 'Control+y']) await page.keyboard.press(key);
+    for (const type of ['paste', 'cut', 'drop']) {
+        await editor.evaluate((element, type) => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/plain', 'blocked');
+            const event = type === 'drop'
+                ? new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer })
+                : new ClipboardEvent(type, { bubbles: true, cancelable: true, clipboardData: transfer });
+            element.dispatchEvent(event);
+        }, type);
+    }
+    await editor.evaluate((element) => {
+        const ed = (window as any).__currentEditor;
+        ed.view.dispatch(ed.state.tr.insertText('blocked').setMeta('composition', 1));
+        element.querySelector('p')!.textContent = 'uncancellable native input';
+        element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', isComposing: true }));
+    });
+    await expect(editor).toHaveText('frozen draft');
+    expect(await page.evaluate(() => (window as any).__currentEditor.state.doc.textContent)).toBe('frozen draft');
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    await finishSubmission(page, true);
+    await expect(editor).toHaveText('');
+    await expect(editor).toBeFocused();
+    expect(await page.evaluate(() => (window as any).__focusObservation)).toEqual({ blurs: 0, focusCalls: 0, invalidAttributes: [] });
+});
+
+test('composition long-press waits for the final document and keeps one intent', async ({ page, browserName, isMobile }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+    await page.keyboard.type('draft');
+    const button = page.locator('button.post-button');
+    await expect(button).toBeEnabled();
+    await editor.dispatchEvent('compositionstart', { data: 'draft' });
+    await observeFocus(editor);
+    const release = await beginLongPress(page, button, browserName === 'chromium' && isMobile);
+    await expect(page.getByTestId('submit-pending')).toHaveText('pending');
+    await release();
+    await page.evaluate(() => {
+        const container = document.querySelector('.editor-container') as any;
+        container.__uploadFiles([new File(['blocked'], 'blocked.png', { type: 'image/png' })]);
+    });
+    await expect(editor.locator('img')).toHaveCount(0);
+    await page.evaluate(() => { void (document.querySelector('.editor-container') as any).__submitPost(); });
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(0);
+    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-disabled');
+    await endComposition(editor, '日本語の最終確定');
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['日本語の最終確定']);
+    await expect(editor).toHaveText('日本語の最終確定');
+    await finishSubmission(page, false);
+    await expect(page.getByTestId('sending-state')).toHaveText('idle');
+    await expect(editor).toHaveText('日本語の最終確定');
+    await expect(editor).toBeFocused();
+    expect(await page.evaluate(() => (window as any).__focusObservation)).toEqual({ blurs: 0, focusCalls: 0, invalidAttributes: [] });
+    await page.keyboard.type('再編集');
+    await expect(editor).toContainText('再編集');
+});
+
+test('unfocused submission does not acquire focus on success or failure', async ({ page, browserName, isMobile }) => {
+    for (const success of [true, false]) {
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        await page.keyboard.type('unfocused draft');
+        await page.getByTestId('toggle-picker').focus();
+        await observeFocus(editor);
+        const button = page.locator('button.post-button');
+        await expect(button).toBeEnabled();
+        const release = await beginLongPress(page, button, browserName === 'chromium' && isMobile);
+        await expect(page.getByTestId('sending-state')).toHaveText('sending');
+        await release();
+        await finishSubmission(page, success);
+        await expect(page.getByTestId('sending-state')).toHaveText('idle');
+        await expect(editor).not.toBeFocused();
+        await expect(editor).toHaveText(success ? '' : 'unfocused draft');
+        expect(await page.evaluate(() => (window as any).__focusObservation.focusCalls)).toBe(0);
+    }
+});
+
+test('composition intent transfers to secret confirmation and is consumed or cancelled once', async ({ page }) => {
+    // Deliberately invalid checksum: exercises detection without containing a key.
+    const detectedText = `nsec1${'q'.repeat(58)}`;
+    for (const confirm of [false, true]) {
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        await page.keyboard.type('draft');
+        await expect(page.locator('button.post-button')).toBeEnabled();
+        await editor.dispatchEvent('compositionstart');
+        await page.evaluate(() => { void (document.querySelector('.editor-container') as any).__submitPost(); });
+        await expect(page.getByTestId('submit-pending')).toHaveText('pending');
+        await endComposition(editor, detectedText);
+        const dialog = page.locator('.secretkey-warning-dialog');
+        await expect(dialog).toBeVisible();
+        await expect(page.getByTestId('submit-pending')).toHaveText('idle');
+        await page.evaluate(() => { void (document.querySelector('.editor-container') as any).__submitPost(); });
+        expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(0);
+        // The confirmation owns its snapshot, not the mutable editor document.
+        await page.evaluate(() => (window as any).__currentEditor.commands.setContent('<p>changed after dialog</p>'));
+        await dialog.getByRole('button', { name: confirm ? '投稿' : 'キャンセル', exact: true }).click();
+        await expect(dialog).not.toBeVisible();
+        if (confirm) {
+            await expect(page.getByTestId('sending-state')).toHaveText('sending');
+            expect(await page.evaluate((expected) => {
+                const sent = (window as any).__postSubmitHarness.submissions;
+                return sent.length === 1 && sent[0].content === expected;
+            }, detectedText)).toBe(true);
+            await finishSubmission(page, true);
+            await expect(editor).toHaveText('');
+        } else {
+            await editor.dispatchEvent('compositionend');
+            await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+            expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(0);
+            await expect(editor).toHaveText('changed after dialog');
+        }
+    }
+});
+
+for (const reason of ['empty', 'revoked', 'destroyed'] as const) {
+    test(`discards a composition submission when ${reason}`, async ({ page }) => {
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        await page.keyboard.type('draft');
+        await expect(page.locator('button.post-button')).toBeEnabled();
+        await editor.dispatchEvent('compositionstart');
+        await page.evaluate(() => { void (document.querySelector('.editor-container') as any).__submitPost(); });
+        await expect(page.getByTestId('submit-pending')).toHaveText('pending');
+        if (reason === 'destroyed') {
+            await page.getByTestId('unmount-editor').evaluate((el: HTMLButtonElement) => el.click());
+        } else {
+            if (reason === 'revoked') await page.getByTestId('revoke-posting').evaluate((el: HTMLButtonElement) => el.click());
+            await endComposition(editor, reason === 'empty' ? '' : '最終確定');
+        }
+        await expect(page.getByTestId('submit-pending')).toHaveText('idle');
+        expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(0);
+    });
+}
+
+test('App and iframe use the normal submission path without refocusing', async ({ page, browserName, isMobile }) => {
+    await page.goto('app-composer-picker-playwright.html');
+    await page.evaluate(() => (window as any).__APP_COMPOSER_PICKER_HARNESS__.setAuthenticated());
+    const editor = page.locator('.tiptap-editor');
+    await editor.click();
+    await page.keyboard.type('App submit');
+    await expect(page.locator('button.post-button')).toBeEnabled();
+    await observeFocus(editor);
+    const release = await beginLongPress(page, page.locator('button.post-button'), browserName === 'chromium' && isMobile);
+    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    await release();
+    await finishSubmission(page, true);
+    await expect(editor).toHaveText('');
+    await expect(editor).toBeFocused();
+    expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
+
+    const url = new URL('post-editor-sending-playwright.html?withSubmit=1', page.url()).href;
+    const hostURL = new URL('submit-frame-host', page.url()).href;
+    await page.route(hostURL, route => route.fulfill({
+        contentType: 'text/html',
+        body: `<iframe title="composer" src="${url}" style="width:320px;height:600px"></iframe>`,
+    }));
+    await page.goto(hostURL);
+    const frame = page.frameLocator('iframe');
+    const embeddedEditor = frame.locator('.tiptap-editor');
+    await embeddedEditor.click();
+    await page.keyboard.type('iframe submit');
+    await expect(frame.locator('button.post-button')).toBeEnabled();
+    await observeFocus(embeddedEditor);
+    const releaseFrame = await beginLongPress(page, frame.locator('button.post-button'), browserName === 'chromium' && isMobile);
+    await expect(frame.getByTestId('sending-state')).toHaveText('sending');
+    await releaseFrame();
+    await embeddedEditor.evaluate(() => (window as any).__postSubmitHarness.finish(true));
+    await expect(embeddedEditor).toHaveText('');
+    await expect(embeddedEditor).toBeFocused();
+    expect(await embeddedEditor.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
+});
+
+test.describe('Android composition submit', () => {
+    const { defaultBrowserType: _browser, ...pixel } = devices['Pixel 7'];
+    test.use(pixel);
+    test('uses Chromium IME input through natural compositionend without missing the commit', async ({ page, browserName }) => {
+        test.skip(browserName !== 'chromium', 'CDP IME input is Chromium-only; WebKit uses the separate DOM event test');
+        await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+        const editor = page.locator('.tiptap-editor');
+        await editor.click();
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Input.imeSetComposition', { text: 'にほん', selectionStart: 3, selectionEnd: 3 });
+        await expect(page.locator('button.post-button')).toBeEnabled();
+        expect(await page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.isComposing)).toBe(true);
+        await observeFocus(editor);
+        const release = await beginLongPress(page, page.locator('button.post-button'), true);
+        await expect(page.getByTestId('submit-pending')).toHaveText('pending');
+        await release();
+        await cdp.send('Input.insertText', { text: '日本' });
+        await expect(page.getByTestId('sending-state')).toHaveText('sending');
+        expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['日本']);
+        expect(await page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
+        await finishSubmission(page, true);
+        await expect(editor).toHaveText('');
+        await expect(editor).toBeFocused();
+        expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
+        await cdp.detach();
+    });
+});
 
 test.describe('post editor sending state', () => {
     test('keeps the content readable and blocks editing in light and dark themes', async ({ page }) => {
@@ -18,7 +292,7 @@ test.describe('post editor sending state', () => {
             await expect(page.getByTestId('sending-state')).toHaveText('sending');
             await expect(editorContainer).toHaveClass(/sending/);
             await expect(editorContainer).toHaveAttribute('aria-disabled', 'true');
-            await expect(editor).toHaveAttribute('contenteditable', 'false');
+            await expect(editor).toHaveAttribute('contenteditable', 'true');
             await expect(editor).toContainText('送信中も確認する本文');
             await expect.poll(() => editor.evaluate((element) => getComputedStyle(element).opacity)).toBe('0.72');
 
@@ -183,15 +457,16 @@ test.describe('post editor sending state', () => {
         const pickerIdentity = await pickerHost.locator('.custom-emoji-picker').elementHandle();
         if (!pickerIdentity) throw new Error('Custom emoji picker was not mounted.');
 
-        await page.getByTestId('toggle-sending').click();
-        await expect(editor).toHaveAttribute('contenteditable', 'false');
+        await editor.click();
+        await page.getByTestId('toggle-sending').evaluate((button: HTMLButtonElement) => button.click());
+        await expect(editor).toHaveAttribute('contenteditable', 'true');
         await expect(pickerHost).toBeVisible();
 
         const contentBeforePickerSelection = await editor.textContent();
         await page.getByAltText(':sending-safe:').click();
         await expect(editor).toHaveText(contentBeforePickerSelection ?? '');
 
-        await page.getByTestId('complete-post').click();
+        await page.getByTestId('complete-post').evaluate((button: HTMLButtonElement) => button.click());
         await expect(editor).toHaveAttribute('contenteditable', 'true');
         await expect(editor).toHaveText('');
         await expect(pickerHost).toBeVisible();
