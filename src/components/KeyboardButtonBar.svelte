@@ -31,6 +31,7 @@
         hashtagPinAvailable?: boolean;
     }
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
+    const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== 'undefined' && __EHAGAKI_COMPOSER_LITE__;
 
     let {
         onUploadImage,
@@ -105,11 +106,22 @@
     function isPostDisabled(): boolean {
         return (
             !canPost ||
+            editorState.isSubmitPending ||
             postStatus.sending ||
             isUploading ||
             !hasPostingCapability ||
             !!postStatus.completed
         );
+    }
+
+    function preservePostPressFocus(event: Event) {
+        // Posting must not suppress the active IME when viewport detection is
+        // a false negative. Other toolbar buttons retain their existing policy.
+        if (!isHostOwnedLiteBuild && event.target instanceof Element && event.target.closest('button.post-button')) {
+            event.preventDefault();
+        } else {
+            preventKeyboardFocusChange(event);
+        }
     }
 
     function startLongPress(event: PointerEvent) {
@@ -222,8 +234,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
-        onpointerdowncapture={preventKeyboardFocusChange}
-        ontouchstartcapture={preventKeyboardFocusChange}
+        onpointerdowncapture={preservePostPressFocus}
+        ontouchstartcapture={preservePostPressFocus}
     >
         <div class="button-group-left">
             {#if mediaEnabled}
@@ -238,6 +250,7 @@
                                 className="image-button"
                                 disabled={!hasPostingCapability ||
                                     postStatus.sending ||
+                                    editorState.isSubmitPending ||
                                     isUploading}
                                 onClick={(e) => {
                                     onUploadImage?.();
@@ -332,6 +345,7 @@
                                     : ''}"
                                 disabled={!canPost ||
                                     postStatus.sending ||
+                                    editorState.isSubmitPending ||
                                     isUploading ||
                                     !hasPostingCapability ||
                                     postStatus.completed}

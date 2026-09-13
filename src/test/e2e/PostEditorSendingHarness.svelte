@@ -1,6 +1,9 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
     import PostComponent from '../../components/PostComponent.svelte';
+    import KeyboardButtonBar from '../../components/KeyboardButtonBar.svelte';
+    import type { RxNostr } from 'rx-nostr';
+    import { Tooltip } from 'bits-ui';
     import CustomEmojiPicker from '../../components/CustomEmojiPicker.svelte';
     import type { CustomEmojiSelection } from '../../lib/customEmojiUsage';
     import { editorState, resetPostStatus, updatePostStatus } from '../../stores/editorStore.svelte';
@@ -9,6 +12,10 @@
     let sending = $derived(editorState.postStatus.sending);
     let pickerOpen = $state(false);
     let postComponentRef: any = $state(null);
+    let mounted = $state(true);
+    let authorized = $state(true);
+    const inertRxNostr = {} as RxNostr; // Transport is replaced by the entry harness.
+    const withSubmit = new URLSearchParams(window.location.search).has('withSubmit');
 
     const pickerEmoji = {
         shortcode: 'sending-safe',
@@ -90,7 +97,19 @@
         Fail post
     </button>
     <output data-testid="sending-state">{sending ? 'sending' : 'idle'}</output>
-    <PostComponent bind:this={postComponentRef} hasStoredKey={true} />
+    <output data-testid="submit-pending">{editorState.isSubmitPending ? 'pending' : 'idle'}</output>
+    {#if withSubmit}
+        <button data-testid="unmount-editor" onclick={() => mounted = false}>Unmount</button>
+        <button data-testid="revoke-posting" onclick={() => authorized = false}>Revoke</button>
+    {/if}
+    {#if mounted}
+        <PostComponent bind:this={postComponentRef} rxNostr={inertRxNostr} hasStoredKey={authorized} />
+        {#if withSubmit}
+            <Tooltip.Provider>
+                <KeyboardButtonBar hasPostingCapability={authorized} />
+            </Tooltip.Provider>
+        {/if}
+    {/if}
     {#if pickerOpen}
         <div data-testid="custom-emoji-picker-host">
             <CustomEmojiPicker

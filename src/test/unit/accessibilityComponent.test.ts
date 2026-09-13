@@ -231,7 +231,7 @@ describe('accessibility component tests', () => {
         );
     });
 
-    it('makes the editor read-only only while a post is sending', async () => {
+    it('keeps the editable surface but disables document changes while sending', async () => {
         resetPostStatus();
         const { component, unmount } = render(PostComponent, {
             hasStoredKey: true,
@@ -256,8 +256,13 @@ describe('accessibility component tests', () => {
         updatePostStatus({ ...editorState.postStatus, sending: true });
         await tick();
 
-        expect(editor.isEditable).toBe(false);
-        expect(tiptapEditor.getAttribute('contenteditable')).toBe('false');
+        expect(editor.isEditable).toBe(true);
+        expect(tiptapEditor.getAttribute('contenteditable')).toBe('true');
+        expect(editorContainer.getAttribute('aria-disabled')).toBe('true');
+        const frozenDoc = editor.state.doc;
+        editor.commands.insertContent('blocked');
+        editor.view.dispatch(editor.state.tr.insertText('blocked composition').setMeta('composition', 1));
+        expect(editor.state.doc.eq(frozenDoc)).toBe(true);
         expect(editorContainer.classList.contains('sending')).toBe(true);
         expect(editorContainer.getAttribute('aria-disabled')).toBe('true');
         expect(editorContainer.textContent).toContain('送信中も確認できる本文');

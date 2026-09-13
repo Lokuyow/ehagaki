@@ -99,7 +99,8 @@ function createMockEditor(options?: { paragraphCount?: number; placeholder?: str
     const chain = vi.fn().mockReturnValue({ clearContent });
     const insertContent = vi.fn();
     const focus = vi.fn();
-    const commands = { insertContent, focus };
+    const setTextSelection = vi.fn();
+    const commands = { insertContent, focus, setTextSelection };
     const editor = {
         chain,
         commands,
@@ -409,7 +410,8 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).not.toHaveBeenCalled();
-            expect(mockEditor.focus).toHaveBeenCalledWith('start');
+            expect(mockEditor.editor.commands.setTextSelection).toHaveBeenCalledWith(1);
+            expect(mockEditor.focus).not.toHaveBeenCalled();
             expect(mockDeps.contentWarningStore?.reset).toHaveBeenCalled();
             expect(mockDeps.contentWarningReasonStore?.reset).toHaveBeenCalled();
             expect(mockDeps.mediaGalleryStore?.clearAll).toHaveBeenCalled();
@@ -428,7 +430,8 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).toHaveBeenCalledWith(' #test #hello');
-            expect(mockEditor.focus).toHaveBeenCalledWith('start');
+            expect(mockEditor.editor.commands.setTextSelection).toHaveBeenCalledWith(1);
+            expect(mockEditor.focus).not.toHaveBeenCalled();
         });
 
         it('ピン留めON+ハッシュタグなしの場合: insertContentを呼ばない', () => {
@@ -441,11 +444,21 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).not.toHaveBeenCalled();
-            expect(mockEditor.focus).toHaveBeenCalledWith('start');
+            expect(mockEditor.editor.commands.setTextSelection).toHaveBeenCalledWith(1);
+            expect(mockEditor.focus).not.toHaveBeenCalled();
         });
     });
 
     describe('performPostSubmission', () => {
+        it('sends the checked content and emoji snapshot without extracting again', async () => {
+            const snapshot = { content: 'checked :wave:', emojiTags: [['emoji', 'wave', 'https://example.invalid/wave.png']] };
+            const extract = vi.spyOn(manager, 'preparePostPayload');
+            const submit = vi.spyOn(manager, 'submitPost').mockResolvedValue({ success: true });
+            vi.mocked(mockDeps.extractImageBlurhashMapFn!).mockReturnValue({});
+            await manager.performPostSubmission(createMockEditor().editor, snapshot, {}, {});
+            expect(extract).not.toHaveBeenCalled();
+            expect(submit).toHaveBeenCalledWith(snapshot.content, expect.any(Object), snapshot.emojiTags);
+        });
         let mockRxNostr: RxNostr;
         let mockAuthState: AuthState;
         let mockHashtagStore: HashtagStore;
@@ -513,7 +526,7 @@ describe('PostManager editor state helpers', () => {
 
             vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
-            await manager.performPostSubmission(mockEditor.editor, imageOxMap, imageXMap, onStart, onSuccess, onError);
+            await manager.performPostSubmission(mockEditor.editor, { content: expectedContent, emojiTags: [] }, imageOxMap, imageXMap, onStart, onSuccess, onError);
 
             expect(onStart).toHaveBeenCalled();
             expect(onSuccess).toHaveBeenCalled();
@@ -544,7 +557,7 @@ describe('PostManager editor state helpers', () => {
 
             vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
-            await manager.performPostSubmission(mockEditor.editor, imageOxMap, imageXMap, onStart, onSuccess, onError);
+            await manager.performPostSubmission(mockEditor.editor, { content: expectedContent, emojiTags: [] }, imageOxMap, imageXMap, onStart, onSuccess, onError);
 
             expect(onStart).toHaveBeenCalled();
             expect(onSuccess).not.toHaveBeenCalled();
