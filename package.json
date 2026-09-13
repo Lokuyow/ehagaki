@@ -70,7 +70,7 @@
     "nostr-zap-view": "^1.4.6",
     "photoswipe": "^5.4.4",
     "qrcode": "^1.5.4",
-    "rx-nostr": "^3.7.4",
+    "rx-nostr": "^3.7.6",
     "svelte-i18n": "^4.0.1",
     "svelte-tiptap": "^3.0.1"
   },
