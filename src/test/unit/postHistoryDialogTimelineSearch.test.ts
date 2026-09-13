@@ -1178,6 +1178,59 @@ describe('PostHistoryDialog timeline search', () => {
         }
     });
 
+    it('close後に完了した前後の投稿jumpは次回表示を上書きしない', async () => {
+        const target = createRecord({
+            eventId: 'closed-jump-target',
+            content: 'close前の検索対象',
+        });
+        const targetWindow = createDeferred<ReturnType<typeof createRecord>[]>();
+        const normal = createRecord({
+            eventId: 'closed-jump-normal',
+            content: '再表示後の通常履歴',
+        });
+        const onClose = vi.fn();
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([normal]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [target],
+            total: 1,
+            hasNext: false,
+        });
+        repositoryMock.getVisibleChunkAroundEventId.mockReturnValue(targetWindow.promise);
+
+        const view = render(PostHistoryDialog, {
+            props: { show: true, onClose, pubkeyHex: PUBKEY_HEX },
+        });
+        await waitFor(() => expect(screen.getByText(normal.content)).toBeTruthy());
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'close' } });
+        await waitForSearchDebounce();
+        await waitFor(() => expect(screen.getByText(target.content)).toBeTruthy());
+        await fireEvent.click(screen.getByRole('button', { name: 'アクションを表示' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '前後の投稿を表示' }));
+        await waitFor(() => {
+            expect(repositoryMock.getVisibleChunkAroundEventId).toHaveBeenCalledTimes(1);
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        targetWindow.resolve([target]);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        await view.rerender({ show: false, onClose, pubkeyHex: PUBKEY_HEX });
+        await view.rerender({ show: true, onClose, pubkeyHex: PUBKEY_HEX });
+        await waitFor(() => {
+            expect(screen.getByText(normal.content)).toBeTruthy();
+            expect(screen.queryByText(target.content)).toBeNull();
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+        });
+
+        view.unmount();
+    });
+
     it('検索結果が現在のvisible range外でもeventId周辺のsparse jumpへ移動する', async () => {
         const target = createRecord({
             eventId: 'saved-outside-range-target',
