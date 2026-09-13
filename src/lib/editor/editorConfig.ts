@@ -345,7 +345,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                 placeholder: () => placeholderState.text,
                 emptyEditorClass: 'is-editor-empty',
                 showOnlyWhenEditable: true,
-                showOnlyCurrent: false,
+                showOnlyCurrent: true,
                 includeChildren: false,
             }),
         ],
