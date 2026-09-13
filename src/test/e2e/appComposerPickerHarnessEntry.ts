@@ -5,6 +5,9 @@ import App from '../../App.svelte';
 import { STORAGE_KEYS } from '../../lib/constants';
 import { updateAuthState } from '../../stores/authStore.svelte';
 import { editorState, updatePostStatus } from '../../stores/editorStore.svelte';
+import { installPostSubmitHarness } from './postSubmitHarness';
+
+installPostSubmitHarness();
 
 const target = document.getElementById('app');
 

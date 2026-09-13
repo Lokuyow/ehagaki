@@ -789,12 +789,9 @@ test("exposes the common editor empty state API through the Host-owned Lite elem
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorEmptyChanges.length)).toBe(2);
     await editor.press("ArrowLeft");
     await expect.poll(() => page.evaluate(() => (window as any).__liteEditorEmptyChanges.length)).toBe(2);
-    await editor.press("ControlOrMeta+A");
-    await editor.press("Backspace");
-    // Clear the short test input through the editor's normal delete path. A
-    // character-by-character fallback keeps this deterministic on mobile
-    // projects where select-all chords are not exposed reliably.
-    await editor.press("End");
+    // Reverse the selection-only ArrowLeft above, then delete from the known
+    // end position. Mobile emulation does not reliably expose select-all/End.
+    await editor.press("ArrowRight");
     for (let index = 0; index < "Lite text".length; index += 1) {
         await editor.press("Backspace");
     }
