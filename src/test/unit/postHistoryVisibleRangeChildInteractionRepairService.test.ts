@@ -47,10 +47,10 @@ type Observer<T> = {
 };
 
 function createRxNostrHarness() {
-    let eventObserver: Observer<any> | undefined;
-    let messageObserver: Observer<any> | undefined;
-    let errorObserver: Observer<any> | undefined;
-    let connectionStateObserver: Observer<any> | undefined;
+    const eventObservers = new Set<Observer<any>>();
+    const messageObservers = new Set<Observer<any>>();
+    const errorObservers = new Set<Observer<any>>();
+    const connectionStateObservers = new Set<Observer<any>>();
     const subscriptions = {
         events: vi.fn(),
         messages: vi.fn(),
@@ -60,56 +60,76 @@ function createRxNostrHarness() {
     const rxNostr = {
         use: vi.fn(() => ({
             subscribe: (observer: Observer<any>) => {
-                eventObserver = observer;
-                return { unsubscribe: subscriptions.events };
+                eventObservers.add(observer);
+                return {
+                    unsubscribe: () => {
+                        eventObservers.delete(observer);
+                        subscriptions.events();
+                    },
+                };
             },
         })),
         createAllMessageObservable: vi.fn(() => ({
             subscribe: (observer: Observer<any>) => {
-                messageObserver = observer;
-                return { unsubscribe: subscriptions.messages };
+                messageObservers.add(observer);
+                return {
+                    unsubscribe: () => {
+                        messageObservers.delete(observer);
+                        subscriptions.messages();
+                    },
+                };
             },
         })),
         createAllErrorObservable: vi.fn(() => ({
             subscribe: (observer: Observer<any>) => {
-                errorObserver = observer;
-                return { unsubscribe: subscriptions.errors };
+                errorObservers.add(observer);
+                return {
+                    unsubscribe: () => {
+                        errorObservers.delete(observer);
+                        subscriptions.errors();
+                    },
+                };
             },
         })),
         createConnectionStateObservable: vi.fn(() => ({
             subscribe: (observer: Observer<any>) => {
-                connectionStateObserver = observer;
-                return { unsubscribe: subscriptions.connectionStates };
+                connectionStateObservers.add(observer);
+                return {
+                    unsubscribe: () => {
+                        connectionStateObservers.delete(observer);
+                        subscriptions.connectionStates();
+                    },
+                };
             },
         })),
     };
 
-    const currentSubId = () => {
-        const rxReqId = createRxBackwardReqMock.mock.calls.at(-1)?.[0];
+    const currentSubId = (requestIndex = -1) => {
+        const rxReqId = createRxBackwardReqMock.mock.calls.at(requestIndex)?.[0];
         return `${rxReqId}:0`;
     };
 
     return {
         rxNostr,
         subscriptions,
-        emitEvent: (packet: any) => eventObserver?.next?.(packet),
-        complete: () => eventObserver?.complete?.(),
-        fail: (error: unknown) => eventObserver?.error?.(error),
-        emitEose: (from: string) => messageObserver?.next?.({
+        emitEvent: (packet: any) => [...eventObservers].forEach((observer) => observer.next?.(packet)),
+        complete: () => [...eventObservers].forEach((observer) => observer.complete?.()),
+        fail: (error: unknown) => [...eventObservers].forEach((observer) => observer.error?.(error)),
+        emitEose: (from: string, requestIndex = -1) => [...messageObservers].forEach((observer) => observer.next?.({
             type: "EOSE",
             from,
-            subId: currentSubId(),
-            message: ["EOSE", currentSubId()],
-        }),
-        emitClosed: (from: string, notice = "blocked") => messageObserver?.next?.({
+            subId: currentSubId(requestIndex),
+            message: ["EOSE", currentSubId(requestIndex)],
+        })),
+        emitClosed: (from: string, notice = "blocked") => [...messageObservers].forEach((observer) => observer.next?.({
             type: "CLOSED",
             from,
             subId: currentSubId(),
             notice,
             message: ["CLOSED", currentSubId(), notice],
-        }),
-        emitRelayError: (from: string) => errorObserver?.next?.({ from, reason: new Error("relay error") }),
-        emitDown: (from: string) => connectionStateObserver?.next?.({ from, state: "error" }),
+        })),
+        emitRelayError: (from: string) => [...errorObservers].forEach((observer) => observer.next?.({ from, reason: new Error("relay error") })),
+        emitDown: (from: string) => [...connectionStateObservers].forEach((observer) => observer.next?.({ from, state: "error" })),
     };
 }
 
@@ -556,6 +576,40 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             status: "partial",
             checkedParentEventIds: [],
             incompleteParentEventIds: [post.eventId],
+        });
+    });
+
+    it("saturated initial chunk の partial は fallback が全 parent を確認できれば回復する", async () => {
+        const harness = createRxNostrHarness();
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        const posts = Array.from({ length: 30 }, (_, index) =>
+            createPost(index.toString(16).padStart(64, "0"))
+        );
+        const task = service.repairVisibleRangeChildInteractions(harness.rxNostr as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: posts,
+            relayConfig: { "wss://baseline.example.com": { read: true, write: false } },
+        });
+
+        emitDuplicateReplyEvents(harness, "wss://baseline.example.com", 250);
+        harness.complete();
+
+        await vi.waitFor(() => expect(harness.rxNostr.use).toHaveBeenCalledTimes(3));
+        harness.emitEose("wss://baseline.example.com", 1);
+        harness.emitEose("wss://baseline.example.com", 2);
+        harness.complete();
+
+        await vi.waitFor(() => expect(harness.rxNostr.use).toHaveBeenCalledTimes(4));
+        harness.emitEose("wss://baseline.example.com", 3);
+        harness.complete();
+
+        await expect(task.promise).resolves.toMatchObject({
+            status: "success",
+            checkedParentEventIds: posts.map((post) => post.eventId),
+            incompleteParentEventIds: [],
         });
     });
 

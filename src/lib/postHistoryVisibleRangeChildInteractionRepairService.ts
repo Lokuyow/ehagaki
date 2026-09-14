@@ -384,7 +384,12 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             return;
                         }
 
-                        if (candidateResult.status !== "success") {
+                        const defersCompletenessToFallback =
+                            chunk.depth === 0 && candidateResult.requiresFallback;
+                        if (
+                            candidateResult.status !== "success"
+                            && !defersCompletenessToFallback
+                        ) {
                             partial = true;
                         }
                         if (candidateResult.requiresFallback) {
