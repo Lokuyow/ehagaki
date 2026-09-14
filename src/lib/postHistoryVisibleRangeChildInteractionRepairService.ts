@@ -1,9 +1,15 @@
 import {
     createRxBackwardReq,
+    type ConnectionStatePacket,
+    type ErrorPacket,
+    type MessagePacket,
     type RxNostr,
 } from "rx-nostr";
 import { FALLBACK_RELAYS } from "./relayLists";
-import { mergeHostReadDefaultsWithHints } from "./hostRelayRuntime";
+import {
+    getHostReadRelayDefaults,
+    mergeHostReadDefaultsWithHints,
+} from "./hostRelayRuntime";
 import {
     postHistoryDirectReplyRepairSaveService,
     type PostHistoryDirectReplyRepairItem,
@@ -102,15 +108,26 @@ export interface PostHistoryVisibleRangeChildInteractionRepairServiceDeps {
     now?: () => number;
 }
 
-type CandidateFetchStatus = "success" | "timeout" | "error" | "cancelled";
+type CandidateFetchStatus = "success" | "partial" | "error" | "cancelled";
+
+type CandidateRelayPlan = {
+    destinationRelayUrls: string[];
+    coverageRelayUrls: string[];
+};
 
 type CandidateFetchResult = {
     status: CandidateFetchStatus;
     items: Array<{ event: NostrEvent; relayUrls: string[] }>;
     rawCount: number;
-    saturated: boolean;
+    requiresFallback: boolean;
+    coverageSaturated: boolean;
     fetchedAt: number;
     relayUrls: string[];
+    eoseRelayUrls: string[];
+    closedRelayUrls: string[];
+    errorRelayUrls: string[];
+    downRelayUrls: string[];
+    perRelayRawCounts: Array<{ relayUrl: string; rawCount: number }>;
 };
 
 type CandidateFetchTask = {
@@ -121,6 +138,10 @@ type CandidateFetchTask = {
 type EventAccumulator = {
     event: NostrEvent;
     relayUrls: Set<string>;
+};
+
+type SubscriptionLike = {
+    unsubscribe?: () => void;
 };
 
 type ParentChunk = {
@@ -150,6 +171,11 @@ const EMPTY_RESULT: PostHistoryVisibleRangeChildInteractionRepairResult = {
     incompleteParentEventIds: [],
     deletionConfirmationIncomplete: false,
 };
+
+function buildVisibleRangeRelationRepairRxReqId(): string {
+    const randomValue = Math.random().toString(36).slice(2, 10);
+    return `post-history-visible-relation-repair-${Date.now().toString(36)}-${randomValue}`;
+}
 
 function toUniqueDirectReplyOwnerPosts(
     ownerPubkeyHex: string,
@@ -358,10 +384,15 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             return;
                         }
 
-                        if (candidateResult.status !== "success") {
+                        const defersCompletenessToFallback =
+                            chunk.depth === 0 && candidateResult.requiresFallback;
+                        if (
+                            candidateResult.status !== "success"
+                            && !defersCompletenessToFallback
+                        ) {
                             partial = true;
                         }
-                        if (candidateResult.saturated) {
+                        if (candidateResult.requiresFallback) {
                             saturatedChunkCount += 1;
                             if (chunk.depth === 0) {
                                 fallbackChunks.push(
@@ -370,7 +401,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                                         POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FALLBACK_CHUNK_SIZE,
                                     ).map((posts) => ({ posts, depth: 1 as const })),
                                 );
-                            } else {
+                            } else if (candidateResult.coverageSaturated) {
                                 partial = true;
                             }
                         }
@@ -389,7 +420,8 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             : [];
                         const canMarkChunkChecked =
                             candidateResult.status === "success"
-                            && !candidateResult.saturated;
+                            && !candidateResult.coverageSaturated
+                            && !(chunk.depth === 0 && candidateResult.requiresFallback);
                         if (repairItems.length === 0 && reactionItems.length === 0) {
                             if (canMarkChunkChecked) {
                                 chunk.posts.forEach((post) => checkedParentEventIds.add(post.eventId));
@@ -594,15 +626,26 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         relayConfig: RelayConfig | null | undefined,
         options: VisibleRangeRepairInclusionOptions,
     ): CandidateFetchTask {
-        const relayUrls = this.resolveRelayUrls(posts, relayConfig);
+        const relayPlan = this.resolveRelayPlan(posts, relayConfig);
+        const { destinationRelayUrls, coverageRelayUrls } = relayPlan;
         const parentEventIds = posts.map((post) => post.eventId);
-        const rxReq = createRxBackwardReq();
+        const rxReqId = buildVisibleRangeRelationRepairRxReqId();
+        const targetSubId = `${rxReqId}:0`;
+        const rxReq = createRxBackwardReq(rxReqId);
         const eventsById = new Map<string, EventAccumulator>();
+        const perRelayRawCounts = new Map<string, number>();
+        const eoseRelayUrls = new Set<string>();
+        const closedRelayUrls = new Set<string>();
+        const errorRelayUrls = new Set<string>();
+        const downRelayUrls = new Set<string>();
         let rawCount = 0;
         let resolved = false;
-        let subscription: { unsubscribe?: () => void } | undefined;
+        let subscription: SubscriptionLike | undefined;
+        let messageSubscription: SubscriptionLike | undefined;
+        let errorSubscription: SubscriptionLike | undefined;
+        let connectionStateSubscription: SubscriptionLike | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let resolveTask: ((status: CandidateFetchStatus) => void) | undefined;
+        let resolveTask: ((terminal: "complete" | "timeout" | "error" | "cancelled") => void) | undefined;
 
         const cleanup = () => {
             if (timeoutId !== undefined) {
@@ -611,49 +654,120 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
             }
             subscription?.unsubscribe?.();
             subscription = undefined;
+            messageSubscription?.unsubscribe?.();
+            messageSubscription = undefined;
+            errorSubscription?.unsubscribe?.();
+            errorSubscription = undefined;
+            connectionStateSubscription?.unsubscribe?.();
+            connectionStateSubscription = undefined;
         };
-        const buildResult = (status: CandidateFetchStatus): CandidateFetchResult => {
+        const buildResult = (
+            terminal: "complete" | "timeout" | "error" | "cancelled",
+        ): CandidateFetchResult => {
             const items = toResultItems(eventsById);
+            const saturatedRelayUrls = new Set(
+                Array.from(perRelayRawCounts.entries())
+                    .filter(([, count]) => (
+                        count >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT
+                    ))
+                    .map(([relayUrl]) => relayUrl),
+            );
+            const coverageSaturated = coverageRelayUrls.some((relayUrl) =>
+                saturatedRelayUrls.has(relayUrl)
+            );
+            const coverageComplete = coverageRelayUrls.length > 0
+                && coverageRelayUrls.every((relayUrl) => eoseRelayUrls.has(relayUrl));
+            const status: CandidateFetchStatus = terminal === "cancelled"
+                ? "cancelled"
+                : terminal === "error"
+                    ? "error"
+                    : coverageComplete
+                        ? "success"
+                        : "partial";
             return {
                 status,
                 items,
                 rawCount,
-                saturated:
-                    rawCount >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT
-                    || items.length >= POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_LIMIT,
+                requiresFallback: saturatedRelayUrls.size > 0,
+                coverageSaturated,
                 fetchedAt: this.now(),
-                relayUrls,
+                relayUrls: destinationRelayUrls,
+                eoseRelayUrls: Array.from(eoseRelayUrls).sort(),
+                closedRelayUrls: Array.from(closedRelayUrls).sort(),
+                errorRelayUrls: Array.from(errorRelayUrls).sort(),
+                downRelayUrls: Array.from(downRelayUrls).sort(),
+                perRelayRawCounts: Array.from(perRelayRawCounts.entries())
+                    .map(([relayUrl, relayRawCount]) => ({ relayUrl, rawCount: relayRawCount }))
+                    .sort((left, right) => left.relayUrl.localeCompare(right.relayUrl)),
             };
         };
 
         const promise = new Promise<CandidateFetchResult>((resolve) => {
-            const safeResolve = (status: CandidateFetchStatus) => {
+            const safeResolve = (terminal: "complete" | "timeout" | "error" | "cancelled") => {
                 if (resolved) {
                     return;
                 }
 
                 resolved = true;
                 cleanup();
-                resolve(buildResult(status));
+                resolve(buildResult(terminal));
             };
             resolveTask = safeResolve;
 
             try {
                 if (parentEventIds.length === 0) {
-                    safeResolve("success");
+                    safeResolve("complete");
                     return;
                 }
 
+                messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({
+                    next: (packet: MessagePacket) => {
+                        this.handleCandidateMessagePacket({
+                            packet,
+                            targetSubId,
+                            destinationRelayUrls,
+                            eoseRelayUrls,
+                            closedRelayUrls,
+                            perRelayRawCounts,
+                        });
+                    },
+                });
+                errorSubscription = rxNostr.createAllErrorObservable?.().subscribe({
+                    next: (packet: ErrorPacket) => {
+                        const relayUrl = this.sanitizeCandidateRelayUrl(packet.from, destinationRelayUrls);
+                        if (relayUrl) {
+                            errorRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+                connectionStateSubscription = rxNostr.createConnectionStateObservable?.().subscribe({
+                    next: (packet: ConnectionStatePacket) => {
+                        const relayUrl = this.sanitizeCandidateRelayUrl(packet.from, destinationRelayUrls);
+                        if (
+                            relayUrl
+                            && (packet.state === "error"
+                                || packet.state === "rejected"
+                                || packet.state === "terminated")
+                        ) {
+                            downRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+
                 subscription = usePostHistoryRelayEvents(rxNostr, rxReq, {
-                    on: relayUrls.length > 0
-                        ? { relays: relayUrls }
+                    on: destinationRelayUrls.length > 0
+                        ? { relays: destinationRelayUrls }
                         : { defaultReadRelays: true },
                 }).subscribe({
                     next: (packet: { event?: NostrEvent; from?: string }) => {
                         rawCount += 1;
-                        this.handleCandidatePacket(eventsById, packet);
+                        const relayUrl = this.sanitizeCandidateRelayUrl(
+                            packet.from,
+                            destinationRelayUrls,
+                        );
+                        this.handleCandidatePacket(eventsById, packet, relayUrl);
                     },
-                    complete: () => safeResolve("success"),
+                    complete: () => safeResolve("complete"),
                     error: (error: unknown) => {
                         this.console.error("post_history_visible_child_interaction_repair_fetch_error", error);
                         safeResolve("error");
@@ -672,7 +786,11 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                 rxReq.over();
 
                 timeoutId = this.setTimeoutFn(() => {
-                    this.warnCandidateFetchTimeout();
+                    const coverageComplete = coverageRelayUrls.length > 0
+                        && coverageRelayUrls.every((relayUrl) => eoseRelayUrls.has(relayUrl));
+                    if (!coverageComplete) {
+                        this.warnCandidateFetchTimeout();
+                    }
                     safeResolve("timeout");
                 }, POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_FETCH_TIMEOUT_MS);
             } catch (error) {
@@ -702,16 +820,13 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
     private handleCandidatePacket(
         eventsById: Map<string, EventAccumulator>,
         packet: { event?: NostrEvent; from?: string },
+        relayUrl: string | null,
     ): void {
         const event = packet.event;
         if (!event?.id || (event.kind !== 1 && event.kind !== 7 && event.kind !== 42)) {
             return;
         }
 
-        const relayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
-            typeof packet.from === "string" ? [packet.from] : [],
-            { limit: 1 },
-        )[0];
         const existing = eventsById.get(event.id);
         if (!existing) {
             eventsById.set(event.id, {
@@ -739,34 +854,109 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         ]);
     }
 
-    private resolveRelayUrls(
+    private handleCandidateMessagePacket(params: {
+        packet: MessagePacket;
+        targetSubId: string;
+        destinationRelayUrls: string[];
+        eoseRelayUrls: Set<string>;
+        closedRelayUrls: Set<string>;
+        perRelayRawCounts: Map<string, number>;
+    }): void {
+        const relayUrl = this.sanitizeCandidateRelayUrl(
+            params.packet.from,
+            params.destinationRelayUrls,
+        );
+        if (!relayUrl) {
+            return;
+        }
+
+        if (
+            params.packet.type === "EVENT"
+            && params.packet.subId === params.targetSubId
+        ) {
+            params.perRelayRawCounts.set(
+                relayUrl,
+                (params.perRelayRawCounts.get(relayUrl) ?? 0) + 1,
+            );
+            return;
+        }
+
+        if (
+            params.packet.type === "EOSE"
+            && params.packet.subId === params.targetSubId
+        ) {
+            params.eoseRelayUrls.add(relayUrl);
+            return;
+        }
+
+        if (
+            params.packet.type === "CLOSED"
+            && params.packet.subId === params.targetSubId
+        ) {
+            params.closedRelayUrls.add(relayUrl);
+        }
+    }
+
+    private sanitizeCandidateRelayUrl(
+        relayUrl: string | undefined,
+        destinationRelayUrls: string[],
+    ): string | null {
+        const sanitizedRelayUrl = RelayConfigUtils.sanitizeExternalRelayUrls(
+            typeof relayUrl === "string" ? [relayUrl] : [],
+            { limit: 1 },
+        )[0] ?? null;
+        return sanitizedRelayUrl && destinationRelayUrls.includes(sanitizedRelayUrl)
+            ? sanitizedRelayUrl
+            : null;
+    }
+
+    private resolveRelayPlan(
         posts: PostHistoryRecord[],
         relayConfig: RelayConfig | null | undefined,
-    ): string[] {
+    ): CandidateRelayPlan {
+        const contextualHints = this.collectParentRelayHints(posts);
         const hostRelays = mergeHostReadDefaultsWithHints(
-            this.collectParentRelayHints(posts),
+            contextualHints,
             POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT,
         );
-        if (hostRelays) {
-            return hostRelays;
+        if (hostRelays !== null) {
+            return {
+                destinationRelayUrls: hostRelays,
+                coverageRelayUrls: getHostReadRelayDefaults(),
+            };
         }
-        const configuredRelays = relayConfig
-            ? [
-                ...RelayConfigUtils.extractReadRelays(relayConfig),
-                ...RelayConfigUtils.extractWriteRelays(relayConfig),
-            ]
+        const configuredReadRelayUrls = relayConfig
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                RelayConfigUtils.extractReadRelays(relayConfig),
+            )
             : [];
-        const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
-            ...this.collectParentRelayHints(posts),
-            ...configuredRelays,
-        ], { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT });
+        const configuredWriteRelayUrls = relayConfig
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                RelayConfigUtils.extractWriteRelays(relayConfig),
+            )
+            : [];
+        const fallbackRelayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS);
+        const coverageRelayUrls = configuredReadRelayUrls.length > 0
+            ? configuredReadRelayUrls
+            : configuredWriteRelayUrls.length > 0
+                ? configuredWriteRelayUrls
+                : fallbackRelayUrls;
+        const writeOnlyRelayUrls = configuredReadRelayUrls.length > 0
+            ? configuredWriteRelayUrls.filter((relayUrl) => !coverageRelayUrls.includes(relayUrl))
+            : [];
+        const limitedContextualHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+            contextualHints,
+            { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT },
+        );
 
-        return relayUrls.length > 0
-            ? relayUrls
-            : RelayConfigUtils.sanitizeExternalRelayUrls(
-                FALLBACK_RELAYS,
-                { limit: POST_HISTORY_VISIBLE_RANGE_CHILD_INTERACTION_REPAIR_RELAY_LIMIT },
-            );
+        return {
+            coverageRelayUrls,
+            destinationRelayUrls: RelayConfigUtils.sanitizeExternalRelayUrls([
+                ...coverageRelayUrls,
+                ...writeOnlyRelayUrls,
+                ...limitedContextualHints,
+            ]),
+        };
     }
 }
 
