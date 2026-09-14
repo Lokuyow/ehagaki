@@ -5,7 +5,7 @@
 ## 使用中のNostr関連ライブラリ
 
 - `nostr-tools`: `^2.23.3`
-- `rx-nostr`: `^3.7.4`
+- `rx-nostr`: `^3.7.6`
 - `@rx-nostr/crypto`: `^3.1.6`
 - `nip07-awaiter`: `^1.1.0`
 - 関連パッケージ: `nostr-zap ^1.3.0`、`nostr-zap-view ^1.4.6`
@@ -241,6 +241,6 @@
 
 - 一回取得は主に`createRxBackwardReq`を使い、`emit`後に`over()`し、成功・EOSE・error・timeout・cancelで`unsubscribe()`する。
 - 継続購読は`src/lib/postHistoryAuthoredPostsRealtimeService.ts`と`src/lib/postHistoryInboundInteractionsRealtimeService.ts`で`createRxForwardReq`を使う。所有hookとvisibility/account lifecycleを確認する。
-- relay横断取得、retry、可視範囲repairは`src/lib/postHistoryRelayFetchService.ts`などpost history専用serviceへ分離されている。汎用化前に既存scopeを確認する。
+- relay横断取得、retry、可視範囲repairは`src/lib/postHistoryRelayFetchService.ts`などpost history専用serviceへ分離されている。`postHistoryVisibleRangeChildInteractionRepairService`はdestination Relayとcoverage baselineを分け、candidate requestごとのEOSEとRelay別fetch limit到達でcheckedを判定する。NIP-42の`auth-required:` CLOSEDは再送後のEOSEを妨げる恒久failureとして扱わない。汎用化前に既存scopeを確認する。
 - application codeのNostr/TypeScript変更では対象unit/component testを先に実行し、原則`npm test`と`npm run check`まで広げる。実relayへ接続するテストは追加しない。
 - browser固有のcomposer targetとpost history表示は既存の`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`を使う。protocol-only変更のためだけにPlaywrightを追加しない。

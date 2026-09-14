@@ -1310,7 +1310,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('self repairがpartialでもrelation repair完了後にforced countを1回だけ開始する', async () => {
+    it('self repairがsuccessでも genuine relation partial 後に一部未確認とforced countを1回だけ反映する', async () => {
         const visiblePost = createRecord({
             eventId: 'repair-partial-visible',
             content: '表示中の投稿',
@@ -1335,17 +1335,17 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: Promise.resolve({
-                status: 'partial',
+                status: 'success',
                 addedCount: 0,
                 updatedCount: 1,
                 unchangedCount: 0,
                 processedRangeCount: 1,
                 processedRanges: [],
                 attemptedRangeCount: 1,
-                hadFailures: true,
+                hadFailures: false,
                 fetchFailed: false,
                 hadTimeout: false,
-                hadUnfinishedRanges: true,
+                hadUnfinishedRanges: false,
             }),
             cancel: vi.fn(),
         });
