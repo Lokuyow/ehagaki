@@ -117,6 +117,41 @@ interface UsePostHistoryListingParams {
     searchDebounceMs?: number;
 }
 
+type PostHistoryManualRepairPhase =
+    | "visible-range-state"
+    | "primary-fetch"
+    | "primary-persist"
+    | "visible-window-reload"
+    | "relation-repair"
+    | "badge-refresh";
+
+function reportPostHistoryManualRepairPhase(params: {
+    phase: PostHistoryManualRepairPhase;
+    startedAt: number;
+    error?: unknown;
+    counts?: Record<string, number | boolean>;
+}): void {
+    const error = params.error;
+    const errorClass = error instanceof Error
+        ? error.name
+        : error === undefined
+            ? undefined
+            : typeof error;
+    // Deliberately exclude event/auth payloads. This is phase timing and relay
+    // summary telemetry for diagnosing manual repair only.
+    const telemetry = {
+        phase: params.phase,
+        durationMs: Math.max(0, Date.now() - params.startedAt),
+        ...(errorClass ? { errorClass } : {}),
+        ...(params.counts ?? {}),
+    };
+    if (errorClass) {
+        console.warn("post_history_manual_repair_phase", telemetry);
+    } else {
+        console.debug("post_history_manual_repair_phase", telemetry);
+    }
+}
+
 interface PersistedPostHistoryListingSnapshot {
     loadedPosts: PostHistoryRecord[];
     searchPosts: PostHistoryRecord[];
@@ -4073,13 +4108,44 @@ export function usePostHistoryListing({
 
         clearCurrentViewRefetchFeedback();
         state.currentViewRefetchStatus = "refetching";
-        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
-            pubkeyHex,
-            relayConfig: getRelayConfig(),
-            preferredRanges,
-            onProgress: async () => undefined,
-        });
+        const repairStartedAt = Date.now();
+        let reportedFailurePhase: PostHistoryManualRepairPhase | null = null;
+        let previousVisibleUntil: number | null;
+        try {
+            previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        } catch (error) {
+            reportPostHistoryManualRepairPhase({
+                phase: "visible-range-state",
+                startedAt: repairStartedAt,
+                error,
+            });
+            state.currentViewRefetchStatus = "idle";
+            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageValues = null;
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
+            return;
+        }
+
+        let task: PostHistoryCurrentViewRefetchTask;
+        try {
+            task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
+                pubkeyHex,
+                relayConfig: getRelayConfig(),
+                preferredRanges,
+                onProgress: async () => undefined,
+            });
+        } catch (error) {
+            reportPostHistoryManualRepairPhase({
+                phase: "primary-fetch",
+                startedAt: repairStartedAt,
+                error,
+            });
+            state.currentViewRefetchStatus = "idle";
+            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageValues = null;
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
+            return;
+        }
         currentViewRefetchTask = task;
         let primaryRefetchReloadCompleted = false;
 
@@ -4089,27 +4155,73 @@ export function usePostHistoryListing({
                 return;
             }
 
+            reportPostHistoryManualRepairPhase({
+                phase: "primary-fetch",
+                startedAt: repairStartedAt,
+                counts: {
+                    processedRangeCount: result.processedRangeCount,
+                    rawCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.rawCount ?? 0),
+                        0,
+                    ),
+                    uniqueCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.uniqueCount ?? 0),
+                        0,
+                    ),
+                    requestedRelayCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.requestedRelayUrls?.length ?? 0),
+                        0,
+                    ),
+                    eoseRelayCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.eoseRelayUrls?.length ?? 0),
+                        0,
+                    ),
+                },
+            });
+
             if (!getShow() || result.status === "cancelled") {
                 currentViewRefetchTask = null;
                 state.currentViewRefetchStatus = "idle";
                 return;
             }
 
-            await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
-                pubkeyHex,
-                previousVisibleUntil,
-                result.processedRanges,
-            );
-
-            if (state.searchQuery) {
-                await rebuildSearchResultsThroughPage(
-                    state.searchPage,
-                    state.searchQuery,
+            try {
+                await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
+                    pubkeyHex,
+                    previousVisibleUntil,
+                    result.processedRanges,
                 );
-            } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
-                await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
-            } else {
-                await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
+            } catch (error) {
+                reportedFailurePhase = "visible-range-state";
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-range-state",
+                    startedAt: repairStartedAt,
+                    error,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+                throw error;
+            }
+
+            try {
+                if (state.searchQuery) {
+                    await rebuildSearchResultsThroughPage(
+                        state.searchPage,
+                        state.searchQuery,
+                    );
+                } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
+                    await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
+                } else {
+                    await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
+                }
+            } catch (error) {
+                reportedFailurePhase = "visible-window-reload";
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-window-reload",
+                    startedAt: repairStartedAt,
+                    error,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+                throw error;
             }
             primaryRefetchReloadCompleted = true;
 
@@ -4138,6 +4250,16 @@ export function usePostHistoryListing({
                     || !getShow()
                 ) {
                     return;
+                }
+                if (childInteractionRepairResult.failurePhase) {
+                    reportPostHistoryManualRepairPhase({
+                        phase: childInteractionRepairResult.failurePhase,
+                        startedAt: repairStartedAt,
+                        counts: {
+                            savedDirectReplyCount:
+                                childInteractionRepairResult.savedDirectReplyCount,
+                        },
+                    });
                 }
             }
 
@@ -4173,7 +4295,8 @@ export function usePostHistoryListing({
                 state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
                 state.currentViewRefetchMessageValues = null;
             } else if (
-                result.hadUnfinishedRanges
+                result.status === "partial"
+                || result.hadUnfinishedRanges
                 || childInteractionRepairResult?.status === "partial"
             ) {
                 state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
@@ -4187,9 +4310,26 @@ export function usePostHistoryListing({
             }
 
             scheduleCurrentViewRefetchMessageClearIfNeeded();
-        } catch {
+        } catch (error) {
             if (currentViewRefetchTask !== task) {
                 return;
+            }
+
+            const taggedPhase = typeof error === "object" && error !== null
+                ? (error as { phase?: unknown }).phase
+                : undefined;
+            const phase = reportedFailurePhase ?? (taggedPhase === "primary-fetch"
+                || taggedPhase === "primary-persist"
+                ? taggedPhase
+                : primaryRefetchReloadCompleted
+                    ? "relation-repair"
+                    : "primary-fetch");
+            if (!reportedFailurePhase) {
+                reportPostHistoryManualRepairPhase({
+                    phase,
+                    startedAt: repairStartedAt,
+                    error,
+                });
             }
 
             if (
@@ -4204,7 +4344,9 @@ export function usePostHistoryListing({
 
             currentViewRefetchTask = null;
             state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageKey = primaryRefetchReloadCompleted
+                ? "postHistory.repairPartialFailure"
+                : "postHistory.repairFetchFailed";
             state.currentViewRefetchMessageValues = null;
             scheduleCurrentViewRefetchMessageClearIfNeeded();
         }

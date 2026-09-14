@@ -23,6 +23,7 @@ export const POST_HISTORY_OLDER_REVEAL_RELATION_REPAIR_FRESHNESS_TTL_MS =
 export interface PostHistoryRelationRepairSummary {
     status: PostHistoryVisibleRangeRelationRepairResult["status"];
     savedDirectReplyCount: number;
+    failurePhase?: "relation-repair" | "badge-refresh";
 }
 
 export interface PostHistoryCurrentViewRelationRepairRequest {
@@ -306,19 +307,31 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                 return toSummary(result, false);
             }
 
-            await dispatchRelationRepairRefreshSignal({
-                source: "listing-manual-refetch",
-                result,
-                quoteRefreshPosts: request.visiblePosts,
-                isActive,
-                awaitBadgeRefresh: true,
-            });
+            try {
+                await dispatchRelationRepairRefreshSignal({
+                    source: "listing-manual-refetch",
+                    result,
+                    quoteRefreshPosts: request.visiblePosts,
+                    isActive,
+                    awaitBadgeRefresh: true,
+                });
+            } catch {
+                return {
+                    status: isActive() ? "partial" : "cancelled",
+                    savedDirectReplyCount: result.savedDirectReplyCount,
+                    failurePhase: "badge-refresh",
+                };
+            }
             return toSummary(result, isActive());
-        } catch (error) {
+        } catch {
             if (currentViewRelationRepairTask === relationRepairTask) {
                 currentViewRelationRepairTask = null;
             }
-            throw error;
+            return {
+                status: isActive() ? "partial" : "cancelled",
+                savedDirectReplyCount: 0,
+                failurePhase: "relation-repair",
+            };
         }
     }
 

@@ -74,6 +74,12 @@ export interface PostHistoryCurrentViewProcessedRangeSummary {
     completedByLocalTimeout: boolean;
     hasAnyRelayResponse: boolean;
     allRelaysFailed: boolean;
+    coverageRelayUrls?: string[];
+    coverageEoseRelayUrls?: string[];
+    bestEffortRelayUrls?: string[];
+    coverageComplete?: boolean;
+    coverageSaturated?: boolean;
+    allCoverageRelaysFailed?: boolean;
     status: PostHistoryCurrentViewProcessedRangeStatus;
     rawCount: number;
     uniqueCount: number;
@@ -86,6 +92,21 @@ export interface PostHistoryCurrentViewProcessedRangeSummary {
 export interface PostHistoryCurrentViewRefetchTask {
     promise: Promise<PostHistoryCurrentViewRefetchResult>;
     cancel: () => void;
+}
+
+export type PostHistoryCurrentViewRefetchFailurePhase =
+    | "primary-fetch"
+    | "primary-persist";
+
+export class PostHistoryCurrentViewRefetchFailure extends Error {
+    readonly phase: PostHistoryCurrentViewRefetchFailurePhase;
+
+    constructor(phase: PostHistoryCurrentViewRefetchFailurePhase, cause: unknown) {
+        super(phase);
+        this.name = "PostHistoryCurrentViewRefetchFailure";
+        this.phase = phase;
+        this.cause = cause;
+    }
 }
 
 export interface PostHistoryCurrentViewRefetchRange {
@@ -120,6 +141,14 @@ function resolveProcessedRangeStatus(
         return result.status;
     }
 
+    // These fields are emitted only by repair-visible-range. Do not change the
+    // established interpretation of shared fetch results used by other flows.
+    if (typeof result.coverageComplete === "boolean") {
+        return result.coverageComplete && !result.coverageSaturated
+            ? "complete"
+            : "partial";
+    }
+
     if (result.hasMore) {
         return "partial";
     }
@@ -134,13 +163,17 @@ function resolveProcessedRangeStatus(
 function didCurrentViewRefetchFail(
     status: PostHistoryCurrentViewProcessedRangeStatus,
 ): boolean {
-    return status === "partial";
+    return status === "partial" || status === "timeout" || status === "error";
 }
 
 function didResultHitLimit(
     result: PostHistoryRelayFetchResult,
     limit: number,
 ): boolean {
+    if (typeof result.coverageSaturated === "boolean") {
+        return result.coverageSaturated;
+    }
+
     return result.hasMore || result.perRelayCounts.some((item) => item.rawCount >= limit);
 }
 
@@ -274,7 +307,12 @@ export class PostHistoryCurrentViewRefetchService {
                 });
                 currentFetchTask = fetchTask;
 
-                const result = await fetchTask.promise;
+                let result: PostHistoryRelayFetchResult;
+                try {
+                    result = await fetchTask.promise;
+                } catch (error) {
+                    throw new PostHistoryCurrentViewRefetchFailure("primary-fetch", error);
+                }
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
@@ -282,7 +320,8 @@ export class PostHistoryCurrentViewRefetchService {
                 hadTimeout = hadTimeout || result.status === "timeout";
                 const rangeClearlyFailed = result.events.length === 0
                     && !result.hasAnyRelayResponse
-                    && (result.allRelaysFailed || result.status === "error");
+                    && ((result.allCoverageRelaysFailed ?? result.allRelaysFailed)
+                        || result.status === "error");
                 allAttemptedRangesClearlyFailed = allAttemptedRangesClearlyFailed && rangeClearlyFailed;
 
                 let insertedCount = 0;
@@ -290,10 +329,15 @@ export class PostHistoryCurrentViewRefetchService {
                 let rangeUnchangedCount = 0;
 
                 if (result.events.length > 0) {
-                    const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
-                        events: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
+                    let upsertSummary: Awaited<ReturnType<PostHistoryRepository["upsertFetchedEvents"]>>;
+                    try {
+                        upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
+                            events: result.events,
+                            fetchedAt: result.fetchedAt,
+                        });
+                    } catch (error) {
+                        throw new PostHistoryCurrentViewRefetchFailure("primary-persist", error);
+                    }
                     insertedCount = upsertSummary.insertedCount;
                     rangeUpdatedCount = upsertSummary.updatedCount;
                     rangeUnchangedCount = upsertSummary.unchangedCount;
@@ -338,6 +382,14 @@ export class PostHistoryCurrentViewRefetchService {
                     completedByLocalTimeout: result.completedByLocalTimeout,
                     hasAnyRelayResponse: result.hasAnyRelayResponse,
                     allRelaysFailed: result.allRelaysFailed,
+                    ...(typeof result.coverageComplete === "boolean" ? {
+                        coverageRelayUrls: [...(result.coverageRelayUrls ?? [])],
+                        coverageEoseRelayUrls: [...(result.coverageEoseRelayUrls ?? [])],
+                        bestEffortRelayUrls: [...(result.bestEffortRelayUrls ?? [])],
+                        coverageComplete: result.coverageComplete,
+                        coverageSaturated: result.coverageSaturated ?? false,
+                        allCoverageRelaysFailed: result.allCoverageRelaysFailed ?? false,
+                    } : {}),
                     status: processedStatus,
                     rawCount: result.rawCount,
                     uniqueCount: result.uniqueCount,
