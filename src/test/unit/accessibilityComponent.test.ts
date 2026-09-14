@@ -258,13 +258,15 @@ describe('accessibility component tests', () => {
 
         expect(editor.isEditable).toBe(true);
         expect(tiptapEditor.getAttribute('contenteditable')).toBe('true');
-        expect(editorContainer.getAttribute('aria-disabled')).toBe('true');
+        expect(editorContainer.getAttribute('aria-readonly')).toBe('true');
+        expect(editorContainer.getAttribute('aria-disabled')).toBeNull();
         const frozenDoc = editor.state.doc;
         editor.commands.insertContent('blocked');
         editor.view.dispatch(editor.state.tr.insertText('blocked composition').setMeta('composition', 1));
         expect(editor.state.doc.eq(frozenDoc)).toBe(true);
         expect(editorContainer.classList.contains('sending')).toBe(true);
-        expect(editorContainer.getAttribute('aria-disabled')).toBe('true');
+        expect(editorContainer.getAttribute('aria-readonly')).toBe('true');
+        expect(editorContainer.getAttribute('aria-disabled')).toBeNull();
         expect(editorContainer.textContent).toContain('送信中も確認できる本文');
         expect(updateListener).not.toHaveBeenCalled();
 
@@ -296,6 +298,7 @@ describe('accessibility component tests', () => {
         expect(editor.isEditable).toBe(true);
         expect(tiptapEditor.getAttribute('contenteditable')).toBe('true');
         expect(editorContainer.classList.contains('sending')).toBe(false);
+        expect(editorContainer.getAttribute('aria-readonly')).toBeNull();
         expect(editorContainer.getAttribute('aria-disabled')).toBeNull();
 
         unmount();

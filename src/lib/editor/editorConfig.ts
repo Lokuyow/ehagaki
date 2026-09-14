@@ -153,6 +153,7 @@ const GapCursorFocusReset = Extension.create({
 
 export interface EditorConfigOptions {
     isInputBlocked?: () => boolean;
+    isCompositionInputAllowed?: () => boolean;
     placeholderText: string;
     onSubmitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
@@ -186,7 +187,10 @@ export function createEditorStore(options: EditorConfigOptions) {
     const editorStore = createEditor({
         extensions: [
             ...(!hostOwnedLite && options.isInputBlocked
-                ? [EditorInputGuard.configure({ isInputBlocked: options.isInputBlocked })]
+                ? [EditorInputGuard.configure({
+                    isInputBlocked: options.isInputBlocked,
+                    isCompositionInputAllowed: options.isCompositionInputAllowed,
+                })]
                 : []),
             StarterKit.configure({
                 paragraph: {

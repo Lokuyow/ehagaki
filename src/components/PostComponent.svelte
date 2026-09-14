@@ -72,7 +72,6 @@
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
-  import { waitForEditorComposition } from "../lib/editor/waitForEditorComposition";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import {
     profileDataStore,
@@ -157,7 +156,10 @@
   let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
-  let compositionWait: ReturnType<typeof waitForEditorComposition> | undefined;
+  let submittedCompositionEditor: TipTapEditor | null = null;
+  let submittedCompositionCleanup: (() => void) | undefined;
+  let submittedCompositionFrame: number | undefined;
+  let deferSuccessClearUntilCompositionEnd = false;
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let postManager: PostManager | undefined = $state();
@@ -274,6 +276,13 @@
   function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
     if (!postStatus.sending) return;
 
+    if (
+      submittedCompositionEditor &&
+      (event.isComposing || event.keyCode === 229)
+    ) {
+      return;
+    }
+
     // Keep the focused contenteditable surface during submission, but
     // stop the event before Tiptap's target keymap can create a transaction.
     event.preventDefault();
@@ -281,7 +290,13 @@
   }
 
   function blockSendingInput(event: Event) {
-    if (postStatus.sending) {
+    const isCompositionInput =
+      submittedCompositionEditor &&
+      event instanceof InputEvent &&
+      (event.isComposing ||
+        event.inputType === "insertCompositionText" ||
+        event.inputType === "insertFromComposition");
+    if (postStatus.sending && !isCompositionInput) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -426,9 +441,66 @@
       }
     },
   });
+
+  function trackSubmittedComposition(editor: TipTapEditor): void {
+    submittedCompositionCleanup?.();
+    submittedCompositionEditor = editor;
+
+    const element = editor.view.dom;
+    const ownerWindow = element.ownerDocument.defaultView;
+    if (!ownerWindow) {
+      submittedCompositionEditor = null;
+      return;
+    }
+
+    let disposed = false;
+    const cleanup = () => {
+      if (disposed) return;
+      disposed = true;
+      element.removeEventListener("compositionend", handleCompositionEnd);
+      if (submittedCompositionFrame !== undefined) {
+        ownerWindow.cancelAnimationFrame(submittedCompositionFrame);
+        submittedCompositionFrame = undefined;
+      }
+      if (submittedCompositionCleanup === cleanup) {
+        submittedCompositionCleanup = undefined;
+        submittedCompositionEditor = null;
+      }
+    };
+    const handleCompositionEnd = () => {
+      if (submittedCompositionFrame !== undefined) {
+        ownerWindow.cancelAnimationFrame(submittedCompositionFrame);
+      }
+      submittedCompositionFrame = ownerWindow.requestAnimationFrame(() => {
+        submittedCompositionFrame = undefined;
+        if (editor.isDestroyed || editor.view.composing) return;
+
+        cleanup();
+        if (
+          deferSuccessClearUntilCompositionEnd &&
+          currentEditorStore.value === editor
+        ) {
+          deferSuccessClearUntilCompositionEnd = false;
+          clearContentAfterSuccess();
+        }
+      });
+    };
+
+    element.addEventListener("compositionend", handleCompositionEnd);
+    submittedCompositionCleanup = cleanup;
+  }
+
+  function clearContentAfterSubmissionSuccess(): void {
+    if (submittedCompositionEditor) {
+      deferSuccessClearUntilCompositionEnd = true;
+      return;
+    }
+    clearContentAfterSuccess();
+  }
+
   const postStatusHandlers = createPostStatusHandlers({
     updatePostStatus,
-    clearContentAfterSuccess,
+    clearContentAfterSuccess: clearContentAfterSubmissionSuccess,
     onPostSuccess: (result) => onPostSuccess?.(result),
   });
 
@@ -503,6 +575,9 @@
   onMount(() => {
     editorResources = initializeEditor({
       isInputBlocked: isHostOwned ? undefined : () => editorState.postStatus.sending,
+      isCompositionInputAllowed: isHostOwned
+        ? undefined
+        : () => submittedCompositionEditor !== null,
       placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
@@ -591,8 +666,10 @@
     );
 
     return () => {
-      compositionWait?.cancel();
-      compositionWait = undefined;
+      submittedCompositionCleanup?.();
+      submittedCompositionCleanup = undefined;
+      submittedCompositionEditor = null;
+      deferSuccessClearUntilCompositionEnd = false;
       if (currentEditorStore.value === currentEditor) {
         editorState.isSubmitPending = false;
         if (!isHostOwned) postComponentUIStore.hideSecretKeyDialog();
@@ -835,9 +912,19 @@
   function canStartSubmit(): boolean {
     return (
       canSendNormalPost() &&
-      editorState.canPost &&
+      hasLiveNormalPostContent() &&
       !editorState.isSubmitPending &&
       !showSecretKeyDialog
+    );
+  }
+
+  function hasLiveNormalPostContent(): boolean {
+    if (!currentEditor) return false;
+    const payload = postManager?.preparePostPayload(currentEditor);
+    return Boolean(
+      payload?.content.trim() ||
+        hasMediaInDoc(currentEditor.state.doc) ||
+        mediaGalleryStore.hasNonPlaceholderItems(),
     );
   }
 
@@ -989,12 +1076,7 @@
     const editorInstance = currentEditor;
     editorState.isSubmitPending = true;
     try {
-      if (editorInstance.view.composing) {
-        compositionWait = waitForEditorComposition(editorInstance);
-        const ready = await compositionWait.settled;
-        compositionWait = undefined;
-        if (!ready) return;
-      }
+      const hadActiveComposition = editorInstance.view.composing;
       if (
         editorInstance.isDestroyed ||
         currentEditorStore.value !== editorInstance ||
@@ -1002,6 +1084,7 @@
       ) return;
       const postPayload = postManager.preparePostPayload(editorInstance);
       if (!postPayload.content.trim()) return;
+      if (hadActiveComposition) trackSubmittedComposition(editorInstance);
       if (containsSecretKey(postPayload.content)) {
         // The existing confirmation store now owns this one submission intent.
         postComponentUIStore.showSecretKeyDialog(postPayload.content, postPayload.emojiTags);
@@ -1219,7 +1302,8 @@
     use:touchAction
     use:keydownAction={!isHostOwned}
     aria-label={$_("postComponent.editor_label")}
-    aria-disabled={postStatus.sending ? "true" : undefined}
+    aria-readonly={!isHostOwned && postStatus.sending ? "true" : undefined}
+    aria-disabled={isHostOwned && postStatus.sending ? "true" : undefined}
     role="textbox"
     tabindex="-1"
     bind:this={editorContainerEl}

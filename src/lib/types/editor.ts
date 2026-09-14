@@ -120,6 +120,7 @@ export interface SetupEventListenersParams {
 
 export interface InitializeEditorParams {
     isInputBlocked?: () => boolean;
+    isCompositionInputAllowed?: () => boolean;
     placeholderText: string;
     editorContainerEl: HTMLElement | null;
     currentEditor: TipTapEditor | null;
