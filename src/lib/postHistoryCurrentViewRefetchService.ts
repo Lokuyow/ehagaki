@@ -100,11 +100,19 @@ export type PostHistoryCurrentViewRefetchFailurePhase =
 
 export class PostHistoryCurrentViewRefetchFailure extends Error {
     readonly phase: PostHistoryCurrentViewRefetchFailurePhase;
+    readonly phaseStartedAt: number;
+    readonly errorClass: string;
 
-    constructor(phase: PostHistoryCurrentViewRefetchFailurePhase, cause: unknown) {
+    constructor(
+        phase: PostHistoryCurrentViewRefetchFailurePhase,
+        cause: unknown,
+        phaseStartedAt: number,
+    ) {
         super(phase);
         this.name = "PostHistoryCurrentViewRefetchFailure";
         this.phase = phase;
+        this.phaseStartedAt = phaseStartedAt;
+        this.errorClass = cause instanceof Error ? cause.name : typeof cause;
         this.cause = cause;
     }
 }
@@ -307,21 +315,28 @@ export class PostHistoryCurrentViewRefetchService {
                 });
                 currentFetchTask = fetchTask;
 
+                const primaryFetchStartedAt = Date.now();
                 let result: PostHistoryRelayFetchResult;
                 try {
                     result = await fetchTask.promise;
                 } catch (error) {
-                    throw new PostHistoryCurrentViewRefetchFailure("primary-fetch", error);
+                    throw new PostHistoryCurrentViewRefetchFailure(
+                        "primary-fetch",
+                        error,
+                        primaryFetchStartedAt,
+                    );
                 }
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
                 hadFetchError = hadFetchError || result.status === "error";
                 hadTimeout = hadTimeout || result.status === "timeout";
+                const hasRepairCoverage = typeof result.coverageComplete === "boolean";
                 const rangeClearlyFailed = result.events.length === 0
-                    && !result.hasAnyRelayResponse
-                    && ((result.allCoverageRelaysFailed ?? result.allRelaysFailed)
-                        || result.status === "error");
+                    && (hasRepairCoverage
+                        ? result.allCoverageRelaysFailed === true
+                        : !result.hasAnyRelayResponse
+                            && (result.allRelaysFailed || result.status === "error"));
                 allAttemptedRangesClearlyFailed = allAttemptedRangesClearlyFailed && rangeClearlyFailed;
 
                 let insertedCount = 0;
@@ -329,6 +344,7 @@ export class PostHistoryCurrentViewRefetchService {
                 let rangeUnchangedCount = 0;
 
                 if (result.events.length > 0) {
+                    const primaryPersistStartedAt = Date.now();
                     let upsertSummary: Awaited<ReturnType<PostHistoryRepository["upsertFetchedEvents"]>>;
                     try {
                         upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
@@ -336,7 +352,11 @@ export class PostHistoryCurrentViewRefetchService {
                             fetchedAt: result.fetchedAt,
                         });
                     } catch (error) {
-                        throw new PostHistoryCurrentViewRefetchFailure("primary-persist", error);
+                        throw new PostHistoryCurrentViewRefetchFailure(
+                            "primary-persist",
+                            error,
+                            primaryPersistStartedAt,
+                        );
                     }
                     insertedCount = upsertSummary.insertedCount;
                     rangeUpdatedCount = upsertSummary.updatedCount;

@@ -24,6 +24,8 @@ export interface PostHistoryRelationRepairSummary {
     status: PostHistoryVisibleRangeRelationRepairResult["status"];
     savedDirectReplyCount: number;
     failurePhase?: "relation-repair" | "badge-refresh";
+    failureDurationMs?: number;
+    failureErrorClass?: string;
 }
 
 export interface PostHistoryCurrentViewRelationRepairRequest {
@@ -292,6 +294,7 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
             ...request,
             isActive,
         });
+        const relationRepairStartedAt = now();
         currentViewRelationRepairTask = relationRepairTask;
 
         try {
@@ -307,6 +310,7 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                 return toSummary(result, false);
             }
 
+            const badgeRefreshStartedAt = now();
             try {
                 await dispatchRelationRepairRefreshSignal({
                     source: "listing-manual-refetch",
@@ -315,15 +319,17 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                     isActive,
                     awaitBadgeRefresh: true,
                 });
-            } catch {
+            } catch (error) {
                 return {
                     status: isActive() ? "partial" : "cancelled",
                     savedDirectReplyCount: result.savedDirectReplyCount,
                     failurePhase: "badge-refresh",
+                    failureDurationMs: Math.max(0, now() - badgeRefreshStartedAt),
+                    failureErrorClass: error instanceof Error ? error.name : typeof error,
                 };
             }
             return toSummary(result, isActive());
-        } catch {
+        } catch (error) {
             if (currentViewRelationRepairTask === relationRepairTask) {
                 currentViewRelationRepairTask = null;
             }
@@ -331,6 +337,8 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                 status: isActive() ? "partial" : "cancelled",
                 savedDirectReplyCount: 0,
                 failurePhase: "relation-repair",
+                failureDurationMs: Math.max(0, now() - relationRepairStartedAt),
+                failureErrorClass: error instanceof Error ? error.name : typeof error,
             };
         }
     }

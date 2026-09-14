@@ -268,10 +268,11 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
             new Error("badge refresh failed"),
         );
 
-        await expect(coordinator.repairCurrentView(currentViewRequest())).resolves.toEqual({
+        await expect(coordinator.repairCurrentView(currentViewRequest())).resolves.toMatchObject({
             status: "partial",
             savedDirectReplyCount: 0,
             failurePhase: "badge-refresh",
+            failureErrorClass: "Error",
         });
     });
 
@@ -461,10 +462,11 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         const { coordinator } = createCoordinator({ repairTask: task });
 
         await expect(coordinator.repairCurrentView(currentViewRequest()))
-            .resolves.toEqual({
+            .resolves.toMatchObject({
                 status: "partial",
                 savedDirectReplyCount: 0,
                 failurePhase: "relation-repair",
+                failureErrorClass: "Error",
             });
     });
 });

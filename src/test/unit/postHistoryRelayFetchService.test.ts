@@ -739,6 +739,55 @@ describe("PostHistoryRelayFetchService", () => {
         }));
     });
 
+    it("best-effort EOSE は write coverage baseline の全明示失敗を隠さない", async () => {
+        let messageObserver: any;
+        let errorObserver: any;
+        let connectionStateObserver: any;
+        const observers: any[] = [];
+        const mockRxNostr: RxNostr = {
+            createAllMessageObservable: vi.fn().mockReturnValue({ subscribe: vi.fn((observer: any) => {
+                messageObserver = observer;
+                return { unsubscribe: vi.fn() };
+            }) }),
+            createAllErrorObservable: vi.fn().mockReturnValue({ subscribe: vi.fn((observer: any) => {
+                errorObserver = observer;
+                return { unsubscribe: vi.fn() };
+            }) }),
+            createConnectionStateObservable: vi.fn().mockReturnValue({ subscribe: vi.fn((observer: any) => {
+                connectionStateObserver = observer;
+                return { unsubscribe: vi.fn() };
+            }) }),
+            use: vi.fn().mockReturnValue({ subscribe: vi.fn((observer: any) => {
+                observers.push(observer);
+                return { unsubscribe: vi.fn() };
+            }) }),
+        } as any;
+        const task = service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            reason: "repair-visible-range",
+            relayConfig: {
+                "wss://write.example.com/": { read: false, write: true },
+                "wss://read.example.com/": { read: true, write: false },
+            },
+        });
+        const coverageSubId = `${createRxBackwardReqMock.mock.calls[0][0]}:0`;
+        const bestEffortSubId = `${createRxBackwardReqMock.mock.calls[1][0]}:0`;
+
+        messageObserver.next({ type: "CLOSED", subId: coverageSubId, from: "wss://write.example.com", notice: "blocked", message: ["CLOSED"] });
+        errorObserver.next({ from: "wss://write.example.com", reason: new Error("socket failed") });
+        connectionStateObserver.next({ from: "wss://write.example.com", state: "error" });
+        messageObserver.next({ type: "EOSE", subId: bestEffortSubId, from: "wss://read.example.com", message: ["EOSE"] });
+        observers[0].complete();
+
+        await expect(task.promise).resolves.toEqual(expect.objectContaining({
+            events: [],
+            coverageComplete: false,
+            allCoverageRelaysFailed: true,
+            hasAnyRelayResponse: true,
+            eoseRelayUrls: ["wss://read.example.com/"],
+        }));
+    });
+
     it("cancel は coverage と best-effort の verified/raw telemetry subscriptions をすべて解除する", async () => {
         const rawUnsubscribe = vi.fn();
         const errorUnsubscribe = vi.fn();

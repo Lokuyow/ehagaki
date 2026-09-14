@@ -125,27 +125,39 @@ type PostHistoryManualRepairPhase =
     | "relation-repair"
     | "badge-refresh";
 
-function reportPostHistoryManualRepairPhase(params: {
+export function createPostHistoryManualRepairPhaseTelemetry(params: {
     phase: PostHistoryManualRepairPhase;
     startedAt: number;
+    finishedAt?: number;
+    durationMs?: number;
     error?: unknown;
+    errorClass?: string;
     counts?: Record<string, number | boolean>;
-}): void {
+}): Record<string, string | number | boolean> {
     const error = params.error;
-    const errorClass = error instanceof Error
+    const errorClass = params.errorClass ?? (error instanceof Error
         ? error.name
         : error === undefined
             ? undefined
-            : typeof error;
+            : typeof error);
     // Deliberately exclude event/auth payloads. This is phase timing and relay
     // summary telemetry for diagnosing manual repair only.
-    const telemetry = {
+    return {
         phase: params.phase,
-        durationMs: Math.max(0, Date.now() - params.startedAt),
+        durationMs: params.durationMs ?? Math.max(
+            0,
+            (params.finishedAt ?? Date.now()) - params.startedAt,
+        ),
         ...(errorClass ? { errorClass } : {}),
         ...(params.counts ?? {}),
     };
-    if (errorClass) {
+}
+
+function reportPostHistoryManualRepairPhase(
+    params: Parameters<typeof createPostHistoryManualRepairPhaseTelemetry>[0],
+): void {
+    const telemetry = createPostHistoryManualRepairPhaseTelemetry(params);
+    if ("errorClass" in telemetry) {
         console.warn("post_history_manual_repair_phase", telemetry);
     } else {
         console.debug("post_history_manual_repair_phase", telemetry);
@@ -4108,15 +4120,15 @@ export function usePostHistoryListing({
 
         clearCurrentViewRefetchFeedback();
         state.currentViewRefetchStatus = "refetching";
-        const repairStartedAt = Date.now();
         let reportedFailurePhase: PostHistoryManualRepairPhase | null = null;
         let previousVisibleUntil: number | null;
+        const initialVisibleRangeStateStartedAt = Date.now();
         try {
             previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         } catch (error) {
             reportPostHistoryManualRepairPhase({
                 phase: "visible-range-state",
-                startedAt: repairStartedAt,
+                startedAt: initialVisibleRangeStateStartedAt,
                 error,
             });
             state.currentViewRefetchStatus = "idle";
@@ -4127,6 +4139,7 @@ export function usePostHistoryListing({
         }
 
         let task: PostHistoryCurrentViewRefetchTask;
+        const primaryFetchStartedAt = Date.now();
         try {
             task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
                 pubkeyHex,
@@ -4137,7 +4150,7 @@ export function usePostHistoryListing({
         } catch (error) {
             reportPostHistoryManualRepairPhase({
                 phase: "primary-fetch",
-                startedAt: repairStartedAt,
+                startedAt: primaryFetchStartedAt,
                 error,
             });
             state.currentViewRefetchStatus = "idle";
@@ -4148,6 +4161,7 @@ export function usePostHistoryListing({
         }
         currentViewRefetchTask = task;
         let primaryRefetchReloadCompleted = false;
+        let activePhaseStartedAt = primaryFetchStartedAt;
 
         try {
             const result = await task.promise;
@@ -4157,7 +4171,7 @@ export function usePostHistoryListing({
 
             reportPostHistoryManualRepairPhase({
                 phase: "primary-fetch",
-                startedAt: repairStartedAt,
+                startedAt: primaryFetchStartedAt,
                 counts: {
                     processedRangeCount: result.processedRangeCount,
                     rawCount: result.processedRanges.reduce(
@@ -4185,6 +4199,8 @@ export function usePostHistoryListing({
                 return;
             }
 
+            const visibleRangeStateStartedAt = Date.now();
+            activePhaseStartedAt = visibleRangeStateStartedAt;
             try {
                 await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
                     pubkeyHex,
@@ -4195,13 +4211,15 @@ export function usePostHistoryListing({
                 reportedFailurePhase = "visible-range-state";
                 reportPostHistoryManualRepairPhase({
                     phase: "visible-range-state",
-                    startedAt: repairStartedAt,
+                    startedAt: visibleRangeStateStartedAt,
                     error,
                     counts: { processedRangeCount: result.processedRangeCount },
                 });
                 throw error;
             }
 
+            const visibleWindowReloadStartedAt = Date.now();
+            activePhaseStartedAt = visibleWindowReloadStartedAt;
             try {
                 if (state.searchQuery) {
                     await rebuildSearchResultsThroughPage(
@@ -4217,7 +4235,7 @@ export function usePostHistoryListing({
                 reportedFailurePhase = "visible-window-reload";
                 reportPostHistoryManualRepairPhase({
                     phase: "visible-window-reload",
-                    startedAt: repairStartedAt,
+                    startedAt: visibleWindowReloadStartedAt,
                     error,
                     counts: { processedRangeCount: result.processedRangeCount },
                 });
@@ -4233,6 +4251,8 @@ export function usePostHistoryListing({
                 && getRxNostr() === rxNostr
                 && state.loadedPosts.length > 0
             ) {
+                const relationRepairStartedAt = Date.now();
+                activePhaseStartedAt = relationRepairStartedAt;
                 childInteractionRepairResult =
                     await relationRepairCoordinator.repairCurrentView({
                         ownerPubkeyHex: pubkeyHex,
@@ -4254,7 +4274,9 @@ export function usePostHistoryListing({
                 if (childInteractionRepairResult.failurePhase) {
                     reportPostHistoryManualRepairPhase({
                         phase: childInteractionRepairResult.failurePhase,
-                        startedAt: repairStartedAt,
+                        startedAt: relationRepairStartedAt,
+                        durationMs: childInteractionRepairResult.failureDurationMs,
+                        errorClass: childInteractionRepairResult.failureErrorClass,
                         counts: {
                             savedDirectReplyCount:
                                 childInteractionRepairResult.savedDirectReplyCount,
@@ -4318,6 +4340,14 @@ export function usePostHistoryListing({
             const taggedPhase = typeof error === "object" && error !== null
                 ? (error as { phase?: unknown }).phase
                 : undefined;
+            const taggedPhaseStartedAt = typeof error === "object" && error !== null
+                && typeof (error as { phaseStartedAt?: unknown }).phaseStartedAt === "number"
+                ? (error as { phaseStartedAt: number }).phaseStartedAt
+                : activePhaseStartedAt;
+            const taggedErrorClass = typeof error === "object" && error !== null
+                && typeof (error as { errorClass?: unknown }).errorClass === "string"
+                ? (error as { errorClass: string }).errorClass
+                : undefined;
             const phase = reportedFailurePhase ?? (taggedPhase === "primary-fetch"
                 || taggedPhase === "primary-persist"
                 ? taggedPhase
@@ -4327,8 +4357,9 @@ export function usePostHistoryListing({
             if (!reportedFailurePhase) {
                 reportPostHistoryManualRepairPhase({
                     phase,
-                    startedAt: repairStartedAt,
+                    startedAt: taggedPhaseStartedAt,
                     error,
+                    errorClass: taggedErrorClass,
                 });
             }
 

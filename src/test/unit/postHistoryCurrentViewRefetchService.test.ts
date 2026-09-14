@@ -682,6 +682,44 @@ describe("PostHistoryCurrentViewRefetchService", () => {
         }));
     });
 
+    it("best-effort EOSE があっても baseline 全明示失敗は fetchFailed にする", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                events: [],
+                requestedRelayUrls: ["wss://write.example.com/", "wss://read.example.com/"],
+                eoseRelayUrls: ["wss://read.example.com/"],
+                hasAnyRelayResponse: true,
+                coverageRelayUrls: ["wss://write.example.com/"],
+                coverageEoseRelayUrls: [],
+                bestEffortRelayUrls: ["wss://read.example.com/"],
+                coverageComplete: false,
+                coverageSaturated: false,
+                allCoverageRelaysFailed: true,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: { upsertFetchedEvents: vi.fn() } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "partial",
+            fetchFailed: true,
+            hadFailures: true,
+            processedRanges: [expect.objectContaining({
+                allCoverageRelaysFailed: true,
+                eoseRelayUrls: ["wss://read.example.com/"],
+            })],
+        }));
+    });
+
     it("best-effort saturation alone does not split a complete coverage range", async () => {
         const fetchLatest = vi.fn().mockReturnValue({
             promise: Promise.resolve(createFetchResult({
