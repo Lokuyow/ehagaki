@@ -2143,6 +2143,7 @@
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
         hasPostingCapability={hasPostingCapability}
+        useLivePostEligibility={true}
         mediaEnabled={true}
         customEmojiEnabled={isAuthenticated}
         onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}

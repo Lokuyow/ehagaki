@@ -61,6 +61,7 @@
   import {
     editorState,
     updateEditorContent,
+    updateLivePostEligibility,
     updatePostStatus,
     currentEditorStore,
     updatePlaceholderText,
@@ -200,6 +201,10 @@
     $_("postComponent.enter_your_text") || "テキストを入力してください",
   );
 
+  function isEditorMutationBlocked(): boolean {
+    return postStatus.sending || editorState.isCompositionClearPending;
+  }
+
   $effect(() => {
     currentEditor;
     updatePlaceholderText(editorPlaceholderText);
@@ -244,7 +249,7 @@
   }
 
   function handleEditorContainerClick(event: MouseEvent) {
-    if (postStatus.sending) {
+    if (isEditorMutationBlocked()) {
       event.preventDefault();
       return;
     }
@@ -274,7 +279,7 @@
   }
 
   function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
-    if (!postStatus.sending) return;
+    if (!isEditorMutationBlocked()) return;
 
     if (
       submittedCompositionEditor &&
@@ -296,7 +301,7 @@
       (event.isComposing ||
         event.inputType === "insertCompositionText" ||
         event.inputType === "insertFromComposition");
-    if (postStatus.sending && !isCompositionInput) {
+    if (isEditorMutationBlocked() && !isCompositionInput) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -375,7 +380,7 @@
     },
     uploadFiles: async (params) => {
       if (
-        postStatus.sending ||
+        isEditorMutationBlocked() ||
         editorState.isSubmitPending ||
         editorState.isUploading ||
         (isHostOwned && !hostMountActive)
@@ -481,6 +486,7 @@
           currentEditorStore.value === editor
         ) {
           deferSuccessClearUntilCompositionEnd = false;
+          editorState.isCompositionClearPending = false;
           clearContentAfterSuccess();
         }
       });
@@ -493,6 +499,7 @@
   function clearContentAfterSubmissionSuccess(): void {
     if (submittedCompositionEditor) {
       deferSuccessClearUntilCompositionEnd = true;
+      editorState.isCompositionClearPending = true;
       return;
     }
     clearContentAfterSuccess();
@@ -574,7 +581,7 @@
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
     editorResources = initializeEditor({
-      isInputBlocked: isHostOwned ? undefined : () => editorState.postStatus.sending,
+      isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
       isCompositionInputAllowed: isHostOwned
         ? undefined
         : () => submittedCompositionEditor !== null,
@@ -595,6 +602,7 @@
         : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
+            if (isEditorMutationBlocked()) return;
             void uploadHandlers.performUpload(files);
           }
         : undefined,
@@ -625,12 +633,16 @@
       editorEmptyStateInitialized = true;
       if (changed) onEditorEmptyChange?.(nextIsEmpty);
     };
+    const syncLivePostEligibility = (editorInstance: TipTapEditor): void => {
+      updateLivePostEligibility(hasLivePostContent(editorInstance));
+    };
     const handleEditorTransaction = ({
       editor: editorInstance,
     }: {
       editor: TipTapEditor;
     }) => {
       syncEditorEmptyState(editorInstance);
+      syncLivePostEligibility(editorInstance);
     };
 
     editorSubscriptionUnsubscribe = editor.subscribe(
@@ -643,6 +655,9 @@
         currentEditor = editorInstance;
         if (editorInstance) {
           syncEditorEmptyState(editorInstance);
+          syncLivePostEligibility(editorInstance);
+        } else {
+          updateLivePostEligibility(false);
         }
         editorInstance?.on("transaction", handleEditorTransaction);
         // ストアにも設定
@@ -670,6 +685,7 @@
       submittedCompositionCleanup = undefined;
       submittedCompositionEditor = null;
       deferSuccessClearUntilCompositionEnd = false;
+      editorState.isCompositionClearPending = false;
       if (currentEditorStore.value === currentEditor) {
         editorState.isSubmitPending = false;
         if (!isHostOwned) postComponentUIStore.hideSecretKeyDialog();
@@ -711,6 +727,7 @@
   export async function uploadFiles(
     files: File[] | FileList,
   ): Promise<UploadHelperResult | null> {
+    if (isEditorMutationBlocked()) return null;
     return await uploadHandlers.performUpload(files);
   }
 
@@ -725,7 +742,7 @@
   }
 
   export function insertTextContent(content: string): void {
-    if (!currentEditor || !content) return;
+    if (!currentEditor || !content || isEditorMutationBlocked()) return;
 
     const editor = currentEditor; // nullチェック済みのローカル変数
 
@@ -749,7 +766,7 @@
   }
 
   export function appendSharedTextContent(content: string): boolean {
-    if (!currentEditor || !content) return false;
+    if (!currentEditor || !content || isEditorMutationBlocked()) return false;
 
     const lines = content.split("\n");
     const paragraphs = lines.map((line) => ({
@@ -772,7 +789,7 @@
   }
 
   export function loadDraftContent(htmlContent: string): void {
-    if (!currentEditor || !htmlContent) return;
+    if (!currentEditor || !htmlContent || isEditorMutationBlocked()) return;
 
     const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
 
@@ -789,7 +806,11 @@
   }
 
   export function appendMediaToEditor(items: MediaGalleryItem[]): void {
-    if (!currentEditor || items.length === 0) return;
+    if (
+      !currentEditor ||
+      items.length === 0 ||
+      isEditorMutationBlocked()
+    ) return;
     const { schema } = currentEditor.state;
     let transaction = currentEditor.state.tr;
     let insertPos = currentEditor.state.doc.content.size;
@@ -822,7 +843,7 @@
   }
 
   export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
   }
 
@@ -837,7 +858,7 @@
   }
 
   function moveCaret(direction: -1 | 1): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -868,7 +889,7 @@
   }
 
   export function deleteBackward(): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -904,7 +925,7 @@
   }
 
   export function insertLineBreak(): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
     revealToolbarCaret();
     currentEditor.commands.keyboardShortcut("Enter");
   }
@@ -918,14 +939,17 @@
     );
   }
 
-  function hasLiveNormalPostContent(): boolean {
-    if (!currentEditor) return false;
-    const payload = postManager?.preparePostPayload(currentEditor);
+  function hasLivePostContent(editorInstance: TipTapEditor): boolean {
+    const payload = postManager?.preparePostPayload(editorInstance);
     return Boolean(
       payload?.content.trim() ||
-        hasMediaInDoc(currentEditor.state.doc) ||
+        hasMediaInDoc(editorInstance.state.doc) ||
         mediaGalleryStore.hasNonPlaceholderItems(),
     );
+  }
+
+  function hasLiveNormalPostContent(): boolean {
+    return currentEditor ? hasLivePostContent(currentEditor) : false;
   }
 
   function canSendNormalPost(): boolean {
@@ -1210,7 +1234,7 @@
   });
 
   export function openFileDialog() {
-    if (!mediaEnabled || postStatus.sending || editorState.isSubmitPending || editorState.isUploading) return;
+    if (!mediaEnabled || isEditorMutationBlocked() || editorState.isSubmitPending || editorState.isUploading) return;
     fileInput?.click();
   }
 
@@ -1222,6 +1246,7 @@
     const hasContent = !!editorState.content.trim();
     const hasEditorMedia = editorState.hasImage;
     editorState.canPost = hasContent || hasEditorMedia || hasGalleryMedia;
+    if (currentEditor) updateLivePostEligibility(hasLivePostContent(currentEditor));
   });
 
   // --- モード切替時の自動整理 ---
@@ -1285,7 +1310,7 @@
     class="editor-container"
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
-    class:sending={postStatus.sending}
+    class:sending={postStatus.sending || editorState.isCompositionClearPending}
     class:editor-submit-enabled={showEditorSubmitButton}
     class:account-avatar-placeholder={showAccountPlaceholder}
     onclick={handleEditorContainerClick}
@@ -1302,7 +1327,7 @@
     use:touchAction
     use:keydownAction={!isHostOwned}
     aria-label={$_("postComponent.editor_label")}
-    aria-readonly={!isHostOwned && postStatus.sending ? "true" : undefined}
+    aria-readonly={!isHostOwned && (postStatus.sending || editorState.isCompositionClearPending) ? "true" : undefined}
     aria-disabled={isHostOwned && postStatus.sending ? "true" : undefined}
     role="textbox"
     tabindex="-1"

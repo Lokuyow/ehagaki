@@ -106,7 +106,7 @@
         <PostComponent bind:this={postComponentRef} rxNostr={inertRxNostr} hasStoredKey={authorized} />
         {#if withSubmit}
             <Tooltip.Provider>
-                <KeyboardButtonBar hasPostingCapability={authorized} />
+                <KeyboardButtonBar hasPostingCapability={authorized} useLivePostEligibility={true} />
             </Tooltip.Provider>
         {/if}
     {/if}

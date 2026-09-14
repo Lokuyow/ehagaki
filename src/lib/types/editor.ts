@@ -20,6 +20,8 @@ export interface EditorState {
     isSubmitPending: boolean;
     content: string;
     canPost: boolean;
+    liveCanPost: boolean;
+    isCompositionClearPending: boolean;
     isUploading: boolean;
     uploadErrorMessage: string;
     postStatus: PostStatus;

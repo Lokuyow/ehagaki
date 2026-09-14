@@ -99,9 +99,8 @@ test('active composition long-press submits the live document and keeps one inte
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
     await editor.click();
-    await page.keyboard.type('draft');
     const button = page.locator('button.post-button');
-    await expect(button).toBeEnabled();
+    await expect(button).toBeDisabled();
     await editor.dispatchEvent('compositionstart', { data: 'draft' });
     await editor.evaluate((element) => {
         element.querySelector('p')!.textContent = 'draft日本語';
@@ -113,6 +112,7 @@ test('active composition long-press submits the live document and keeps one inte
         }));
     });
     await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.state.doc.textContent)).toBe('draft日本語');
+    await expect(button).toBeEnabled({ timeout: 200 });
     await observeFocus(editor);
     const release = await beginLongPress(page, button, browserName === 'chromium' && isMobile);
     await release();
@@ -168,10 +168,36 @@ test('active composition success defers clear until natural compositionend', asy
     await finishSubmission(page, true);
     await expect(page.getByTestId('sending-state')).toHaveText('idle');
     await expect(editor).toHaveText('preedit候補');
+    await expect(page.getByRole('textbox')).toHaveAttribute('aria-readonly', 'true');
+    await expect(page.getByRole('button', { name: 'カスタム絵文字' })).toBeDisabled();
+    await editor.click();
+    await page.keyboard.type('discarded after success');
+    for (const type of ['paste', 'cut', 'drop']) {
+        await editor.evaluate((element, eventType) => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/plain', 'blocked');
+            const event = eventType === 'drop'
+                ? new DragEvent(eventType, { bubbles: true, cancelable: true, dataTransfer: transfer })
+                : new ClipboardEvent(eventType, { bubbles: true, cancelable: true, clipboardData: transfer });
+            element.dispatchEvent(event);
+        }, type);
+    }
+    await page.evaluate(() => {
+        const container = document.querySelector('.editor-container') as any;
+        container.__uploadFiles([new File(['blocked'], 'blocked.png', { type: 'image/png' })]);
+        const editor = (window as any).__currentEditor;
+        editor.view.dispatch(editor.state.tr.insertText('blocked transaction'));
+    });
+    await expect(editor.locator('img')).toHaveCount(0);
+    await expect(editor).toHaveText('preedit候補');
 
     await endComposition(editor, 'preedit候補');
     await expect(editor).toHaveText('');
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly');
+    await editor.click();
+    await page.keyboard.type('再編集');
+    await expect(editor).toContainText('再編集');
 });
 
 test('unfocused submission does not acquire focus on success or failure', async ({ page, browserName, isMobile }) => {
@@ -203,7 +229,7 @@ test('composition intent transfers to secret confirmation and is consumed or can
         const editor = page.locator('.tiptap-editor');
         await editor.click();
         await page.keyboard.type('draft');
-        await expect(page.locator('button.post-button')).toBeEnabled();
+        await expect(page.locator('button.post-button')).toBeEnabled({ timeout: 200 });
         await editor.dispatchEvent('compositionstart');
         await editor.evaluate((element, value) => {
             element.querySelector('p')!.textContent = value;

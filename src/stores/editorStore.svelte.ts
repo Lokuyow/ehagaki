@@ -21,6 +21,8 @@ export let editorState = $state<EditorState>({
     isSubmitPending: false,
     content: '',
     canPost: false,
+    liveCanPost: false,
+    isCompositionClearPending: false,
     isUploading: false,
     uploadErrorMessage: '',
     postStatus: {
@@ -67,6 +69,10 @@ export function updateEditorContent(content: string, hasMedia: boolean = false):
     editorState.canPost = canPostByContent(content, hasMedia);
 }
 
+export function updateLivePostEligibility(canPost: boolean): void {
+    editorState.liveCanPost = canPost;
+}
+
 export function updatePostStatus(postStatus: PostStatus): void {
     editorState.postStatus = postStatus;
 }
@@ -79,6 +85,8 @@ export function updateUploadState(isUploading: boolean, errorMessage: string = '
 export function resetEditorState(): void {
     editorState.content = '';
     editorState.canPost = false;
+    editorState.liveCanPost = false;
+    editorState.isCompositionClearPending = false;
     editorState.uploadErrorMessage = '';
     editorState.postStatus = {
         sending: false,
