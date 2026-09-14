@@ -29,7 +29,6 @@
         customEmojiAvailable?: boolean;
         contentWarningAvailable?: boolean;
         hashtagPinAvailable?: boolean;
-        useLivePostEligibility?: boolean;
     }
     const overlayTarget = getAppRuntimeEnvironment().overlayTarget;
     const isHostOwnedLiteBuild = typeof __EHAGAKI_COMPOSER_LITE__ !== 'undefined' && __EHAGAKI_COMPOSER_LITE__;
@@ -46,13 +45,12 @@
         customEmojiAvailable = true,
         contentWarningAvailable = true,
         hashtagPinAvailable = true,
-        useLivePostEligibility = false,
     }: Props = $props();
 
     // エディタ状態を取得
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
-    let canPost = $derived(useLivePostEligibility ? editorState.liveCanPost : editorState.canPost);
+    let canPost = $derived(editorState.canPost);
 
     // ローダーの表示状態（最低0.4秒表示）
     let isShowingLoader = $state(false);
@@ -109,7 +107,7 @@
         return (
             !canPost ||
             editorState.isSubmitPending ||
-            (postStatus.sending || editorState.isCompositionClearPending) ||
+            postStatus.sending ||
             isUploading ||
             !hasPostingCapability ||
             !!postStatus.completed
@@ -251,8 +249,7 @@
                                 contentLayout="icon"
                                 className="image-button"
                                 disabled={!hasPostingCapability ||
-                                    (postStatus.sending ||
-                                        editorState.isCompositionClearPending) ||
+                                    postStatus.sending ||
                                     editorState.isSubmitPending ||
                                     isUploading}
                                 onClick={(e) => {
@@ -282,7 +279,7 @@
                     className="custom-emoji-button"
                     selected={customEmojiPickerOpen}
                     disabled={!customEmojiEnabled ||
-                        postStatus.sending || editorState.isCompositionClearPending}
+                        postStatus.sending}
                     onClick={() => {
                         setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                     }}
@@ -348,8 +345,7 @@
                                     ? 'loading'
                                     : ''}"
                                 disabled={!canPost ||
-                                    (postStatus.sending ||
-                                        editorState.isCompositionClearPending) ||
+                                    postStatus.sending ||
                                     editorState.isSubmitPending ||
                                     isUploading ||
                                     !hasPostingCapability ||

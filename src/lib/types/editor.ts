@@ -20,8 +20,6 @@ export interface EditorState {
     isSubmitPending: boolean;
     content: string;
     canPost: boolean;
-    liveCanPost: boolean;
-    isCompositionClearPending: boolean;
     isUploading: boolean;
     uploadErrorMessage: string;
     postStatus: PostStatus;
@@ -123,6 +121,7 @@ export interface SetupEventListenersParams {
 export interface InitializeEditorParams {
     isInputBlocked?: () => boolean;
     isCompositionInputAllowed?: () => boolean;
+    compositionController?: import('../editor/submittedComposition').SubmittedCompositionController;
     placeholderText: string;
     editorContainerEl: HTMLElement | null;
     currentEditor: TipTapEditor | null;

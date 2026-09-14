@@ -37,7 +37,7 @@
 
 ## Editor-to-application flow and reverse inputs
 
-- document -> application: ContentTracking の `editor-content-changed` -> `editorDomActions.svelte.ts:setupEventListeners()` -> `PostComponent` の `onContentUpdate: updateEditorContent` -> `editorState.content` / `hasImage` / `canPost`。media flag は current editor document を `hasMediaInDoc()` で調べる。これは debounce された UI tracking path である。
+- document -> application: ContentTracking の `editor-content-changed` -> `editorDomActions.svelte.ts:setupEventListeners()` -> `PostComponent` の `onContentUpdate: updateEditorContent` -> debounced `editorState.content` / `hasImage` projection。canonical `editorState.canPost` は `resolveLivePostEligibility()` を editor transaction、mount/current instance、gallery change、reset/unmount の各 trigger から同期再計算し、debounced path は上書きしない。
 - document -> post: `PostComponent:submitPost()` -> `PostManager:preparePostPayload()` -> `extractPostContentWithEmojiTags()` / `extractPostContentFromDoc()`。投稿時は document から再抽出する。gallery mode では gallery URL をこの content に加える。
 - `src/lib/utils/editorDocumentUtils.ts` は paragraph / text / customEmoji / image / video を投稿用 `content` に直列化する。blocks は newline で結合され、media は `src`、custom emoji は `:shortcode:` と deduplicated `emoji` tags になる。shortcode collision は alias で回避する。変更には `src/test/unit/editorDocumentUtils.test.ts` と `src/test/unit/customEmoji.test.ts` を確認する。
 - application -> document: `PostComponent` の `insertTextContent()`（replace）、`appendSharedTextContent()`（append）、`loadDraftContent()`（sanitize した draft HTML）、`appendMediaToEditor()`、`insertCustomEmoji()` が command / transaction を dispatch する。`App.svelte` は draft、share、URL query、embed composer context の入口からこれらを呼ぶ。embed public input contract は embed runtime skill が主である。
@@ -53,7 +53,8 @@
 - `editorDomActions.svelte.ts:pasteAction()` は image file clipboard を upload handler へ渡し、text paste を ClipboardExtension へ残す。`fileDropAction()` は external file drop を upload handler へ、internal `application/x-tiptap-node` drag を ProseMirror plugin へ残す。
 - `MediaPasteExtension` は pasted / typed media URL を image or video node（free placement）または media gallery（gallery mode）に移す。text URL の link / image conversion は ContentTracking の別経路である。`src/test/integration/editor-media.integration.test.ts`、`src/test/unit/imagePaste.test.ts`、`src/test/integration/editor-url-paste.integration.test.ts` を参照する。
 - `ImageDragDropExtension` と `CustomEmojiDragDropExtension` は plugin state、widget decorations、internal MIME、touch custom events、plugin-view listener cleanup を担当する。position-changing moves は `src/lib/utils/editorNodeActions.ts` の `moveImageNode()` / `moveCustomEmojiNode()` が dispatch する。custom emoji move は node selection を設定する。native/touch contenteditable drag の再現や geometry は browser debug skill を併用する。
-- `AndroidCompositionFix` は Android のみで composition start/end listener と 4秒 keepalive interval を管理し、destroy 時に interval / listeners を解除する。IME / caret browser difference の証明はこの extension の unit reasoning だけで完結させない。
+- `EditorInputGuard` の ProseMirror plugin state は、適用済み transaction の `composition` metadata を DOM composition generation と対応付ける。`SubmittedCompositionController` は generation、optional ID、`continuing`/`stale` lifecycle を所有し、transaction filter は `PluginKey.getState()` の bind 済み ID を同一 transaction chain 内で同期参照する。success cleanup は stale 遷移前に完了し、その後の旧 composition mutation を拒否する。
+- `AndroidCompositionFix` は Android のみで composition start/end listener と 4秒 keepalive interval を管理し、destroy 時に interval / listeners を解除する。submitted composition controller はこの keepalive state を所有・変更せず、IME / caret browser difference の証明は実ブラウザまたは実端末で行う。
 
 ## Suggestions and NodeView rendering
 

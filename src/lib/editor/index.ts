@@ -12,6 +12,13 @@ export { CustomEmojiDragDropExtension } from './customEmojiDragDrop';
 export { CustomEmojiSuggestion, findCustomEmojiSuggestionMatch } from './customEmojiSuggestion';
 export { ToolbarCaretExtension, showToolbarCaret } from './toolbarCaretExtension';
 export type { CustomEmojiAttrs } from './customEmojiExtension';
+export { SubmittedCompositionController } from './submittedComposition';
+export type {
+    CompositionObserverState,
+    CompositionTransactionContext,
+    CompositionTransactionDecision,
+    SubmittedCompositionPhase,
+} from './submittedComposition';
 
 // エディター設定
 export { createEditorStore, updateEditorPlaceholder } from './editorConfig';

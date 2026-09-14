@@ -4,12 +4,39 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import {
     extractFragmentsFromDoc,
     extractPostContentFromDoc,
+    resolveLivePostEligibility,
     getDocumentFromEditor,
     isDocumentEmpty,
     isParagraphWithOnlyImageUrl,
 } from '../../lib/utils/editorDocumentUtils';
 
 describe('editorDocumentUtils', () => {
+    describe('live post eligibility', () => {
+        it('uses the current document and gallery state without a debounced projection', () => {
+            const editor = {
+                isDestroyed: false,
+                state: {
+                    doc: {
+                        forEach: (callback: (node: any) => void) => callback({
+                            type: { name: 'paragraph' },
+                            forEach: (child: (node: any) => void) => child({
+                                type: { name: 'text' },
+                                isText: true,
+                                text: 'preedit',
+                            }),
+                        }),
+                        descendants: (callback: (node: any) => void) => callback({
+                            type: { name: 'paragraph' },
+                            textContent: 'preedit',
+                        }),
+                    },
+                },
+            };
+            expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, false)).toBe(true);
+            expect(resolveLivePostEligibility(editor as unknown as TipTapEditor, true)).toBe(true);
+            expect(resolveLivePostEligibility(null, false)).toBe(false);
+        });
+    });
     describe('ドキュメント状態判定', () => {
         it('should detect empty documents', () => {
             const emptyDoc = {

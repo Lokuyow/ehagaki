@@ -85,7 +85,7 @@
 
 - **主な症状または責務:** plain-text posting semantics、extension順、transaction、selection、Android composition keepalive、editor lifecycleを扱う。
 - **主な実装ファイル:** `src/lib/editor/editorConfig.ts`、`src/lib/editor/editorLifecycle.ts`、`src/lib/editor/contentTracking.ts`、`src/lib/editor/androidCompositionFix.ts`、`src/lib/editor/toolbarCaretExtension.ts`、`src/components/PostComponent.svelte`。
-- **主な関数、store、hook、controller:** `createEditorStore()`、`initializeEditor()`、`cleanupEditor()`、`ContentTrackingExtension`、`AndroidCompositionFix`、Tiptap `onSelectionUpdate/onCreate/onDestroy`。
+- **主な関数、store、hook、controller:** `createEditorStore()`、`initializeEditor()`、`cleanupEditor()`、`ContentTrackingExtension`、`EditorInputGuard`、`SubmittedCompositionController`、`AndroidCompositionFix`、Tiptap `onSelectionUpdate/onCreate/onDestroy`。
 - **Event source:** ProseMirror transaction、selection update、`compositionstart/compositionupdate/compositionend`、editor create/update/destroy、keyboard input。
 - **StateまたはCSS変数:** EditorState/Selection、plugin storage、`currentEditorStore`、`editorState`、`data-post-editor-root`、`.tiptap-editor`。
 - **Cleanup所有者:** `cleanupEditor()`がDOM listener、store subscription、editor instance、container付加propertyを解放する。各extensionの`onDestroy()`がinterval/listener/plugin-owned stateを解放する。
@@ -183,7 +183,7 @@
 - **主な関数、store、hook、controller:** `isNonPwaIPhoneSafari()`、`isNonPwaAndroidChrome()`、`isIosTouchDevice()`、`isTouchDevice()`、`AndroidCompositionFix`、runtime `typeof`/capability checks。
 - **Event source:** `navigator.userAgent/platform/maxTouchPoints`、`matchMedia('(display-mode: standalone)')`、`navigator.standalone`、`globalThis.isSecureContext`、API presence。
 - **StateまたはCSS変数:** browser/PWA classification result、VirtualKeyboard capability、touch capability、WebCodecs fallback choice。
-- **Cleanup所有者:** detectionはpureまたはmodule state。Android composition listener/intervalだけextension `onDestroy()`が所有する。
+- **Cleanup所有者:** submitted composition の session/DOM listener/rAF は `SubmittedCompositionController` が所有する。Android composition listener/keepalive interval は引き続き `AndroidCompositionFix` の `onDestroy()` が所有し、controller は private state を変更しない。
 - **関連テスト:** `src/test/unit/viewportLayout.test.ts`、`src/test/unit/keyboardFocusUtils.test.ts`、`src/test/unit/appDomUtils.test.ts`、`src/test/unit/uiStore.test.ts`、`src/test/unit/postMediaCacheService.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** UA overrideだけで再現できないAPI availability、secure context、PWA display mode、WebView、vendor UIは実環境が必要。
 - **注意点:** UAを追加する前にfeature detectionで足りるか確認する。Playwright device descriptorのUAはOS機能まで提供しない。

@@ -145,7 +145,7 @@ test('active composition long-press submits the live document and keeps one inte
     await expect(editor).toContainText('再編集');
 });
 
-test('active composition success defers clear until natural compositionend', async ({ page }) => {
+test('active composition success clears immediately and quarantines stale composition', async ({ page }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
     await editor.click();
@@ -167,11 +167,7 @@ test('active composition success defers clear until natural compositionend', asy
 
     await finishSubmission(page, true);
     await expect(page.getByTestId('sending-state')).toHaveText('idle');
-    await expect(editor).toHaveText('preedit候補');
-    await expect(page.getByRole('textbox')).toHaveAttribute('aria-readonly', 'true');
-    await expect(page.getByRole('button', { name: 'カスタム絵文字' })).toBeDisabled();
-    await editor.click();
-    await page.keyboard.type('discarded after success');
+    await expect(editor).toHaveText('');
     for (const type of ['paste', 'cut', 'drop']) {
         await editor.evaluate((element, eventType) => {
             const transfer = new DataTransfer();
@@ -185,14 +181,15 @@ test('active composition success defers clear until natural compositionend', asy
     await page.evaluate(() => {
         const container = document.querySelector('.editor-container') as any;
         container.__uploadFiles([new File(['blocked'], 'blocked.png', { type: 'image/png' })]);
-        const editor = (window as any).__currentEditor;
-        editor.view.dispatch(editor.state.tr.insertText('blocked transaction'));
     });
     await expect(editor.locator('img')).toHaveCount(0);
-    await expect(editor).toHaveText('preedit候補');
-
-    await endComposition(editor, 'preedit候補');
     await expect(editor).toHaveText('');
+    await editor.dispatchEvent('compositionend', { data: 'preedit候補' });
+    await editor.dispatchEvent('compositionstart', { data: 'new' });
+    await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly', 'true');
+    await editor.click();
+    await page.keyboard.type('new edit');
+    await expect(editor).toContainText('new edit');
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
     await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly');
     await editor.click();
@@ -346,10 +343,11 @@ test.describe('Android composition submit', () => {
         await release();
         expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['にほん']);
         await finishSubmission(page, true);
-        await expect(editor).toHaveText('にほん');
-        await cdp.send('Input.insertText', { text: '日本' });
-        await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
         await expect(editor).toHaveText('');
+        await cdp.send('Input.insertText', { text: '日本' });
+        await editor.dispatchEvent('compositionend', { data: 'にほん' });
+        await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
+        await expect(editor).toHaveText('日本');
         await expect(editor).toBeFocused();
         expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
         await cdp.detach();

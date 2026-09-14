@@ -36,6 +36,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
     const editor = createTiptapEditorStore({
         isInputBlocked: params.isInputBlocked,
         isCompositionInputAllowed: params.isCompositionInputAllowed,
+        compositionController: params.compositionController,
         placeholderText,
         onSubmitPost: submitPost,
         onCustomEmojiSelect,
