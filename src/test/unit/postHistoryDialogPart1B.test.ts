@@ -181,7 +181,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('[repair-partial-failure] 再取得が部分失敗なら failure 文言を表示する', async () => {
+    it('[repair-partial-no-changes] 再取得が内部 partial でも追加がなければ追加なしを表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-partial-page', content: '一覧の投稿' }),
@@ -250,7 +250,8 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             const activeDialog = screen.getAllByRole('dialog').at(-1);
-            expect(screen.getByText('一部未確認')).toBeTruthy();
+            expect(screen.getByText('追加なし')).toBeTruthy();
+            expect(screen.queryByText('一部未確認')).toBeNull();
             expect(activeDialog ? within(activeDialog).queryByText('リレーとの同期が完了しました') : null).toBeNull();
         });
     });

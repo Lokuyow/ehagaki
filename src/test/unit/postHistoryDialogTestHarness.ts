@@ -61,7 +61,6 @@ const hoisted = vi.hoisted(() => {
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件追加`,
             'postHistory.repairChildInteractionsAdded': `返信を${options?.values?.count ?? 0}件補完`,
             'postHistory.repairNoChanges': '追加なし',
-            'postHistory.repairPartialFailure': '一部未確認',
             'postHistory.repairFetchFailed': '取得失敗',
             'postHistory.copyNevent': 'neventをコピー',
             'postHistory.openInExternalClient': String(options?.values?.client ?? '') + 'で開く',

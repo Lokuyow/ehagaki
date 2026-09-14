@@ -990,7 +990,6 @@ export function usePostHistoryListing({
             "postHistory.repairNoChanges",
             "postHistory.repairAdded",
             "postHistory.repairChildInteractionsAdded",
-            "postHistory.repairPartialFailure",
             "postHistory.repairFetchFailed",
         ]);
 
@@ -4358,13 +4357,6 @@ export function usePostHistoryListing({
             } else if (result.fetchFailed) {
                 state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
                 state.currentViewRefetchMessageValues = null;
-            } else if (
-                result.status === "partial"
-                || result.hadUnfinishedRanges
-                || childInteractionRepairResult?.status === "partial"
-            ) {
-                state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
-                state.currentViewRefetchMessageValues = null;
             } else {
                 state.currentViewRefetchMessageKey = "postHistory.repairNoChanges";
                 state.currentViewRefetchMessageValues = {
@@ -4418,7 +4410,7 @@ export function usePostHistoryListing({
             currentViewRefetchTask = null;
             state.currentViewRefetchStatus = "idle";
             state.currentViewRefetchMessageKey = primaryRefetchReloadCompleted
-                ? "postHistory.repairPartialFailure"
+                ? "postHistory.repairNoChanges"
                 : "postHistory.repairFetchFailed";
             state.currentViewRefetchMessageValues = null;
             scheduleCurrentViewRefetchMessageClearIfNeeded();
