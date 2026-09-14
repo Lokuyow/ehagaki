@@ -95,6 +95,66 @@ test('long-press submits once without losing focus and freezes the document unti
     expect(await page.evaluate(() => (window as any).__focusObservation)).toEqual({ blurs: 0, focusCalls: 0, invalidAttributes: [] });
 });
 
+test('ignored touch compatibility click cannot steal editor focus', async ({ page }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    const button = page.locator('button.post-button');
+    await editor.click();
+    await page.keyboard.type('touch long press');
+    await expect(button).toBeEnabled();
+
+    await page.evaluate(() => {
+        (window as any).__ignoredClickTrace = [];
+        document.addEventListener('click', (event) => {
+            if ((event.target as Element | null)?.closest('button.post-button')) {
+                (window as any).__ignoredClickTrace.push({
+                    defaultPrevented: event.defaultPrevented,
+                    activeElement: (document.activeElement as HTMLElement | null)?.className ?? null,
+                });
+            }
+        });
+    });
+
+    await button.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, bubbles: true });
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    await button.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1, bubbles: true });
+    // Model the compatibility click that follows the touch sequence without
+    // starting a second pointer sequence that would clear the ignore marker.
+    await button.dispatchEvent('click');
+
+    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__ignoredClickTrace)).toEqual([
+        {
+            defaultPrevented: true,
+            activeElement: 'tiptap ProseMirror tiptap-editor ProseMirror-focused',
+        },
+    ]);
+    await expect(editor).toBeFocused();
+});
+
+test('mouse click and keyboard activation still submit once', async ({ page }) => {
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const editor = page.locator('.tiptap-editor');
+    const button = page.locator('button.post-button');
+    await editor.click();
+    await page.keyboard.type('mouse click');
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
+    const keyboardEditor = page.locator('.tiptap-editor');
+    const keyboardButton = page.locator('button.post-button');
+    await keyboardEditor.click();
+    await page.keyboard.type('keyboard activation');
+    await expect(keyboardButton).toBeEnabled();
+    await keyboardButton.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('sending-state')).toHaveText('sending');
+    expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
+});
+
 test('active composition long-press submits the live document and keeps one intent', async ({ page, browserName, isMobile }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');

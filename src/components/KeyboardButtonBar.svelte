@@ -357,6 +357,13 @@
 
                                     if (ignoreNextPostClick) {
                                         ignoreNextPostClick = false;
+                                        // A touch long-press may still produce a
+                                        // compatibility click after the submit
+                                        // has started. The click is intentionally
+                                        // ignored; suppress its default action
+                                        // too so iOS cannot move focus to the
+                                        // button after the editor submission.
+                                        e.preventDefault();
                                         return;
                                     }
 
