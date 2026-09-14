@@ -48,6 +48,13 @@ export interface PostHistoryCurrentViewRefetchResult {
     hadUnfinishedRanges: boolean;
     splitRetryCount: number;
     processedRanges: PostHistoryCurrentViewProcessedRangeSummary[];
+    timing?: PostHistoryCurrentViewRefetchTimingSummary;
+}
+
+export interface PostHistoryCurrentViewRefetchTimingSummary {
+    primaryFetchDurationMs: number;
+    primaryPersistDurationMs: number;
+    primaryPersistAttemptCount: number;
 }
 
 export type PostHistoryCurrentViewProcessedRangeStatus =
@@ -135,6 +142,7 @@ export interface PostHistoryCurrentViewRefetchServiceDeps {
     setTimeoutFn?: typeof setTimeout;
     clearTimeoutFn?: typeof clearTimeout;
     console?: Pick<Console, "debug">;
+    now?: () => number;
 }
 
 function resolveProcessedRangeStatus(
@@ -225,6 +233,7 @@ export class PostHistoryCurrentViewRefetchService {
     private setTimeoutFn: typeof setTimeout;
     private clearTimeoutFn: typeof clearTimeout;
     private console: Pick<Console, "debug">;
+    private now: () => number;
 
     constructor(deps: PostHistoryCurrentViewRefetchServiceDeps = {}) {
         this.postHistoryRelayFetchService = deps.postHistoryRelayFetchService ?? postHistoryRelayFetchService;
@@ -234,6 +243,7 @@ export class PostHistoryCurrentViewRefetchService {
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { debug: () => undefined });
+        this.now = deps.now ?? Date.now;
     }
 
     private async waitBetweenFetches(
@@ -284,6 +294,9 @@ export class PostHistoryCurrentViewRefetchService {
             let hadUnfinishedRanges = false;
             let splitRetryCount = 0;
             let receivedEventCount = 0;
+            let primaryFetchDurationMs = 0;
+            let primaryPersistDurationMs = 0;
+            let primaryPersistAttemptCount = 0;
             let allAttemptedRangesClearlyFailed = true;
             const processedRanges: PostHistoryCurrentViewProcessedRangeSummary[] = [];
 
@@ -315,17 +328,20 @@ export class PostHistoryCurrentViewRefetchService {
                 });
                 currentFetchTask = fetchTask;
 
-                const primaryFetchStartedAt = Date.now();
+                const primaryFetchStartedAt = this.now();
                 let result: PostHistoryRelayFetchResult;
                 try {
                     result = await fetchTask.promise;
                 } catch (error) {
+                    const primaryFetchCompletedAt = this.now();
+                    primaryFetchDurationMs += Math.max(0, primaryFetchCompletedAt - primaryFetchStartedAt);
                     throw new PostHistoryCurrentViewRefetchFailure(
                         "primary-fetch",
                         error,
                         primaryFetchStartedAt,
                     );
                 }
+                primaryFetchDurationMs += Math.max(0, this.now() - primaryFetchStartedAt);
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
@@ -344,7 +360,8 @@ export class PostHistoryCurrentViewRefetchService {
                 let rangeUnchangedCount = 0;
 
                 if (result.events.length > 0) {
-                    const primaryPersistStartedAt = Date.now();
+                    const primaryPersistStartedAt = this.now();
+                    primaryPersistAttemptCount += 1;
                     let upsertSummary: Awaited<ReturnType<PostHistoryRepository["upsertFetchedEvents"]>>;
                     try {
                         upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
@@ -352,12 +369,14 @@ export class PostHistoryCurrentViewRefetchService {
                             fetchedAt: result.fetchedAt,
                         });
                     } catch (error) {
+                        primaryPersistDurationMs += Math.max(0, this.now() - primaryPersistStartedAt);
                         throw new PostHistoryCurrentViewRefetchFailure(
                             "primary-persist",
                             error,
                             primaryPersistStartedAt,
                         );
                     }
+                    primaryPersistDurationMs += Math.max(0, this.now() - primaryPersistStartedAt);
                     insertedCount = upsertSummary.insertedCount;
                     rangeUpdatedCount = upsertSummary.updatedCount;
                     rangeUnchangedCount = upsertSummary.unchangedCount;
@@ -465,6 +484,11 @@ export class PostHistoryCurrentViewRefetchService {
                 hadUnfinishedRanges,
                 splitRetryCount,
                 processedRanges,
+                timing: {
+                    primaryFetchDurationMs,
+                    primaryPersistDurationMs,
+                    primaryPersistAttemptCount,
+                },
             };
 
             this.console.debug("post_history_current_view_refetch_summary", {

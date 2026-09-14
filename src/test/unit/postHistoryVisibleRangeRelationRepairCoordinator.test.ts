@@ -249,6 +249,8 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         await expect(repair).resolves.toEqual({
             status: "success",
             savedDirectReplyCount: 1,
+            relationRepairDurationMs: 0,
+            badgeRefreshDurationMs: 0,
         });
         expect(onChildInteractionBadgeRefreshRequested).toHaveBeenCalledWith(
             currentPosts,
@@ -360,6 +362,8 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         await expect(repair).resolves.toEqual({
             status: "success",
             savedDirectReplyCount: 0,
+            relationRepairDurationMs: 0,
+            badgeRefreshDurationMs: 0,
         });
     });
 

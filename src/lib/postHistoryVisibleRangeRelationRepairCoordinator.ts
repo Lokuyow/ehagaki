@@ -23,9 +23,11 @@ export const POST_HISTORY_OLDER_REVEAL_RELATION_REPAIR_FRESHNESS_TTL_MS =
 export interface PostHistoryRelationRepairSummary {
     status: PostHistoryVisibleRangeRelationRepairResult["status"];
     savedDirectReplyCount: number;
+    relationRepairDurationMs?: number;
     failurePhase?: "relation-repair" | "badge-refresh";
     failureDurationMs?: number;
     failureErrorClass?: string;
+    badgeRefreshDurationMs?: number;
 }
 
 export interface PostHistoryCurrentViewRelationRepairRequest {
@@ -299,6 +301,7 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
 
         try {
             const result = await relationRepairTask.promise;
+            const relationRepairDurationMs = Math.max(0, now() - relationRepairStartedAt);
             const active = isActive();
             if (
                 currentViewRelationRepairTask === relationRepairTask
@@ -323,12 +326,17 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                 return {
                     status: isActive() ? "partial" : "cancelled",
                     savedDirectReplyCount: result.savedDirectReplyCount,
+                    relationRepairDurationMs,
                     failurePhase: "badge-refresh",
                     failureDurationMs: Math.max(0, now() - badgeRefreshStartedAt),
                     failureErrorClass: error instanceof Error ? error.name : typeof error,
                 };
             }
-            return toSummary(result, isActive());
+            return {
+                ...toSummary(result, isActive()),
+                relationRepairDurationMs,
+                badgeRefreshDurationMs: Math.max(0, now() - badgeRefreshStartedAt),
+            };
         } catch (error) {
             if (currentViewRelationRepairTask === relationRepairTask) {
                 currentViewRelationRepairTask = null;

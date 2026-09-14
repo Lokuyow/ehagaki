@@ -648,6 +648,56 @@ describe("PostHistoryCurrentViewRefetchService", () => {
         });
     });
 
+    it("Relay fetch と successful primary persistence の時間を current-view result で分離する", async () => {
+        let resolveFetch!: (result: ReturnType<typeof createFetchResult>) => void;
+        const fetchPromise = new Promise<ReturnType<typeof createFetchResult>>((resolve) => {
+            resolveFetch = resolve;
+        });
+        let resolvePersist!: (summary: { insertedCount: number; updatedCount: number; unchangedCount: number }) => void;
+        const persistPromise = new Promise<{ insertedCount: number; updatedCount: number; unchangedCount: number }>((resolve) => {
+            resolvePersist = resolve;
+        });
+        let now = 0;
+        const upsertFetchedEvents = vi.fn().mockReturnValue(persistPromise);
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: {
+                fetchLatest: vi.fn().mockReturnValue({ promise: fetchPromise, cancel: vi.fn() }),
+            } as any,
+            postHistoryRepository: { upsertFetchedEvents } as any,
+            now: () => now,
+        });
+
+        const task = service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
+        });
+
+        now = 100;
+        resolveFetch(createFetchResult({
+            events: [{
+                event: {
+                    id: "d".repeat(64), pubkey: "a".repeat(64), kind: 1, content: "new", tags: [],
+                    created_at: 150, sig: "e".repeat(128),
+                },
+                relayUrls: ["wss://relay-a.example.com/"],
+            }],
+        }));
+        await vi.waitFor(() => expect(upsertFetchedEvents).toHaveBeenCalledTimes(1));
+
+        now = 130;
+        resolvePersist({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
+
+        await expect(task.promise).resolves.toMatchObject({
+            status: "success",
+            timing: {
+                primaryFetchDurationMs: 100,
+                primaryPersistDurationMs: 30,
+                primaryPersistAttemptCount: 1,
+            },
+        });
+    });
+
     it("repair coverage fields で EOSE 未完了を partial として集約する", async () => {
         const fetchLatest = vi.fn().mockReturnValue({
             promise: Promise.resolve(createFetchResult({
@@ -782,6 +832,11 @@ describe("PostHistoryCurrentViewRefetchService", () => {
             hadUnfinishedRanges: false,
             splitRetryCount: 0,
             processedRanges: [],
+            timing: {
+                primaryFetchDurationMs: 0,
+                primaryPersistDurationMs: 0,
+                primaryPersistAttemptCount: 0,
+            },
         });
     });
 });

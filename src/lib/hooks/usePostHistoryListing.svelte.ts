@@ -4125,6 +4125,10 @@ export function usePostHistoryListing({
         const initialVisibleRangeStateStartedAt = Date.now();
         try {
             previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+            reportPostHistoryManualRepairPhase({
+                phase: "visible-range-state",
+                startedAt: initialVisibleRangeStateStartedAt,
+            });
         } catch (error) {
             reportPostHistoryManualRepairPhase({
                 phase: "visible-range-state",
@@ -4172,6 +4176,7 @@ export function usePostHistoryListing({
             reportPostHistoryManualRepairPhase({
                 phase: "primary-fetch",
                 startedAt: primaryFetchStartedAt,
+                durationMs: result.timing?.primaryFetchDurationMs ?? 0,
                 counts: {
                     processedRangeCount: result.processedRangeCount,
                     rawCount: result.processedRanges.reduce(
@@ -4192,6 +4197,16 @@ export function usePostHistoryListing({
                     ),
                 },
             });
+            if ((result.timing?.primaryPersistAttemptCount ?? 0) > 0) {
+                reportPostHistoryManualRepairPhase({
+                    phase: "primary-persist",
+                    startedAt: primaryFetchStartedAt,
+                    durationMs: result.timing?.primaryPersistDurationMs ?? 0,
+                    counts: {
+                        persistedRangeCount: result.timing?.primaryPersistAttemptCount ?? 0,
+                    },
+                });
+            }
 
             if (!getShow() || result.status === "cancelled") {
                 currentViewRefetchTask = null;
@@ -4207,6 +4222,11 @@ export function usePostHistoryListing({
                     previousVisibleUntil,
                     result.processedRanges,
                 );
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-range-state",
+                    startedAt: visibleRangeStateStartedAt,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
             } catch (error) {
                 reportedFailurePhase = "visible-range-state";
                 reportPostHistoryManualRepairPhase({
@@ -4231,6 +4251,11 @@ export function usePostHistoryListing({
                 } else {
                     await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
                 }
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-window-reload",
+                    startedAt: visibleWindowReloadStartedAt,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
             } catch (error) {
                 reportedFailurePhase = "visible-window-reload";
                 reportPostHistoryManualRepairPhase({
@@ -4271,16 +4296,33 @@ export function usePostHistoryListing({
                 ) {
                     return;
                 }
-                if (childInteractionRepairResult.failurePhase) {
+                reportPostHistoryManualRepairPhase({
+                    phase: "relation-repair",
+                    startedAt: relationRepairStartedAt,
+                    durationMs: childInteractionRepairResult.relationRepairDurationMs
+                        ?? (childInteractionRepairResult.failurePhase === "relation-repair"
+                            ? childInteractionRepairResult.failureDurationMs
+                            : undefined),
+                    errorClass: childInteractionRepairResult.failurePhase === "relation-repair"
+                        ? childInteractionRepairResult.failureErrorClass
+                        : undefined,
+                    counts: {
+                        savedDirectReplyCount:
+                            childInteractionRepairResult.savedDirectReplyCount,
+                    },
+                });
+                if (
+                    typeof childInteractionRepairResult.badgeRefreshDurationMs === "number"
+                    || childInteractionRepairResult.failurePhase === "badge-refresh"
+                ) {
                     reportPostHistoryManualRepairPhase({
-                        phase: childInteractionRepairResult.failurePhase,
+                        phase: "badge-refresh",
                         startedAt: relationRepairStartedAt,
-                        durationMs: childInteractionRepairResult.failureDurationMs,
-                        errorClass: childInteractionRepairResult.failureErrorClass,
-                        counts: {
-                            savedDirectReplyCount:
-                                childInteractionRepairResult.savedDirectReplyCount,
-                        },
+                        durationMs: childInteractionRepairResult.badgeRefreshDurationMs
+                            ?? childInteractionRepairResult.failureDurationMs,
+                        errorClass: childInteractionRepairResult.failurePhase === "badge-refresh"
+                            ? childInteractionRepairResult.failureErrorClass
+                            : undefined,
                     });
                 }
             }
