@@ -728,6 +728,7 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             destinationRelayUrls,
                             eoseRelayUrls,
                             closedRelayUrls,
+                            perRelayRawCounts,
                         });
                     },
                 });
@@ -764,12 +765,6 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
                             packet.from,
                             destinationRelayUrls,
                         );
-                        if (relayUrl) {
-                            perRelayRawCounts.set(
-                                relayUrl,
-                                (perRelayRawCounts.get(relayUrl) ?? 0) + 1,
-                            );
-                        }
                         this.handleCandidatePacket(eventsById, packet, relayUrl);
                     },
                     complete: () => safeResolve("complete"),
@@ -865,12 +860,24 @@ export class PostHistoryVisibleRangeChildInteractionRepairService {
         destinationRelayUrls: string[];
         eoseRelayUrls: Set<string>;
         closedRelayUrls: Set<string>;
+        perRelayRawCounts: Map<string, number>;
     }): void {
         const relayUrl = this.sanitizeCandidateRelayUrl(
             params.packet.from,
             params.destinationRelayUrls,
         );
         if (!relayUrl) {
+            return;
+        }
+
+        if (
+            params.packet.type === "EVENT"
+            && params.packet.subId === params.targetSubId
+        ) {
+            params.perRelayRawCounts.set(
+                relayUrl,
+                (params.perRelayRawCounts.get(relayUrl) ?? 0) + 1,
+            );
             return;
         }
 

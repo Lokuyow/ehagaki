@@ -113,6 +113,17 @@ function createRxNostrHarness() {
         rxNostr,
         subscriptions,
         emitEvent: (packet: any) => [...eventObservers].forEach((observer) => observer.next?.(packet)),
+        emitRawEvent: (from: string, requestIndex = -1) => {
+            const event = createReply();
+            const subId = currentSubId(requestIndex);
+            [...messageObservers].forEach((observer) => observer.next?.({
+                type: "EVENT",
+                from,
+                subId,
+                event,
+                message: ["EVENT", subId, event],
+            }));
+        },
         complete: () => [...eventObservers].forEach((observer) => observer.complete?.()),
         fail: (error: unknown) => [...eventObservers].forEach((observer) => observer.error?.(error)),
         emitEose: (from: string, requestIndex = -1) => [...messageObservers].forEach((observer) => observer.next?.({
@@ -152,6 +163,17 @@ function emitDuplicateReplyEvents(
     const event = createReply();
     for (let index = 0; index < count; index += 1) {
         harness.emitEvent({ event, from });
+    }
+}
+
+function emitDuplicateRawEvents(
+    harness: ReturnType<typeof createRxNostrHarness>,
+    from: string,
+    count: number,
+    requestIndex = -1,
+) {
+    for (let index = 0; index < count; index += 1) {
+        harness.emitRawEvent(from, requestIndex);
     }
 }
 
@@ -537,8 +559,8 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
                 "wss://baseline-b.example.com": { read: true, write: false },
             },
         });
-        emitDuplicateReplyEvents(harness, "wss://baseline-a.example.com", 125);
-        emitDuplicateReplyEvents(harness, "wss://baseline-b.example.com", 125);
+        emitDuplicateRawEvents(harness, "wss://baseline-a.example.com", 125);
+        emitDuplicateRawEvents(harness, "wss://baseline-b.example.com", 125);
         harness.emitEose("wss://baseline-a.example.com");
         harness.emitEose("wss://baseline-b.example.com");
         harness.complete();
@@ -563,12 +585,12 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             visiblePosts: [post],
             relayConfig: { "wss://baseline.example.com": { read: true, write: false } },
         });
-        emitDuplicateReplyEvents(harness, "wss://baseline.example.com", 250);
+        emitDuplicateRawEvents(harness, "wss://baseline.example.com", 250);
         harness.emitEose("wss://baseline.example.com");
         harness.complete();
 
         await vi.waitFor(() => expect(harness.rxNostr.use).toHaveBeenCalledTimes(2));
-        emitDuplicateReplyEvents(harness, "wss://baseline.example.com", 250);
+        emitDuplicateRawEvents(harness, "wss://baseline.example.com", 250);
         harness.emitEose("wss://baseline.example.com");
         harness.complete();
 
@@ -576,6 +598,36 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             status: "partial",
             checkedParentEventIds: [],
             incompleteParentEventIds: [post.eventId],
+        });
+    });
+
+    it("raw EVENT が limit に達すれば verified stream が不足していても fallback する", async () => {
+        const harness = createRxNostrHarness();
+        const service = new PostHistoryVisibleRangeChildInteractionRepairService({
+            setTimeoutFn: (() => 1) as any,
+            clearTimeoutFn: vi.fn(),
+        });
+        const post = createPost("1".repeat(64));
+        const task = service.repairVisibleRangeChildInteractions(harness.rxNostr as any, {
+            ownerPubkeyHex: OWNER,
+            visiblePosts: [post],
+            relayConfig: { "wss://baseline.example.com": { read: true, write: false } },
+        });
+
+        emitDuplicateRawEvents(harness, "wss://baseline.example.com", 250);
+        emitDuplicateReplyEvents(harness, "wss://baseline.example.com", 249);
+        harness.emitEose("wss://baseline.example.com");
+        harness.complete();
+
+        await vi.waitFor(() => expect(harness.rxNostr.use).toHaveBeenCalledTimes(2));
+        harness.emitEose("wss://baseline.example.com", 1);
+        harness.complete();
+
+        await expect(task.promise).resolves.toMatchObject({
+            status: "success",
+            saturatedChunkCount: 1,
+            checkedParentEventIds: [post.eventId],
+            incompleteParentEventIds: [],
         });
     });
 
@@ -594,7 +646,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             relayConfig: { "wss://baseline.example.com": { read: true, write: false } },
         });
 
-        emitDuplicateReplyEvents(harness, "wss://baseline.example.com", 250);
+        emitDuplicateRawEvents(harness, "wss://baseline.example.com", 250);
         harness.complete();
 
         await vi.waitFor(() => expect(harness.rxNostr.use).toHaveBeenCalledTimes(3));
@@ -626,7 +678,7 @@ describe("PostHistoryVisibleRangeChildInteractionRepairService", () => {
             visiblePosts: [post],
             relayConfig: { "wss://baseline.example.com": { read: true, write: false } },
         });
-        emitDuplicateReplyEvents(harness, "wss://hint.example.com", 250);
+        emitDuplicateRawEvents(harness, "wss://hint.example.com", 250);
         harness.emitEose("wss://baseline.example.com");
         harness.complete();
 
