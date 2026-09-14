@@ -181,7 +181,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('[repair-partial-failure] 再取得が部分失敗なら failure 文言を表示する', async () => {
+    it('[repair-partial-no-changes] 再取得が内部 partial でも追加がなければ追加なしを表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-partial-page', content: '一覧の投稿' }),
@@ -250,12 +250,14 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             const activeDialog = screen.getAllByRole('dialog').at(-1);
-            expect(screen.getByText('一部未確認')).toBeTruthy();
+            expect(screen.getByText('追加なし')).toBeTruthy();
+            expect(screen.queryByText('一部未確認')).toBeNull();
             expect(activeDialog ? within(activeDialog).queryByText('リレーとの同期が完了しました') : null).toBeNull();
         });
     });
 
     it('[repair-preferred-range] 通常モードの repair は current page 由来 preferred range を渡して再読み込みする', async () => {
+        const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
         const pubkeyHex = 'a'.repeat(64);
         const pagePost = createRecord({
             eventId: 'page-1',
@@ -315,6 +317,11 @@ describe('PostHistoryDialog', () => {
                 }],
                 attemptedRangeCount: 1,
                 hadFailures: false,
+                timing: {
+                    primaryFetchDurationMs: 100,
+                    primaryPersistDurationMs: 30,
+                    primaryPersistAttemptCount: 1,
+                },
             }),
             cancel: vi.fn(),
         });
@@ -363,6 +370,21 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(repositoryMock.getPage.mock.calls.length).toBeGreaterThan(getPageCallCountBeforeRepair);
         });
+
+        await waitFor(() => {
+            const phases = debugSpy.mock.calls
+                .filter(([message]) => message === 'post_history_manual_repair_phase')
+                .map(([, telemetry]) => telemetry as Record<string, unknown>);
+            expect(phases).toEqual(expect.arrayContaining([
+                expect.objectContaining({ phase: 'primary-fetch', durationMs: 100 }),
+                expect.objectContaining({ phase: 'primary-persist', durationMs: 30 }),
+                expect.objectContaining({ phase: 'visible-range-state', durationMs: expect.any(Number) }),
+                expect.objectContaining({ phase: 'visible-window-reload', durationMs: expect.any(Number) }),
+                expect.objectContaining({ phase: 'relation-repair', durationMs: expect.any(Number) }),
+                expect.objectContaining({ phase: 'badge-refresh', durationMs: expect.any(Number) }),
+            ]));
+        });
+        debugSpy.mockRestore();
     });
 
     it('[repair-search-mode-disabled] 検索中は repair button を disabled にする', async () => {

@@ -167,7 +167,6 @@
     "repairAdded": "{count} added",
     "repairChildInteractionsAdded": "{count} child interactions repaired",
     "repairNoChanges": "No additions",
-    "repairPartialFailure": "Partly unchecked",
     "repairFetchFailed": "Fetch failed",
     "export": "Export JSONL",
     "exportLoading": "Loading JSONL data...",

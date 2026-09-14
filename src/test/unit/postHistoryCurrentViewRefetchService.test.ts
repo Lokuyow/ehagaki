@@ -313,7 +313,7 @@ describe("PostHistoryCurrentViewRefetchService", () => {
         }));
     });
 
-    it("一部リレーのタイムアウト相当でも有効な応答があれば fetchFailed にしない", async () => {
+    it("baseline coverage が timeout の場合は fetchFailed ではなく partial にする", async () => {
         const fetchLatest = vi.fn().mockReturnValue({
             promise: Promise.resolve(createFetchResult({
                 status: "timeout",
@@ -356,14 +356,14 @@ describe("PostHistoryCurrentViewRefetchService", () => {
         }).promise;
 
         expect(result).toEqual(expect.objectContaining({
-            status: "success",
+            status: "partial",
             hadTimeout: true,
             fetchFailed: false,
             hadUnfinishedRanges: false,
         }));
     });
 
-    it("local timeout + 0件だけでは fetchFailed にしない", async () => {
+    it("baseline timeout と 0件は 追加なし ではなく partial にする", async () => {
         const fetchLatest = vi.fn().mockReturnValue({
             promise: Promise.resolve(createFetchResult({
                 status: "timeout",
@@ -403,7 +403,7 @@ describe("PostHistoryCurrentViewRefetchService", () => {
         }).promise;
 
         expect(result).toEqual(expect.objectContaining({
-            status: "success",
+            status: "partial",
             hadTimeout: true,
             fetchFailed: false,
             hadUnfinishedRanges: false,
@@ -643,7 +643,162 @@ describe("PostHistoryCurrentViewRefetchService", () => {
                 until: 200,
                 limit: 250,
             }],
-        }).promise).rejects.toThrow("db failed");
+        }).promise).rejects.toMatchObject({
+            phase: "primary-persist",
+        });
+    });
+
+    it("Relay fetch と successful primary persistence の時間を current-view result で分離する", async () => {
+        let resolveFetch!: (result: ReturnType<typeof createFetchResult>) => void;
+        const fetchPromise = new Promise<ReturnType<typeof createFetchResult>>((resolve) => {
+            resolveFetch = resolve;
+        });
+        let resolvePersist!: (summary: { insertedCount: number; updatedCount: number; unchangedCount: number }) => void;
+        const persistPromise = new Promise<{ insertedCount: number; updatedCount: number; unchangedCount: number }>((resolve) => {
+            resolvePersist = resolve;
+        });
+        let now = 0;
+        const upsertFetchedEvents = vi.fn().mockReturnValue(persistPromise);
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: {
+                fetchLatest: vi.fn().mockReturnValue({ promise: fetchPromise, cancel: vi.fn() }),
+            } as any,
+            postHistoryRepository: { upsertFetchedEvents } as any,
+            now: () => now,
+        });
+
+        const task = service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
+        });
+
+        now = 100;
+        resolveFetch(createFetchResult({
+            events: [{
+                event: {
+                    id: "d".repeat(64), pubkey: "a".repeat(64), kind: 1, content: "new", tags: [],
+                    created_at: 150, sig: "e".repeat(128),
+                },
+                relayUrls: ["wss://relay-a.example.com/"],
+            }],
+        }));
+        await vi.waitFor(() => expect(upsertFetchedEvents).toHaveBeenCalledTimes(1));
+
+        now = 130;
+        resolvePersist({ insertedCount: 1, updatedCount: 0, unchangedCount: 0 });
+
+        await expect(task.promise).resolves.toMatchObject({
+            status: "success",
+            timing: {
+                primaryFetchDurationMs: 100,
+                primaryPersistDurationMs: 30,
+                primaryPersistAttemptCount: 1,
+            },
+        });
+    });
+
+    it("repair coverage fields で EOSE 未完了を partial として集約する", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                events: [],
+                coverageRelayUrls: ["wss://write.example.com/"],
+                coverageEoseRelayUrls: [],
+                coverageComplete: false,
+                coverageSaturated: false,
+                allCoverageRelaysFailed: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: { upsertFetchedEvents: vi.fn() } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "partial",
+            hadFailures: true,
+            fetchFailed: false,
+            processedRanges: [expect.objectContaining({
+                status: "partial",
+                coverageComplete: false,
+            })],
+        }));
+    });
+
+    it("best-effort EOSE があっても baseline 全明示失敗は fetchFailed にする", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                events: [],
+                requestedRelayUrls: ["wss://write.example.com/", "wss://read.example.com/"],
+                eoseRelayUrls: ["wss://read.example.com/"],
+                hasAnyRelayResponse: true,
+                coverageRelayUrls: ["wss://write.example.com/"],
+                coverageEoseRelayUrls: [],
+                bestEffortRelayUrls: ["wss://read.example.com/"],
+                coverageComplete: false,
+                coverageSaturated: false,
+                allCoverageRelaysFailed: true,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: { upsertFetchedEvents: vi.fn() } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 100, until: 200, limit: 250 }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "partial",
+            fetchFailed: true,
+            hadFailures: true,
+            processedRanges: [expect.objectContaining({
+                allCoverageRelaysFailed: true,
+                eoseRelayUrls: ["wss://read.example.com/"],
+            })],
+        }));
+    });
+
+    it("best-effort saturation alone does not split a complete coverage range", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                rawCount: 250,
+                coverageRelayUrls: ["wss://write.example.com/"],
+                bestEffortRelayUrls: ["wss://read.example.com/"],
+                coverageEoseRelayUrls: ["wss://write.example.com/"],
+                coverageComplete: true,
+                coverageSaturated: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: { upsertFetchedEvents: vi.fn() } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{ kinds: [1, 42], rangeUnit: "custom", since: 0, until: 10_000, limit: 250 }],
+        }).promise;
+
+        expect(fetchLatest).toHaveBeenCalledOnce();
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            limitReached: false,
+            processedRanges: [expect.objectContaining({ status: "complete" })],
+        }));
     });
 
     it("preferredRanges が空なら fetch せず no-op success を返す", async () => {
@@ -677,6 +832,11 @@ describe("PostHistoryCurrentViewRefetchService", () => {
             hadUnfinishedRanges: false,
             splitRetryCount: 0,
             processedRanges: [],
+            timing: {
+                primaryFetchDurationMs: 0,
+                primaryPersistDurationMs: 0,
+                primaryPersistAttemptCount: 0,
+            },
         });
     });
 });

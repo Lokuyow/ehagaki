@@ -249,11 +249,33 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         await expect(repair).resolves.toEqual({
             status: "success",
             savedDirectReplyCount: 1,
+            relationRepairDurationMs: 0,
+            badgeRefreshDurationMs: 0,
         });
         expect(onChildInteractionBadgeRefreshRequested).toHaveBeenCalledWith(
             currentPosts,
             ["parent"],
         );
+    });
+
+    it("converts an awaited manual badge refresh rejection to partial", async () => {
+        const task = createRepairTask(Promise.resolve(createRelationRepairResult({
+            savedParentEventIds: ["parent"],
+        })));
+        const {
+            coordinator,
+            onChildInteractionBadgeRefreshRequested,
+        } = createCoordinator({ repairTask: task });
+        onChildInteractionBadgeRefreshRequested.mockRejectedValueOnce(
+            new Error("badge refresh failed"),
+        );
+
+        await expect(coordinator.repairCurrentView(currentViewRequest())).resolves.toMatchObject({
+            status: "partial",
+            savedDirectReplyCount: 0,
+            failurePhase: "badge-refresh",
+            failureErrorClass: "Error",
+        });
     });
 
     it("uses the current loaded posts when a deletion lifecycle completion requests a badge refresh", async () => {
@@ -340,6 +362,8 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         await expect(repair).resolves.toEqual({
             status: "success",
             savedDirectReplyCount: 0,
+            relationRepairDurationMs: 0,
+            badgeRefreshDurationMs: 0,
         });
     });
 
@@ -436,12 +460,17 @@ describe("postHistoryVisibleRangeRelationRepairCoordinator", () => {
         expect(onChildInteractionBadgeRefreshRequested).toHaveBeenCalledTimes(1);
     });
 
-    it("continues to propagate manual current-view repair rejection", async () => {
+    it("converts manual relation repair rejection to partial", async () => {
         const rejection = new Error("manual relation repair failed");
         const task = createRepairTask(Promise.reject(rejection));
         const { coordinator } = createCoordinator({ repairTask: task });
 
         await expect(coordinator.repairCurrentView(currentViewRequest()))
-            .rejects.toBe(rejection);
+            .resolves.toMatchObject({
+                status: "partial",
+                savedDirectReplyCount: 0,
+                failurePhase: "relation-repair",
+                failureErrorClass: "Error",
+            });
     });
 });

@@ -48,6 +48,13 @@ export interface PostHistoryCurrentViewRefetchResult {
     hadUnfinishedRanges: boolean;
     splitRetryCount: number;
     processedRanges: PostHistoryCurrentViewProcessedRangeSummary[];
+    timing?: PostHistoryCurrentViewRefetchTimingSummary;
+}
+
+export interface PostHistoryCurrentViewRefetchTimingSummary {
+    primaryFetchDurationMs: number;
+    primaryPersistDurationMs: number;
+    primaryPersistAttemptCount: number;
 }
 
 export type PostHistoryCurrentViewProcessedRangeStatus =
@@ -74,6 +81,12 @@ export interface PostHistoryCurrentViewProcessedRangeSummary {
     completedByLocalTimeout: boolean;
     hasAnyRelayResponse: boolean;
     allRelaysFailed: boolean;
+    coverageRelayUrls?: string[];
+    coverageEoseRelayUrls?: string[];
+    bestEffortRelayUrls?: string[];
+    coverageComplete?: boolean;
+    coverageSaturated?: boolean;
+    allCoverageRelaysFailed?: boolean;
     status: PostHistoryCurrentViewProcessedRangeStatus;
     rawCount: number;
     uniqueCount: number;
@@ -86,6 +99,29 @@ export interface PostHistoryCurrentViewProcessedRangeSummary {
 export interface PostHistoryCurrentViewRefetchTask {
     promise: Promise<PostHistoryCurrentViewRefetchResult>;
     cancel: () => void;
+}
+
+export type PostHistoryCurrentViewRefetchFailurePhase =
+    | "primary-fetch"
+    | "primary-persist";
+
+export class PostHistoryCurrentViewRefetchFailure extends Error {
+    readonly phase: PostHistoryCurrentViewRefetchFailurePhase;
+    readonly phaseStartedAt: number;
+    readonly errorClass: string;
+
+    constructor(
+        phase: PostHistoryCurrentViewRefetchFailurePhase,
+        cause: unknown,
+        phaseStartedAt: number,
+    ) {
+        super(phase);
+        this.name = "PostHistoryCurrentViewRefetchFailure";
+        this.phase = phase;
+        this.phaseStartedAt = phaseStartedAt;
+        this.errorClass = cause instanceof Error ? cause.name : typeof cause;
+        this.cause = cause;
+    }
 }
 
 export interface PostHistoryCurrentViewRefetchRange {
@@ -106,6 +142,7 @@ export interface PostHistoryCurrentViewRefetchServiceDeps {
     setTimeoutFn?: typeof setTimeout;
     clearTimeoutFn?: typeof clearTimeout;
     console?: Pick<Console, "debug">;
+    now?: () => number;
 }
 
 function resolveProcessedRangeStatus(
@@ -118,6 +155,14 @@ function resolveProcessedRangeStatus(
         || result.status === "cancelled"
     ) {
         return result.status;
+    }
+
+    // These fields are emitted only by repair-visible-range. Do not change the
+    // established interpretation of shared fetch results used by other flows.
+    if (typeof result.coverageComplete === "boolean") {
+        return result.coverageComplete && !result.coverageSaturated
+            ? "complete"
+            : "partial";
     }
 
     if (result.hasMore) {
@@ -134,13 +179,17 @@ function resolveProcessedRangeStatus(
 function didCurrentViewRefetchFail(
     status: PostHistoryCurrentViewProcessedRangeStatus,
 ): boolean {
-    return status === "partial";
+    return status === "partial" || status === "timeout" || status === "error";
 }
 
 function didResultHitLimit(
     result: PostHistoryRelayFetchResult,
     limit: number,
 ): boolean {
+    if (typeof result.coverageSaturated === "boolean") {
+        return result.coverageSaturated;
+    }
+
     return result.hasMore || result.perRelayCounts.some((item) => item.rawCount >= limit);
 }
 
@@ -184,6 +233,7 @@ export class PostHistoryCurrentViewRefetchService {
     private setTimeoutFn: typeof setTimeout;
     private clearTimeoutFn: typeof clearTimeout;
     private console: Pick<Console, "debug">;
+    private now: () => number;
 
     constructor(deps: PostHistoryCurrentViewRefetchServiceDeps = {}) {
         this.postHistoryRelayFetchService = deps.postHistoryRelayFetchService ?? postHistoryRelayFetchService;
@@ -193,6 +243,7 @@ export class PostHistoryCurrentViewRefetchService {
         this.console = deps.console ?? (typeof globalThis.console !== "undefined"
             ? globalThis.console
             : { debug: () => undefined });
+        this.now = deps.now ?? Date.now;
     }
 
     private async waitBetweenFetches(
@@ -243,6 +294,9 @@ export class PostHistoryCurrentViewRefetchService {
             let hadUnfinishedRanges = false;
             let splitRetryCount = 0;
             let receivedEventCount = 0;
+            let primaryFetchDurationMs = 0;
+            let primaryPersistDurationMs = 0;
+            let primaryPersistAttemptCount = 0;
             let allAttemptedRangesClearlyFailed = true;
             const processedRanges: PostHistoryCurrentViewProcessedRangeSummary[] = [];
 
@@ -274,15 +328,31 @@ export class PostHistoryCurrentViewRefetchService {
                 });
                 currentFetchTask = fetchTask;
 
-                const result = await fetchTask.promise;
+                const primaryFetchStartedAt = this.now();
+                let result: PostHistoryRelayFetchResult;
+                try {
+                    result = await fetchTask.promise;
+                } catch (error) {
+                    const primaryFetchCompletedAt = this.now();
+                    primaryFetchDurationMs += Math.max(0, primaryFetchCompletedAt - primaryFetchStartedAt);
+                    throw new PostHistoryCurrentViewRefetchFailure(
+                        "primary-fetch",
+                        error,
+                        primaryFetchStartedAt,
+                    );
+                }
+                primaryFetchDurationMs += Math.max(0, this.now() - primaryFetchStartedAt);
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
                 hadFetchError = hadFetchError || result.status === "error";
                 hadTimeout = hadTimeout || result.status === "timeout";
+                const hasRepairCoverage = typeof result.coverageComplete === "boolean";
                 const rangeClearlyFailed = result.events.length === 0
-                    && !result.hasAnyRelayResponse
-                    && (result.allRelaysFailed || result.status === "error");
+                    && (hasRepairCoverage
+                        ? result.allCoverageRelaysFailed === true
+                        : !result.hasAnyRelayResponse
+                            && (result.allRelaysFailed || result.status === "error"));
                 allAttemptedRangesClearlyFailed = allAttemptedRangesClearlyFailed && rangeClearlyFailed;
 
                 let insertedCount = 0;
@@ -290,10 +360,23 @@ export class PostHistoryCurrentViewRefetchService {
                 let rangeUnchangedCount = 0;
 
                 if (result.events.length > 0) {
-                    const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
-                        events: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
+                    const primaryPersistStartedAt = this.now();
+                    primaryPersistAttemptCount += 1;
+                    let upsertSummary: Awaited<ReturnType<PostHistoryRepository["upsertFetchedEvents"]>>;
+                    try {
+                        upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
+                            events: result.events,
+                            fetchedAt: result.fetchedAt,
+                        });
+                    } catch (error) {
+                        primaryPersistDurationMs += Math.max(0, this.now() - primaryPersistStartedAt);
+                        throw new PostHistoryCurrentViewRefetchFailure(
+                            "primary-persist",
+                            error,
+                            primaryPersistStartedAt,
+                        );
+                    }
+                    primaryPersistDurationMs += Math.max(0, this.now() - primaryPersistStartedAt);
                     insertedCount = upsertSummary.insertedCount;
                     rangeUpdatedCount = upsertSummary.updatedCount;
                     rangeUnchangedCount = upsertSummary.unchangedCount;
@@ -338,6 +421,14 @@ export class PostHistoryCurrentViewRefetchService {
                     completedByLocalTimeout: result.completedByLocalTimeout,
                     hasAnyRelayResponse: result.hasAnyRelayResponse,
                     allRelaysFailed: result.allRelaysFailed,
+                    ...(typeof result.coverageComplete === "boolean" ? {
+                        coverageRelayUrls: [...(result.coverageRelayUrls ?? [])],
+                        coverageEoseRelayUrls: [...(result.coverageEoseRelayUrls ?? [])],
+                        bestEffortRelayUrls: [...(result.bestEffortRelayUrls ?? [])],
+                        coverageComplete: result.coverageComplete,
+                        coverageSaturated: result.coverageSaturated ?? false,
+                        allCoverageRelaysFailed: result.allCoverageRelaysFailed ?? false,
+                    } : {}),
                     status: processedStatus,
                     rawCount: result.rawCount,
                     uniqueCount: result.uniqueCount,
@@ -393,6 +484,11 @@ export class PostHistoryCurrentViewRefetchService {
                 hadUnfinishedRanges,
                 splitRetryCount,
                 processedRanges,
+                timing: {
+                    primaryFetchDurationMs,
+                    primaryPersistDurationMs,
+                    primaryPersistAttemptCount,
+                },
             };
 
             this.console.debug("post_history_current_view_refetch_summary", {

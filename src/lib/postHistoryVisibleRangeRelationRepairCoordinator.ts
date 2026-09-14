@@ -23,6 +23,11 @@ export const POST_HISTORY_OLDER_REVEAL_RELATION_REPAIR_FRESHNESS_TTL_MS =
 export interface PostHistoryRelationRepairSummary {
     status: PostHistoryVisibleRangeRelationRepairResult["status"];
     savedDirectReplyCount: number;
+    relationRepairDurationMs?: number;
+    failurePhase?: "relation-repair" | "badge-refresh";
+    failureDurationMs?: number;
+    failureErrorClass?: string;
+    badgeRefreshDurationMs?: number;
 }
 
 export interface PostHistoryCurrentViewRelationRepairRequest {
@@ -291,10 +296,12 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
             ...request,
             isActive,
         });
+        const relationRepairStartedAt = now();
         currentViewRelationRepairTask = relationRepairTask;
 
         try {
             const result = await relationRepairTask.promise;
+            const relationRepairDurationMs = Math.max(0, now() - relationRepairStartedAt);
             const active = isActive();
             if (
                 currentViewRelationRepairTask === relationRepairTask
@@ -306,19 +313,41 @@ export function createPostHistoryVisibleRangeRelationRepairCoordinator({
                 return toSummary(result, false);
             }
 
-            await dispatchRelationRepairRefreshSignal({
-                source: "listing-manual-refetch",
-                result,
-                quoteRefreshPosts: request.visiblePosts,
-                isActive,
-                awaitBadgeRefresh: true,
-            });
-            return toSummary(result, isActive());
+            const badgeRefreshStartedAt = now();
+            try {
+                await dispatchRelationRepairRefreshSignal({
+                    source: "listing-manual-refetch",
+                    result,
+                    quoteRefreshPosts: request.visiblePosts,
+                    isActive,
+                    awaitBadgeRefresh: true,
+                });
+            } catch (error) {
+                return {
+                    status: isActive() ? "partial" : "cancelled",
+                    savedDirectReplyCount: result.savedDirectReplyCount,
+                    relationRepairDurationMs,
+                    failurePhase: "badge-refresh",
+                    failureDurationMs: Math.max(0, now() - badgeRefreshStartedAt),
+                    failureErrorClass: error instanceof Error ? error.name : typeof error,
+                };
+            }
+            return {
+                ...toSummary(result, isActive()),
+                relationRepairDurationMs,
+                badgeRefreshDurationMs: Math.max(0, now() - badgeRefreshStartedAt),
+            };
         } catch (error) {
             if (currentViewRelationRepairTask === relationRepairTask) {
                 currentViewRelationRepairTask = null;
             }
-            throw error;
+            return {
+                status: isActive() ? "partial" : "cancelled",
+                savedDirectReplyCount: 0,
+                failurePhase: "relation-repair",
+                failureDurationMs: Math.max(0, now() - relationRepairStartedAt),
+                failureErrorClass: error instanceof Error ? error.name : typeof error,
+            };
         }
     }
 

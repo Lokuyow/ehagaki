@@ -167,7 +167,6 @@
     "repairAdded": "{count}件追加",
     "repairChildInteractionsAdded": "子インタラクションを{count}件補完",
     "repairNoChanges": "追加なし",
-    "repairPartialFailure": "一部未確認",
     "repairFetchFailed": "取得失敗",
     "export": "JSONLをエクスポート",
     "exportLoading": "JSONLを読み込み中...",

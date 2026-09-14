@@ -117,6 +117,53 @@ interface UsePostHistoryListingParams {
     searchDebounceMs?: number;
 }
 
+type PostHistoryManualRepairPhase =
+    | "visible-range-state"
+    | "primary-fetch"
+    | "primary-persist"
+    | "visible-window-reload"
+    | "relation-repair"
+    | "badge-refresh";
+
+export function createPostHistoryManualRepairPhaseTelemetry(params: {
+    phase: PostHistoryManualRepairPhase;
+    startedAt: number;
+    finishedAt?: number;
+    durationMs?: number;
+    error?: unknown;
+    errorClass?: string;
+    counts?: Record<string, number | boolean>;
+}): Record<string, string | number | boolean> {
+    const error = params.error;
+    const errorClass = params.errorClass ?? (error instanceof Error
+        ? error.name
+        : error === undefined
+            ? undefined
+            : typeof error);
+    // Deliberately exclude event/auth payloads. This is phase timing and relay
+    // summary telemetry for diagnosing manual repair only.
+    return {
+        phase: params.phase,
+        durationMs: params.durationMs ?? Math.max(
+            0,
+            (params.finishedAt ?? Date.now()) - params.startedAt,
+        ),
+        ...(errorClass ? { errorClass } : {}),
+        ...(params.counts ?? {}),
+    };
+}
+
+function reportPostHistoryManualRepairPhase(
+    params: Parameters<typeof createPostHistoryManualRepairPhaseTelemetry>[0],
+): void {
+    const telemetry = createPostHistoryManualRepairPhaseTelemetry(params);
+    if ("errorClass" in telemetry) {
+        console.warn("post_history_manual_repair_phase", telemetry);
+    } else {
+        console.debug("post_history_manual_repair_phase", telemetry);
+    }
+}
+
 interface PersistedPostHistoryListingSnapshot {
     loadedPosts: PostHistoryRecord[];
     searchPosts: PostHistoryRecord[];
@@ -943,7 +990,6 @@ export function usePostHistoryListing({
             "postHistory.repairNoChanges",
             "postHistory.repairAdded",
             "postHistory.repairChildInteractionsAdded",
-            "postHistory.repairPartialFailure",
             "postHistory.repairFetchFailed",
         ]);
 
@@ -4073,20 +4119,92 @@ export function usePostHistoryListing({
 
         clearCurrentViewRefetchFeedback();
         state.currentViewRefetchStatus = "refetching";
-        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
-            pubkeyHex,
-            relayConfig: getRelayConfig(),
-            preferredRanges,
-            onProgress: async () => undefined,
-        });
+        let reportedFailurePhase: PostHistoryManualRepairPhase | null = null;
+        let previousVisibleUntil: number | null;
+        const initialVisibleRangeStateStartedAt = Date.now();
+        try {
+            previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+            reportPostHistoryManualRepairPhase({
+                phase: "visible-range-state",
+                startedAt: initialVisibleRangeStateStartedAt,
+            });
+        } catch (error) {
+            reportPostHistoryManualRepairPhase({
+                phase: "visible-range-state",
+                startedAt: initialVisibleRangeStateStartedAt,
+                error,
+            });
+            state.currentViewRefetchStatus = "idle";
+            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageValues = null;
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
+            return;
+        }
+
+        let task: PostHistoryCurrentViewRefetchTask;
+        const primaryFetchStartedAt = Date.now();
+        try {
+            task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
+                pubkeyHex,
+                relayConfig: getRelayConfig(),
+                preferredRanges,
+                onProgress: async () => undefined,
+            });
+        } catch (error) {
+            reportPostHistoryManualRepairPhase({
+                phase: "primary-fetch",
+                startedAt: primaryFetchStartedAt,
+                error,
+            });
+            state.currentViewRefetchStatus = "idle";
+            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageValues = null;
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
+            return;
+        }
         currentViewRefetchTask = task;
         let primaryRefetchReloadCompleted = false;
+        let activePhaseStartedAt = primaryFetchStartedAt;
 
         try {
             const result = await task.promise;
             if (currentViewRefetchTask !== task) {
                 return;
+            }
+
+            reportPostHistoryManualRepairPhase({
+                phase: "primary-fetch",
+                startedAt: primaryFetchStartedAt,
+                durationMs: result.timing?.primaryFetchDurationMs ?? 0,
+                counts: {
+                    processedRangeCount: result.processedRangeCount,
+                    rawCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.rawCount ?? 0),
+                        0,
+                    ),
+                    uniqueCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.uniqueCount ?? 0),
+                        0,
+                    ),
+                    requestedRelayCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.requestedRelayUrls?.length ?? 0),
+                        0,
+                    ),
+                    eoseRelayCount: result.processedRanges.reduce(
+                        (count, range) => count + (range.eoseRelayUrls?.length ?? 0),
+                        0,
+                    ),
+                },
+            });
+            if ((result.timing?.primaryPersistAttemptCount ?? 0) > 0) {
+                reportPostHistoryManualRepairPhase({
+                    phase: "primary-persist",
+                    startedAt: primaryFetchStartedAt,
+                    durationMs: result.timing?.primaryPersistDurationMs ?? 0,
+                    counts: {
+                        persistedRangeCount: result.timing?.primaryPersistAttemptCount ?? 0,
+                    },
+                });
             }
 
             if (!getShow() || result.status === "cancelled") {
@@ -4095,21 +4213,57 @@ export function usePostHistoryListing({
                 return;
             }
 
-            await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
-                pubkeyHex,
-                previousVisibleUntil,
-                result.processedRanges,
-            );
-
-            if (state.searchQuery) {
-                await rebuildSearchResultsThroughPage(
-                    state.searchPage,
-                    state.searchQuery,
+            const visibleRangeStateStartedAt = Date.now();
+            activePhaseStartedAt = visibleRangeStateStartedAt;
+            try {
+                await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
+                    pubkeyHex,
+                    previousVisibleUntil,
+                    result.processedRanges,
                 );
-            } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
-                await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
-            } else {
-                await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-range-state",
+                    startedAt: visibleRangeStateStartedAt,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+            } catch (error) {
+                reportedFailurePhase = "visible-range-state";
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-range-state",
+                    startedAt: visibleRangeStateStartedAt,
+                    error,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+                throw error;
+            }
+
+            const visibleWindowReloadStartedAt = Date.now();
+            activePhaseStartedAt = visibleWindowReloadStartedAt;
+            try {
+                if (state.searchQuery) {
+                    await rebuildSearchResultsThroughPage(
+                        state.searchPage,
+                        state.searchQuery,
+                    );
+                } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
+                    await loadLatestVisiblePosts({ skipTotalCountRefresh: true });
+                } else {
+                    await reloadVisibleWindowFromCurrentNewest({ skipTotalCountRefresh: true });
+                }
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-window-reload",
+                    startedAt: visibleWindowReloadStartedAt,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+            } catch (error) {
+                reportedFailurePhase = "visible-window-reload";
+                reportPostHistoryManualRepairPhase({
+                    phase: "visible-window-reload",
+                    startedAt: visibleWindowReloadStartedAt,
+                    error,
+                    counts: { processedRangeCount: result.processedRangeCount },
+                });
+                throw error;
             }
             primaryRefetchReloadCompleted = true;
 
@@ -4121,6 +4275,8 @@ export function usePostHistoryListing({
                 && getRxNostr() === rxNostr
                 && state.loadedPosts.length > 0
             ) {
+                const relationRepairStartedAt = Date.now();
+                activePhaseStartedAt = relationRepairStartedAt;
                 childInteractionRepairResult =
                     await relationRepairCoordinator.repairCurrentView({
                         ownerPubkeyHex: pubkeyHex,
@@ -4138,6 +4294,35 @@ export function usePostHistoryListing({
                     || !getShow()
                 ) {
                     return;
+                }
+                reportPostHistoryManualRepairPhase({
+                    phase: "relation-repair",
+                    startedAt: relationRepairStartedAt,
+                    durationMs: childInteractionRepairResult.relationRepairDurationMs
+                        ?? (childInteractionRepairResult.failurePhase === "relation-repair"
+                            ? childInteractionRepairResult.failureDurationMs
+                            : undefined),
+                    errorClass: childInteractionRepairResult.failurePhase === "relation-repair"
+                        ? childInteractionRepairResult.failureErrorClass
+                        : undefined,
+                    counts: {
+                        savedDirectReplyCount:
+                            childInteractionRepairResult.savedDirectReplyCount,
+                    },
+                });
+                if (
+                    typeof childInteractionRepairResult.badgeRefreshDurationMs === "number"
+                    || childInteractionRepairResult.failurePhase === "badge-refresh"
+                ) {
+                    reportPostHistoryManualRepairPhase({
+                        phase: "badge-refresh",
+                        startedAt: relationRepairStartedAt,
+                        durationMs: childInteractionRepairResult.badgeRefreshDurationMs
+                            ?? childInteractionRepairResult.failureDurationMs,
+                        errorClass: childInteractionRepairResult.failurePhase === "badge-refresh"
+                            ? childInteractionRepairResult.failureErrorClass
+                            : undefined,
+                    });
                 }
             }
 
@@ -4172,12 +4357,6 @@ export function usePostHistoryListing({
             } else if (result.fetchFailed) {
                 state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
                 state.currentViewRefetchMessageValues = null;
-            } else if (
-                result.hadUnfinishedRanges
-                || childInteractionRepairResult?.status === "partial"
-            ) {
-                state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
-                state.currentViewRefetchMessageValues = null;
             } else {
                 state.currentViewRefetchMessageKey = "postHistory.repairNoChanges";
                 state.currentViewRefetchMessageValues = {
@@ -4187,9 +4366,35 @@ export function usePostHistoryListing({
             }
 
             scheduleCurrentViewRefetchMessageClearIfNeeded();
-        } catch {
+        } catch (error) {
             if (currentViewRefetchTask !== task) {
                 return;
+            }
+
+            const taggedPhase = typeof error === "object" && error !== null
+                ? (error as { phase?: unknown }).phase
+                : undefined;
+            const taggedPhaseStartedAt = typeof error === "object" && error !== null
+                && typeof (error as { phaseStartedAt?: unknown }).phaseStartedAt === "number"
+                ? (error as { phaseStartedAt: number }).phaseStartedAt
+                : activePhaseStartedAt;
+            const taggedErrorClass = typeof error === "object" && error !== null
+                && typeof (error as { errorClass?: unknown }).errorClass === "string"
+                ? (error as { errorClass: string }).errorClass
+                : undefined;
+            const phase = reportedFailurePhase ?? (taggedPhase === "primary-fetch"
+                || taggedPhase === "primary-persist"
+                ? taggedPhase
+                : primaryRefetchReloadCompleted
+                    ? "relation-repair"
+                    : "primary-fetch");
+            if (!reportedFailurePhase) {
+                reportPostHistoryManualRepairPhase({
+                    phase,
+                    startedAt: taggedPhaseStartedAt,
+                    error,
+                    errorClass: taggedErrorClass,
+                });
             }
 
             if (
@@ -4204,7 +4409,9 @@ export function usePostHistoryListing({
 
             currentViewRefetchTask = null;
             state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+            state.currentViewRefetchMessageKey = primaryRefetchReloadCompleted
+                ? "postHistory.repairNoChanges"
+                : "postHistory.repairFetchFailed";
             state.currentViewRefetchMessageValues = null;
             scheduleCurrentViewRefetchMessageClearIfNeeded();
         }

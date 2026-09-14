@@ -428,8 +428,6 @@
     let headingStatusError = $derived(
         history.syncStatus === "failed" ||
             history.currentViewRefetchStatusMessageKey ===
-                "postHistory.repairPartialFailure" ||
-            history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairFetchFailed",
     );
     let canUseReturnToLatest = $derived(

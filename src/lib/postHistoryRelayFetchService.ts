@@ -24,7 +24,9 @@ export const POST_HISTORY_REPAIR_FETCH_LIMIT = 250;
 export const POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS = 20_000;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS = 6_000;
 export const POST_HISTORY_OLDER_FETCH_TIMEOUT_MS = 25_000;
-export const POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS = 20_000;
+// rx-nostr allows 30 seconds for EOSE and AUTH. Manual repair must not cut
+// that protocol-level retry path short.
+export const POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS = 35_000;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS = 60_000;
 export const POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT = 4;
 export const POST_HISTORY_RELAY_FETCH_LIMIT = POST_HISTORY_OLDER_FETCH_LIMIT;
@@ -87,6 +89,13 @@ export interface PostHistoryRelayFetchResult {
     completedByLocalTimeout: boolean;
     hasAnyRelayResponse: boolean;
     allRelaysFailed: boolean;
+    /** Present only for repair-visible-range. Kept out of the shared status union. */
+    coverageRelayUrls?: string[];
+    coverageEoseRelayUrls?: string[];
+    bestEffortRelayUrls?: string[];
+    coverageComplete?: boolean;
+    coverageSaturated?: boolean;
+    allCoverageRelaysFailed?: boolean;
 }
 
 export interface PostHistoryRelayFetchTask {
@@ -115,6 +124,11 @@ type RelayPacketAccumulator = {
 
 type SubscriptionLike = {
     unsubscribe?: () => void;
+};
+
+type RepairRelayPlan = {
+    coverageRelayUrls: string[];
+    bestEffortRelayUrls: string[];
 };
 
 function toSortedRelayUrls(relayUrls: Set<string>): string[] {
@@ -202,6 +216,10 @@ export class PostHistoryRelayFetchService {
         rxNostr: RxNostr,
         params: PostHistoryRelayFetchRequest,
     ): PostHistoryRelayFetchTask {
+        if (params.reason === "repair-visible-range") {
+            return this.fetchRepairVisibleRange(rxNostr, params);
+        }
+
         const timeoutMs = resolveFetchTimeoutMs(params.reason, params.timeoutMs);
         const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
         const limit = resolveFetchLimit(params.reason, params.limit);
@@ -423,6 +441,367 @@ export class PostHistoryRelayFetchService {
         };
     }
 
+    private fetchRepairVisibleRange(
+        rxNostr: RxNostr,
+        params: PostHistoryRelayFetchRequest,
+    ): PostHistoryRelayFetchTask {
+        const timeoutMs = resolveFetchTimeoutMs(params.reason, params.timeoutMs);
+        const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
+        const limit = resolveFetchLimit(params.reason, params.limit);
+        const relayPlan = this.resolveRepairRelayPlan(params.relayConfig);
+        const destinationRelayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...relayPlan.coverageRelayUrls,
+            ...relayPlan.bestEffortRelayUrls,
+        ]);
+        const coverageRxReqId = buildRepairFetchRxReqId();
+        const coverageRxReq = createRxBackwardReq(coverageRxReqId);
+        const coverageSubId = `${coverageRxReqId}:0`;
+        const bestEffortRxReqId = relayPlan.bestEffortRelayUrls.length > 0
+            ? buildRepairFetchRxReqId()
+            : null;
+        const bestEffortRxReq = bestEffortRxReqId
+            ? createRxBackwardReq(bestEffortRxReqId)
+            : null;
+        const bestEffortSubId = bestEffortRxReqId ? `${bestEffortRxReqId}:0` : null;
+        const eventsById = new Map<string, EventAccumulator>();
+        const relayPackets = new Map<string, RelayPacketAccumulator>();
+        const eventRelayUrls = new Set<string>();
+        const eoseRelayUrls = new Set<string>();
+        const coverageEoseRelayUrls = new Set<string>();
+        const closedRelayUrls = new Set<string>();
+        const recoverableAuthClosedRelayUrls = new Set<string>();
+        const noticeRelayUrls = new Set<string>();
+        const errorRelayUrls = new Set<string>();
+        const downRelayUrls = new Set<string>();
+        let rawCount = 0;
+        let resolved = false;
+        let completedByRxNostr = false;
+        let completedByLocalTimeout = false;
+        let bestEffortStopped = false;
+        let coverageSubscription: SubscriptionLike | undefined;
+        let bestEffortSubscription: SubscriptionLike | undefined;
+        let messageSubscription: SubscriptionLike | undefined;
+        let errorSubscription: SubscriptionLike | undefined;
+        let connectionStateSubscription: SubscriptionLike | undefined;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let resolveTask: ((status: PostHistoryRelayFetchStatus) => void) | undefined;
+
+        const cleanup = () => {
+            if (timeoutId !== undefined) {
+                this.clearTimeoutFn(timeoutId);
+                timeoutId = undefined;
+            }
+
+            coverageSubscription?.unsubscribe?.();
+            coverageSubscription = undefined;
+            bestEffortSubscription?.unsubscribe?.();
+            bestEffortSubscription = undefined;
+            messageSubscription?.unsubscribe?.();
+            messageSubscription = undefined;
+            errorSubscription?.unsubscribe?.();
+            errorSubscription = undefined;
+            connectionStateSubscription?.unsubscribe?.();
+            connectionStateSubscription = undefined;
+        };
+
+        const isCoverageComplete = () => relayPlan.coverageRelayUrls.length > 0
+            && relayPlan.coverageRelayUrls.every((relayUrl) => coverageEoseRelayUrls.has(relayUrl));
+        const isCoverageSaturated = () => relayPlan.coverageRelayUrls.some((relayUrl) =>
+            (relayPackets.get(relayUrl)?.rawCount ?? 0) >= limit,
+        );
+        const stopBestEffort = () => {
+            if (bestEffortStopped) {
+                return;
+            }
+
+            bestEffortStopped = true;
+            bestEffortSubscription?.unsubscribe?.();
+            bestEffortSubscription = undefined;
+        };
+        const buildResult = (status: PostHistoryRelayFetchStatus): PostHistoryRelayFetchResult => {
+            const events = toResultEvents(eventsById);
+            const oldestCreatedAt = events.reduce<number | null>((oldest, item) => (
+                oldest === null || item.event.created_at < oldest
+                    ? item.event.created_at
+                    : oldest
+            ), null);
+            const newestCreatedAt = events.reduce<number | null>((newest, item) => (
+                newest === null || item.event.created_at > newest
+                    ? item.event.created_at
+                    : newest
+            ), null);
+            const perRelayCounts = Array.from(relayPackets.entries())
+                .map(([relayUrl, accumulator]) => ({
+                    relayUrl,
+                    rawCount: accumulator.rawCount,
+                    uniqueCount: accumulator.eventIds.size,
+                }))
+                .sort((left, right) => left.relayUrl.localeCompare(right.relayUrl));
+            const nextUntilCandidates = Array.from(relayPackets.values())
+                .map((accumulator) => accumulator.oldestCreatedAt)
+                .filter((createdAt): createdAt is number => typeof createdAt === "number");
+            const nextUntil = nextUntilCandidates.reduce<number | null>((cursor, createdAt) => (
+                cursor === null || createdAt > cursor ? createdAt : cursor
+            ), null);
+            const responseRelayUrls = new Set([
+                ...eventRelayUrls,
+                ...eoseRelayUrls,
+                ...noticeRelayUrls,
+            ]);
+            const failedRelayUrls = new Set([
+                ...Array.from(closedRelayUrls).filter((relayUrl) =>
+                    !recoverableAuthClosedRelayUrls.has(relayUrl),
+                ),
+                ...errorRelayUrls,
+                ...downRelayUrls,
+            ]);
+            const hasAnyRelayResponse = responseRelayUrls.size > 0;
+            const coverageHasValidResponse = relayPlan.coverageRelayUrls.some((relayUrl) =>
+                eventRelayUrls.has(relayUrl)
+                || coverageEoseRelayUrls.has(relayUrl)
+                || noticeRelayUrls.has(relayUrl),
+            );
+            const allCoverageRelaysFailed = relayPlan.coverageRelayUrls.length > 0
+                && !coverageHasValidResponse
+                && relayPlan.coverageRelayUrls.every((relayUrl) => failedRelayUrls.has(relayUrl));
+
+            return {
+                status,
+                events,
+                fetchedAt: this.now(),
+                nextUntil,
+                // For the repair caller, only baseline saturation drives splitting.
+                hasMore: isCoverageSaturated(),
+                relayUrls: destinationRelayUrls,
+                observedRelayUrls: perRelayCounts.map((item) => item.relayUrl),
+                rawCount,
+                uniqueCount: events.length,
+                duplicateCount: Math.max(0, rawCount - events.length),
+                perRelayCounts,
+                oldestCreatedAt,
+                newestCreatedAt,
+                requestedRelayUrls: destinationRelayUrls,
+                eventRelayUrls: toSortedRelayUrls(eventRelayUrls),
+                eoseRelayUrls: toSortedRelayUrls(eoseRelayUrls),
+                closedRelayUrls: toSortedRelayUrls(closedRelayUrls),
+                errorRelayUrls: toSortedRelayUrls(errorRelayUrls),
+                downRelayUrls: toSortedRelayUrls(downRelayUrls),
+                completedByRxNostr,
+                completedByLocalTimeout,
+                hasAnyRelayResponse,
+                allRelaysFailed: destinationRelayUrls.length > 0
+                    && !hasAnyRelayResponse
+                    && destinationRelayUrls.every((relayUrl) => failedRelayUrls.has(relayUrl)),
+                coverageRelayUrls: [...relayPlan.coverageRelayUrls],
+                coverageEoseRelayUrls: toSortedRelayUrls(coverageEoseRelayUrls),
+                bestEffortRelayUrls: [...relayPlan.bestEffortRelayUrls],
+                coverageComplete: isCoverageComplete(),
+                coverageSaturated: isCoverageSaturated(),
+                allCoverageRelaysFailed,
+            };
+        };
+
+        const promise = new Promise<PostHistoryRelayFetchResult>((resolve) => {
+            const safeResolve = (status: PostHistoryRelayFetchStatus) => {
+                if (resolved) {
+                    return;
+                }
+
+                resolved = true;
+                cleanup();
+                resolve(buildResult(status));
+            };
+            resolveTask = safeResolve;
+
+            const emitRequest = (request: ReturnType<typeof createRxBackwardReq>) => {
+                request.emit({
+                    authors: [params.pubkeyHex],
+                    kinds,
+                    limit,
+                    ...(typeof params.since === "number" ? { since: params.since } : {}),
+                    ...(typeof params.until === "number" ? { until: params.until } : {}),
+                });
+                request.over();
+            };
+
+            try {
+                messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({
+                    next: (packet: MessagePacket) => {
+                        const relayUrl = this.sanitizeRelayUrl(packet.from);
+                        if (!relayUrl || !destinationRelayUrls.includes(relayUrl)) {
+                            return;
+                        }
+
+                        const packetSubId = (packet as { subId?: string }).subId;
+                        const isCoveragePacket = packetSubId === coverageSubId
+                            && relayPlan.coverageRelayUrls.includes(relayUrl);
+                        const isBestEffortPacket = packetSubId === bestEffortSubId
+                            && relayPlan.bestEffortRelayUrls.includes(relayUrl);
+                        if (!isCoveragePacket && !isBestEffortPacket) {
+                            return;
+                        }
+                        if (isBestEffortPacket && bestEffortStopped) {
+                            return;
+                        }
+
+                        if (packet.type === "EVENT") {
+                            rawCount = this.handleRawEventPacket(relayPackets, relayUrl, rawCount);
+                            return;
+                        }
+
+                        if (packet.type === "EOSE") {
+                            eoseRelayUrls.add(relayUrl);
+                            if (isCoveragePacket) {
+                                coverageEoseRelayUrls.add(relayUrl);
+                                // EOSE establishes relay coverage but does not mean that
+                                // verification of the preceding EVENT packets has drained.
+                                if (isCoverageComplete()) {
+                                    stopBestEffort();
+                                }
+                            }
+                            return;
+                        }
+
+                        if (packet.type === "CLOSED") {
+                            closedRelayUrls.add(relayUrl);
+                            const notice = (packet as { notice?: unknown }).notice;
+                            if (typeof notice === "string" && notice.startsWith("auth-required:")) {
+                                recoverableAuthClosedRelayUrls.add(relayUrl);
+                            } else {
+                                recoverableAuthClosedRelayUrls.delete(relayUrl);
+                            }
+                            return;
+                        }
+
+                        if (packet.type === "NOTICE") {
+                            noticeRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+                errorSubscription = rxNostr.createAllErrorObservable?.().subscribe({
+                    next: (packet: ErrorPacket) => {
+                        const relayUrl = this.sanitizeRelayUrl(packet.from);
+                        if (relayUrl && destinationRelayUrls.includes(relayUrl)) {
+                            errorRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+                connectionStateSubscription = rxNostr.createConnectionStateObservable?.().subscribe({
+                    next: (packet: ConnectionStatePacket) => {
+                        const relayUrl = this.sanitizeRelayUrl(packet.from);
+                        if (
+                            relayUrl
+                            && destinationRelayUrls.includes(relayUrl)
+                            && (packet.state === "error" || packet.state === "rejected")
+                        ) {
+                            downRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+
+                coverageSubscription = relayPlan.coverageRelayUrls.length > 0
+                    ? usePostHistoryRelayEvents(rxNostr, coverageRxReq, {
+                        on: { relays: relayPlan.coverageRelayUrls },
+                    }).subscribe({
+                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                            this.handleVerifiedPacket(eventsById, relayPackets, eventRelayUrls, packet);
+                        },
+                        complete: () => {
+                            completedByRxNostr = true;
+                            safeResolve("success");
+                        },
+                        error: (error: unknown) => {
+                            this.console.error("post_history_fetch_error", error);
+                            safeResolve("error");
+                        },
+                    })
+                    : undefined;
+
+                // Test doubles (and an already-completed shared stream) can
+                // complete synchronously before subscribe returns.
+                if (resolved) {
+                    coverageSubscription?.unsubscribe?.();
+                    coverageSubscription = undefined;
+                    return;
+                }
+
+                if (bestEffortRxReq && bestEffortSubId && !bestEffortStopped) {
+                    bestEffortSubscription = usePostHistoryRelayEvents(rxNostr, bestEffortRxReq, {
+                        on: { relays: relayPlan.bestEffortRelayUrls },
+                    }).subscribe({
+                        next: (packet: { event?: NostrEvent; from?: string }) => {
+                            this.handleVerifiedPacket(eventsById, relayPackets, eventRelayUrls, packet);
+                        },
+                        // Best-effort completion must never finalize manual coverage.
+                        error: (error: unknown) => {
+                            this.console.debug("post_history_repair_best_effort_error", error);
+                        },
+                    });
+                }
+
+                if (relayPlan.coverageRelayUrls.length === 0) {
+                    completedByRxNostr = true;
+                    safeResolve("success");
+                    return;
+                }
+
+                emitRequest(coverageRxReq);
+                if (bestEffortRxReq && !bestEffortStopped) {
+                    emitRequest(bestEffortRxReq);
+                }
+
+                timeoutId = this.setTimeoutFn(() => {
+                    this.console.warn("post_history_fetch_timeout", params.pubkeyHex);
+                    completedByLocalTimeout = true;
+                    safeResolve("timeout");
+                }, timeoutMs);
+            } catch (error) {
+                this.console.error("post_history_fetch_request_error", error);
+                safeResolve("error");
+            }
+        });
+
+        return {
+            promise,
+            cancel: () => resolveTask?.("cancelled"),
+        };
+    }
+
+    private resolveRepairRelayPlan(relayConfig?: RelayConfig | null): RepairRelayPlan {
+        if (isHostRelayConfigActive()) {
+            return {
+                coverageRelayUrls: getHostReadRelayDefaults(),
+                bestEffortRelayUrls: [],
+            };
+        }
+
+        const writeRelayUrls = relayConfig
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                RelayConfigUtils.extractWriteRelays(relayConfig),
+            )
+            : [];
+        const readRelayUrls = relayConfig
+            ? RelayConfigUtils.sanitizeExternalRelayUrls(
+                RelayConfigUtils.extractReadRelays(relayConfig),
+            )
+            : [];
+        if (writeRelayUrls.length > 0) {
+            const coverageRelayUrlSet = new Set(writeRelayUrls);
+            return {
+                coverageRelayUrls: writeRelayUrls,
+                bestEffortRelayUrls: readRelayUrls.filter((relayUrl) => !coverageRelayUrlSet.has(relayUrl)),
+            };
+        }
+        if (readRelayUrls.length > 0) {
+            return { coverageRelayUrls: readRelayUrls, bestEffortRelayUrls: [] };
+        }
+
+        return {
+            coverageRelayUrls: RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS),
+            bestEffortRelayUrls: [],
+        };
+    }
+
     private resolveRelayUrls(
         relayConfig?: RelayConfig | null,
         reason?: PostHistoryFetchReason,
@@ -505,6 +884,71 @@ export class PostHistoryRelayFetchService {
         }
 
         return nextRawCount;
+    }
+
+    private handleRawEventPacket(
+        relayPackets: Map<string, RelayPacketAccumulator>,
+        relayUrl: string,
+        currentRawCount: number,
+    ): number {
+        const relayAccumulator = relayPackets.get(relayUrl) ?? {
+            rawCount: 0,
+            eventIds: new Set<string>(),
+            oldestCreatedAt: null,
+            newestCreatedAt: null,
+        };
+        relayAccumulator.rawCount += 1;
+        relayPackets.set(relayUrl, relayAccumulator);
+        return currentRawCount + 1;
+    }
+
+    private handleVerifiedPacket(
+        eventsById: Map<string, EventAccumulator>,
+        relayPackets: Map<string, RelayPacketAccumulator>,
+        eventRelayUrls: Set<string>,
+        packet: { event?: NostrEvent; from?: string },
+    ): void {
+        const event = packet.event;
+        if (!event?.id) {
+            return;
+        }
+
+        const relayUrl = this.sanitizeRelayUrl(packet.from);
+        if (relayUrl) {
+            eventRelayUrls.add(relayUrl);
+            const relayAccumulator = relayPackets.get(relayUrl) ?? {
+                rawCount: 0,
+                eventIds: new Set<string>(),
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            };
+            relayAccumulator.eventIds.add(event.id);
+            relayAccumulator.oldestCreatedAt = relayAccumulator.oldestCreatedAt === null
+                ? event.created_at
+                : Math.min(relayAccumulator.oldestCreatedAt, event.created_at);
+            relayAccumulator.newestCreatedAt = relayAccumulator.newestCreatedAt === null
+                ? event.created_at
+                : Math.max(relayAccumulator.newestCreatedAt, event.created_at);
+            relayPackets.set(relayUrl, relayAccumulator);
+        }
+
+        const existing = eventsById.get(event.id);
+        if (!existing) {
+            eventsById.set(event.id, {
+                event,
+                relayUrls: new Set(relayUrl ? [relayUrl] : []),
+            });
+            return;
+        }
+
+        if (!isSameSignedNostrEvent(existing.event, event)) {
+            this.console.warn("post_history_fetch_packet_conflict", event.id);
+            return;
+        }
+
+        if (relayUrl) {
+            existing.relayUrls.add(relayUrl);
+        }
     }
 
     private handleMessagePacket(params: {
