@@ -1,56 +1,39 @@
 ---
 name: ehagaki-embed-runtime
-description: "eHagaki の standalone・iframe・Web Component 間の runtime 境界と埋め込み契約を扱う。Custom Element API/lifecycle、Parent Client/postMessage/origin、auth・settings・composer context・storage delegation、asset/base path、Shadow DOM、embed sample/E2E を調査・設計・実装・レビューするときに使用する。通常の standalone UI 変更、純粋な NIP 変更、ブラウザ固有の IME/geometry 調査には使用しない。"
+description: "eHagaki の runtime ownership と iframe/Web Component の公開契約を調査・変更・レビューする。通常の standalone UI や browser 固有現象の計測だけは対象外。"
 ---
 
 # eHagaki Embed Runtime
 
-eHagaki の standalone、iframe、Direct Web Component の公開契約と runtime ownership を、現在の checkout を根拠に扱う。入口、公開 API、message producer/consumer、sample、テストの索引は [embed runtime map](references/embed-runtime-map.md) を読む。map と checkout が異なる場合は、現在のコードを優先する。
+## Runtime と ownership
 
-## 対象を切り分ける
+- 対象を standalone、iframe、Direct Web Component Full、Host-owned Lite から特定する。判定は `AppRuntimeEnvironment.runtimeKind`、iframe service、entrypoint の実装を使い、DOM/layout から推測しない。
+- standalone/iframe は `src/main.ts`、Full は `src/web-component/entry.ts`、Lite は `src/web-component/host-owned-entry.ts` が入口。共通 App と runtime adapter の責務を保ち、runtime 固有の修正を global workaround にしない。
+- iframe は別 document と `postMessage` を使う。auth、settings、composer context、storage、IndexedDB delegation は独立した service/contract であり、同じ transport だからと統合しない。
+- Web Component は host と同じ Window realm にあり、public method と composed DOM event を使う。host document と app-owned Shadow DOM を分ける。
+- Full は self-publish 専用。`configureHostOwned()` / `setCustomEmojis()` は Lite が所有する。Lite の submit/media handoff は Host の責務であり、auth/account/session、relay/NIP-46、event sign/send を Lite の graph に持ち込まない。
+- 値/副作用の app-owned、host-owned、delegated の境界を維持する。delegated state に local fallback や二重 source of truth を加えず、service worker、external input、history、local nsec auth、storage namespace の runtime 制御を他 runtime へ漏らさない。
 
-変更前に対象 runtime を確定する。`AppRuntimeEnvironment.runtimeKind`、各 iframe service の実際の iframe 判定、Web Component entrypoint を source of truth とし、DOM 形状や layout から推測しない。複数 runtime に影響する変更では、共通の App 側責務と runtime 固有の adapter/entrypoint を分けて caller・callee・テストまで追う。
+## Public contract と lifecycle
 
-- standalone / iframe の document entry は `src/main.ts` から始める。Direct Web Component は、まず Full distribution か Host-owned Lite distribution かを確定し、Full は `src/web-component/entry.ts`、Lite は `src/web-component/host-owned-entry.ts` を entrypoint として調査する。必要に応じて共通の element lifecycle と、distribution 固有の element/root まで追う。
-- iframe の Parent Client、settings、composer context、storage、IndexedDB delegation はそれぞれ独立した service を持つ。いずれも同じ `postMessage` を使うからといって、勝手に一つの transport や state に統合しない。
-- Web Component は host page と同じ Window realm で動き、`postMessage` の代わりに public method と composed DOM event を使う。Shadow DOM 内の app-owned DOM と host document の責務を混同しない。
+- 変更する API/message は現在の producer と consumer、型、対応する docs/sample/test を照合する。URL input、bootstrap、runtime message は別経路であり、同じ入力に見えても一部だけで契約を変えない。
+- iframe の namespace/version/envelope、`parentOrigin`、`event.origin` / `event.source`、schema、capability、request ID の validation を維持する。request の timeout と pending cleanup を保ち、検証失敗を fallback で迂回しない。
+- Web Component の ready/error、single-instance、reconnect 契約を保つ。connect/disconnect の generation、Svelte mount/unmount、listener/observer、operation queue、pending ready promise、instance slot は既存 owner で管理する。
+- 初期化中/parent auth 中の composer context は既存 controller の queue/flush 境界に従う。任意の timer で readiness を推測しない。
+- 未実装の attribute/event、`::part()`、複数 instance 対応を既存仕様とみなさない。互換性/versioning は現在の code/docs と明示要件から判断する。
 
-## public contract を先に確認する
+## Assets と表示境界
 
-内部実装より先に、現在提供している contract の producer と consumer を確認する。
+active runtime の `assetBase` と `resolveAppAssetUrl()` を使う。document の Vite base と Web Component bundle の `asset-base` は同一とは限らない。host origin の root-relative asset や host global CSS に依存させない。
 
-- iframe は `embedProtocol.ts` の namespace/version/envelope、message type、`requestId` 要否、payload validation を起点に、service・controller・`public/embed-parent-client-example.*`・関連 test を揃えて確認する。
-- 親との通信では `parentOrigin`、`event.origin`、`event.source`、envelope/schema、capability、request ID、timeout、pending request cleanup を確認する。embed の利便性を理由に既存 validation を省略しない。
-- Web Component は distribution ごとの tag、attribute/property、`whenReady()`、public method、event、ready/error、single-instance と reconnect 契約を確認する。Full は self-publish 専用で `configureHostOwned()` / `setCustomEmojis()` を公開せず、Lite が Host-owned API を所有する。共通実装と詳細なファイル索引は `references/embed-runtime-map.md` を起点に、現在の `types.ts`、element、distribution 固有 root、docs、sample/E2E と突き合わせる。実装にない attribute、event、`::part()` surface、複数 instance 対応を新しい仕様として足さない。
-- URL query、external input、settings bootstrap、runtime message は別の入力経路である。parser、bootstrap、controller、runtime service、sample の一部だけを変えない。
+Shadow DOM、`:host`、container、overlay target、公開済み CSS custom properties の境界を保つ。viewport と container の geometry、portal/focus の実測が必要なら [browser debug](../ehagaki-browser-debug/SKILL.md) を併用する。
 
-## ownership と lifecycle を守る
+## 必要な詳細への入口
 
-値または副作用ごとに app-owned、host-owned、delegated、shared contract のいずれかを実装から特定する。parent client に委譲する state に、根拠なく local fallback・二重 source of truth・standalone global state を追加しない。
+入口/owner/test が不明な場合、または変更する公開契約の詳細が必要な場合だけ [embed runtime map](references/embed-runtime-map.md) の関連節を読む。現在の checkout を優先し、map 全体を起動時に読まない。
 
-- Web Component では connect / ready / disconnect / remove / recreate、Svelte mount/unmount、listener/observer、queued operation、pending ready promise、single-instance slot を追う。iframe service では listener registration、request timeout、pending request、disconnect cleanup の owner を追う。
-- Host-owned Lite では、submit / media handoff は Host 側の責務であり、eHagaki 側は auth / account / session、relay / NIP-46、event sign / send を持たない。この責務境界を Lite の契約として確認し、Full の self-publish runtime に Host-owned API や Lite 専用の ownership を持ち込まない。
-- 初期化中または parent auth 中に保留する composer context は、既存 controller の queue/flush 境界を保つ。任意の timer や global workaround を追加しない。
-- runtime 固有の機能制御（service worker、external input、history、local nsec auth、storage namespace、layout/overlay/theme target）は `AppRuntimeEnvironment` と各 entrypoint で確認し、別 runtime へ漏らさない。
+- iframe: detection/protocol、auth delegation、settings/composer、storage のうち対象 message の節。
+- Web Component: public API、lifecycle、storage/auth/navigation のうち対象契約の節。Full/Lite の違いは public API 節で確認する。
+- asset/base/build/sample: asset/style と build/delivery の節。
 
-## asset と style の境界を守る
-
-asset URL は active runtime の `assetBase` と `resolveAppAssetUrl()` を起点に追う。Vite の document base path と Web Component bundle の `asset-base` は同じ値であるとは限らない。host origin の root-relative asset、host global CSS、または偶然の document layout に依存する変更をしない。
-
-Web Component の open Shadow DOM、CSS transform、`:host`、component container、overlay target、実在する `--ehagaki-*` custom properties を確認する。公開 `::part()` API は現在確認できないため、必要性が明示されない限り導入しない。container/viewport、focus、portal geometry、browser engine 差を実ブラウザで再現・計測する必要がある場合は [ehagaki-browser-debug](../ehagaki-browser-debug/SKILL.md) を併用する。
-
-## Nostr とブラウザ固有調査の境界
-
-親 signer への delegation、request/response transport、runtime ownership はこの skill が扱う。event kind、tag、relay、署名内容、NIP-07/NIP-46 の protocol semantics は [ehagaki-nostr](../ehagaki-nostr/SKILL.md) を主として併用する。
-
-iOS Safari 固有の focus、IME、VisualViewport、touch/scroll、browser engine の layout/geometry は `ehagaki-browser-debug` を併用する。本 skill はそれらの現象に関係する embed contract と owner を扱うが、browser 固有の再現・計測手順を重複して定義しない。
-
-## 最小の owner を変更し、検証する
-
-runtime 判定、transport、auth delegation、settings/storage、Custom Element、asset resolution、build/sample のうち問題がある最小 owner を変更する。iframe 固有の問題を `App.svelte` の global workaround にせず、共通責務の問題を runtime ごとの duplicate implementation で隠さない。互換性や versioning policy は、現在の code、docs、sample、test、明示された要件から判断し、記憶だけで決めない。
-
-- runtime boundary の変更は、map に挙がる直接の unit/integration test と、必要なら real iframe / Web Component を使う Playwright を選ぶ。asset base、bundle entry、Web Component dev/production sample、service worker、generated output に触れる場合は `npm run build` を実行する。
-- Svelte/Vite/Playwright 等の現在の API が判断に影響するときは、`package.json`、local type、project usage、必要なら Context7 の順に確認する。eHagaki 固有 contract は repository code を source of truth とする。
-- secret、nsec、private key、authentication payload、token、署名 payload を log、fixture、trace、screenshot、report に残さない。
-
-主要な runtime responsibility、public contract、entrypoint、ownership/security boundary、関連 test が変わる変更では、この skill と同じ変更で [embed runtime map](references/embed-runtime-map.md) も更新する。単なる内部リファクタリングだけで map 更新を要求しない。
+signer delegation の transport/owner は本 Skill、署名内容や NIP/event/tag/relay semantics は [Nostr](../ehagaki-nostr/SKILL.md)、受領後の document 適用は [editor](../ehagaki-editor/SKILL.md) が扱う。該当する境界を変更するときだけ併用する。

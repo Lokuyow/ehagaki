@@ -1,6 +1,8 @@
 # eHagaki embed runtime map
 
-この map は調査時点の checkout を索引化したものです。実装、公開 sample、または test が変わった場合は現在の code を優先し、主要 contract が変わる変更ではこの map も更新します。
+この map は調査時点の checkout を索引化したものです。記載と異なる場合は現在の code を優先します。
+
+必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
 
 ## Runtime environment と document entry
 
