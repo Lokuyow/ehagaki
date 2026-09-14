@@ -2,6 +2,8 @@
 
 この文書は現在のcheckoutをコードとテストから対応付けた調査用索引である。記載と現在のコードが異なる場合は、現在のコードを優先する。
 
+必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
+
 ## 使用中のNostr関連ライブラリ
 
 - `nostr-tools`: `^2.23.3`
@@ -52,7 +54,7 @@
 - 主な実装ファイル: 実装ファイルは確認できなかった。`README.md`の対応NIP一覧にのみ記載がある。
 - 主な関数または責務: 確認できなかった。
 - 関連テスト: kind 6/16またはrepostを対象にするテストは確認できなかった。
-- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsを`needs confirmation`として先に確定する。
+- 注意点: 実装済みと推測しない。変更要求では期待するkind、content、`e`/`p`/`a` semanticsをtaskと適用NIPから判断し、重要な未解決の選択だけAGENTS.mdの確認条件に従う。
 
 ## NIP-19識別子
 
@@ -242,5 +244,4 @@
 - 一回取得は主に`createRxBackwardReq`を使い、`emit`後に`over()`し、成功・EOSE・error・timeout・cancelで`unsubscribe()`する。
 - 継続購読は`src/lib/postHistoryAuthoredPostsRealtimeService.ts`と`src/lib/postHistoryInboundInteractionsRealtimeService.ts`で`createRxForwardReq`を使う。所有hookとvisibility/account lifecycleを確認する。
 - relay横断取得、retry、可視範囲repairは`src/lib/postHistoryRelayFetchService.ts`などpost history専用serviceへ分離されている。authored の`repair-visible-range`はwrite（無ければread、無ければfallback）baselineとread best-effortを別REQにし、baseline raw EOSE後にbest-effortだけを止め、coverage verified streamのdrain完了を待ってcoverage/saturationを`PostHistoryCurrentViewRefetchService`へ渡す。このrepair専用coverageはshared fetch statusや通常の履歴取得へ漏らさない。`postHistoryVisibleRangeChildInteractionRepairService`はdestination Relayとcoverage baselineを分け、candidate requestごとのEOSEとRelay別fetch limit到達でcheckedを判定する。いずれもNIP-42の`auth-required:` CLOSEDを再送後のEOSEを妨げる恒久failureとして扱わない。汎用化前に既存scopeを確認する。
-- application codeのNostr/TypeScript変更では対象unit/component testを先に実行し、原則`npm test`と`npm run check`まで広げる。実relayへ接続するテストは追加しない。
 - browser固有のcomposer targetとpost history表示は既存の`src/test/e2e/composerTargetDialog.spec.ts`、`src/test/e2e/postHistoryDialog.spec.ts`を使う。protocol-only変更のためだけにPlaywrightを追加しない。

@@ -2,6 +2,8 @@
 
 この map は調査時点の checkout を索引化したものである。実装が移動または変更されている場合は、現在の code、caller / callee、test を優先する。
 
+必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
+
 ## Entry point, lifecycle, and ownership
 
 - `src/components/PostComponent.svelte` が Svelte の composer owner である。`onMount` で `initializeEditor()` を呼び、`EditorContent` に store を渡す。editor store の subscription で `currentEditor`、`editorIsEmpty`、`currentEditorStore` を更新し、`transaction` listener で空状態を追跡する。Web Component の場合は同じ TipTap `Editor.isEmpty` の追跡結果を optional callback へ通知する。cleanup では listener を外して `cleanupEditor()` を呼ぶ。

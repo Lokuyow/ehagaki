@@ -2,6 +2,8 @@
 
 この索引は現在のcheckoutを調査するための入口を整理したものである。記載と現在のコードが異なる場合は、現在のコードを優先する。
 
+必要な owner/contract/test の節だけを参照する。全体の読了は前提ではない。
+
 ## 目次
 
 - [Viewportとkeyboard geometry](#viewportとkeyboard-geometry)
