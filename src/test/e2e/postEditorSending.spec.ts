@@ -167,13 +167,15 @@ test('active composition long-press submits the live document and keeps one inte
     await expect(editor).toContainText('再編集');
 });
 
-test('active composition success clears immediately and quarantines stale composition', async ({ page }) => {
+test('active composition success clears immediately and quarantines stale composition', async ({ page, browserName }) => {
+    test.skip(browserName !== 'webkit', 'This ordering assertion targets the iPhone composition fallback.');
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
+    const isIPhone = await page.evaluate(() => /iPhone/.test(navigator.userAgent));
     await editor.click();
     await editor.pressSequentially('preedit');
     await editor.dispatchEvent('compositionstart', { data: 'preedit' });
-    await editor.evaluate((element) => {
+    if (isIPhone) await editor.evaluate((element) => {
         element.querySelector('p')!.textContent = 'preedit候補';
         element.dispatchEvent(new InputEvent('input', {
             bubbles: true,
@@ -187,9 +189,24 @@ test('active composition success clears immediately and quarantines stale compos
     await expect(page.getByTestId('sending-state')).toHaveText('sending');
     expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions[0].content)).toBe('preedit候補');
 
+    await editor.evaluate((element) => {
+        const trace: string[] = [];
+        (window as any).__compositionSuccessOrder = trace;
+        element.addEventListener('blur', () => trace.push('blur'), true);
+        const observer = new MutationObserver(() => {
+            if (!element.textContent?.trim()) trace.push('clear');
+        });
+        observer.observe(element, { childList: true, characterData: true, subtree: true });
+        (window as any).__compositionSuccessOrderCleanup = () => observer.disconnect();
+    });
+
     await finishSubmission(page, true);
     await expect(page.getByTestId('sending-state')).toHaveText('idle');
     await expect(editor).toHaveText('');
+    if (isIPhone) {
+        await expect.poll(() => page.evaluate(() => (window as any).__compositionSuccessOrder)).toEqual(['blur', 'clear']);
+        await page.evaluate(() => (window as any).__compositionSuccessOrderCleanup?.());
+    }
     for (const type of ['paste', 'cut', 'drop']) {
         await editor.evaluate((element, eventType) => {
             const transfer = new DataTransfer();

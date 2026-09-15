@@ -33,7 +33,6 @@
     touchAction,
     keydownAction,
     fileDropActionWithDragState,
-    hasMediaInDoc,
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import type { CustomEmojiAttrs } from "../lib/editor";
@@ -104,7 +103,10 @@
     createHostOwnedUploadExecutor,
   } from "../lib/hostOwnedUpload";
   import { uploadHelper, showUploadErrorMessage } from "../lib/uploadHelper";
-  import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
+  import {
+    extractPostContentWithEmojiTags,
+    resolveLivePostEligibility,
+  } from "../lib/utils/editorDocumentUtils";
   import {
     contentWarningStore,
     contentWarningReasonStore,
@@ -455,7 +457,10 @@
       currentEditor?.view.composing && isIPhoneSafari(),
     );
     if (usesIPhoneCompositionFallback) {
-      currentEditor?.commands.blur();
+      // Tiptap's blur command defers the actual DOM blur to a rAF. The
+      // fallback must blur before clear/retire, so use the synchronous
+      // standard HTMLElement API.
+      currentEditor?.view.dom.blur();
     }
     clearContentAfterSuccess();
     if (usesIPhoneCompositionFallback) {
@@ -920,23 +925,13 @@
   function canStartSubmit(): boolean {
     return (
       canSendNormalPost() &&
-      hasLiveNormalPostContent() &&
+      resolveLivePostEligibility(
+        currentEditor,
+        mediaGalleryStore.hasNonPlaceholderItems(),
+      ) &&
       !editorState.isSubmitPending &&
       !showSecretKeyDialog
     );
-  }
-
-  function hasLivePostContent(editorInstance: TipTapEditor): boolean {
-    const payload = postManager?.preparePostPayload(editorInstance);
-    return Boolean(
-      payload?.content.trim() ||
-        hasMediaInDoc(editorInstance.state.doc) ||
-        mediaGalleryStore.hasNonPlaceholderItems(),
-    );
-  }
-
-  function hasLiveNormalPostContent(): boolean {
-    return currentEditor ? hasLivePostContent(currentEditor) : false;
   }
 
   function canSendNormalPost(): boolean {
@@ -952,14 +947,11 @@
   }
 
   function canStartHostOwnedSubmit(editorInstance: TipTapEditor): boolean {
-    const extraction = extractPostContentWithEmojiTags(editorInstance);
-    const hasLivePostableContent =
-      !!extraction.content.trim() ||
-      hasMediaInDoc(editorInstance.state.doc) ||
-      mediaGalleryStore.hasNonPlaceholderItems();
-
     return (
-      hasLivePostableContent &&
+      resolveLivePostEligibility(
+        editorInstance,
+        mediaGalleryStore.hasNonPlaceholderItems(),
+      ) &&
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
@@ -1097,7 +1089,6 @@
         !canSendNormalPost()
       ) return;
       const postPayload = postManager.preparePostPayload(editorInstance);
-      if (!postPayload.content.trim()) return;
       updateHashtagData(editorInstance.state.doc);
       if (containsSecretKey(postPayload.content)) {
         // Confirmation owns only the immutable snapshot. A submitted
