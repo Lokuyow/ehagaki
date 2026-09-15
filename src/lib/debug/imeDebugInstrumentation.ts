@@ -235,15 +235,15 @@ export function installImeDebugInstrumentation(options: ImeDebugOptions): (() =>
     });
     mutationObserver.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'aria-readonly', 'contenteditable'] });
 
-    const lifecycleRecorder: Recorder = (label, event, extra) => record(label, event, extra);
-    activeRecorders.add(lifecycleRecorder);
-    const harnessEventListener = (event: Event) => {
-        const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-        if (!detail || typeof detail.label !== 'string') return;
-        const { label, ...extra } = detail;
-        record(label, undefined, extra);
+    const lifecycleRecorder: Recorder = (label, event, extra) => {
+        const elapsedMs = lastTouchPointerDownAt === null
+            ? undefined
+            : Number((performance.now() - lastTouchPointerDownAt).toFixed(1));
+        record(label, event, label.startsWith('debug-auto-success-') && elapsedMs !== undefined
+            ? { ...extra, elapsedMs }
+            : extra);
     };
-    window.addEventListener('ehagaki-ime-debug-harness', harnessEventListener);
+    activeRecorders.add(lifecycleRecorder);
     record('instrumentation-enabled');
     copyButton.addEventListener('click', () => {
         void navigator.clipboard?.writeText(JSON.stringify(records, null, 2));
@@ -293,7 +293,6 @@ export function installImeDebugInstrumentation(options: ImeDebugOptions): (() =>
         buttonCleanup?.();
         editorCleanup.forEach((cleanup) => cleanup());
         documentCleanup.forEach((cleanup) => cleanup());
-        window.removeEventListener('ehagaki-ime-debug-harness', harnessEventListener);
         panel.removeEventListener('toggle', resizePanel);
         panel.remove();
     };

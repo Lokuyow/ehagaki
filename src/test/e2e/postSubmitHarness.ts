@@ -1,5 +1,6 @@
 import { PostManager } from '../../lib/postManager';
 import type { PostResult } from '../../lib/types';
+import { recordImeDebugLifecycle } from '../../lib/debug/imeDebugInstrumentation';
 
 /** Replace only the transport boundary, keeping extraction and status ownership real. */
 export function installPostSubmitHarness() {
@@ -9,7 +10,7 @@ export function installPostSubmitHarness() {
     const debugAutoSuccess = new URLSearchParams(window.location.search).get('ehagakiImeDebug') === '1';
     const recordDebugHarnessEvent = (label: string, extra?: Record<string, unknown>) => {
         if (!debugAutoSuccess) return;
-        window.dispatchEvent(new CustomEvent('ehagaki-ime-debug-harness', { detail: { label, ...extra } }));
+        recordImeDebugLifecycle(label, extra);
     };
     PostManager.prototype.submitPost = function (content, metadata, emojiTags) {
         submissions.push({ content, emojiTags: (emojiTags ?? []).map(tag => [...tag]), metadata });
