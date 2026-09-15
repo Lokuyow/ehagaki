@@ -105,16 +105,7 @@ export class SubmittedCompositionController {
         if (!this.phase) return 'default';
         const compositionId = transaction.getMeta('composition');
 
-        if (this.phase === 'stale') {
-            // Composition transactions remain owned by the submitted session.
-            // A document transaction without composition metadata is a fresh
-            // user intent; retire the quarantine at that boundary and allow it.
-            if (compositionId === undefined) {
-                this.retire();
-                return 'allow';
-            }
-            return 'reject';
-        }
+        if (this.phase === 'stale') return 'reject';
         if (compositionId === undefined || this.capturedGeneration !== this.generation) return 'reject';
 
         if (this.capturedId === undefined) {

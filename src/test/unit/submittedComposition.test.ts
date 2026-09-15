@@ -111,7 +111,6 @@ describe('submitted composition transaction ownership', () => {
         blocked.value = true;
         instance.view.dispatch(instance.state.tr.insertText(' sent').setMeta('composition', 1));
         controller.markStale();
-        blocked.value = false;
         instance.view.dom.dispatchEvent(new Event('compositionstart'));
         expect(controller.isReadOnly()).toBe(true);
 
@@ -121,8 +120,5 @@ describe('submitted composition transaction ownership', () => {
         instance.view.dispatch(instance.state.tr.insertText(' cleanup').setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true));
         expect(instance.state.doc.textContent).toContain(' cleanup');
         expect(controller.isReadOnly()).toBe(true);
-        instance.view.dispatch(instance.state.tr.insertText(' fresh'));
-        expect(instance.state.doc.textContent).toContain(' fresh');
-        expect(controller.isReadOnly()).toBe(false);
     });
 });

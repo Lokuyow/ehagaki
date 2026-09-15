@@ -383,23 +383,13 @@ test.describe('Android composition submit', () => {
         expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['にほん']);
         await finishSubmission(page, true);
         await expect(editor).toHaveText('');
-        await expect(page.getByRole('textbox')).not.toHaveAttribute('aria-readonly', 'true');
+        await expect(page.getByRole('textbox')).toHaveAttribute('aria-readonly', 'true');
         // Keep the submitted Android composition active and deliver a late
         // preedit update from that same old session. It must stay quarantined
         // after success clear in both PM state and the real editor DOM.
         await cdp.send('Input.imeSetComposition', { text: 'にほんご', selectionStart: 0, selectionEnd: 0 });
         await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.state.doc.textContent)).toBe('');
         await expect(editor).toHaveText('');
-
-        // A fresh user transaction must be accepted without waiting for the
-        // old composition's terminal event. This is distinct from the old
-        // candidate update above and proves post-success editor liveness.
-        await page.evaluate(() => {
-            const editor = (window as any).__currentEditor;
-            editor.view.dispatch(editor.state.tr.insertText('日本'));
-        });
-        await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.state.doc.textContent)).toBe('日本');
-        await expect(editor).toHaveText('日本');
 
         // End the old composition through the CDP IME boundary, rather than
         // using a synthetic compositionend as the stale-session assertion.
@@ -416,6 +406,7 @@ test.describe('Android composition submit', () => {
         await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
         await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
         await editor.dispatchEvent('compositionstart', { data: 'fresh' });
+        await cdp.send('Input.insertText', { text: '日本' });
         await expect(editor).toHaveText('日本');
         await expect(editor).toBeFocused();
         expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);
