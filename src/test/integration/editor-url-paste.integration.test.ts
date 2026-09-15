@@ -133,6 +133,7 @@ describe('エディター・URLペースト統合テスト', () => {
             ['plain URLとhrefが異なる', 'https://lokuyow.github.io/ehagaki/', '<a href="https://example.com/">eHagaki</a>'],
             ['複数anchor', 'https://lokuyow.github.io/ehagaki/', '<span><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><a href="https://example.com/">other</a></span>'],
             ['anchor外に実質的な内容がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><span>extra</span></div>'],
+            ['anchor外に非テキスト実質要素がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><img src="https://example.com/image.png"></div>'],
         ])('%s場合は単一URLへ潰さずdefault pasteへ委譲すること', (_case, text, html) => {
             expect(invokePasteHandler(editor, createClipboardData(text, html))).toBe(false);
             expect(editor.getText()).toBe('');

@@ -119,6 +119,22 @@ const NON_TEXTUAL_LINK_TAGS = new Set([
     'video',
 ]);
 
+const SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS = new Set([
+    'audio',
+    'button',
+    'canvas',
+    'embed',
+    'iframe',
+    'img',
+    'input',
+    'object',
+    'picture',
+    'select',
+    'svg',
+    'textarea',
+    'video',
+]);
+
 function parseHttpUrl(value: string): URL | null {
     try {
         const url = new URL(value);
@@ -165,6 +181,10 @@ function hasSubstantiveContentOutsideAnchor(node: Node, insideAnchor = false): b
     const tagName = element.tagName.toLowerCase();
     if (NON_CONTENT_HTML_TAGS.has(tagName)) {
         return false;
+    }
+
+    if (SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS.has(tagName)) {
+        return !insideAnchor;
     }
 
     const isAnchor = tagName === 'a';
