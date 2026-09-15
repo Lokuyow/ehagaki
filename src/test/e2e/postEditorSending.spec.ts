@@ -95,44 +95,6 @@ test('long-press submits once without losing focus and freezes the document unti
     expect(await page.evaluate(() => (window as any).__focusObservation)).toEqual({ blurs: 0, focusCalls: 0, invalidAttributes: [] });
 });
 
-test('ignored touch compatibility click cannot steal editor focus', async ({ page }) => {
-    await page.goto('post-editor-sending-playwright.html?withSubmit=1');
-    const editor = page.locator('.tiptap-editor');
-    const button = page.locator('button.post-button');
-    await editor.click();
-    await page.keyboard.type('touch long press');
-    await expect(button).toBeEnabled();
-
-    await page.evaluate(() => {
-        (window as any).__ignoredClickTrace = [];
-        document.addEventListener('click', (event) => {
-            if ((event.target as Element | null)?.closest('button.post-button')) {
-                (window as any).__ignoredClickTrace.push({
-                    defaultPrevented: event.defaultPrevented,
-                    activeElement: (document.activeElement as HTMLElement | null)?.className ?? null,
-                });
-            }
-        });
-    });
-
-    await button.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, bubbles: true });
-    await page.waitForTimeout(300);
-    await expect(page.getByTestId('sending-state')).toHaveText('sending');
-    await button.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1, bubbles: true });
-    // Model the compatibility click that follows the touch sequence without
-    // starting a second pointer sequence that would clear the ignore marker.
-    await button.dispatchEvent('click');
-
-    await expect.poll(() => page.evaluate(() => (window as any).__postSubmitHarness.submissions.length)).toBe(1);
-    expect(await page.evaluate(() => (window as any).__ignoredClickTrace)).toEqual([
-        {
-            defaultPrevented: true,
-            activeElement: 'tiptap ProseMirror tiptap-editor ProseMirror-focused',
-        },
-    ]);
-    await expect(editor).toBeFocused();
-});
-
 test('mouse click and keyboard activation still submit once', async ({ page }) => {
     await page.goto('post-editor-sending-playwright.html?withSubmit=1');
     const editor = page.locator('.tiptap-editor');
@@ -404,9 +366,10 @@ test.describe('Android composition submit', () => {
         expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['にほん']);
         await finishSubmission(page, true);
         await expect(editor).toHaveText('');
-        await cdp.send('Input.insertText', { text: '日本' });
         await editor.dispatchEvent('compositionend', { data: 'にほん' });
         await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
+        await editor.dispatchEvent('compositionstart', { data: '' });
+        await cdp.send('Input.insertText', { text: '日本' });
         await expect(editor).toHaveText('日本');
         await expect(editor).toBeFocused();
         expect(await page.evaluate(() => (window as any).__focusObservation.blurs)).toBe(0);

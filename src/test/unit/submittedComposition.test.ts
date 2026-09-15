@@ -46,15 +46,19 @@ describe('submitted composition transaction ownership', () => {
         expect(instance.state.doc.eq(afterBind)).toBe(true);
     });
 
-    it('tracks composition generation from the attached editor DOM', () => {
+    it('tracks composition generation and DOM activity from the attached editor', async () => {
         const controller = new SubmittedCompositionController();
         const instance = createEditor({ value: false }, controller);
 
         instance.view.dom.dispatchEvent(new Event('compositionstart', { bubbles: true }));
-        expect(controller.getDebugState()).toMatchObject({ generation: 1, domCompositionActive: true });
+        expect(controller.getCurrentGeneration()).toBe(1);
+        controller.startSession(editorInputGuardKey.getState(instance.state)!);
+        controller.markStale();
+        expect(controller.isReadOnly()).toBe(true);
 
         instance.view.dom.dispatchEvent(new Event('compositionend', { bubbles: true }));
-        expect(controller.getDebugState()).toMatchObject({ generation: 1, domCompositionActive: false });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        expect(controller.isReadOnly()).toBe(false);
     });
 
     it('uses the plugin state binding for later transactions in the same transaction chain', () => {

@@ -73,15 +73,11 @@
   } from "../lib/editor/editorLifecycle";
   import { editorInputGuardKey } from "../lib/editor/editorInputGuard";
   import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
-  import {
-    installImeDebugInstrumentation,
-    isImeDebugEnabled,
-    recordImeDebugLifecycle,
-  } from "../lib/debug/imeDebugInstrumentation";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
+  import { isIPhoneSafari } from "../lib/utils/viewportLayout";
   import {
     profileDataStore,
     isLoadingProfileStore,
@@ -192,7 +188,6 @@
   let editorContainerEl: HTMLElement | null = null;
   let editorResources: InitializeEditorResult | null = null;
   let editorSubscriptionUnsubscribe: (() => void) | null = null;
-  let imeDebugCleanup: (() => void) | null = null;
   let editorTargetHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let editorAutoGrow = $derived(
     isHostOwned &&
@@ -453,64 +448,21 @@
   });
 
   function clearContentAfterSubmissionSuccess(): void {
-    const finishSuccessClear = () => {
-      recordImeDebugLifecycle("success-clear-before");
-      clearContentAfterSuccess();
-      recordImeDebugLifecycle("success-clear-after");
-      recordImeDebugLifecycle("mark-stale-before");
-      submittedCompositionController?.markStale();
-      recordImeDebugLifecycle("mark-stale-after");
-    };
-
-    // Temporary WebKit feasibility experiment. Keep the document intact and
-    // move the selection through the public Tiptap command API first; only a
-    // native compositionend permits the normal success clear in debug mode.
-    const activeEditor = currentEditor;
-    if (isImeDebugEnabled() && activeEditor?.view.composing) {
-      const editorElement = activeEditor.view.dom;
-      let completed = false;
-      const handleCompositionEnd = () => {
-        if (completed) return;
-        completed = true;
-        editorElement.removeEventListener("compositionend", handleCompositionEnd, true);
-        recordImeDebugLifecycle("dom-selection-experiment-compositionend");
-        finishSuccessClear();
-      };
-      editorElement.addEventListener("compositionend", handleCompositionEnd, true);
-      const currentPosition = activeEditor.state.selection.from;
-      const maxPosition = Math.max(1, activeEditor.state.doc.content.size - 1);
-      const targetPosition = currentPosition === 1 ? Math.min(maxPosition, 2) : 1;
-      const nativeSelection = editorElement.ownerDocument.getSelection();
-      recordImeDebugLifecycle("dom-selection-experiment-before", {
-        from: currentPosition,
-        to: targetPosition,
-        anchorOffset: nativeSelection?.anchorOffset ?? null,
-        focusOffset: nativeSelection?.focusOffset ?? null,
-      });
-      try {
-        const domPosition = activeEditor.view.domAtPos(targetPosition);
-        const range = editorElement.ownerDocument.createRange();
-        range.setStart(domPosition.node, domPosition.offset);
-        range.collapse(true);
-        nativeSelection?.removeAllRanges();
-        nativeSelection?.addRange(range);
-        recordImeDebugLifecycle("dom-selection-experiment-after", {
-          changed: Boolean(nativeSelection?.rangeCount),
-          anchorOffset: nativeSelection?.anchorOffset ?? null,
-          focusOffset: nativeSelection?.focusOffset ?? null,
-          anchorNodeMatched: nativeSelection?.anchorNode === domPosition.node,
-          focusNodeMatched: nativeSelection?.focusNode === domPosition.node,
-        });
-      } catch (error) {
-        editorElement.removeEventListener("compositionend", handleCompositionEnd, true);
-        recordImeDebugLifecycle("dom-selection-experiment-thrown", {
-          errorType: error instanceof Error ? error.name : typeof error,
-        });
-      }
-      return;
+    // WebKit can leave the native composition active after the document is
+    // changed. Blur the active iPhone editor through the public Tiptap API
+    // before clearing so the next tap can start a fresh editing session.
+    const usesIPhoneCompositionFallback = Boolean(
+      currentEditor?.view.composing && isIPhoneSafari(),
+    );
+    if (usesIPhoneCompositionFallback) {
+      currentEditor?.commands.blur();
     }
-
-    finishSuccessClear();
+    clearContentAfterSuccess();
+    if (usesIPhoneCompositionFallback) {
+      submittedCompositionController?.retire();
+    } else {
+      submittedCompositionController?.markStale();
+    }
   }
 
   const postStatusHandlers = createPostStatusHandlers({
@@ -671,8 +623,7 @@
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
         // Editor subscriptions may re-notify for transactions on the same
-        // instance. Keep one debug recorder for that editor lifecycle so a
-        // trace is not discarded mid-gesture.
+        // instance; keep listener ownership tied to instance identity.
         if (editorInstance !== null && editorInstance === subscribedEditor) {
           currentEditor = editorInstance;
           if (editorInstance) {
@@ -686,26 +637,12 @@
           subscribedEditor.off("transaction", handleEditorTransaction);
         }
 
-        imeDebugCleanup?.();
-        imeDebugCleanup = null;
-
         subscribedEditor = editorInstance;
         currentEditor = editorInstance;
         if (editorInstance) {
           submittedCompositionController?.attach(editorInstance);
           syncEditorEmptyState(editorInstance);
           syncLivePostEligibility(editorInstance);
-          imeDebugCleanup = submittedCompositionController
-            ? installImeDebugInstrumentation({
-                editor: editorInstance,
-                controller: submittedCompositionController,
-                getPostStatus: () => editorState.postStatus,
-                getSubmitPending: () => editorState.isSubmitPending,
-                getIsUploading: () => editorState.isUploading,
-                getGalleryCount: () => mediaGalleryStore.items.length,
-                getSubmittedReadOnly: () => submittedCompositionReadOnly,
-              })
-            : null;
         } else {
           submittedCompositionController?.detach();
           updateEditorPostEligibility(null, false);
@@ -732,8 +669,6 @@
     );
 
     return () => {
-      imeDebugCleanup?.();
-      imeDebugCleanup = null;
       submittedCompositionController?.destroy();
       submittedCompositionController = null;
       submittedCompositionReadOnly = false;

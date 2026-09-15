@@ -28,8 +28,7 @@ export const EditorInputGuard = Extension.create<{
                 apply: (transaction: Transaction, value: CompositionObserverState) => {
                     const compositionId = transaction.getMeta('composition');
                     if (compositionId === undefined || !controller) return value;
-                    const idsByGeneration = new Map(value.idsByGeneration);
-                    idsByGeneration.set(controller.getCurrentGeneration(), compositionId);
+                    const idsByGeneration = new Map([[controller.getCurrentGeneration(), compositionId]]);
                     return { idsByGeneration };
                 },
             },

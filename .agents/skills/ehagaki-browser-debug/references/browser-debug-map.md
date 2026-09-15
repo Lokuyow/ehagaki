@@ -183,7 +183,7 @@
 - **主な関数、store、hook、controller:** `isNonPwaIPhoneSafari()`、`isNonPwaAndroidChrome()`、`isIosTouchDevice()`、`isTouchDevice()`、`AndroidCompositionFix`、runtime `typeof`/capability checks。
 - **Event source:** `navigator.userAgent/platform/maxTouchPoints`、`matchMedia('(display-mode: standalone)')`、`navigator.standalone`、`globalThis.isSecureContext`、API presence。
 - **StateまたはCSS変数:** browser/PWA classification result、VirtualKeyboard capability、touch capability、WebCodecs fallback choice。
-- **Cleanup所有者:** submitted composition の session/DOM listener/rAF は `SubmittedCompositionController` が所有する。Android composition listener/keepalive interval は引き続き `AndroidCompositionFix` の `onDestroy()` が所有し、controller は private state を変更しない。
+- **Cleanup所有者:** submitted composition の session/DOM listener/rAF は `SubmittedCompositionController` が所有する。Android composition listener/keepalive interval は引き続き `AndroidCompositionFix` の `onDestroy()` が所有し、controller は private state を変更しない。iPhone Safariでsuccess時にnative compositionが残る場合は公開blur後にclearしてsessionをretireし、次のtapで編集へ復帰させる。
 - **関連テスト:** `src/test/unit/viewportLayout.test.ts`、`src/test/unit/keyboardFocusUtils.test.ts`、`src/test/unit/appDomUtils.test.ts`、`src/test/unit/uiStore.test.ts`、`src/test/unit/postMediaCacheService.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** UA overrideだけで再現できないAPI availability、secure context、PWA display mode、WebView、vendor UIは実環境が必要。
 - **注意点:** UAを追加する前にfeature detectionで足りるか確認する。Playwright device descriptorのUAはOS機能まで提供しない。

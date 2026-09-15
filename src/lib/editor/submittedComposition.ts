@@ -1,5 +1,4 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
-import { recordImeDebugLifecycle } from '../debug/imeDebugInstrumentation';
 
 export type SubmittedCompositionPhase = 'continuing' | 'stale' | 'disposed';
 
@@ -44,13 +43,14 @@ export class SubmittedCompositionController {
         if (this.frame !== undefined) ownerWindow.cancelAnimationFrame(this.frame);
         this.frame = ownerWindow.requestAnimationFrame(() => {
             this.frame = undefined;
-            if (this.phase === 'stale' && !this.domCompositionActive && !this.editor?.view.composing) {
+            if (this.phase === 'stale' && !this.domCompositionActive) {
                 this.retire();
             }
         });
     }
 
     attach(editor: TipTapEditor): void {
+        if (this.editor && this.editor !== editor) this.retire();
         this.cleanupListeners?.();
         this.editor = editor;
         const element = editor.view?.dom;
@@ -85,6 +85,7 @@ export class SubmittedCompositionController {
     }
 
     detach(): void {
+        this.retire();
         this.cleanupListeners?.();
         this.cleanupListeners = undefined;
         this.editor = null;
@@ -92,23 +93,6 @@ export class SubmittedCompositionController {
 
     getCurrentGeneration(): number {
         return this.generation;
-    }
-
-    /** Temporary browser-debug snapshot; removed with the instrumentation. */
-    getDebugState(): {
-        phase: SubmittedCompositionPhase | null;
-        generation: number;
-        domCompositionActive: boolean;
-        capturedGeneration: number | null;
-        capturedId: unknown;
-    } {
-        return {
-            phase: this.phase,
-            generation: this.generation,
-            domCompositionActive: this.domCompositionActive,
-            capturedGeneration: this.capturedGeneration ?? null,
-            capturedId: this.capturedId,
-        };
     }
 
     startSession(observerState: CompositionObserverState): void {
@@ -142,25 +126,9 @@ export class SubmittedCompositionController {
     }
 
     markStale(): void {
-        recordImeDebugLifecycle('mark-stale-entry', { phase: this.phase });
-        if (this.phase !== 'continuing') {
-            recordImeDebugLifecycle('mark-stale-return', { phase: this.phase });
-            return;
-        }
-        try {
-            recordImeDebugLifecycle('mark-stale-set-phase-before', { phase: this.phase });
-            this.setPhase('stale');
-            recordImeDebugLifecycle('mark-stale-set-phase-after', { phase: this.phase });
-            const shouldRetire = !this.domCompositionActive && !this.editor?.view.composing;
-            recordImeDebugLifecycle('mark-stale-schedule-retire-check', { shouldRetire });
-            if (shouldRetire) this.scheduleRetire();
-            recordImeDebugLifecycle('mark-stale-return', { phase: this.phase });
-        } catch (error) {
-            recordImeDebugLifecycle('mark-stale-thrown', {
-                errorType: error instanceof Error ? error.name : typeof error,
-            });
-            throw error;
-        }
+        if (this.phase !== 'continuing') return;
+        this.setPhase('stale');
+        if (!this.domCompositionActive) this.scheduleRetire();
     }
 
     markFailure(): void {

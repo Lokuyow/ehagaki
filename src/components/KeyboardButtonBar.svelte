@@ -225,6 +225,12 @@
         }, CANCEL_REVERSE_DELAY);
     }
 
+    function preventCompletedTouchReleaseDefault(event: Event): void {
+        if (!longPressCompleted) return;
+        if (event instanceof PointerEvent && event.pointerType !== "touch") return;
+        event.preventDefault();
+    }
+
     function setCustomEmojiPickerOpen(open: boolean): void {
         onCustomEmojiPickerOpenChange?.(open);
     }
@@ -357,13 +363,6 @@
 
                                     if (ignoreNextPostClick) {
                                         ignoreNextPostClick = false;
-                                        // A touch long-press may still produce a
-                                        // compatibility click after the submit
-                                        // has started. The click is intentionally
-                                        // ignored; suppress its default action
-                                        // too so iOS cannot move focus to the
-                                        // button after the editor submission.
-                                        e.preventDefault();
                                         return;
                                     }
 
@@ -378,6 +377,8 @@
                                         tooltipPointerDown(e);
                                     startLongPress(e);
                                 }}
+                                onpointerupcapture={preventCompletedTouchReleaseDefault}
+                                ontouchendcapture={preventCompletedTouchReleaseDefault}
                                 onpointerup={(e) => {
                                     if (typeof tooltipPointerUp === "function")
                                         tooltipPointerUp(e);
