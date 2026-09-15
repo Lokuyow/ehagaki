@@ -383,9 +383,29 @@ test.describe('Android composition submit', () => {
         expect(await page.evaluate(() => (window as any).__postSubmitHarness.submissions.map((p: any) => p.content))).toEqual(['にほん']);
         await finishSubmission(page, true);
         await expect(editor).toHaveText('');
-        await editor.dispatchEvent('compositionend', { data: 'にほん' });
+        await expect(page.getByRole('textbox')).toHaveAttribute('aria-readonly', 'true');
+        // Keep the submitted Android composition active and deliver a late
+        // preedit update from that same old session. It must stay quarantined
+        // after success clear in both PM state and the real editor DOM.
+        await cdp.send('Input.imeSetComposition', { text: 'にほんご', selectionStart: 0, selectionEnd: 0 });
+        await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.state.doc.textContent)).toBe('');
+        await expect(editor).toHaveText('');
+
+        // End the old composition through the CDP IME boundary, rather than
+        // using a synthetic compositionend as the stale-session assertion.
+        await cdp.send('Input.imeSetComposition', {
+            text: '', selectionStart: 0, selectionEnd: 0, replacementStart: 0, replacementEnd: 0,
+        });
+        // Headless Chromium may leave AndroidCompositionFix's keepalive set
+        // even after the CDP cancel. The stale assertions above are already
+        // complete; use the harness boundary only to finish cleanup in that
+        // implementation-specific case.
+        if (await page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval !== null)) {
+            await editor.dispatchEvent('compositionend', { data: '' });
+        }
         await expect.poll(() => page.evaluate(() => (window as any).__currentEditor.storage.androidCompositionFix.keepAliveInterval)).toBeNull();
-        await editor.dispatchEvent('compositionstart', { data: '' });
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+        await editor.dispatchEvent('compositionstart', { data: 'fresh' });
         await cdp.send('Input.insertText', { text: '日本' });
         await expect(editor).toHaveText('日本');
         await expect(editor).toBeFocused();

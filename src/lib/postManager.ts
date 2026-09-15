@@ -1,6 +1,7 @@
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import { SUBMITTED_COMPOSITION_CLEANUP_META } from "./editor/submittedComposition";
 import { keyManager } from "./keyManager.svelte";
 import { authState } from "../stores/authStore.svelte";
 import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
@@ -756,8 +757,10 @@ export class PostManager {
     }
   }
 
-  private applyEmptyStateToEditor(editor: TipTapEditor): void {
-    editor.chain().clearContent().run();
+  private applyEmptyStateToEditor(editor: TipTapEditor, cleanup = false): void {
+    const chain = editor.chain().clearContent();
+    if (cleanup) chain.setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true);
+    chain.run();
   }
 
   resetPostContent(editor: TipTapEditor): void {
@@ -779,7 +782,7 @@ export class PostManager {
       ? this.getHashtagArrays(this.deps.hashtagStore).hashtags
       : [];
 
-    this.applyEmptyStateToEditor(editor);
+    this.applyEmptyStateToEditor(editor, true);
     this.deps.contentWarningStore!.reset(); // Content Warningもリセット
     this.deps.contentWarningReasonStore!.reset(); // Content Warning Reasonもリセット
     // ギャラリーモード: ギャラリーもクリア
@@ -788,11 +791,11 @@ export class PostManager {
     // ピン留めON+ハッシュタグがある場合: エディタにハッシュタグを復元
     if (pinEnabled && hashtags.length > 0) {
       const hashtagText = ' ' + hashtags.map(h => '#' + h).join(' ');
-      editor.commands.insertContent(hashtagText);
+      editor.chain().insertContent(hashtagText).setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true).run();
     }
 
     // Preserve the current focus state, including an intentionally hidden IME.
     // Keep the caret before any restored pinned hashtags without refocusing.
-    editor.commands.setTextSelection(1);
+    editor.chain().setTextSelection(1).setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true).run();
   }
 }

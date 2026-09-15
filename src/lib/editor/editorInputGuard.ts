@@ -4,6 +4,7 @@ import type {
     CompositionObserverState,
     SubmittedCompositionController,
 } from './submittedComposition';
+import { SUBMITTED_COMPOSITION_CLEANUP_META } from './submittedComposition';
 
 export const editorInputGuardKey = new PluginKey<CompositionObserverState>('editorInputGuard');
 
@@ -34,6 +35,10 @@ export const EditorInputGuard = Extension.create<{
             },
             filterTransaction: (transaction: Transaction, state: EditorState) => {
                 if (!transaction.docChanged || !this.options.isInputBlocked()) {
+                    return true;
+                }
+
+                if (transaction.getMeta(SUBMITTED_COMPOSITION_CLEANUP_META) === true) {
                     return true;
                 }
 

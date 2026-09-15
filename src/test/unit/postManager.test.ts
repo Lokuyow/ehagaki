@@ -95,11 +95,27 @@ class MockEditorDom {
 function createMockEditor(options?: { paragraphCount?: number; placeholder?: string | null }) {
     const dom = new MockEditorDom(options);
     const run = vi.fn();
-    const clearContent = vi.fn().mockReturnValue({ run });
-    const chain = vi.fn().mockReturnValue({ clearContent });
+    const clearContent = vi.fn();
     const insertContent = vi.fn();
     const focus = vi.fn();
     const setTextSelection = vi.fn();
+    const chainApi: any = {
+        clearContent: vi.fn(() => {
+            clearContent();
+            return chainApi;
+        }),
+        insertContent: vi.fn((...args: any[]) => {
+            insertContent(...args);
+            return chainApi;
+        }),
+        setTextSelection: vi.fn((...args: any[]) => {
+            setTextSelection(...args);
+            return chainApi;
+        }),
+        setMeta: vi.fn(() => chainApi),
+        run,
+    };
+    const chain = vi.fn().mockReturnValue(chainApi);
     const commands = { insertContent, focus, setTextSelection };
     const editor = {
         chain,

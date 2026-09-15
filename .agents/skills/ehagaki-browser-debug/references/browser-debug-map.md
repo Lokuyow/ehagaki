@@ -91,7 +91,7 @@
 - **Cleanup所有者:** `cleanupEditor()`がDOM listener、store subscription、editor instance、container付加propertyを解放する。各extensionの`onDestroy()`がinterval/listener/plugin-owned stateを解放する。
 - **関連テスト:** `src/test/unit/editorConfig.test.ts`、`src/test/unit/editorConfigLinkClick.test.ts`、`src/test/unit/editorDocumentUtils.test.ts`、`src/test/integration/editor-history.integration.test.ts`、`src/test/integration/editor-link-detection.integration.test.ts`。
 - **Playwrightまたは実端末確認が必要になる条件:** IME/composition、native selection、contenteditable、undo grouping、mobile caret、browser crash/blank renderは実ブラウザ。Android/iOS IMEは実端末。
-- **注意点:** document traversal中にposition-changing transactionを適用しない。変更を収集して後ろから適用し、appendTransaction loop/no-op/undo groupingを確認する。
+- **注意点:** document traversal中にposition-changing transactionを適用しない。変更を収集して後ろから適用し、appendTransaction loop/no-op/undo groupingを確認する。success cleanupは専用transaction metadataでstale quarantineへ所有権を明示し、通常のcomposition/user mutationを通さない。
 
 ## Paste、clipboard、drag-and-drop
 
