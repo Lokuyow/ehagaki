@@ -1,4 +1,5 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
+import { recordImeDebugLifecycle } from '../debug/imeDebugInstrumentation';
 
 export type SubmittedCompositionPhase = 'continuing' | 'stale' | 'disposed';
 
@@ -70,11 +71,13 @@ export class SubmittedCompositionController {
             this.scheduleRetire();
         };
 
-        element.addEventListener('compositionstart', handleCompositionStart);
-        element.addEventListener('compositionend', handleCompositionEnd);
+        // Capture beforeinput/composition routing can stop propagation on
+        // mobile Safari; the controller must observe the DOM boundary itself.
+        element.addEventListener('compositionstart', handleCompositionStart, true);
+        element.addEventListener('compositionend', handleCompositionEnd, true);
         this.cleanupListeners = () => {
-            element.removeEventListener('compositionstart', handleCompositionStart);
-            element.removeEventListener('compositionend', handleCompositionEnd);
+            element.removeEventListener('compositionstart', handleCompositionStart, true);
+            element.removeEventListener('compositionend', handleCompositionEnd, true);
             if (this.frame !== undefined) ownerWindow.cancelAnimationFrame(this.frame);
             this.frame = undefined;
             this.cleanupListeners = undefined;
@@ -133,9 +136,25 @@ export class SubmittedCompositionController {
     }
 
     markStale(): void {
-        if (this.phase !== 'continuing') return;
-        this.setPhase('stale');
-        if (!this.domCompositionActive && !this.editor?.view.composing) this.scheduleRetire();
+        recordImeDebugLifecycle('mark-stale-entry', { phase: this.phase });
+        if (this.phase !== 'continuing') {
+            recordImeDebugLifecycle('mark-stale-return', { phase: this.phase });
+            return;
+        }
+        try {
+            recordImeDebugLifecycle('mark-stale-set-phase-before', { phase: this.phase });
+            this.setPhase('stale');
+            recordImeDebugLifecycle('mark-stale-set-phase-after', { phase: this.phase });
+            const shouldRetire = !this.domCompositionActive && !this.editor?.view.composing;
+            recordImeDebugLifecycle('mark-stale-schedule-retire-check', { shouldRetire });
+            if (shouldRetire) this.scheduleRetire();
+            recordImeDebugLifecycle('mark-stale-return', { phase: this.phase });
+        } catch (error) {
+            recordImeDebugLifecycle('mark-stale-thrown', {
+                errorType: error instanceof Error ? error.name : typeof error,
+            });
+            throw error;
+        }
     }
 
     markFailure(): void {

@@ -53,7 +53,7 @@ interface DebugRecord {
     document: { pmTextLength: number; domTextLength: number; galleryCount: number };
 }
 
-function enabled(): boolean {
+export function isImeDebugEnabled(): boolean {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('ehagakiImeDebug') === '1';
 }
@@ -86,7 +86,7 @@ function eventSnapshot(event?: Event): DebugRecord['event'] {
 }
 
 export function installImeDebugInstrumentation(options: ImeDebugOptions): (() => void) | null {
-    if (!enabled()) return null;
+    if (!isImeDebugEnabled()) return null;
 
     const editorElement = options.editor.view.dom;
     const root = editorElement.closest<HTMLElement>('[data-post-editor-root]')
