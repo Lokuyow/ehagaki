@@ -95,6 +95,138 @@ function extractParagraphsFromSlice(slice: Slice): string[] {
     return paragraphs;
 }
 
+const NON_CONTENT_HTML_TAGS = new Set([
+    'base',
+    'head',
+    'link',
+    'meta',
+    'noscript',
+    'script',
+    'style',
+    'template',
+    'title',
+]);
+
+const NON_TEXTUAL_LINK_TAGS = new Set([
+    'audio',
+    'br',
+    'canvas',
+    'embed',
+    'iframe',
+    'img',
+    'object',
+    'svg',
+    'video',
+]);
+
+const SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS = new Set([
+    'audio',
+    'button',
+    'canvas',
+    'embed',
+    'iframe',
+    'img',
+    'input',
+    'object',
+    'picture',
+    'select',
+    'svg',
+    'textarea',
+    'video',
+]);
+
+function parseHttpUrl(value: string): URL | null {
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
+    } catch {
+        return null;
+    }
+}
+
+function hasOnlyNamedTextContent(anchor: Element): boolean {
+    let hasText = false;
+
+    const visit = (node: Node): boolean => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            hasText ||= (node.textContent ?? '').trim().length > 0;
+            return true;
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            return true;
+        }
+
+        const element = node as Element;
+        if (NON_TEXTUAL_LINK_TAGS.has(element.tagName.toLowerCase())) {
+            return false;
+        }
+
+        return Array.from(element.childNodes).every(visit);
+    };
+
+    return visit(anchor) && hasText;
+}
+
+function hasSubstantiveContentOutsideAnchor(node: Node, insideAnchor = false): boolean {
+    if (node.nodeType === Node.TEXT_NODE) {
+        return !insideAnchor && (node.textContent ?? '').trim().length > 0;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+        return false;
+    }
+
+    const element = node as Element;
+    const tagName = element.tagName.toLowerCase();
+    if (NON_CONTENT_HTML_TAGS.has(tagName)) {
+        return false;
+    }
+
+    if (SUBSTANTIVE_NON_TEXTUAL_HTML_TAGS.has(tagName)) {
+        return !insideAnchor;
+    }
+
+    const isAnchor = tagName === 'a';
+    return Array.from(element.childNodes).some((child) =>
+        hasSubstantiveContentOutsideAnchor(child, insideAnchor || isAnchor),
+    );
+}
+
+/**
+ * Detects the address-bar "titled hyperlink" shape without depending on a
+ * browser-specific UA or a particular HTML serialization.
+ *
+ * The original text is intentionally required to be exactly one URL. That
+ * keeps the fallback insertion identical to the existing plain-text path.
+ */
+function isFriendlyUrlClipboard(text: string, html: string): boolean {
+    if (!text || text.trim() !== text || /\s/.test(text)) {
+        return false;
+    }
+
+    const plainUrl = parseHttpUrl(text);
+    if (!plainUrl) {
+        return false;
+    }
+
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    const anchors = Array.from(parsed.querySelectorAll('a'));
+    if (anchors.length !== 1) {
+        return false;
+    }
+
+    const [anchor] = anchors;
+    const href = anchor.getAttribute('href');
+    const linkedUrl = href ? parseHttpUrl(href) : null;
+    if (!linkedUrl || linkedUrl.href !== plainUrl.href || !hasOnlyNamedTextContent(anchor)) {
+        return false;
+    }
+
+    const root = parsed.body ?? parsed.documentElement;
+    return !hasSubstantiveContentOutsideAnchor(root);
+}
+
 // ================================================================================
 // ClipboardExtension 定義
 // ================================================================================
@@ -160,6 +292,13 @@ export const ClipboardExtension = Extension.create({
                         if (hasHtml) {
                             const html = clipboardData.getData('text/html');
 
+                            // Edge and similar address bars may expose a URL as
+                            // plain text while the HTML representation contains
+                            // only a titled link. Route this narrow shape through
+                            // the existing plain-text paste path so the title is
+                            // not inserted as the document content.
+                            const isFriendlyUrl = isFriendlyUrlClipboard(text, html);
+
                             // リッチテキスト（太字、イタリック、リンク）を検出
                             // リッチテキストの場合はデフォルト処理に委譲して書式を保持
                             const hasRichFormatting =
@@ -170,7 +309,7 @@ export const ClipboardExtension = Extension.create({
                                 html.includes('<a ') || // リンクタグを検出
                                 html.includes('<a>');
 
-                            if (hasRichFormatting) {
+                            if (hasRichFormatting && !isFriendlyUrl) {
                                 return false; // デフォルト処理で書式を保持（Tiptap Link機能が処理）
                             }
 

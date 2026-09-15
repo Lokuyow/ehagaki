@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { Slice } from 'prosemirror-model';
 import { ContentTrackingExtension } from '../../lib/editor/contentTracking';
 import { ClipboardExtension } from '../../lib/editor/clipboardExtension';
 
@@ -39,6 +40,31 @@ async function pasteAndVerify(editor: Editor, content: string, expectedLinks: nu
     return html;
 }
 
+function createClipboardData(text: string, html?: string): DataTransfer {
+    const data = new Map<string, string>([['text/plain', text]]);
+    if (html !== undefined) {
+        data.set('text/html', html);
+    }
+
+    return {
+        types: Array.from(data.keys()),
+        files: [] as unknown as FileList,
+        getData: (type: string) => data.get(type) ?? '',
+    } as unknown as DataTransfer;
+}
+
+function invokePasteHandler(editor: Editor, clipboardData: DataTransfer): boolean {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: clipboardData });
+
+    let handled = false;
+    editor.view.someProp('handlePaste', (handler) => {
+        handled = handler(editor.view, event as ClipboardEvent, Slice.empty) === true;
+        return true;
+    });
+    return handled;
+}
+
 describe('エディター・URLペースト統合テスト', () => {
     let editor: Editor;
 
@@ -53,7 +79,7 @@ describe('エディター・URLペースト統合テスト', () => {
                             target: '_blank',
                         },
                         autolink: false, // ContentTrackingで動的判定
-                        linkOnPaste: true,
+                        linkOnPaste: false,
                         defaultProtocol: 'https',
                         validate: (url: string) => {
                             if (url.length < 8) return false;
@@ -80,6 +106,55 @@ describe('エディター・URLペースト統合テスト', () => {
 
     afterEach(() => {
         editor?.destroy();
+    });
+
+    describe('実ClipboardEvent相当のURLペースト分岐', () => {
+        it('タイトル付き単一リンクのFriendly URLは、タイトルではなくplain URLとして貼り付けられること', () => {
+            const url = 'https://lokuyow.github.io/ehagaki/';
+            const html = '<div><!-- harmless metadata --><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a></div>';
+
+            expect(invokePasteHandler(editor, createClipboardData(url, html))).toBe(true);
+            expect(editor.getText()).toBe(url);
+            expect(editor.getText()).not.toBe('eHagaki');
+            expect(editor.getHTML()).toContain(`href="${url}"`);
+        });
+
+        it('通常の名前付きrich linkはFriendly URLへ変換せずdefault pasteへ委譲すること', () => {
+            const handled = invokePasteHandler(
+                editor,
+                createClipboardData('eHagaki', '<a href="https://lokuyow.github.io/ehagaki/">eHagaki</a>'),
+            );
+
+            expect(handled).toBe(false);
+            expect(editor.getText()).toBe('');
+        });
+
+        it.each([
+            ['plain URLとhrefが異なる', 'https://lokuyow.github.io/ehagaki/', '<a href="https://example.com/">eHagaki</a>'],
+            ['複数anchor', 'https://lokuyow.github.io/ehagaki/', '<span><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><a href="https://example.com/">other</a></span>'],
+            ['anchor外に実質的な内容がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><span>extra</span></div>'],
+            ['anchor外に非テキスト実質要素がある', 'https://lokuyow.github.io/ehagaki/', '<div><a href="https://lokuyow.github.io/ehagaki/">eHagaki</a><img src="https://example.com/image.png"></div>'],
+        ])('%s場合は単一URLへ潰さずdefault pasteへ委譲すること', (_case, text, html) => {
+            expect(invokePasteHandler(editor, createClipboardData(text, html))).toBe(false);
+            expect(editor.getText()).toBe('');
+        });
+
+        it('HTMLなしのplain URL pasteを従来どおり処理すること', () => {
+            const url = 'https://example.com/path?param=value&other=2#section';
+
+            expect(invokePasteHandler(editor, createClipboardData(url))).toBe(true);
+            expect(editor.getText()).toBe(url);
+            expect(editor.getHTML()).toContain('href="https://example.com/path?param=value&amp;other=2#section"');
+        });
+
+        it('HTML entityを含むquery/fragmentでも同じURLとして判定し、URLを保持すること', () => {
+            const url = 'https://example.com/path?x=1&y=2#section';
+            const html = '<p><a href="https://example.com/path?x=1&amp;y=2#section">Example</a></p>';
+
+            expect(invokePasteHandler(editor, createClipboardData(url, html))).toBe(true);
+            expect(editor.getText()).toBe(url);
+            expect(editor.getHTML()).toContain('href="https://example.com/path?x=1&amp;y=2#section"');
+        });
     });
 
     describe('URL単体のペースト', () => {
