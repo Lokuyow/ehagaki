@@ -17,6 +17,7 @@ import type { CustomEmojiItem } from '../customEmoji';
 import type { EHagakiHostSubmitShortcut, EHagakiHostSubmitShortcutModifier } from '../../web-component/types';
 import type { EditorSubmitTrigger } from '../types/editor';
 import { EditorInputGuard } from './editorInputGuard';
+import type { SubmittedCompositionController } from './submittedComposition';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -153,6 +154,8 @@ const GapCursorFocusReset = Extension.create({
 
 export interface EditorConfigOptions {
     isInputBlocked?: () => boolean;
+    isCompositionInputAllowed?: () => boolean;
+    compositionController?: SubmittedCompositionController;
     placeholderText: string;
     onSubmitPost: (trigger?: EditorSubmitTrigger) => Promise<void>;
     onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
@@ -186,7 +189,11 @@ export function createEditorStore(options: EditorConfigOptions) {
     const editorStore = createEditor({
         extensions: [
             ...(!hostOwnedLite && options.isInputBlocked
-                ? [EditorInputGuard.configure({ isInputBlocked: options.isInputBlocked })]
+                ? [EditorInputGuard.configure({
+                    isInputBlocked: options.isInputBlocked,
+                    isCompositionInputAllowed: options.isCompositionInputAllowed,
+                    compositionController: options.compositionController,
+                })]
                 : []),
             StarterKit.configure({
                 paragraph: {

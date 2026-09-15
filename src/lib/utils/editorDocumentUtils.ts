@@ -350,3 +350,24 @@ export function extractPostContentWithEmojiTags(editor: TipTapEditor | null): Ex
 
     return extractPostContentFromDoc(doc);
 }
+
+/** Canonical live post eligibility shared by standalone and Host-owned Lite. */
+export function resolveLivePostEligibility(
+    editor: TipTapEditor | null,
+    hasGalleryMedia: boolean,
+): boolean {
+    if (!editor || editor.isDestroyed) return hasGalleryMedia;
+
+    let hasEditorMedia = false;
+    editor.state.doc.descendants((node: PMNode) => {
+        if (node.type.name === 'image' || node.type.name === 'video') {
+            hasEditorMedia = true;
+        }
+    });
+
+    return Boolean(
+        extractPostContentFromDoc(editor.state.doc).content.trim() ||
+        hasEditorMedia ||
+        hasGalleryMedia,
+    );
+}

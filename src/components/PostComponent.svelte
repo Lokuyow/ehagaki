@@ -33,12 +33,12 @@
     touchAction,
     keydownAction,
     fileDropActionWithDragState,
-    hasMediaInDoc,
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import type { CustomEmojiAttrs } from "../lib/editor";
   import type { CustomEmojiSelection } from "../lib/customEmojiUsage";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
+  import { updateHashtagData } from "../lib/tags/hashtagManager";
   import {
     collectFullscreenMediaItems,
     createPostStatusHandlers,
@@ -61,6 +61,7 @@
   import {
     editorState,
     updateEditorContent,
+    updateEditorPostEligibility,
     updatePostStatus,
     currentEditorStore,
     updatePlaceholderText,
@@ -69,11 +70,13 @@
     initializeEditor,
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
+  import { editorInputGuardKey } from "../lib/editor/editorInputGuard";
+  import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
-  import { waitForEditorComposition } from "../lib/editor/waitForEditorComposition";
   import { isEditorElement } from "../lib/utils/appDomUtils";
+  import { isIPhoneSafari } from "../lib/utils/viewportLayout";
   import {
     profileDataStore,
     isLoadingProfileStore,
@@ -100,7 +103,10 @@
     createHostOwnedUploadExecutor,
   } from "../lib/hostOwnedUpload";
   import { uploadHelper, showUploadErrorMessage } from "../lib/uploadHelper";
-  import { extractPostContentWithEmojiTags } from "../lib/utils/editorDocumentUtils";
+  import {
+    extractPostContentWithEmojiTags,
+    resolveLivePostEligibility,
+  } from "../lib/utils/editorDocumentUtils";
   import {
     contentWarningStore,
     contentWarningReasonStore,
@@ -157,7 +163,8 @@
   let hostMountActive = true;
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
-  let compositionWait: ReturnType<typeof waitForEditorComposition> | undefined;
+  let submittedCompositionController = $state<SubmittedCompositionController | null>(null);
+  let submittedCompositionReadOnly = $state(false);
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let postManager: PostManager | undefined = $state();
@@ -197,6 +204,10 @@
   let editorPlaceholderText = $derived(
     $_("postComponent.enter_your_text") || "テキストを入力してください",
   );
+
+  function isEditorMutationBlocked(): boolean {
+    return postStatus.sending || submittedCompositionReadOnly;
+  }
 
   $effect(() => {
     currentEditor;
@@ -242,7 +253,7 @@
   }
 
   function handleEditorContainerClick(event: MouseEvent) {
-    if (postStatus.sending) {
+    if (isEditorMutationBlocked()) {
       event.preventDefault();
       return;
     }
@@ -272,7 +283,12 @@
   }
 
   function handleEditorContainerKeydownCapture(event: KeyboardEvent) {
-    if (!postStatus.sending) return;
+    if (!isEditorMutationBlocked()) return;
+
+    if (submittedCompositionController?.isCompositionInputAllowed() &&
+      (event.isComposing || event.keyCode === 229)) {
+      return;
+    }
 
     // Keep the focused contenteditable surface during submission, but
     // stop the event before Tiptap's target keymap can create a transaction.
@@ -281,7 +297,13 @@
   }
 
   function blockSendingInput(event: Event) {
-    if (postStatus.sending) {
+    const isCompositionInput =
+      submittedCompositionController?.isCompositionInputAllowed() &&
+      event instanceof InputEvent &&
+      (event.isComposing ||
+        event.inputType === "insertCompositionText" ||
+        event.inputType === "insertFromComposition");
+    if (isEditorMutationBlocked() && !isCompositionInput) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -360,7 +382,7 @@
     },
     uploadFiles: async (params) => {
       if (
-        postStatus.sending ||
+        isEditorMutationBlocked() ||
         editorState.isSubmitPending ||
         editorState.isUploading ||
         (isHostOwned && !hostMountActive)
@@ -426,11 +448,38 @@
       }
     },
   });
+
+  function clearContentAfterSubmissionSuccess(): void {
+    // WebKit can leave the native composition active after the document is
+    // changed. Blur the active iPhone editor through the public Tiptap API
+    // before clearing so the next tap can start a fresh editing session.
+    const usesIPhoneCompositionFallback = Boolean(
+      currentEditor?.view.composing && isIPhoneSafari(),
+    );
+    if (usesIPhoneCompositionFallback) {
+      // Tiptap's blur command defers the actual DOM blur to a rAF. The
+      // fallback must blur before clear/retire, so use the synchronous
+      // standard HTMLElement API.
+      currentEditor?.view.dom.blur();
+    }
+    clearContentAfterSuccess();
+    if (usesIPhoneCompositionFallback) {
+      submittedCompositionController?.retire();
+    } else {
+      submittedCompositionController?.markStale();
+    }
+  }
+
   const postStatusHandlers = createPostStatusHandlers({
     updatePostStatus,
-    clearContentAfterSuccess,
+    clearContentAfterSuccess: clearContentAfterSubmissionSuccess,
     onPostSuccess: (result) => onPostSuccess?.(result),
   });
+
+  function markPostFailure(message?: string): void {
+    submittedCompositionController?.markFailure();
+    postStatusHandlers.markFailure(message);
+  }
 
   $effect(() => {
     if (editorAutoGrow) return;
@@ -501,8 +550,18 @@
 
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
+    submittedCompositionReadOnly = false;
+    submittedCompositionController = isHostOwned
+      ? null
+      : new SubmittedCompositionController((phase) => {
+          submittedCompositionReadOnly = phase === 'stale';
+        });
     editorResources = initializeEditor({
-      isInputBlocked: isHostOwned ? undefined : () => editorState.postStatus.sending,
+      isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
+      isCompositionInputAllowed: isHostOwned
+        ? undefined
+        : () => Boolean(submittedCompositionController?.isCompositionInputAllowed()),
+      compositionController: submittedCompositionController ?? undefined,
       placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
@@ -520,6 +579,7 @@
         : undefined,
       uploadFiles: mediaEnabled
         ? (files: File[] | FileList) => {
+            if (isEditorMutationBlocked()) return;
             void uploadHandlers.performUpload(files);
           }
         : undefined,
@@ -550,16 +610,34 @@
       editorEmptyStateInitialized = true;
       if (changed) onEditorEmptyChange?.(nextIsEmpty);
     };
+    const syncLivePostEligibility = (editorInstance: TipTapEditor): void => {
+      updateEditorPostEligibility(
+        editorInstance,
+        mediaGalleryStore.hasNonPlaceholderItems(),
+      );
+    };
     const handleEditorTransaction = ({
       editor: editorInstance,
     }: {
       editor: TipTapEditor;
     }) => {
       syncEditorEmptyState(editorInstance);
+      syncLivePostEligibility(editorInstance);
     };
 
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
+        // Editor subscriptions may re-notify for transactions on the same
+        // instance; keep listener ownership tied to instance identity.
+        if (editorInstance !== null && editorInstance === subscribedEditor) {
+          currentEditor = editorInstance;
+          if (editorInstance) {
+            syncEditorEmptyState(editorInstance);
+            syncLivePostEligibility(editorInstance);
+          }
+          return;
+        }
+
         if (subscribedEditor) {
           subscribedEditor.off("transaction", handleEditorTransaction);
         }
@@ -567,7 +645,12 @@
         subscribedEditor = editorInstance;
         currentEditor = editorInstance;
         if (editorInstance) {
+          submittedCompositionController?.attach(editorInstance);
           syncEditorEmptyState(editorInstance);
+          syncLivePostEligibility(editorInstance);
+        } else {
+          submittedCompositionController?.detach();
+          updateEditorPostEligibility(null, false);
         }
         editorInstance?.on("transaction", handleEditorTransaction);
         // ストアにも設定
@@ -591,8 +674,10 @@
     );
 
     return () => {
-      compositionWait?.cancel();
-      compositionWait = undefined;
+      submittedCompositionController?.destroy();
+      submittedCompositionController = null;
+      submittedCompositionReadOnly = false;
+      updateEditorPostEligibility(null, false);
       if (currentEditorStore.value === currentEditor) {
         editorState.isSubmitPending = false;
         if (!isHostOwned) postComponentUIStore.hideSecretKeyDialog();
@@ -634,6 +719,7 @@
   export async function uploadFiles(
     files: File[] | FileList,
   ): Promise<UploadHelperResult | null> {
+    if (isEditorMutationBlocked()) return null;
     return await uploadHandlers.performUpload(files);
   }
 
@@ -648,7 +734,7 @@
   }
 
   export function insertTextContent(content: string): void {
-    if (!currentEditor || !content) return;
+    if (!currentEditor || !content || isEditorMutationBlocked()) return;
 
     const editor = currentEditor; // nullチェック済みのローカル変数
 
@@ -672,7 +758,7 @@
   }
 
   export function appendSharedTextContent(content: string): boolean {
-    if (!currentEditor || !content) return false;
+    if (!currentEditor || !content || isEditorMutationBlocked()) return false;
 
     const lines = content.split("\n");
     const paragraphs = lines.map((line) => ({
@@ -695,7 +781,7 @@
   }
 
   export function loadDraftContent(htmlContent: string): void {
-    if (!currentEditor || !htmlContent) return;
+    if (!currentEditor || !htmlContent || isEditorMutationBlocked()) return;
 
     const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
 
@@ -712,7 +798,11 @@
   }
 
   export function appendMediaToEditor(items: MediaGalleryItem[]): void {
-    if (!currentEditor || items.length === 0) return;
+    if (
+      !currentEditor ||
+      items.length === 0 ||
+      isEditorMutationBlocked()
+    ) return;
     const { schema } = currentEditor.state;
     let transaction = currentEditor.state.tr;
     let insertPos = currentEditor.state.doc.content.size;
@@ -745,7 +835,7 @@
   }
 
   export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
   }
 
@@ -760,7 +850,7 @@
   }
 
   function moveCaret(direction: -1 | 1): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -791,7 +881,7 @@
   }
 
   export function deleteBackward(): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
@@ -827,7 +917,7 @@
   }
 
   export function insertLineBreak(): void {
-    if (!currentEditor || postStatus.sending) return;
+    if (!currentEditor || isEditorMutationBlocked()) return;
     revealToolbarCaret();
     currentEditor.commands.keyboardShortcut("Enter");
   }
@@ -835,7 +925,10 @@
   function canStartSubmit(): boolean {
     return (
       canSendNormalPost() &&
-      editorState.canPost &&
+      resolveLivePostEligibility(
+        currentEditor,
+        mediaGalleryStore.hasNonPlaceholderItems(),
+      ) &&
       !editorState.isSubmitPending &&
       !showSecretKeyDialog
     );
@@ -854,14 +947,11 @@
   }
 
   function canStartHostOwnedSubmit(editorInstance: TipTapEditor): boolean {
-    const extraction = extractPostContentWithEmojiTags(editorInstance);
-    const hasLivePostableContent =
-      !!extraction.content.trim() ||
-      hasMediaInDoc(editorInstance.state.doc) ||
-      mediaGalleryStore.hasNonPlaceholderItems();
-
     return (
-      hasLivePostableContent &&
+      resolveLivePostEligibility(
+        editorInstance,
+        mediaGalleryStore.hasNonPlaceholderItems(),
+      ) &&
       !postStatus.sending &&
       !editorState.isUploading &&
       !postStatus.completed &&
@@ -906,6 +996,10 @@
   ): Promise<void> {
     const config = hostOwnedConfig;
     if (!config || !canStartHostOwnedSubmit(editorInstance)) return;
+
+    // Live eligibility may allow submission before the debounced content
+    // tracker runs; refresh hashtag tags from the final document snapshot.
+    updateHashtagData(editorInstance.state.doc);
 
     // Capture every mutable input before entering the host handler. The handler
     // is then free to await without observing later editor/context mutations.
@@ -989,24 +1083,24 @@
     const editorInstance = currentEditor;
     editorState.isSubmitPending = true;
     try {
-      if (editorInstance.view.composing) {
-        compositionWait = waitForEditorComposition(editorInstance);
-        const ready = await compositionWait.settled;
-        compositionWait = undefined;
-        if (!ready) return;
-      }
       if (
         editorInstance.isDestroyed ||
         currentEditorStore.value !== editorInstance ||
         !canSendNormalPost()
       ) return;
       const postPayload = postManager.preparePostPayload(editorInstance);
-      if (!postPayload.content.trim()) return;
+      updateHashtagData(editorInstance.state.doc);
       if (containsSecretKey(postPayload.content)) {
-        // The existing confirmation store now owns this one submission intent.
+        // Confirmation owns only the immutable snapshot. A submitted
+        // composition session starts only when confirmation actually sends.
         postComponentUIStore.showSecretKeyDialog(postPayload.content, postPayload.emojiTags);
         editorState.isSubmitPending = false;
         return;
+      }
+      if (editorInstance.view.composing) {
+        submittedCompositionController?.startSession(
+          editorInputGuardKey.getState(editorInstance.state) ?? { idsByGeneration: new Map() },
+        );
       }
       await postManager.performPostSubmission(
         editorInstance,
@@ -1018,7 +1112,7 @@
           editorState.isSubmitPending = false;
         },
         postStatusHandlers.markSuccess,
-        postStatusHandlers.markFailure,
+        markPostFailure,
       );
     } finally {
       if (currentEditorStore.value === editorInstance) editorState.isSubmitPending = false;
@@ -1067,6 +1161,11 @@
     const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     if (!pendingPost.trim()) return;
     if (!isHostOwnedLiteBuild && postManager && currentEditor) {
+      if (currentEditor.view.composing) {
+        submittedCompositionController?.startSession(
+          editorInputGuardKey.getState(currentEditor.state) ?? { idsByGeneration: new Map() },
+        );
+      }
       await submitPendingPostWithSecretKey({
         postManager,
         currentEditor,
@@ -1079,7 +1178,7 @@
           postComponentUIStore.hideSecretKeyDialog();
         },
         onSuccess: postStatusHandlers.markSuccess,
-        onFailure: postStatusHandlers.markFailure,
+        onFailure: markPostFailure,
       });
     }
   }
@@ -1127,7 +1226,7 @@
   });
 
   export function openFileDialog() {
-    if (!mediaEnabled || postStatus.sending || editorState.isSubmitPending || editorState.isUploading) return;
+    if (!mediaEnabled || isEditorMutationBlocked() || editorState.isSubmitPending || editorState.isUploading) return;
     fileInput?.click();
   }
 
@@ -1136,9 +1235,10 @@
     const hasGalleryMedia = mediaGalleryStore.items.some(
       (item) => !item.isPlaceholder,
     );
-    const hasContent = !!editorState.content.trim();
-    const hasEditorMedia = editorState.hasImage;
-    editorState.canPost = hasContent || hasEditorMedia || hasGalleryMedia;
+    updateEditorPostEligibility(
+      currentEditor,
+      hasGalleryMedia,
+    );
   });
 
   // --- モード切替時の自動整理 ---
@@ -1202,7 +1302,7 @@
     class="editor-container"
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
-    class:sending={postStatus.sending}
+    class:sending={postStatus.sending || submittedCompositionReadOnly}
     class:editor-submit-enabled={showEditorSubmitButton}
     class:account-avatar-placeholder={showAccountPlaceholder}
     onclick={handleEditorContainerClick}
@@ -1219,7 +1319,8 @@
     use:touchAction
     use:keydownAction={!isHostOwned}
     aria-label={$_("postComponent.editor_label")}
-    aria-disabled={postStatus.sending ? "true" : undefined}
+    aria-readonly={!isHostOwned && (postStatus.sending || submittedCompositionReadOnly) ? "true" : undefined}
+    aria-disabled={isHostOwned && postStatus.sending ? "true" : undefined}
     role="textbox"
     tabindex="-1"
     bind:this={editorContainerEl}

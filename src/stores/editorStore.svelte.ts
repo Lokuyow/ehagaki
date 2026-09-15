@@ -1,10 +1,10 @@
 import type { PostStatus, EditorState } from '../lib/types';
-import type { Editor as TipTapEditor } from '@tiptap/core';
 import type { EditorSubmitTrigger } from '../lib/types/editor';
+import type { Editor as TipTapEditor } from '@tiptap/core';
 import {
     updateEditorPlaceholder
 } from '../lib/editor';
-import { mediaGalleryStore } from './mediaGalleryStore.svelte';
+import { resolveLivePostEligibility } from '../lib/utils/editorDocumentUtils';
 
 // --- エディター専用状態管理 ---
 export let placeholderTextStore = $state({ value: '' });
@@ -56,15 +56,13 @@ export const customEmojiDragState = $state({
 });
 
 // --- エディター状態更新関数 ---
-function canPostByContent(content: string, hasMedia: boolean): boolean {
-    const galleryHasMedia = mediaGalleryStore.getItems().some(item => !item.isPlaceholder);
-    return !!content.trim() || hasMedia || galleryHasMedia;
-}
-
 export function updateEditorContent(content: string, hasMedia: boolean = false): void {
     editorState.content = content;
     editorState.hasImage = hasMedia;
-    editorState.canPost = canPostByContent(content, hasMedia);
+}
+
+export function updateEditorPostEligibility(editor: TipTapEditor | null, hasGalleryMedia: boolean): void {
+    editorState.canPost = resolveLivePostEligibility(editor, hasGalleryMedia);
 }
 
 export function updatePostStatus(postStatus: PostStatus): void {

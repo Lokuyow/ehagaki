@@ -225,6 +225,12 @@
         }, CANCEL_REVERSE_DELAY);
     }
 
+    function preventCompletedTouchReleaseDefault(event: Event): void {
+        if (!longPressCompleted) return;
+        if (event instanceof PointerEvent && event.pointerType !== "touch") return;
+        event.preventDefault();
+    }
+
     function setCustomEmojiPickerOpen(open: boolean): void {
         onCustomEmojiPickerOpenChange?.(open);
     }
@@ -278,7 +284,8 @@
                     contentLayout="icon"
                     className="custom-emoji-button"
                     selected={customEmojiPickerOpen}
-                    disabled={!customEmojiEnabled || postStatus.sending}
+                    disabled={!customEmojiEnabled ||
+                        postStatus.sending}
                     onClick={() => {
                         setCustomEmojiPickerOpen(!customEmojiPickerOpen);
                     }}
@@ -370,6 +377,8 @@
                                         tooltipPointerDown(e);
                                     startLongPress(e);
                                 }}
+                                onpointerupcapture={preventCompletedTouchReleaseDefault}
+                                ontouchendcapture={preventCompletedTouchReleaseDefault}
                                 onpointerup={(e) => {
                                     if (typeof tooltipPointerUp === "function")
                                         tooltipPointerUp(e);

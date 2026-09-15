@@ -12,9 +12,10 @@ import {
 
 describe('createPostStatusHandlers', () => {
     it('送信開始・成功・失敗の状態を一貫して更新する', () => {
-        const updatePostStatus = vi.fn();
-        const clearContentAfterSuccess = vi.fn();
-        const onPostSuccess = vi.fn();
+        const events: string[] = [];
+        const updatePostStatus = vi.fn(() => events.push('status'));
+        const clearContentAfterSuccess = vi.fn(() => events.push('clear'));
+        const onPostSuccess = vi.fn(() => events.push('callback'));
         const handlers = createPostStatusHandlers({
             updatePostStatus,
             clearContentAfterSuccess,
@@ -56,6 +57,7 @@ describe('createPostStatusHandlers', () => {
         });
         expect(clearContentAfterSuccess).toHaveBeenCalledOnce();
         expect(onPostSuccess).toHaveBeenCalledOnce();
+        expect(events.slice(0, 4)).toEqual(['status', 'status', 'clear', 'callback']);
     });
 });
 
