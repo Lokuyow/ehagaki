@@ -618,16 +618,30 @@
 
     editorSubscriptionUnsubscribe = editor.subscribe(
       (editorInstance: TipTapEditor | null) => {
+        // Editor subscriptions may re-notify for transactions on the same
+        // instance. Keep one debug recorder for that editor lifecycle so a
+        // trace is not discarded mid-gesture.
+        if (editorInstance !== null && editorInstance === subscribedEditor) {
+          currentEditor = editorInstance;
+          if (editorInstance) {
+            syncEditorEmptyState(editorInstance);
+            syncLivePostEligibility(editorInstance);
+          }
+          return;
+        }
+
         if (subscribedEditor) {
           subscribedEditor.off("transaction", handleEditorTransaction);
         }
+
+        imeDebugCleanup?.();
+        imeDebugCleanup = null;
 
         subscribedEditor = editorInstance;
         currentEditor = editorInstance;
         if (editorInstance) {
           syncEditorEmptyState(editorInstance);
           syncLivePostEligibility(editorInstance);
-          imeDebugCleanup?.();
           imeDebugCleanup = submittedCompositionController
             ? installImeDebugInstrumentation({
                 editor: editorInstance,
@@ -640,8 +654,6 @@
               })
             : null;
         } else {
-          imeDebugCleanup?.();
-          imeDebugCleanup = null;
           updateEditorPostEligibility(null, false);
         }
         editorInstance?.on("transaction", handleEditorTransaction);
