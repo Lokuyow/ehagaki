@@ -73,6 +73,10 @@
   } from "../lib/editor/editorLifecycle";
   import { editorInputGuardKey } from "../lib/editor/editorInputGuard";
   import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
+  import {
+    installImeDebugInstrumentation,
+    recordImeDebugLifecycle,
+  } from "../lib/debug/imeDebugInstrumentation";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
@@ -187,6 +191,7 @@
   let editorContainerEl: HTMLElement | null = null;
   let editorResources: InitializeEditorResult | null = null;
   let editorSubscriptionUnsubscribe: (() => void) | null = null;
+  let imeDebugCleanup: (() => void) | null = null;
   let editorTargetHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let editorAutoGrow = $derived(
     isHostOwned &&
@@ -447,8 +452,12 @@
   });
 
   function clearContentAfterSubmissionSuccess(): void {
+    recordImeDebugLifecycle("success-clear-before");
     clearContentAfterSuccess();
+    recordImeDebugLifecycle("success-clear-after");
+    recordImeDebugLifecycle("mark-stale-before");
     submittedCompositionController?.markStale();
+    recordImeDebugLifecycle("mark-stale-after");
   }
 
   const postStatusHandlers = createPostStatusHandlers({
@@ -618,7 +627,21 @@
         if (editorInstance) {
           syncEditorEmptyState(editorInstance);
           syncLivePostEligibility(editorInstance);
+          imeDebugCleanup?.();
+          imeDebugCleanup = submittedCompositionController
+            ? installImeDebugInstrumentation({
+                editor: editorInstance,
+                controller: submittedCompositionController,
+                getPostStatus: () => editorState.postStatus,
+                getSubmitPending: () => editorState.isSubmitPending,
+                getIsUploading: () => editorState.isUploading,
+                getGalleryCount: () => mediaGalleryStore.items.length,
+                getSubmittedReadOnly: () => submittedCompositionReadOnly,
+              })
+            : null;
         } else {
+          imeDebugCleanup?.();
+          imeDebugCleanup = null;
           updateEditorPostEligibility(null, false);
         }
         editorInstance?.on("transaction", handleEditorTransaction);
@@ -643,6 +666,8 @@
     );
 
     return () => {
+      imeDebugCleanup?.();
+      imeDebugCleanup = null;
       submittedCompositionController?.destroy();
       submittedCompositionController = null;
       submittedCompositionReadOnly = false;

@@ -85,6 +85,23 @@ export class SubmittedCompositionController {
         return this.generation;
     }
 
+    /** Temporary browser-debug snapshot; removed with the instrumentation. */
+    getDebugState(): {
+        phase: SubmittedCompositionPhase | null;
+        generation: number;
+        domCompositionActive: boolean;
+        capturedGeneration: number | null;
+        capturedId: unknown;
+    } {
+        return {
+            phase: this.phase,
+            generation: this.generation,
+            domCompositionActive: this.domCompositionActive,
+            capturedGeneration: this.capturedGeneration ?? null,
+            capturedId: this.capturedId,
+        };
+    }
+
     startSession(observerState: CompositionObserverState): void {
         this.setPhase('continuing');
         this.capturedGeneration = this.generation;
