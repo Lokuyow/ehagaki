@@ -84,6 +84,12 @@ export class SubmittedCompositionController {
         };
     }
 
+    detach(): void {
+        this.cleanupListeners?.();
+        this.cleanupListeners = undefined;
+        this.editor = null;
+    }
+
     getCurrentGeneration(): number {
         return this.generation;
     }

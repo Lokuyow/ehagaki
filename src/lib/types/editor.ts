@@ -1,6 +1,7 @@
 // --- Editor, Post, Draft, ContentTracking, EditorEvents関連型定義 ---
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { Readable } from "svelte/store";
 import type { MediaGalleryItem } from "./media";
 import type { ChannelContextState } from "./nostr";
 import type { CustomEmojiSelection } from "../customEmojiUsage";
@@ -138,7 +139,7 @@ export interface InitializeEditorParams {
 }
 
 export interface InitializeEditorResult {
-    editor: any;
+    editor: Readable<TipTapEditor>;
     unsubscribe: () => void;
     handlers: EditorEventHandlers;
 }

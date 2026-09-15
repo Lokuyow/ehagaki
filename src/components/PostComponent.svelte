@@ -473,26 +473,37 @@
         if (completed) return;
         completed = true;
         editorElement.removeEventListener("compositionend", handleCompositionEnd, true);
-        recordImeDebugLifecycle("selection-experiment-compositionend");
+        recordImeDebugLifecycle("dom-selection-experiment-compositionend");
         finishSuccessClear();
       };
       editorElement.addEventListener("compositionend", handleCompositionEnd, true);
-      const maxPosition = Math.max(1, activeEditor.state.doc.content.size - 1);
       const currentPosition = activeEditor.state.selection.from;
+      const maxPosition = Math.max(1, activeEditor.state.doc.content.size - 1);
       const targetPosition = currentPosition === 1 ? Math.min(maxPosition, 2) : 1;
-      recordImeDebugLifecycle("selection-experiment-before", {
+      const nativeSelection = editorElement.ownerDocument.getSelection();
+      recordImeDebugLifecycle("dom-selection-experiment-before", {
         from: currentPosition,
         to: targetPosition,
+        anchorOffset: nativeSelection?.anchorOffset ?? null,
+        focusOffset: nativeSelection?.focusOffset ?? null,
       });
       try {
-        const changed = activeEditor.commands.setTextSelection({
-          from: targetPosition,
-          to: targetPosition,
+        const domPosition = activeEditor.view.domAtPos(targetPosition);
+        const range = editorElement.ownerDocument.createRange();
+        range.setStart(domPosition.node, domPosition.offset);
+        range.collapse(true);
+        nativeSelection?.removeAllRanges();
+        nativeSelection?.addRange(range);
+        recordImeDebugLifecycle("dom-selection-experiment-after", {
+          changed: Boolean(nativeSelection?.rangeCount),
+          anchorOffset: nativeSelection?.anchorOffset ?? null,
+          focusOffset: nativeSelection?.focusOffset ?? null,
+          anchorNodeMatched: nativeSelection?.anchorNode === domPosition.node,
+          focusNodeMatched: nativeSelection?.focusNode === domPosition.node,
         });
-        recordImeDebugLifecycle("selection-experiment-after", { changed });
       } catch (error) {
         editorElement.removeEventListener("compositionend", handleCompositionEnd, true);
-        recordImeDebugLifecycle("selection-experiment-thrown", {
+        recordImeDebugLifecycle("dom-selection-experiment-thrown", {
           errorType: error instanceof Error ? error.name : typeof error,
         });
       }
@@ -631,7 +642,6 @@
     });
 
     editor = editorResources.editor;
-    submittedCompositionController?.attach(editorResources.editor);
 
     // エディターの購読
     let subscribedEditor: TipTapEditor | null = null;
@@ -682,6 +692,7 @@
         subscribedEditor = editorInstance;
         currentEditor = editorInstance;
         if (editorInstance) {
+          submittedCompositionController?.attach(editorInstance);
           syncEditorEmptyState(editorInstance);
           syncLivePostEligibility(editorInstance);
           imeDebugCleanup = submittedCompositionController
@@ -696,6 +707,7 @@
               })
             : null;
         } else {
+          submittedCompositionController?.detach();
           updateEditorPostEligibility(null, false);
         }
         editorInstance?.on("transaction", handleEditorTransaction);

@@ -46,6 +46,17 @@ describe('submitted composition transaction ownership', () => {
         expect(instance.state.doc.eq(afterBind)).toBe(true);
     });
 
+    it('tracks composition generation from the attached editor DOM', () => {
+        const controller = new SubmittedCompositionController();
+        const instance = createEditor({ value: false }, controller);
+
+        instance.view.dom.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+        expect(controller.getDebugState()).toMatchObject({ generation: 1, domCompositionActive: true });
+
+        instance.view.dom.dispatchEvent(new Event('compositionend', { bubbles: true }));
+        expect(controller.getDebugState()).toMatchObject({ generation: 1, domCompositionActive: false });
+    });
+
     it('uses the plugin state binding for later transactions in the same transaction chain', () => {
         const blocked = { value: false };
         const controller = new SubmittedCompositionController();
