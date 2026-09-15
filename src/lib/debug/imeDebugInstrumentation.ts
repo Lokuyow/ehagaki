@@ -95,8 +95,10 @@ export function installImeDebugInstrumentation(options: ImeDebugOptions): (() =>
         ?? editorElement;
     const panel = document.createElement('details');
     panel.id = 'ehagaki-ime-debug';
-    panel.open = true;
-    panel.style.cssText = 'position:fixed;z-index:2147483647;left:0;right:0;bottom:0;max-height:45vh;background:#111;color:#eee;font:12px/1.35 monospace;padding:6px;opacity:.96;';
+    panel.open = false;
+    panel.style.cssText = 'position:fixed;z-index:2147483647;left:0;right:0;bottom:0;max-height:32px;background:#111;color:#eee;font:12px/1.35 monospace;padding:6px;opacity:.96;';
+    const resizePanel = () => { panel.style.maxHeight = panel.open ? '45vh' : '32px'; };
+    panel.addEventListener('toggle', resizePanel);
     const summary = document.createElement('summary');
     summary.textContent = 'eHagaki IME debug (本文は記録しません)';
     const controls = document.createElement('div');
@@ -235,6 +237,13 @@ export function installImeDebugInstrumentation(options: ImeDebugOptions): (() =>
 
     const lifecycleRecorder: Recorder = (label, event, extra) => record(label, event, extra);
     activeRecorders.add(lifecycleRecorder);
+    const harnessEventListener = (event: Event) => {
+        const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+        if (!detail || typeof detail.label !== 'string') return;
+        const { label, ...extra } = detail;
+        record(label, undefined, extra);
+    };
+    window.addEventListener('ehagaki-ime-debug-harness', harnessEventListener);
     record('instrumentation-enabled');
     copyButton.addEventListener('click', () => {
         void navigator.clipboard?.writeText(JSON.stringify(records, null, 2));
@@ -284,6 +293,8 @@ export function installImeDebugInstrumentation(options: ImeDebugOptions): (() =>
         buttonCleanup?.();
         editorCleanup.forEach((cleanup) => cleanup());
         documentCleanup.forEach((cleanup) => cleanup());
+        window.removeEventListener('ehagaki-ime-debug-harness', harnessEventListener);
+        panel.removeEventListener('toggle', resizePanel);
         panel.remove();
     };
 }
