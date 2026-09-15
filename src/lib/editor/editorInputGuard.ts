@@ -34,7 +34,7 @@ export const EditorInputGuard = Extension.create<{
                 },
             },
             filterTransaction: (transaction: Transaction, state: EditorState) => {
-                if (!transaction.docChanged || !this.options.isInputBlocked()) {
+                if (!transaction.docChanged) {
                     return true;
                 }
 
@@ -48,6 +48,10 @@ export const EditorInputGuard = Extension.create<{
                         observerState: editorInputGuardKey.getState(state) ?? { idsByGeneration: new Map() },
                     });
                     if (decision !== 'default') return decision === 'allow';
+                }
+
+                if (!this.options.isInputBlocked()) {
+                    return true;
                 }
 
                 return Boolean(

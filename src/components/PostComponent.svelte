@@ -562,8 +562,8 @@
     submittedCompositionReadOnly = false;
     submittedCompositionController = isHostOwned
       ? null
-      : new SubmittedCompositionController((phase) => {
-          submittedCompositionReadOnly = phase === 'stale';
+      : new SubmittedCompositionController(() => {
+          submittedCompositionReadOnly = false;
         });
     editorResources = initializeEditor({
       isInputBlocked: isHostOwned ? undefined : isEditorMutationBlocked,
