@@ -71,10 +71,7 @@
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
   import { editorInputGuardKey } from "../lib/editor/editorInputGuard";
-  import {
-    SubmittedCompositionController,
-    SUBMITTED_COMPOSITION_CLEANUP_META,
-  } from "../lib/editor/submittedComposition";
+  import { SubmittedCompositionController } from "../lib/editor/submittedComposition";
   import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
@@ -459,17 +456,11 @@
     const usesIPhoneCompositionFallback = Boolean(
       currentEditor?.view.composing && isIPhoneSafari(),
     );
-    const hasSubmittedComposition = Boolean(
-      submittedCompositionController?.isCompositionInputAllowed(),
-    );
     if (usesIPhoneCompositionFallback) {
       // Tiptap's blur command defers the actual DOM blur to a rAF. The
       // fallback must blur before clear/retire, so use the synchronous
       // standard HTMLElement API.
       currentEditor?.view.dom.blur();
-    }
-    if (hasSubmittedComposition && !usesIPhoneCompositionFallback) {
-      submittedCompositionController?.markStale();
     }
     clearContentAfterSuccess();
     if (usesIPhoneCompositionFallback) {
@@ -1147,7 +1138,7 @@
         hostOwnedConfig?.hashtagPinEnabled === true && hashtagPinStore.value
           ? [...getHashtagDataSnapshot().hashtags]
           : [];
-      currentEditor.chain().clearContent().setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true).run();
+      currentEditor.chain().clearContent().run();
       contentWarningStore.reset();
       contentWarningReasonStore.reset();
       mediaGalleryStore.clearAll();
@@ -1155,17 +1146,11 @@
       imageXMap = {};
       clearReplyQuote();
       if (pinnedHashtags.length > 0) {
-        currentEditor
-          .chain()
-          .insertContent(` ${pinnedHashtags.map((hashtag) => `#${hashtag}`).join(" ")}`)
-          .setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true)
-          .run();
+        currentEditor.commands.insertContent(
+          ` ${pinnedHashtags.map((hashtag) => `#${hashtag}`).join(" ")}`,
+        );
       }
-      currentEditor
-        .chain()
-        .focus("start")
-        .setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true)
-        .run();
+      currentEditor.commands.focus("start");
     }
   }
 

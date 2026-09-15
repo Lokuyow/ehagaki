@@ -3,10 +3,7 @@ import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Plugin } from '@tiptap/pm/state';
 import { EditorInputGuard, editorInputGuardKey } from '../../lib/editor/editorInputGuard';
-import {
-    SUBMITTED_COMPOSITION_CLEANUP_META,
-    SubmittedCompositionController,
-} from '../../lib/editor/submittedComposition';
+import { SubmittedCompositionController } from '../../lib/editor/submittedComposition';
 
 describe('submitted composition transaction ownership', () => {
     let editor: Editor | undefined;
@@ -111,14 +108,10 @@ describe('submitted composition transaction ownership', () => {
         blocked.value = true;
         instance.view.dispatch(instance.state.tr.insertText(' sent').setMeta('composition', 1));
         controller.markStale();
-        instance.view.dom.dispatchEvent(new Event('compositionstart'));
-        expect(controller.isReadOnly()).toBe(true);
 
         const frozen = instance.state.doc;
         instance.view.dispatch(instance.state.tr.insertText(' stale').setMeta('composition', 1));
         expect(instance.state.doc.eq(frozen)).toBe(true);
-        instance.view.dispatch(instance.state.tr.insertText(' cleanup').setMeta(SUBMITTED_COMPOSITION_CLEANUP_META, true));
-        expect(instance.state.doc.textContent).toContain(' cleanup');
         expect(controller.isReadOnly()).toBe(true);
     });
 });

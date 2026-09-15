@@ -13,9 +13,6 @@ export interface CompositionTransactionContext {
 
 export type CompositionTransactionDecision = 'allow' | 'reject' | 'default';
 
-/** Marks app-owned transactions emitted by post-success cleanup. */
-export const SUBMITTED_COMPOSITION_CLEANUP_META = 'ehagakiSubmittedCompositionCleanup';
-
 /** Owns the DOM composition generation and the submitted session lifecycle. */
 export class SubmittedCompositionController {
     private readonly onPhaseChange?: (phase: SubmittedCompositionPhase | null) => void;
@@ -64,6 +61,9 @@ export class SubmittedCompositionController {
         const handleCompositionStart = () => {
             this.domCompositionActive = true;
             this.generation += 1;
+            if (this.phase === 'stale') {
+                this.retire();
+            }
         };
         const handleCompositionEnd = () => {
             this.domCompositionActive = false;
