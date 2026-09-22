@@ -256,6 +256,13 @@ try {
 準備完了後に順番に適用します。一般的には、要素を生成して初期値を設定し、DOM へ追加してから
 `whenReady()` を待つ次の書き方が分かりやすいです。
 
+この connection 前 queue は、まだ一度も connection attempt を開始していない element の最初の
+mount attempt にだけ属します。接続済み mount で発行した `setContext()`、`setSettings()`、
+`focusEditor()`、`blurEditor()` はその mount attempt に束縛されます。mount を切断した後の
+operation や、切断中に発行した operation は次の mount へ移送されず、`disconnected` Error で
+reject されます。再生成または reconnect 後に更新する場合は、新しい mount の `whenReady()` 後に
+改めて呼び出してください。
+
 ```js
 const composer = document.createElement('ehagaki-composer');
 composer.setAttribute('asset-base', 'https://cdn.example/ehagaki/web-component/');
