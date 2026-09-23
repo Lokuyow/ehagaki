@@ -27,6 +27,17 @@ type AppInstance = {
     blurEditor(): void;
 };
 
+type ReadyBoundary = {
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (reason?: unknown) => void;
+    state: "pending" | "resolved" | "rejected";
+    /** Assigned when this boundary becomes a concrete connection attempt. */
+    token: number | null;
+    /** Disconnect and initialization failure retire a boundary permanently. */
+    active: boolean;
+};
+
 let activeInstance: EHagakiComposerElement | null = null;
 
 function createError(code: EHagakiComposerInitializationErrorDetail["code"], message: string): Error {
@@ -146,10 +157,8 @@ export abstract class EHagakiComposerElement extends HTMLElement {
     #app: AppInstance | null = null;
     #mountedApp: ReturnType<typeof mount> | null = null;
     #mountPromise: Promise<void> | null = null;
-    #readyResolve: (() => void) | null = null;
-    #readyReject: ((reason?: unknown) => void) | null = null;
-    #readyPromise: Promise<void> = this.createReadyPromise();
-    #readyState: "pending" | "resolved" | "rejected" = "pending";
+    #readyBoundary: ReadyBoundary = this.createReadyBoundary();
+    #hasStartedConnectionAttempt = false;
     #appInitializationNotified = false;
     #editorIsEmpty: boolean | null = null;
     #operationQueue: Promise<void> = Promise.resolve();
@@ -195,6 +204,14 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         this.#editorIsEmpty = null;
         this.#appInitializationNotified = false;
         if (this.#mountPromise) return;
+        if (this.#readyBoundary.state !== "pending") {
+            this.#readyBoundary = this.createReadyBoundary();
+        }
+        const boundary = this.#readyBoundary;
+        const generation = ++this.#connectionGeneration;
+        boundary.token = generation;
+        boundary.active = true;
+        this.#hasStartedConnectionAttempt = true;
         const connectionError = this.getConnectionError();
         if (connectionError) {
             const error = createError(connectionError.code, connectionError.message);
@@ -210,16 +227,13 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             return;
         }
 
-        if (this.#readyState !== "pending") {
-            this.#readyPromise = this.createReadyPromise();
-            this.#readyState = "pending";
-        }
         activeInstance = this;
-        this.#mountPromise = this.mountApp();
+        this.#mountPromise = this.mountApp(generation);
     }
 
     disconnectedCallback(): void {
         this.#connectionGeneration += 1;
+        this.#readyBoundary.active = false;
         this.#editorIsEmpty = null;
         this.#appInitializationNotified = false;
         this.onDisconnected();
@@ -232,14 +246,16 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         }
         this.#app = null;
         this.#mountPromise = null;
-        if (this.#readyState === "pending") {
-            this.#readyState = "rejected";
-            this.#readyReject?.(createError("disconnected", "Component was disconnected before it became ready."));
+        if (this.#readyBoundary.state === "pending") {
+            this.#readyBoundary.state = "rejected";
+            this.#readyBoundary.reject(
+                createError("disconnected", "Component was disconnected before it became ready."),
+            );
         }
     }
 
     whenReady(): Promise<void> {
-        return this.#readyPromise;
+        return this.#readyBoundary.promise;
     }
 
     setContext(context: EHagakiComposerContext): Promise<void> {
@@ -278,15 +294,24 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         }));
     }
 
-    private createReadyPromise(): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            this.#readyResolve = resolve;
-            this.#readyReject = reject;
+    private createReadyBoundary(): ReadyBoundary {
+        let resolve!: () => void;
+        let reject!: (reason?: unknown) => void;
+        const promise = new Promise<void>((nextResolve, nextReject) => {
+            resolve = nextResolve;
+            reject = nextReject;
         });
+        return {
+            promise,
+            resolve,
+            reject,
+            state: "pending",
+            token: null,
+            active: false,
+        };
     }
 
-    private async mountApp(): Promise<void> {
-        const generation = ++this.#connectionGeneration;
+    private async mountApp(generation: number): Promise<void> {
         try {
             const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
             shadowRoot.replaceChildren();
@@ -390,14 +415,30 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         if (
             !this.isConnected
             || generation !== this.#connectionGeneration
-            || this.#readyState !== "pending"
+            || this.#readyBoundary.state !== "pending"
         ) return;
         this.fail("initialization_failed", "eHagaki Composer could not be initialized.");
     }
 
     protected enqueue<T>(operation: () => Promise<T>): Promise<T> {
+        const boundary = this.#readyBoundary;
+        const rejectedWhileDisconnected =
+            this.#hasStartedConnectionAttempt
+            && !this.isConnected;
         const queued = this.#operationQueue.then(async () => {
-            await this.whenReady();
+            if (rejectedWhileDisconnected) {
+                throw createError("disconnected", "Component is disconnected.");
+            }
+            await boundary.promise;
+            if (
+                !boundary.active
+                || boundary.token === null
+                || boundary.token !== this.#connectionGeneration
+                || this.#readyBoundary !== boundary
+                || !this.isConnected
+            ) {
+                throw createError("disconnected", "Component was disconnected before the operation could run.");
+            }
             return operation();
         });
         this.#operationQueue = queued.then(() => undefined, () => undefined);
@@ -431,10 +472,10 @@ export abstract class EHagakiComposerElement extends HTMLElement {
             || generation !== this.#connectionGeneration
             || !this.#appInitializationNotified
             || this.#editorIsEmpty === null
-            || this.#readyState !== "pending"
+            || this.#readyBoundary.state !== "pending"
         ) return;
-        this.#readyState = "resolved";
-        this.#readyResolve?.();
+        this.#readyBoundary.state = "resolved";
+        this.#readyBoundary.resolve();
         this.dispatchSafeEvent("ehagaki-ready", { apiVersion: EHAGAKI_COMPOSER_API_VERSION });
     }
 
@@ -443,8 +484,9 @@ export abstract class EHagakiComposerElement extends HTMLElement {
         message: string,
         reason: unknown = createError(code, message),
     ): void {
-        this.#readyState = "rejected";
-        this.#readyReject?.(reason);
+        this.#readyBoundary.state = "rejected";
+        this.#readyBoundary.active = false;
+        this.#readyBoundary.reject(reason);
         this.dispatchSafeEvent("ehagaki-initialization-error", { code, message });
     }
 }

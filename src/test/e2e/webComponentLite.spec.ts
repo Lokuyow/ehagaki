@@ -935,16 +935,16 @@ test("Lite custom emoji catalog controls the button and closes an open picker wh
             setCustomEmojis(value: unknown): Promise<void>;
         };
         composer.configureHostOwned({ submit: () => undefined });
+        const preConnectCatalog = composer.setCustomEmojis([
+            { shortcode: "wave", url: "https://example.invalid/wave.webp" },
+        ]);
         document.body.append(composer);
         await composer.whenReady();
+        await preConnectCatalog;
         (window as any).__liteEmojiComposer = composer;
     }, { componentOrigin });
 
     const composer = page.locator("ehagaki-composer");
-    await expect(composer.locator(".custom-emoji-button")).toHaveCount(0);
-    await page.evaluate(async () => await (window as any).__liteEmojiComposer.setCustomEmojis([
-        { shortcode: "wave", url: "https://example.invalid/wave.webp" },
-    ]));
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
     await composer.locator(".custom-emoji-button").click();
     await expect(composer.locator(".custom-emoji-picker-region")).toHaveCount(1);
@@ -954,6 +954,15 @@ test("Lite custom emoji catalog controls the button and closes an open picker wh
     await page.evaluate(async () => await (window as any).__liteEmojiComposer.setCustomEmojis([
         { shortcode: "wave", url: "https://example.invalid/wave.webp" },
     ]));
+    await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
+    await composer.evaluate((element) => element.remove());
+    await page.evaluate(async () => {
+        const current = (window as any).__liteEmojiComposer as HTMLElement & {
+            whenReady(): Promise<void>;
+        };
+        document.body.append(current);
+        await current.whenReady();
+    });
     await expect(composer.locator(".custom-emoji-button")).toHaveCount(1);
 });
 
@@ -2077,6 +2086,44 @@ test("Lite keeps the explicit distribution asset base and lifecycle", async ({ p
     const lite = await mountHostOwned(page);
     expect(lite.events).toContain("ehagaki-ready");
     expect(lite.assetBase).toBe(`${componentOrigin}/host-owned/`);
+});
+
+test("Lite does not carry a queued context operation into a reconnect", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const result = await page.evaluate(async ({ componentOrigin }) => {
+        await import(`${componentOrigin}/host-owned/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            configureHostOwned(value: unknown): void;
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        const contextEvents: unknown[] = [];
+        composer.configureHostOwned({ submit: () => undefined });
+        composer.addEventListener("ehagaki-composer-context-updated", (event) => {
+            contextEvents.push((event as CustomEvent).detail);
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+
+        const staleOperation = composer.setContext({ content: "old-lite-mount-operation" });
+        composer.remove();
+        document.body.append(composer);
+        await composer.whenReady();
+        contextEvents.length = 0;
+        const staleResult = await staleOperation.then(
+            () => "resolved",
+            (error: Error) => error.name,
+        );
+        return {
+            staleResult,
+            editorText: composer.shadowRoot?.querySelector(".tiptap-editor")?.textContent ?? "",
+            contextEvents,
+        };
+    }, { componentOrigin });
+
+    expect(result.staleResult).toBe("disconnected");
+    expect(result.editorText).not.toContain("old-lite-mount-operation");
+    expect(result.contextEvents).toEqual([]);
 });
 
 test("Lite keeps the Host-owned public contract across context, submission, media, and reconnect", async ({ page }) => {

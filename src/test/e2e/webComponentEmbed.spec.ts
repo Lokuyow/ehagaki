@@ -440,7 +440,7 @@ test("controls the Full editor focus through the public API without changing con
     expect(afterFocus).toEqual(beforeBlur);
 });
 
-test("Full Web Component rejects ready when PostComponent loading fails", async ({ page }) => {
+test("Full Web Component preserves initialization failure while connected and rejects disconnect-gap operations", async ({ page }) => {
     failPostComponentLoad = true;
     await page.goto(hostOrigin);
     const result = await page.evaluate(async ({ componentOrigin }) => {
@@ -448,6 +448,7 @@ test("Full Web Component rejects ready when PostComponent loading fails", async 
         const composer = document.createElement("ehagaki-composer") as HTMLElement & {
             editorIsEmpty: boolean | null;
             whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
         };
         const initializationErrors: Array<{ code: string; message: string }> = [];
         composer.addEventListener("ehagaki-initialization-error", (event) => {
@@ -465,11 +466,17 @@ test("Full Web Component rejects ready when PostComponent loading fails", async 
                 window.setTimeout(() => resolve({ status: "pending", errorName: null }), 2_000);
             }),
         ]);
-        return { result, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
+        composer.remove();
+        const disconnectGapResult = await composer.setContext({ content: "must not queue after failed mount" }).then(
+            () => "resolved",
+            (error: Error) => error.name,
+        );
+        return { result, disconnectGapResult, initializationErrors, editorIsEmpty: composer.editorIsEmpty };
     }, { componentOrigin });
 
     expect(result).toEqual({
         result: { status: "rejected", errorName: "initialization_failed" },
+        disconnectGapResult: "disconnected",
         initializationErrors: [{
             code: "initialization_failed",
             message: "eHagaki Composer could not be initialized.",
@@ -2435,6 +2442,54 @@ test("queues setContext before ready and applies content and reply atomically", 
     expect(result.invalidResult).toBe("EmbedComposerContextValidationError");
     expect(result.contentAfterInvalid).toContain("queued context");
     expect(result.contentAfterInvalid).not.toContain("must not be applied");
+});
+
+test("does not carry queued Full operations across reconnects or a disconnect gap", async ({ page }) => {
+    await page.goto(hostOrigin);
+    const staleReply = nip19.noteEncode("b".repeat(64));
+    const result = await page.evaluate(async ({ staleReply }) => {
+        await import(`${window.__componentOrigin}/ehagaki-composer.js`);
+        const composer = document.createElement("ehagaki-composer") as HTMLElement & {
+            whenReady(): Promise<void>;
+            setContext(value: unknown): Promise<void>;
+        };
+        const contextEvents: unknown[] = [];
+        composer.addEventListener("ehagaki-composer-context-updated", (event) => {
+            contextEvents.push((event as CustomEvent).detail);
+        });
+        document.body.append(composer);
+        await composer.whenReady();
+
+        const staleOperation = composer.setContext({ content: "old-mount-operation", reply: staleReply });
+        composer.remove();
+        const disconnectGapOperation = composer.setContext({ content: "disconnect-gap-operation" });
+        document.body.append(composer);
+        await composer.whenReady();
+        contextEvents.length = 0;
+
+        const [staleResult, disconnectGapResult] = await Promise.all([
+            staleOperation.then(
+                () => "resolved",
+                (error: Error) => error.name,
+            ),
+            disconnectGapOperation.then(
+                () => "resolved",
+                (error: Error) => error.name,
+            ),
+        ]);
+        return {
+            staleResult,
+            disconnectGapResult,
+            editorText: composer.shadowRoot?.querySelector(".tiptap-editor")?.textContent ?? "",
+            staleContextEvents: contextEvents.filter((detail: any) => detail.reply === staleReply),
+        };
+    }, { staleReply });
+
+    expect(result.staleResult).toBe("disconnected");
+    expect(result.disconnectGapResult).toBe("disconnected");
+    expect(result.editorText).not.toContain("old-mount-operation");
+    expect(result.editorText).not.toContain("disconnect-gap-operation");
+    expect(result.staleContextEvents).toEqual([]);
 });
 
 test("uses a verified preloaded event in Direct Web Component setContext", async ({ page }) => {
